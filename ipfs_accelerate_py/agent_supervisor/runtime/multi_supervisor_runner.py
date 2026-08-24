@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -5124,6 +5125,171 @@ def _persist_plan_bound_process_birth(
     return process_birth_cid
 
 
+def _capture_owned_popen_process_identity(
+    process: subprocess.Popen[bytes],
+    *,
+    profile: LifecycleProfile,
+    command: Sequence[str],
+    launch_environment: Mapping[str, str],
+) -> ProcessIdentity:
+    """Capture an exact direct-child birth even after it becomes opaque.
+
+    Credential-bearing supervisor entries deliberately become non-dumpable.
+    A fast child can do so between ``Popen`` returning and the parent's
+    ``/proc/<pid>/environ`` read.  The parent still has stronger authority
+    than a later PID lookup: it created this exact direct child with a new
+    session and supplied the complete immutable profile environment.
+
+    Prefer the ordinary marker read.  Permission denial alone selects the
+    owned-child fallback, which binds two stable ``/proc/stat`` observations,
+    the direct-parent relationship, the dedicated process group/session, the
+    supplied profile, and the kernel boot identity.  This direct-child proof
+    also covers an accepted entry that clears its inherited marker projection;
+    later/adopted PIDs and PID reuse never fall back.
+    """
+
+    adapter = LinuxProcessAdapter()
+    try:
+        return adapter._identity(int(process.pid), profile)  # noqa: SLF001
+    except (PermissionError, ProcessIdentityMismatch):
+        pass
+
+    if not sys.platform.startswith("linux") or not Path("/proc").is_dir():
+        raise ProcessIdentityMismatch(
+            "opaque owned-child birth capture requires Linux /proc"
+        )
+    if process.poll() is not None:
+        raise ProcessIdentityMismatch(
+            "owned supervisor exited before process-birth capture"
+        )
+    first = adapter._stat(int(process.pid))  # noqa: SLF001
+    parent_pid, process_group_id, session_id, start_time_ticks = first
+    if (
+        parent_pid != os.getpid()
+        or process_group_id != int(process.pid)
+        or session_id != int(process.pid)
+    ):
+        raise ProcessIdentityMismatch(
+            "owned supervisor lacks its direct-child session boundary"
+        )
+    expected_markers = {
+        RUN_ID_ENV: profile.run_id,
+        PROFILE_ID_ENV: profile.profile_id,
+        TARGET_ID_ENV: profile.target_id,
+        REPOSITORY_ROOT_ENV: profile.repository_root,
+        STATE_ROOT_ENV: profile.state_root,
+        RUN_ROOT_ENV: profile.run_root,
+        CONFIGURATION_ROOT_ENV: profile.configuration_root,
+    }
+    if any(
+        launch_environment.get(name) != value
+        for name, value in expected_markers.items()
+    ):
+        raise ProcessIdentityMismatch(
+            "owned supervisor launch environment differs from its profile"
+        )
+    try:
+        fencing_epoch = int(launch_environment[FENCING_EPOCH_ENV])
+    except (KeyError, ValueError) as exc:
+        raise ProcessIdentityMismatch(
+            "owned supervisor launch has no lifecycle fence"
+        ) from exc
+    boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+        encoding="ascii"
+    ).strip()
+    if not boot_id:
+        raise ProcessIdentityMismatch("kernel boot identity is unavailable")
+    executable = shutil.which(
+        str(command[0]), path=launch_environment.get("PATH")
+    )
+    if not executable:
+        raise ProcessIdentityMismatch(
+            "owned supervisor executable cannot be resolved"
+        )
+    expected_argv = tuple(str(item) for item in command)
+    try:
+        observed_argv = adapter._argv(int(process.pid))  # noqa: SLF001
+    except PermissionError:
+        observed_argv = ()
+    if observed_argv and observed_argv != expected_argv:
+        raise ProcessIdentityMismatch(
+            "owned supervisor command changed before birth capture"
+        )
+    resolved_executable = str(Path(executable).resolve(strict=True))
+    try:
+        observed_cwd = str(
+            Path(os.readlink(f"/proc/{process.pid}/cwd")).resolve(
+                strict=False
+            )
+        )
+        observed_executable = str(
+            Path(os.readlink(f"/proc/{process.pid}/exe")).resolve(
+                strict=False
+            )
+        )
+    except PermissionError:
+        observed_cwd = ""
+        observed_executable = ""
+    if observed_cwd and observed_cwd != profile.cwd:
+        raise ProcessIdentityMismatch(
+            "owned supervisor cwd changed before birth capture"
+        )
+    if observed_executable and observed_executable != resolved_executable:
+        raise ProcessIdentityMismatch(
+            "owned supervisor executable changed before birth capture"
+        )
+    identity = ProcessIdentity(
+        pid=int(process.pid),
+        start_time_ticks=start_time_ticks,
+        parent_pid=parent_pid,
+        process_group_id=process_group_id,
+        session_id=session_id,
+        boot_id=boot_id,
+        argv=expected_argv,
+        cwd=profile.cwd,
+        executable=resolved_executable,
+        run_id=profile.run_id,
+        profile_id=profile.profile_id,
+        target_id=profile.target_id,
+        repository_root=profile.repository_root,
+        state_root=profile.state_root,
+        run_root=profile.run_root,
+        fencing_epoch=fencing_epoch,
+        configuration_root=profile.configuration_root,
+    )
+    second = adapter._stat(int(process.pid))  # noqa: SLF001
+    if process.poll() is not None or second != first:
+        raise ProcessIdentityMismatch(
+            "owned supervisor process birth changed during capture"
+        )
+    return identity
+
+
+def _fence_failed_owned_process_birth(
+    process: subprocess.Popen[bytes],
+    *,
+    grace_seconds: float = 1.0,
+) -> bool:
+    """Fence one just-created direct child after identity admission fails."""
+
+    try:
+        parent, process_group, _session, start_time = (
+            LinuxProcessAdapter._stat(int(process.pid))  # noqa: SLF001
+        )
+    except (OSError, ValueError, ProcessLookupError):
+        return process.poll() is not None
+    if parent != os.getpid() or process_group != int(process.pid):
+        return False
+    return terminate_pid_tree(
+        int(process.pid),
+        grace_seconds=max(0.0, grace_seconds),
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=process_group,
+        expected_root_start_time_ticks=start_time,
+    )
+
+
 def start_track(
     track: SupervisorTrack,
     *,
@@ -5539,9 +5705,15 @@ def start_track(
         launch_environment = _plan_bound_positive_child_environment(
             launch_environment
         )
-    from .process_security import state_authority_pass_fds
+    from .process_security import (
+        state_authority_credentials_present,
+        state_authority_pass_fds,
+    )
 
     authority_descriptors = state_authority_pass_fds(launch_environment)
+    exact_birth_required = state_authority_credentials_present(
+        launch_environment
+    )
     try:
         try:
             process = subprocess.Popen(
@@ -5653,17 +5825,33 @@ def start_track(
                 os.close(gate_write_fd)
     else:
         try:
-            process_identity = LinuxProcessAdapter()._identity(  # noqa: SLF001
-                int(process.pid), profile
+            process_identity = _capture_owned_popen_process_identity(
+                process,
+                profile=profile,
+                command=command,
+                launch_environment=launch_environment,
             )
         except (
             OSError,
             UnicodeError,
             ValueError,
-            ProcessLookupError,
             ProcessIdentityMismatch,
-        ):
-            # Legacy tracks retain their previous best-effort observability.
+        ) as exc:
+            if exact_birth_required:
+                fenced = _fence_failed_owned_process_birth(process)
+                try:
+                    process.wait(timeout=2.0)
+                except (ChildProcessError, OSError, subprocess.TimeoutExpired):
+                    pass
+                if not fenced:
+                    raise ProcessIdentityMismatch(
+                        "credential-bearing supervisor birth failed and its "
+                        "process tree could not be fenced"
+                    ) from exc
+                raise ProcessIdentityMismatch(
+                    "credential-bearing supervisor birth identity is unavailable"
+                ) from exc
+            # Credential-free legacy tracks retain best-effort observability.
             process_identity = None
         process._agent_supervisor_process_identity = process_identity
         resolved.supervisor_pid_path.write_text(
@@ -6822,31 +7010,88 @@ def stop_tracks(
     grace_seconds: float = 10.0,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
-    """Stop exact marker-bound wrapper trees and verify no descendants remain."""
+    """Stop exact marker-bound wrapper trees and verify no descendants remain.
+
+    Lane shutdowns run concurrently so the bounded grace consumed by one slow
+    or unverifiable tree cannot delay cooperative termination of another lane.
+    Each worker still delegates exclusively to the existing lifecycle-profile
+    and immutable process-birth checks in ``_terminate_managed_process``; an
+    exception never becomes authority to signal a bare PID.
+    """
 
     stopped: list[int] = []
     removed_runtime_markers: list[str] = []
     all_fenced = True
     _emit(output, "stopping supervisor wrapper and managed daemons")
+
+    # Submit every exact managed tree before waiting for any one result.  The
+    # previous serialized loop let one lane consume the caller's shutdown
+    # window while later lanes had not even received cooperative termination.
+    # A dedicated worker per bounded configured lane keeps the wall-clock
+    # bound at the slowest lane rather than the sum of all lane grace periods.
+    termination_results: dict[
+        str,
+        tuple[bool, tuple[int, ...], str],
+    ] = {}
+    managed = [
+        (track, process)
+        for track in tracks
+        if (process := processes.get(track.name)) is not None
+    ]
+    if managed:
+        with ThreadPoolExecutor(
+            max_workers=len(managed),
+            thread_name_prefix="agent-supervisor-stop",
+        ) as executor:
+            pending = [
+                (
+                    track,
+                    executor.submit(
+                        _terminate_managed_process,
+                        process,
+                        grace_seconds=grace_seconds,
+                    ),
+                )
+                for track, process in managed
+            ]
+            for track, future in pending:
+                try:
+                    fenced, member_pids = future.result()
+                except Exception as exc:
+                    # Preserve fail-closed lifecycle semantics while allowing
+                    # every independently identified lane to finish fencing.
+                    termination_results[track.name] = (
+                        False,
+                        (),
+                        type(exc).__name__,
+                    )
+                else:
+                    termination_results[track.name] = (
+                        bool(fenced),
+                        tuple(member_pids),
+                        "",
+                    )
+
     for track in tracks:
         process = processes.get(track.name)
-        fenced, member_pids = _terminate_managed_process(
-            process,
-            grace_seconds=grace_seconds,
+        fenced, member_pids, error_type = termination_results.get(
+            track.name,
+            (True, (), ""),
         )
         if fenced:
             stopped.extend(member_pids)
         elif process is not None:
             all_fenced = False
+            error_suffix = (
+                f" error_type={error_type}" if error_type else ""
+            )
             _emit(
                 output,
-                f"could not verify complete shutdown for {track.name} pid={process.pid}",
+                (
+                    "could not verify complete shutdown for "
+                    f"{track.name} pid={process.pid}{error_suffix}"
+                ),
             )
-        if process is not None:
-            try:
-                process.wait(timeout=max(0.1, grace_seconds))
-            except subprocess.TimeoutExpired:
-                pass
         if fenced and process is not None:
             resolved = track.resolve(repo_root)
             if _remove_stale_pid_marker_if_unchanged(

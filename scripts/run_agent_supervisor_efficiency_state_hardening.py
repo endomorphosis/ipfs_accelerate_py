@@ -225,6 +225,83 @@ REPAIR_CLEAN_LAUNCH_TRANSITION_VALIDATIONS: Final = (
         ),
     ),
 )
+REPAIR_RUNTIME_HARDENING_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-runtime-hardening-transition@1"
+)
+REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD: Final = (
+    "205f3b514cbdf74af67cabdfc045b008e03900c2"
+)
+REPAIR_RUNTIME_HARDENING_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+    "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_database_coordination.py",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py",
+    "test/api/test_agent_supervisor_database_portal_bridge.py",
+    "test/api/test_agent_supervisor_todo_daemon_port.py",
+    "test/api/test_agent_supervisor_worktree_lifecycle.py",
+)
+REPAIR_RUNTIME_HARDENING_TRANSITION_VALIDATIONS: Final = (
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k", (
+            "startup_honors_admitted_blocked_recovery_past_thirty_seconds "
+            "or startup_fails_when_blocked_recovery_admission_is_lost "
+            "or post_admission_grace_is_exclusive_to_typed_lane_loss "
+            "or external_status_accepts_only_monotonic_replica_successor "
+            "or repair_runtime_hardening_transition"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        "-k", "multi_runner_stop_tracks",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
+        "-k", (
+            "deterministic_reconciliation or "
+            "reclaims_only_dead_exact_lane_portal_lifecycle_claims"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_coordination.py",
+        "-k", "released_same_key_retry_creates_new_claim",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "-k", (
+            "false_completion_claim_settles_without_provider_or_effect "
+            "or false_completion_target_consumer_contention_is_typed_and_replayable "
+            "or false_completion_target_advance_before_fenced_cas_fails_closed "
+            "or false_completion_deferral_preserves_zero_provider_retry_lineage "
+            "or same_status_control_replay "
+            "or reconcile_rearms_blocked_portal_provider_failed "
+            "or reconcile_rearms_blocked_checkout_contention"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_todo_daemon_port.py",
+        "-k", "database_deterministic_reconciliation_ignores_stale_merge_completion",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_worktree_lifecycle.py",
+        "-k", "controlled_restart_reclaims_only_dead_same_lane_owner",
+    ),
+)
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
         "schema", "source_head", "repository_tree_id", "plan_root_cid",
@@ -273,6 +350,9 @@ REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS: Final = frozenset(
         "terminal_non_success_criteria", "semantic_corpus_changed",
         "database_mutated", "authorized_at", "receipt_cid",
     }
+)
+REPAIR_RUNTIME_HARDENING_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -579,6 +659,32 @@ def _repair_clean_launch_transition_receipt_id(
     return receipt_id
 
 
+def _repair_runtime_hardening_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-4 runtime-hardening receipt."""
+
+    if (
+        payload.get("schema") != REPAIR_RUNTIME_HARDENING_TRANSITION_SCHEMA
+        or set(payload) != REPAIR_RUNTIME_HARDENING_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 4
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+    ):
+        raise OperatorError(
+            "bootstrap repair runtime-hardening schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair runtime-hardening CID is invalid"
+        )
+    return receipt_id
+
+
 def _run(
     argv: Sequence[str],
     *,
@@ -715,6 +821,36 @@ def _run_repair_clean_launch_transition_validations() -> list[dict[str, Any]]:
     return results
 
 
+def _run_repair_runtime_hardening_transition_validations(
+) -> list[dict[str, Any]]:
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair runtime-hardening validation requires a clean "
+            "checkout"
+        )
+    results: list[dict[str, Any]] = []
+    for command in REPAIR_RUNTIME_HARDENING_TRANSITION_VALIDATIONS:
+        completed = _run(command, timeout=900)
+        result = {
+            "argv": list(command),
+            "returncode": int(completed.returncode),
+            "stdout_digest": _identity(completed.stdout.encode("utf-8")),
+            "stderr_digest": _identity(completed.stderr.encode("utf-8")),
+        }
+        results.append(result)
+        if completed.returncode != 0:
+            raise OperatorError(
+                "bootstrap repair runtime-hardening validation failed: "
+                + " ".join(command)
+            )
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair runtime-hardening validation dirtied the "
+            "checkout"
+        )
+    return results
+
+
 def _safe_path(value: str, *, field: str) -> Path:
     candidate = (ROOT / value).resolve()
     try:
@@ -802,6 +938,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-clean-launch-transition.json"
+    )
+    result["repair_runtime_hardening_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-runtime-hardening-transition.json"
     )
     result["status_receipt"] = (
         result["evidence"] / "control-plane" / "live-status.json"
@@ -3125,6 +3266,157 @@ def _validate_repair_clean_launch_transition(
     }
 
 
+def _validate_repair_runtime_hardening_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 4 chained to the immutable revision-3 repair."""
+
+    receipt_id = _repair_runtime_hardening_transition_receipt_id(receipt)
+    previous_receipt_id = _repair_clean_launch_transition_receipt_id(
+        previous_receipt
+    )
+    expected_authority = (
+        "the operator explicitly directed the bootstrap engineering agent "
+        "to fix the existing supervisor so it automatically recovers ASEH "
+        "false-completion, startup, shutdown, and dead-attempt lifecycle "
+        "faults without state-writer or checkout contention"
+    )
+    if (
+        receipt.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R4"
+        or receipt.get("previous_receipt_cid") != previous_receipt_id
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("base_head")
+        != REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
+        or receipt.get("changed_paths")
+        != list(REPAIR_RUNTIME_HARDENING_TRANSITION_CHANGED_PATHS)
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R3"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement") != expected_authority
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+    ):
+        raise OperatorError(
+            "bootstrap repair runtime-hardening authority differs"
+        )
+    repair = str(receipt.get("repair_head") or "").strip().casefold()
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or _git("show", "-s", "--format=%P", repair).split()
+        != [REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD]
+    ):
+        raise OperatorError(
+            "bootstrap repair runtime-hardening must be one exact child"
+        )
+    base_tree = _git(
+        "rev-parse",
+        f"{REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD}^{{tree}}",
+    )
+    repair_tree = _git("rev-parse", f"{repair}^{{tree}}")
+    if (
+        receipt.get("base_tree") != base_tree
+        or receipt.get("repair_tree") != repair_tree
+        or _git_changed_paths(
+            REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD,
+            repair,
+        )
+        != REPAIR_RUNTIME_HARDENING_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest")
+        != _git_patch_digest(
+            REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD,
+            repair,
+        )
+    ):
+        raise OperatorError(
+            "bootstrap repair runtime-hardening Git proof differs"
+        )
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError(
+                "bootstrap repair runtime-hardening changed a sibling"
+            )
+    stored_results = receipt.get("validation_results")
+    if (
+        not isinstance(stored_results, list)
+        or len(stored_results)
+        != len(REPAIR_RUNTIME_HARDENING_TRANSITION_VALIDATIONS)
+    ):
+        raise OperatorError(
+            "bootstrap repair runtime-hardening validation differs"
+        )
+    for stored, command in zip(
+        stored_results,
+        REPAIR_RUNTIME_HARDENING_TRANSITION_VALIDATIONS,
+        strict=True,
+    ):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {"argv", "returncode", "stdout_digest", "stderr_digest"}
+            or stored.get("argv") != list(command)
+            or stored.get("returncode") != 0
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stdout_digest") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stderr_digest") or ""),
+            )
+            is None
+        ):
+            raise OperatorError(
+                "bootstrap repair runtime-hardening validation differs"
+            )
+    if rerun_validations:
+        rerun = _run_repair_runtime_hardening_transition_validations()
+        if [item["argv"] for item in rerun] != [
+            item.get("argv") for item in stored_results
+        ]:
+            raise OperatorError(
+                "bootstrap repair runtime-hardening commands differ"
+            )
+    return {
+        "schema": REPAIR_RUNTIME_HARDENING_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 4,
+        "base_head": REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            REPAIR_RUNTIME_HARDENING_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "previous_receipt_cid": previous_receipt_id,
+        "receipt_cid": receipt_id,
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -3403,6 +3695,187 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
                     "merge-base", "--is-ancestor",
                     str(clean_launch_transition["repair_head"]), head,
                 )
+                runtime_path = paths.get(
+                    "repair_runtime_hardening_transition_receipt"
+                )
+                if isinstance(runtime_path, Path) and runtime_path.is_file():
+                    runtime_hardening = _secure_runtime_json(
+                        runtime_path,
+                        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+                    )
+                    runtime_transition = (
+                        _validate_repair_runtime_hardening_transition(
+                            runtime_hardening,
+                            bootstrap=bootstrap,
+                            previous_receipt=clean_launch,
+                            rerun_validations=(
+                                runtime_hardening.get("repair_head") == head
+                            ),
+                        )
+                    )
+                    _git(
+                        "merge-base",
+                        "--is-ancestor",
+                        str(runtime_transition["repair_head"]),
+                        head,
+                    )
+                    current_admission = _admit_materialized_launch(
+                        board, _config, paths
+                    )
+                    admitted_repair = current_admission.get(
+                        "repair_transition"
+                    )
+                    admitted_continuity = current_admission.get(
+                        "canonical_continuity"
+                    )
+                    if (
+                        not isinstance(admitted_repair, Mapping)
+                        or admitted_repair.get("repair_head")
+                        != runtime_transition["repair_head"]
+                        or not isinstance(admitted_continuity, Mapping)
+                        or "repair_to_current" not in admitted_continuity
+                    ):
+                        raise OperatorError(
+                            "current admission does not retain the "
+                            "runtime-hardening repair transition"
+                        )
+                    return {
+                        "schema": OPERATOR_SCHEMA,
+                        "command": "authorize-repair-transition",
+                        "ok": True,
+                        "idempotent_replay": True,
+                        "repair_transition_receipt": runtime_hardening,
+                        "repair_transition_chain": [
+                            prior,
+                            followup,
+                            clean_launch,
+                            runtime_hardening,
+                        ],
+                        "current_admission_cid": current_admission[
+                            "admission_cid"
+                        ],
+                        "runtime_source_head": current_admission[
+                            "runtime_source_head"
+                        ],
+                    }
+                if clean_launch.get("repair_head") != head:
+                    parents = _git(
+                        "show", "-s", "--format=%P", head
+                    ).split()
+                    if parents != [
+                        REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
+                    ]:
+                        raise OperatorError(
+                            "bootstrap repair runtime-hardening must be one "
+                            "child of the exact revision-3 repair"
+                        )
+                    if _git_changed_paths(
+                        REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD,
+                        head,
+                    ) != REPAIR_RUNTIME_HARDENING_TRANSITION_CHANGED_PATHS:
+                        raise OperatorError(
+                            "bootstrap repair runtime-hardening changed-path "
+                            "set differs"
+                        )
+                    validation_results = (
+                        _run_repair_runtime_hardening_transition_validations()
+                    )
+                    receipt = {
+                        "schema": (
+                            REPAIR_RUNTIME_HARDENING_TRANSITION_SCHEMA
+                        ),
+                        "task_id": REPAIR_TRANSITION_TASK_ID,
+                        "stable_identity": (
+                            f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}"
+                            "@ASEH-PLAN-R4"
+                        ),
+                        "program_id": PROGRAM,
+                        "transition_revision": 4,
+                        "bootstrap_receipt_id": bootstrap_id,
+                        "previous_receipt_cid": clean_launch_transition[
+                            "receipt_cid"
+                        ],
+                        "plan_root_cid": bootstrap["plan_root_cid"],
+                        "repository_tree_id": bootstrap[
+                            "repository_tree_id"
+                        ],
+                        "base_head": (
+                            REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
+                        ),
+                        "base_tree": _git(
+                            "rev-parse",
+                            REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
+                            + "^{tree}",
+                        ),
+                        "repair_head": head,
+                        "repair_tree": _git(
+                            "rev-parse", f"{head}^{{tree}}"
+                        ),
+                        "changed_paths": list(
+                            REPAIR_RUNTIME_HARDENING_TRANSITION_CHANGED_PATHS
+                        ),
+                        "patch_digest": _git_patch_digest(
+                            REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD,
+                            head,
+                        ),
+                        "dependencies": [
+                            "ASEH-BOOTSTRAP-002@ASEH-PLAN-R3"
+                        ],
+                        "owning_repository": "ipfs_accelerate_py",
+                        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+                        "authority_requirement": (
+                            "the operator explicitly directed the bootstrap "
+                            "engineering agent to fix the existing supervisor "
+                            "so it automatically recovers ASEH "
+                            "false-completion, startup, shutdown, and "
+                            "dead-attempt lifecycle faults without state-writer "
+                            "or checkout contention"
+                        ),
+                        "validation_results": validation_results,
+                        "terminal_success_criteria": (
+                            "The existing supervisor preserves the admitted "
+                            "recovery window, stops all lanes concurrently, "
+                            "reconciles an integrated false completion through "
+                            "a fresh zero-provider/effect claim, fences the "
+                            "exact target and board checkout through completion, "
+                            "fences exact dead Portal lifecycle claims through "
+                            "the canonical store, and rejects live, foreign, "
+                            "stale-fence, and foreign same-status claims."
+                        ),
+                        "terminal_non_success_criteria": (
+                            "Any second writable authority, blind provider "
+                            "retry, provider/effect replay, foreign claim "
+                            "receipt, target drift, stale-fence completion, "
+                            "serialized lane orphan, checkout contention loss, "
+                            "database mutation during validation, sibling "
+                            "change, or validation failure is rejected."
+                        ),
+                        "semantic_corpus_changed": False,
+                        "database_mutated": False,
+                        "authorized_at": time.time(),
+                    }
+                    receipt["receipt_cid"] = _identity(receipt)
+                    _validate_repair_runtime_hardening_transition(
+                        receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=clean_launch,
+                        rerun_validations=False,
+                    )
+                    if not isinstance(runtime_path, Path):
+                        raise OperatorError(
+                            "bootstrap repair runtime-hardening path is absent"
+                        )
+                    _atomic_json_create(runtime_path, receipt)
+                    return {
+                        "schema": OPERATOR_SCHEMA,
+                        "command": "authorize-repair-transition",
+                        "ok": True,
+                        "idempotent_replay": False,
+                        "repair_transition_receipt": receipt,
+                        "repair_transition_chain": [
+                            prior, followup, clean_launch, receipt
+                        ],
+                    }
                 current_admission = _admit_materialized_launch(
                     board, _config, paths
                 )
@@ -3841,6 +4314,8 @@ def _admit_materialized_launch(
             )
             active_transition = followup_transition
             clean_launch_transition: dict[str, Any] | None = None
+            runtime_hardening_transition: dict[str, Any] | None = None
+            clean_launch_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -3865,8 +4340,36 @@ def _admit_materialized_launch(
                 ):
                     raise OperatorError(
                         "clean-launch repair does not extend revision 2"
-                    )
+                )
                 active_transition = clean_launch_transition
+                runtime_path = paths.get(
+                    "repair_runtime_hardening_transition_receipt"
+                )
+                if (
+                    isinstance(runtime_path, Path)
+                    and runtime_path.is_file()
+                ):
+                    runtime_receipt = _secure_runtime_json(
+                        runtime_path,
+                        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+                    )
+                    runtime_hardening_transition = (
+                        _validate_repair_runtime_hardening_transition(
+                            runtime_receipt,
+                            bootstrap=bootstrap,
+                            previous_receipt=clean_launch_receipt,
+                            rerun_validations=True,
+                        )
+                    )
+                    if (
+                        runtime_hardening_transition["base_head"]
+                        != clean_launch_transition["repair_head"]
+                    ):
+                        raise OperatorError(
+                            "runtime-hardening repair does not extend "
+                            "revision 3"
+                        )
+                    active_transition = runtime_hardening_transition
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -3880,6 +4383,10 @@ def _admit_materialized_launch(
             repair_transition_chain.append(followup_transition)
             if clean_launch_transition is not None:
                 repair_transition_chain.append(clean_launch_transition)
+            if runtime_hardening_transition is not None:
+                repair_transition_chain.append(
+                    runtime_hardening_transition
+                )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -3888,6 +4395,10 @@ def _admit_materialized_launch(
             if clean_launch_transition is not None:
                 continuity["followup_to_clean_launch"] = (
                     clean_launch_transition
+                )
+            if runtime_hardening_transition is not None:
+                continuity["clean_launch_to_runtime_hardening"] = (
+                    runtime_hardening_transition
                 )
         else:
             current_proof = _admit_canonical_merge_suffix(
@@ -5830,15 +6341,7 @@ def _await_initial_health(
         ),
     )
     deadline = time.monotonic() + timeout
-    blocked_recovery_started_at: float | None = None
-    blocked_recovery_grace = min(
-        30.0,
-        max(
-            5.0,
-            3.0
-            * float(board.payload.get("check_interval_seconds") or 10.0),
-        ),
-    )
+    blocked_recovery_observed = False
     while time.monotonic() < deadline:
         if shutdown_requested.is_set():
             raise OperatorStopRequested(
@@ -5868,19 +6371,19 @@ def _await_initial_health(
         _atomic_json(paths["status_receipt"], receipt)
         if receipt.get("blocked") is True or receipt.get("stuck") is True:
             if receipt.get("blocked_recovery_admitted") is True:
-                if blocked_recovery_started_at is None:
-                    blocked_recovery_started_at = time.monotonic()
-                if (
-                    time.monotonic() - blocked_recovery_started_at
-                    <= blocked_recovery_grace
-                ):
-                    first = second
-                    continue
+                # The receipt is the bounded recovery authority.  It already
+                # binds freshness, the configured recovery window, owner and
+                # broker authority, sealed identities/corpora, lane safety,
+                # and authoritative progress.  Do not replace that admission
+                # with a shorter wall-clock or sample-count heuristic.
+                blocked_recovery_observed = True
+                first = second
+                continue
             _record_control_failure(
                 paths, failure, failure_event,
                 reason_code=(
                     "authoritative_blocked_recovery_grace_exhausted"
-                    if blocked_recovery_started_at is not None
+                    if blocked_recovery_observed
                     else "authoritative_board_blocked"
                     if receipt.get("blocked") is True
                     else "authoritative_board_stuck"
@@ -5929,14 +6432,10 @@ def _post_admission_health_action(
 
     if receipt.get("blocked") is True:
         if receipt.get("blocked_recovery_admitted") is True:
-            next_edges = unhealthy_edges + 1
-            if next_edges <= 2:
-                return "continue", "", next_edges
-            return (
-                "fail",
-                "authoritative_blocked_recovery_grace_exhausted",
-                next_edges,
-            )
+            # The authoritative receipt supplies the recovery bound.  Keep
+            # the transient outage counter independent so an admitted repair
+            # period cannot consume a later one/two-sample outage allowance.
+            return "continue", "", 0
         return "fail", "authoritative_board_blocked", unhealthy_edges
     if receipt.get("stuck") is True:
         return "fail", "authoritative_board_stuck", unhealthy_edges
@@ -6147,6 +6646,50 @@ def _owner_incarnation_binding(
     }
 
 
+def _published_replica_is_current_or_monotonic_successor(
+    sampled: Mapping[str, Any],
+    current: Mapping[str, Any],
+) -> bool:
+    """Admit exact sampled bytes or a later replica from the same owner.
+
+    A status query refreshes the non-authoritative read replica.  The refresh
+    can complete after the health sampler publishes its final receipt but
+    before the operator reads the owner's status document.  Treating that
+    strictly newer publication as identity drift makes an otherwise healthy
+    owner impossible to observe without winning a filesystem race.
+
+    The sequence is only an ordering witness inside one fully matched replica
+    authority.  Equal sequences still require byte-for-byte binding equality;
+    rollbacks, identity changes, path changes, and schema/storage drift all
+    fail closed.
+    """
+
+    authority_fields = (
+        "path",
+        "source_database_path",
+        "server_id",
+        "database_uuid",
+        "generation",
+        "schema_revision",
+        "schema_fingerprint",
+        "storage_schema_fingerprint",
+    )
+    if any(
+        sampled.get(field) != current.get(field)
+        for field in authority_fields
+    ):
+        return False
+    sampled_sequence = sampled.get("refresh_sequence")
+    current_sequence = current.get("refresh_sequence")
+    if type(sampled_sequence) is not int or type(current_sequence) is not int:
+        return False
+    if current_sequence < sampled_sequence:
+        return False
+    if current_sequence == sampled_sequence:
+        return dict(sampled) == dict(current)
+    return True
+
+
 def _admit_receipt_for_current_owner(
     receipt: Mapping[str, Any],
     owner_status: Mapping[str, Any],
@@ -6184,10 +6727,13 @@ def _admit_receipt_for_current_owner(
                 "live status receipt belongs to a different owner incarnation"
             )
         admitted_samples.append(sampled)
-    # A task mutation may legitimately replace the replica between samples.
-    # The final authenticated sample, however, must still name the exact
-    # owner-published bytes visible in the current secure owner status.
-    if admitted_samples[-1]["replica"] != current["replica"]:
+    # A task mutation may legitimately replace the replica between samples,
+    # and the read-side status query itself may publish a strict monotonic
+    # successor after the final sample.  Equal sequence values remain exact;
+    # only a later publication by this same owner incarnation is admissible.
+    if not _published_replica_is_current_or_monotonic_successor(
+        admitted_samples[-1]["replica"], current["replica"]
+    ):
         raise OperatorError(
             "live status receipt belongs to a different published replica"
         )

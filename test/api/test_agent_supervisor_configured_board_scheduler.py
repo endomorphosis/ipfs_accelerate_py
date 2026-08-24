@@ -1515,6 +1515,11 @@ def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
         return SimpleNamespace(pid=os.getpid())
 
     monkeypatch.setattr(multi_runner_module.subprocess, "Popen", capture_popen)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_capture_owned_popen_process_identity",
+        lambda *_args, **_kwargs: None,
+    )
     inherited_read, inherited_write = os.pipe()
     try:
         process = multi_runner_module.start_track(
@@ -2971,6 +2976,136 @@ def test_receipt_coordinator_preidentity_failure_never_claims_unproved_fence() -
     os.name != "posix" or not Path("/proc").is_dir(),
     reason="non-dumpable lifecycle fencing requires Linux /proc",
 )
+def test_multi_runner_stop_tracks_captures_opaque_owned_birth_before_fencing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fast non-dumpable configured child still has an exact birth fence."""
+
+    ready_path = tmp_path / "owned-opaque-wrapper.ready"
+    descendant_path = tmp_path / "owned-opaque-descendant.pid"
+    child_script = """
+import ctypes
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+libc = ctypes.CDLL(None, use_errno=True)
+if libc.prctl(4, 0, 0, 0, 0) != 0 or libc.prctl(3, 0, 0, 0, 0) != 0:
+    raise SystemExit(91)
+descendant = subprocess.Popen(
+    [
+        sys.executable,
+        "-c",
+        "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)",
+    ],
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+    start_new_session=True,
+)
+Path(sys.argv[2]).write_text(str(descendant.pid), encoding="ascii")
+Path(sys.argv[1]).write_text("ready\\n", encoding="ascii")
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+while True:
+    time.sleep(60)
+"""
+    command = (
+        sys.executable,
+        "-c",
+        child_script,
+        str(ready_path),
+        str(descendant_path),
+    )
+    state_root = tmp_path / "owned-opaque-state"
+    profile = multi_runner_module.LifecycleProfile(
+        target_id="supervisor-track:test-owned-opaque-wrapper",
+        run_id=f"test-owned-opaque-{_test_lifecycle_token(tmp_path, 'birth')}",
+        configuration_root="test-owned-opaque-configuration",
+        repository_root=str(tmp_path.resolve()),
+        state_root=str(state_root.resolve()),
+        run_root=str((state_root / "run").resolve()),
+        argv=command,
+        cwd=str(tmp_path.resolve()),
+    )
+    launch_environment = profile.launch_environment(0)
+    process = _spawn_test_process(
+        command,
+        cwd=tmp_path,
+        env=launch_environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    descendant_pid = 0
+    try:
+        deadline = time.monotonic() + 5.0
+        while not ready_path.is_file() and process.poll() is None:
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
+        assert ready_path.is_file(), f"opaque wrapper exited {process.poll()}"
+        descendant_pid = int(descendant_path.read_text(encoding="ascii"))
+
+        original_identity = multi_runner_module.LinuxProcessAdapter._identity
+        with monkeypatch.context() as context:
+            context.setattr(
+                multi_runner_module.LinuxProcessAdapter,
+                "_identity",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    multi_runner_module.ProcessIdentityMismatch(
+                        "accepted entry hid lifecycle markers"
+                    )
+                ),
+            )
+            identity = (
+                multi_runner_module._capture_owned_popen_process_identity(
+                    process,
+                    profile=profile,
+                    command=command,
+                    launch_environment=launch_environment,
+                )
+            )
+        assert multi_runner_module.LinuxProcessAdapter._identity is (
+            original_identity
+        )
+        assert identity.pid == process.pid
+        assert identity.parent_pid == os.getpid()
+        assert identity.process_group_id == process.pid
+        assert identity.session_id == process.pid
+        process._agent_supervisor_lifecycle_profile = profile
+        process._agent_supervisor_process_identity = identity
+
+        fenced, member_pids = multi_runner_module._terminate_managed_process(
+            process,
+            grace_seconds=0.1,
+        )
+        assert fenced is True
+        assert process.pid in member_pids
+        assert process.poll() is not None
+        assert not multi_runner_module.pid_alive(descendant_pid)
+    finally:
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+            process.wait(timeout=5.0)
+        if descendant_pid and multi_runner_module.pid_alive(descendant_pid):
+            try:
+                os.killpg(descendant_pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/proc").is_dir(),
+    reason="non-dumpable lifecycle fencing requires Linux /proc",
+)
 def test_multi_runner_fences_non_dumpable_root_omitted_by_profile_scan(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3281,6 +3416,155 @@ while True:
                 os.killpg(descendant_pid, signal.SIGKILL)
             except (OSError, ProcessLookupError):
                 pass
+
+
+def test_multi_runner_stop_tracks_starts_every_lane_before_waiting_for_slow_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One slow exact tree cannot delay termination of a later lane."""
+
+    def track(name: str) -> multi_runner_module.SupervisorTrack:
+        return multi_runner_module.SupervisorTrack(
+            name=name,
+            script_path=tmp_path / f"{name}.py",
+            log_path=tmp_path / f"{name}.log",
+            supervisor_pid_path=tmp_path / f"{name}.pid",
+            daemon_pid_path=tmp_path / f"{name}.daemon.pid",
+        )
+
+    slow = track("slow-lane")
+    fast = track("fast-lane")
+    slow_process = SimpleNamespace(pid=710001)
+    fast_process = SimpleNamespace(pid=710002)
+    slow_entered = threading.Event()
+    fast_entered = threading.Event()
+    slow_observed_fast_lane: list[bool] = []
+    worker_names: dict[int, str] = {}
+
+    def terminate(process: Any, *, grace_seconds: float):
+        assert grace_seconds == 30.0
+        worker_names[process.pid] = threading.current_thread().name
+        if process.pid == slow_process.pid:
+            slow_entered.set()
+            slow_observed_fast_lane.append(fast_entered.wait(timeout=1.0))
+            return False, (process.pid,)
+        assert slow_entered.wait(timeout=1.0)
+        fast_entered.set()
+        return True, (process.pid,)
+
+    removed_markers: list[tuple[Path, int]] = []
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_terminate_managed_process",
+        terminate,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_remove_stale_pid_marker_if_unchanged",
+        lambda path, pid: removed_markers.append((path, pid)) or True,
+    )
+    messages: list[str] = []
+
+    result = multi_runner_module.stop_tracks(
+        (slow, fast),
+        {
+            slow.name: slow_process,
+            fast.name: fast_process,
+        },
+        repo_root=tmp_path,
+        grace_seconds=30.0,
+        output=messages.append,
+    )
+
+    assert slow_observed_fast_lane == [True]
+    assert worker_names.keys() == {slow_process.pid, fast_process.pid}
+    assert all(
+        name.startswith("agent-supervisor-stop")
+        for name in worker_names.values()
+    )
+    assert result == {
+        "stopped_pids": [fast_process.pid],
+        "stopped_count": 1,
+        "all_trees_fenced": False,
+        "removed_runtime_markers": [str(fast.supervisor_pid_path)],
+    }
+    assert removed_markers == [
+        (fast.supervisor_pid_path, fast_process.pid),
+    ]
+    assert len(messages) == 2
+    assert messages[0].endswith(
+        " stopping supervisor wrapper and managed daemons"
+    )
+    assert messages[1].endswith(
+        " could not verify complete shutdown for slow-lane "
+        f"pid={slow_process.pid}"
+    )
+
+
+def test_multi_runner_stop_tracks_isolates_identity_failure_between_lanes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unverifiable lane never grants PID authority or aborts peer fencing."""
+
+    tracks = tuple(
+        multi_runner_module.SupervisorTrack(
+            name=name,
+            script_path=tmp_path / f"{name}.py",
+            log_path=tmp_path / f"{name}.log",
+            supervisor_pid_path=tmp_path / f"{name}.pid",
+            daemon_pid_path=tmp_path / f"{name}.daemon.pid",
+        )
+        for name in ("identity-failure", "verified-peer")
+    )
+    failed_process = SimpleNamespace(pid=720001)
+    peer_process = SimpleNamespace(pid=720002)
+    observed: list[int] = []
+
+    def terminate(process: Any, *, grace_seconds: float):
+        assert grace_seconds == 0.25
+        observed.append(process.pid)
+        if process.pid == failed_process.pid:
+            raise multi_runner_module.ProcessIdentityMismatch(
+                "test immutable identity mismatch"
+            )
+        return True, (process.pid,)
+
+    removed_markers: list[tuple[Path, int]] = []
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_terminate_managed_process",
+        terminate,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_remove_stale_pid_marker_if_unchanged",
+        lambda path, pid: removed_markers.append((path, pid)) or True,
+    )
+    messages: list[str] = []
+
+    result = multi_runner_module.stop_tracks(
+        tracks,
+        {
+            tracks[0].name: failed_process,
+            tracks[1].name: peer_process,
+        },
+        repo_root=tmp_path,
+        grace_seconds=0.25,
+        output=messages.append,
+    )
+
+    assert set(observed) == {failed_process.pid, peer_process.pid}
+    assert result["all_trees_fenced"] is False
+    assert result["stopped_pids"] == [peer_process.pid]
+    assert removed_markers == [
+        (tracks[1].supervisor_pid_path, peer_process.pid),
+    ]
+    assert messages[-1].endswith(
+        " could not verify complete shutdown for identity-failure "
+        f"pid={failed_process.pid} error_type=ProcessIdentityMismatch"
+    )
 
 
 def test_v3_materializer_uses_canonical_ready_and_attempt_admissible_set(

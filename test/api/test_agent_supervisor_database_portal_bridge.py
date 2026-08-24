@@ -19,6 +19,11 @@ from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    WorktreeLifecycleStore,
+    current_process_birth,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
     DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
@@ -33,6 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalCandidateRetry,
+    DatabasePortalDeterministicReconciliationDeferred,
     DatabasePortalExecutionBridge,
     database_portal_consumed_no_progress_fingerprint,
     database_portal_task_contract_digest,
@@ -60,6 +66,7 @@ import subprocess
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA, DatabasePortalValidationRetry
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import PortalTaskState, parse_task_text, task_declared_output_paths
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import content_identity
 from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight import preflight_validation_project_dependencies
 from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import validation_command_repository_root
 
@@ -179,6 +186,13 @@ class _CompletingPortal:
         self.closed = False
 
     def run_once(self) -> dict[str, object]:
+        implementation = {
+            "task_id": self.task_alias,
+            "task_cid": "task:cid:004",
+            "canonical_task_cid": "task:cid:004",
+            "returncode": 0,
+            "implementation_commit": "a" * 40,
+        }
         text = self.paths.task_projection.read_text(encoding="utf-8")
         self.paths.task_projection.write_text(
             text.replace("- Status: ready", "- Status: completed"),
@@ -187,33 +201,35 @@ class _CompletingPortal:
         self.paths.state.write_text(
             json.dumps(
                 {
+                    "last_implementation_task_id": self.task_alias,
+                    "last_implementation_task_cid": "task:cid:004",
+                    "last_implementation_returncode": 0,
                     "last_implementation_commit": "a" * 40,
                     "last_merge_returncode": 0,
                 }
             ),
             encoding="utf-8",
         )
-        self.paths.events.write_text(
-            json.dumps(
-                {
-                    "type": "task_completed",
-                    "task_id": self.task_alias,
-                    "canonical_task_key": "task/v1/current-authority-inventory",
-                    "canonical_task_cid": "task:cid:004",
-                    "event_id": "event:complete",
-                }
-            )
-            + "\n",
-            encoding="utf-8",
+        append_jsonl_event(
+            self.paths.events,
+            "implementation_finished",
+            implementation,
+        )
+        append_jsonl_event(
+            self.paths.events,
+            "task_completed",
+            {
+                "task_id": self.task_alias,
+                "canonical_task_key": "task/v1/current-authority-inventory",
+                "canonical_task_cid": "task:cid:004",
+            },
         )
         return {
             "task_count": 1,
             "completed_count": 1,
             "active_task_id": self.task_alias,
             "implementation_result": {
-                "task_id": self.task_alias,
-                "returncode": 0,
-                "implementation_commit": "a" * 40,
+                **implementation,
                 # Raw model output must not enter the database receipt.
                 "model_response": "private provider payload",
             },
@@ -229,6 +245,248 @@ class _CompletingPortal:
 
     def close_event_runtime(self) -> None:
         self.closed = True
+
+
+def _deterministic_record_and_authority() -> tuple[SimpleNamespace, dict[str, object]]:
+    attempt = _attempt()
+    record = _record()
+    authority: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "false-completion-deterministic-claim-authority@1"
+        ),
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "source_attempt_id": "attempt:source",
+        "reintegration_evidence_id": "sha256:" + "b" * 64,
+        "request_id": "request:integrated",
+        "candidate_commit": "1" * 40,
+        "target_commit": "2" * 40,
+        "target_tree": "3" * 40,
+        "preserved_unknown_receipt_id": "",
+        "provider_dispatch_policy": "forbidden",
+        "effect_execution_policy": "forbidden",
+    }
+    authority["authority_id"] = (
+        database_portal_bridge_module._database_evidence_digest(authority)
+    )
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": attempt.fencing_token,
+            "fence_epoch": attempt.fence_epoch,
+            "attempt_number": attempt.attempt_number,
+            "false_completion_reintegration_source_attempt_id": (
+                authority["source_attempt_id"]
+            ),
+            "false_completion_reintegration_seed": {
+                "schema": DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+                "source_attempt_id": authority["source_attempt_id"],
+                "evidence_id": authority["reintegration_evidence_id"],
+                "request_id": authority["request_id"],
+                "candidate_commit": authority["candidate_commit"],
+                "reintegration_receipt": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "false-completion-reintegration-receipt@1"
+                    ),
+                    "receipt_id": "baguqeera" + "a" * 52,
+                    "reintegration_target_commit": authority["target_commit"],
+                    "reintegration_target_tree": authority["target_tree"],
+                },
+            },
+        },
+    }
+    return record, authority
+
+
+class _DeterministicCompletingPortal:
+    def __init__(
+        self,
+        paths: object,
+        task_alias: str,
+        projection: dict[str, object],
+        *,
+        mutate: object = None,
+        run_calls: list[str] | None = None,
+    ) -> None:
+        self.paths = paths
+        self.task_alias = task_alias
+        self.projection = projection
+        self.mutate = mutate
+        self.run_calls = run_calls if run_calls is not None else []
+        self.closed = False
+
+    def _implementation(self) -> dict[str, object]:
+        pre_dispatch: dict[str, object] = {
+            "kind": "false_completion_reintegration",
+            "source_task_id": self.task_alias,
+            "repair_task_id": "",
+            "failure_kind": "false_completion_reintegration",
+            "repair_task_cid": "task:cid:004",
+            "authority_receipt_id": self.projection["receipt_id"],
+            "authority_evidence_id": self.projection["evidence_id"],
+            "target_commit": self.projection["target_commit"],
+            "target_tree": self.projection["target_tree"],
+            "preserved_unknown_receipt_id": self.projection[
+                "preserved_unknown_receipt_id"
+            ],
+            "provider_dispatch_policy": "forbidden",
+            "eligible": True,
+            "provider_dispatched": False,
+            "reason": "declared_validation_proved_existing_contract",
+        }
+        pre_dispatch["receipt_id"] = content_identity(pre_dispatch)
+        implementation: dict[str, object] = {
+            "task_id": self.task_alias,
+            "task_cid": "task:cid:004",
+            "canonical_task_cid": "task:cid:004",
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": False,
+            "implementation_commit": "",
+            "execution_mode": "local-retry-proof",
+            "commit_result": {"committed": False, "reason": "no_changes"},
+            "merge_result": {"merged": False, "reason": "not_attempted"},
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+                "reason": "declared_validation_passed",
+                "pre_dispatch_no_change": pre_dispatch,
+            },
+            "cleanup_result": {"cleaned": True, "reason": "removed"},
+            "board_completion": {
+                "complete": True,
+                "pending_merge": False,
+                "reason": "validated_no_change",
+            },
+        }
+        if callable(self.mutate):
+            self.mutate(implementation)
+        return implementation
+
+    def run_once(self) -> dict[str, object]:
+        self.run_calls.append(self.task_alias)
+        implementation = self._implementation()
+        text = self.paths.task_projection.read_text(encoding="utf-8")
+        self.paths.task_projection.write_text(
+            text.replace("- Status: ready", "- Status: completed"),
+            encoding="utf-8",
+        )
+        self.paths.state.write_text(
+            json.dumps(
+                {
+                    "last_implementation_task_id": self.task_alias,
+                    "last_implementation_task_cid": "task:cid:004",
+                    "last_implementation_returncode": implementation[
+                        "returncode"
+                    ],
+                    "last_implementation_commit": implementation[
+                        "implementation_commit"
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        append_jsonl_event(
+            self.paths.events,
+            "implementation_finished",
+            implementation,
+        )
+        append_jsonl_event(
+            self.paths.events,
+            "task_completed",
+            {
+                "task_id": self.task_alias,
+                "canonical_task_key": "task/v1/current-authority-inventory",
+                "canonical_task_cid": "task:cid:004",
+            },
+        )
+        return {"implementation_result": implementation}
+
+    def close_event_runtime(self) -> None:
+        self.closed = True
+
+
+class _DeterministicReceiptOnlyCompletingPortal(
+    _DeterministicCompletingPortal
+):
+    """Match Portal's real validated-no-change terminal event shape."""
+
+    def __init__(
+        self,
+        *args: object,
+        forge_receipt: bool = False,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.forge_receipt = forge_receipt
+
+    def run_once(self) -> dict[str, object]:
+        self.run_calls.append(self.task_alias)
+        implementation = self._implementation()
+        canonical_task_cid = (
+            "task:cid:forged" if self.forge_receipt else "task:cid:004"
+        )
+        implementation["board_namespace"] = "bridge-test"
+        implementation["canonical_task_key"] = (
+            "task/v1/current-authority-inventory"
+        )
+        implementation["todo_update_result"] = {
+            "updated": True,
+            "task_id": self.task_alias,
+            "updated_task_ids": [self.task_alias],
+            "missing_task_ids": [],
+            "missing_status_task_ids": [],
+            "completion_receipts": [
+                {
+                    "schema": (
+                        "ipfs_accelerate_py.agent_supervisor."
+                        "member_completion_receipt@1"
+                    ),
+                    "board_namespace": "bridge-test",
+                    "canonical_task_cid": canonical_task_cid,
+                    "canonical_task_key": (
+                        "task/v1/current-authority-inventory"
+                    ),
+                    "status": "succeeded",
+                    "task_id": self.task_alias,
+                }
+            ],
+        }
+        text = self.paths.task_projection.read_text(encoding="utf-8")
+        self.paths.task_projection.write_text(
+            text.replace("- Status: ready", "- Status: completed"),
+            encoding="utf-8",
+        )
+        self.paths.state.write_text(
+            json.dumps(
+                {
+                    "last_implementation_task_id": self.task_alias,
+                    "last_implementation_task_cid": "task:cid:004",
+                    "last_implementation_returncode": 0,
+                    "last_implementation_commit": "",
+                }
+            ),
+            encoding="utf-8",
+        )
+        append_jsonl_event(
+            self.paths.events,
+            "implementation_finished",
+            implementation,
+        )
+        return {"implementation_result": implementation}
 
 
 def _consumed_no_progress_result(
@@ -366,6 +624,339 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     attempt_boards = list((tmp_path / "attempts").glob("*/task-projection.md"))
     assert len(attempt_boards) == 1
     assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
+
+
+def test_deterministic_reconciliation_admits_exact_local_validation_proof(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    run_calls: list[str] = []
+    bridge: DatabasePortalExecutionBridge
+
+    def factory(paths: object, alias: str) -> _DeterministicCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicCompletingPortal(
+            paths,
+            alias,
+            projection,
+            run_calls=run_calls,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    settlement = bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert settlement["accepted"] is True
+    assert settlement["provider_dispatched"] is False
+    assert settlement["effect_executed"] is False
+    assert settlement["validation_result"]["provider_dispatched"] is False
+    assert settlement["validation_result"]["effect_executed"] is False
+    assert run_calls == ["LGSWF-004"]
+
+
+def test_deterministic_reconciliation_admits_receipt_only_no_change_completion(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    bridge: DatabasePortalExecutionBridge
+
+    def factory(
+        paths: object,
+        alias: str,
+    ) -> _DeterministicReceiptOnlyCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicReceiptOnlyCompletingPortal(
+            paths,
+            alias,
+            projection,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    settlement = bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert settlement["accepted"] is True
+    assert settlement["provider_dispatched"] is False
+    assert settlement["effect_executed"] is False
+
+
+def test_deterministic_reconciliation_rejects_forged_receipt_only_completion(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    bridge: DatabasePortalExecutionBridge
+
+    def factory(
+        paths: object,
+        alias: str,
+    ) -> _DeterministicReceiptOnlyCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicReceiptOnlyCompletingPortal(
+            paths,
+            alias,
+            projection,
+            forge_receipt=True,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(
+        DatabasePortalDeterministicReconciliationDeferred,
+    ) as caught:
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert caught.value.reason == (
+        "deterministic_reconciliation_replay_proof_failed"
+    )
+
+
+def test_deterministic_reconciliation_replays_durable_implementation_after_write_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    run_calls: list[str] = []
+    factory_calls: list[str] = []
+    bridge: DatabasePortalExecutionBridge
+
+    def factory(paths: object, alias: str) -> _DeterministicCompletingPortal:
+        factory_calls.append(alias)
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicCompletingPortal(
+            paths,
+            alias,
+            projection,
+            run_calls=run_calls,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+    real_atomic_write_once = database_portal_bridge_module._atomic_write_once
+    crashed = False
+
+    def crash_before_settlement(path: Path, payload: bytes) -> object:
+        nonlocal crashed
+        if (
+            path.name == "false-completion-deterministic-settlement.json"
+            and not crashed
+        ):
+            crashed = True
+            raise OSError("simulated crash before settlement receipt durability")
+        return real_atomic_write_once(path, payload)
+
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "_atomic_write_once",
+        crash_before_settlement,
+    )
+    with pytest.raises(OSError, match="simulated crash"):
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "_atomic_write_once",
+        real_atomic_write_once,
+    )
+    settlement = bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert settlement["accepted"] is True
+    assert run_calls == ["LGSWF-004"]
+    # Terminal replay occurs before Portal construction and carries the exact
+    # local implementation proof instead of an empty portal_passes list.
+    assert factory_calls == ["LGSWF-004"]
+    passes = settlement["portal_acceptance_receipt"]["portal_evidence"][
+        "portal_passes"
+    ]
+    assert len(passes) == 1
+    assert passes[0]["implementation"]["validation_result"][
+        "pre_dispatch_no_change"
+    ]["reason"] == "declared_validation_proved_existing_contract"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    (
+        (
+            "validation_failed",
+            "deterministic_reconciliation_validation_failed",
+        ),
+        (
+            "target_mismatch",
+            "deterministic_reconciliation_target_mismatch",
+        ),
+        (
+            "proof_missing",
+            "deterministic_reconciliation_replay_proof_failed",
+        ),
+    ),
+)
+def test_deterministic_reconciliation_types_closed_zero_provider_failures(
+    tmp_path: Path,
+    mutation: str,
+    expected_reason: str,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    bridge: DatabasePortalExecutionBridge
+
+    def mutate(implementation: dict[str, object]) -> None:
+        validation = implementation["validation_result"]
+        assert isinstance(validation, dict)
+        pre_dispatch = validation.get("pre_dispatch_no_change")
+        assert isinstance(pre_dispatch, dict)
+        if mutation == "validation_failed":
+            implementation["returncode"] = 1
+            validation.update(
+                {
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": "declared_validation_failed",
+                }
+            )
+            pre_dispatch["reason"] = (
+                "reconciliation_declared_validation_failed"
+            )
+            pre_dispatch.pop("receipt_id", None)
+        elif mutation == "target_mismatch":
+            pre_dispatch["target_commit"] = "4" * 40
+            pre_dispatch_body = dict(pre_dispatch)
+            pre_dispatch_body.pop("receipt_id", None)
+            pre_dispatch["receipt_id"] = content_identity(pre_dispatch_body)
+        elif mutation == "proof_missing":
+            validation.pop("pre_dispatch_no_change")
+
+    def factory(paths: object, alias: str) -> _DeterministicCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicCompletingPortal(
+            paths,
+            alias,
+            projection,
+            mutate=mutate,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(
+        DatabasePortalDeterministicReconciliationDeferred
+    ) as caught:
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert caught.value.reason == expected_reason
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert caught.value.effect_executed is False
+    assert caught.value.source_reason
+
+
+def test_deterministic_reconciliation_does_not_type_observed_provider_dispatch(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+    bridge: DatabasePortalExecutionBridge
+
+    def mutate(implementation: dict[str, object]) -> None:
+        implementation["provider_dispatched"] = True
+
+    def factory(paths: object, alias: str) -> _DeterministicCompletingPortal:
+        projection = bridge._deterministic_reconciliation_projection_metadata(
+            _attempt(),
+            record,
+        )
+        assert projection is not None
+        return _DeterministicCompletingPortal(
+            paths,
+            alias,
+            projection,
+            mutate=mutate,
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert not isinstance(
+        caught.value,
+        DatabasePortalDeterministicReconciliationDeferred,
+    )
+    assert "forbidden provider" in str(caught.value)
+
+
+def test_deterministic_reconciliation_wraps_predispatch_factory_deferral(
+    tmp_path: Path,
+) -> None:
+    record, authority = _deterministic_record_and_authority()
+
+    def factory(_paths: object, _alias: str) -> object:
+        raise FileNotFoundError("Portal factory source missing")
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(
+        DatabasePortalDeterministicReconciliationDeferred
+    ) as caught:
+        bridge.run_deterministic_reconciliation(_attempt(), authority)
+
+    assert caught.value.reason == (
+        "deterministic_reconciliation_pre_provider_deferred"
+    )
+    assert caught.value.source_reason == "portal_factory_source_missing"
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert caught.value.effect_executed is False
 
 
 def test_bridge_projection_preserves_authoritative_database_task_identity(
@@ -700,10 +1291,30 @@ def test_bridge_rejects_completion_event_for_another_canonical_task(
     class ForgedCompletionPortal(_CompletingPortal):
         def run_once(self) -> dict[str, object]:
             result = super().run_once()
-            event = json.loads(self.paths.events.read_text(encoding="utf-8"))
-            event["canonical_task_cid"] = "task:cid:other"
+            events = [
+                json.loads(line)
+                for line in self.paths.events.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            completion = events[-1]
+            completion["canonical_task_cid"] = "task:cid:other"
+            completion_body = dict(completion)
+            completion_body.pop("event_id")
+            completion["event_id"] = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    completion_body,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
             self.paths.events.write_text(
-                json.dumps(event) + "\n",
+                "".join(
+                    json.dumps(event, sort_keys=True, separators=(",", ":"))
+                    + "\n"
+                    for event in events
+                ),
                 encoding="utf-8",
             )
             return result
@@ -715,7 +1326,7 @@ def test_bridge_rejects_completion_event_for_another_canonical_task(
         max_passes=1,
     )
 
-    with pytest.raises(DatabasePortalBridgeError, match="matching durable"):
+    with pytest.raises(DatabasePortalBridgeError, match="verified task_completed"):
         bridge.run_provider(_attempt())
 
 
@@ -749,18 +1360,19 @@ def test_production_database_daemon_cannot_complete_with_default_noops(
                 ],
             }
         )
-        with pytest.raises(
-            DatabaseImplementationAuthorityError,
-            match="no provider executor",
-        ):
-            daemon.run_once()
+        result = daemon.run_once()
+        implementation = result["implementation_result"]
+        assert implementation["portal_terminal_failure"] is True
+        assert implementation["provider_dispatched"] == "unknown"
+        assert "no provider executor" in implementation["reason"]
         task = daemon.task_source.get_task("task:cid:004")
         assert task is not None
-        assert task.status != "completed"
+        assert task.status == "blocked"
+        assert daemon.list_running_attempts() == []
         assert (
             daemon.provider_invocation_recorded(
-                daemon.list_running_attempts()[0].attempt_id,
-                idempotency_key=f"provider:{daemon.list_running_attempts()[0].attempt_id}",
+                result["attempt_id"],
+                idempotency_key=f"provider:{result['attempt_id']}",
             )
             is None
         )
@@ -1734,6 +2346,204 @@ def test_bridge_defers_worktree_lifecycle_claim_skip(tmp_path: Path) -> None:
     assert str(caught.value) == "worktree_lifecycle_claim_exists"
     assert caught.value.backoff_seconds == 30
     assert caught.value.attempt_consumed is False
+    assert portal.closed is True
+
+
+def test_bridge_reclaims_only_dead_exact_lane_portal_lifecycle_claims(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-q"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    attempt_root = tmp_path / "lane" / "lane_database_portal_attempts"
+    attempt_root.mkdir(parents=True)
+    current_name = hashlib.sha256(b"attempt:001").hexdigest()[:24]
+    stale_name = "f" * 24 if current_name != "f" * 24 else "e" * 24
+    stale_state_dir = attempt_root / stale_name
+    live_state_dir = attempt_root / ("d" * 24)
+    foreign_state_dir = tmp_path / "peer" / ("c" * 24)
+    for directory in (stale_state_dir, live_state_dir, foreign_state_dir):
+        directory.mkdir(parents=True)
+
+    store = WorktreeLifecycleStore(repo)
+    stale = store.begin_preparing(
+        task_id="STALE",
+        canonical_task_cid="task:stale",
+        attempt=1,
+        lane_id="lane:stale",
+        workspace_path=tmp_path / "worktrees" / "stale",
+        branch="implementation/stale",
+        merge_target="main",
+        state_dir=str(stale_state_dir),
+        owner=ProcessBirthIdentity(
+            pid=99_999_999,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    live = store.begin_preparing(
+        task_id="LIVE",
+        canonical_task_cid="task:live",
+        attempt=1,
+        lane_id="lane:live",
+        workspace_path=tmp_path / "worktrees" / "live",
+        branch="implementation/live",
+        merge_target="main",
+        state_dir=str(live_state_dir),
+        owner=current_process_birth(),
+    )
+    foreign = store.begin_preparing(
+        task_id="FOREIGN",
+        canonical_task_cid="task:foreign",
+        attempt=1,
+        lane_id="peer:foreign",
+        workspace_path=tmp_path / "worktrees" / "foreign",
+        branch="implementation/foreign",
+        merge_target="main",
+        state_dir=str(foreign_state_dir),
+        owner=ProcessBirthIdentity(
+            pid=99_999_998,
+            start_time_ticks=1,
+            boot_id="dead-peer",
+        ),
+    )
+
+    observed: dict[str, object] = {}
+
+    def factory(paths: object, alias: str) -> object:
+        recovered = store.load_workspace(stale.workspace_path)
+        retained_live = store.load_workspace(live.workspace_path)
+        retained_foreign = store.load_workspace(foreign.workspace_path)
+        observed.update(
+            recovered=recovered,
+            retained_live=retained_live,
+            retained_foreign=retained_foreign,
+        )
+        return _CompletingPortal(paths, alias)
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=attempt_root,
+        portal_factory=factory,
+        repository_root=repo,
+        max_passes=1,
+    )
+
+    receipt = bridge.run_provider(_attempt())
+
+    recovered = observed["recovered"]
+    assert recovered.is_terminal
+    assert recovered.fence == stale.fence + 1
+    assert recovered.terminal_reason == (
+        "database_portal_dead_attempt_owner_reclaim"
+    )
+    assert observed["retained_live"].is_nonterminal
+    assert observed["retained_foreign"].is_nonterminal
+    assert receipt["accepted"] is True
+    event_path = attempt_root / current_name / "portal-events.jsonl"
+    events = [json.loads(line) for line in event_path.read_text().splitlines()]
+    recovery_events = [
+        event
+        for event in events
+        if event.get("type")
+        == "database_portal_worktree_lifecycle_recovered"
+    ]
+    assert len(recovery_events) == 1
+    assert recovery_events[0]["recovered_count"] == 1
+    assert recovery_events[0]["recovered"][0]["prior_record_id"] == (
+        stale.record_id
+    )
+    assert recovery_events[0]["recovered"][0]["terminal_record_id"] == (
+        recovered.record_id
+    )
+
+
+def test_bridge_defers_portal_factory_source_missing_before_dispatch(
+    tmp_path: Path,
+) -> None:
+    factory_calls: list[str] = []
+
+    def missing_factory(_paths: object, alias: str) -> object:
+        factory_calls.append(alias)
+        raise FileNotFoundError("Portal source disappeared before construction")
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=missing_factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "portal_factory_source_missing"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert factory_calls == ["LGSWF-004"]
+
+
+@pytest.mark.parametrize(
+    ("provider_dispatched", "attempt_consumed", "deferred"),
+    [
+        (False, False, True),
+        (False, True, False),
+        (True, False, False),
+    ],
+)
+def test_bridge_types_file_not_found_setup_only_before_dispatch_and_consumption(
+    tmp_path: Path,
+    provider_dispatched: bool,
+    attempt_consumed: bool,
+    deferred: bool,
+) -> None:
+    class MissingSetupPortal:
+        closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "provider_dispatched": provider_dispatched,
+                    "attempt_consumed": attempt_consumed,
+                    "exception_result": {
+                        "exception_type": "FileNotFoundError",
+                        "phase": "worktree_setup",
+                        "message": "worktree source path disappeared",
+                    },
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = MissingSetupPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=1,
+    )
+
+    if deferred:
+        with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+            bridge.run_provider(_attempt())
+        assert caught.value.reason == (
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON
+        )
+        assert caught.value.provider_dispatched is False
+        assert caught.value.attempt_consumed is False
+    else:
+        with pytest.raises(DatabasePortalBridgeError) as caught:
+            bridge.run_provider(_attempt())
+        assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+        assert str(caught.value) == "portal_provider_failed"
     assert portal.closed is True
 
 

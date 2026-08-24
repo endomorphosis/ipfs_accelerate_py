@@ -1414,6 +1414,9 @@ def bind_database_portal_execution_from_args(
             bridge.recover_validation_retry_seed_conflict
         ),
         pooled_worktree_create_recovery_fn=bridge.recover_pooled_worktree_create,
+        deterministic_reconciliation_fn=(
+            bridge.run_deterministic_reconciliation
+        ),
     )
     if recovery_queue is not None:
         merge_train_binder = getattr(daemon, "bind_merge_train_recovery", None)

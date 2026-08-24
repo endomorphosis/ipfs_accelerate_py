@@ -101,6 +101,10 @@ DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-pooled-worktree-create-recovery@1"
 )
+DATABASE_PORTAL_WORKTREE_LIFECYCLE_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-worktree-lifecycle-recovery@1"
+)
 DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON: Final[str] = (
     "pooled_worktree_create_failed"
 )
@@ -188,6 +192,8 @@ INFLIGHT_PROCESS_BACKOFF_SECONDS: Final[int] = 30
 _INFLIGHT_PROCESS_SKIP_REASON: Final[str] = "inflight_process"
 _MAX_DATABASE_PORTAL_TASK_ATTEMPTS: Final[int] = 10_000
 _MAX_DATABASE_PORTAL_EVENT_BYTES: Final[int] = 64 * 1024 * 1024
+_MAX_DATABASE_PORTAL_LIFECYCLE_RECORDS: Final[int] = 10_000
+_DATABASE_PORTAL_ATTEMPT_DIRECTORY = re.compile(r"[0-9a-f]{24}")
 _MAX_DATABASE_PORTAL_EVENTS: Final[int] = 4096
 # Closed post-dispatch reasons that consumed a provider attempt but produced
 # no mergeable candidate.  These must retry while budget remains instead of
@@ -311,9 +317,28 @@ _FALSE_COMPLETION_REINTEGRATION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "false-completion-reintegration-receipt@1"
 )
+_FALSE_COMPLETION_RECONCILIATION_PROJECTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "false-completion-reconciliation-projection@1"
+)
+_FALSE_COMPLETION_DETERMINISTIC_SETTLEMENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "false-completion-deterministic-settlement@1"
+)
+DATABASE_PORTAL_DETERMINISTIC_RECONCILIATION_REASONS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "deterministic_reconciliation_pre_provider_deferred",
+            "deterministic_reconciliation_validation_failed",
+            "deterministic_reconciliation_target_mismatch",
+            "deterministic_reconciliation_replay_proof_failed",
+            "deterministic_reconciliation_checkout_contended",
+        }
+    )
+)
 _POST_MERGE_RECOVERY_CURSOR_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "post-merge-declared-output-recovery-cursor@1"
+    "post-merge-declared-output-recovery-cursor@2"
 )
 _POST_MERGE_RECOVERY_CURSOR_STAGES: Final[tuple[str, ...]] = (
     "false_completed_requests",
@@ -394,6 +419,31 @@ class DatabasePortalBridgeDeferred(DatabasePortalBridgeError):
         # database authority need not infer retry semantics from prose.
         self.attempt_consumed = False
         self.provider_dispatched = False
+
+
+class DatabasePortalDeterministicReconciliationDeferred(
+    DatabasePortalBridgeDeferred
+):
+    """A closed deterministic settlement miss before any effect boundary."""
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        source_reason: str = "",
+        backoff_seconds: int = 30,
+    ) -> None:
+        reason_text = str(reason or "").strip()
+        if reason_text not in DATABASE_PORTAL_DETERMINISTIC_RECONCILIATION_REASONS:
+            raise ValueError(
+                "deterministic reconciliation reason is outside the closed set"
+            )
+        super().__init__(reason_text, backoff_seconds=backoff_seconds)
+        self.source_reason = str(source_reason or "")[:1000]
+        # This exception is raised only by the false-completion route before
+        # the database effect phase.  Keep the fact explicit so the database
+        # owner can preserve retry lineage without interpreting error prose.
+        self.effect_executed = False
 
 
 class DatabasePortalValidationRetry(DatabasePortalBridgeError):
@@ -1066,6 +1116,19 @@ def _canonical_json(value: Any) -> bytes:
 
 def _sha256_bytes(value: bytes) -> str:
     return f"sha256:{hashlib.sha256(value).hexdigest()}"
+
+
+def _database_evidence_digest(value: Mapping[str, Any]) -> str:
+    """Match the database daemon's canonical receipt digest exactly."""
+
+    return _sha256_bytes(
+        json.dumps(
+            dict(value),
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    )
 
 
 def database_portal_task_contract_digest(record: Any) -> str:
@@ -1810,6 +1873,105 @@ def verify_database_portal_attempt_projection(
     }
 
 
+def _bounded_portal_implementation(
+    implementation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project one exact, bounded implementation control summary.
+
+    The same projector is used for a live ``run_once`` result and for its
+    durable ``implementation_finished`` event.  That makes a crash after the
+    Portal terminal event replayable without retaining raw provider output.
+    """
+
+    summary = {
+        key: implementation[key]
+        for key in (
+            "task_id",
+            "task_cid",
+            "canonical_task_cid",
+            "attempt",
+            "returncode",
+            "reason",
+            "deferred",
+            "attempt_consumed",
+            "provider_dispatched",
+            "backoff_seconds",
+            "skipped",
+            "implementation_commit",
+            "branch",
+            "merge_queued",
+            "execution_mode",
+        )
+        if key in implementation
+    }
+    nested_fields: tuple[tuple[str, tuple[str, ...]], ...] = (
+        (
+            "commit_result",
+            ("committed", "reason", "commit"),
+        ),
+        (
+            "merge_result",
+            (
+                "attempted",
+                "queued",
+                "merged",
+                "reason",
+                "request_id",
+                "merge_commit",
+            ),
+        ),
+        (
+            "cleanup_result",
+            ("cleaned", "preserved", "reason"),
+        ),
+        (
+            "board_completion",
+            ("complete", "pending_merge", "pending_durability", "reason"),
+        ),
+    )
+    for name, fields in nested_fields:
+        value = implementation.get(name)
+        if isinstance(value, Mapping):
+            summary[name] = {
+                key: value[key]
+                for key in fields
+                if key in value
+            }
+
+    validation = implementation.get("validation_result")
+    if isinstance(validation, Mapping):
+        bounded_validation = {
+            key: validation[key]
+            for key in ("attempted", "passed", "returncode", "reason")
+            if key in validation
+        }
+        pre_dispatch = validation.get("pre_dispatch_no_change")
+        if isinstance(pre_dispatch, Mapping):
+            bounded_validation["pre_dispatch_no_change"] = {
+                key: pre_dispatch[key]
+                for key in (
+                    "kind",
+                    "source_task_id",
+                    "repair_task_id",
+                    "failure_kind",
+                    "repair_task_cid",
+                    "authority_receipt_id",
+                    "authority_evidence_id",
+                    "target_commit",
+                    "target_tree",
+                    "preserved_unknown_receipt_id",
+                    "provider_dispatch_policy",
+                    "eligible",
+                    "provider_dispatched",
+                    "reason",
+                    "receipt_id",
+                )
+                if key in pre_dispatch
+            }
+        summary["validation_result"] = bounded_validation
+    return summary
+
+
 def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
     """Keep control evidence while excluding raw provider/model payloads."""
 
@@ -1830,24 +1992,9 @@ def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
             summary[key] = result[key]
     implementation = result.get("implementation_result")
     if isinstance(implementation, Mapping):
-        summary["implementation"] = {
-            key: implementation[key]
-            for key in (
-                "task_id",
-                "attempt",
-                "returncode",
-                "reason",
-                "deferred",
-                "attempt_consumed",
-                "provider_dispatched",
-                "backoff_seconds",
-                "skipped",
-                "implementation_commit",
-                "branch",
-                "merge_queued",
-            )
-            if key in implementation
-        }
+        summary["implementation"] = _bounded_portal_implementation(
+            implementation
+        )
     reconciliation = result.get("merge_reconciliation")
     if isinstance(reconciliation, Sequence) and not isinstance(
         reconciliation, (str, bytes, bytearray, memoryview)
@@ -2300,9 +2447,12 @@ class DatabasePortalExecutionBridge:
         ):
             return ""
         status = str(getattr(record, "status", "") or "").strip().lower()
-        # Once a fresh claim advances to in_progress (or completion lands), an
-        # old completed queue row is historical evidence, not work to replay.
-        return status if status in {"blocked", "retrying"} else ""
+        # Keep the integrated row visible while its deterministic settlement
+        # claim is live.  Otherwise a maintenance tick can advance the
+        # non-authoritative cursor during ``in_progress`` and permanently
+        # hide the row if that claim later fails closed.  Successful terminal
+        # state makes the row historical and allows the cursor to advance.
+        return status if status in {"blocked", "retrying", "in_progress"} else ""
 
     def _owned_post_merge_recovery_projection(
         self,
@@ -3969,6 +4119,121 @@ class DatabasePortalExecutionBridge:
         payload["binding_id"] = _sha256_bytes(_canonical_json(payload))
         return payload
 
+    @staticmethod
+    def _deterministic_reconciliation_projection_metadata(
+        attempt: Any,
+        record: Any,
+    ) -> dict[str, Any] | None:
+        """Project only a daemon-admitted false-completion claim authority."""
+
+        body = getattr(record, "body", None)
+        control = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        if (
+            not isinstance(control, Mapping)
+            or control.get("operation") != "database_claim"
+            or control.get("attempt_id")
+            != str(getattr(attempt, "attempt_id", "") or "")
+            or control.get("claim_id")
+            != str(getattr(attempt, "claim_id", "") or "")
+            or control.get("lease_id")
+            != str(getattr(attempt, "lease_id", "") or "")
+            or control.get("fencing_token")
+            != int(getattr(attempt, "fencing_token", 0) or 0)
+            or control.get("fence_epoch")
+            != int(getattr(attempt, "fence_epoch", 0) or 0)
+        ):
+            return None
+        seed = control.get("false_completion_reintegration_seed")
+        receipt = (
+            seed.get("reintegration_receipt")
+            if isinstance(seed, Mapping)
+            else None
+        )
+        preserved = control.get("preserved_unknown_provider_outcome")
+        preserved_id = ""
+        if preserved is not None:
+            if not isinstance(preserved, Mapping):
+                raise DatabasePortalBridgeError(
+                    "false-completion claim has malformed preserved outcome"
+                )
+            preserved_value = dict(preserved)
+            preserved_id = str(
+                preserved_value.pop("receipt_id", "") or ""
+            )
+            if (
+                preserved.get("schema")
+                != (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "preserved-unknown-provider-outcome@1"
+                )
+                or preserved_id != _database_evidence_digest(
+                    preserved_value
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "false-completion claim preserved outcome is invalid"
+                )
+        if (
+            not isinstance(seed, Mapping)
+            or seed.get("schema")
+            != _DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(seed.get("evidence_id") or ""),
+            )
+            is None
+            or not isinstance(receipt, Mapping)
+            or receipt.get("schema")
+            != _FALSE_COMPLETION_REINTEGRATION_RECEIPT_SCHEMA
+            or re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(receipt.get("receipt_id") or ""),
+            )
+            is None
+            or any(
+                re.fullmatch(r"[0-9a-f]{40}", str(value or "")) is None
+                for value in (
+                    seed.get("candidate_commit"),
+                    receipt.get("reintegration_target_commit"),
+                    receipt.get("reintegration_target_tree"),
+                )
+            )
+        ):
+            return None
+        metadata: dict[str, Any] = {
+            "schema": _FALSE_COMPLETION_RECONCILIATION_PROJECTION_SCHEMA,
+            "task_cid": str(getattr(attempt, "task_cid", "") or ""),
+            "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+            "claim_id": str(getattr(attempt, "claim_id", "") or ""),
+            "fencing_token": int(
+                getattr(attempt, "fencing_token", 0) or 0
+            ),
+            "fence_epoch": int(getattr(attempt, "fence_epoch", 0) or 0),
+            "source_attempt_id": str(
+                control.get(
+                    "false_completion_reintegration_source_attempt_id"
+                )
+                or ""
+            ),
+            "evidence_id": str(seed.get("evidence_id") or ""),
+            "request_id": str(seed.get("request_id") or ""),
+            "candidate_commit": str(seed.get("candidate_commit") or ""),
+            "target_commit": str(
+                receipt.get("reintegration_target_commit") or ""
+            ),
+            "target_tree": str(
+                receipt.get("reintegration_target_tree") or ""
+            ),
+            "preserved_unknown_receipt_id": preserved_id,
+            "provider_dispatch_policy": "forbidden",
+        }
+        metadata["receipt_id"] = _sha256_bytes(_canonical_json(metadata))
+        return metadata
+
     def _render_projection(self, attempt: Any, record: Any) -> str:
         body = dict(getattr(record, "body", {}) or {})
         canonical_task_key, canonical_task_cid = _projection_task_identity(
@@ -3993,6 +4258,10 @@ class DatabasePortalExecutionBridge:
         )
         acceptance = _acceptance_value(record, body)
         priority = _line_value(getattr(record, "priority", "") or body.get("priority") or "P2")
+        reconciliation = self._deterministic_reconciliation_projection_metadata(
+            attempt,
+            record,
+        )
         reserved = {
             "status",
             "completion",
@@ -4018,6 +4287,21 @@ class DatabasePortalExecutionBridge:
             "canonical_task_key",
             "canonical_task_cid",
             "task_key",
+            "database deterministic reconciliation schema",
+            "database deterministic reconciliation receipt id",
+            "database deterministic reconciliation task cid",
+            "database deterministic reconciliation attempt id",
+            "database deterministic reconciliation claim id",
+            "database deterministic reconciliation fencing token",
+            "database deterministic reconciliation fence epoch",
+            "database deterministic reconciliation evidence id",
+            "database deterministic reconciliation request id",
+            "database deterministic reconciliation candidate commit",
+            "database deterministic reconciliation target commit",
+            "database deterministic reconciliation target tree",
+            "database deterministic reconciliation source attempt id",
+            "database deterministic reconciliation preserved unknown receipt id",
+            "database deterministic reconciliation provider dispatch policy",
         }
         lines = [
             "# Database attempt projection (non-authoritative)",
@@ -4042,6 +4326,41 @@ class DatabasePortalExecutionBridge:
             f"- Canonical task CID: {canonical_task_cid}",
             "- Projection authority: false",
         ]
+        if reconciliation is not None:
+            lines.extend(
+                (
+                    "- Database deterministic reconciliation schema: "
+                    + str(reconciliation["schema"]),
+                    "- Database deterministic reconciliation receipt ID: "
+                    + str(reconciliation["receipt_id"]),
+                    "- Database deterministic reconciliation task CID: "
+                    + str(reconciliation["task_cid"]),
+                    "- Database deterministic reconciliation attempt ID: "
+                    + str(reconciliation["attempt_id"]),
+                    "- Database deterministic reconciliation claim ID: "
+                    + str(reconciliation["claim_id"]),
+                    "- Database deterministic reconciliation fencing token: "
+                    + str(reconciliation["fencing_token"]),
+                    "- Database deterministic reconciliation fence epoch: "
+                    + str(reconciliation["fence_epoch"]),
+                    "- Database deterministic reconciliation evidence ID: "
+                    + str(reconciliation["evidence_id"]),
+                    "- Database deterministic reconciliation request ID: "
+                    + str(reconciliation["request_id"]),
+                    "- Database deterministic reconciliation candidate commit: "
+                    + str(reconciliation["candidate_commit"]),
+                    "- Database deterministic reconciliation target commit: "
+                    + str(reconciliation["target_commit"]),
+                    "- Database deterministic reconciliation target tree: "
+                    + str(reconciliation["target_tree"]),
+                    "- Database deterministic reconciliation source attempt ID: "
+                    + str(reconciliation["source_attempt_id"]),
+                    "- Database deterministic reconciliation preserved unknown receipt ID: "
+                    + str(reconciliation["preserved_unknown_receipt_id"]),
+                    "- Database deterministic reconciliation provider dispatch policy: "
+                    + str(reconciliation["provider_dispatch_policy"]),
+                )
+            )
         for key in sorted(body):
             normalized = str(key).strip().lower().replace("_", " ")
             if not normalized or normalized in reserved:
@@ -4698,8 +5017,8 @@ class DatabasePortalExecutionBridge:
             backoff = 30
         return (reason, int(backoff))
 
-    @staticmethod
     def _pooled_worktree_create_deferral(
+        self,
         result: Mapping[str, Any],
     ) -> tuple[str, int] | None:
         """Defer a failed pooled ``git worktree add`` instead of terminalizing it.
@@ -4720,10 +5039,26 @@ class DatabasePortalExecutionBridge:
         exception = payload.get("exception_result")
         if not isinstance(exception, Mapping):
             return None
-        if str(exception.get("phase") or "") != "worktree_setup":
+        phase = str(exception.get("phase") or "")
+        if phase != "worktree_setup":
             return None
         message = str(exception.get("message") or "")
-        if not message.startswith(_POOLED_WORKTREE_CREATE_FAILURE_PREFIX):
+        # A FileNotFoundError before ``implementation_started`` is emitted by
+        # Portal with this exact phase and ``provider_dispatched=false``.  It
+        # commonly means a dead pool entry was removed between discovery and
+        # setup.  The old classifier required one prose prefix and therefore
+        # mislabeled this observed pre-dispatch setup return as an unknown
+        # provider outcome.  Admit the typed exception class, never its text.
+        typed_missing_setup = bool(
+            str(exception.get("exception_type") or "")
+            == "FileNotFoundError"
+            and payload.get("provider_dispatched") is False
+            and payload.get("attempt_consumed") is False
+        )
+        if (
+            not message.startswith(_POOLED_WORKTREE_CREATE_FAILURE_PREFIX)
+            and not typed_missing_setup
+        ):
             return None
         return (
             DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
@@ -4858,6 +5193,198 @@ class DatabasePortalExecutionBridge:
             prior_event_id = claimed_event_id
             events.append(event)
         return events
+
+    @classmethod
+    def _verified_terminal_implementation_summary(
+        cls,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        *,
+        require_completion: bool = True,
+    ) -> dict[str, Any]:
+        """Recover the last task-bound implementation from durable events."""
+
+        events = cls._verified_event_chain(paths)
+        alias = str(binding.get("task_alias") or "")
+        canonical_task_key = str(binding.get("canonical_task_key") or "")
+        canonical_task_cid = str(binding.get("task_cid") or "")
+        terminal_limit = len(events)
+        if require_completion:
+            terminal_limit = next(
+                (
+                    (
+                        index
+                        if events[index].get("type") == "task_completed"
+                        else index + 1
+                    )
+                    for index in range(len(events) - 1, -1, -1)
+                    if (
+                        (
+                            events[index].get("type") == "task_completed"
+                            and str(events[index].get("task_id") or "")
+                            == alias
+                            and str(
+                                events[index].get("canonical_task_key") or ""
+                            )
+                            == canonical_task_key
+                            and str(
+                                events[index].get("canonical_task_cid") or ""
+                            )
+                            == canonical_task_cid
+                        )
+                        or cls._implementation_finished_completion_witness(
+                            events[index],
+                            alias=alias,
+                            canonical_task_key=canonical_task_key,
+                            canonical_task_cid=canonical_task_cid,
+                        )
+                    )
+                ),
+                -1,
+            )
+            if terminal_limit < 0:
+                raise DatabasePortalBridgeError(
+                    "Portal completion lacks a verified task_completed event"
+                )
+        implementation_event = next(
+            (
+                event
+                for event in reversed(events[:terminal_limit])
+                if event.get("type") == "implementation_finished"
+                and str(event.get("task_id") or "") == alias
+                and str(event.get("canonical_task_cid") or "")
+                == canonical_task_cid
+            ),
+            None,
+        )
+        if implementation_event is None:
+            raise DatabasePortalBridgeError(
+                "Portal terminal replay lacks a task-bound implementation event"
+            )
+        implementation = _bounded_portal_implementation(
+            implementation_event
+        )
+        if not implementation:
+            raise DatabasePortalBridgeError(
+                "Portal terminal implementation summary is empty"
+            )
+        return {"implementation": implementation}
+
+    @staticmethod
+    def _implementation_finished_completion_witness(
+        event: Mapping[str, Any],
+        *,
+        alias: str,
+        canonical_task_key: str,
+        canonical_task_cid: str,
+    ) -> bool:
+        """Recognize the exact no-change completion emitted by Portal.
+
+        The real validated-no-change path commits its member completion
+        receipt inside the task-bound ``implementation_finished`` event but
+        does not emit a second ``task_completed`` event.  The verified event
+        chain is durable evidence; require its closed completion-receipt shape
+        before treating the implementation event itself as the terminal
+        boundary.  This grants no database completion authority by itself.
+        """
+
+        board_completion = event.get("board_completion")
+        todo_update = event.get("todo_update_result")
+        if (
+            event.get("type") != "implementation_finished"
+            or str(event.get("task_id") or "") != alias
+            or str(event.get("canonical_task_key") or "")
+            != canonical_task_key
+            or str(event.get("canonical_task_cid") or "")
+            != canonical_task_cid
+            or event.get("returncode") != 0
+            or event.get("attempt_consumed") is not True
+            or event.get("provider_dispatched") is not False
+            or not isinstance(board_completion, Mapping)
+            or board_completion.get("complete") is not True
+            or board_completion.get("pending_merge") is not False
+            or board_completion.get("pending_durability") is True
+            or not isinstance(todo_update, Mapping)
+            or todo_update.get("updated") is not True
+            or str(todo_update.get("task_id") or "") != alias
+            or todo_update.get("updated_task_ids") != [alias]
+            or todo_update.get("missing_task_ids") != []
+            or todo_update.get("missing_status_task_ids") != []
+        ):
+            return False
+        receipts = todo_update.get("completion_receipts")
+        if not isinstance(receipts, list) or len(receipts) != 1:
+            return False
+        receipt = receipts[0]
+        expected_fields = {
+            "schema",
+            "board_namespace",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "status",
+            "task_id",
+        }
+        return bool(
+            isinstance(receipt, Mapping)
+            and set(receipt) == expected_fields
+            and receipt.get("schema")
+            == (
+                "ipfs_accelerate_py.agent_supervisor."
+                "member_completion_receipt@1"
+            )
+            and receipt.get("task_id") == alias
+            and receipt.get("canonical_task_key") == canonical_task_key
+            and receipt.get("canonical_task_cid") == canonical_task_cid
+            and receipt.get("status") == "succeeded"
+            and receipt.get("board_namespace")
+            == str(event.get("board_namespace") or "")
+        )
+
+    @classmethod
+    def _verify_deterministic_event_chain_has_no_effect(
+        cls,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> None:
+        """Reject any durable provider, commit, or merge observation."""
+
+        alias = str(binding.get("task_alias") or "")
+        provider_events = {
+            "implementation_provider_started",
+            "provider_runner_started",
+            "provider_runner_birth",
+        }
+        for event in cls._verified_event_chain(paths):
+            event_task_id = str(event.get("task_id") or "")
+            if event_task_id and event_task_id != alias:
+                continue
+            event_type = str(event.get("type") or "")
+            commit_result = event.get("commit_result")
+            merge_result = event.get("merge_result")
+            provider_observed = bool(
+                event.get("provider_dispatched") is True
+                or event.get("task_prompt_dispatched") is True
+                or event_type in provider_events
+            )
+            effect_observed = bool(
+                str(event.get("implementation_commit") or "")
+                or (
+                    isinstance(commit_result, Mapping)
+                    and commit_result.get("committed") is True
+                )
+                or (
+                    isinstance(merge_result, Mapping)
+                    and any(
+                        merge_result.get(key) is True
+                        for key in ("attempted", "queued", "merged")
+                    )
+                )
+            )
+            if provider_observed or effect_observed:
+                raise DatabasePortalBridgeError(
+                    "deterministic reconciliation observed a forbidden "
+                    "provider or implementation effect"
+                )
 
     def _current_protected_path_digests(
         self,
@@ -7179,15 +7706,29 @@ class DatabasePortalExecutionBridge:
         projection_text = self._verify_projection(paths, binding)
         if _projection_status(projection_text) not in _TERMINAL_STATUSES:
             raise DatabasePortalBridgeDeferred("Portal task projection is not complete")
-        if not self._has_completion_event(
+        durable_summary = self._verified_terminal_implementation_summary(
             paths,
-            alias,
-            str(binding.get("canonical_task_key") or ""),
-            str(binding.get("task_cid") or ""),
+            binding,
+        )
+        admitted_summaries = [dict(item) for item in summaries]
+        durable_implementation = durable_summary["implementation"]
+        observed_implementations = [
+            item.get("implementation")
+            for item in admitted_summaries
+            if isinstance(item.get("implementation"), Mapping)
+        ]
+        if observed_implementations and not any(
+            all(
+                item.get(key) == value
+                for key, value in durable_implementation.items()
+            )
+            for item in observed_implementations
         ):
             raise DatabasePortalBridgeError(
-                "Portal completion lacks a matching durable task_completed event"
+                "Portal live result conflicts with its durable implementation event"
             )
+        if not observed_implementations:
+            admitted_summaries.append(durable_summary)
         evidence = {
             "binding_id": str(binding.get("binding_id") or ""),
             "task_cid": str(attempt.task_cid),
@@ -7197,7 +7738,7 @@ class DatabasePortalExecutionBridge:
             "projection_immutable_digest": str(binding.get("projection_immutable_digest") or ""),
             "state_digest": _sha256_file(paths.state) if paths.state.is_file() else "",
             "events_digest": _sha256_file(paths.events),
-            "portal_passes": [dict(item) for item in summaries],
+            "portal_passes": admitted_summaries,
         }
         evidence_digest = _sha256_bytes(_canonical_json(evidence))
         receipt = {
@@ -7218,11 +7759,761 @@ class DatabasePortalExecutionBridge:
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
+    @staticmethod
+    def _deterministic_settlement_receipt_path(
+        paths: DatabasePortalAttemptPaths,
+    ) -> Path:
+        return paths.root / "false-completion-deterministic-settlement.json"
+
+    @staticmethod
+    def _verified_deterministic_claim_authority(
+        value: Any,
+        *,
+        attempt: Any,
+    ) -> dict[str, Any]:
+        expected_fields = {
+            "schema",
+            "task_cid",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "source_attempt_id",
+            "reintegration_evidence_id",
+            "request_id",
+            "candidate_commit",
+            "target_commit",
+            "target_tree",
+            "preserved_unknown_receipt_id",
+            "provider_dispatch_policy",
+            "effect_execution_policy",
+            "authority_id",
+        }
+
+        def replay_failure(source_reason: str) -> None:
+            raise DatabasePortalDeterministicReconciliationDeferred(
+                "deterministic_reconciliation_replay_proof_failed",
+                source_reason=source_reason,
+            )
+
+        if not isinstance(value, Mapping):
+            replay_failure("claim_authority_not_an_object")
+        authority = dict(value)
+        authority_id = str(authority.pop("authority_id", "") or "")
+        if (
+            set(value) != expected_fields
+            or authority.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "false-completion-deterministic-claim-authority@1"
+            )
+            or authority_id != _database_evidence_digest(authority)
+            or authority.get("provider_dispatch_policy") != "forbidden"
+            or authority.get("effect_execution_policy") != "forbidden"
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(authority.get("reintegration_evidence_id") or ""),
+            )
+            is None
+            or any(
+                re.fullmatch(r"[0-9a-f]{40}", str(item or "")) is None
+                for item in (
+                    authority.get("candidate_commit"),
+                    authority.get("target_commit"),
+                    authority.get("target_tree"),
+                )
+            )
+            or (
+                authority.get("preserved_unknown_receipt_id")
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(authority.get("preserved_unknown_receipt_id") or ""),
+                )
+                is None
+            )
+            or not str(authority.get("source_attempt_id") or "")
+            or not str(authority.get("request_id") or "")
+        ):
+            replay_failure("claim_authority_integrity_invalid")
+        expected_attempt = {
+            "task_cid": str(getattr(attempt, "task_cid", "") or ""),
+            "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+            "claim_id": str(getattr(attempt, "claim_id", "") or ""),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "fencing_token": int(
+                getattr(attempt, "fencing_token", 0) or 0
+            ),
+            "fence_epoch": int(getattr(attempt, "fence_epoch", 0) or 0),
+        }
+        if not all(authority.get(key) == item for key, item in expected_attempt.items()):
+            raise DatabasePortalDeterministicReconciliationDeferred(
+                "deterministic_reconciliation_target_mismatch",
+                source_reason="claim_authority_attempt_binding_mismatch",
+            )
+        return {**authority, "authority_id": authority_id}
+
+    @staticmethod
+    def _verified_portal_acceptance_receipt(value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise DatabasePortalBridgeError(
+                "deterministic settlement Portal receipt is malformed"
+            )
+        receipt = dict(value)
+        receipt_id = str(receipt.pop("receipt_id", "") or "")
+        evidence = receipt.get("portal_evidence")
+        if (
+            receipt.get("schema") != DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
+            or receipt.get("interface")
+            != DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
+            or receipt.get("status") != "succeeded"
+            or receipt.get("provider") != "PortalImplementationDaemon"
+            or receipt.get("accepted") is not True
+            or not isinstance(evidence, Mapping)
+            or receipt.get("evidence_digest")
+            != _sha256_bytes(_canonical_json(evidence))
+            or receipt_id != _sha256_bytes(_canonical_json(receipt))
+        ):
+            raise DatabasePortalBridgeError(
+                "deterministic settlement Portal receipt is invalid"
+            )
+        return {**receipt, "receipt_id": receipt_id}
+
+    @staticmethod
+    def _verified_deterministic_settlement_receipt(
+        value: Any,
+        *,
+        attempt: Any,
+        authority: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise DatabasePortalBridgeError(
+                "deterministic settlement receipt is malformed"
+            )
+        receipt = dict(value)
+        receipt_id = str(receipt.pop("receipt_id", "") or "")
+        validation = receipt.get("validation_result")
+        portal_receipt = receipt.get("portal_acceptance_receipt")
+        expected_fields = {
+            "schema",
+            "accepted",
+            "task_cid",
+            "attempt_id",
+            "claim_id",
+            "fencing_token",
+            "fence_epoch",
+            "claim_authority_id",
+            "reintegration_evidence_id",
+            "target_commit",
+            "target_tree",
+            "preserved_unknown_receipt_id",
+            "provider_dispatched",
+            "effect_executed",
+            "route",
+            "validation_result",
+            "portal_acceptance_receipt",
+        }
+        if (
+            set(receipt) != expected_fields
+            or receipt.get("schema")
+            != _FALSE_COMPLETION_DETERMINISTIC_SETTLEMENT_SCHEMA
+            or receipt.get("accepted") is not True
+            or receipt.get("task_cid")
+            != str(getattr(attempt, "task_cid", "") or "")
+            or receipt.get("attempt_id")
+            != str(getattr(attempt, "attempt_id", "") or "")
+            or receipt.get("claim_id")
+            != str(getattr(attempt, "claim_id", "") or "")
+            or receipt.get("fencing_token")
+            != int(getattr(attempt, "fencing_token", 0) or 0)
+            or receipt.get("fence_epoch")
+            != int(getattr(attempt, "fence_epoch", 0) or 0)
+            or receipt.get("claim_authority_id")
+            != authority.get("authority_id")
+            or receipt.get("reintegration_evidence_id")
+            != authority.get("reintegration_evidence_id")
+            or receipt.get("target_commit") != authority.get("target_commit")
+            or receipt.get("target_tree") != authority.get("target_tree")
+            or receipt.get("preserved_unknown_receipt_id")
+            != authority.get("preserved_unknown_receipt_id")
+            or receipt.get("provider_dispatched") is not False
+            or receipt.get("effect_executed") is not False
+            or receipt.get("route")
+            != "deterministic_current_tree_declared_validation"
+            or not isinstance(validation, Mapping)
+            or set(validation)
+            != {
+                "outcome",
+                "evidence_digest",
+                "argv",
+                "provider_dispatched",
+                "effect_executed",
+                "portal_receipt_id",
+            }
+            or validation.get("outcome") != "passed"
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(validation.get("evidence_digest") or ""),
+            )
+            is None
+            or not isinstance(validation.get("argv"), list)
+            or validation.get("argv")
+            != [
+                "database-false-completion-current-tree-declared-validation"
+            ]
+            or validation.get("provider_dispatched") is not False
+            or validation.get("effect_executed") is not False
+            or not isinstance(portal_receipt, Mapping)
+            or portal_receipt.get("accepted") is not True
+            or portal_receipt.get("attempt_id") != receipt.get("attempt_id")
+            or portal_receipt.get("task_cid") != receipt.get("task_cid")
+            or portal_receipt.get("evidence_digest")
+            != validation.get("evidence_digest")
+            or portal_receipt.get("receipt_id")
+            != validation.get("portal_receipt_id")
+            or receipt_id != _database_evidence_digest(receipt)
+        ):
+            raise DatabasePortalBridgeError(
+                "deterministic settlement receipt is invalid"
+            )
+        DatabasePortalExecutionBridge._verified_portal_acceptance_receipt(
+            portal_receipt
+        )
+        return {**receipt, "receipt_id": receipt_id}
+
+    @staticmethod
+    def _verified_false_completion_local_validation(
+        implementation: Mapping[str, Any],
+        *,
+        attempt: Any,
+        binding: Mapping[str, Any],
+        authority: Mapping[str, Any],
+        projection: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Admit only the exact Portal local no-change validation proof."""
+
+        validation = implementation.get("validation_result")
+        pre_dispatch = (
+            validation.get("pre_dispatch_no_change")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        if implementation.get("provider_dispatched") is True:
+            raise DatabasePortalBridgeError(
+                "deterministic reconciliation observed provider dispatch"
+            )
+        if (
+            str(implementation.get("implementation_commit") or "")
+            or (
+                isinstance(implementation.get("commit_result"), Mapping)
+                and implementation["commit_result"].get("committed") is True
+            )
+            or (
+                isinstance(implementation.get("merge_result"), Mapping)
+                and any(
+                    implementation["merge_result"].get(key) is True
+                    for key in ("attempted", "queued", "merged")
+                )
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "deterministic reconciliation observed an implementation effect"
+            )
+
+        expected_pre_dispatch = {
+            "kind": "false_completion_reintegration",
+            "source_task_id": str(binding.get("task_alias") or ""),
+            "repair_task_id": "",
+            "failure_kind": "false_completion_reintegration",
+            "repair_task_cid": str(getattr(attempt, "task_cid", "") or ""),
+            "authority_receipt_id": str(projection.get("receipt_id") or ""),
+            "authority_evidence_id": str(
+                authority.get("reintegration_evidence_id") or ""
+            ),
+            "target_commit": str(authority.get("target_commit") or ""),
+            "target_tree": str(authority.get("target_tree") or ""),
+            "preserved_unknown_receipt_id": str(
+                authority.get("preserved_unknown_receipt_id") or ""
+            ),
+            "provider_dispatch_policy": "forbidden",
+            "eligible": True,
+            "provider_dispatched": False,
+        }
+        if isinstance(pre_dispatch, Mapping):
+            target_fields = (
+                "authority_receipt_id",
+                "authority_evidence_id",
+                "target_commit",
+                "target_tree",
+                "preserved_unknown_receipt_id",
+                "repair_task_cid",
+            )
+            if any(
+                pre_dispatch.get(key) != expected_pre_dispatch[key]
+                for key in target_fields
+            ):
+                raise DatabasePortalDeterministicReconciliationDeferred(
+                    "deterministic_reconciliation_target_mismatch",
+                    source_reason="local_validation_authority_binding_mismatch",
+                )
+            if (
+                validation.get("attempted") is True
+                and validation.get("passed") is False
+                and pre_dispatch.get("provider_dispatched") is False
+                and pre_dispatch.get("reason")
+                == "reconciliation_declared_validation_failed"
+            ):
+                raise DatabasePortalDeterministicReconciliationDeferred(
+                    "deterministic_reconciliation_validation_failed",
+                    source_reason="reconciliation_declared_validation_failed",
+                )
+
+        commit_result = implementation.get("commit_result")
+        merge_result = implementation.get("merge_result")
+        cleanup_result = implementation.get("cleanup_result")
+        board_completion = implementation.get("board_completion")
+        proof_failure = bool(
+            implementation.get("task_id")
+            != str(binding.get("task_alias") or "")
+            or implementation.get("task_cid")
+            != str(getattr(attempt, "task_cid", "") or "")
+            or implementation.get("canonical_task_cid")
+            != str(getattr(attempt, "task_cid", "") or "")
+            or isinstance(implementation.get("attempt"), bool)
+            or not isinstance(implementation.get("attempt"), int)
+            or int(implementation.get("attempt") or 0) < 1
+            or implementation.get("returncode") != 0
+            or implementation.get("attempt_consumed") is not True
+            or implementation.get("provider_dispatched") is not False
+            or not isinstance(validation, Mapping)
+            or validation.get("attempted") is not True
+            or validation.get("passed") is not True
+            or validation.get("returncode") != 0
+            or not isinstance(pre_dispatch, Mapping)
+            or not all(
+                pre_dispatch.get(key) == item
+                for key, item in expected_pre_dispatch.items()
+            )
+            or pre_dispatch.get("reason")
+            != "declared_validation_proved_existing_contract"
+            or not isinstance(commit_result, Mapping)
+            or commit_result.get("committed") is not False
+            or commit_result.get("reason") != "no_changes"
+            or not isinstance(merge_result, Mapping)
+            or merge_result.get("merged") is not False
+            or merge_result.get("queued") is True
+            or merge_result.get("reason") != "not_attempted"
+            or not isinstance(cleanup_result, Mapping)
+            or cleanup_result.get("cleaned") is not True
+            or not isinstance(board_completion, Mapping)
+            or board_completion.get("complete") is not True
+            or board_completion.get("pending_merge") is not False
+        )
+        if not proof_failure and isinstance(pre_dispatch, Mapping):
+            from ..proof.formal_verification_contracts import content_identity
+
+            pre_dispatch_body = dict(pre_dispatch)
+            receipt_id = str(pre_dispatch_body.pop("receipt_id", "") or "")
+            proof_failure = bool(
+                set(pre_dispatch_body) != set(expected_pre_dispatch) | {"reason"}
+                or receipt_id != content_identity(pre_dispatch_body)
+            )
+        if proof_failure:
+            raise DatabasePortalDeterministicReconciliationDeferred(
+                "deterministic_reconciliation_replay_proof_failed",
+                source_reason="local_validation_proof_invalid",
+            )
+        return dict(validation)
+
+    def run_deterministic_reconciliation(
+        self,
+        attempt: Any,
+        authority: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Validate an integrated false completion without provider dispatch."""
+
+        authority = self._verified_deterministic_claim_authority(
+            authority,
+            attempt=attempt,
+        )
+        record = self._record_for_attempt(self.task_source, attempt)
+        projection = self._deterministic_reconciliation_projection_metadata(
+            attempt,
+            record,
+        )
+        expected_projection = {
+            "task_cid": str(getattr(attempt, "task_cid", "") or ""),
+            "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+            "claim_id": str(getattr(attempt, "claim_id", "") or ""),
+            "fencing_token": int(
+                getattr(attempt, "fencing_token", 0) or 0
+            ),
+            "fence_epoch": int(getattr(attempt, "fence_epoch", 0) or 0),
+            "source_attempt_id": str(
+                authority.get("source_attempt_id") or ""
+            ),
+            "evidence_id": str(
+                authority.get("reintegration_evidence_id") or ""
+            ),
+            "request_id": str(authority.get("request_id") or ""),
+            "candidate_commit": str(authority.get("candidate_commit") or ""),
+            "target_commit": str(authority.get("target_commit") or ""),
+            "target_tree": str(authority.get("target_tree") or ""),
+            "preserved_unknown_receipt_id": str(
+                authority.get("preserved_unknown_receipt_id") or ""
+            ),
+            "provider_dispatch_policy": "forbidden",
+        }
+        if not isinstance(projection, Mapping) or not all(
+            projection.get(key) == item
+            for key, item in expected_projection.items()
+        ):
+            raise DatabasePortalDeterministicReconciliationDeferred(
+                "deterministic_reconciliation_target_mismatch",
+                source_reason="claim_projection_authority_mismatch",
+            )
+        paths, binding = self._ensure_attempt_projection(attempt, record)
+        receipt_path = self._deterministic_settlement_receipt_path(paths)
+        if receipt_path.exists():
+            try:
+                existing = json.loads(receipt_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise DatabasePortalDeterministicReconciliationDeferred(
+                    "deterministic_reconciliation_replay_proof_failed",
+                    source_reason="settlement_receipt_unreadable",
+                ) from exc
+            if isinstance(existing, Mapping) and (
+                existing.get("provider_dispatched") is True
+                or existing.get("effect_executed") is True
+            ):
+                raise DatabasePortalBridgeError(
+                    "deterministic settlement recorded a forbidden effect"
+                )
+            try:
+                return self._verified_deterministic_settlement_receipt(
+                    existing,
+                    attempt=attempt,
+                    authority=authority,
+                )
+            except DatabasePortalBridgeError as exc:
+                raise DatabasePortalDeterministicReconciliationDeferred(
+                    "deterministic_reconciliation_replay_proof_failed",
+                    source_reason="settlement_receipt_integrity_invalid",
+                ) from exc
+
+        try:
+            portal_receipt = dict(self.run_provider(attempt))
+        except DatabasePortalDeterministicReconciliationDeferred:
+            raise
+        except DatabasePortalBridgeDeferred as exc:
+            raise DatabasePortalDeterministicReconciliationDeferred(
+                "deterministic_reconciliation_pre_provider_deferred",
+                source_reason=str(getattr(exc, "reason", "") or str(exc)),
+                backoff_seconds=int(getattr(exc, "backoff_seconds", 30)),
+            ) from exc
+        except DatabasePortalBridgeError as exc:
+            # A valid attempt-local event chain with no provider/effect event
+            # is enough to preserve deterministic retry lineage.  Its latest
+            # implementation then supplies the typed validation/target/proof
+            # reason.  An unreadable chain remains an ordinary unknown error.
+            try:
+                self._verify_deterministic_event_chain_has_no_effect(
+                    paths,
+                    binding,
+                )
+            except DatabasePortalBridgeError:
+                raise
+            try:
+                failed_summary = self._verified_terminal_implementation_summary(
+                    paths,
+                    binding,
+                    require_completion=False,
+                )
+            except DatabasePortalBridgeError as replay_exc:
+                raise DatabasePortalDeterministicReconciliationDeferred(
+                    "deterministic_reconciliation_replay_proof_failed",
+                    source_reason="terminal_implementation_event_missing",
+                ) from replay_exc
+            self._verified_false_completion_local_validation(
+                failed_summary["implementation"],
+                attempt=attempt,
+                binding=binding,
+                authority=authority,
+                projection=projection,
+            )
+            raise DatabasePortalDeterministicReconciliationDeferred(
+                "deterministic_reconciliation_replay_proof_failed",
+                source_reason="portal_acceptance_failed_after_local_validation",
+            ) from exc
+
+        self._verify_deterministic_event_chain_has_no_effect(paths, binding)
+        durable_summary = self._verified_terminal_implementation_summary(
+            paths,
+            binding,
+        )
+        self._verified_false_completion_local_validation(
+            durable_summary["implementation"],
+            attempt=attempt,
+            binding=binding,
+            authority=authority,
+            projection=projection,
+        )
+        validation_result = {
+            "outcome": "passed",
+            "evidence_digest": str(
+                portal_receipt.get("evidence_digest") or ""
+            ),
+            "argv": [
+                "database-false-completion-current-tree-declared-validation"
+            ],
+            "provider_dispatched": False,
+            "effect_executed": False,
+            "portal_receipt_id": str(portal_receipt.get("receipt_id") or ""),
+        }
+        settlement: dict[str, Any] = {
+            "schema": _FALSE_COMPLETION_DETERMINISTIC_SETTLEMENT_SCHEMA,
+            "accepted": True,
+            "task_cid": str(getattr(attempt, "task_cid", "") or ""),
+            "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+            "claim_id": str(getattr(attempt, "claim_id", "") or ""),
+            "fencing_token": int(
+                getattr(attempt, "fencing_token", 0) or 0
+            ),
+            "fence_epoch": int(getattr(attempt, "fence_epoch", 0) or 0),
+            "claim_authority_id": str(authority.get("authority_id") or ""),
+            "reintegration_evidence_id": str(
+                authority.get("reintegration_evidence_id") or ""
+            ),
+            "target_commit": str(authority.get("target_commit") or ""),
+            "target_tree": str(authority.get("target_tree") or ""),
+            "preserved_unknown_receipt_id": str(
+                authority.get("preserved_unknown_receipt_id") or ""
+            ),
+            "provider_dispatched": False,
+            "effect_executed": False,
+            "route": "deterministic_current_tree_declared_validation",
+            "validation_result": validation_result,
+            "portal_acceptance_receipt": portal_receipt,
+        }
+        settlement["receipt_id"] = _database_evidence_digest(settlement)
+        verified = self._verified_deterministic_settlement_receipt(
+            settlement,
+            attempt=attempt,
+            authority=authority,
+        )
+        _atomic_write_once(
+            receipt_path,
+            json.dumps(verified, indent=2, sort_keys=True).encode("utf-8")
+            + b"\n",
+        )
+        return verified
+
+    def _reclaim_dead_lane_portal_lifecycle_claims(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Fence dead worktree owners from older attempts in this exact lane.
+
+        Portal lifecycle records bind ``state_dir`` to a private database
+        attempt directory, while the generic same-lane sweep knows only its
+        parent lane directory.  The bridge closes that authority gap by
+        accepting only real, non-symlink, 24-hex children of its immutable
+        attempt root.  The lifecycle store still performs the locked re-read,
+        exact repository/state-directory comparison, dead process-birth
+        check, and fencing-token increment.
+        """
+
+        base: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_WORKTREE_LIFECYCLE_RECOVERY_SCHEMA,
+            "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+            "claim_id": str(getattr(attempt, "claim_id", "") or ""),
+            "task_cid": str(getattr(attempt, "task_cid", "") or ""),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "fencing_token": int(getattr(attempt, "fencing_token", 0) or 0),
+            "fence_epoch": int(getattr(attempt, "fence_epoch", 0) or 0),
+            "binding_id": str(binding.get("binding_id") or ""),
+            "attempt_root": str(self.attempt_root),
+            "current_attempt_directory": str(paths.root),
+            "provider_dispatched": False,
+            "effect_executed": False,
+        }
+        if self.repository_root is None:
+            return {
+                **base,
+                "attempted": False,
+                "reason": "repository_root_unavailable",
+                "recovered_count": 0,
+                "recovered": [],
+            }
+
+        try:
+            repository_root = self.repository_root.resolve(strict=True)
+            attempt_root = self.attempt_root.resolve(strict=True)
+            current_attempt = paths.root.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "worktree_lifecycle_recovery_scope_unavailable",
+                backoff_seconds=30,
+            ) from exc
+        if current_attempt.parent != attempt_root:
+            raise DatabasePortalBridgeError(
+                "current Portal attempt directory escaped its lane attempt root"
+            )
+
+        from ..merge.worktree_lifecycle import WorktreeLifecycleStore
+
+        try:
+            store = WorktreeLifecycleStore(repository_root)
+            records = list(store.iter_records())
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "worktree_lifecycle_recovery_store_unavailable",
+                backoff_seconds=30,
+            ) from exc
+        if len(records) > _MAX_DATABASE_PORTAL_LIFECYCLE_RECORDS:
+            raise DatabasePortalBridgeDeferred(
+                "worktree_lifecycle_recovery_inventory_exceeds_bound",
+                backoff_seconds=30,
+            )
+
+        recovered: list[dict[str, Any]] = []
+        inspected_lane_records = 0
+        uninspectable_lane_records = 0
+        terminal_reason = "database_portal_dead_attempt_owner_reclaim"
+        for prior in records:
+            if prior.is_terminal or not prior.state_dir:
+                continue
+            raw_state_dir = Path(prior.state_dir)
+            if (
+                not raw_state_dir.is_absolute()
+                or raw_state_dir.parent != self.attempt_root
+                or _DATABASE_PORTAL_ATTEMPT_DIRECTORY.fullmatch(
+                    raw_state_dir.name
+                )
+                is None
+            ):
+                continue
+            inspected_lane_records += 1
+            try:
+                metadata = raw_state_dir.lstat()
+                resolved_state_dir = raw_state_dir.resolve(strict=True)
+            except (OSError, RuntimeError):
+                uninspectable_lane_records += 1
+                continue
+            if (
+                stat.S_ISLNK(metadata.st_mode)
+                or not stat.S_ISDIR(metadata.st_mode)
+                or int(metadata.st_nlink) < 1
+                or resolved_state_dir.parent != attempt_root
+                or resolved_state_dir.name != raw_state_dir.name
+            ):
+                uninspectable_lane_records += 1
+                continue
+
+            before_record_id = prior.record_id
+            try:
+                updated = store.reclaim_dead_owner_for_controlled_restart(
+                    prior.workspace_path,
+                    expected_state_dir=raw_state_dir,
+                    expected_record_id=prior.record_id,
+                    expected_fence=prior.fence,
+                    reason=terminal_reason,
+                )
+            except (OSError, RuntimeError, ValueError):
+                # A concurrent transition or unreadable owner is not proof of
+                # death. Leave it fenced for the next observation.
+                continue
+            if updated is None:
+                continue
+            immutable_before = (
+                prior.task_id,
+                prior.canonical_task_cid,
+                prior.attempt,
+                prior.workspace_path,
+                prior.branch,
+                prior.merge_target,
+                prior.repo_root,
+                prior.state_dir,
+            )
+            immutable_after = (
+                updated.task_id,
+                updated.canonical_task_cid,
+                updated.attempt,
+                updated.workspace_path,
+                updated.branch,
+                updated.merge_target,
+                updated.repo_root,
+                updated.state_dir,
+            )
+            if (
+                immutable_after != immutable_before
+                or updated.state.value != "terminal"
+                or updated.fence != prior.fence + 1
+                or updated.terminal_reason != terminal_reason
+                or not updated.record_id
+                or updated.record_id != before_record_id
+            ):
+                raise DatabasePortalBridgeError(
+                    "worktree lifecycle recovery produced an invalid terminal record"
+                )
+            recovered.append(
+                {
+                    "task_id": updated.task_id,
+                    "canonical_task_cid": updated.canonical_task_cid,
+                    "portal_attempt": updated.attempt,
+                    "workspace_path": updated.workspace_path,
+                    "state_dir": updated.state_dir,
+                    "prior_owner_pid": prior.owner.pid,
+                    "prior_fence": prior.fence,
+                    "terminal_fence": updated.fence,
+                    "prior_record_id": before_record_id,
+                    "terminal_record_id": updated.record_id,
+                    "terminal_reason": updated.terminal_reason,
+                }
+            )
+
+        receipt: dict[str, Any] = {
+            **base,
+            "attempted": True,
+            "reason": (
+                "dead_lane_portal_lifecycle_claims_reclaimed"
+                if recovered
+                else "no_provably_dead_lane_portal_lifecycle_claims"
+            ),
+            "inventory_count": len(records),
+            "inspected_lane_record_count": inspected_lane_records,
+            "uninspectable_lane_record_count": uninspectable_lane_records,
+            "recovered_count": len(recovered),
+            "recovered": recovered,
+            "recorded_at": utc_now(),
+        }
+        receipt["receipt_id"] = _database_evidence_digest(receipt)
+        if recovered:
+            append_jsonl_event(
+                paths.events,
+                "database_portal_worktree_lifecycle_recovered",
+                receipt,
+            )
+            _LOG.warning(
+                "Reclaimed %d dead Portal worktree lifecycle owner(s) under %s",
+                len(recovered),
+                attempt_root,
+            )
+        return receipt
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
         record = self._record_for_attempt(self.task_source, attempt)
         paths, binding = self._ensure_attempt_projection(attempt, record)
+        self._reclaim_dead_lane_portal_lifecycle_claims(
+            attempt=attempt,
+            paths=paths,
+            binding=binding,
+        )
         self._initialize_validation_retry_seed(
             attempt=attempt,
             record=record,
@@ -7230,10 +8521,32 @@ class DatabasePortalExecutionBridge:
             binding=binding,
         )
         summaries: list[Mapping[str, Any]] = []
-        daemon = self.portal_factory(
-            paths,
-            str(binding.get("task_alias") or attempt.task_cid),
-        )
+        projection = self._verify_projection(paths, binding)
+        if _projection_status(projection) in _TERMINAL_STATUSES:
+            replayed_summary = self._verified_terminal_implementation_summary(
+                paths,
+                binding,
+            )
+            return self._acceptance_receipt(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+                summaries=(replayed_summary,),
+            )
+        try:
+            daemon = self.portal_factory(
+                paths,
+                str(binding.get("task_alias") or attempt.task_cid),
+            )
+        except FileNotFoundError as exc:
+            # Construction happens before Portal can cross its provider-launch
+            # boundary.  Type only this narrow factory exception as a known
+            # pre-dispatch deferral; FileNotFoundError from ``run_once`` is not
+            # caught here and therefore remains outcome-unknown.
+            raise DatabasePortalBridgeDeferred(
+                "portal_factory_source_missing",
+                backoff_seconds=30,
+            ) from exc
         if daemon is None or not callable(getattr(daemon, "run_once", None)):
             raise DatabasePortalBridgeError(
                 "portal_factory did not return a Portal-compatible daemon"
@@ -7243,12 +8556,15 @@ class DatabasePortalExecutionBridge:
                 projection = self._verify_projection(paths, binding)
                 if _projection_status(
                     projection
-                ) in _TERMINAL_STATUSES and self._has_completion_event(
-                    paths,
-                    str(binding.get("task_alias") or ""),
-                    str(binding.get("canonical_task_key") or ""),
-                    str(binding.get("task_cid") or ""),
-                ):
+                ) in _TERMINAL_STATUSES:
+                    replayed_summary = (
+                        self._verified_terminal_implementation_summary(
+                            paths,
+                            binding,
+                        )
+                    )
+                    if not summaries:
+                        summaries.append(replayed_summary)
                     return self._acceptance_receipt(
                         attempt=attempt,
                         paths=paths,
@@ -7619,6 +8935,15 @@ class DatabasePortalExecutionBridge:
                     raise DatabasePortalBridgeError(
                         "false-completion replay returned a non-object"
                     )
+                if (
+                    result.get("status") == "retrying"
+                    and result.get("changed") is False
+                ):
+                    # The recovery CAS is already durable.  Verify it but do
+                    # not turn maintenance into a permanent claim barrier.
+                    # The cursor remains pinned below until a successful
+                    # terminal task makes this row historical.
+                    continue
                 return dict(result)
             return None
 
@@ -7629,24 +8954,12 @@ class DatabasePortalExecutionBridge:
             if not acquired:
                 return None
             if false_replay is not None:
-                replay_request_id = str(
-                    false_replay.get("request_id") or ""
-                )
-                replay_index = next(
-                    (
-                        index
-                        for index, item in enumerate(false_completed_page)
-                        if str(getattr(item, "request_id", "") or "")
-                        == replay_request_id
-                    ),
-                    -1,
-                )
-                if replay_index >= 0:
-                    self._advance_post_merge_recovery_cursor(
-                        cursors,
-                        "false_completed_requests",
-                        false_completed_page[: replay_index + 1],
-                    )
+                # ``retrying`` is only a prepared deterministic settlement,
+                # not success.  Keep this non-authoritative cursor pinned so
+                # a later failed/expired claim can rediscover the immutable
+                # integrated row without manual cursor repair.  Completion
+                # removes the task from the eligible projection and the next
+                # tick may then advance normally.
                 return dict(false_replay)
 
         selected: Any = None
@@ -8242,10 +9555,12 @@ __all__ = (
     "DATABASE_PORTAL_CANDIDATE_RETRY_REASONS",
     "DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS",
     "DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS",
+    "DATABASE_PORTAL_DETERMINISTIC_RECONCILIATION_REASONS",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeConsumedNoProgressError",
     "DatabasePortalBridgeError",
     "DatabasePortalCandidateRetry",
+    "DatabasePortalDeterministicReconciliationDeferred",
     "DatabasePortalExecutionBridge",
     "DatabasePortalValidationRetry",
     "PortalDaemonFactory",

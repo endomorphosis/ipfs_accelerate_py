@@ -1855,6 +1855,99 @@ def test_aseh_external_status_binds_receipt_to_current_owner_incarnation(
     )
 
 
+def test_aseh_external_status_accepts_only_monotonic_replica_successor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A read refresh is valid, but rollback/equal-sequence drift is not."""
+
+    now = time.time()
+    board, paths, before = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now - 0.25,
+        lane_mtime_ns=int((now - 0.25) * 1_000_000_000),
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    receipt = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 0.5,
+        last_progress_at=now,
+        failure={},
+    )
+    owner_directory = tmp_path / "owner"
+    status_receipt = tmp_path / "live-status.json"
+    paths.update({"owner": owner_directory, "status_receipt": status_receipt})
+    owner_status_path = owner_directory / "quack-state-server.status.json"
+    aseh_operator._atomic_json(status_receipt, receipt)
+    monkeypatch.setattr(aseh_operator, "_load", lambda _path: (board, {}))
+    monkeypatch.setattr(aseh_operator, "_paths", lambda _board: paths)
+
+    successor = json.loads(json.dumps(current["owner_status"]))
+    successor_replica = successor["read_replica"]
+    successor_replica["refresh_sequence"] += 1
+    successor_replica["sha256"] = f"sha256:{'b' * 64}"
+    successor_replica["size_bytes"] += 1
+    aseh_operator._atomic_json(owner_status_path, successor)
+
+    exit_code, admitted = aseh_operator.status(
+        tmp_path / "unused-config.json", require_ready=True
+    )
+    assert exit_code == 0
+    assert admitted["healthy"] is True
+    assert admitted["broker_authenticated_receipt"] is True
+
+    equal_sequence_drift = json.loads(json.dumps(current["owner_status"]))
+    equal_sequence_drift["read_replica"]["sha256"] = f"sha256:{'c' * 64}"
+    aseh_operator._atomic_json(owner_status_path, equal_sequence_drift)
+    exit_code, rejected_equal = aseh_operator.status(
+        tmp_path / "unused-config.json", require_ready=True
+    )
+    assert exit_code == 1
+    assert rejected_equal["broker_authenticated_receipt"] is False
+
+    later_before = json.loads(json.dumps(before))
+    later_current = json.loads(json.dumps(current))
+    for sample in (later_before, later_current):
+        sample_replica = sample["owner_status"]["read_replica"]
+        sample_replica["refresh_sequence"] = 2
+        sample_replica["sha256"] = f"sha256:{'d' * 64}"
+        sample_replica["size_bytes"] += 2
+    later_receipt = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(later_before, later_current),
+        launched_at=now - 0.5,
+        last_progress_at=now,
+        failure={},
+    )
+    aseh_operator._atomic_json(status_receipt, later_receipt)
+    aseh_operator._atomic_json(owner_status_path, current["owner_status"])
+    exit_code, rejected_rollback = aseh_operator.status(
+        tmp_path / "unused-config.json", require_ready=True
+    )
+    assert exit_code == 1
+    assert rejected_rollback["broker_authenticated_receipt"] is False
+
+    aseh_operator._atomic_json(status_receipt, receipt)
+    storage_drift = json.loads(json.dumps(successor))
+    storage_drift["storage_schema_fingerprint"] = "storage-schema:changed"
+    storage_drift["read_replica"]["storage_schema_fingerprint"] = (
+        "storage-schema:changed"
+    )
+    aseh_operator._atomic_json(owner_status_path, storage_drift)
+    exit_code, rejected_identity = aseh_operator.status(
+        tmp_path / "unused-config.json", require_ready=True
+    )
+    assert exit_code == 1
+    assert rejected_identity["broker_authenticated_receipt"] is False
+
+
 def test_aseh_external_status_rejects_abruptly_dead_bound_owner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2798,8 +2891,8 @@ def test_aseh_health_gives_exact_blocked_reconciliation_a_bounded_window(
     assert receipt["stuck"] is True
     assert receipt["healthy"] is False
     assert receipt["blocked_recovery_admitted"] is True
-    edges = 0
-    for _index in range(2):
+    edges = 2
+    for _index in range(8):
         action, reason, edges = (
             aseh_operator._post_admission_health_action(
                 receipt,
@@ -2809,16 +2902,23 @@ def test_aseh_health_gives_exact_blocked_reconciliation_a_bounded_window(
             )
         )
         assert (action, reason) == ("continue", "")
+        assert edges == 0
+
+    expired = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 10.0,
+        last_progress_at=now - 3.0,
+        failure={},
+    )
+    assert expired["blocked_recovery_admitted"] is False
     assert aseh_operator._post_admission_health_action(
-        receipt,
+        expired,
         prior_available=True,
         current_available=True,
         unhealthy_edges=edges,
-    ) == (
-        "fail",
-        "authoritative_blocked_recovery_grace_exhausted",
-        3,
-    )
+    )[:2] == ("fail", "authoritative_board_blocked")
 
     current["authority"]["objective_record"]["title"] = (  # type: ignore[index]
         "unsealed mutation"
@@ -3145,6 +3245,157 @@ def test_aseh_startup_fails_after_two_unavailable_authority_samples(
         "reason_code": "authoritative_status_unavailable_two_samples",
         "error_type": "ASEHHealthQueryFailure",
     }
+    assert samples == []
+
+
+def test_aseh_startup_honors_admitted_blocked_recovery_past_thirty_seconds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = SimpleNamespace(
+        payload={"watchdog_startup_grace_seconds": 300.0}
+    )
+    paths = {"status_receipt": tmp_path / "live-status.json"}
+    samples = [
+        {"observed_at": float(index), "authority": {"available": True}}
+        for index in range(5)
+    ]
+    blocked = {
+        "blocked": True,
+        "stuck": True,
+        "blocked_recovery_admitted": True,
+        "healthy": False,
+        "receipt_cid": "receipt:blocked",
+    }
+    healthy = {
+        "blocked": False,
+        "stuck": False,
+        "blocked_recovery_admitted": False,
+        "healthy": True,
+        "receipt_cid": "receipt:healthy",
+    }
+    receipts = [dict(blocked), dict(blocked), dict(blocked), healthy]
+    monotonic_values = iter((100.0, 100.0, 111.0, 122.0, 133.0))
+    observed_monotonic: list[float] = []
+
+    def fake_monotonic() -> float:
+        value = next(monotonic_values)
+        observed_monotonic.append(value)
+        return value
+
+    def fake_sample(*_args: object, **_kwargs: object) -> dict[str, object]:
+        assert samples
+        return samples.pop(0)
+
+    def fake_health(*_args: object, **_kwargs: object) -> dict[str, object]:
+        assert receipts
+        return receipts.pop(0)
+
+    monkeypatch.setattr(aseh_operator, "_status_sample", fake_sample)
+    monkeypatch.setattr(aseh_operator, "_health_receipt", fake_health)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authoritative_progress_between",
+        lambda *_args: [],
+    )
+    monkeypatch.setattr(aseh_operator, "STATUS_SAMPLE_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(
+        aseh_operator,
+        "time",
+        SimpleNamespace(monotonic=fake_monotonic),
+    )
+
+    admitted, last_progress_at = aseh_operator._await_initial_health(
+        board,
+        paths,
+        server=SimpleNamespace(),
+        scheduler=SimpleNamespace(pid=4242, poll=lambda: None),
+        launched_at=90.0,
+        failure={},
+        failure_event=threading.Event(),
+        shutdown_requested=threading.Event(),
+        received_signal={},
+    )
+
+    assert admitted == healthy
+    assert last_progress_at == 90.0
+    assert observed_monotonic[-1] - observed_monotonic[0] > 30.0
+    assert receipts == []
+    assert samples == []
+
+
+def test_aseh_startup_fails_when_blocked_recovery_admission_is_lost(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = SimpleNamespace(
+        payload={"watchdog_startup_grace_seconds": 300.0}
+    )
+    paths = {"status_receipt": tmp_path / "live-status.json"}
+    available = {"observed_at": 1.0, "authority": {"available": True}}
+    samples = [dict(available), dict(available), dict(available)]
+    receipts = [
+        {
+            "blocked": True,
+            "stuck": True,
+            "blocked_recovery_admitted": True,
+            "healthy": False,
+        },
+        {
+            "blocked": True,
+            "stuck": True,
+            "blocked_recovery_admitted": False,
+            "owner_ready": False,
+            "healthy": False,
+        },
+    ]
+    recorded_failure: dict[str, object] = {}
+
+    def fake_sample(*_args: object, **_kwargs: object) -> dict[str, object]:
+        assert samples
+        return samples.pop(0)
+
+    def fake_health(*_args: object, **_kwargs: object) -> dict[str, object]:
+        assert receipts
+        return receipts.pop(0)
+
+    monkeypatch.setattr(aseh_operator, "_status_sample", fake_sample)
+    monkeypatch.setattr(aseh_operator, "_health_receipt", fake_health)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authoritative_progress_between",
+        lambda *_args: [],
+    )
+    monkeypatch.setattr(aseh_operator, "STATUS_SAMPLE_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_record_control_failure",
+        lambda _paths, _failure, _event, **fields: (
+            recorded_failure.update(fields)
+        ),
+    )
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="foreground health admission failed closed",
+    ):
+        aseh_operator._await_initial_health(
+            board,
+            paths,
+            server=SimpleNamespace(),
+            scheduler=SimpleNamespace(pid=4242, poll=lambda: None),
+            launched_at=time.time(),
+            failure={},
+            failure_event=threading.Event(),
+            shutdown_requested=threading.Event(),
+            received_signal={},
+        )
+
+    assert recorded_failure == {
+        "reason_code": "authoritative_blocked_recovery_grace_exhausted",
+        "error_type": "ASEHHealthGateFailure",
+    }
+    assert receipts == []
     assert samples == []
 
 
@@ -3609,6 +3860,125 @@ def test_aseh_repair_clean_launch_transition_is_closed_and_chained() -> None:
         aseh_operator._repair_clean_launch_transition_receipt_id(receipt)
 
 
+def test_aseh_repair_runtime_hardening_transition_is_closed_and_chained(
+) -> None:
+    receipt = {
+        "schema": aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_SCHEMA,
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R4"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 4,
+        "bootstrap_receipt_id": "sha256:" + ("a" * 64),
+        "previous_receipt_cid": "sha256:" + ("b" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": "1" * 40,
+        "base_tree": "2" * 40,
+        "repair_head": "3" * 40,
+        "repair_tree": "4" * 40,
+        "changed_paths": list(
+            aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("5" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R3"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": "explicit runtime-hardening authority",
+        "validation_results": [],
+        "terminal_success_criteria": "automatic bounded recovery",
+        "terminal_non_success_criteria": "all drift rejected",
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert (
+        aseh_operator._repair_runtime_hardening_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    receipt["transition_revision"] = 3
+    receipt["receipt_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_cid"
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="schema"):
+        aseh_operator._repair_runtime_hardening_transition_receipt_id(
+            receipt
+        )
+
+
+def test_aseh_repair_runtime_hardening_transition_rejects_wrong_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous_cid = "sha256:" + ("b" * 64)
+    receipt = {
+        "schema": aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_SCHEMA,
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R4"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 4,
+        "bootstrap_receipt_id": "sha256:" + ("a" * 64),
+        "previous_receipt_cid": "sha256:" + ("c" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": (
+            aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
+        ),
+        "base_tree": "2" * 40,
+        "repair_head": "3" * 40,
+        "repair_tree": "4" * 40,
+        "changed_paths": list(
+            aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("5" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R3"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            "the operator explicitly directed the bootstrap engineering "
+            "agent to fix the existing supervisor so it automatically "
+            "recovers ASEH false-completion, startup, and shutdown faults "
+            "without state-writer or checkout contention"
+        ),
+        "validation_results": [],
+        "terminal_success_criteria": "automatic bounded recovery",
+        "terminal_non_success_criteria": "all drift rejected",
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_clean_launch_transition_receipt_id",
+        lambda _payload: previous_cid,
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="authority differs"):
+        aseh_operator._validate_repair_runtime_hardening_transition(
+            receipt,
+            bootstrap={
+                "bootstrap_receipt_id": "sha256:" + ("a" * 64),
+                "plan_root_cid": "plan:sealed",
+                "repository_tree_id": "tree:sealed",
+            },
+            previous_receipt={},
+            rerun_validations=False,
+        )
+
+
 def test_aseh_repair_clean_launch_transition_rejects_rehashed_wrong_chain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3688,7 +4058,7 @@ def test_aseh_repair_clean_launch_transition_publication_is_create_only(
     ) == first
 
 
-def test_aseh_repair_clean_launch_transition_is_active_admission_base(
+def test_aseh_repair_clean_launch_transition_chains_runtime_hardening_as_active_admission_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3696,12 +4066,14 @@ def test_aseh_repair_clean_launch_transition_is_active_admission_base(
     repair_path = tmp_path / "repair-r1.json"
     followup_path = tmp_path / "repair-r2.json"
     clean_launch_path = tmp_path / "repair-r3.json"
+    runtime_hardening_path = tmp_path / "repair-r4.json"
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
         repair_path,
         followup_path,
         clean_launch_path,
+        runtime_hardening_path,
         database_path,
     ):
         path.touch()
@@ -3710,6 +4082,9 @@ def test_aseh_repair_clean_launch_transition_is_active_admission_base(
         "repair_transition_receipt": repair_path,
         "repair_followup_transition_receipt": followup_path,
         "repair_clean_launch_transition_receipt": clean_launch_path,
+        "repair_runtime_hardening_transition_receipt": (
+            runtime_hardening_path
+        ),
         "database": database_path,
     }
     bootstrap = {
@@ -3723,9 +4098,11 @@ def test_aseh_repair_clean_launch_transition_is_active_admission_base(
     r1_receipt = {"revision": 1}
     r2_receipt = {"revision": 2}
     r3_receipt = {"revision": 3}
-    r3_head = "3" * 40
+    r4_receipt = {"revision": 4}
+    r3_head = aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
+    r4_head = "4" * 40
     population = {
-        "source_head": r3_head,
+        "source_head": r4_head,
         "repository_tree_id": "tree:runtime",
         "plan_root_cid": "plan:sealed",
         "source_forest": {"forest_cid": "forest:runtime"},
@@ -3747,11 +4124,18 @@ def test_aseh_repair_clean_launch_transition_is_active_admission_base(
         "transition_revision": 3,
         "receipt_cid": "receipt:r3",
     }
+    r4 = {
+        "base_head": r3_head,
+        "repair_head": r4_head,
+        "transition_revision": 4,
+        "receipt_cid": "receipt:r4",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
         followup_path: r2_receipt,
         clean_launch_path: r3_receipt,
+        runtime_hardening_path: r4_receipt,
     }
     suffix_calls: list[tuple[str, str]] = []
 
@@ -3782,6 +4166,11 @@ def test_aseh_repair_clean_launch_transition_is_active_admission_base(
         aseh_operator,
         "_validate_repair_clean_launch_transition",
         lambda *_args, **_kwargs: r3,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_runtime_hardening_transition",
+        lambda *_args, **_kwargs: r4,
     )
     monkeypatch.setattr(
         aseh_operator,
@@ -3823,15 +4212,18 @@ def test_aseh_repair_clean_launch_transition_is_active_admission_base(
         object(), {}, paths
     )
 
-    assert admission["repair_transition"] == r3
+    assert admission["repair_transition"] == r4
     assert [
         item.get("transition_revision", 1)
         for item in admission["repair_transition_chain"]
-    ] == [1, 2, 3]
-    assert suffix_calls[-1] == (r3_head, r3_head)
+    ] == [1, 2, 3, 4]
+    assert suffix_calls[-1] == (r4_head, r4_head)
     assert admission["canonical_continuity"][
         "followup_to_clean_launch"
     ] == r3
+    assert admission["canonical_continuity"][
+        "clean_launch_to_runtime_hardening"
+    ] == r4
 
 
 def test_aseh_repair_authorization_replay_rejects_head_regression(
