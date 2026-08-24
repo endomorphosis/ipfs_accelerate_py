@@ -1301,14 +1301,19 @@ def bind_database_portal_execution_from_args(
         attempt_root=attempt_root,
         portal_factory=portal_factory,
         repository_root=repo_root,
+        merge_target_ref=(
+            str(getattr(parsed, "merge_target_branch", "") or "HEAD")
+        ),
         worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
+        implementation_timeout=float(parsed.implementation_timeout),
     )
     binder(
         provider_fn=bridge.run_provider,
         effect_fn=bridge.apply_effect,
         validation_fn=bridge.validate_effect,
+        landed_completion_recovery_fn=bridge.recover_landed_completion,
     )
     return bridge
 

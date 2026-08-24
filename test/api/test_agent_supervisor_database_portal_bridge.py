@@ -464,6 +464,179 @@ def test_bridge_uses_safe_default_for_legacy_typed_deferral(
     assert caught.value.backoff_seconds == 300
 
 
+def _verified_quota_fallback_result(
+    *,
+    task_alias: str = "LGSWF-004",
+    task_cid: str = "task:cid:004",
+) -> dict[str, object]:
+    receipt = {
+        "receipt_id": "sha256:" + "a" * 64,
+        "failure_class": "hard_quota_exhausted",
+        "primary_dispatched": False,
+        "evidence_sha256": "sha256:" + "b" * 64,
+    }
+    return {
+        "implementation_result": {
+            "task_id": task_alias,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 1,
+            "deferred": True,
+            "reason": "provider_capacity_exhausted",
+            "attempt_consumed": False,
+            "task_prompt_dispatched": False,
+            "providers": ["grok"],
+            "failure_class": "hard_quota_exhausted",
+            "hard_quota_exhausted_providers": ["grok"],
+            "backoff_seconds": 300,
+            "quota_fallback_authority": {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "grok-quota-fallback-authority@2"
+                ),
+                "primary_provider": "grok",
+                "primary_model": "grok-4.6",
+                "failure_class": "hard_quota_exhausted",
+                "evidence_sha256": "sha256:" + "b" * 64,
+                "task_id": task_alias,
+                "canonical_task_cid": task_cid,
+                "attempt": 1,
+                "primary_returncode": 1,
+                "start_event_id": "sha256:" + "c" * 64,
+                "start_sequence": 1,
+                "command_sha256": "sha256:" + "d" * 64,
+                "runner_receipt_id": receipt["receipt_id"],
+                "runner_receipt": receipt,
+            },
+        }
+    }
+
+
+def test_bridge_keeps_verified_quota_fallback_in_same_portal_claim(
+    tmp_path: Path,
+) -> None:
+    class QuotaThenCodexPortal(_CompletingPortal):
+        def __init__(self, paths: object, task_alias: str) -> None:
+            super().__init__(paths, task_alias)
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            if self.calls > 1:
+                return super().run_once()
+            return _verified_quota_fallback_result(task_alias=self.task_alias)
+
+    portals: list[QuotaThenCodexPortal] = []
+
+    def factory(paths: object, alias: str) -> QuotaThenCodexPortal:
+        portal = QuotaThenCodexPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=2,
+    )
+
+    provider = bridge.run_provider(_attempt())
+
+    assert provider["accepted"] is True
+    assert len(portals) == 1
+    assert portals[0].calls == 2
+
+
+def test_bridge_rejects_quota_fallback_for_a_foreign_task(
+    tmp_path: Path,
+) -> None:
+    class ForeignQuotaPortal:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            return _verified_quota_fallback_result(
+                task_cid="task:cid:foreign"
+            )
+
+    portal = ForeignQuotaPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=3,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "provider_capacity_exhausted"
+    assert portal.calls == 1
+
+
+def test_bridge_continues_the_same_quota_fallback_at_most_once(
+    tmp_path: Path,
+) -> None:
+    class RepeatingQuotaPortal:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            return _verified_quota_fallback_result()
+
+    portal = RepeatingQuotaPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=4,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "provider_capacity_exhausted"
+    assert portal.calls == 2
+
+
+def test_bridge_does_not_continue_unverified_quota_fallback(
+    tmp_path: Path,
+) -> None:
+    class UnverifiedQuotaPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "deferred": True,
+                    "reason": "provider_capacity_exhausted",
+                    "attempt_consumed": False,
+                    "task_prompt_dispatched": False,
+                    "providers": ["grok"],
+                    "failure_class": "hard_quota_exhausted",
+                    "hard_quota_exhausted_providers": ["grok"],
+                    "backoff_seconds": 300,
+                    "quota_fallback_authority": {
+                        "schema": "unverified",
+                    },
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: UnverifiedQuotaPortal(),
+        max_passes=2,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "provider_capacity_exhausted"
+    assert caught.value.backoff_seconds == 300
+
+
 def test_bridge_does_not_infer_retryability_from_generic_failure_text(
     tmp_path: Path,
 ) -> None:
@@ -580,6 +753,229 @@ def test_bridge_defers_skipped_inflight_and_lock_contention(
     )
     assert caught.value.attempt_consumed is False
     assert caught.value.provider_dispatched is False
+
+
+def test_bridge_polls_exact_inflight_process_on_same_claim_until_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClock:
+        def __init__(self) -> None:
+            self.now = 0.0
+            self.sleeps: list[float] = []
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            assert 0.0 < seconds <= 15.0
+            self.sleeps.append(seconds)
+            self.now += seconds
+
+    class InflightThenCompletingPortal(_CompletingPortal):
+        def __init__(self, paths: object, task_alias: str) -> None:
+            super().__init__(paths, task_alias)
+            self.calls = 0
+            self.worktree_path = str(tmp_path / "exact-inflight-worktree")
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            if self.calls <= 2:
+                return {
+                    "implementation_result": {
+                        "skipped": True,
+                        "reason": "inflight_process",
+                        "task_id": self.task_alias,
+                        "attempt": 1,
+                        "worktree_path": self.worktree_path,
+                    }
+                }
+            return super().run_once()
+
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._monotonic_seconds",
+        clock.monotonic,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._sleep_seconds",
+        clock.sleep,
+    )
+    portals: list[InflightThenCompletingPortal] = []
+
+    def factory(paths: object, alias: str) -> InflightThenCompletingPortal:
+        portal = InflightThenCompletingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        # Inflight polls do not consume the ordinary Portal pass budget.
+        max_passes=1,
+        implementation_timeout=31.0,
+    )
+
+    provider = bridge.run_provider(_attempt())
+
+    assert provider["accepted"] is True
+    assert len(portals) == 1
+    assert portals[0].calls == 3
+    assert portals[0].closed is True
+    assert clock.sleeps == [15.0, 15.0]
+
+
+def test_bridge_bounds_inflight_pass_preview_with_streaming_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClock:
+        def __init__(self) -> None:
+            self.now = 0.0
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            assert 0.0 < seconds <= 15.0
+            self.now += seconds
+
+    class LongInflightThenCompletingPortal(_CompletingPortal):
+        def __init__(self, paths: object, task_alias: str) -> None:
+            super().__init__(paths, task_alias)
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            if self.calls <= 20:
+                return {
+                    "implementation_result": {
+                        "skipped": True,
+                        "reason": "inflight_process",
+                        "task_id": self.task_alias,
+                        "canonical_task_cid": "task:cid:004",
+                        "attempt": 1,
+                        "worktree_path": str(tmp_path / "long-inflight-worktree"),
+                    }
+                }
+            return super().run_once()
+
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._monotonic_seconds",
+        clock.monotonic,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._sleep_seconds",
+        clock.sleep,
+    )
+    portals: list[LongInflightThenCompletingPortal] = []
+
+    def factory(paths: object, alias: str) -> LongInflightThenCompletingPortal:
+        portal = LongInflightThenCompletingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+        implementation_timeout=301.0,
+    )
+
+    provider = bridge.run_provider(_attempt())
+    evidence = provider["portal_evidence"]
+
+    assert len(portals) == 1
+    assert portals[0].calls == 21
+    assert evidence["portal_pass_count"] == 21
+    assert evidence["portal_passes_truncated"] is True
+    assert len(evidence["portal_passes"]) == 16
+    assert evidence["portal_passes_digest"].startswith("sha256:")
+    assert len(evidence["portal_passes_digest"]) == len("sha256:") + 64
+
+
+def test_bridge_defers_exact_inflight_process_at_configured_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClock:
+        def __init__(self) -> None:
+            self.now = 0.0
+            self.sleeps: list[float] = []
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            assert 0.0 < seconds <= 15.0
+            self.sleeps.append(seconds)
+            self.now += seconds
+
+    class InflightPortal:
+        def __init__(self, task_alias: str) -> None:
+            self.task_alias = task_alias
+            self.calls = 0
+            self.closed = False
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "reason": "inflight_process",
+                    "task_id": self.task_alias,
+                    "attempt": 1,
+                    "worktree_path": str(tmp_path / "exact-inflight-worktree"),
+                }
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._monotonic_seconds",
+        clock.monotonic,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._sleep_seconds",
+        clock.sleep,
+    )
+    portals: list[InflightPortal] = []
+
+    def factory(_paths: object, alias: str) -> InflightPortal:
+        portal = InflightPortal(alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+        implementation_timeout=20.0,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "inflight_process"
+    assert caught.value.backoff_seconds == 15
+    assert len(portals) == 1
+    # The bridge must not start one more Portal pass after sleeping exactly
+    # to the configured deadline.
+    assert portals[0].calls == 2
+    assert portals[0].closed is True
+    assert clock.sleeps == [15.0, 5.0]
 
 
 def test_bridge_keeps_generic_skip_terminal(

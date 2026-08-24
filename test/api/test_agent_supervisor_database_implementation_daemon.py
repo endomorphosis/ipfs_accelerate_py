@@ -275,6 +275,128 @@ def _open_daemon(
     )
 
 
+def _legacy_leftover_wait_budget(
+    daemon: DatabaseImplementationDaemon,
+    attempts: list[DatabaseTaskAttempt],
+) -> dict[str, object]:
+    ordered = sorted(
+        attempts,
+        key=lambda item: (
+            int(item.attempt_number),
+            int(item.started_at_ms),
+            item.attempt_id,
+        ),
+        reverse=True,
+    )
+    matching: list[dict[str, object]] = []
+    digest = hashlib.sha256()
+    typed_by_attempt: dict[str, dict[str, object]] = {}
+    for attempt in ordered:
+        failed = [
+            item
+            for item in daemon.phase_history(attempt.attempt_id)
+            if item["phase"] == "failed"
+        ]
+        typed = daemon._verified_typed_deferral_receipt(
+            attempt,
+            failed[-1]["body"],
+        )
+        assert typed is not None
+        typed_by_attempt[attempt.attempt_id] = typed
+        identity: dict[str, object] = {
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "reason": typed["reason"],
+            "deferral_fingerprint": typed["deferral_fingerprint"],
+        }
+        matching.append(identity)
+        encoded = json.dumps(
+            identity,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    current = ordered[0]
+    current_typed = typed_by_attempt[current.attempt_id]
+    budget: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-typed-deferral-budget@1"
+        ),
+        "task_cid": current.task_cid,
+        "task_generation": current.task_cid,
+        "generation_fingerprint": current_typed["generation_fingerprint"],
+        "current_deferral_fingerprint": current_typed[
+            "deferral_fingerprint"
+        ],
+        "typed_deferral_candidate_count": len(matching),
+        "typed_deferral_count": len(matching),
+        "typed_deferral_count_is_lower_bound": False,
+        "verified_typed_deferral_count": len(matching),
+        "verified_count_complete": True,
+        "max_task_attempts": daemon.max_task_attempts,
+        "exhausted": True,
+        "attempt_consumed": False,
+        "typed_deferral_slot_consumed": True,
+        "matching_attempts": matching,
+        "matching_attempts_digest": "sha256:" + digest.hexdigest(),
+        "matching_attempts_truncated": False,
+        "omitted_matching_attempt_count": 0,
+    }
+    budget["observation_id"] = daemon._database_portal_evidence_digest(
+        budget
+    )
+    return budget
+
+
+def _block_with_legacy_leftover_wait_budget(
+    daemon: DatabaseImplementationDaemon,
+    attempts: list[DatabaseTaskAttempt],
+    *,
+    budget_override: dict[str, object] | None = None,
+) -> tuple[DatabaseTaskAttempt, dict[str, object]]:
+    latest = max(attempts, key=lambda item: int(item.attempt_number))
+    budget = budget_override or _legacy_leftover_wait_budget(daemon, attempts)
+    task = daemon.task_source.get(latest.task_cid)
+    assert task is not None and task.status == "retrying"
+    daemon.task_source.compare_and_set_status(
+        latest.task_cid,
+        expected_revision=int(task.revision),
+        status="blocked",
+        receipt={
+            "operation": "database_portal_typed_deferral_budget_exhausted",
+            "attempt_id": latest.attempt_id,
+            "attempt_number": int(latest.attempt_number),
+            "claim_id": latest.claim_id,
+            "lease_id": latest.lease_id,
+            "owner_session_id": latest.owner_session_id,
+            "fencing_token": int(latest.fencing_token),
+            "fence_epoch": int(latest.fence_epoch),
+            "execution_phase": "failed",
+            "execution_revision": int(latest.revision),
+            "execution_finished_at_ms": latest.finished_at_ms,
+            "reason": "typed_portal_deferral_budget_exhausted",
+            "retryable": False,
+            "attempt_consumed": False,
+            "typed_deferral_slot_consumed": True,
+            "retry_budget": budget,
+            "prior_queue_entry_preserved_inactive": (
+                daemon.task_source.get_queue_entry(latest.task_cid) is not None
+            ),
+            "coordination": {
+                "attempt_id": latest.attempt_id,
+                "claim_id": latest.claim_id,
+                "attempt_number": int(latest.attempt_number),
+            },
+            "control_expected_status": "retrying",
+            "control_expected_revision": int(task.revision),
+        },
+    )
+    return latest, budget
+
+
 def _validation_retry_receipt(
     daemon: DatabaseImplementationDaemon,
     attempt: DatabaseTaskAttempt,
@@ -1309,6 +1431,108 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         daemon.close()
 
 
+def test_transition_invalid_replay_rejects_a_foreign_database_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A losing claim cannot replace a concurrent same-status receipt."""
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-replay",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        original_cas = daemon.task_source.compare_and_set_status
+        foreign_receipt = {
+            "operation": "database_claim",
+            "attempt_id": "attempt:foreign",
+            "claim_id": "claim:foreign",
+            "owner_session_id": "session:foreign",
+            "attempt_number": 2,
+            "fencing_token": 11,
+            "fence_epoch": 3,
+            "lease_id": "lease:foreign",
+        }
+        admitted = original_cas(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            status="in_progress",
+            receipt=foreign_receipt,
+        )
+        assert admitted.changed is True
+        admitted_revision = int(admitted.task.revision)
+
+        losing_receipt = {
+            **foreign_receipt,
+            "attempt_id": "attempt:losing",
+            "claim_id": "claim:losing",
+            "owner_session_id": "session:losing",
+            "attempt_number": 1,
+            "fencing_token": 10,
+            "fence_epoch": 2,
+            "lease_id": "lease:losing",
+        }
+        calls = {"count": 0}
+
+        def transition_invalid(*args: object, **kwargs: object) -> object:
+            calls["count"] += 1
+            raise RuntimeError("transition_invalid: status already in_progress")
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "compare_and_set_status",
+            transition_invalid,
+        )
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="foreign durable receipt",
+        ):
+            daemon._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(task.revision),
+                new_status="in_progress",
+                receipt=losing_receipt,
+            )
+        assert calls["count"] == 1
+        current = daemon.task_source.get(task.task_cid)
+        assert current is not None
+        assert current.revision == admitted_revision
+        assert current.body["completion_receipt"] == foreign_receipt
+
+        exact_calls = {"count": 0}
+
+        def transition_invalid_once(*args: object, **kwargs: object) -> object:
+            exact_calls["count"] += 1
+            if exact_calls["count"] == 1:
+                raise RuntimeError(
+                    "transition_invalid: status already in_progress"
+                )
+            return original_cas(*args, **kwargs)
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "compare_and_set_status",
+            transition_invalid_once,
+        )
+        replayed = daemon._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="in_progress",
+            receipt=foreign_receipt,
+        )
+        assert replayed.changed is False
+        assert exact_calls["count"] == 2
+        current = daemon.task_source.get(task.task_cid)
+        assert current is not None
+        assert current.revision == admitted_revision
+        assert current.body["completion_receipt"] == foreign_receipt
+    finally:
+        daemon.close()
+
+
 def test_unusable_candidate_retries_instead_of_blocking(tmp_path: Path) -> None:
     def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
         raise DatabasePortalCandidateRetry("no_change_completion_not_allowed")
@@ -1806,6 +2030,395 @@ def test_typed_portal_deferral_budget_blocks_before_fourth_dispatch(
         assert idle["implementation_result"] is None
         assert idle["selection_idle_reason"] == "no_ready_tasks"
         assert len(provider_attempts) == 3
+    finally:
+        daemon.close()
+
+
+def test_mixed_leftover_wait_deferrals_do_not_consume_typed_budget(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    observed_reasons: list[str] = []
+    reasons = [
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+        "inflight_process",
+    ]
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        reason = reasons[len(observed_reasons)]
+        observed_reasons.append(reason)
+        raise DatabasePortalBridgeDeferred(
+            reason,
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:mixed-leftover-wait-budget",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        task_cid = str(first["claimed_task_cid"])
+        assert first["implementation_result"]["retry_budget_exhausted"] is False
+
+        for timestamp in (31_001, 61_002):
+            now["ms"] = timestamp
+            retried = daemon.run_once()
+            assert (
+                retried["implementation_result"]["retry_budget_exhausted"]
+                is False
+            )
+
+        task = daemon.task_source.get(task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert observed_reasons == reasons
+    finally:
+        daemon.close()
+
+
+def test_run_once_rearms_identity_bound_mixed_leftover_wait_exhaustion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    reasons = [
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+    ]
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            reasons[len(observed_attempts) - 1],
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:mixed-leftover-wait-rearm",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        attempts = [
+            daemon.get_attempt(item.attempt_id) for item in observed_attempts
+        ]
+        assert all(item is not None for item in attempts)
+        attempt, budget = _block_with_legacy_leftover_wait_budget(
+            daemon,
+            [item for item in attempts if item is not None],
+        )
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        # Keep the test at the reconciliation boundary so the just-rearmed
+        # task is not immediately claimed and its recovery receipt remains
+        # independently inspectable.
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        now["ms"] = 100_000
+        repaired = daemon.run_once()
+        recovery = repaired[
+            "leftover_wait_deferral_budget_recovery_reconciliations"
+        ]
+        assert len(recovery) == 1
+        assert recovery[0]["changed"] is True
+        assert repaired["terminal_retry_reconciliations"] == []
+
+        rearmed = daemon.task_source.get(attempt.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        receipt = rearmed.body["completion_receipt"]
+        seed = receipt["leftover_wait_deferral_budget_recovery_seed"]
+        assert receipt["attempt_id"] == attempt.attempt_id
+        assert receipt["claim_id"] == attempt.claim_id
+        assert receipt["fencing_token"] == attempt.fencing_token
+        assert seed["attempt_id"] == attempt.attempt_id
+        assert seed["blocked_retry_budget"] == budget
+        assert seed["blocked_retry_budget_observation_id"] == budget[
+            "observation_id"
+        ]
+        assert seed["blocked_retry_budget_digest"] == (
+            daemon._database_portal_evidence_digest(budget)
+        )
+        assert seed["exhausting_reasons"] == sorted(
+            {
+                "inflight_process",
+                "external_protected_checkout_recovery_required",
+            }
+        )
+        daemon._verified_leftover_wait_deferral_budget_recovery_state(
+            attempt,
+            rearmed,
+        )
+    finally:
+        daemon.close()
+
+
+def test_leftover_wait_budget_recovery_rejects_mixed_non_wait_reason(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    reasons = ["inflight_process", "provider_capacity_backoff"]
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            reasons[len(observed_attempts) - 1],
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:leftover-wait-rearm-fail-closed",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        attempts = [
+            daemon.get_attempt(item.attempt_id) for item in observed_attempts
+        ]
+        assert all(item is not None for item in attempts)
+        attempt, _budget = _block_with_legacy_leftover_wait_budget(
+            daemon,
+            [item for item in attempts if item is not None],
+        )
+
+        outcomes = (
+            daemon.reconcile_blocked_leftover_wait_deferral_budget_recoveries()
+        )
+        assert outcomes == []
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("drift_surface", ("direct_seed", "reconciler_budget"))
+def test_leftover_wait_recovery_rejects_self_hashed_reason_drift(
+    tmp_path: Path,
+    drift_surface: str,
+) -> None:
+    now = {"ms": 1_000}
+    reasons = [
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+    ]
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            reasons[len(observed_attempts) - 1],
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:leftover-wait-rearm-reason-drift",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        attempts = [
+            daemon.get_attempt(item.attempt_id) for item in observed_attempts
+        ]
+        assert all(item is not None for item in attempts)
+        exact_attempts = [item for item in attempts if item is not None]
+        budget = _legacy_leftover_wait_budget(daemon, exact_attempts)
+        if drift_surface == "reconciler_budget":
+            forged_budget = json.loads(json.dumps(budget))
+            forged_budget["matching_attempts"][0]["reason"] = (
+                "inflight_process"
+            )
+            matching_digest = hashlib.sha256()
+            for identity in forged_budget["matching_attempts"]:
+                encoded = json.dumps(
+                    identity,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+                matching_digest.update(len(encoded).to_bytes(8, "big"))
+                matching_digest.update(encoded)
+            forged_budget["matching_attempts_digest"] = (
+                "sha256:" + matching_digest.hexdigest()
+            )
+            forged_budget.pop("observation_id")
+            forged_budget["observation_id"] = (
+                daemon._database_portal_evidence_digest(forged_budget)
+            )
+            attempt, _ = _block_with_legacy_leftover_wait_budget(
+                daemon,
+                exact_attempts,
+                budget_override=forged_budget,
+            )
+            outcomes = (
+                daemon.reconcile_blocked_leftover_wait_deferral_budget_recoveries()
+            )
+            assert len(outcomes) == 1
+            assert outcomes[0]["changed"] is False
+            assert outcomes[0]["reason"] == (
+                "leftover_wait_deferral_budget_recovery_not_admitted"
+            )
+        else:
+            attempt, budget = _block_with_legacy_leftover_wait_budget(
+                daemon,
+                exact_attempts,
+            )
+            legitimate = (
+                daemon._finalize_leftover_wait_deferral_budget_recovery_receipt(
+                    attempt=attempt,
+                    blocked_retry_budget=budget,
+                )
+            )
+            forged = json.loads(json.dumps(legitimate))
+            forged["exhausting_reasons"] = ["inflight_process"]
+            forged_body = dict(forged)
+            forged_body.pop("receipt_id")
+            forged["receipt_id"] = daemon._database_portal_evidence_digest(
+                forged_body
+            )
+
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="failed independent verification",
+            ):
+                daemon.recover_blocked_leftover_wait_deferral_budget_retry(
+                    attempt,
+                    recovery_evidence=forged,
+                )
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("leftover_wait_count", (17, 65))
+def test_typed_deferral_budget_paginates_past_leftover_wait_history(
+    tmp_path: Path,
+    leftover_wait_count: int,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:typed-history-pagination:{leftover_wait_count}",
+        max_task_attempts=3,
+    )
+    try:
+        task_cid = "task:cid:001"
+        reasons = [
+            "validation_project_dependency_preflight_failed",
+            "validation_project_dependency_preflight_failed",
+            *(["inflight_process"] * leftover_wait_count),
+            "validation_project_dependency_preflight_failed",
+        ]
+        attempts: list[DatabaseTaskAttempt] = []
+        connection = daemon._require_connection()
+        for index, reason in enumerate(reasons, start=1):
+            attempt = DatabaseTaskAttempt(
+                attempt_id=f"attempt:pagination:{index:03d}",
+                claim_id=f"claim:pagination:{index:03d}",
+                task_cid=task_cid,
+                task_alias="DQP-T001",
+                attempt_number=index,
+                owner_session_id=daemon.owner_session_id,
+                fencing_token=index,
+                fence_epoch=1,
+                lease_id=f"lease:pagination:{index:03d}",
+                committed_phase="failed",
+                status="failed",
+                started_at_ms=index,
+                finished_at_ms=index + 1,
+                revision=2,
+                body={},
+            )
+            typed = daemon._typed_deferral_receipt(attempt, reason=reason)
+            phase_body = {
+                "reason": reason,
+                "portal_retryable_failure": True,
+                "deferred": True,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "typed_deferral_slot_consumed": True,
+                "typed_deferral": typed,
+            }
+            connection.execute(
+                """
+                INSERT INTO database_task_attempts(
+                    attempt_id, claim_id, task_cid, task_alias,
+                    attempt_number, owner_session_id, fencing_token,
+                    fence_epoch, lease_id, committed_phase, status,
+                    started_at_ms, finished_at_ms, revision, body_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    attempt.attempt_id,
+                    attempt.claim_id,
+                    attempt.task_cid,
+                    attempt.task_alias,
+                    attempt.attempt_number,
+                    attempt.owner_session_id,
+                    attempt.fencing_token,
+                    attempt.fence_epoch,
+                    attempt.lease_id,
+                    attempt.committed_phase,
+                    attempt.status,
+                    attempt.started_at_ms,
+                    attempt.finished_at_ms,
+                    attempt.revision,
+                    "{}",
+                ],
+            )
+            connection.execute(
+                """
+                INSERT INTO attempt_phases(
+                    attempt_id, phase, committed_at_ms, fencing_token,
+                    fence_epoch, revision, body_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    attempt.attempt_id,
+                    "failed",
+                    attempt.finished_at_ms,
+                    attempt.fencing_token,
+                    attempt.fence_epoch,
+                    attempt.revision,
+                    json.dumps(phase_body, separators=(",", ":"), sort_keys=True),
+                ],
+            )
+            attempts.append(attempt)
+
+        budget = daemon._typed_deferral_budget_observation(attempts[-1])
+
+        assert budget is not None
+        assert budget["exhausted"] is True
+        assert budget["typed_deferral_count"] == 3
+        assert budget["verified_typed_deferral_count"] == 3
+        assert budget["verified_count_complete"] is True
+        assert budget["typed_deferral_count_is_lower_bound"] is False
+        assert len(budget["matching_attempts"]) == 3
     finally:
         daemon.close()
 
