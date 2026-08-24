@@ -1895,13 +1895,24 @@ class EAAEFTypedOwnerCommandClient:
             raise EAAEFBootstrapRuntimeGatewayError(
                 "typed-owner EAAEF request is outside the exact wire vocabulary"
             )
-        response = self._owner_connection._request(  # noqa: SLF001
-            operation,
-            envelope=envelope.to_dict(),
-            merge_admission_cid=self._admission_cid,
-            operational_capability_cid=self._operational_capability_cid,
-        )
-        receipt = response.get("receipt")
+        if operation == EAAEF_TYPED_OWNER_COMMAND_SUBMIT_OPERATION:
+            receipt = self._owner_connection.submit_eaaef_authorized_operation(
+                envelope,
+                merge_admission_cid=self._admission_cid,
+                operational_capability_cid=(
+                    self._operational_capability_cid
+                ),
+            )
+        else:
+            receipt = (
+                self._owner_connection.lookup_eaaef_authorized_operation_receipt(
+                    envelope,
+                    merge_admission_cid=self._admission_cid,
+                    operational_capability_cid=(
+                        self._operational_capability_cid
+                    ),
+                )
+            )
         if receipt is None and not receipt_required:
             return None
         if not isinstance(receipt, Mapping) or set(receipt) != set(

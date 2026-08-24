@@ -165,13 +165,34 @@ _STATUS_OWNER_PLAN_READS: Final[frozenset[str]] = frozenset(
         "max_event_watermark",
     }
 )
-_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
+_EAAEF_COMMAND_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "eaaef.command.submit",
+        "eaaef.command.lookup",
+    }
+)
+_EAAEF_PLAN_R2_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "plan_r2.prepare",
+        "plan_r2.apply",
+        "plan_r2.observe",
+    }
+)
+_EVENT_WAIT_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
         "event.wait",
         "event.wait.cancel",
         "event.wait.clear_cancellation",
     }
 )
+_ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        *_EVENT_WAIT_SERVICE_OPERATIONS,
+        *_EAAEF_COMMAND_SERVICE_OPERATIONS,
+        *_EAAEF_PLAN_R2_SERVICE_OPERATIONS,
+    }
+)
+_RLOCK_TYPE: Final = type(threading.RLock())
 # Exact observed operation surfaces for the bounded first-tranche child.
 # These are capability allowlists, not convenience catalogs: adding a named
 # query or mutation requires an explicit owner-side review and focused test.
@@ -228,7 +249,7 @@ SUPERVISOR_EVENT_CHILD_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
         "casf_reset_subscription_failures",
         "casf_insert_event_acknowledgement",
         "casf_advance_consumer_cursor",
-        *_SERVICE_OPERATIONS,
+        *_EVENT_WAIT_SERVICE_OPERATIONS,
     }
 )
 
@@ -1881,6 +1902,7 @@ class TypedStateOwnerGateway:
         identity: Mapping[str, Any],
         catalog: Mapping[str, OwnerOperation] | None = None,
         owner_liveness_probe: Any | None = None,
+        transaction_lock: Any | None = None,
     ) -> None:
         self._connection = connection
         self.socket_path = Path(socket_path)
@@ -1896,7 +1918,16 @@ class TypedStateOwnerGateway:
         self._listener: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
-        self._transaction_lock = threading.Lock()
+        selected_transaction_lock = (
+            threading.RLock()
+            if transaction_lock is None
+            else transaction_lock
+        )
+        if type(selected_transaction_lock) is not _RLOCK_TYPE:
+            raise TypedStateOwnerProtocolError(
+                "owner transaction boundary must be one exact reentrant lock"
+            )
+        self._transaction_lock = selected_transaction_lock
         self._clients: set[threading.Thread] = set()
         self._channels: set[socket.socket] = set()
         self._clients_lock = threading.Lock()
@@ -1914,6 +1945,101 @@ class TypedStateOwnerGateway:
         self._event_wait_clear_handler: Any | None = None
         self._commit_observer: Any | None = None
         self._last_observer_error_type = ""
+        self._eaaef_service_bind_lock = threading.Lock()
+        self._eaaef_typed_owner_command_service: Any | None = None
+        self._eaaef_plan_r2_owner_service: Any | None = None
+
+    def _require_live_server_binding(self) -> None:
+        thread = self._thread
+        if (
+            self._listener is None
+            or self._stop.is_set()
+            or thread is None
+            or not thread.is_alive()
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "EAAEF binding requires a live server-owned gateway"
+            )
+
+    def _bind_eaaef_typed_owner_command_service_from_server(
+        self,
+        *,
+        admission: Any,
+    ) -> Any:
+        """Monotonically bind EAAEF commands to this owner's resources.
+
+        The caller cannot provide a connection or transaction lock.  Both are
+        selected here by the one object that owns them, so the adapter cannot
+        accidentally establish a second DuckDB writer boundary.
+        """
+
+        from .eaaef_typed_owner_service import (
+            EAAEFTypedOwnerServiceError,
+            _bind_eaaef_typed_owner_command_service_from_gateway,
+        )
+
+        with self._transaction_lock:
+            with self._eaaef_service_bind_lock:
+                self._require_live_server_binding()
+                if self._eaaef_typed_owner_command_service is not None:
+                    raise EAAEFTypedOwnerServiceError(
+                        "typed owner EAAEF command service is already bound"
+                    )
+                service = _bind_eaaef_typed_owner_command_service_from_gateway(
+                    owner_gateway=self,
+                    admission=admission,
+                )
+                self._eaaef_typed_owner_command_service = service
+                return service
+
+    def _bind_eaaef_plan_r2_owner_service_from_server(
+        self,
+        *,
+        admission: Any,
+        plan_r2_operational_capability: Mapping[str, Any],
+        authorization: Mapping[str, Any],
+        trusted_capability_reviewer_dids: Sequence[str],
+        trusted_operator_dids: Sequence[str],
+        trusted_security_reviewer_dids: Sequence[str],
+    ) -> Any:
+        """Monotonically bind Plan-R2 to the same connection and lock."""
+
+        from .eaaef_plan_r2_owner_service import (
+            EAAEFPlanR2OwnerServiceError,
+            _bind_eaaef_plan_r2_owner_service_from_gateway,
+        )
+
+        with self._transaction_lock:
+            with self._eaaef_service_bind_lock:
+                self._require_live_server_binding()
+                bootstrap_service = self._eaaef_typed_owner_command_service
+                if bootstrap_service is None:
+                    raise EAAEFPlanR2OwnerServiceError(
+                        "Plan-R2 requires the already-bound R1 owner service"
+                    )
+                bootstrap_service._require_open()  # noqa: SLF001
+                if self._eaaef_plan_r2_owner_service is not None:
+                    raise EAAEFPlanR2OwnerServiceError(
+                        "typed owner Plan-R2 service is already bound"
+                    )
+                service = _bind_eaaef_plan_r2_owner_service_from_gateway(
+                    owner_gateway=self,
+                    bootstrap_service=bootstrap_service,
+                    admission=admission,
+                    plan_r2_operational_capability=(
+                        plan_r2_operational_capability
+                    ),
+                    authorization=authorization,
+                    trusted_capability_reviewer_dids=(
+                        trusted_capability_reviewer_dids
+                    ),
+                    trusted_operator_dids=trusted_operator_dids,
+                    trusted_security_reviewer_dids=(
+                        trusted_security_reviewer_dids
+                    ),
+                )
+                self._eaaef_plan_r2_owner_service = service
+                return service
 
     def configure_status_bootstrap(self) -> str:
         """Create the owner-local credential for peer-bound status sessions.
@@ -2136,7 +2262,9 @@ class TypedStateOwnerGateway:
 
         operations = frozenset(str(item) for item in allowed_operations)
         commands = frozenset(str(item) for item in allowed_command_operations)
-        if not operations.issubset(set(self.catalog) | set(_SERVICE_OPERATIONS)):
+        if not operations.issubset(
+            set(self.catalog) | set(_ISSUABLE_SERVICE_OPERATIONS)
+        ):
             raise TypedStateOwnerAuthorizationError(
                 "grant contains an operation absent from the server catalog"
             )
@@ -2263,7 +2391,15 @@ class TypedStateOwnerGateway:
         )
         self._thread.start()
 
-    def stop(self) -> None:
+    def _quiesce(self) -> None:
+        """Stop admission and close channels without taking the owner lock.
+
+        A client transaction retains the owner-wide lock between ``begin``
+        and ``commit``/``rollback``.  Closing its channel is therefore the
+        only safe way for the outer server to make an abandoned transaction
+        unwind before that server waits for the same lock.
+        """
+
         self._stop.set()
         listener = self._listener
         self._listener = None
@@ -2272,10 +2408,13 @@ class TypedStateOwnerGateway:
                 listener.close()
             except OSError:
                 pass
-        if self._thread is not None:
-            self._thread.join(timeout=3.0)
+        accept_thread = self._thread
+        if (
+            accept_thread is not None
+            and accept_thread is not threading.current_thread()
+        ):
+            accept_thread.join(timeout=3.0)
         with self._clients_lock:
-            clients = tuple(self._clients)
             channels = tuple(self._channels)
         for channel in channels:
             try:
@@ -2286,8 +2425,39 @@ class TypedStateOwnerGateway:
                 channel.close()
             except OSError:
                 pass
+        if accept_thread is not None and accept_thread.is_alive():
+            raise TypedStateOwnerProtocolError(
+                "typed owner accept loop did not quiesce"
+            )
+
+    def stop(self) -> None:
+        self._quiesce()
+        with self._clients_lock:
+            clients = tuple(self._clients)
+        deadline = time.monotonic() + 5.0
         for thread in clients:
-            thread.join(timeout=1.0)
+            if thread is threading.current_thread():
+                continue
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        with self._clients_lock:
+            live_clients = tuple(
+                thread for thread in self._clients if thread.is_alive()
+            )
+        if live_clients:
+            raise TypedStateOwnerProtocolError(
+                "typed owner clients did not quiesce before teardown"
+            )
+        with self._transaction_lock:
+            with self._eaaef_service_bind_lock:
+                plan_service = self._eaaef_plan_r2_owner_service
+                command_service = self._eaaef_typed_owner_command_service
+                if plan_service is not None:
+                    plan_service.close()
+                if command_service is not None:
+                    command_service.close()
+                self._eaaef_plan_r2_owner_service = None
+                self._eaaef_typed_owner_command_service = None
+        self._thread = None
         try:
             self.socket_path.unlink()
         except FileNotFoundError:
@@ -2541,6 +2711,10 @@ class TypedStateOwnerGateway:
                         if not self._transaction_lock.acquire(timeout=30.0):
                             raise TypedStateOwnerProtocolError("owner transaction admission timed out")
                         try:
+                            self._require_active_grant(
+                                grant,
+                                peer_identity=peer_identity,
+                            )
                             self._authorize_command(command, client_id, grant=grant)
                             self._connection.execute("BEGIN TRANSACTION")
                         except BaseException:
@@ -2603,6 +2777,10 @@ class TypedStateOwnerGateway:
                             result = self._execute(operation, parameters)
                         else:
                             with self._transaction_lock:
+                                self._require_active_grant(
+                                    grant,
+                                    peer_identity=peer_identity,
+                                )
                                 result = self._execute(operation, parameters)
                         response = result
                     elif action == "wait_events":
@@ -2679,6 +2857,201 @@ class TypedStateOwnerGateway:
                             )
                         handler(consumer_id, grant)
                         response = {"ok": True}
+                    elif action in _EAAEF_COMMAND_SERVICE_OPERATIONS:
+                        eaaef_request_fields = {
+                            "schema",
+                            "action",
+                            "request_id",
+                            "envelope",
+                            "merge_admission_cid",
+                            "operational_capability_cid",
+                        }
+                        if set(request) != eaaef_request_fields:
+                            raise TypedStateOwnerProtocolError(
+                                f"{action} request must contain the exact "
+                                "normative fields"
+                            )
+                        if request.get("schema") != TYPED_STATE_OWNER_SCHEMA:
+                            raise TypedStateOwnerProtocolError(
+                                "EAAEF request schema differs"
+                            )
+                        if transaction_active:
+                            raise TypedStateOwnerAuthorizationError(
+                                "EAAEF service is unavailable inside a transaction"
+                            )
+                        if action not in grant.allowed_operations:
+                            raise TypedStateOwnerAuthorizationError(
+                                "EAAEF service is outside the client grant"
+                            )
+                        with self._eaaef_service_bind_lock:
+                            service = self._eaaef_typed_owner_command_service
+                        if service is None:
+                            raise TypedStateOwnerProtocolError(
+                                "server-owned EAAEF service is unavailable"
+                            )
+                        merge_admission_cid = request.get(
+                            "merge_admission_cid"
+                        )
+                        operational_capability_cid = request.get(
+                            "operational_capability_cid"
+                        )
+                        if (
+                            type(merge_admission_cid) is not str
+                            or merge_admission_cid != service.admission_cid
+                            or type(operational_capability_cid) is not str
+                            or operational_capability_cid
+                            != service.operational_capability_cid
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "EAAEF request authority differs from the bound service"
+                            )
+                        from .quack_command_authorization import (
+                            AuthorizedStateCommand,
+                        )
+
+                        envelope = AuthorizedStateCommand.from_dict(
+                            request.get("envelope") or {}
+                        )
+                        with self._transaction_lock:
+                            self._require_active_grant(
+                                grant,
+                                peer_identity=peer_identity,
+                            )
+                            if self._stop.is_set():
+                                raise TypedStateOwnerAuthorizationError(
+                                    "EAAEF service is stopping"
+                                )
+                            if action == "eaaef.command.submit":
+                                receipt = service.submit_authorized_operation(
+                                    envelope
+                                )
+                            else:
+                                receipt = (
+                                    service.lookup_authorized_operation_receipt(
+                                        envelope
+                                    )
+                                )
+                        response = {
+                            "ok": True,
+                            "receipt": (
+                                None if receipt is None else dict(receipt)
+                            ),
+                        }
+                    elif action in _EAAEF_PLAN_R2_SERVICE_OPERATIONS:
+                        plan_request_fields = {
+                            "schema",
+                            "action",
+                            "request_id",
+                            "remote_capability_cid",
+                            "plan_r2_operational_capability_cid",
+                            "plan_r2_authorization_cid",
+                            "envelope",
+                            "operation_payload",
+                        }
+                        if set(request) != plan_request_fields:
+                            raise TypedStateOwnerProtocolError(
+                                f"{action} request must contain the exact "
+                                "normative fields"
+                            )
+                        if request.get("schema") != TYPED_STATE_OWNER_SCHEMA:
+                            raise TypedStateOwnerProtocolError(
+                                "Plan-R2 request schema differs"
+                            )
+                        if transaction_active:
+                            raise TypedStateOwnerAuthorizationError(
+                                "Plan-R2 service is unavailable inside a transaction"
+                            )
+                        if action not in grant.allowed_operations:
+                            raise TypedStateOwnerAuthorizationError(
+                                "Plan-R2 service is outside the client grant"
+                            )
+                        with self._eaaef_service_bind_lock:
+                            plan_service = self._eaaef_plan_r2_owner_service
+                        if plan_service is None:
+                            raise TypedStateOwnerProtocolError(
+                                "server-owned Plan-R2 service is unavailable"
+                            )
+                        request_size = len(
+                            json.dumps(
+                                request,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                                ensure_ascii=False,
+                            ).encode("utf-8")
+                        )
+                        if request_size > plan_service.maximum_request_bytes:
+                            raise TypedStateOwnerProtocolError(
+                                "Plan-R2 request exceeds its signed byte bound"
+                            )
+                        authority_fields = {
+                            "remote_capability_cid": (
+                                plan_service.remote_capability_cid
+                            ),
+                            "plan_r2_operational_capability_cid": (
+                                plan_service.operational_capability_cid
+                            ),
+                            "plan_r2_authorization_cid": (
+                                plan_service.authorization_cid
+                            ),
+                        }
+                        if any(
+                            type(request.get(name)) is not str
+                            or request.get(name) != expected
+                            for name, expected in authority_fields.items()
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "Plan-R2 request authority differs from the bound service"
+                            )
+                        operation_payload = request.get("operation_payload")
+                        if (
+                            type(operation_payload) is not dict
+                            or operation_payload.get("operation") != action
+                        ):
+                            raise TypedStateOwnerProtocolError(
+                                "Plan-R2 action differs from its operation payload"
+                            )
+                        from .quack_command_authorization import (
+                            AuthorizedStateCommand,
+                        )
+
+                        plan_envelope = AuthorizedStateCommand.from_dict(
+                            request.get("envelope") or {}
+                        )
+                        with self._transaction_lock:
+                            self._require_active_grant(
+                                grant,
+                                peer_identity=peer_identity,
+                            )
+                            if self._stop.is_set():
+                                raise TypedStateOwnerAuthorizationError(
+                                    "Plan-R2 service is stopping"
+                                )
+                            plan_result = (
+                                plan_service.submit_authorized_plan_r2_operation(
+                                    plan_envelope,
+                                    operation_payload,
+                                )
+                            )
+                        response = {
+                            "ok": True,
+                            "result": dict(plan_result),
+                        }
+                        response_size = len(
+                            json.dumps(
+                                {
+                                    "schema": TYPED_STATE_OWNER_SCHEMA,
+                                    "request_id": request_id,
+                                    **response,
+                                },
+                                sort_keys=True,
+                                separators=(",", ":"),
+                                ensure_ascii=False,
+                            ).encode("utf-8")
+                        )
+                        if response_size > plan_service.maximum_response_bytes:
+                            raise TypedStateOwnerProtocolError(
+                                "Plan-R2 response exceeds its signed byte bound"
+                            )
                     elif action in {"commit", "rollback"}:
                         self._reject_unknown(
                             request,
@@ -2700,26 +3073,29 @@ class TypedStateOwnerGateway:
                             self._connection.commit()
                             self._committed_transactions += 1
                             observer = self._commit_observer
-                            if callable(observer):
-                                try:
-                                    observer(command, tuple(mutation_manifest))
-                                except BaseException as observer_error:
-                                    # The authoritative transaction is already
-                                    # durable.  Notification is an optimization;
-                                    # backlog replay remains authoritative and a
-                                    # post-commit callback must not manufacture an
-                                    # ambiguous command failure for the client.
-                                    self._last_observer_error_type = type(
-                                        observer_error
-                                    ).__name__
+                            committed_command = command
+                            committed_manifest = tuple(mutation_manifest)
                         else:
                             self._connection.rollback()
+                            observer = None
+                            committed_command = None
+                            committed_manifest = ()
                         transaction_active = False
                         command = None
                         mutation_manifest = []
                         semantic_authority = {}
                         semantic_authority_captured = False
                         self._transaction_lock.release()
+                        if callable(observer):
+                            try:
+                                # Notification is downstream of the durable
+                                # transaction and must never retain the one
+                                # owner-wide mutation boundary.
+                                observer(committed_command, committed_manifest)
+                            except BaseException as observer_error:
+                                self._last_observer_error_type = type(
+                                    observer_error
+                                ).__name__
                         response = {"ok": True}
                     elif action == "close":
                         self._reject_unknown(
@@ -5501,6 +5877,115 @@ class TypedStateOwnerConnection:
             consumer_id=str(consumer_id or "").strip(),
         )
 
+    def submit_eaaef_authorized_operation(
+        self,
+        envelope: Any,
+        *,
+        merge_admission_cid: str,
+        operational_capability_cid: str,
+    ) -> Mapping[str, Any]:
+        """Submit one exact signed EAAEF envelope over the owner socket."""
+
+        from .quack_command_authorization import AuthorizedStateCommand
+
+        if type(envelope) is not AuthorizedStateCommand:
+            raise TypedStateOwnerProtocolError(
+                "EAAEF submission requires exact AuthorizedStateCommand@1"
+            )
+        response = self._request(
+            "eaaef.command.submit",
+            envelope=envelope.to_dict(),
+            merge_admission_cid=str(merge_admission_cid),
+            operational_capability_cid=str(operational_capability_cid),
+        )
+        receipt = response.get("receipt")
+        if not isinstance(receipt, Mapping):
+            raise TypedStateOwnerProtocolError(
+                "EAAEF submission returned no typed receipt"
+            )
+        return MappingProxyType(dict(receipt))
+
+    def lookup_eaaef_authorized_operation_receipt(
+        self,
+        envelope: Any,
+        *,
+        merge_admission_cid: str,
+        operational_capability_cid: str,
+    ) -> Mapping[str, Any] | None:
+        """Look up one durable EAAEF receipt over the owner socket."""
+
+        from .quack_command_authorization import AuthorizedStateCommand
+
+        if type(envelope) is not AuthorizedStateCommand:
+            raise TypedStateOwnerProtocolError(
+                "EAAEF lookup requires exact AuthorizedStateCommand@1"
+            )
+        response = self._request(
+            "eaaef.command.lookup",
+            envelope=envelope.to_dict(),
+            merge_admission_cid=str(merge_admission_cid),
+            operational_capability_cid=str(operational_capability_cid),
+        )
+        receipt = response.get("receipt")
+        if receipt is None:
+            return None
+        if not isinstance(receipt, Mapping):
+            raise TypedStateOwnerProtocolError(
+                "EAAEF lookup returned a malformed receipt"
+            )
+        return MappingProxyType(dict(receipt))
+
+    def submit_eaaef_plan_r2_operation(
+        self,
+        envelope: Any,
+        operation_payload: Mapping[str, Any],
+        *,
+        remote_capability_cid: str,
+        plan_r2_operational_capability_cid: str,
+        plan_r2_authorization_cid: str,
+    ) -> Mapping[str, Any]:
+        """Submit one of the exact three Plan-R2 operations to the owner."""
+
+        from .quack_command_authorization import AuthorizedStateCommand
+
+        if type(envelope) is not AuthorizedStateCommand:
+            raise TypedStateOwnerProtocolError(
+                "Plan-R2 submission requires exact AuthorizedStateCommand@1"
+            )
+        if type(operation_payload) is not dict:
+            raise TypedStateOwnerProtocolError(
+                "Plan-R2 operation payload must be one exact object"
+            )
+        payload = dict(operation_payload)
+        operation = payload.get("operation")
+        if (
+            type(operation) is not str
+            or operation not in _EAAEF_PLAN_R2_SERVICE_OPERATIONS
+        ):
+            raise TypedStateOwnerProtocolError(
+                "Plan-R2 submission is outside the exact operation vocabulary"
+            )
+        response = self._request(
+            operation,
+            remote_capability_cid=str(remote_capability_cid),
+            plan_r2_operational_capability_cid=str(
+                plan_r2_operational_capability_cid
+            ),
+            plan_r2_authorization_cid=str(plan_r2_authorization_cid),
+            envelope=envelope.to_dict(),
+            operation_payload=payload,
+        )
+        if set(response) != {"schema", "request_id", "ok", "result"}:
+            raise TypedStateOwnerProtocolError(
+                "Plan-R2 response does not use the exact wire fields"
+            )
+        result = response.get("result")
+        if not isinstance(result, Mapping):
+            raise TypedStateOwnerProtocolError(
+                "Plan-R2 submission returned no typed result"
+            )
+        return MappingProxyType(dict(result))
+
     def prepare_command(self, command: StateCommand) -> None:
         if not isinstance(command, StateCommand):
             raise TypedStateOwnerProtocolError("prepared command must be typed")
@@ -5597,6 +6082,8 @@ class TypedStateOwnerConnection:
                 "columns",
                 "rows",
                 "rowcount",
+                "receipt",
+                "result",
                 "error_code",
                 "error_type",
             }

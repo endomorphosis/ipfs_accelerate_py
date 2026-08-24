@@ -650,6 +650,7 @@ def _envelope(
     context: dict[str, object],
     *,
     serial: int,
+    expected_revision: int = 1,
 ) -> object:
     operation = str(intent["operation"])
     arguments = dict(intent["arguments"])
@@ -686,7 +687,7 @@ def _envelope(
         store_id=str(capability["store_id"]),
         session_id=lease_id,
         expected_generation=int(capability["owner_generation"]),
-        expected_revision=1,
+        expected_revision=expected_revision,
         fence_epoch=int(capability["fence_epoch"]),
         idempotency_key=idempotency_key,
         parameters=parameters,

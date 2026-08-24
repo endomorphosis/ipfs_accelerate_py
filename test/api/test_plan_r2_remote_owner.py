@@ -89,9 +89,19 @@ def _task(token: str, alias: str, ordinal: int, status: str) -> dict[str, object
     }
 
 
-def _signed_authority(now_ms: int) -> dict[str, object]:
+def _signed_authority(
+    now_ms: int,
+    *,
+    owner_bindings: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    bindings = dict(owner_bindings or {})
+    successor_plan_cid = str(
+        bindings.get("successor_plan_cid") or _sha("8")
+    )
     completed = _task("a", "EAAEF-000", 1, "accepted")
     frontier = _task("b", "EAAEF-001", 2, "todo")
+    completed["plan_cid"] = successor_plan_cid
+    frontier["plan_cid"] = successor_plan_cid
     protected = {
         "task_cid": completed["task_cid"],
         "status": completed["status"],
@@ -100,31 +110,60 @@ def _signed_authority(now_ms: int) -> dict[str, object]:
         "task_row_cid": r2._cid(completed),
     }
     owner_key = Ed25519PrivateKey.generate()
-    owner_did = ed25519_did_key(owner_key.public_key())
+    owner_did = str(
+        bindings.get("owner_principal_did")
+        or ed25519_did_key(owner_key.public_key())
+    )
     statement = r2.prepare_plan_r2_transition_authorization(
-        board_namespace="external-agent-autonomous-execution-fabric-v1",
-        source_head="1" * 40,
-        source_tree="2" * 40,
-        source_generation_cid=_sha("3"),
-        bootstrap_admission_cid=_sha("4"),
-        r1_launch_capsule_cid=_sha("5"),
-        quack_owner_qualification_cid=_sha("6"),
-        quack_command_fabric_qualification_cid=_sha("7"),
+        board_namespace=str(
+            bindings.get("board_namespace")
+            or "external-agent-autonomous-execution-fabric-v1"
+        ),
+        source_head=str(bindings.get("source_head") or "1" * 40),
+        source_tree=str(bindings.get("source_tree") or "2" * 40),
+        source_generation_cid=str(
+            bindings.get("source_generation_cid") or _sha("3")
+        ),
+        bootstrap_admission_cid=str(
+            bindings.get("bootstrap_admission_cid") or _sha("4")
+        ),
+        r1_launch_capsule_cid=str(
+            bindings.get("r1_launch_capsule_cid") or _sha("5")
+        ),
+        quack_owner_qualification_cid=str(
+            bindings.get("quack_owner_qualification_cid") or _sha("6")
+        ),
+        quack_command_fabric_qualification_cid=str(
+            bindings.get("quack_command_fabric_qualification_cid")
+            or _sha("7")
+        ),
         owner_principal_did=owner_did,
-        shard_id="eaaef-control-shard",
-        store_id="eaaef-control-run-v5",
-        owner_generation=3,
-        expected_epoch=4,
-        fencing_token=5,
+        shard_id=str(
+            bindings.get("shard_id") or "eaaef-control-shard"
+        ),
+        store_id=str(
+            bindings.get("store_id") or "eaaef-control-run-v5"
+        ),
+        owner_generation=int(bindings.get("owner_generation") or 3),
+        expected_epoch=int(bindings.get("expected_epoch") or 4),
+        fencing_token=int(bindings.get("fencing_token") or 5),
         lease_id="eaaef-plan-r2-lease",
-        expected_version=9,
-        expected_active_plan_cid=_sha("c"),
-        expected_active_plan_root_cid=_sha("d"),
-        expected_active_plan_revision=1,
-        expected_event_cursor="event-cursor-9",
+        expected_version=int(bindings.get("expected_version", 9)),
+        expected_active_plan_cid=str(
+            bindings.get("expected_active_plan_cid") or _sha("c")
+        ),
+        expected_active_plan_root_cid=str(
+            bindings.get("expected_active_plan_root_cid") or _sha("d")
+        ),
+        expected_active_plan_revision=int(
+            bindings.get("expected_active_plan_revision") or 1
+        ),
+        expected_event_cursor=str(
+            bindings.get("expected_event_cursor") or "event-cursor-9"
+        ),
         expected_semantic_root_cid=_sha("e"),
         new_plan={
-            "plan_cid": _sha("8"),
+            "plan_cid": successor_plan_cid,
             "plan_alias": "EAAEF-PLAN-R2",
             "plan_root_cid": _sha("f"),
             "semantic_root_cid": _sha("0"),
@@ -235,8 +274,15 @@ def _signed_plan_capability(
     return value, reviewer_did
 
 
-def _admitted_authority(now_ms: int) -> dict[str, object]:
-    authority = _signed_authority(now_ms)
+def _admitted_authority(
+    now_ms: int,
+    *,
+    owner_bindings: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    authority = _signed_authority(
+        now_ms,
+        owner_bindings=owner_bindings,
+    )
     authorization = authority["authorization"]
     assert isinstance(authorization, Mapping)
     plan_capability, plan_reviewer_did = _signed_plan_capability(authorization, now_ms)

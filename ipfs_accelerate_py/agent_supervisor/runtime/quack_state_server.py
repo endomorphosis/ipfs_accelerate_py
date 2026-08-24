@@ -1329,6 +1329,16 @@ class ExclusiveOwnerLease:
     def marker(self) -> OwnerMarker | None:
         return self._marker
 
+    @property
+    def held(self) -> bool:
+        """Whether this object still owns the live OS lease and fence."""
+
+        return (
+            self._handle is not None
+            and self._marker is not None
+            and bool(self._fence_token)
+        )
+
     def _read_marker(self) -> OwnerMarker | None:
         payload = _read_json(self.marker_path)
         if payload is None:
@@ -1978,6 +1988,9 @@ class QuackStateServer:
     _vault: TokenVault | None = field(default=None, init=False)
     _capability: QuackCapabilityReport | None = field(default=None, init=False)
     _migration_report: MigrationRunReport | None = field(default=None, init=False)
+    _lifecycle_gate: threading.RLock = field(
+        default_factory=threading.RLock, init=False, repr=False
+    )
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _bound_port: int = field(default=0, init=False)
     _logs: list[str] = field(default_factory=list, init=False, repr=False)
@@ -2621,6 +2634,74 @@ class QuackStateServer:
             peer_pid=peer_pid,
             ttl_seconds=ttl_seconds,
         )
+
+    def _require_eaaef_owner_gateway(self) -> TypedStateOwnerGateway:
+        identity = self._identity
+        owner = self._owner
+        gateway = self._command_gateway
+        marker = None if owner is None else owner.marker
+        if (
+            self._lifecycle is not ServerLifecycle.READY
+            or identity is None
+            or self._connection is None
+            or owner is None
+            or not owner.held
+            or marker is None
+            or not owner.fence_token
+            or marker.fence_token != owner.fence_token
+            or marker.server_id != identity.server_id
+            or marker.database_path != str(self.config.database_path)
+            or gateway is None
+            or gateway._connection is not self._connection  # noqa: SLF001
+            or dict(gateway.identity) != identity.to_dict()
+            or gateway.capability().get("available") is not True
+        ):
+            raise QuackStateServerNotRunningError(
+                "EAAEF binding requires the READY exclusive Quack state owner"
+            )
+        return gateway
+
+    def bind_eaaef_typed_owner_command_service(
+        self,
+        *,
+        admission: Any,
+    ) -> Any:
+        """Bind R1 to this exact live owner without exporting owner resources."""
+
+        with self._lock:
+            gateway = self._require_eaaef_owner_gateway()
+            return gateway._bind_eaaef_typed_owner_command_service_from_server(  # noqa: SLF001
+                admission=admission,
+            )
+
+    def bind_eaaef_plan_r2_owner_service(
+        self,
+        *,
+        admission: Any,
+        plan_r2_operational_capability: Mapping[str, Any],
+        authorization: Mapping[str, Any],
+        trusted_capability_reviewer_dids: Sequence[str],
+        trusted_operator_dids: Sequence[str],
+        trusted_security_reviewer_dids: Sequence[str],
+    ) -> Any:
+        """Bind Plan-R2 only after R1 on the same live owner and authority."""
+
+        with self._lock:
+            gateway = self._require_eaaef_owner_gateway()
+            return gateway._bind_eaaef_plan_r2_owner_service_from_server(  # noqa: SLF001
+                admission=admission,
+                plan_r2_operational_capability=(
+                    plan_r2_operational_capability
+                ),
+                authorization=authorization,
+                trusted_capability_reviewer_dids=(
+                    trusted_capability_reviewer_dids
+                ),
+                trusted_operator_dids=trusted_operator_dids,
+                trusted_security_reviewer_dids=(
+                    trusted_security_reviewer_dids
+                ),
+            )
 
     def bind_typed_status_scope(self) -> None:
         """Bind the persisted status bootstrap to the admitted live slice."""
@@ -4848,6 +4929,10 @@ class QuackStateServer:
     def start(self) -> StateServerIdentity:
         """Acquire exclusive ownership, migrate, serve, and publish identity."""
 
+        with self._lifecycle_gate:
+            return self._start_under_lifecycle_gate()
+
+    def _start_under_lifecycle_gate(self) -> StateServerIdentity:
         with self._lock:
             if self._lifecycle in {ServerLifecycle.READY, ServerLifecycle.STARTING}:
                 if self._identity is not None:
@@ -4942,7 +5027,7 @@ class QuackStateServer:
                 secret_handle = self.config.resolved_secret_handle(server_id, generation)
                 assert self._vault is not None
                 self._vault.mint(secret_handle=secret_handle, generation=1)
-                token = self._vault.resolve(secret_handle)
+                self._vault.resolve(secret_handle)
 
                 identity = StateServerIdentity(
                     server_id=server_id,
@@ -4999,6 +5084,7 @@ class QuackStateServer:
                     store_id=identity.store_id,
                     identity=identity.to_dict(),
                     owner_liveness_probe=self.owner_liveness_probe,
+                    transaction_lock=self._lock,
                 )
                 status_bootstrap_token = gateway.configure_status_bootstrap()
                 gateway.start()
@@ -5235,6 +5321,27 @@ class QuackStateServer:
     def stop(self, *, fence_token: str | None = None) -> dict[str, Any]:
         """Stop through the fenced control path and release exclusive ownership."""
 
+        with self._lifecycle_gate:
+            return self._stop_under_lifecycle_gate(fence_token=fence_token)
+
+    def _stop_under_lifecycle_gate(
+        self,
+        *,
+        fence_token: str | None = None,
+    ) -> dict[str, Any]:
+        # A typed client can retain this server's exact RLock across a
+        # transaction.  Quiesce and join every gateway client before waiting
+        # for that lock, so an abandoned transaction reaches its rollback
+        # finally block and queued clients cannot deadlock locked teardown.
+        gateway_stopped = self._command_gateway
+        if gateway_stopped is not None:
+            try:
+                gateway_stopped.stop()
+            except Exception as exc:
+                raise QuackStateServerControlError(
+                    "typed command gateway could not quiesce before locked stop"
+                ) from exc
+
         # Stop the pump before taking the lifecycle lock.  It may be finishing
         # a typed transaction whose post-commit observer briefly needs that
         # lock; joining while holding it would deadlock shutdown.
@@ -5282,16 +5389,18 @@ class QuackStateServer:
                     )
 
             transport_stop_error: Exception | None = None
+            if (
+                self._command_gateway is not None
+                and self._command_gateway is not gateway_stopped
+            ):
+                raise QuackStateServerControlError(
+                    "typed command gateway changed inside the lifecycle gate"
+                )
+            self._command_gateway = None
             try:
-                if self._command_gateway is not None:
-                    self._command_gateway.stop()
-                    self._command_gateway = None
-                try:
-                    self.typed_command_token_path().unlink()
-                except FileNotFoundError:
-                    pass
-            except Exception as exc:
-                self._log(f"typed command gateway stop warning: {type(exc).__name__}")
+                self.typed_command_token_path().unlink()
+            except FileNotFoundError:
+                pass
 
             try:
                 self._stop_transport_connection(observe_closed=True)
