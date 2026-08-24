@@ -133,6 +133,44 @@ def _database_projection_daemon(
     return daemon, paths, dict(binding)
 
 
+def _quarantine_invalid_authority_projection(
+    *,
+    queue: MergeQueue,
+    tmp_path: Path,
+    candidate: str,
+) -> MergeRequest:
+    request = queue.enqueue(
+        branch_name="implementation/side",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(
+                tmp_path / "attempts" / "x" / "task-projection.md"
+            ),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "manual_completion_authority_revocation_generation": 0,
+            "manual_completion_authority_context_id": "baguqeera-invalid",
+            "task": {
+                "task_id": "REF-040",
+                "outputs": ["base.txt"],
+            },
+            "changed_submodule_paths": [],
+        },
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None
+    queue.quarantine(
+        claimed,
+        reason="cross_board_manual_completion_authority_metadata_invalid",
+    )
+    return request
+
+
 def test_queue_deduplicates_canonical_task_and_commit_across_lanes(tmp_path: Path) -> None:
     queue = MergeQueue(tmp_path / "queue")
     first = queue.enqueue(
@@ -1279,32 +1317,10 @@ def test_invalid_authority_metadata_quarantine_settles_when_outputs_on_target(
         target_branch="main",
         require_target_binding=True,
     )
-    request = queue.enqueue(
-        branch_name="implementation/side",
-        task_id="REF-040",
-        canonical_task_id="task:cid:ref-040",
-        commit_sha=candidate,
-        metadata={
-            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
-            "todo_path": str(tmp_path / "attempts" / "x" / "task-projection.md"),
-            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
-            "manual_completion_authority_task_ids": [],
-            "manual_completion_authority_required_task_ids": [],
-            "manual_completion_authority_epoch_id": "",
-            "manual_completion_authority_revocation_generation": 0,
-            "manual_completion_authority_context_id": "baguqeera-invalid",
-            "task": {
-                "task_id": "REF-040",
-                "outputs": ["base.txt"],
-            },
-            "changed_submodule_paths": [],
-        },
-    )
-    claimed = queue.dequeue(consumer_id="merge-train:test")
-    assert claimed is not None
-    queue.quarantine(
-        claimed,
-        reason="cross_board_manual_completion_authority_metadata_invalid",
+    request = _quarantine_invalid_authority_projection(
+        queue=queue,
+        tmp_path=tmp_path,
+        candidate=candidate,
     )
 
     callback_calls: list[str] = []
@@ -1335,6 +1351,82 @@ def test_invalid_authority_metadata_quarantine_settles_when_outputs_on_target(
         check=False,
     )
     assert side_probe.returncode != 0
+    completed = queue.get(request.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
+
+
+def test_invalid_authority_metadata_quarantine_does_not_settle_on_path_existence(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "switch", "-c", "implementation/side")
+    (repo / "base.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "change declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    head_before = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = _quarantine_invalid_authority_projection(
+        queue=queue,
+        tmp_path=tmp_path,
+        candidate=candidate,
+    )
+
+    train = MergeTrain(repo, queue)
+
+    assert (
+        train._portal_projection_invalid_metadata_already_on_target(request)
+        is False
+    )
+    assert train.run_once() is None
+    assert _git(repo, "rev-parse", "HEAD") == head_before
+    assert (repo / "base.txt").read_text(encoding="utf-8") == "base\n"
+    quarantined = queue.get(request.request_id)
+    assert quarantined is not None
+    assert quarantined.status == "quarantined"
+
+
+def test_invalid_authority_metadata_quarantine_settles_for_candidate_ancestor(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "switch", "-c", "implementation/side")
+    (repo / "base.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "change declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    _git(repo, "merge", "--ff-only", "implementation/side")
+    (repo / "base.txt").write_text("later target\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "advance declared output")
+    head_before = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = _quarantine_invalid_authority_projection(
+        queue=queue,
+        tmp_path=tmp_path,
+        candidate=candidate,
+    )
+
+    train = MergeTrain(repo, queue)
+    result = train.run_once()
+
+    assert result is not None
+    assert result.get("status") == "already_merged"
+    assert result.get("reason") == "declared_outputs_already_on_target"
+    assert _git(repo, "rev-parse", "HEAD") == head_before
     completed = queue.get(request.request_id)
     assert completed is not None
     assert completed.status == "completed"
