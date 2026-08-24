@@ -529,10 +529,8 @@ def test_operator_uses_default_owner_transport_connection_and_blocking_event() -
         node
         for node in ast.walk(state_owner)
         if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "route_projection"
-        and node.func.attr == "seal_execution_route_policy"
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_seal_quiescent_execution_route_policy"
     ]
     assert len(route_seal_calls) == 1
     route_seal_call = route_seal_calls[0]
@@ -552,6 +550,13 @@ def test_operator_uses_default_owner_transport_connection_and_blocking_event() -
         and isinstance(node.func, ast.Name)
         and node.func.id == "_spawn_event_supervisor"
     )
+    executor_spawn_call = next(
+        node
+        for node in ast.walk(state_owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_spawn_configured_executor"
+    )
     health_calls = sorted(
         (
             node
@@ -565,9 +570,10 @@ def test_operator_uses_default_owner_transport_connection_and_blocking_event() -
     assert len(health_calls) >= 3
     assert (
         ready_call.lineno
-        < route_seal_call.lineno
         < worker_call.lineno
         < spawn_call.lineno
+        < route_seal_call.lineno
+        < executor_spawn_call.lineno
     )
     assert worker_call.lineno < health_calls[0].lineno < spawn_call.lineno
     assert spawn_call.lineno < health_calls[1].lineno

@@ -96,6 +96,8 @@ LEGACY_BOARD_UNSTALL_POLICY_ENV: Final = (
 )
 SUPERVISOR_HEALTH_STALE_SECONDS: Final = 45.0
 STATE_OWNER_OUTBOX_CONVERGENCE_GRACE_SECONDS: Final = 30.0
+EXECUTION_ROUTE_QUIESCENCE_TIMEOUT_SECONDS: Final = 30.0
+EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS: Final = 0.05
 UNIX_SOCKET_PATH_CEILING: Final = 100
 EXECUTOR_OWNER_SESSION_ID: Final = "casf-v1-executor"
 EXECUTOR_BOOTSTRAP_SCHEMA: Final = (
@@ -1002,6 +1004,160 @@ def _state_owner_outbox_health(server: Any) -> dict[str, Any]:
     """
 
     return _outbox_worker_health(server.status())
+
+
+def _seal_quiescent_execution_route_policy(
+    *,
+    server: Any,
+    owner_client: Any,
+    admission: Any,
+    timeout_seconds: float = EXECUTION_ROUTE_QUIESCENCE_TIMEOUT_SECONDS,
+    monotonic: Any = time.monotonic,
+    sleeper: Any = time.sleep,
+    task_source_factory: Any | None = None,
+) -> Any:
+    """Seal one route only across an idle, generation-stable owner sample."""
+
+    from ipfs_accelerate_py.agent_supervisor.federation.contracts import utc_now
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceConflictError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    timeout = float(timeout_seconds)
+    if not 0.0 < timeout <= EXECUTION_ROUTE_QUIESCENCE_TIMEOUT_SECONDS:
+        raise OperatorError(
+            "execution-route quiescence timeout must be greater than zero and at most 30 seconds"
+        )
+    if not callable(monotonic) or not callable(sleeper):
+        raise OperatorError("execution-route quiescence clock is invalid")
+    factory = task_source_factory or TypedDatabaseTaskSource
+    if not callable(factory):
+        raise OperatorError("execution-route task-source factory is invalid")
+
+    subscription = admission.subscription
+    tenant_id = str(admission.federation_identity.binding.tenant_id or "").strip()
+    federation_id = str(admission.federation_identity.record_id or "").strip()
+    subscription_id = str(subscription.subscription_id or "").strip()
+    if (
+        not tenant_id
+        or not federation_id
+        or not subscription_id
+        or str(subscription.tenant_id or "").strip() != tenant_id
+        or str(subscription.federation_id or "").strip() != federation_id
+    ):
+        raise OperatorError("execution-route quiescence scope differs from admission")
+
+    deadline = float(monotonic()) + timeout
+    retry_reason = "not_sampled"
+    while True:
+        before = owner_client.load_generation()
+        health = _state_owner_outbox_health(server)
+        if health.get("healthy") is not True:
+            retry_reason = "outbox_not_healthy"
+        else:
+            rows = owner_client.execute(
+                "casf_select_subscription_routing_state",
+                {
+                    "tenant_id": tenant_id,
+                    "federation_id": federation_id,
+                    "subscription_id": subscription_id,
+                    "observed_at": utc_now(),
+                },
+            )
+            if len(rows) != 1:
+                raise OperatorError(
+                    "execution-route quiescence requires one active subscription"
+                )
+            else:
+                row = rows[0]
+                fields = {
+                    "subscription_id",
+                    "revision",
+                    "maximum_pending",
+                    "maximum_fanout",
+                    "pending_deliveries",
+                }
+                if not isinstance(row, Mapping) or set(row) != fields:
+                    raise OperatorError(
+                        "execution-route subscription quiescence row is malformed"
+                    )
+                integer_fields = (
+                    "revision",
+                    "maximum_pending",
+                    "maximum_fanout",
+                    "pending_deliveries",
+                )
+                if any(
+                    isinstance(row.get(name), bool)
+                    or not isinstance(row.get(name), int)
+                    or int(row[name]) < (0 if name == "pending_deliveries" else 1)
+                    for name in integer_fields
+                ):
+                    raise OperatorError(
+                        "execution-route subscription quiescence values are invalid"
+                    )
+                if (
+                    str(row["subscription_id"]) != subscription_id
+                    or int(row["revision"]) != int(subscription.revision)
+                    or int(row["maximum_pending"])
+                    != int(subscription.maximum_pending)
+                ):
+                    raise OperatorError(
+                        "execution-route subscription quiescence authority drifted"
+                    )
+                admitted_maximum_fanout = getattr(
+                    subscription,
+                    "maximum_fanout",
+                    None,
+                )
+                if (
+                    admitted_maximum_fanout is not None
+                    and (
+                        isinstance(admitted_maximum_fanout, bool)
+                        or not isinstance(admitted_maximum_fanout, int)
+                        or int(row["maximum_fanout"])
+                        != admitted_maximum_fanout
+                    )
+                ):
+                    raise OperatorError(
+                        "execution-route subscription fanout authority drifted"
+                    )
+                if int(row["pending_deliveries"]) != 0:
+                    retry_reason = "subscription_deliveries_pending"
+                else:
+                    route_projection = factory(owner_client, owns_client=False)
+                    try:
+                        try:
+                            policy = route_projection.seal_execution_route_policy(
+                                _casf_mixed_execution_modes()
+                            )
+                        except TaskSourceConflictError:
+                            retry_reason = "task_snapshot_conflict"
+                        else:
+                            after = owner_client.load_generation()
+                            if (
+                                before.content_id == after.content_id
+                                and float(monotonic()) <= deadline
+                            ):
+                                return policy
+                            retry_reason = (
+                                "generation_changed_during_seal"
+                                if before.content_id != after.content_id
+                                else "deadline_elapsed_during_seal"
+                            )
+                    finally:
+                        # The state owner retains its client; this projection borrowed it.
+                        route_projection.close()
+
+        remaining = deadline - float(monotonic())
+        if remaining <= 0.0:
+            raise OperatorError(
+                "execution-route quiescence timed out: " + retry_reason
+            )
+        sleeper(min(EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS, remaining))
 
 
 class _SteadyStateOutboxHealth:
@@ -2268,28 +2424,6 @@ def state_owner(
         # bypass the gateway transaction lock and corrupt an otherwise valid
         # semantic-command observation.
         ready = server.ready()
-        if admit_task_execution:
-            from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
-                TypedDatabaseTaskSource,
-            )
-
-            route_projection = TypedDatabaseTaskSource(
-                owner_client,
-                owns_client=False,
-            )
-            try:
-                execution_route_policy = (
-                    route_projection.seal_execution_route_policy(
-                        _casf_mixed_execution_modes()
-                    )
-                )
-            finally:
-                # The state owner retains its client; this projection borrowed it.
-                route_projection.close()
-            execution_route_summary = _execution_route_policy_summary(
-                execution_route_policy,
-                require_casf_population=True,
-            )
         outbox_runtime = server.start_federation_outbox_worker()
         if _state_owner_outbox_health(server)["healthy"] is not True:
             raise OperatorError("state-owner outbox worker failed startup health")
@@ -2310,6 +2444,16 @@ def state_owner(
         if final_outbox_health["healthy"] is not True:
             raise OperatorError(
                 "state-owner outbox worker failed coordinator-admission health"
+            )
+        if admit_task_execution:
+            execution_route_policy = _seal_quiescent_execution_route_policy(
+                server=server,
+                owner_client=owner_client,
+                admission=admission,
+            )
+            execution_route_summary = _execution_route_policy_summary(
+                execution_route_policy,
+                require_casf_population=True,
             )
     except BaseException:
         try:

@@ -10,7 +10,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -79,6 +79,102 @@ def _runtime(**updates):
 BOOTSTRAP_EVENT_ID = "event:casf-bootstrap"
 BOOTSTRAP_ACKNOWLEDGEMENT_ID = "ack:casf-bootstrap"
 BOOTSTRAP_DELIVERY_ATTEMPT_ID = "delivery-attempt:casf-bootstrap"
+
+
+class _QuiescenceClock:
+    def __init__(self) -> None:
+        self.value = 0.0
+        self.sleeps: list[float] = []
+
+    def __call__(self) -> float:
+        return self.value
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(float(seconds))
+        self.value += float(seconds)
+
+
+class _GenerationObservation:
+    def __init__(self, content_id: str) -> None:
+        self.content_id = content_id
+
+
+class _QuiescenceClient:
+    def __init__(self, *, generations: list[str], rows: list[list[dict]]) -> None:
+        self._generations = list(generations)
+        self._rows = list(rows)
+        self.generation_calls = 0
+        self.routing_calls: list[dict] = []
+
+    @staticmethod
+    def _next(values: list):
+        assert values
+        return values.pop(0) if len(values) > 1 else values[0]
+
+    def load_generation(self) -> _GenerationObservation:
+        self.generation_calls += 1
+        return _GenerationObservation(self._next(self._generations))
+
+    def execute(self, operation: str, parameters: dict) -> list[dict]:
+        assert operation == "casf_select_subscription_routing_state"
+        assert parameters["tenant_id"] == "tenant:test"
+        assert parameters["federation_id"] == "federation:test"
+        assert parameters["subscription_id"] == "subscription:test"
+        assert parameters["observed_at"]
+        self.routing_calls.append(dict(parameters))
+        return self._next(self._rows)
+
+
+class _RouteProjectionFactory:
+    def __init__(self, outcomes: list[object]) -> None:
+        self._outcomes = list(outcomes)
+        self.calls = 0
+        self.closes = 0
+
+    def __call__(self, _client, *, owns_client: bool):
+        assert owns_client is False
+        factory = self
+        self.calls += 1
+
+        class _Projection:
+            def seal_execution_route_policy(self, modes: dict[str, str]):
+                assert len(modes) == 44
+                outcome = _QuiescenceClient._next(factory._outcomes)
+                if isinstance(outcome, BaseException):
+                    raise outcome
+                return outcome
+
+            def close(self) -> None:
+                factory.closes += 1
+
+        return _Projection()
+
+
+def _quiescence_admission() -> SimpleNamespace:
+    return SimpleNamespace(
+        federation_identity=SimpleNamespace(
+            record_id="federation:test",
+            binding=SimpleNamespace(tenant_id="tenant:test"),
+        ),
+        subscription=SimpleNamespace(
+            subscription_id="subscription:test",
+            tenant_id="tenant:test",
+            federation_id="federation:test",
+            revision=3,
+            maximum_pending=64,
+            maximum_fanout=16,
+        ),
+    )
+
+
+def _routing_row(*, pending_deliveries: int) -> dict:
+    return {
+        "subscription_id": "subscription:test",
+        "revision": 3,
+        "maximum_pending": 64,
+        "maximum_fanout": 16,
+        "pending_deliveries": pending_deliveries,
+    }
 
 
 def _first_tranche_authority(**runtime_health_updates):
@@ -946,6 +1042,314 @@ def test_outbox_worker_health_rejects_missing_malformed_or_polling_status() -> N
     assert suppressed_observer_failure["caught_up"] is True
     assert suppressed_observer_failure["observer_error_type"] == "RuntimeError"
     assert suppressed_observer_failure["healthy"] is False
+
+
+def test_quiescent_route_seal_returns_one_generation_stable_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    policy = object()
+    client = _QuiescenceClient(
+        generations=["generation:a", "generation:a"],
+        rows=[[_routing_row(pending_deliveries=0)]],
+    )
+    factory = _RouteProjectionFactory([policy])
+    clock = _QuiescenceClock()
+
+    result = operator._seal_quiescent_execution_route_policy(
+        server=object(),
+        owner_client=client,
+        admission=_quiescence_admission(),
+        timeout_seconds=1.0,
+        monotonic=clock,
+        sleeper=clock.sleep,
+        task_source_factory=factory,
+    )
+
+    assert result is policy
+    assert client.generation_calls == 2
+    assert len(client.routing_calls) == 1
+    assert factory.calls == factory.closes == 1
+    assert clock.sleeps == []
+
+
+def test_quiescent_route_seal_waits_for_pending_delivery_acknowledgement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    policy = object()
+    client = _QuiescenceClient(
+        generations=["generation:a", "generation:a", "generation:a"],
+        rows=[
+            [_routing_row(pending_deliveries=1)],
+            [_routing_row(pending_deliveries=0)],
+        ],
+    )
+    factory = _RouteProjectionFactory([policy])
+    clock = _QuiescenceClock()
+
+    result = operator._seal_quiescent_execution_route_policy(
+        server=object(),
+        owner_client=client,
+        admission=_quiescence_admission(),
+        timeout_seconds=1.0,
+        monotonic=clock,
+        sleeper=clock.sleep,
+        task_source_factory=factory,
+    )
+
+    assert result is policy
+    assert client.generation_calls == 3
+    assert len(client.routing_calls) == 2
+    assert factory.calls == factory.closes == 1
+    assert clock.sleeps == [operator.EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS]
+
+
+def test_quiescent_route_seal_retries_a_generation_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    stale_policy = object()
+    stable_policy = object()
+    client = _QuiescenceClient(
+        generations=[
+            "generation:a",
+            "generation:b",
+            "generation:b",
+            "generation:b",
+        ],
+        rows=[
+            [_routing_row(pending_deliveries=0)],
+            [_routing_row(pending_deliveries=0)],
+        ],
+    )
+    factory = _RouteProjectionFactory([stale_policy, stable_policy])
+    clock = _QuiescenceClock()
+
+    result = operator._seal_quiescent_execution_route_policy(
+        server=object(),
+        owner_client=client,
+        admission=_quiescence_admission(),
+        timeout_seconds=1.0,
+        monotonic=clock,
+        sleeper=clock.sleep,
+        task_source_factory=factory,
+    )
+
+    assert result is stable_policy
+    assert client.generation_calls == 4
+    assert factory.calls == factory.closes == 2
+    assert clock.sleeps == [operator.EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS]
+
+
+def test_quiescent_route_seal_retries_only_a_typed_snapshot_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceConflictError,
+    )
+
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    policy = object()
+    client = _QuiescenceClient(
+        generations=["generation:a", "generation:a", "generation:a"],
+        rows=[
+            [_routing_row(pending_deliveries=0)],
+            [_routing_row(pending_deliveries=0)],
+        ],
+    )
+    factory = _RouteProjectionFactory(
+        [TaskSourceConflictError("snapshot raced"), policy]
+    )
+    clock = _QuiescenceClock()
+
+    result = operator._seal_quiescent_execution_route_policy(
+        server=object(),
+        owner_client=client,
+        admission=_quiescence_admission(),
+        timeout_seconds=1.0,
+        monotonic=clock,
+        sleeper=clock.sleep,
+        task_source_factory=factory,
+    )
+
+    assert result is policy
+    assert client.generation_calls == 3
+    assert factory.calls == factory.closes == 2
+    assert clock.sleeps == [operator.EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS]
+
+
+def test_quiescent_route_seal_times_out_while_deliveries_remain_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    client = _QuiescenceClient(
+        generations=["generation:a"],
+        rows=[[_routing_row(pending_deliveries=1)]],
+    )
+    factory = _RouteProjectionFactory([object()])
+    clock = _QuiescenceClock()
+
+    with pytest.raises(
+        operator.OperatorError,
+        match="execution-route quiescence timed out: subscription_deliveries_pending",
+    ):
+        operator._seal_quiescent_execution_route_policy(
+            server=object(),
+            owner_client=client,
+            admission=_quiescence_admission(),
+            timeout_seconds=0.1,
+            monotonic=clock,
+            sleeper=clock.sleep,
+            task_source_factory=factory,
+        )
+
+    assert client.generation_calls == 3
+    assert len(client.routing_calls) == 3
+    assert factory.calls == factory.closes == 0
+    assert clock.sleeps == [0.05, 0.05]
+
+
+def test_quiescent_route_seal_propagates_a_non_conflict_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    client = _QuiescenceClient(
+        generations=["generation:a"],
+        rows=[[_routing_row(pending_deliveries=0)]],
+    )
+    failure = PermissionError("typed transport denied")
+    factory = _RouteProjectionFactory([failure])
+    clock = _QuiescenceClock()
+
+    with pytest.raises(PermissionError) as observed:
+        operator._seal_quiescent_execution_route_policy(
+            server=object(),
+            owner_client=client,
+            admission=_quiescence_admission(),
+            timeout_seconds=1.0,
+            monotonic=clock,
+            sleeper=clock.sleep,
+            task_source_factory=factory,
+        )
+
+    assert observed.value is failure
+    assert factory.calls == factory.closes == 1
+    assert clock.sleeps == []
+
+
+@pytest.mark.parametrize(
+    "routing_rows",
+    [
+        [],
+        [
+            _routing_row(pending_deliveries=0),
+            _routing_row(pending_deliveries=0),
+        ],
+    ],
+    ids=("absent", "ambiguous"),
+)
+def test_quiescent_route_seal_rejects_noncanonical_subscription_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    routing_rows: list[dict],
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    client = _QuiescenceClient(
+        generations=["generation:a"],
+        rows=[routing_rows],
+    )
+    factory = _RouteProjectionFactory([object()])
+    clock = _QuiescenceClock()
+
+    with pytest.raises(
+        operator.OperatorError,
+        match="quiescence requires one active subscription",
+    ):
+        operator._seal_quiescent_execution_route_policy(
+            server=object(),
+            owner_client=client,
+            admission=_quiescence_admission(),
+            timeout_seconds=1.0,
+            monotonic=clock,
+            sleeper=clock.sleep,
+            task_source_factory=factory,
+        )
+
+    assert client.generation_calls == 1
+    assert len(client.routing_calls) == 1
+    assert factory.calls == factory.closes == 0
+    assert clock.sleeps == []
+
+
+def test_quiescent_route_seal_rejects_admitted_fanout_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    row = _routing_row(pending_deliveries=0)
+    row["maximum_fanout"] = 17
+    client = _QuiescenceClient(
+        generations=["generation:a"],
+        rows=[[row]],
+    )
+    factory = _RouteProjectionFactory([object()])
+    clock = _QuiescenceClock()
+
+    with pytest.raises(
+        operator.OperatorError,
+        match="subscription fanout authority drifted",
+    ):
+        operator._seal_quiescent_execution_route_policy(
+            server=object(),
+            owner_client=client,
+            admission=_quiescence_admission(),
+            timeout_seconds=1.0,
+            monotonic=clock,
+            sleeper=clock.sleep,
+            task_source_factory=factory,
+        )
+
+    assert factory.calls == factory.closes == 0
+    assert clock.sleeps == []
 
 
 def test_state_owner_outbox_health_uses_full_canonical_status() -> None:
