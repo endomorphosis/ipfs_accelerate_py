@@ -395,7 +395,7 @@ def test_cold_import_and_descriptor_are_truthfully_unintegrated(tmp_path: Path) 
         "'unsupported_features':list(d['unsupported_features'])}, sort_keys=True))"
     )
     environment = dict(os.environ)
-    environment["PYTHONPATH"] = str(Path.cwd())
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[3])
     completed = subprocess.run(
         [sys.executable, "-P", "-c", code],
         cwd=Path.cwd(),
