@@ -30,6 +30,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -7335,34 +7336,47 @@ def _run_aseh_sealed_owner(argv: Sequence[str]) -> int:
         raise ConfiguredBoardError(
             "sealed ASEH owner operator member is invalid"
         ) from exc
-    namespace: dict[str, Any] = {
-        "__name__": "_aseh_sealed_owner_operator",
-        "__file__": str(repo_root / ASEH_SEALED_OWNER_OPERATOR),
-        "__package__": "",
-    }
-    exec(operator_code, namespace)
-    entry = namespace.get("_run_supervisor_owner")
-    if not callable(entry):
-        raise ConfiguredBoardError("sealed ASEH owner entry is absent")
-    return int(
-        entry(
-            config_path,
-            implement=implement,
-            duration=duration,
-            sealed_control_plane_pin=pin.as_dict(),
-            sealed_control_plane_descriptor=capsule_descriptor,
-            retained_interpreter={
-                "descriptor": interpreter.descriptor,
-                "argv0": interpreter.argv0,
-                "sha256": interpreter.sha256,
-            },
-            native_dependency_launch=native_dependency.as_dict(),
-            system_dependency_directories_json=(
-                system_dependency_directories_json
-            ),
-            sealed_owner_environment=exact_environment,
+    operator_module_name = "_aseh_sealed_owner_operator"
+    if operator_module_name in sys.modules:
+        raise ConfiguredBoardError(
+            "sealed ASEH owner operator module name is already occupied"
         )
+    operator_module = types.ModuleType(operator_module_name)
+    operator_module.__file__ = str(
+        repo_root / ASEH_SEALED_OWNER_OPERATOR
     )
+    operator_module.__package__ = ""
+    sys.modules[operator_module_name] = operator_module
+    try:
+        exec(operator_code, operator_module.__dict__)
+        entry = operator_module.__dict__.get("_run_supervisor_owner")
+        if not callable(entry):
+            raise ConfiguredBoardError("sealed ASEH owner entry is absent")
+        return int(
+            entry(
+                config_path,
+                implement=implement,
+                duration=duration,
+                sealed_control_plane_pin=pin.as_dict(),
+                sealed_control_plane_descriptor=capsule_descriptor,
+                retained_interpreter={
+                    "descriptor": interpreter.descriptor,
+                    "argv0": interpreter.argv0,
+                    "sha256": interpreter.sha256,
+                },
+                native_dependency_launch=native_dependency.as_dict(),
+                system_dependency_directories_json=(
+                    system_dependency_directories_json
+                ),
+                sealed_owner_environment=exact_environment,
+            )
+        )
+    finally:
+        removed_module = sys.modules.pop(operator_module_name, None)
+        if removed_module is not operator_module:
+            raise ConfiguredBoardError(
+                "sealed ASEH owner operator module registration drifted"
+            )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -1640,6 +1640,80 @@ REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_NON_SUCCESS: Final = (
     "executor contention, or validation failure is rejected before owner "
     "acquisition."
 )
+REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-sealed-owner-module-registration-transition@1"
+)
+REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD: Final = (
+    "ab78dabf77a5275e3d9069a008bc21b0915941dd"
+)
+REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/"
+    "configured_board_scheduler.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "configured_board_scheduler.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        (
+            "aseh_sealed_owner_loads_operator_only_from_verified_archive or "
+            "aseh_r15_sealed_owner_module_registration or "
+            "repair_sealed_owner_module_registration_transition or "
+            "delegates_r15_before_suffix_admission or "
+            "aseh_r14_authorization_holds_lock_and_sealed_executor_through_publication or "
+            "aseh_r15_preflight_acquires_sealed_executor_before_admission or "
+            "aseh_failed_sealed_delegation"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue fixing the existing canonical supervisor so its verified "
+    "sealed operator executes as one correctly registered private module "
+    "and can resume ASEH without a second state writer"
+)
+REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SUCCESS: Final = (
+    "The exact R14 child registers one private module object for the already-"
+    "verified sealed operator bytes, keeps that exact identity through owner "
+    "entry, removes it on every exit, rejects collision or substitution, and "
+    "reaches launch admission without weakening capsule, native, validation, "
+    "or single-writer gates."
+)
+REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R14 parent, changed sibling, live-filesystem operator, "
+    "preexisting or substituted module registration, leaked registration, "
+    "reduced validation, database mutation, contention, or validation failure "
+    "is rejected before owner acquisition."
+)
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
     REPAIR_FOLLOWUP_TRANSITION_SCHEMA,
@@ -1663,6 +1737,10 @@ ASEH_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R14_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_SCHEMA,
+)
+ASEH_R15_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R14_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -1751,6 +1829,9 @@ REPAIR_VALIDATION_EXECUTOR_IDENTITY_TRANSITION_RECEIPT_FIELDS: Final = (
 REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_RECEIPT_FIELDS
     | frozenset({"sealed_validation_executor_contract"})
+)
+REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -2651,6 +2732,43 @@ def _repair_sealed_receipt_validation_transition_receipt_id(
     return receipt_id
 
 
+def _repair_sealed_owner_module_registration_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-15 sealed-owner module receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    if (
+        payload.get("schema")
+        != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 15
+        or payload.get("terminal_success_criteria")
+        != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r15_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-module-registration schema is "
+            "invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-module-registration CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -2815,7 +2933,10 @@ def _validation_stat_identity(value: os.stat_result) -> list[int]:
     ]
 
 
-def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
+def _r14_receipt_validation_matrices(
+) -> tuple[Sequence[Sequence[str]], ...]:
+    """Return the validation-policy corpus frozen by the R14 contract."""
+
     names = (
         "REPAIR_TRANSITION_VALIDATIONS",
         "REPAIR_FOLLOWUP_TRANSITION_VALIDATIONS",
@@ -2836,6 +2957,18 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         value
         for name in names
         if isinstance((value := globals().get(name)), Sequence)
+    )
+
+
+def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
+    """Return all declared matrices for bounded grammar discovery."""
+
+    r15 = globals().get(
+        "REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS"
+    )
+    return (
+        *_r14_receipt_validation_matrices(),
+        *((r15,) if isinstance(r15, Sequence) else ()),
     )
 
 
@@ -2959,7 +3092,91 @@ def _sealed_receipt_validation_executor_contract() -> dict[str, Any]:
             "admission_only"
         ),
         "owner_or_database_acquired_inside_scope": False,
-}
+    }
+
+
+ASEH_R14_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:1bdf04e30647748f1579368c3ef0f907f30a6cb4906d634b4b371ec616705ea8"
+)
+
+
+def _r15_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Bind R15's exact validation policy without reminting R14."""
+
+    parent = _sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if (
+        parent_cid
+        != ASEH_R14_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    ):
+        raise OperatorError("historical R14 validation contract drifted")
+    matrix = REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS
+    python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-sealed-receipt-validation-executor@2"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 15,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command)) for command in python_commands
+            ),
+            "scope": (
+                "r15_authorization_preflight_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _admit_sealed_receipt_validation_executor_contract(
+    executor_contract: Mapping[str, Any] | None,
+    *,
+    declared: Sequence[str],
+) -> dict[str, Any]:
+    """Admit one exact policy identity and an argv that it authorizes."""
+
+    r14 = _sealed_receipt_validation_executor_contract()
+    if (
+        _identity(r14)
+        != ASEH_R14_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    ):
+        raise OperatorError("historical R14 validation contract drifted")
+    supplied = r14 if executor_contract is None else dict(executor_contract)
+    command = tuple(declared)
+    if supplied == r14:
+        if not any(
+            command == tuple(item)
+            for matrix in _r14_receipt_validation_matrices()
+            for item in matrix
+        ):
+            raise OperatorError(
+                "Python command is not admitted by the R14 executor contract"
+            )
+        return r14
+    r15 = _r15_sealed_receipt_validation_executor_contract()
+    if supplied != r15:
+        raise OperatorError("sealed validation executor contract is unknown")
+    if _identity(list(command)) not in r15["admitted_python_argv_digests"]:
+        raise OperatorError(
+            "Python command is not admitted by the R15 executor contract"
+        )
+    return r15
 
 
 def _sealed_validation_execution_context(
@@ -3050,9 +3267,14 @@ def _validate_sealed_validation_execution_evidence(
     returncode: int,
     stdout_digest: str,
     stderr_digest: str,
+    executor_contract: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Admit one observed monitor handshake, never a declared capability."""
 
+    admitted_contract = _admit_sealed_receipt_validation_executor_contract(
+        executor_contract,
+        declared=declared,
+    )
     expected_fields = {
         "schema",
         "executor_contract_cid",
@@ -3077,7 +3299,7 @@ def _validate_sealed_validation_execution_evidence(
             "aseh-sealed-validation-execution@1"
         )
         or evidence.get("executor_contract_cid")
-        != _identity(_sealed_receipt_validation_executor_contract())
+        != _identity(admitted_contract)
     ):
         raise OperatorError("sealed validation execution evidence differs")
     ready = evidence.get("ready")
@@ -3422,6 +3644,7 @@ def _run_sealed_receipt_validation(
     timeout: float,
     env: Mapping[str, str] | None,
     cwd: Path | None,
+    executor_contract: Mapping[str, Any] | None,
 ) -> subprocess.CompletedProcess[str]:
     executor = _ASEH_RECEIPT_VALIDATION_EXECUTOR
     if executor is None:
@@ -3432,6 +3655,10 @@ def _run_sealed_receipt_validation(
     )
     if parsed is None:
         raise OperatorError("sealed validation command is not Python")
+    admitted_contract = _admit_sealed_receipt_validation_executor_contract(
+        executor_contract,
+        declared=declared,
+    )
     _, _command_environment, python_argv = parsed
     native_mode = (
         "self_qualified"
@@ -3735,9 +3962,7 @@ def _run_sealed_receipt_validation(
             stdout_text,
             stderr_text,
         )
-        executor_contract_cid = _identity(
-            _sealed_receipt_validation_executor_contract()
-        )
+        executor_contract_cid = _identity(admitted_contract)
         ready_receipt_sha256 = "sha256:" + hashlib.sha256(
             expected_ready_bytes
         ).hexdigest()
@@ -3815,11 +4040,18 @@ def _run(
     timeout: float = 600.0,
     env: Mapping[str, str] | None = None,
     cwd: Path | None = None,
+    executor_contract: Mapping[str, Any] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     parsed = _parse_receipt_validation_python_command(
         argv,
         require_known=_ASEH_RECEIPT_VALIDATION_EXECUTOR is not None,
     )
+    if executor_contract is not None and (
+        parsed is None or _ASEH_RECEIPT_VALIDATION_EXECUTOR is None
+    ):
+        raise OperatorError(
+            "sealed executor contract was supplied outside Python authority"
+        )
     if parsed is not None and _ASEH_RECEIPT_VALIDATION_EXECUTOR is not None:
         declared = parsed[0]
         return _run_sealed_receipt_validation(
@@ -3827,6 +4059,7 @@ def _run(
             timeout=timeout,
             env=env,
             cwd=cwd,
+            executor_contract=executor_contract,
         )
     return subprocess.run(
         tuple(argv), cwd=ROOT if cwd is None else cwd,
@@ -4157,6 +4390,39 @@ def _admit_exact_r14_transition_chain(
     return chain
 
 
+def _admit_exact_r15_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit the complete ordered and adjacent-linked R1-R15 chain."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R15_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R15 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R15_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R15 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R15 repair transition chain differs")
+        chain.append(item)
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -4263,6 +4529,35 @@ def _assert_exact_run_launch_admission(
         ):
             raise OperatorError(
                 "current R14 candidate lacks its exact admitted validation seal"
+            )
+    elif parents == [
+        REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r15_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r14_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r14_admitted.get("repair_head")
+            != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r14_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r14_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current R15 candidate lacks its exact admitted validation seal"
             )
 
 
@@ -4383,6 +4678,17 @@ def _r14_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_VALIDATIONS[-2]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r15_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R15 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS[-2]
     ):
         return "candidate_authorization_worktree"
     return "immutable_candidate_checkout"
@@ -5218,6 +5524,8 @@ def _run_repair_sealed_receipt_validation_transition_validations(
 ) -> list[dict[str, Any]]:
     """Run the bounded R14 repair matrix against exact committed bytes."""
 
+    if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
+        raise OperatorError("R14 sealed validation executor is unavailable")
     witness = dict(authorization_witness)
     _assert_candidate_authorization_witness(
         witness,
@@ -5351,6 +5659,160 @@ def _run_repair_sealed_receipt_validation_transition_validations(
         expected_head=candidate_head,
         expected_tree=candidate_tree,
         boundary="after R14 immutable validation checkout",
+    )
+    return results
+
+
+def _run_repair_sealed_owner_module_registration_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R15 repair matrix against exact committed bytes."""
+
+    if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
+        raise OperatorError("R15 sealed validation executor is unavailable")
+    witness = dict(authorization_witness)
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        boundary="before R15 immutable validation checkout",
+    )
+    results: list[dict[str, Any]] = []
+    with _exact_candidate_validation_checkout(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    ) as (checkout, validation_environment):
+        for ordinal, command in enumerate(
+            REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS
+        ):
+            _assert_candidate_authorization_witness(
+                witness,
+                expected_head=candidate_head,
+                expected_tree=candidate_tree,
+                boundary=f"before R15 validation {ordinal}",
+            )
+            _assert_r11_validation_checkout_identity(
+                checkout,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            )
+            working_tree_scope = _r15_validation_working_tree_scope(command)
+            python_validation = (
+                _parse_receipt_validation_python_command(
+                    command,
+                    require_known=True,
+                )
+                is not None
+            )
+            executor_contract = (
+                _r15_sealed_receipt_validation_executor_contract()
+                if python_validation
+                else None
+            )
+            completed = _run(
+                command,
+                timeout=900,
+                env=validation_environment,
+                cwd=(
+                    ROOT
+                    if working_tree_scope == "candidate_authorization_worktree"
+                    else checkout
+                ),
+                executor_contract=executor_contract,
+            )
+            sealed_execution = getattr(
+                completed,
+                "aseh_sealed_execution_evidence",
+                None,
+            )
+            environment_identity = _r11_command_environment_identity(
+                validation_environment,
+                command,
+                checkout=checkout,
+            )
+            if python_validation:
+                if not isinstance(sealed_execution, Mapping):
+                    raise OperatorError(
+                        "R15 validation did not use the sealed executor"
+                    )
+                stdout_digest = getattr(
+                    completed,
+                    "aseh_sealed_stdout_digest",
+                    None,
+                )
+                stderr_digest = getattr(
+                    completed,
+                    "aseh_sealed_stderr_digest",
+                    None,
+                )
+                if any(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(digest or ""),
+                    )
+                    is None
+                    for digest in (stdout_digest, stderr_digest)
+                ):
+                    raise OperatorError(
+                        "R15 validation raw output digest is absent"
+                    )
+                sealed_execution = (
+                    _validate_sealed_validation_execution_evidence(
+                        sealed_execution,
+                        declared=command,
+                        candidate_head=candidate_head,
+                        candidate_tree=candidate_tree,
+                        authorization_witness=witness,
+                        environment_identity=environment_identity,
+                        returncode=int(completed.returncode),
+                        stdout_digest=stdout_digest,
+                        stderr_digest=stderr_digest,
+                        executor_contract=executor_contract,
+                    )
+                )
+            else:
+                if sealed_execution is not None:
+                    raise OperatorError(
+                        "non-Python R15 validation claimed sealed execution"
+                    )
+                stdout_digest = _identity(completed.stdout.encode("utf-8"))
+                stderr_digest = _identity(completed.stderr.encode("utf-8"))
+            result = {
+                "argv": list(command),
+                "candidate_head": candidate_head,
+                "candidate_tree": candidate_tree,
+                "environment_identity": environment_identity,
+                "working_tree_scope": working_tree_scope,
+                "returncode": int(completed.returncode),
+                "stdout_digest": stdout_digest,
+                "stderr_digest": stderr_digest,
+                "sealed_execution_evidence": sealed_execution,
+            }
+            results.append(result)
+            _assert_r11_validation_checkout_identity(
+                checkout,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            )
+            if completed.returncode != 0:
+                raise OperatorError(
+                    "bootstrap repair sealed-owner-module-registration "
+                    "validation failed: " + " ".join(command)
+                )
+            _assert_candidate_authorization_witness(
+                witness,
+                expected_head=candidate_head,
+                expected_tree=candidate_tree,
+                boundary=f"after R15 validation {ordinal}",
+            )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        boundary="after R15 immutable validation checkout",
     )
     return results
 
@@ -5610,6 +6072,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-sealed-receipt-validation-transition.json"
+    )
+    result["repair_sealed_owner_module_registration_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-sealed-owner-module-registration-transition.json"
     )
     result["repair_transition_authorization_lock"] = (
         result["evidence"]
@@ -9888,6 +10355,9 @@ def _validate_repair_sealed_receipt_validation_transition(
                 returncode=int(stored["returncode"]),
                 stdout_digest=str(stored["stdout_digest"]),
                 stderr_digest=str(stored["stderr_digest"]),
+                executor_contract=(
+                    _sealed_receipt_validation_executor_contract()
+                ),
             )
         elif stored["sealed_execution_evidence"] is not None:
             raise OperatorError(
@@ -9927,6 +10397,264 @@ def _validate_repair_sealed_receipt_validation_transition(
         "repair_tree": repair_tree,
         "changed_paths": list(
             REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "previous_receipt_cid": previous_receipt_id,
+        "candidate_authorization_witness": dict(witness),
+        "sealed_validation_executor_contract": dict(
+            receipt["sealed_validation_executor_contract"]
+        ),
+        "receipt_cid": receipt_id,
+    }
+
+
+def _validate_repair_sealed_owner_module_registration_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 15 chained to the immutable R14 receipt."""
+
+    receipt_id = (
+        _repair_sealed_owner_module_registration_transition_receipt_id(
+            receipt
+        )
+    )
+    previous_receipt_id = (
+        _repair_sealed_receipt_validation_transition_receipt_id(
+            previous_receipt
+        )
+    )
+    witness = receipt.get("candidate_authorization_witness")
+    if (
+        receipt.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R15"
+        or receipt.get("previous_receipt_cid") != previous_receipt_id
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("base_head")
+        != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+        or receipt.get("changed_paths")
+        != list(
+            REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_CHANGED_PATHS
+        )
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R14"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement")
+        != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_AUTHORITY
+        or receipt.get("sealed_validation_executor_contract")
+        != _r15_sealed_receipt_validation_executor_contract()
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-module-registration authority "
+            "differs"
+        )
+    repair = str(receipt.get("repair_head") or "").strip().casefold()
+    repair_tree = str(receipt.get("repair_tree") or "").strip().casefold()
+    base_head = REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or re.fullmatch(r"[0-9a-f]{40}", repair_tree) is None
+        or _git("show", "-s", "--format=%P", repair).split() != [base_head]
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-module-registration must be one "
+            "exact child"
+        )
+    base_tree = _git("rev-parse", f"{base_head}^{{tree}}")
+    if (
+        receipt.get("base_tree") != base_tree
+        or _git("rev-parse", f"{repair}^{{tree}}") != repair_tree
+        or _git_changed_paths(base_head, repair)
+        != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest")
+        != _git_patch_digest(base_head, repair)
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-module-registration Git proof "
+            "differs"
+        )
+    expected_witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != expected_witness_fields
+        or witness.get("head") != repair
+        or witness.get("tree") != repair_tree
+        or not str(witness.get("branch_ref") or "").startswith("refs/heads/")
+        or witness.get("status_digest") != _identity(b"")
+        or witness.get("head_reflog_digest") == "absent"
+        or witness.get("branch_reflog_digest") == "absent"
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(witness.get(name) or ""),
+            )
+            is None
+            for name in (
+                "index_entries_digest",
+                "index_flags_digest",
+                "status_digest",
+                "head_reflog_digest",
+                "branch_reflog_digest",
+            )
+        )
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-module-registration witness differs"
+        )
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError(
+                "bootstrap repair sealed-owner-module-registration changed "
+                "a sibling"
+            )
+    stored_results = receipt.get("validation_results")
+    commands = REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS
+    if not isinstance(stored_results, list) or len(stored_results) != len(
+        commands
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-module-registration validation "
+            "differs"
+        )
+    for stored, command in zip(stored_results, commands, strict=True):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {
+                "argv",
+                "candidate_head",
+                "candidate_tree",
+                "environment_identity",
+                "working_tree_scope",
+                "returncode",
+                "stdout_digest",
+                "stderr_digest",
+                "sealed_execution_evidence",
+            }
+            or stored.get("argv") != list(command)
+            or stored.get("candidate_head") != repair
+            or stored.get("candidate_tree") != repair_tree
+            or stored.get("environment_identity")
+            != _r11_command_environment_identity(
+                _r11_validation_environment(Path("/sealed-checkout")),
+                command,
+                checkout=Path("/sealed-checkout"),
+            )
+            or stored.get("working_tree_scope")
+            != _r15_validation_working_tree_scope(command)
+            or stored.get("returncode") != 0
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(stored.get(name) or ""),
+                )
+                is None
+                for name in ("stdout_digest", "stderr_digest")
+            )
+        ):
+            raise OperatorError(
+                "bootstrap repair sealed-owner-module-registration "
+                "validation differs"
+            )
+        python_validation = (
+            _parse_receipt_validation_python_command(
+                command,
+                require_known=True,
+            )
+            is not None
+        )
+        if python_validation:
+            if not isinstance(stored["sealed_execution_evidence"], Mapping):
+                raise OperatorError(
+                    "sealed Python validation evidence is absent"
+                )
+            _validate_sealed_validation_execution_evidence(
+                stored["sealed_execution_evidence"],
+                declared=command,
+                candidate_head=repair,
+                candidate_tree=repair_tree,
+                authorization_witness=witness,
+                environment_identity=str(stored["environment_identity"]),
+                returncode=int(stored["returncode"]),
+                stdout_digest=str(stored["stdout_digest"]),
+                stderr_digest=str(stored["stderr_digest"]),
+                executor_contract=(
+                    _r15_sealed_receipt_validation_executor_contract()
+                ),
+            )
+        elif stored["sealed_execution_evidence"] is not None:
+            raise OperatorError(
+                "non-Python validation carries sealed execution evidence"
+            )
+    if rerun_validations:
+        rerun = (
+            _run_repair_sealed_owner_module_registration_transition_validations(
+                candidate_head=repair,
+                candidate_tree=repair_tree,
+                authorization_witness=witness,
+            )
+        )
+        comparison_fields = (
+            "argv",
+            "candidate_head",
+            "candidate_tree",
+            "environment_identity",
+            "working_tree_scope",
+            "returncode",
+        )
+        if [
+            tuple(item[field] for field in comparison_fields)
+            for item in rerun
+        ] != [
+            tuple(item.get(field) for field in comparison_fields)
+            for item in stored_results
+        ]:
+            raise OperatorError(
+                "bootstrap repair sealed-owner-module-registration commands "
+                "differ"
+            )
+    return {
+        "schema": REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 15,
+        "base_head": base_head,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_CHANGED_PATHS
         ),
         "patch_digest": str(receipt.get("patch_digest") or ""),
         "previous_receipt_cid": previous_receipt_id,
@@ -10158,7 +10886,12 @@ def _r14_native_seal_anchor(
     *,
     current_head: str,
 ) -> dict[str, Any] | None:
-    """Select an already admitted R13/R14 identity for native-byte sealing."""
+    """Select the admitted R14 historical anchor for native-byte sealing.
+
+    R15 and later candidates remain separately live-witnessed and launch-
+    admitted; they deliberately reuse R14's already-admitted R11 native-byte
+    authorization rather than minting another native authority.
+    """
 
     r14_path = paths.get(
         "repair_sealed_receipt_validation_transition_receipt"
@@ -10752,6 +11485,22 @@ def _authorize_repair_sealed_receipt_validation_transition_if_applicable(
             str(transition["repair_head"]),
             head,
         )
+        r15_result = (
+            _authorize_repair_sealed_owner_module_registration_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=[*prior_chain, receipt],
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r15_result is not None:
+            return r15_result
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = current_admission.get("repair_transition_chain")
@@ -10888,6 +11637,198 @@ def _authorize_repair_sealed_receipt_validation_transition_if_applicable(
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R14 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_sealed_owner_module_registration_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one bounded R15 child after the admitted R14 chain."""
+
+    r15_path = paths.get(
+        "repair_sealed_owner_module_registration_transition_receipt"
+    )
+    if not isinstance(r15_path, Path):
+        return None
+    prior_chain = list(prior_receipt_chain)
+    if (
+        len(prior_chain) != 14
+        or prior_chain[-1].get("receipt_cid")
+        != previous_transition.get("receipt_cid")
+        or previous_transition.get("repair_head")
+        != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-module-registration prior chain "
+            "differs"
+        )
+    if r15_path.is_file():
+        receipt = _secure_runtime_json(
+            r15_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = (
+            _validate_repair_sealed_owner_module_registration_transition(
+                receipt,
+                bootstrap=bootstrap,
+                previous_receipt=previous_receipt,
+                rerun_validations=receipt.get("repair_head") == head,
+            )
+        )
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition["repair_head"]),
+            head,
+        )
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = current_admission.get("repair_transition_chain")
+        admitted_continuity = current_admission.get("canonical_continuity")
+        expected_chain = [*prior_chain, receipt]
+        exact_chain = _admit_exact_r15_transition_chain(admitted_chain)
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head")
+            != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in exact_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or "sealed_receipt_validation_to_sealed_owner_module_registration"
+            not in admitted_continuity
+        ):
+            raise OperatorError(
+                "current admission does not retain the sealed-owner-module-"
+                "registration repair transition"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission[
+                "runtime_source_head"
+            ],
+        }
+    parents = _git("show", "-s", "--format=%P", head).split()
+    base_head = REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+    if parents != [base_head]:
+        return None
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-module-registration changed-path "
+            "set differs"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    validation_results = (
+        _run_repair_sealed_owner_module_registration_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R15 validation before receipt publication",
+    )
+    receipt = {
+        "schema": REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R15"
+        ),
+        "program_id": PROGRAM,
+        "transition_revision": 15,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": _git("rev-parse", f"{base_head}^{{tree}}"),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R14"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r15_sealed_receipt_validation_executor_contract()
+        ),
+        "terminal_success_criteria": (
+            REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_sealed_owner_module_registration_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R15 receipt publication",
+    )
+    _atomic_json_create(
+        r15_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R15 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -13310,10 +14251,15 @@ def _admit_materialized_launch(
             sealed_receipt_validation_transition: (
                 dict[str, Any] | None
             ) = None
+            sealed_owner_module_registration_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
             r13_receipt: dict[str, Any] | None = None
+            r14_receipt: dict[str, Any] | None = None
+            r15_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -13775,6 +14721,58 @@ def _admit_materialized_launch(
                                                             active_transition = (
                                                                 sealed_receipt_validation_transition
                                                             )
+                                                            r15_path = paths.get(
+                                                                "repair_sealed_owner_module_registration_transition_receipt"
+                                                            )
+                                                            if (
+                                                                isinstance(
+                                                                    r15_path,
+                                                                    Path,
+                                                                )
+                                                                and r15_path.is_file()
+                                                            ):
+                                                                r15_receipt = (
+                                                                    _secure_runtime_json(
+                                                                        r15_path,
+                                                                        max_bytes=(
+                                                                            STATUS_RECEIPT_MAX_BYTES
+                                                                        ),
+                                                                    )
+                                                                )
+                                                                sealed_owner_module_registration_transition = (
+                                                                    _validate_repair_sealed_owner_module_registration_transition(
+                                                                        r15_receipt,
+                                                                        bootstrap=bootstrap,
+                                                                        previous_receipt=(
+                                                                            r14_receipt
+                                                                        ),
+                                                                        rerun_validations=(
+                                                                            r15_receipt.get(
+                                                                                "repair_head"
+                                                                            )
+                                                                            == population[
+                                                                                "source_head"
+                                                                            ]
+                                                                        ),
+                                                                    )
+                                                                )
+                                                                if (
+                                                                    sealed_owner_module_registration_transition[
+                                                                        "base_head"
+                                                                    ]
+                                                                    != sealed_receipt_validation_transition[
+                                                                        "repair_head"
+                                                                    ]
+                                                                ):
+                                                                    raise OperatorError(
+                                                                        "sealed-owner-module-"
+                                                                        "registration repair "
+                                                                        "does not extend "
+                                                                        "revision 14"
+                                                                    )
+                                                                active_transition = (
+                                                                    sealed_owner_module_registration_transition
+                                                                )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -13830,6 +14828,10 @@ def _admit_materialized_launch(
                 repair_transition_chain.append(
                     sealed_receipt_validation_transition
                 )
+            if sealed_owner_module_registration_transition is not None:
+                repair_transition_chain.append(
+                    sealed_owner_module_registration_transition
+                )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -13883,6 +14885,10 @@ def _admit_materialized_launch(
                 continuity[
                     "validation_executor_identity_to_sealed_receipt_validation"
                 ] = sealed_receipt_validation_transition
+            if sealed_owner_module_registration_transition is not None:
+                continuity[
+                    "sealed_receipt_validation_to_sealed_owner_module_registration"
+                ] = sealed_owner_module_registration_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -17474,6 +18480,10 @@ def preflight(config_path: Path) -> tuple[int, dict[str, Any]]:
     from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
         preflight_configured_board,
     )
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        retain_control_plane_interpreter,
+        trusted_system_dependency_directories_json,
+    )
 
     board, configuration = _load(config_path)
     report = dict(preflight_configured_board(board))
@@ -17493,11 +18503,68 @@ def preflight(config_path: Path) -> tuple[int, dict[str, Any]]:
             expected_head=candidate_head,
             expected_tree=candidate_tree,
         )
-        admission = _admit_materialized_launch(
-            board,
-            configuration,
+        anchor = _r14_native_seal_anchor(
             paths,
+            current_head=candidate_head,
         )
+        if anchor is None:
+            admission = _admit_materialized_launch(
+                board,
+                configuration,
+                paths,
+            )
+        else:
+            qualification_home = _build_aseh_qualification_home(paths)
+            interpreter = None
+            native_dependency = None
+            try:
+                interpreter = retain_control_plane_interpreter(
+                    ASEH_RECEIPT_VALIDATION_PYTHON
+                )
+                native_dependency = _seal_r11_native_dependency(
+                    paths=paths,
+                    candidate_head=str(anchor["head"]),
+                    candidate_tree=str(anchor["tree"]),
+                    candidate_authorization_witness=dict(anchor["witness"]),
+                    launch_admission=None,
+                    active_candidate_head=candidate_head,
+                    active_candidate_tree=candidate_tree,
+                    active_candidate_authorization_witness=(
+                        authorization_witness
+                    ),
+                )
+                system_directories_json = (
+                    trusted_system_dependency_directories_json()
+                )
+                with _sealed_receipt_validation_executor_scope(
+                    interpreter=interpreter,
+                    native_dependency=native_dependency,
+                    system_dependency_directories_json=(
+                        system_directories_json
+                    ),
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                    authorization_witness=authorization_witness,
+                    base_environment=_sealed_owner_delegation_environment(
+                        qualification_home
+                    ),
+                ):
+                    admission = _admit_materialized_launch(
+                        board,
+                        configuration,
+                        paths,
+                    )
+            finally:
+                if native_dependency is not None:
+                    try:
+                        os.close(native_dependency.descriptor.descriptor)
+                    except OSError:
+                        pass
+                if interpreter is not None:
+                    try:
+                        os.close(interpreter.descriptor)
+                    except OSError:
+                        pass
         _assert_exact_run_launch_admission(
             admission,
             candidate_head=candidate_head,

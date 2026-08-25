@@ -114,6 +114,7 @@ def _sealed_validation_execution_fixture(
     stdout_digest: str,
     stderr_digest: str,
     returncode: int = 0,
+    executor_contract: dict[str, object] | None = None,
 ) -> dict[str, object] | None:
     if (
         aseh_operator._parse_receipt_validation_python_command(
@@ -194,9 +195,11 @@ def _sealed_validation_execution_fixture(
     completion_bytes = (
         aseh_operator._canonical_json(completion) + "\n"
     ).encode("utf-8")
-    executor_contract_cid = aseh_operator._identity(
-        aseh_operator._sealed_receipt_validation_executor_contract()
-    )
+    if executor_contract is None:
+        executor_contract = (
+            aseh_operator._sealed_receipt_validation_executor_contract()
+        )
+    executor_contract_cid = aseh_operator._identity(executor_contract)
     completion_receipt_sha256 = (
         "sha256:" + hashlib.sha256(completion_bytes).hexdigest()
     )
@@ -5604,6 +5607,7 @@ def test_aseh_receipt_validation_python_is_stable_under_resolved_interpreter_ali
         "REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_VALIDATIONS",
         "REPAIR_VALIDATION_EXECUTOR_IDENTITY_TRANSITION_VALIDATIONS",
         "REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_VALIDATIONS",
+        "REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS",
     ]
     probe = (
         "import json,runpy,sys;"
@@ -5641,7 +5645,7 @@ def test_aseh_receipt_validation_python_is_stable_under_resolved_interpreter_ali
     } == dict(
         zip(
             group_names,
-            [5, 6, 2, 7, 5, 3, 3, 2, 2, 2, 15, 4, 4, 4],
+            [5, 6, 2, 7, 5, 3, 3, 2, 2, 2, 15, 4, 4, 4, 4],
             strict=True,
         )
     )
@@ -5726,6 +5730,74 @@ def test_aseh_sealed_receipt_validation_bootstrap_is_compilable_and_content_boun
     assert contract["owner_or_database_acquired_inside_scope"] is False
     assert len(contract["handshake_schemas"]) == 3
     assert "PYTHONPATH" not in contract["startup_environment_keys"]
+
+
+def test_aseh_r15_sealed_owner_module_registration_versions_executor_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r14 = aseh_operator._sealed_receipt_validation_executor_contract()
+    assert aseh_operator._identity(r14) == (
+        aseh_operator
+        .ASEH_R14_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    r15 = aseh_operator._r15_sealed_receipt_validation_executor_contract()
+    assert r15["schema"].endswith("@2")
+    assert r15["parent_executor_contract_cid"] == (
+        aseh_operator
+        .ASEH_R14_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    assert r15["policy_revision"] == 15
+    assert r15["scope"] == (
+        "r15_authorization_preflight_and_materialized_launch_admission_only"
+    )
+    r15_python = [
+        command
+        for command in (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS
+        )
+        if aseh_operator._parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    assert r15["admitted_python_argv_digests"] == sorted(
+        aseh_operator._identity(list(command)) for command in r15_python
+    )
+    r15_only = r15_python[0]
+    with pytest.raises(aseh_operator.OperatorError, match="R14"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r14,
+            declared=r15_only,
+        )
+    assert (
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r15,
+            declared=r15_only,
+        )
+        == r15
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R15"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r15,
+            declared=aseh_operator.REPAIR_TRANSITION_VALIDATIONS[0],
+        )
+    with pytest.raises(aseh_operator.OperatorError, match="unknown"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            {**r15, "policy_revision": 16},
+            declared=r15_only,
+        )
+    monkeypatch.setattr(
+        aseh_operator.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("unsealed process executed"),
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="outside Python"):
+        aseh_operator._run(
+            r15_only,
+            executor_contract=r15,
+        )
 
 
 def test_aseh_sealed_receipt_validation_command_grammar_is_bounded() -> None:
@@ -5976,6 +6048,13 @@ def test_aseh_sealed_receipt_validation_monitor_drains_setsid_descendant(
         "_receipt_validation_matrices",
         lambda: ((command,),),
     )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_sealed_receipt_validation_executor_contract",
+        lambda *_args, **_kwargs: (
+            aseh_operator._sealed_receipt_validation_executor_contract()
+        ),
+    )
     pin = llm_router.inspect_agent_supervisor_native_dependency_source(
         source,
         distribution_version="1.5.5",
@@ -6097,6 +6176,8 @@ def test_aseh_sealed_receipt_validation_owner_loss_drains_descendants(
         "m._assert_candidate_authorization_witness=lambda *args,**kwargs:None\n"
         f"command={command!r}\n"
         "m._receipt_validation_matrices=lambda:((command,),)\n"
+        "m._admit_sealed_receipt_validation_executor_contract="
+        "lambda *args,**kwargs:m._sealed_receipt_validation_executor_contract()\n"
         f"working=Path({str(tmp_path)!r})\n"
         "environment=m._r11_validation_environment(working)\n"
         "try:\n"
@@ -6178,6 +6259,310 @@ def test_aseh_r14_sealed_receipt_validation_routes_only_board_check_to_launch_tr
         "candidate_authorization_worktree",
         "immutable_candidate_checkout",
     ]
+
+
+def test_aseh_r15_sealed_owner_module_registration_routes_only_board_check_to_launch_tree(
+) -> None:
+    commands = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS
+    )
+    assert [
+        aseh_operator._r15_validation_working_tree_scope(command)
+        for command in commands
+    ] == [
+        "immutable_candidate_checkout",
+        "immutable_candidate_checkout",
+        "candidate_authorization_worktree",
+        "immutable_candidate_checkout",
+    ]
+
+
+def test_aseh_r15_sealed_owner_module_registration_rejects_unsealed_validation_before_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unsealed validation command executed"
+        ),
+    )
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="R15 sealed validation executor is unavailable",
+    ):
+        aseh_operator._run_repair_sealed_owner_module_registration_transition_validations(
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={},
+        )
+
+
+def test_aseh_r15_sealed_owner_module_registration_requires_exact_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R15_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": "sha256:" + f"{index + 1:064x}",
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+
+    assert aseh_operator._admit_exact_r15_transition_chain(chain) == chain
+    with pytest.raises(aseh_operator.OperatorError, match="R15"):
+        aseh_operator._admit_exact_r15_transition_chain(chain[:-1])
+    swapped = [dict(item) for item in chain]
+    swapped[-2], swapped[-1] = swapped[-1], swapped[-2]
+    with pytest.raises(aseh_operator.OperatorError, match="R15"):
+        aseh_operator._admit_exact_r15_transition_chain(swapped)
+
+    candidate_head = "a" * 40
+    candidate_tree = "b" * 40
+    chain[-2]["repair_head"] = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+    )
+    chain[-1].update(
+        {
+            "repair_head": candidate_head,
+            "repair_tree": candidate_tree,
+        }
+    )
+    transition = dict(chain[-1])
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+        ),
+    )
+    admission = {
+        "runtime_source_head": candidate_head,
+        "runtime_repository_tree_id": candidate_tree,
+        "repair_transition": transition,
+        "repair_transition_chain": chain,
+    }
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    broken = [dict(item) for item in chain]
+    broken[-1]["previous_receipt_cid"] = "sha256:" + ("f" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R15"):
+        aseh_operator._assert_exact_run_launch_admission(
+            {**admission, "repair_transition_chain": broken},
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+
+
+def test_aseh_repair_sealed_owner_module_registration_transition_publication_is_fenced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt_path = tmp_path / "repair-r15.json"
+    candidate_head = "a" * 40
+    candidate_tree = "b" * 40
+    previous_cid = "sha256:" + ("c" * 64)
+    previous_transition = {
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+        ),
+        "receipt_cid": previous_cid,
+    }
+    prior_chain = [
+        {"receipt_cid": "sha256:" + f"{index + 1:064x}"}
+        for index in range(13)
+    ] + [{"receipt_cid": previous_cid}]
+    ordering: list[str] = []
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args: (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+            if args[:3] == ("show", "-s", "--format=%P")
+            else candidate_tree
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: {"candidate": "exact"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_sealed_owner_module_registration_transition_validations",
+        lambda **_kwargs: ordering.append("validate") or [],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda *_args: "sha256:" + ("d" * 64),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_module_registration_transition",
+        lambda *_args, **_kwargs: ordering.append("admit_receipt") or {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **kwargs: ordering.append(str(kwargs["boundary"])),
+    )
+
+    def publish(
+        path: Path,
+        _payload: object,
+        *,
+        authority_directory_fd: int,
+    ) -> None:
+        assert path == receipt_path
+        assert authority_directory_fd == 91
+        ordering.append("publish")
+
+    monkeypatch.setattr(aseh_operator, "_atomic_json_create", publish)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "database admission ran before R15 receipt publication"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_sealed_owner_module_registration_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_module_registration_transition_receipt": (
+                    receipt_path
+                )
+            },
+            bootstrap={
+                "plan_root_cid": "plan:r15",
+                "repository_tree_id": "tree:bootstrap",
+            },
+            bootstrap_id="sha256:" + ("e" * 64),
+            head=candidate_head,
+            previous_receipt={"receipt_cid": previous_cid},
+            previous_transition=previous_transition,
+            prior_receipt_chain=prior_chain,
+            authorization_directory_fd=91,
+        )
+    )
+
+    assert result is not None
+    assert result["idempotent_replay"] is False
+    assert len(result["repair_transition_chain"]) == 15
+    assert ordering == [
+        "validate",
+        "after R15 validation before receipt publication",
+        "admit_receipt",
+        "immediately before R15 receipt publication",
+        "publish",
+        "after R15 receipt publication",
+    ]
+
+
+def test_aseh_repair_sealed_receipt_validation_delegates_r15_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r14_path = tmp_path / "repair-r14.json"
+    r14_path.touch()
+    previous_cid = "sha256:" + ("a" * 64)
+    r14_cid = "sha256:" + ("b" * 64)
+    r14_receipt = {"repair_head": "c" * 40, "receipt_cid": r14_cid}
+    r14_transition = {
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+        ),
+        "receipt_cid": r14_cid,
+    }
+    prior_chain = [
+        {"receipt_cid": "sha256:" + f"{index + 1:064x}"}
+        for index in range(12)
+    ] + [{"receipt_cid": previous_cid}]
+    sentinel = {"delegated": "r15"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r14_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_receipt_validation_transition",
+        lambda *_args, **_kwargs: r14_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_owner_module_registration_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if len(kwargs["prior_receipt_chain"]) == 14
+            else pytest.fail("R14 did not delegate the full chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R14 suffix admission ran before R15 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_sealed_receipt_validation_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_receipt_validation_transition_receipt": r14_path
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="d" * 40,
+            previous_receipt={"receipt_cid": previous_cid},
+            previous_transition={
+                "repair_head": (
+                    aseh_operator
+                    .REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_BASE_HEAD
+                ),
+                "receipt_cid": previous_cid,
+            },
+            prior_receipt_chain=prior_chain,
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
 
 
 def test_aseh_r14_authorization_holds_lock_and_sealed_executor_through_publication(
@@ -6319,6 +6704,137 @@ def test_aseh_r14_authorization_holds_lock_and_sealed_executor_through_publicati
         "executor_exit",
         "lock_exit",
     ]
+    for descriptor in (interpreter_fd, native_fd):
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+
+
+def test_aseh_r15_preflight_acquires_sealed_executor_before_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    bootstrap_path = tmp_path / "bootstrap.json"
+    database_path = tmp_path / "control.duckdb"
+    bootstrap_path.touch()
+    database_path.touch()
+    qualification_home = tmp_path / "qualification-homes" / "fixture"
+    qualification_home.mkdir(parents=True)
+    board = object()
+    paths = {
+        "bootstrap_receipt": bootstrap_path,
+        "database": database_path,
+    }
+    candidate_head = "a" * 40
+    candidate_tree = "b" * 40
+    witness = {"head": candidate_head, "tree": candidate_tree}
+    interpreter_fd = os.open("/dev/null", os.O_RDONLY)
+    native_fd = os.open("/dev/null", os.O_RDONLY)
+    interpreter = SimpleNamespace(descriptor=interpreter_fd)
+    native = SimpleNamespace(
+        descriptor=SimpleNamespace(descriptor=native_fd)
+    )
+    scope_active = False
+    seal_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(aseh_operator, "_load", lambda _path: (board, {}))
+    monkeypatch.setattr(aseh_operator, "_paths", lambda _board: paths)
+    monkeypatch.setattr(
+        configured_scheduler,
+        "preflight_configured_board",
+        lambda _board: {"valid": True, "errors": []},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args: (
+            candidate_tree if _args[-1] == "HEAD^{tree}" else candidate_head
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: witness,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r14_native_seal_anchor",
+        lambda *_args, **_kwargs: {
+            "head": "c" * 40,
+            "tree": "d" * 40,
+            "witness": {"anchor": "r14"},
+        },
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_build_aseh_qualification_home",
+        lambda _paths: qualification_home,
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "retain_control_plane_interpreter",
+        lambda _python: interpreter,
+    )
+
+    def seal_native(**kwargs: object) -> object:
+        seal_calls.append(dict(kwargs))
+        return native
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_seal_r11_native_dependency",
+        seal_native,
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "trusted_system_dependency_directories_json",
+        lambda: "[]",
+    )
+
+    @contextmanager
+    def validation_scope(**_kwargs: object) -> object:
+        nonlocal scope_active
+        scope_active = True
+        try:
+            yield None
+        finally:
+            scope_active = False
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_sealed_receipt_validation_executor_scope",
+        validation_scope,
+    )
+
+    def admit(*_args: object, **_kwargs: object) -> dict[str, object]:
+        assert scope_active is True
+        return {
+            "admission_cid": "sha256:" + ("e" * 64),
+            "runtime_source_head": candidate_head,
+            "runtime_repository_tree_id": candidate_tree,
+            "repair_transition": {"receipt_cid": "sha256:" + ("f" * 64)},
+        }
+
+    monkeypatch.setattr(aseh_operator, "_admit_materialized_launch", admit)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_exact_run_launch_admission",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+
+    code, report = aseh_operator.preflight(config_path)
+
+    assert code == 0
+    assert report["sealed_launch_admission"]["admitted"] is True
+    assert seal_calls[0]["candidate_head"] == "c" * 40
+    assert seal_calls[0]["active_candidate_head"] == candidate_head
+    assert scope_active is False
     for descriptor in (interpreter_fd, native_fd):
         with pytest.raises(OSError):
             os.fstat(descriptor)
@@ -6802,6 +7318,198 @@ def test_aseh_repair_sealed_receipt_validation_transition_is_closed_and_chained(
     ):
         aseh_operator._validate_repair_sealed_receipt_validation_transition(
             output_replayed,
+            bootstrap=bootstrap,
+            previous_receipt={"receipt_cid": prior_cid},
+            rerun_validations=False,
+        )
+
+
+def test_aseh_repair_sealed_owner_module_registration_transition_is_closed_and_chained(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repair_head = "a" * 40
+    repair_tree = "b" * 40
+    base_tree = "c" * 40
+    prior_cid = "sha256:" + ("d" * 64)
+    patch_digest = "sha256:" + ("e" * 64)
+    dataset_commit = "1" * 40
+    kit_commit = "2" * 40
+    witness = {
+        "head": repair_head,
+        "tree": repair_tree,
+        "branch_ref": "refs/heads/aseh-r15-fixture",
+        "index_entries_digest": "sha256:" + ("3" * 64),
+        "index_flags_digest": "sha256:" + ("4" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("5" * 64),
+        "branch_reflog_digest": "sha256:" + ("6" * 64),
+    }
+    validations = []
+    for command in (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS
+    ):
+        environment_identity = (
+            aseh_operator._r11_command_environment_identity(
+                aseh_operator._r11_validation_environment(
+                    Path("/sealed-checkout")
+                ),
+                command,
+                checkout=Path("/sealed-checkout"),
+            )
+        )
+        validations.append(
+            {
+                "argv": list(command),
+                "candidate_head": repair_head,
+                "candidate_tree": repair_tree,
+                "environment_identity": environment_identity,
+                "working_tree_scope": (
+                    aseh_operator._r15_validation_working_tree_scope(command)
+                ),
+                "returncode": 0,
+                "stdout_digest": "sha256:" + ("7" * 64),
+                "stderr_digest": "sha256:" + ("8" * 64),
+                "sealed_execution_evidence": (
+                    _sealed_validation_execution_fixture(
+                        command,
+                        candidate_head=repair_head,
+                        candidate_tree=repair_tree,
+                        authorization_witness=witness,
+                        environment_identity=environment_identity,
+                        stdout_digest="sha256:" + ("7" * 64),
+                        stderr_digest="sha256:" + ("8" * 64),
+                        executor_contract=(
+                            aseh_operator
+                            ._r15_sealed_receipt_validation_executor_contract()
+                        ),
+                    )
+                ),
+            }
+        )
+    bootstrap = {
+        "bootstrap_receipt_id": "sha256:" + ("9" * 64),
+        "plan_root_cid": "plan:r15",
+        "repository_tree_id": "tree:bootstrap",
+        "source_forest": {
+            "by_owner": {
+                "ipfs_datasets_py": {"commit": dataset_commit},
+                "ipfs_kit_py": {"commit": kit_commit},
+            }
+        },
+    }
+    receipt = {
+        "schema": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA
+        ),
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R15"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 15,
+        "bootstrap_receipt_id": bootstrap["bootstrap_receipt_id"],
+        "previous_receipt_cid": prior_cid,
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+        ),
+        "base_tree": base_tree,
+        "repair_head": repair_head,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": patch_digest,
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R14"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validations,
+        "candidate_authorization_witness": witness,
+        "sealed_validation_executor_contract": (
+            aseh_operator._r15_sealed_receipt_validation_executor_contract()
+        ),
+        "terminal_success_criteria": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+
+    def fake_git(*arguments: str) -> str:
+        if arguments[:3] == ("show", "-s", "--format=%P"):
+            return (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+            )
+        if arguments[:1] == ("rev-parse",):
+            revision = arguments[1]
+            if revision.endswith(":ipfs_datasets_py"):
+                return dataset_commit
+            if revision.endswith(":ipfs_kit_py"):
+                return kit_commit
+            if revision == repair_head + "^{tree}":
+                return repair_tree
+            return base_tree
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(aseh_operator, "_git", fake_git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda *_args: patch_digest,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_sealed_receipt_validation_transition_receipt_id",
+        lambda _payload: prior_cid,
+    )
+
+    admitted = (
+        aseh_operator
+        ._validate_repair_sealed_owner_module_registration_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt={"receipt_cid": prior_cid},
+            rerun_validations=False,
+        )
+    )
+    assert admitted["transition_revision"] == 15
+    assert admitted["previous_receipt_cid"] == prior_cid
+    assert admitted["candidate_authorization_witness"] == witness
+
+    replayed = json.loads(json.dumps(receipt))
+    replayed["candidate_authorization_witness"]["tree"] = "f" * 40
+    replayed["receipt_cid"] = aseh_operator._identity(
+        {key: value for key, value in replayed.items() if key != "receipt_cid"}
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="witness differs"):
+        aseh_operator._validate_repair_sealed_owner_module_registration_transition(
+            replayed,
             bootstrap=bootstrap,
             previous_receipt={"receipt_cid": prior_cid},
             rerun_validations=False,
@@ -8817,10 +9525,25 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
     )
     config = repository / "config.json"
     config.write_text("{}", encoding="utf-8")
+    failing_config = repository / "failing.json"
+    failing_config.write_text("{}", encoding="utf-8")
+    replacing_config = repository / "replacing.json"
+    replacing_config.write_text("{}", encoding="utf-8")
     qualification_home = tmp_path / "qualification-homes" / "fixture"
     qualification_home.mkdir(parents=True)
     sealed_source = (
+        "from dataclasses import dataclass\n"
+        "import sys\n"
+        "@dataclass(frozen=True)\n"
+        "class _SealedOwnerValue:\n"
+        "    value: int\n"
         "def _run_supervisor_owner(config_path, **kwargs):\n"
+        "    assert sys.modules[__name__].__dict__ is globals()\n"
+        "    assert _SealedOwnerValue(73).value == 73\n"
+        "    if config_path.name == 'failing.json':\n"
+        "        raise RuntimeError('injected sealed owner failure')\n"
+        "    if config_path.name == 'replacing.json':\n"
+        "        sys.modules[__name__] = object()\n"
         "    assert kwargs['sealed_control_plane_descriptor'] >= 3\n"
         "    assert kwargs['retained_interpreter']['descriptor'] >= 3\n"
         "    assert kwargs['native_dependency_launch']['accepted'] is True\n"
@@ -8916,35 +9639,65 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
         "arm_state_authority_parent_death_signal",
         lambda **kwargs: parent_fences.append(dict(kwargs)),
     )
+
+    def owner_argv(target_config: Path) -> list[str]:
+        return [
+            configured_scheduler.ASEH_SEALED_OWNER_MARKER,
+            "sealed-pin",
+            str(capsule_descriptor),
+            str(interpreter.descriptor),
+            interpreter.argv0,
+            interpreter.sha256,
+            str(repository),
+            str(target_config),
+            "1",
+            "1.0",
+            aseh_operator._sealed_owner_delegation_environment_identity(
+                qualification_home
+            ),
+            "92",
+            native_json,
+            "[]",
+            str(qualification_home),
+            "123",
+            "456",
+            "fixture-boot",
+        ]
+
+    operator_module_name = "_aseh_sealed_owner_operator"
     try:
         result = configured_scheduler._run_aseh_sealed_owner(
-            [
-                configured_scheduler.ASEH_SEALED_OWNER_MARKER,
-                "sealed-pin",
-                str(capsule_descriptor),
-                str(interpreter.descriptor),
-                interpreter.argv0,
-                interpreter.sha256,
-                str(repository),
-                str(config),
-                "1",
-                "1.0",
-                aseh_operator._sealed_owner_delegation_environment_identity(
-                    qualification_home
-                ),
-                "92",
-                native_json,
-                "[]",
-                str(qualification_home),
-                "123",
-                "456",
-                "fixture-boot",
-            ]
+            owner_argv(config)
         )
+        assert result == 73
+        assert operator_module_name not in sys.modules
+        with pytest.raises(RuntimeError, match="injected sealed owner failure"):
+            configured_scheduler._run_aseh_sealed_owner(
+                owner_argv(failing_config)
+            )
+        assert operator_module_name not in sys.modules
+        with pytest.raises(
+            configured_scheduler.ConfiguredBoardError,
+            match="registration drifted",
+        ):
+            configured_scheduler._run_aseh_sealed_owner(
+                owner_argv(replacing_config)
+            )
+        assert operator_module_name not in sys.modules
+        sys.modules[operator_module_name] = object()
+        try:
+            with pytest.raises(
+                configured_scheduler.ConfiguredBoardError,
+                match="already occupied",
+            ):
+                configured_scheduler._run_aseh_sealed_owner(
+                    owner_argv(config)
+                )
+        finally:
+            sys.modules.pop(operator_module_name, None)
     finally:
         os.close(interpreter.descriptor)
         os.close(capsule_descriptor)
-    assert result == 73
     assert (
         aseh_operator._sealed_owner_delegation_environment_identity(
             qualification_home
@@ -8963,7 +9716,7 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
             "expected_parent_start_time_ticks": 456,
             "expected_boot_id": "fixture-boot",
         }
-    ]
+    ] * 4
     assert not sentinel.exists()
 
 
@@ -9342,7 +10095,7 @@ def test_aseh_sealed_owner_rechecks_candidate_before_owner_start(
     ]
 
 
-def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
+def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admission_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -9361,6 +10114,7 @@ def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
     sealed_owner_identity_path = tmp_path / "repair-r12.json"
     validation_executor_identity_path = tmp_path / "repair-r13.json"
     sealed_receipt_validation_path = tmp_path / "repair-r14.json"
+    sealed_owner_module_registration_path = tmp_path / "repair-r15.json"
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
@@ -9378,6 +10132,7 @@ def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
         sealed_owner_identity_path,
         validation_executor_identity_path,
         sealed_receipt_validation_path,
+        sealed_owner_module_registration_path,
         database_path,
     ):
         path.touch()
@@ -9416,6 +10171,9 @@ def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
         ),
         "repair_sealed_receipt_validation_transition_receipt": (
             sealed_receipt_validation_path
+        ),
+        "repair_sealed_owner_module_registration_transition_receipt": (
+            sealed_owner_module_registration_path
         ),
         "database": database_path,
     }
@@ -9460,9 +10218,13 @@ def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
         aseh_operator
         .REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_BASE_HEAD
     )
-    r14_head = "d" * 40
+    r14_head = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+    )
+    r15_head = "e" * 40
     population = {
-        "source_head": r14_head,
+        "source_head": r15_head,
         "repository_tree_id": "tree:runtime",
         "plan_root_cid": "plan:sealed",
         "source_forest": {"forest_cid": "forest:runtime"},
@@ -9561,6 +10323,16 @@ def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
         "transition_revision": 14,
         "receipt_cid": "receipt:r14",
     }
+    r15 = {
+        "schema": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA
+        ),
+        "base_head": r14_head,
+        "repair_head": r15_head,
+        "transition_revision": 15,
+        "receipt_cid": "receipt:r15",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
@@ -9577,6 +10349,7 @@ def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
         sealed_owner_identity_path: r12_receipt,
         validation_executor_identity_path: {"revision": 13},
         sealed_receipt_validation_path: {"revision": 14},
+        sealed_owner_module_registration_path: {"revision": 15},
     }
     suffix_calls: list[tuple[str, str]] = []
 
@@ -9665,6 +10438,11 @@ def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_validate_repair_sealed_owner_module_registration_transition",
+        lambda *_args, **_kwargs: r15,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_read_continuity_state",
         lambda *_args, **_kwargs: (
             {"projection_cid": "projection:current", "event_cursor": 79},
@@ -9703,12 +10481,12 @@ def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
         object(), {}, paths
     )
 
-    assert admission["repair_transition"] == r14
+    assert admission["repair_transition"] == r15
     assert [
         item.get("transition_revision", 1)
         for item in admission["repair_transition_chain"]
-    ] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-    assert suffix_calls[-1] == (r14_head, r14_head)
+    ] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    assert suffix_calls[-1] == (r15_head, r15_head)
     assert admission["canonical_continuity"][
         "followup_to_clean_launch"
     ] == r3
@@ -9745,6 +10523,9 @@ def test_aseh_r14_sealed_receipt_validation_transition_is_active_admission_base(
     assert admission["canonical_continuity"][
         "validation_executor_identity_to_sealed_receipt_validation"
     ] == r14
+    assert admission["canonical_continuity"][
+        "sealed_receipt_validation_to_sealed_owner_module_registration"
+    ] == r15
 
 
 def test_aseh_repair_authorization_replay_rejects_head_regression(
