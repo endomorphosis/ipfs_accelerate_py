@@ -1814,6 +1814,250 @@ def test_control_rearm_recomputes_blocked_dependency_readiness(
         coordinator.close()
 
 
+def test_control_rearm_rebuilds_checkpointed_many_row_registry_without_update(
+    tmp_path: Path,
+) -> None:
+    import duckdb  # type: ignore
+
+    def task_schema_inventory(connection: object) -> dict[str, object]:
+        columns = connection.execute(  # type: ignore[attr-defined]
+            """
+            SELECT column_name, data_type, is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_schema = 'main' AND table_name = 'coordination_tasks'
+            ORDER BY ordinal_position
+            """
+        ).fetchall()
+        constraints = connection.execute(  # type: ignore[attr-defined]
+            """
+            SELECT constraint_type, constraint_column_names, constraint_text
+            FROM duckdb_constraints()
+            WHERE schema_name = 'main' AND table_name = 'coordination_tasks'
+            ORDER BY constraint_index
+            """
+        ).fetchall()
+        indexes = connection.execute(  # type: ignore[attr-defined]
+            """
+            SELECT index_name, is_unique, is_primary, expressions
+            FROM duckdb_indexes()
+            WHERE schema_name = 'main' AND table_name = 'coordination_tasks'
+            ORDER BY index_name
+            """
+        ).fetchall()
+        return {
+            "columns": tuple(tuple(row) for row in columns),
+            "constraints": tuple(
+                (row[0], tuple(row[1]), row[2]) for row in constraints
+            ),
+            "indexes": tuple(tuple(row) for row in indexes),
+        }
+
+    coordinator, clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        connection = coordinator._require()  # noqa: SLF001
+        connection.execute(
+            """
+            INSERT INTO coordination_tasks(
+                task_cid, task_id, worktree_id, registered_at_ms,
+                ready, body_json
+            )
+            SELECT 'task:bulk-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
+                   'BULK-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
+                   '', 900000 + i, TRUE, '{}'
+            FROM range(512) AS generated(i)
+            """
+        )
+        coordinator._commit_if_idle(connection)  # noqa: SLF001
+        coordinator.register_task(
+            task_cid="task:rearm-persisted",
+            task_id="REARM-PERSISTED",
+            body={"payload": "preserve-exactly"},
+        )
+        _settled_control_completion(coordinator, "task:rearm-persisted")
+    finally:
+        coordinator.close()
+
+    checkpoint = duckdb.connect(str(database_path))
+    try:
+        checkpoint.execute("CHECKPOINT")
+        assert checkpoint.execute(
+            "SELECT COUNT(*) FROM coordination_tasks"
+        ).fetchone()[0] == 513
+        before_inventory = task_schema_inventory(checkpoint)
+    finally:
+        checkpoint.close()
+
+    coordinator = open_database_coordinator(database_path, clock_ms=clock)
+    raw_connection = coordinator._require()  # noqa: SLF001
+
+    class RejectCoordinationTaskUpdate:
+        def __init__(self, raw: object) -> None:
+            self.raw = raw
+
+        @property
+        def in_transaction(self) -> bool:
+            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
+
+        def execute(
+            self,
+            statement: str,
+            parameters: object | None = None,
+        ) -> object:
+            normalized = " ".join(str(statement).upper().split())
+            if normalized.startswith("UPDATE COORDINATION_TASKS"):
+                raise AssertionError(
+                    "persisted coordination_tasks rows must not be updated"
+                )
+            if parameters is None:
+                return self.raw.execute(statement)  # type: ignore[attr-defined]
+            return self.raw.execute(  # type: ignore[attr-defined]
+                statement,
+                parameters,
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.raw, name)
+
+    coordinator._connection = RejectCoordinationTaskUpdate(  # noqa: SLF001
+        raw_connection
+    )
+    try:
+        rearmed = coordinator.rearm_task_from_control(
+            "task:rearm-persisted",
+            control_task_observation=_control_rearm_observation(
+                task_cid="task:rearm-persisted",
+                task_alias="REARM-PERSISTED",
+            ),
+        )
+        assert rearmed["ready"] is True
+        assert rearmed["replayed"] is False
+    finally:
+        coordinator.close()
+
+    landed = duckdb.connect(str(database_path))
+    try:
+        landed.execute("CHECKPOINT")
+        assert task_schema_inventory(landed) == before_inventory
+        assert landed.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT task_cid) FROM coordination_tasks"
+        ).fetchone() == (513, 513)
+        assert landed.execute(
+            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
+            ["task:rearm-persisted"],
+        ).fetchone() == (True, '{"payload":"preserve-exactly"}')
+        assert landed.execute(
+            "SELECT COUNT(*) FROM task_completions WHERE task_cid = ?",
+            ["task:rearm-persisted"],
+        ).fetchone()[0] == 0
+        assert landed.execute(
+            """
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = 'main'
+              AND table_name = 'coordination_tasks_rearm_staging'
+            """
+        ).fetchone()[0] == 0
+        assert landed.execute(
+            """
+            SELECT COUNT(*) FROM duckdb_indexes()
+            WHERE schema_name = 'main'
+              AND index_name = 'coordination_tasks_ready_idx'
+              AND table_name = 'coordination_tasks'
+            """
+        ).fetchone()[0] == 1
+    finally:
+        landed.close()
+
+    reopened = open_database_coordinator(database_path, clock_ms=clock)
+    try:
+        replay = reopened.rearm_task_from_control(
+            "task:rearm-persisted",
+            control_task_observation=_control_rearm_observation(
+                task_cid="task:rearm-persisted",
+                task_alias="REARM-PERSISTED",
+            ),
+        )
+        assert replay == {**rearmed, "replayed": True}
+        projection = reopened.coordination_registry_projection()
+        assert projection["counts"]["registered_tasks"] == 513
+        assert projection["logical_completions"] == []
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize("failure_point", ["begin", "commit"])
+def test_control_rearm_transaction_boundaries_fail_closed(
+    tmp_path: Path,
+    failure_point: str,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    coordinator.register_task(
+        task_cid="task:rearm-transaction",
+        task_id="REARM-TRANSACTION",
+    )
+    _settled_control_completion(coordinator, "task:rearm-transaction")
+    raw_connection = coordinator._require()  # noqa: SLF001
+
+    class TransactionFault:
+        def __init__(self, raw: object) -> None:
+            self.raw = raw
+
+        @property
+        def in_transaction(self) -> bool:
+            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
+
+        def execute(
+            self,
+            statement: str,
+            parameters: object | None = None,
+        ) -> object:
+            normalized = " ".join(str(statement).upper().split())
+            if failure_point == "begin" and normalized == "BEGIN TRANSACTION":
+                return self.raw.execute("SELECT 1")  # type: ignore[attr-defined]
+            if failure_point == "commit" and normalized == "COMMIT":
+                raise RuntimeError("injected task-rearm commit failure")
+            if parameters is None:
+                return self.raw.execute(statement)  # type: ignore[attr-defined]
+            return self.raw.execute(  # type: ignore[attr-defined]
+                statement,
+                parameters,
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.raw, name)
+
+    coordinator._connection = TransactionFault(raw_connection)  # noqa: SLF001
+    expected_error = (
+        DatabaseCoordinationError if failure_point == "begin" else RuntimeError
+    )
+    try:
+        with pytest.raises(expected_error):
+            coordinator.rearm_task_from_control(
+                "task:rearm-transaction",
+                control_task_observation=_control_rearm_observation(
+                    task_cid="task:rearm-transaction",
+                    task_alias="REARM-TRANSACTION",
+                ),
+            )
+        assert coordinator._require().in_transaction is False  # noqa: SLF001
+        readiness = coordinator.claimability("task:rearm-transaction")
+        assert readiness["completion_status"] == AttemptStatus.SUCCEEDED.value
+        assert readiness["claimable"] is False
+        assert coordinator._require().execute(  # noqa: SLF001
+            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+            ["task:rearm-transaction"],
+        ).fetchone()[0] is False
+        assert coordinator._require().execute(  # noqa: SLF001
+            """
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = 'main'
+              AND table_name = 'coordination_tasks_rearm_staging'
+            """
+        ).fetchone()[0] == 0
+    finally:
+        coordinator.close()
+
+
 def test_control_rearm_rejects_active_completion_authority(
     tmp_path: Path,
 ) -> None:

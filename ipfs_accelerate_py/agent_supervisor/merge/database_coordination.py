@@ -2217,26 +2217,132 @@ class DatabaseCoordinator:
             )
 
     @staticmethod
-    def _set_task_ready_with_index_rebuild_unlocked(
+    def _begin_task_rearm_transaction_unlocked(connection: Any) -> None:
+        """Begin the destructive rearm transaction without best-effort fallbacks."""
+
+        if getattr(connection, "in_transaction", None) is not False:
+            raise DatabaseCoordinationConflictError(
+                "task rearm requires an idle, transaction-aware connection"
+            )
+        connection.execute("BEGIN TRANSACTION")
+        if getattr(connection, "in_transaction", None) is not True:
+            raise DatabaseCoordinationError(
+                "task rearm did not enter its required transaction"
+            )
+
+    @staticmethod
+    def _commit_task_rearm_transaction_unlocked(connection: Any) -> None:
+        """Commit rearm and prove the transaction closed before returning."""
+
+        if getattr(connection, "in_transaction", None) is not True:
+            raise DatabaseCoordinationError(
+                "task rearm lost its transaction before commit"
+            )
+        connection.execute("COMMIT")
+        if getattr(connection, "in_transaction", None) is not False:
+            raise DatabaseCoordinationError(
+                "task rearm commit did not close its transaction"
+            )
+
+    @staticmethod
+    def _set_task_ready_with_table_rebuild_unlocked(
         connection: Any,
         *,
         task_cid: str,
         ready: bool,
     ) -> None:
-        """Update the indexed ready bit without DuckDB ART-index rewrites.
+        """Replace the task registry without mutating either of its ART indexes.
 
-        The caller must first prove whole-sidecar quiescence.  DuckDB 1.5 can
-        fatally invalidate this secondary ART index while updating an indexed
-        boolean.  Under that single-writer precondition, dropping and
-        recreating the exact index inside the caller's transaction keeps the
-        schema unchanged at commit; any failure rolls the row mutation and DDL
-        back together.
+        The caller must first prove whole-sidecar quiescence.  Dropping only
+        ``coordination_tasks_ready_idx`` is insufficient: DuckDB implements an
+        ``UPDATE`` as a delete plus insert of the complete row, which still
+        rewrites the table's primary-key ART index.  A persisted ART can reject
+        that delete with a fatal ``Only deleted 0 out of 1 rows`` error.
+
+        Build the exact authority table under a transaction-local staging
+        name, copying the target row with its new ready bit, then replace the
+        old table as one transactional DDL operation.  No row in the landed
+        ``coordination_tasks`` table is updated or deleted.  The staging table
+        has the same constraints and defaults, and the required secondary
+        index is recreated before validating the complete authority inventory.
+        DuckDB transactional DDL makes any failure roll back both the table
+        replacement and the caller's logical-completion removal.
         """
 
-        connection.execute("DROP INDEX coordination_tasks_ready_idx")
+        source_row = connection.execute(
+            "SELECT COUNT(*) AS row_count, "
+            "SUM(CASE WHEN task_cid = ? THEN 1 ELSE 0 END) AS target_count "
+            "FROM coordination_tasks",
+            [task_cid],
+        ).fetchone()
+        source_mapping = _row_mapping(source_row)
+        source_count = int(
+            _row_get(source_mapping, "row_count", "0", default=0)
+        )
+        target_count = int(
+            _row_get(source_mapping, "target_count", "1", default=0) or 0
+        )
+        if target_count != 1:
+            raise DatabaseCoordinationStaleFenceError(
+                "task ready-bit rearm lost its exact registry row"
+            )
+
         connection.execute(
-            "UPDATE coordination_tasks SET ready = ? WHERE task_cid = ?",
-            [bool(ready), task_cid],
+            """
+            CREATE TABLE coordination_tasks_rearm_staging (
+                task_cid VARCHAR PRIMARY KEY,
+                task_id VARCHAR NOT NULL,
+                worktree_id VARCHAR NOT NULL DEFAULT '',
+                registered_at_ms BIGINT NOT NULL,
+                ready BOOLEAN NOT NULL DEFAULT TRUE,
+                body_json VARCHAR NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO coordination_tasks_rearm_staging(
+                task_cid, task_id, worktree_id, registered_at_ms,
+                ready, body_json
+            )
+            SELECT task_cid, task_id, worktree_id, registered_at_ms,
+                   CASE WHEN task_cid = ? THEN ? ELSE ready END,
+                   body_json
+            FROM coordination_tasks
+            """,
+            [task_cid, bool(ready)],
+        )
+        row = connection.execute(
+            """
+            SELECT COUNT(*) AS row_count,
+                   SUM(CASE WHEN task_cid = ? AND ready = ? THEN 1 ELSE 0 END)
+                       AS target_count
+            FROM coordination_tasks_rearm_staging
+            """,
+            [task_cid, bool(ready)],
+        ).fetchone()
+        staged_mapping = _row_mapping(row)
+        staged_count = int(
+            _row_get(staged_mapping, "row_count", "0", default=0)
+        )
+        staged_target_count = int(
+            _row_get(staged_mapping, "target_count", "1", default=0) or 0
+        )
+        if staged_count != source_count or staged_target_count != 1:
+            raise DatabaseCoordinationStaleFenceError(
+                "task registry rebuild did not preserve its exact rows"
+            )
+
+        connection.execute("DROP TABLE coordination_tasks")
+        connection.execute(
+            "ALTER TABLE coordination_tasks_rearm_staging "
+            "RENAME TO coordination_tasks"
+        )
+        connection.execute(
+            """
+            CREATE INDEX coordination_tasks_ready_idx
+                ON coordination_tasks(ready, registered_at_ms, task_cid)
+            """
         )
         row = connection.execute(
             "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
@@ -2248,12 +2354,7 @@ class DatabaseCoordinator:
             raise DatabaseCoordinationStaleFenceError(
                 "task ready-bit rearm lost its exact registry row"
             )
-        connection.execute(
-            """
-            CREATE INDEX coordination_tasks_ready_idx
-                ON coordination_tasks(ready, registered_at_ms, task_cid)
-            """
-        )
+        _validate_coordination_authority(connection)
 
     def rearm_task_from_control(
         self,
@@ -2285,7 +2386,7 @@ class DatabaseCoordinator:
         )
         with self._lock:
             connection = self._require()
-            self._begin(connection)
+            self._begin_task_rearm_transaction_unlocked(connection)
             try:
                 task_row = connection.execute(
                     "SELECT task_cid, task_id, ready FROM coordination_tasks "
@@ -2441,7 +2542,7 @@ class DatabaseCoordinator:
                         raise DatabaseCoordinationStaleFenceError(
                             "task readiness changed after the rearm receipt"
                         )
-                    self._commit_if_idle(connection)
+                    self._commit_task_rearm_transaction_unlocked(connection)
                     return {
                         "schema": TASK_COMPLETION_REARM_SCHEMA,
                         "task_cid": cid,
@@ -2556,7 +2657,7 @@ class DatabaseCoordinator:
                     )
                 readiness = self._claimability_unlocked(connection, cid)
                 ready = bool(readiness["claimable"])
-                self._set_task_ready_with_index_rebuild_unlocked(
+                self._set_task_ready_with_table_rebuild_unlocked(
                     connection,
                     task_cid=cid,
                     ready=ready,
@@ -2593,7 +2694,7 @@ class DatabaseCoordinator:
                     observed_at_ms=now,
                     body=event_body,
                 )
-                self._commit_if_idle(connection)
+                self._commit_task_rearm_transaction_unlocked(connection)
                 return {
                     "schema": TASK_COMPLETION_REARM_SCHEMA,
                     "task_cid": cid,
