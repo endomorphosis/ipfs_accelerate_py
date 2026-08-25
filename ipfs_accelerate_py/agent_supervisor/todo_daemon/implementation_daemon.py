@@ -6469,6 +6469,40 @@ def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
     )
 
 
+def portal_task_identity(
+    task: PortalTask,
+    *,
+    todo_path: Path | str,
+) -> TaskIdentity:
+    """Return the exact identity used by Portal lifecycle events.
+
+    Parsed tasks already carry an identity derived from their source
+    projection.  Portal binds that parsed identity together with any exact
+    path authority before recording lifecycle events.  Keeping this transform
+    in one helper lets database-attempt bridges validate a projection-local
+    completion event without confusing that disposable identity with the
+    authoritative database task CID.
+    """
+
+    path = Path(todo_path)
+    metadata = dict(task.metadata)
+    if task.canonical_task_key:
+        metadata["canonical task key"] = task.canonical_task_key
+    if task.canonical_task_cid:
+        metadata["canonical task cid"] = task.canonical_task_cid
+    return canonical_task_identity(
+        {
+            "task_id": task.task_id,
+            "title": task.title,
+            "outputs": task_declared_output_paths(task),
+            "acceptance": task.acceptance,
+            "metadata": metadata,
+        },
+        board_namespace=task.board_namespace or path.name,
+        source_path=path,
+    )
+
+
 def task_declares_validation_config_change(task: PortalTask) -> bool:
     """Return whether the task explicitly owns a validation-config path.
 
@@ -13186,21 +13220,9 @@ class PortalImplementationDaemon:
         return result
 
     def _identity_for_task(self, task: PortalTask) -> TaskIdentity:
-        metadata = dict(task.metadata)
-        if task.canonical_task_key:
-            metadata["canonical task key"] = task.canonical_task_key
-        if task.canonical_task_cid:
-            metadata["canonical task cid"] = task.canonical_task_cid
-        return canonical_task_identity(
-            {
-                "task_id": task.task_id,
-                "title": task.title,
-                "outputs": task_declared_output_paths(task),
-                "acceptance": task.acceptance,
-                "metadata": metadata,
-            },
-            board_namespace=task.board_namespace or self.todo_path.name,
-            source_path=self.todo_path,
+        return portal_task_identity(
+            task,
+            todo_path=self.todo_path,
         )
 
     def _register_task_identities(self, tasks: Sequence[PortalTask]) -> dict[str, list[str]]:

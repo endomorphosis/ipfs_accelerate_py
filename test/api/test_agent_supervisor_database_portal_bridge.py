@@ -63,6 +63,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalImplementationDaemon,
     parse_args,
     parse_task_file,
+    portal_task_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
@@ -188,6 +189,13 @@ class _CompletingPortal:
         self.task_alias = task_alias
         self.closed = False
 
+    def _completion_event_fields(self) -> dict[str, str]:
+        return {
+            "task_id": self.task_alias,
+            "canonical_task_key": "task/v1/current-authority-inventory",
+            "canonical_task_cid": "task:cid:004",
+        }
+
     def run_once(self) -> dict[str, object]:
         text = self.paths.task_projection.read_text(encoding="utf-8")
         self.paths.task_projection.write_text(
@@ -203,18 +211,10 @@ class _CompletingPortal:
             ),
             encoding="utf-8",
         )
-        self.paths.events.write_text(
-            json.dumps(
-                {
-                    "type": "task_completed",
-                    "task_id": self.task_alias,
-                    "canonical_task_key": "task/v1/current-authority-inventory",
-                    "canonical_task_cid": "task:cid:004",
-                    "event_id": "event:complete",
-                }
-            )
-            + "\n",
-            encoding="utf-8",
+        append_jsonl_event(
+            self.paths.events,
+            "task_completed",
+            self._completion_event_fields(),
         )
         return {
             "task_count": 1,
@@ -239,6 +239,22 @@ class _CompletingPortal:
 
     def close_event_runtime(self) -> None:
         self.closed = True
+
+
+class _ProjectionIdentityCompletingPortal(_CompletingPortal):
+    """Complete with the exact identity used by the real Portal daemon."""
+
+    def _completion_event_fields(self) -> dict[str, str]:
+        [task] = parse_task_file(self.paths.task_projection, "## LGSWF-")
+        identity = portal_task_identity(
+            task,
+            todo_path=self.paths.task_projection,
+        )
+        return {
+            "task_id": self.task_alias,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+        }
 
 
 def _consumed_no_progress_result(
@@ -396,6 +412,173 @@ def test_bridge_projection_preserves_authoritative_database_task_identity(
     assert projected[0].canonical_task_cid == record.task_cid
     assert binding["canonical_task_key"] == record.body["task_key"]
     assert binding["task_cid"] == record.task_cid
+
+
+def test_bridge_maps_projection_local_completion_to_database_identity(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    record.body.pop("task_key")
+    record.body["allowed_paths"] = ["inventory/result.json"]
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _ProjectionIdentityCompletingPortal(
+            paths,
+            alias,
+        ),
+    )
+
+    provider = bridge.run_provider(_attempt())
+    event_identity = provider["portal_evidence"][
+        "portal_completion_event_identity"
+    ]
+
+    assert provider["accepted"] is True
+    assert provider["task_cid"] == record.task_cid
+    assert event_identity["canonical_task_cid"] != record.task_cid
+    [event] = [
+        json.loads(line)
+        for path in (tmp_path / "attempts").glob("*/portal-events.jsonl")
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if json.loads(line).get("type") == "task_completed"
+    ]
+    assert event_identity == {
+        "canonical_task_key": event["canonical_task_key"],
+        "canonical_task_cid": event["canonical_task_cid"],
+    }
+
+
+@pytest.mark.parametrize("tamper", ("canonical_task_cid", "task_id"))
+def test_bridge_rejects_forged_projection_local_completion_event(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    record = _record()
+    record.body.pop("task_key")
+    record.body["allowed_paths"] = ["inventory/result.json"]
+
+    class ForgedProjectionCompletionPortal(_ProjectionIdentityCompletingPortal):
+        def _completion_event_fields(self) -> dict[str, str]:
+            event = super()._completion_event_fields()
+            event[tamper] = (
+                "task:cid:forged-projection"
+                if tamper == "canonical_task_cid"
+                else "LGSWF-OTHER"
+            )
+            return event
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: ForgedProjectionCompletionPortal(
+            paths,
+            alias,
+        ),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match="matching durable"):
+        bridge.run_provider(_attempt())
+
+
+@pytest.mark.parametrize("tamper", ("event_id", "previous_event_id"))
+def test_bridge_rejects_tampered_projection_completion_event_chain(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    record = _record()
+    record.body.pop("task_key")
+    record.body["allowed_paths"] = ["inventory/result.json"]
+
+    class TamperedCompletionChainPortal(_ProjectionIdentityCompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            result = super().run_once()
+            events = [
+                json.loads(line)
+                for line in self.paths.events.read_text(encoding="utf-8").splitlines()
+            ]
+            event = events[-1]
+            if tamper == "event_id":
+                event["event_id"] = "sha256:" + "0" * 64
+            else:
+                event["previous_event_id"] = "sha256:" + "f" * 64
+                body = dict(event)
+                body.pop("event_id")
+                event["event_id"] = "sha256:" + hashlib.sha256(
+                    json.dumps(
+                        body,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest()
+            self.paths.events.write_text(
+                "".join(
+                    json.dumps(item, separators=(",", ":"), sort_keys=True) + "\n"
+                    for item in events
+                ),
+                encoding="utf-8",
+            )
+            return result
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: TamperedCompletionChainPortal(
+            paths,
+            alias,
+        ),
+        max_passes=1,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="event chain failed identity verification",
+    ):
+        bridge.run_provider(_attempt())
+
+
+def test_bridge_rejects_completion_after_database_binding_substitution(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    record.body.pop("task_key")
+    record.body["allowed_paths"] = ["inventory/result.json"]
+
+    class SubstitutedBindingPortal(_ProjectionIdentityCompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            result = super().run_once()
+            binding = json.loads(self.paths.binding.read_text(encoding="utf-8"))
+            binding.pop("binding_id")
+            binding["task_cid"] = "task:cid:substituted"
+            binding["binding_id"] = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    binding,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+            ).hexdigest()
+            self.paths.binding.write_text(
+                json.dumps(binding, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            return result
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: SubstitutedBindingPortal(
+            paths,
+            alias,
+        ),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError):
+        bridge.run_provider(_attempt())
 
 
 @pytest.mark.parametrize(
@@ -708,15 +891,10 @@ def test_bridge_rejects_completion_event_for_another_canonical_task(
     tmp_path: Path,
 ) -> None:
     class ForgedCompletionPortal(_CompletingPortal):
-        def run_once(self) -> dict[str, object]:
-            result = super().run_once()
-            event = json.loads(self.paths.events.read_text(encoding="utf-8"))
+        def _completion_event_fields(self) -> dict[str, str]:
+            event = super()._completion_event_fields()
             event["canonical_task_cid"] = "task:cid:other"
-            self.paths.events.write_text(
-                json.dumps(event) + "\n",
-                encoding="utf-8",
-            )
-            return result
+            return event
 
     bridge = DatabasePortalExecutionBridge(
         task_source=_TaskSource(_record()),

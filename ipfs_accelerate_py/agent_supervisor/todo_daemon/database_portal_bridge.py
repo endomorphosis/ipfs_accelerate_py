@@ -3807,8 +3807,9 @@ class DatabasePortalExecutionBridge:
             )
         return observed_binding
 
-    @staticmethod
+    @classmethod
     def _has_completion_event(
+        cls,
         paths: DatabasePortalAttemptPaths,
         alias: str,
         canonical_task_key: str,
@@ -3816,24 +3817,108 @@ class DatabasePortalExecutionBridge:
     ) -> bool:
         if not paths.events.is_file():
             return False
-        try:
-            lines = paths.events.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError):
-            return False
-        for line in reversed(lines[-4096:]):
-            try:
-                event = json.loads(line)
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
+        for event in reversed(cls._verified_event_chain(paths)):
             if (
-                isinstance(event, Mapping)
-                and event.get("type") == "task_completed"
+                event.get("type") == "task_completed"
                 and str(event.get("task_id") or "") == alias
                 and str(event.get("canonical_task_key") or "") == canonical_task_key
                 and str(event.get("canonical_task_cid") or "") == canonical_task_cid
             ):
                 return True
         return False
+
+    def _portal_completion_event_identity(
+        self,
+        *,
+        paths: DatabasePortalAttemptPaths,
+        projection_text: str,
+        binding: Mapping[str, Any],
+    ) -> tuple[str, str]:
+        """Derive the exact non-authoritative identity Portal records.
+
+        A database attempt projection can carry extra path authority.  Portal
+        therefore derives a projection-local task identity for its lifecycle
+        events instead of treating the projected database CID as authority.
+        The bridge may accept that local event only after the immutable
+        single-task projection and its database binding have been verified.
+        """
+
+        # Import lazily because implementation_daemon imports its runner,
+        # which in turn binds this bridge.
+        from .implementation_daemon import (
+            parse_task_text,
+            portal_task_identity,
+        )
+
+        alias = str(binding.get("task_alias") or "")
+        task_cid = str(binding.get("task_cid") or "")
+        task_key = str(binding.get("canonical_task_key") or "")
+        if not alias or not task_cid or not task_key:
+            raise DatabasePortalBridgeError(
+                "Portal completion projection differs from its database binding"
+            )
+        observed_binding = self._read_binding(paths.binding)
+        if observed_binding != binding:
+            raise DatabasePortalBridgeError(
+                "Portal completion projection differs from its database binding"
+            )
+        verified_projection = verify_database_portal_attempt_projection(
+            paths.task_projection,
+            expected_task_alias=alias,
+            expected_task_cid=task_cid,
+            allowed_root=self.attempt_root,
+        )
+        if (
+            verified_projection.get("binding_id") != binding.get("binding_id")
+            or verified_projection.get("canonical_task_key") != task_key
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal completion projection differs from its database binding"
+            )
+        try:
+            projected_tasks = parse_task_text(
+                projection_text,
+                path=paths.task_projection,
+                # The bridge default (``## ``) normalizes to ``## ##`` and is
+                # not a valid parser prefix.  This is a private, verified
+                # single-task projection, so bind parsing to its exact alias
+                # and confirm that alias again below.
+                task_header_prefix=f"## {alias}",
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "Portal completion projection identity is malformed"
+            ) from exc
+        if len(projected_tasks) != 1:
+            raise DatabasePortalBridgeError(
+                "Portal completion projection is not exactly one task"
+            )
+        task = projected_tasks[0]
+        metadata = task.metadata
+        if (
+            task.task_id != alias
+            or metadata.get("projection authority") != "false"
+            or metadata.get("database task cid") != task_cid
+            or metadata.get("canonical task cid") != task_cid
+            or metadata.get("canonical task key") != task_key
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal completion projection differs from its database binding"
+            )
+        try:
+            identity = portal_task_identity(
+                task,
+                todo_path=paths.task_projection,
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "Portal completion event identity cannot be derived"
+            ) from exc
+        if not identity.canonical_task_key or not identity.canonical_task_cid:
+            raise DatabasePortalBridgeError(
+                "Portal completion event identity is absent"
+            )
+        return identity.canonical_task_key, identity.canonical_task_cid
 
     @staticmethod
     def _terminal_failure(result: Mapping[str, Any]) -> str:
@@ -7104,11 +7189,18 @@ class DatabasePortalExecutionBridge:
         projection_text = self._verify_projection(paths, binding)
         if _projection_status(projection_text) not in _TERMINAL_STATUSES:
             raise DatabasePortalBridgeDeferred("Portal task projection is not complete")
+        completion_task_key, completion_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
+        )
         if not self._has_completion_event(
             paths,
             alias,
-            str(binding.get("canonical_task_key") or ""),
-            str(binding.get("task_cid") or ""),
+            completion_task_key,
+            completion_task_cid,
         ):
             raise DatabasePortalBridgeError(
                 "Portal completion lacks a matching durable task_completed event"
@@ -7122,6 +7214,10 @@ class DatabasePortalExecutionBridge:
             "projection_immutable_digest": str(binding.get("projection_immutable_digest") or ""),
             "state_digest": _sha256_file(paths.state) if paths.state.is_file() else "",
             "events_digest": _sha256_file(paths.events),
+            "portal_completion_event_identity": {
+                "canonical_task_key": completion_task_key,
+                "canonical_task_cid": completion_task_cid,
+            },
             "portal_passes": [dict(item) for item in summaries],
             "portal_pass_count": int(summary_count),
             "portal_passes_truncated": summary_count > len(summaries),
@@ -7232,24 +7328,30 @@ class DatabasePortalExecutionBridge:
             inflight_identity: tuple[str, int, str] | None = None
             while ordinary_passes < self.max_passes:
                 projection = self._verify_projection(paths, binding)
-                if _projection_status(
-                    projection
-                ) in _TERMINAL_STATUSES and self._has_completion_event(
-                    paths,
-                    str(binding.get("task_alias") or ""),
-                    str(binding.get("canonical_task_key") or ""),
-                    str(binding.get("task_cid") or ""),
-                ):
-                    return self._acceptance_receipt(
-                        attempt=attempt,
-                        paths=paths,
-                        binding=binding,
-                        summaries=summaries,
-                        summary_count=summary_count,
-                        summaries_digest=(
-                            "sha256:" + summaries_hasher.copy().hexdigest()
-                        ),
+                if _projection_status(projection) in _TERMINAL_STATUSES:
+                    completion_task_key, completion_task_cid = (
+                        self._portal_completion_event_identity(
+                            paths=paths,
+                            projection_text=projection,
+                            binding=binding,
+                        )
                     )
+                    if self._has_completion_event(
+                        paths,
+                        str(binding.get("task_alias") or ""),
+                        completion_task_key,
+                        completion_task_cid,
+                    ):
+                        return self._acceptance_receipt(
+                            attempt=attempt,
+                            paths=paths,
+                            binding=binding,
+                            summaries=summaries,
+                            summary_count=summary_count,
+                            summaries_digest=(
+                                "sha256:" + summaries_hasher.copy().hexdigest()
+                            ),
+                        )
                 # Once Portal has proved that this exact claim-private
                 # lifecycle is still running, do not launch another pass at
                 # or beyond the callback's wall-clock deadline.  The prior
