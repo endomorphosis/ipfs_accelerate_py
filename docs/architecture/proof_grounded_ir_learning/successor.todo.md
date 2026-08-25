@@ -215,7 +215,7 @@ evidence.
 
 ## PGIR-204 Requalify or replace the historical R1 semantic baseline
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
