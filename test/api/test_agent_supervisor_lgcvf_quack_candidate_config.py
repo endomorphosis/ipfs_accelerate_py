@@ -51,11 +51,11 @@ CANONICAL_PATH = ROOT / (
 BOARD_BRANCH = "agent/logic-governed-compositional-verification-fabric-v1"
 RUNTIME_ROOT = (
     "data/agent_supervisor/"
-    "logic_governed_compositional_verification_fabric/run-v24"
+    "logic_governed_compositional_verification_fabric/run-v25"
 )
 QUACK_OWNER = f"{RUNTIME_ROOT}/quack-owner"
 QUACK_HANDLE = "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
-QUACK_ENDPOINT = "quack:127.0.0.1:45686"
+QUACK_ENDPOINT = "quack:127.0.0.1:45688"
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -71,7 +71,7 @@ def _option_value(argv: list[str], option: str) -> str:
     return argv[argv.index(option) + 1]
 
 
-def test_lgcvf_quack_candidate_is_additive_run_v24_fail_closed_profile() -> None:
+def test_lgcvf_quack_candidate_is_additive_run_v25_fail_closed_profile() -> None:
     candidate = _load_json(CANDIDATE_PATH)
     canonical = _load_json(CANONICAL_PATH)
 
@@ -110,8 +110,8 @@ def test_lgcvf_quack_candidate_is_additive_run_v24_fail_closed_profile() -> None
     assert program["quack_endpoint"] == QUACK_ENDPOINT
     assert program["runtime_registry_path"] == runtime["quack_owner"]
     assert program["store_id"] == f"{RUNTIME_ROOT}/control.duckdb"
-    assert program["store_generation"] == "lgcvf-run-v24"
-    assert program["export_profile"] == "lgcvf-run-v24"
+    assert program["store_generation"] == "lgcvf-run-v25"
+    assert program["export_profile"] == "lgcvf-run-v25"
     assert program["failover_policy"] == "fail_closed"
     assert program["explicit_legacy"] is False
     rendered_candidate = json.dumps(candidate, sort_keys=True)
@@ -246,7 +246,7 @@ def test_lgcvf_quack_candidate_loads_and_renders_detached_launch_plan(
     assert environment[STATE_FAILOVER_POLICY_ENV] == "fail_closed"
     assert environment[STATE_ENDPOINT_SECRET_HANDLE_ENV] == QUACK_HANDLE
     assert environment[STATE_QUACK_ENDPOINT_ENV] == QUACK_ENDPOINT
-    assert environment[STATE_STORE_GENERATION_ENV] == "lgcvf-run-v24"
+    assert environment[STATE_STORE_GENERATION_ENV] == "lgcvf-run-v25"
     expected_owner = str((ROOT / QUACK_OWNER).resolve())
     assert environment[RUNTIME_REGISTRY_PATH_ENV] == expected_owner
     assert environment[STATE_QUACK_MUTATION_DIR_ENV] == (

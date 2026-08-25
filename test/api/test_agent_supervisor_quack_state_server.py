@@ -18,7 +18,7 @@ import threading
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
 import pytest
@@ -36,6 +36,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     STATE_SERVER_IDENTITY_INTERFACE,
     ExclusiveOwnerLease,
     FakeQuackTransport,
+    InProcessQuackTransport,
     OwnerMarker,
     QuackStateServer,
     QuackStateServerBindError,
@@ -1625,6 +1626,71 @@ def test_concurrent_starts_only_lease_winner_migrates_and_opens(
 # ---------------------------------------------------------------------------
 # Ready / identity / migration / lifecycle
 # ---------------------------------------------------------------------------
+
+
+def test_live_query_retries_quack_could_not_connect_birth_race(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IOException(Exception):
+        pass
+
+    attempts = 0
+
+    class BirthClient:
+        def __init__(self, *, fail_query: bool) -> None:
+            self.fail_query = fail_query
+
+        def execute(self, sql: str, _params: Any = None) -> _Result:
+            if "quack_query" in sql:
+                if self.fail_query:
+                    raise IOException(
+                        "IO Error: Failed to send message: IO Error: "
+                        "Could not connect to server error for HTTP POST"
+                    )
+                return _Result((1,))
+            return _Result()
+
+        def close(self) -> None:
+            pass
+
+    def connect(_database: str) -> BirthClient:
+        nonlocal attempts
+        attempts += 1
+        return BirthClient(fail_query=attempts == 1)
+
+    monkeypatch.setitem(sys.modules, "duckdb", SimpleNamespace(connect=connect))
+    identity = StateServerIdentity(
+        server_id="server:birth-race",
+        store_id="store:birth-race",
+        database_uuid=_UUID,
+        schema_revision=1,
+        schema_fingerprint=_DIGEST,
+        generation=1,
+        fence_epoch=1,
+        revision=0,
+        process_birth=_birth(),
+        listen_uri="quack:127.0.0.1:45689",
+        extension_fingerprint=_DIGEST,
+        credential_generation=1,
+        secret_handle="handle:birth-race",
+    )
+    transport = InProcessQuackTransport()
+    transport.start(
+        FakeConnection(),
+        host="127.0.0.1",
+        port=45689,
+        token="isolated-birth-race-token",
+        identity=identity,
+    )
+
+    observed = transport.live_query(
+        FakeConnection(),
+        identity=identity,
+        token="isolated-birth-race-token",
+    )
+
+    assert observed["live"] is True
+    assert attempts == 2
 
 
 def test_start_ready_checkpoint_stop_lifecycle(tmp_path: Path) -> None:

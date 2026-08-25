@@ -1699,6 +1699,7 @@ class InProcessQuackTransport:
                 transient_birth = (
                     "invalid connection id" in detail
                     or "connection refused" in detail
+                    or "could not connect to server" in detail
                     or "listener unavailable" in detail
                 )
                 if not transient_birth or time.monotonic() >= deadline:
