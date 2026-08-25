@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,9 +22,13 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ValidationScheduler,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalExecutionBridge,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
+    parse_task_text,
 )
 
 
@@ -485,6 +490,40 @@ def _git(repo: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+def _release_scope_repo(
+    tmp_path: Path,
+) -> tuple[Path, PortalImplementationDaemon, str]:
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "test").mkdir()
+    (repo / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    (repo / "pkg" / "release.py").write_text(
+        "def release_status():\n    return 'draft'\n",
+        encoding="utf-8",
+    )
+    (repo / "test" / "test_release.py").write_text(
+        "from pkg.release import release_status\n\n"
+        "def test_release_status():\n"
+        "    assert release_status() == 'draft'\n",
+        encoding="utf-8",
+    )
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "task-projection.md",
+        state_path=tmp_path / "portal-state" / "state.json",
+        strategy_path=tmp_path / "portal-state" / "strategy.json",
+        events_path=tmp_path / "portal-state" / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    return repo, daemon, baseline
+
+
 def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
     tmp_path: Path,
 ) -> None:
@@ -583,6 +622,141 @@ def test_daemon_revalidates_justified_expansion_and_exposes_receipt(
         "implementation_expected_outputs_checked",
         "implementation_proposal_validated",
     ]
+
+
+def test_database_bridge_projection_keeps_imported_module_outside_exact_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, daemon, baseline = _release_scope_repo(tmp_path)
+    attempt = SimpleNamespace(
+        task_cid="baguqeeraexactscope",
+        task_alias="VRIF-010",
+        attempt_id="attempt:exact-scope",
+        claim_id="claim:exact-scope",
+    )
+    record = SimpleNamespace(
+        task_cid=attempt.task_cid,
+        task_alias=attempt.task_alias,
+        goal_cid="baguqeeragoal",
+        plan_cid="baguqeeraplan",
+        revision=10,
+        priority="P0",
+        dependencies=(),
+        outputs=({"path": "test/test_release.py"},),
+        validations=(
+            {"argv": ["python", "-m", "pytest", "test/test_release.py"]},
+        ),
+        acceptance=({"criterion": "The release report passes validation"},),
+        body={
+            "objective": "Publish the final release report",
+            "priority": "P0",
+            "track": "release",
+            # A database body cannot downgrade the bridge-owned exact policy.
+            "scope_expansion_policy": "adjudicated",
+        },
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repo,
+        task_header_prefix="## VRIF-",
+    )
+    projection = bridge._render_projection(attempt, record)
+    daemon.todo_path.write_text(projection, encoding="utf-8")
+    [task] = parse_task_text(
+        projection,
+        path=daemon.todo_path,
+        task_header_prefix="## VRIF-",
+    )
+
+    assert projection.count("Scope expansion policy: exact") == 1
+    assert "Scope Expansion Policy: adjudicated" not in projection
+    assert task.canonical_task_cid == attempt.task_cid
+    assert task.metadata["scope expansion policy"] == "exact"
+    assert daemon._proposal_scope_paths(task) == ("test/test_release.py",)
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    edit_policy = compiled.capsule.authority["edit_policy"]
+    assert edit_policy["scope_expansion_policy"] == "exact"
+    assert edit_policy["allowed_paths"] == ("test/test_release.py",)
+    assert edit_policy["ast_import_companion_paths"] == ()
+
+    (repo / "pkg" / "release.py").write_text(
+        "def release_status():\n    return 'ready'\n",
+        encoding="utf-8",
+    )
+    (repo / "test" / "test_release.py").write_text(
+        "from pkg.release import release_status\n\n"
+        "def test_release_status():\n"
+        "    assert release_status() == 'ready'\n",
+        encoding="utf-8",
+    )
+    diagnostics: dict[str, object] = {}
+    monkeypatch.setattr(
+        daemon,
+        "_restore_out_of_scope_workspace_paths",
+        lambda *_args, **_kwargs: [],
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+        diagnostics=diagnostics,
+    )
+
+    assert result.accepted is False
+    assert {finding.code.value for finding in result.findings} == {
+        "path_outside_scope"
+    }
+    assert diagnostics["changed_paths"] == [
+        "pkg/release.py",
+        "test/test_release.py",
+    ]
+    assert diagnostics["scope_expansion_policy"] == "exact"
+    assert diagnostics["scope_expansion_allowed"] is False
+
+
+def test_legacy_portal_task_still_admits_ast_import_companion(
+    tmp_path: Path,
+) -> None:
+    repo, daemon, baseline = _release_scope_repo(tmp_path)
+    task = PortalTask(
+        task_id="LEGACY-RELEASE",
+        title="Repair the release contract",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="release",
+        outputs=["test/test_release.py"],
+        validation=["python -m pytest test/test_release.py"],
+    )
+
+    assert daemon._proposal_scope_paths(task) == (
+        "pkg/release.py",
+        "test/test_release.py",
+    )
+
+    (repo / "pkg" / "release.py").write_text(
+        "def release_status():\n    return 'ready'\n",
+        encoding="utf-8",
+    )
+    (repo / "test" / "test_release.py").write_text(
+        "from pkg.release import release_status\n\n"
+        "def test_release_status():\n"
+        "    assert release_status() == 'ready'\n",
+        encoding="utf-8",
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.policy.policy_version == "strict-proposal-v2+local-envelope-v2"
 
 
 def test_daemon_exact_scope_policy_overrides_dependency_adjudication(

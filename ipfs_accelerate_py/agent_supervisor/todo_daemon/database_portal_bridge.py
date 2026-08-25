@@ -3250,6 +3250,8 @@ class DatabasePortalExecutionBridge:
             "canonical_task_cid",
             "task key",
             "task_key",
+            "scope expansion policy",
+            "scope_expansion_policy",
         }
         lines = [
             "# Database attempt projection (non-authoritative)",
@@ -3270,6 +3272,10 @@ class DatabasePortalExecutionBridge:
             f"- Database dependency CIDs: {_line_value(getattr(record, 'dependencies', ()))}",
             f"- Canonical task key: {canonical_task_key}",
             f"- Canonical task CID: {canonical_task_cid}",
+            # The canonical database revision owns only its typed output/effect
+            # paths.  Validation imports are readable context, never an
+            # implicit mutation grant for this private Portal projection.
+            "- Scope expansion policy: exact",
             "- Projection authority: false",
         ]
         for key in sorted(body):

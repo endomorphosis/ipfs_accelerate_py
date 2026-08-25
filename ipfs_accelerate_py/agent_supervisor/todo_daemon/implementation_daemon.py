@@ -4037,6 +4037,41 @@ COMPLETION_GAP_EDIT_SCOPE_ROLES = frozenset(
 )
 COMPLETION_GAP_MANUAL_REVIEW_ROLE = "completion_gate_gap_manual_review"
 
+SCOPE_EXPANSION_POLICY_METADATA_KEY = "scope expansion policy"
+SCOPE_EXPANSION_POLICY_ADJUDICATED = "adjudicated"
+SCOPE_EXPANSION_POLICY_EXACT = "exact"
+_SCOPE_EXPANSION_ALLOWED_VALUES = frozenset(
+    {
+        "allow",
+        "adjudicated",
+        "dependency-adjudicated",
+        "dependency_adjudicated",
+    }
+)
+
+
+def task_scope_expansion_policy(task: PortalTask) -> tuple[str, bool]:
+    """Return the task-bound scope policy and whether expansion is allowed.
+
+    Scope adjudication is the compatibility default for legacy Markdown
+    boards. Canonical database projections opt into exact output ownership
+    while they are converted to :class:`PortalTask`. Once the metadata field
+    is present, unknown values fail closed instead of accidentally granting
+    dependency-derived write authority.
+    """
+
+    metadata = {
+        str(key).strip().lower().replace("_", " "): str(value or "").strip()
+        for key, value in task.metadata.items()
+    }
+    configured = metadata.get(SCOPE_EXPANSION_POLICY_METADATA_KEY, "")
+    normalized = configured.lower().replace(" ", "-")
+    if not normalized:
+        return SCOPE_EXPANSION_POLICY_ADJUDICATED, True
+    if normalized in _SCOPE_EXPANSION_ALLOWED_VALUES:
+        return SCOPE_EXPANSION_POLICY_ADJUDICATED, True
+    return SCOPE_EXPANSION_POLICY_EXACT, False
+
 
 def completion_gap_edit_scope(
     task: PortalTask,
@@ -5606,6 +5641,8 @@ class PortalImplementationDaemon:
     def _portal_task_from_source_task(
         cls,
         task: TaskSourceTask,
+        *,
+        source_kind: str = "",
     ) -> PortalTask:
         """Preserve daemon grammar while consuming one canonical source row."""
 
@@ -5708,6 +5745,16 @@ class PortalImplementationDaemon:
         metadata["outputs"] = ", ".join(outputs)
         metadata["validation"] = " ; ".join(validations)
         metadata["acceptance"] = acceptance
+        if (
+            str(source_kind or "").strip().lower() == "duckdb"
+            and str(task.task_cid or "").strip()
+        ):
+            # DatabaseTaskSource rows bind exact output/effect paths into the
+            # canonical task revision. Imported modules remain readable for
+            # validation, but are not an implicit mutation grant.
+            metadata[SCOPE_EXPANSION_POLICY_METADATA_KEY] = (
+                SCOPE_EXPANSION_POLICY_EXACT
+            )
 
         return PortalTask(
             task_id=task.task_id,
@@ -5747,7 +5794,12 @@ class PortalImplementationDaemon:
                 if not cursor:
                     break
             tasks = [
-                self._portal_task_from_source_task(task)
+                self._portal_task_from_source_task(
+                    task,
+                    source_kind=str(
+                        getattr(self.task_source, "source_kind", "") or ""
+                    ),
+                )
                 for task in records
             ]
         return inherit_retry_budget_repair_validation(tasks)
@@ -41421,7 +41473,14 @@ class PortalImplementationDaemon:
         raw_paths: list[str] = list(task_declared_output_paths(task))
         for metadata_name in ("predicted files", "allowed paths"):
             raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
-        if include_ast_companions and repo_root is not None:
+        _scope_policy, task_allows_scope_expansion = (
+            task_scope_expansion_policy(task)
+        )
+        if (
+            include_ast_companions
+            and task_allows_scope_expansion
+            and repo_root is not None
+        ):
             try:
                 raw_paths.extend(
                     validation_ast_companion_paths(
@@ -44204,6 +44263,9 @@ class PortalImplementationDaemon:
             workspace_path=workspace_path,
             baseline_ref=baseline_ref,
         )
+        scope_expansion_policy, task_allows_scope_expansion = (
+            task_scope_expansion_policy(task)
+        )
         scope_paths = self._proposal_scope_paths(task)
         # A missing output declaration grants no mutation authority.
         allowed_paths = scope_paths or (".proposal-scope-not-declared",)
@@ -44434,6 +44496,8 @@ class PortalImplementationDaemon:
             },
         }
         policy_version = "strict-proposal-v2+local-envelope-v2"
+        if not task_allows_scope_expansion:
+            policy_version += "+exact-task-scope-v1"
         if local_envelope_limits.get("bounded_size_reduction"):
             policy_version += "+bounded-size-reduction-v1"
         policy_allowed_paths = allowed_paths
@@ -44664,6 +44728,7 @@ class PortalImplementationDaemon:
         )
         if (
             allow_scope_adjudication
+            and task_allows_scope_expansion
             and not result.accepted
             and finding_codes
             == (ProposalFindingCode.PATH_OUTSIDE_SCOPE.value,)
@@ -44767,6 +44832,8 @@ class PortalImplementationDaemon:
                     "collection_error": collection_error,
                     "changed_paths": list(changed_paths),
                     "submodule_expansion_count": len(submodule_expansions),
+                    "scope_expansion_policy": scope_expansion_policy,
+                    "scope_expansion_allowed": task_allows_scope_expansion,
                 }
             )
         if record_event:
@@ -47911,6 +47978,9 @@ class PortalImplementationDaemon:
             task,
             repo_root=self.repo_root,
         )
+        _scope_expansion_policy, task_allows_scope_expansion = (
+            task_scope_expansion_policy(task)
+        )
         expected_outputs = (
             tuple(completion_scope)
             if completion_scope is not None
@@ -47918,23 +47988,24 @@ class PortalImplementationDaemon:
         )
         # Surface AST companions/relocation hints into the rescue addendum so
         # the next attempt can lawfully edit production modules the tests import.
-        try:
-            companions = validation_ast_companion_paths(
-                task,
-                repo_root=self.repo_root,
-            )
-            if companions and not result.get("ast_import_companion_paths"):
-                result["ast_import_companion_paths"] = list(companions)
-            hints = validation_ast_relocation_hints(
-                task,
-                repo_root=self.repo_root,
-            )
-            if hints and not result.get("descriptor_relocation_hints"):
-                result["descriptor_relocation_hints"] = [
-                    dict(hint) for hint in hints
-                ]
-        except (OSError, TypeError, ValueError):
-            pass
+        if task_allows_scope_expansion:
+            try:
+                companions = validation_ast_companion_paths(
+                    task,
+                    repo_root=self.repo_root,
+                )
+                if companions and not result.get("ast_import_companion_paths"):
+                    result["ast_import_companion_paths"] = list(companions)
+                hints = validation_ast_relocation_hints(
+                    task,
+                    repo_root=self.repo_root,
+                )
+                if hints and not result.get("descriptor_relocation_hints"):
+                    result["descriptor_relocation_hints"] = [
+                        dict(hint) for hint in hints
+                    ]
+            except (OSError, TypeError, ValueError):
+                pass
         review = review_implementation_failure(
             task_id=task.task_id,
             attempt=int(attempt),
@@ -67905,6 +67976,9 @@ class PortalImplementationDaemon:
             task,
             repo_root=self.repo_root,
         )
+        scope_expansion_policy, task_allows_scope_expansion = (
+            task_scope_expansion_policy(task)
+        )
         declared_output_paths = task_declared_output_paths(task)
         evidence_output_paths = task_evidence_output_paths(task)
         expected_output_paths = (
@@ -67918,7 +67992,7 @@ class PortalImplementationDaemon:
         retry_validation_paths = retry_budget_repair_validation_paths(task)
         implied_validation_paths = (
             ()
-            if retry_repair_source_id
+            if retry_repair_source_id or not task_allows_scope_expansion
             else implied_validation_test_output_paths(
                 task,
                 repo_root=self.repo_root,
@@ -67927,7 +68001,7 @@ class PortalImplementationDaemon:
         try:
             ast_companion_paths = (
                 ()
-                if retry_repair_source_id
+                if retry_repair_source_id or not task_allows_scope_expansion
                 else validation_ast_companion_paths(
                     task,
                     repo_root=self.repo_root,
@@ -67938,7 +68012,7 @@ class PortalImplementationDaemon:
         try:
             relocation_hints = (
                 ()
-                if retry_repair_source_id
+                if retry_repair_source_id or not task_allows_scope_expansion
                 else validation_ast_relocation_hints(
                     task,
                     repo_root=self.repo_root,
@@ -67974,10 +68048,15 @@ class PortalImplementationDaemon:
         ).strip()
         if admission_policy:
             rules = (*rules, admission_policy)
-        if completion_scope is None:
+        if completion_scope is None and task_allows_scope_expansion:
             rules = (
                 *rules,
                 "For general implementation tasks, deliver the complete task in one pass, touching as many files as needed.",
+            )
+        elif completion_scope is None:
+            rules = (
+                *rules,
+                "The task has exact declared-output authority. Edit only the allowed paths; imported validation dependencies are read-only.",
             )
         if retry_repair_source_id:
             rules = (
@@ -68023,11 +68102,13 @@ class PortalImplementationDaemon:
                     *(
                         implied_validation_paths
                         if completion_scope is None
+                        and task_allows_scope_expansion
                         else ()
                     ),
                     *(
                         ast_companion_paths
                         if completion_scope is None
+                        and task_allows_scope_expansion
                         else ()
                     ),
                 )
@@ -68066,6 +68147,7 @@ class PortalImplementationDaemon:
                 if evidence_output_paths
                 else "task_output_exact"
             ),
+            "scope_expansion_policy": scope_expansion_policy,
             "allowed_paths": allowed_edit_paths,
             "ast_import_companion_paths": list(ast_companion_paths),
             "descriptor_relocation_hints": [
