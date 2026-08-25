@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 
@@ -29,7 +30,8 @@ def test_final_release_report_is_complete_current_tree_observation() -> None:
     assert validate_release_claims(report) is report
     assert report.to_dict() == payload
     assert report.start_tree == "40f0771e77d394ac91d92cc1edb02f7860f6131b"
-    assert report.end_tree == "59b11091b143293b028390b8c949b0ee7c21f6f5"
+    assert report.end_tree == "8fb5d6e7f1a747ee0338037afd4a3415d352e0d1"
+    assert report.lineage["end"]["commit"] == "3711bb4f5365ba469208891440076422686f5aa6"
     assert report.lineage["end"]["tree"] == report.end_tree
     assert report.corpus_rights_splits["decision"] == "training_unavailable"
     assert report.architecture_tokenizer_checkpoint["checkpoint"]["created"] is False
@@ -42,6 +44,24 @@ def test_final_release_report_is_complete_current_tree_observation() -> None:
         "completion_authoritative": False,
         "promotion_authoritative": False,
         "proof_authoritative": False,
+    }
+
+
+def test_producer_receipts_are_digest_bound_bounded_observations() -> None:
+    report = ResidualIntelligenceReleaseReport.from_dict(_payload())
+    assert report.producer_receipts["status"] == "bounded_observation_only"
+    receipts = report.producer_receipts["receipts"]
+    assert len(receipts) == 9
+    for receipt in receipts:
+        path = ROOT / receipt["path"]
+        assert path.is_file()
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == receipt["sha256"]
+    assert {
+        receipt["name"] for receipt in receipts
+    } == {
+        "baseline", "prerequisite_matrix", "corpus_construction", "pgir_training_gate",
+        "model_call_inventory", "benchmark_manifest", "synthetic_training_admission",
+        "synthetic_split_manifest", "adversarial_campaign",
     }
 
 
@@ -74,6 +94,21 @@ def test_release_report_rejects_promotional_or_incomplete_mutations() -> None:
     with pytest.raises(ResidualIntelligenceError, match="every unsupported claim"):
         validate_release_claims(ResidualIntelligenceReleaseReport.from_dict(missing_nonclaim))
 
+    unbound_receipt = copy.deepcopy(payload)
+    unbound_receipt["producer_receipts"]["receipts"][0]["sha256"] = "0" * 63
+    with pytest.raises(ResidualIntelligenceError, match="SHA-256"):
+        validate_release_claims(ResidualIntelligenceReleaseReport.from_dict(unbound_receipt))
+
+    incomplete_costs = copy.deepcopy(payload)
+    incomplete_costs["costs"]["denominators"].pop("human_reviews")
+    with pytest.raises(ResidualIntelligenceError, match="cost denominators"):
+        validate_release_claims(ResidualIntelligenceReleaseReport.from_dict(incomplete_costs))
+
+    incomplete_gates = copy.deepcopy(payload)
+    incomplete_gates["promotion"]["hard_gate_status"].pop("privacy")
+    with pytest.raises(ResidualIntelligenceError, match="hard-gate dispositions"):
+        validate_release_claims(ResidualIntelligenceReleaseReport.from_dict(incomplete_gates))
+
 
 def test_human_report_matches_machine_blocked_disposition() -> None:
     text = MARKDOWN_PATH.read_text(encoding="utf-8")
@@ -81,3 +116,5 @@ def test_human_report_matches_machine_blocked_disposition() -> None:
     assert "Promotion eligibility is false" in text
     assert "no-promoted-expert-route" in text
     assert "384 cases" in text
+    assert "3711bb4f5365ba469208891440076422686f5aa6" in text
+    assert "Nine bounded producer receipts" in text

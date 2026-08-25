@@ -24,9 +24,10 @@ FORBIDDEN_CLAIMS: Final[frozenset[str]] = frozenset(
     }
 )
 _TREE_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
+_SHA256_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
 _REQUIRED_SECTION_NAMES: Final[frozenset[str]] = frozenset(
     {
-        "lineage", "files_and_symbols", "corpus_rights_splits",
+        "lineage", "producer_receipts", "files_and_symbols", "corpus_rights_splits",
         "architecture_tokenizer_checkpoint", "metrics", "proof_validation", "drift",
         "promotion", "rollback", "report_authority",
     }
@@ -35,6 +36,24 @@ _DISPOSITION_KEYS: Final[frozenset[str]] = frozenset(
     {
         "ACCEPT", "ABSTAIN", "REJECT_INPUT", "OUT_OF_DISTRIBUTION",
         "CAPABILITY_UNAVAILABLE", "VALIDATION_REQUIRED",
+    }
+)
+_DECLARED_OUTPUTS: Final[tuple[str, ...]] = (
+    "docs/architecture/residual_intelligence_inventory/final_release_report.json",
+    "docs/architecture/residual_intelligence_inventory/final_release_report.md",
+    "test/api/residual_intelligence/test_release_report.py",
+)
+_COST_DENOMINATOR_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "frozen_benchmark_cases", "evaluated_cases", "local_attempts", "remote_attempts",
+        "validation_runs", "training_runs", "shadow_runs", "human_reviews",
+        "rollback_events",
+    }
+)
+_HARD_GATE_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "rights", "lineage", "leakage", "privacy", "safety", "quality", "efficiency",
+        "autonomy", "amortization",
     }
 )
 
@@ -47,6 +66,13 @@ def _tree(value: Any, name: str) -> str:
     result = required_text(value, name, max_bytes=40)
     if not _TREE_RE.fullmatch(result):
         raise ResidualIntelligenceError(f"{name} must be an exact 40-character Git tree")
+    return result
+
+
+def _sha256(value: Any, name: str) -> str:
+    result = required_text(value, name, max_bytes=64)
+    if not _SHA256_RE.fullmatch(result):
+        raise ResidualIntelligenceError(f"{name} must be a lowercase SHA-256 digest")
     return result
 
 
@@ -100,6 +126,7 @@ class ResidualIntelligenceReleaseReport:
     rollback_target: str
     gaps: ResidualGapReport
     lineage: Mapping[str, Any] = field(default_factory=dict)
+    producer_receipts: Mapping[str, Any] = field(default_factory=dict)
     files_and_symbols: Mapping[str, Any] = field(default_factory=dict)
     corpus_rights_splits: Mapping[str, Any] = field(default_factory=dict)
     architecture_tokenizer_checkpoint: Mapping[str, Any] = field(default_factory=dict)
@@ -139,6 +166,7 @@ class ResidualIntelligenceReleaseReport:
             "after": dict(self.after), "costs": dict(self.costs), "promotion_eligible": False,
             "rollback_target": self.rollback_target, "gaps": self.gaps.to_dict(),
             "lineage": dict(self.lineage), "files_and_symbols": dict(self.files_and_symbols),
+            "producer_receipts": dict(self.producer_receipts),
             "corpus_rights_splits": dict(self.corpus_rights_splits),
             "architecture_tokenizer_checkpoint": dict(self.architecture_tokenizer_checkpoint),
             "metrics": dict(self.metrics), "proof_validation": dict(self.proof_validation),
@@ -220,10 +248,43 @@ def validate_release_claims(report: ResidualIntelligenceReleaseReport) -> Residu
     _tree(end["commit"], "lineage.end.commit")
     required_text(report.lineage["snapshot_scope"], "lineage.snapshot_scope")
 
+    _require_mapping_keys(
+        report.producer_receipts,
+        name="producer_receipts",
+        keys=frozenset({"status", "receipts"}),
+    )
+    if report.producer_receipts["status"] != "bounded_observation_only":
+        raise ResidualIntelligenceError("producer receipts must remain bounded observations")
+    receipts = report.producer_receipts["receipts"]
+    if not isinstance(receipts, list) or not receipts:
+        raise ResidualIntelligenceError("producer_receipts.receipts must be a non-empty list")
+    receipt_paths: set[str] = set()
+    receipt_names: set[str] = set()
+    for index, raw_receipt in enumerate(receipts):
+        receipt = _mapping(raw_receipt, f"producer_receipts.receipts[{index}]")
+        if set(receipt) != {"name", "path", "sha256", "schema", "disposition"}:
+            raise ResidualIntelligenceError("each producer receipt must have an exact bounded shape")
+        name = required_text(receipt["name"], f"producer receipt {index} name")
+        path = required_text(receipt["path"], f"producer receipt {index} path")
+        required_text(receipt["schema"], f"producer receipt {index} schema")
+        required_text(receipt["disposition"], f"producer receipt {index} disposition")
+        _sha256(receipt["sha256"], f"producer receipt {index} sha256")
+        if name in receipt_names or path in receipt_paths:
+            raise ResidualIntelligenceError("producer receipts must not repeat a name or path")
+        receipt_names.add(name)
+        receipt_paths.add(path)
+
     _require_mapping_keys(report.files_and_symbols, name="files_and_symbols", keys=frozenset({"declared_outputs", "implementation_symbols", "snapshot_changed_files"}))
     for key in ("declared_outputs", "implementation_symbols", "snapshot_changed_files"):
         if not isinstance(report.files_and_symbols[key], list) or not report.files_and_symbols[key]:
             raise ResidualIntelligenceError(f"files_and_symbols.{key} must be a non-empty list")
+        values = report.files_and_symbols[key]
+        if any(not isinstance(item, str) or not item.strip() for item in values):
+            raise ResidualIntelligenceError(f"files_and_symbols.{key} must contain bounded text")
+        if len(values) != len(set(values)):
+            raise ResidualIntelligenceError(f"files_and_symbols.{key} contains duplicates")
+    if tuple(report.files_and_symbols["declared_outputs"]) != _DECLARED_OUTPUTS:
+        raise ResidualIntelligenceError("declared outputs do not match the release-report contract")
 
     _require_mapping_keys(report.corpus_rights_splits, name="corpus_rights_splits", keys=frozenset({"admission_id", "decision", "rights_root", "split_root", "leakage_audit", "public_summary_only"}))
     if report.corpus_rights_splits["admission_id"] != report.corpus_admission_id:
@@ -232,11 +293,33 @@ def validate_release_claims(report: ResidualIntelligenceReleaseReport) -> Residu
         raise ResidualIntelligenceError("report must not imply an admitted training corpus")
     if report.corpus_rights_splits["public_summary_only"] is not True:
         raise ResidualIntelligenceError("public release report must be bounded to summaries")
+    leakage_audit = _mapping(report.corpus_rights_splits["leakage_audit"], "corpus_rights_splits.leakage_audit")
+    _require_mapping_keys(
+        leakage_audit,
+        name="corpus_rights_splits.leakage_audit",
+        keys=frozenset({
+            "audit_id", "passed", "train_groups", "development_groups", "holdout_groups",
+            "adversarial_groups", "cross_partition_groups", "hidden_test_bodies_accessed",
+        }),
+    )
+    required_text(leakage_audit["audit_id"], "leakage audit identity")
+    if leakage_audit["passed"] is not True or leakage_audit["hidden_test_bodies_accessed"] is not False:
+        raise ResidualIntelligenceError("fixture leakage audit must preserve its bounded result")
+    for key in ("train_groups", "development_groups", "holdout_groups", "adversarial_groups", "cross_partition_groups"):
+        _nonnegative_int(leakage_audit[key], f"leakage audit {key}")
+    if leakage_audit["cross_partition_groups"] != 0:
+        raise ResidualIntelligenceError("release report cannot report cross-partition groups")
 
     _require_mapping_keys(report.architecture_tokenizer_checkpoint, name="architecture_tokenizer_checkpoint", keys=frozenset({"architecture", "tokenizer", "checkpoint"}))
     checkpoint = _mapping(report.architecture_tokenizer_checkpoint["checkpoint"], "checkpoint")
     if checkpoint.get("created") is not False or checkpoint.get("simulated") is not False:
         raise ResidualIntelligenceError("report cannot claim a real or simulated checkpoint")
+    architecture = _mapping(report.architecture_tokenizer_checkpoint["architecture"], "architecture")
+    tokenizer = _mapping(report.architecture_tokenizer_checkpoint["tokenizer"], "tokenizer")
+    if architecture.get("status") != "no_packaged_expert":
+        raise ResidualIntelligenceError("report cannot claim a packaged expert architecture")
+    if tokenizer.get("status") != "no_learned_tokenizer_admitted":
+        raise ResidualIntelligenceError("report cannot claim an admitted learned tokenizer")
 
     _require_mapping_keys(report.expert_dispositions, name="expert_dispositions", keys=frozenset({"registered_expert_count", "disposition_counts", "status"}))
     if _nonnegative_int(report.expert_dispositions["registered_expert_count"], "registered_expert_count") != 0:
@@ -259,19 +342,37 @@ def validate_release_claims(report: ResidualIntelligenceReleaseReport) -> Residu
 
     _require_mapping_keys(report.costs, name="costs", keys=frozenset({"status", "denominators", "break_even"}))
     cost_denominators = _mapping(report.costs["denominators"], "costs.denominators")
+    if set(cost_denominators) != _COST_DENOMINATOR_KEYS:
+        raise ResidualIntelligenceError("cost denominators must retain every required population")
     for key, value in cost_denominators.items():
         _nonnegative_int(value, f"costs.denominators.{key}")
+    if cost_denominators["frozen_benchmark_cases"] != before["total_denominator"]:
+        raise ResidualIntelligenceError("cost benchmark denominator must equal the metric denominator")
+    if cost_denominators["evaluated_cases"] != before["evaluated"]:
+        raise ResidualIntelligenceError("cost evaluated denominator must equal the metric population")
     break_even = _mapping(report.costs["break_even"], "costs.break_even")
     if break_even.get("status") != "not_applicable":
         raise ResidualIntelligenceError("unqualified report must state break-even is not applicable")
 
     _require_mapping_keys(report.proof_validation, name="proof_validation", keys=frozenset({"proof_status", "validation_status", "evidence"}))
+    if report.proof_validation["proof_status"] != "not_run_no_current_proof_receipt":
+        raise ResidualIntelligenceError("report cannot imply a current proof receipt")
+    if report.proof_validation["validation_status"] != "report_contract_validation_only":
+        raise ResidualIntelligenceError("report validation status must not imply qualification")
+    evidence = report.proof_validation["evidence"]
+    if not isinstance(evidence, list) or not evidence or any(not isinstance(item, str) or not item for item in evidence):
+        raise ResidualIntelligenceError("proof validation evidence must be a non-empty bounded list")
     _require_mapping_keys(report.drift, name="drift", keys=frozenset({"status", "routable", "required_action"}))
     if report.drift["routable"] is not False:
         raise ResidualIntelligenceError("unqualified experts cannot be reported as routable")
     _require_mapping_keys(report.promotion, name="promotion", keys=frozenset({"eligible", "decision", "hard_gate_status"}))
     if report.promotion["eligible"] is not False or report.promotion["decision"] != "not_eligible":
         raise ResidualIntelligenceError("report must preserve its non-promotional disposition")
+    gate_status = _mapping(report.promotion["hard_gate_status"], "promotion.hard_gate_status")
+    if set(gate_status) != _HARD_GATE_KEYS:
+        raise ResidualIntelligenceError("promotion hard-gate dispositions must be complete")
+    if any(value == "satisfied" for value in gate_status.values()):
+        raise ResidualIntelligenceError("unqualified report cannot report a satisfied hard gate")
     _require_mapping_keys(report.rollback, name="rollback", keys=frozenset({"target", "report_rebuild_tree", "policy"}))
     if report.rollback["target"] != report.rollback_target:
         raise ResidualIntelligenceError("rollback target does not match rollback section")
