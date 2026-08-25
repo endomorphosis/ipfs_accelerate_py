@@ -149,7 +149,7 @@ evidence.
 
 ## PGIR-202 Populate the thirteen insufficient holdouts
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
