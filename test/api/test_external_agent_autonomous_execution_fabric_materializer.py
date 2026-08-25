@@ -35,32 +35,6 @@ def _config(prefix: str = "data/eaaef-test/run-v1") -> dict[str, object]:
     runtime_binding = json.loads(
         materializer.CONFIG_PATH.read_text(encoding="utf-8")
     )["bootstrap_runtime_binding"]
-    launcher_path = (
-        ROOT
-        / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
-    ).resolve(strict=True)
-    runtime_binding["launcher"]["resolved_path"] = str(launcher_path)
-    runtime_binding["launcher"]["argv_prefix"] = [
-        runtime_binding["interpreter"]["resolved_path"],
-        "-I",
-        "-S",
-        "-B",
-        str(launcher_path),
-    ]
-    runtime_binding["launcher"]["allowed_commands"] = [
-        "build",
-        "runtime-check",
-        "materialize",
-        "verify",
-        "launch-plan",
-        "configured-board-launch",
-    ]
-    runtime_binding["launcher"]["sha256"] = (
-        "sha256:"
-        + hashlib.sha256(
-            launcher_path.read_bytes()
-        ).hexdigest()
-    )
     return {
         "schema": materializer.SCHEDULER_CONFIG_SCHEMA,
         "board_namespace": "external-agent-autonomous-execution-fabric-v1",
@@ -185,15 +159,6 @@ def _isolated_runtime_fixture(
     materializer_path.write_bytes(MATERIALIZER_PATH.read_bytes())
 
     config = _config()
-    binding = config["bootstrap_runtime_binding"]
-    assert isinstance(binding, dict)
-    launcher = binding["launcher"]
-    assert isinstance(launcher, dict)
-    launcher["resolved_path"] = str(launcher_path.resolve(strict=True))
-    launcher["argv_prefix"][-1] = launcher["resolved_path"]
-    launcher["sha256"] = (
-        "sha256:" + hashlib.sha256(launcher_path.read_bytes()).hexdigest()
-    )
     config_path = (
         runtime_root
         / "config/external_agent_autonomous_execution_fabric_scheduler.json"
@@ -210,12 +175,19 @@ def test_runtime_binding_accepts_exact_isolated_interpreter(tmp_path: Path) -> N
     config, isolated_materializer_path, isolated_config_path = (
         _isolated_runtime_fixture(tmp_path)
     )
-    binding = config["bootstrap_runtime_binding"]
-    assert isinstance(binding, dict)
-    launcher = binding["launcher"]
-    assert isinstance(launcher, dict)
-    argv_prefix = launcher["argv_prefix"]
-    assert isinstance(argv_prefix, list)
+    template = config["bootstrap_runtime_binding"]
+    assert isinstance(template, dict)
+    template_launcher = template["launcher"]
+    assert isinstance(template_launcher, dict)
+    launcher_path = (
+        isolated_materializer_path.parent
+        / "launch_external_agent_autonomous_execution_fabric_materializer.py"
+    ).resolve(strict=True)
+    argv_prefix = [
+        template["interpreter"]["resolved_path"],  # type: ignore[index]
+        *template_launcher["interpreter_flags"],
+        str(launcher_path),
+    ]
     result = subprocess.run(
         [*argv_prefix, "runtime-check"],
         cwd=tmp_path,
@@ -226,8 +198,43 @@ def test_runtime_binding_accepts_exact_isolated_interpreter(tmp_path: Path) -> N
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["valid"] is True
-    assert payload["runtime_binding"] == binding
+    binding = payload["runtime_binding"]
+    assert binding["schema"] == materializer.RUNTIME_BINDING_SCHEMA
+    assert binding["launcher"]["resolved_path"] == str(launcher_path)
+    assert binding["launcher"]["argv_prefix"] == argv_prefix
+    assert payload["runtime_binding_cid"] == materializer._cid(binding)
+    assert template["schema"] == materializer.RUNTIME_BINDING_TEMPLATE_SCHEMA
+    assert "resolved_path" not in template_launcher
     assert payload["invocation"]["orig_argv"] == [*argv_prefix, "runtime-check"]
+    invocation = dict(payload["invocation"])
+    invocation_cid = invocation.pop("invocation_cid")
+    assert invocation_cid == materializer._cid(invocation)
+
+    relative_invocation = subprocess.run(
+        [
+            *argv_prefix[:-1],
+            str(launcher_path.relative_to(launcher_path.parents[1])),
+            "runtime-check",
+        ],
+        cwd=launcher_path.parents[1],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert relative_invocation.returncode != 0
+    assert "sys.orig_argv differs" in relative_invocation.stdout
+
+    launcher_alias = launcher_path.parents[1] / "launcher-alias.py"
+    launcher_alias.symlink_to(launcher_path)
+    alias_invocation = subprocess.run(
+        [*argv_prefix[:-1], str(launcher_alias), "runtime-check"],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert alias_invocation.returncode != 0
+    assert "sys.orig_argv differs" in alias_invocation.stdout
 
     interpreter = binding["interpreter"]
     assert isinstance(interpreter, dict)
@@ -299,8 +306,7 @@ def test_board_validation_reopens_only_the_admitted_import_root(
     tmp_path: Path,
 ) -> None:
     config = _config()
-    binding = config["bootstrap_runtime_binding"]
-    assert isinstance(binding, dict)
+    binding = materializer._runtime_binding_contract(config)
 
     report = materializer._validate_board(binding)
 
@@ -327,8 +333,7 @@ def test_board_validation_fails_closed_on_a_wedged_sealed_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config()
-    binding = config["bootstrap_runtime_binding"]
-    assert isinstance(binding, dict)
+    binding = materializer._runtime_binding_contract(config)
 
     def timeout(*args: object, **kwargs: object) -> object:
         assert kwargs["timeout"] == 30
@@ -358,6 +363,149 @@ def test_runtime_binding_rejects_tamper_and_noncanonical_paths() -> None:
     binding["approved_import_root"] = str(binding["approved_import_root"]) + "/."
     with pytest.raises(materializer.MaterializationError, match="not a canonical resolved path"):
         materializer._runtime_binding_contract(config)
+
+
+def test_runtime_binding_template_derives_checkout_local_launcher_without_mutation(
+) -> None:
+    config = _config()
+    template_before = json.loads(json.dumps(config["bootstrap_runtime_binding"]))
+
+    binding = materializer._runtime_binding_contract(config)
+
+    launcher = binding["launcher"]
+    expected_launcher = (
+        ROOT
+        / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+    ).resolve(strict=True)
+    assert binding["schema"] == materializer.RUNTIME_BINDING_SCHEMA
+    assert launcher["resolved_path"] == str(expected_launcher)
+    assert launcher["argv_prefix"] == [
+        binding["interpreter"]["resolved_path"],
+        "-I",
+        "-S",
+        "-B",
+        str(expected_launcher),
+    ]
+    assert config["bootstrap_runtime_binding"] == template_before
+    assert template_before["schema"] == materializer.RUNTIME_BINDING_TEMPLATE_SCHEMA
+    assert "resolved_path" not in template_before["launcher"]
+    assert "/.worktrees/" not in json.dumps(template_before, sort_keys=True)
+
+
+@pytest.mark.parametrize(
+    "locator",
+    [
+        "/tmp/launcher.py",
+        "../scripts/launch_external_agent_autonomous_execution_fabric_materializer.py",
+        "scripts/./launch_external_agent_autonomous_execution_fabric_materializer.py",
+        "scripts/materialize_external_agent_autonomous_execution_fabric_control_plane.py",
+    ],
+)
+def test_runtime_binding_template_rejects_nonexact_launcher_locator(locator: str) -> None:
+    config = _config()
+    config["bootstrap_runtime_binding"]["launcher"][  # type: ignore[index]
+        "repository_relative_path"
+    ] = locator
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="repository-relative path is not canonical",
+    ):
+        materializer._runtime_binding_contract(config)
+
+
+def test_runtime_binding_template_rejects_launcher_digest_drift() -> None:
+    config = _config()
+    config["bootstrap_runtime_binding"]["launcher"]["sha256"] = (  # type: ignore[index]
+        "sha256:" + "0" * 64
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="runtime file differs from launcher.sha256",
+    ):
+        materializer._runtime_binding_contract(config)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ({"resolved_path": "/tmp/launcher.py"}, "binding shape is not canonical"),
+        ({"argv_prefix": ["/tmp/launcher.py"]}, "binding shape is not canonical"),
+        ({"interpreter_flags": ["-S", "-I", "-B"]}, "interpreter_flags"),
+        ({"interpreter_flags": ["-I", "-S"]}, "interpreter_flags"),
+        (
+            {"allowed_commands": ["runtime-check", "build"]},
+            "allowed_commands",
+        ),
+    ],
+)
+def test_runtime_binding_template_rejects_derived_or_nonexact_fields(
+    mutation: dict[str, object],
+    message: str,
+) -> None:
+    config = _config()
+    launcher = config["bootstrap_runtime_binding"]["launcher"]  # type: ignore[index]
+    assert isinstance(launcher, dict)
+    launcher.update(mutation)
+    with pytest.raises(materializer.MaterializationError, match=message):
+        materializer._runtime_binding_contract(config)
+
+
+def test_runtime_binding_template_rejects_symlinked_checkout_launcher(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    launcher = scripts / Path(materializer.RUNTIME_LAUNCHER_RELATIVE_PATH).name
+    launcher.symlink_to(
+        ROOT
+        / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+    )
+    monkeypatch.setattr(materializer, "ROOT", tmp_path)
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="launcher.resolved_path is not a canonical resolved path",
+    ):
+        materializer._runtime_binding_contract(_config())
+
+
+def test_launcher_and_materializer_command_allowlists_are_identical() -> None:
+    launcher_path = (
+        ROOT
+        / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "eaaef_launcher_allowlist_test_subject", launcher_path
+    )
+    assert spec is not None and spec.loader is not None
+    launcher_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launcher_module)
+
+    assert launcher_module.COMMANDS == set(materializer.RUNTIME_ALLOWED_COMMANDS)
+
+
+def test_runtime_binding_template_rejects_symlinked_checkout_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewed_scripts = tmp_path / "reviewed-scripts"
+    reviewed_scripts.mkdir()
+    launcher = reviewed_scripts / Path(materializer.RUNTIME_LAUNCHER_RELATIVE_PATH).name
+    launcher.write_bytes(
+        (
+            ROOT
+            / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+        ).read_bytes()
+    )
+    (tmp_path / "scripts").symlink_to(reviewed_scripts, target_is_directory=True)
+    monkeypatch.setattr(materializer, "ROOT", tmp_path)
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="launcher.resolved_path is not a canonical resolved path",
+    ):
+        materializer._runtime_binding_contract(_config())
 
 
 def test_duckdb_record_member_tamper_is_rejected(tmp_path: Path) -> None:
@@ -393,6 +541,35 @@ def test_nonisolated_runtime_fails_before_namespace_claim(
     with pytest.raises(materializer.MaterializationError, match="exact -I -S -B flags"):
         materializer.materialize(config)
     assert not sentinel_claim.exists()
+
+
+def test_materialize_resolves_binding_before_clean_source_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config()
+    binding = materializer._runtime_binding_contract(config)
+    observed: list[str] = []
+
+    def validate_runtime(_config: object) -> dict[str, object]:
+        observed.append("runtime")
+        return binding
+
+    def validate_invocation(_binding: object, command: str) -> dict[str, object]:
+        assert command == "materialize"
+        observed.append("invocation")
+        return {"command": command}
+
+    def stop_at_clean_source() -> None:
+        observed.append("clean-source")
+        raise materializer.MaterializationError("stop at clean source")
+
+    monkeypatch.setattr(materializer, "_validated_runtime_binding", validate_runtime)
+    monkeypatch.setattr(materializer, "_validated_runtime_invocation", validate_invocation)
+    monkeypatch.setattr(materializer, "_assert_clean", stop_at_clean_source)
+
+    with pytest.raises(materializer.MaterializationError, match="stop at clean source"):
+        materializer.materialize(config)
+    assert observed == ["runtime", "invocation", "clean-source"]
 
 
 def test_paths_match_supported_database_daemon_sidecars() -> None:
@@ -489,8 +666,7 @@ def test_configured_board_launcher_cannot_bypass_launch_plan(
     assert result["allowed"] is False
     assert result["argv"] == []
     assert result["process_started"] is False
-    binding = config["bootstrap_runtime_binding"]
-    assert isinstance(binding, dict)
+    binding = materializer._runtime_binding_contract(config)
     launcher = binding["launcher"]
     assert isinstance(launcher, dict)
     launcher_path = Path(str(launcher["resolved_path"]))
@@ -1193,6 +1369,7 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
         "future_task_count": 0,
     }
     population["population_cid"] = materializer._cid(population)
+    runtime_binding = materializer._runtime_binding_contract(config)
     monkeypatch.setattr(materializer, "ROOT", tmp_path)
     monkeypatch.setattr(materializer, "_assert_clean", lambda: None)
     monkeypatch.setattr(
@@ -1201,9 +1378,6 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
         lambda _runtime_binding: {"valid": True, "schema": "test-validation@1"},
     )
     monkeypatch.setattr(materializer, "build_population", lambda _config: population)
-    runtime_binding = json.loads(
-        json.dumps(config["bootstrap_runtime_binding"], sort_keys=True)
-    )
     monkeypatch.setattr(
         materializer,
         "_validated_runtime_binding",

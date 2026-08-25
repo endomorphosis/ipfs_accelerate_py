@@ -55,8 +55,23 @@ SCHEDULER_CONFIG_SCHEMA = (
 RUNTIME_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding@1"
 )
+RUNTIME_BINDING_TEMPLATE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding-template@1"
+)
 RUNTIME_INVOCATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-invocation@1"
+)
+RUNTIME_LAUNCHER_RELATIVE_PATH = (
+    "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+)
+RUNTIME_LAUNCHER_INTERPRETER_FLAGS = ("-I", "-S", "-B")
+RUNTIME_ALLOWED_COMMANDS = (
+    "build",
+    "runtime-check",
+    "materialize",
+    "verify",
+    "launch-plan",
+    "configured-board-launch",
 )
 NAMESPACE_CLAIM_FIELDS = frozenset(
     {
@@ -272,7 +287,14 @@ def _canonical_absent_runtime_path(value: Any, *, field: str) -> Path:
 
 
 def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate the committed runtime contract without importing third-party code."""
+    """Resolve and validate the portable runtime contract without third-party code.
+
+    The tracked scheduler stores only the reviewed repository-relative launcher
+    locator.  Its absolute path is checkout-local evidence, so derive it from
+    this materializer's already-resolved repository root instead of committing
+    a transient worktree name.  The returned value is the fully resolved
+    runtime binding that is hashed into claims and receipts.
+    """
 
     value = config.get("bootstrap_runtime_binding")
     if not isinstance(value, Mapping):
@@ -285,15 +307,15 @@ def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         "duckdb",
     }:
         raise MaterializationError("bootstrap_runtime_binding shape is not canonical")
-    if value.get("schema") != RUNTIME_BINDING_SCHEMA:
+    if value.get("schema") != RUNTIME_BINDING_TEMPLATE_SCHEMA:
         raise MaterializationError("bootstrap_runtime_binding schema is not canonical")
     launcher = value.get("launcher")
     interpreter = value.get("interpreter")
     duckdb_binding = value.get("duckdb")
     if not isinstance(launcher, Mapping) or set(launcher) != {
-        "resolved_path",
+        "repository_relative_path",
         "sha256",
-        "argv_prefix",
+        "interpreter_flags",
         "allowed_commands",
     }:
         raise MaterializationError("bootstrap launcher binding shape is not canonical")
@@ -370,34 +392,32 @@ def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         field="bootstrap_runtime_binding.approved_import_root",
         directory=True,
     )
+    relative_launcher = launcher.get("repository_relative_path")
+    if relative_launcher != RUNTIME_LAUNCHER_RELATIVE_PATH:
+        raise MaterializationError(
+            "bootstrap launcher repository-relative path is not canonical"
+        )
+    try:
+        canonical_root = ROOT.resolve(strict=True)
+    except OSError as exc:
+        raise MaterializationError("reviewed repository root is unavailable") from exc
+    if str(canonical_root) != str(ROOT) or not canonical_root.is_dir():
+        raise MaterializationError("reviewed repository root is not canonical")
+    expected_launcher_path = canonical_root / RUNTIME_LAUNCHER_RELATIVE_PATH
     launcher_path = _canonical_runtime_path(
-        launcher.get("resolved_path"),
+        str(expected_launcher_path),
         field="bootstrap_runtime_binding.launcher.resolved_path",
         directory=False,
     )
-    expected_launcher_path = (
-        ROOT / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
-    ).resolve(strict=True)
-    if launcher_path != expected_launcher_path:
-        raise MaterializationError("bootstrap launcher path is not the reviewed repository launcher")
-    argv_prefix = launcher.get("argv_prefix")
+    interpreter_flags = launcher.get("interpreter_flags")
+    if interpreter_flags != list(RUNTIME_LAUNCHER_INTERPRETER_FLAGS):
+        raise MaterializationError("bootstrap launcher interpreter_flags are not canonical")
     expected_argv_prefix = [
         str(interpreter_path),
-        "-I",
-        "-S",
-        "-B",
+        *RUNTIME_LAUNCHER_INTERPRETER_FLAGS,
         str(launcher_path),
     ]
-    if not isinstance(argv_prefix, list) or argv_prefix != expected_argv_prefix:
-        raise MaterializationError("bootstrap launcher argv_prefix is not canonical")
-    if launcher.get("allowed_commands") != [
-        "build",
-        "runtime-check",
-        "materialize",
-        "verify",
-        "launch-plan",
-        "configured-board-launch",
-    ]:
+    if launcher.get("allowed_commands") != list(RUNTIME_ALLOWED_COMMANDS):
         raise MaterializationError("bootstrap launcher allowed_commands is not canonical")
     _canonical_absent_runtime_path(
         interpreter.get("pycache_prefix"),
@@ -443,7 +463,15 @@ def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         digest = _require_sha256(expected, field=f"bootstrap_runtime_binding.{field}")
         if _external_file_sha256(path) != digest:
             raise MaterializationError(f"bootstrap runtime file differs from {field}")
-    return json.loads(json.dumps(value, sort_keys=True))
+    resolved = json.loads(json.dumps(value, sort_keys=True))
+    resolved["schema"] = RUNTIME_BINDING_SCHEMA
+    resolved["launcher"] = {
+        "resolved_path": str(launcher_path),
+        "sha256": str(launcher.get("sha256") or ""),
+        "argv_prefix": expected_argv_prefix,
+        "allowed_commands": list(RUNTIME_ALLOWED_COMMANDS),
+    }
+    return resolved
 
 
 def _verify_duckdb_record(
@@ -2938,8 +2966,9 @@ def _restore_overlay_on_control(
 
     if not overlay or not control_path.is_file():
         return 0
-    from datetime import datetime, timezone
+    from datetime import UTC, datetime
 
+    import duckdb
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         connect_duckdb_with_policy,
     )
@@ -2947,8 +2976,6 @@ def _restore_overlay_on_control(
         CAS_TASK_STATUS_SQL,
         restore_overlay_cas_parameters,
     )
-
-    import duckdb
 
     connection = connect_duckdb_with_policy(
         duckdb,
@@ -2968,7 +2995,7 @@ def _restore_overlay_on_control(
                 "SELECT task_cid, task_alias, status, revision FROM tasks"
             ).fetchall()
         ]
-        updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        updated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         restored = 0
         for parameters in restore_overlay_cas_parameters(
             live_rows=rows,

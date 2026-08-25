@@ -20,7 +20,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     ed25519_did_key,
     lifecycle_root_identity_did,
@@ -36,6 +35,8 @@ from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import 
     admission_bundle_target_decision,
     cid,
     collect_and_write,
+    load_admission_bundle_signatures,
+    verify_admission_bundle_receipt,
 )
 
 OPERATOR_KEY = (
@@ -149,9 +150,42 @@ def issue() -> dict[str, str]:
         encoding="utf-8",
     )
     os.chmod(BUNDLE_SIGNATURES_PATH, stat.S_IRUSR)
-    refreshed = collect_and_write()
-    bundle = json.loads(
-        (RECEIPT_DIR / RECEIPT_FILES["EAAEF-191"]).read_text(encoding="utf-8")
+    # Do not collect a second time here.  The DuckDB/Quack qualification
+    # carries observation timing, so a new probe has a different receipt CID
+    # and would invalidate the signatures that bind the exact first capture.
+    verified_signatures = load_admission_bundle_signatures(
+        child_decisions=child_decisions,
+        child_receipt_cids=child_receipt_cids,
+        decision=decision,
+        launch_plan_allowed=False,
+        source_head=str(unsigned_bundle.get("source_head") or ""),
+        source_tree=str(unsigned_bundle.get("source_tree") or ""),
+        board_namespace=str(unsigned_bundle.get("board_namespace") or ""),
+        board_cid=str(unsigned_bundle.get("board_cid") or ""),
+        bootstrap_admission_statement_cid=bootstrap_cid,
+        materialization_receipt_cid=materialization_cid,
+        inventory_open_host_gated=open_host_gates,
+        signatures_path=BUNDLE_SIGNATURES_PATH,
+    )
+    if not all(verified_signatures.values()):
+        raise RuntimeError("new admission-bundle signatures did not verify")
+    bundle_evidence = {
+        **evidence,
+        **verified_signatures,
+        "child_receipt_cids": child_receipt_cids,
+        "independent_signature_present": True,
+    }
+    bundle = {
+        **unsigned_bundle,
+        "decision": decision,
+        "evidence": bundle_evidence,
+    }
+    bundle.pop("receipt_cid", None)
+    bundle["receipt_cid"] = cid(bundle)
+    bundle_path = RECEIPT_DIR / RECEIPT_FILES["EAAEF-191"]
+    bundle_path.write_text(
+        json.dumps(bundle, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
     if bundle.get("decision") != decision:
         raise RuntimeError(
@@ -163,6 +197,27 @@ def issue() -> dict[str, str]:
         raise RuntimeError("issuer must not start live launch")
     if bundle.get("process_started") is True or bundle.get("supervisor_process_started") is True:
         raise RuntimeError("issuer started a supervisor")
+    verification = verify_admission_bundle_receipt(
+        receipt_dir=RECEIPT_DIR,
+        expected_source_head=str(bundle.get("source_head") or ""),
+        expected_source_tree=str(bundle.get("source_tree") or ""),
+        expected_board_namespace=str(bundle.get("board_namespace") or ""),
+        expected_board_cid=str(bundle.get("board_cid") or ""),
+    )
+    expected_blockers = (
+        []
+        if decision == "admitted"
+        else ["EAAEF-191 closed admission preconditions are not admitted"]
+    )
+    if (
+        verification.get("decision") != decision
+        or verification.get("target_decision") != decision
+        or verification.get("blockers") != expected_blockers
+    ):
+        raise RuntimeError(
+            "final signed bundle did not verify against the captured receipts: "
+            + json.dumps(verification, sort_keys=True)
+        )
     return {
         "operator_did": operator_did,
         "security_reviewer_did": reviewer_did,
@@ -171,7 +226,9 @@ def issue() -> dict[str, str]:
         "decision": decision,
         "independent_signature_present": "true",
         "configured_board_launch": "false",
-        "collection": json.dumps(refreshed["decisions"], sort_keys=True),
+        "collection": json.dumps(
+            {**child_decisions, "EAAEF-191": decision}, sort_keys=True
+        ),
     }
 
 
