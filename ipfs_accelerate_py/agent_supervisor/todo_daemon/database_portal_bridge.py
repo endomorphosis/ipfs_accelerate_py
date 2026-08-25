@@ -4445,6 +4445,20 @@ class DatabasePortalExecutionBridge:
                         "regenerating manifest.json and every cases.jsonl row"
                     ),
                     (
+                        "- Deterministic recovery command: resolve the Portal "
+                        "baseline with git rev-parse HEAD, then run "
+                        "scripts/materialize_vrif_frozen_benchmark.py "
+                        "--baseline-commit <the resolved 40-hex commit> "
+                        "--write; inspect and retain the resulting three-file "
+                        "declared-output patch"
+                    ),
+                    (
+                        "- Retry no-change rule: the checked-in freeze predates "
+                        "this Portal baseline and is not acceptable merely "
+                        "because its historical self-consistency tests pass; "
+                        "an empty patch is a terminal implementation failure"
+                    ),
+                    (
                         "- Independent-validation requirement: self-consistency "
                         "through load_frozen_benchmark is insufficient; "
                         "test_benchmark.py must independently reconstruct the "

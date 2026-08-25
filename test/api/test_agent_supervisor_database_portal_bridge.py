@@ -25,12 +25,18 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 )
 from ipfs_accelerate_py.agent_supervisor.residual_intelligence.benchmark import (
     MANIFEST_SCHEMA as VRIF_BENCHMARK_MANIFEST_SCHEMA,
+)
+from ipfs_accelerate_py.agent_supervisor.residual_intelligence.benchmark import (
     build_frozen_benchmark_contract,
     load_frozen_benchmark,
+)
+from ipfs_accelerate_py.agent_supervisor.residual_intelligence.benchmark import (
     sha256_identity as vrif_sha256_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.residual_intelligence.contracts import (
     PROGRAM_ID as VRIF_PROGRAM_ID,
+)
+from ipfs_accelerate_py.agent_supervisor.residual_intelligence.contracts import (
     ResidualTaskFamily,
 )
 from ipfs_accelerate_py.agent_supervisor.residual_intelligence.release import (
@@ -4732,6 +4738,9 @@ def test_bridge_projects_exact_vrif_benchmark_contract_without_expanding_scope(
     assert "exactly 96 cases" in projection
     assert "legacy Cartesian 384-case population" in projection
     assert "finish the candidate test_benchmark.py bytes first" in projection
+    assert "materialize_vrif_frozen_benchmark.py" in projection
+    assert "--baseline-commit <the resolved 40-hex commit> --write" in projection
+    assert "an empty patch is a terminal implementation failure" in projection
     assert "self-consistency through load_frozen_benchmark is insufficient" in projection
     assert "independently reconstruct the owner base_frozen_bindings" in projection
     projected_outputs = next(

@@ -409,6 +409,94 @@ PROOF_WORKFLOW_OPTION_KEYS = frozenset(
 UNSUPPORTED_TYPESCRIPT_VALIDATION_FLAGS = ("--ignoreConfig",)
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
+VRIF_BENCHMARK_RECOVERY_TASK_ID = "VRIF-030"
+VRIF_BENCHMARK_RECOVERY_DECLARED_OUTPUTS = (
+    "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
+    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
+    "test/api/residual_intelligence/test_benchmark.py",
+)
+VRIF_BENCHMARK_RECOVERY_OUTPUTS = (
+    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
+    "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
+    "test/api/residual_intelligence/test_benchmark.py",
+)
+VRIF_BENCHMARK_RECOVERY_MATERIALIZED_OUTPUT_ORDER = (
+    "test/api/residual_intelligence/test_benchmark.py",
+    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
+    "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
+)
+VRIF_BENCHMARK_RECOVERY_VALIDATION = (
+    "python3 -m pytest -q test/api/residual_intelligence/test_benchmark.py"
+)
+VRIF_BENCHMARK_RECOVERY_MATERIALIZER = (
+    "scripts/materialize_vrif_frozen_benchmark.py"
+)
+VRIF_BENCHMARK_RECOVERY_MATERIALIZATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "vrif-frozen-benchmark-materialization@1"
+)
+VRIF_BENCHMARK_RECOVERY_NO_CHANGE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor/"
+    "no-change-candidate-policy-gate@1"
+)
+VRIF_BENCHMARK_RECOVERY_EMPTY_DIFF_DIGEST = (
+    "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+)
+VRIF_BENCHMARK_RECOVERY_EMPTY_FINDINGS = (
+    (
+        "empty_patch",
+        "patch",
+        "candidate diff contains no file changes",
+        "",
+    ),
+    (
+        "missing_required_field",
+        "structure",
+        "structured proposal requires operations",
+        "",
+    ),
+    (
+        "missing_required_field",
+        "structure",
+        "structured proposal requires patch_text",
+        "",
+    ),
+)
+VRIF_BENCHMARK_RECOVERY_GIT = "/usr/bin/git"
+VRIF_BENCHMARK_RECOVERY_TIMEOUT_SECONDS = 180.0
+VRIF_BENCHMARK_RECOVERY_TRUSTED_CODE_PATHS = (
+    VRIF_BENCHMARK_RECOVERY_MATERIALIZER,
+    "ipfs_accelerate_py/agent_supervisor/residual_intelligence/benchmark.py",
+    "ipfs_accelerate_py/agent_supervisor/residual_intelligence/contracts.py",
+    "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+)
+VRIF_BENCHMARK_RECOVERY_DATA_PATHS = (
+    "docs/architecture/agent_supervisor_residual_intelligence.objectives.md",
+    "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
+    "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+    "config/agent_supervisor_residual_intelligence_scheduler.json",
+    (
+        "benchmarks/agent_supervisor/residual_intelligence/"
+        "synthetic_training_admission.json"
+    ),
+    (
+        "benchmarks/agent_supervisor/residual_intelligence/"
+        "synthetic_split_manifest.json"
+    ),
+    (
+        "docs/architecture/residual_intelligence_inventory/"
+        "residual_model_call_inventory.json"
+    ),
+    *VRIF_BENCHMARK_RECOVERY_OUTPUTS,
+)
+VRIF_BENCHMARK_RECOVERY_PRIVATE_PACKAGE_INITS = (
+    "ipfs_accelerate_py/__init__.py",
+    "ipfs_accelerate_py/agent_supervisor/__init__.py",
+    "ipfs_accelerate_py/agent_supervisor/residual_intelligence/__init__.py",
+    "ipfs_accelerate_py/agent_supervisor/proof/__init__.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+)
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
 TRANSIENT_MERGE_LOCK_REASONS = frozenset(
     {
@@ -35468,7 +35556,34 @@ class PortalImplementationDaemon:
                                         state=state,
                                     )
                                 )
+                                owner_recovery_result = None
                                 if not validation_result.get(
+                                    "passed",
+                                    False,
+                                ):
+                                    owner_recovery_result = (
+                                        self._run_vrif_benchmark_owner_recovery_after_review(
+                                            task=task,
+                                            attempt=attempt,
+                                            workspace_path=worktree_path,
+                                            branch_name=branch_name,
+                                            baseline_ref=baseline_ref,
+                                            validation_result=validation_result,
+                                            log_path=log_path,
+                                            state=state,
+                                            replayable_consumed_proposal_ids=(
+                                                seed_replayable_proposal_ids
+                                            ),
+                                        )
+                                    )
+                                if owner_recovery_result is not None:
+                                    validation_result = owner_recovery_result
+                                    proposal_validation = (
+                                        validation_result.get(
+                                            "proposal_validation"
+                                        )
+                                    )
+                                elif not validation_result.get(
                                     "passed",
                                     False,
                                 ):
@@ -41634,6 +41749,13 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str = "",
     ) -> dict[str, Any]:
+        if str(task.task_id or "") == VRIF_BENCHMARK_RECOVERY_TASK_ID:
+            return self._commit_vrif_benchmark_owner_changes(
+                worktree_path,
+                task=task,
+                attempt=attempt,
+                baseline_ref=baseline_ref,
+            )
         submodule_results = self._commit_worktree_submodule_changes(worktree_path, task, attempt)
         self._restore_ephemeral_worktree_paths_for_commit(worktree_path)
         self._restore_uncommitted_submodule_pointers(worktree_path, submodule_results)
@@ -49681,6 +49803,1816 @@ class PortalImplementationDaemon:
                 },
             )
         return tuple(dict.fromkeys(staged))
+
+    @staticmethod
+    def _vrif_benchmark_owner_environment() -> dict[str, str]:
+        """Return the complete secret-free environment for owner recovery."""
+
+        return {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "HOME": "/nonexistent",
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PATH": "/usr/bin:/bin",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0",
+            "TMPDIR": "/tmp",
+        }
+
+    @staticmethod
+    def _vrif_benchmark_git(
+        workspace_path: Path,
+        *arguments: str,
+        timeout: float = 15.0,
+        input_bytes: bytes | None = None,
+    ) -> subprocess.CompletedProcess[bytes]:
+        """Run Git without inheriting provider or credential state."""
+
+        return subprocess.run(
+            [
+                VRIF_BENCHMARK_RECOVERY_GIT,
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                f"core.hooksPath={os.devnull}",
+                "-c",
+                "diff.external=",
+                "-C",
+                str(workspace_path),
+                *arguments,
+            ],
+            check=False,
+            capture_output=True,
+            env=PortalImplementationDaemon._vrif_benchmark_owner_environment(),
+            input=input_bytes,
+            shell=False,
+            timeout=timeout,
+        )
+
+    @staticmethod
+    def _vrif_benchmark_repository_git_controls_safe(
+        workspace_path: Path,
+    ) -> bool:
+        """Reject executable local Git config and all replacement refs."""
+
+        try:
+            configured = subprocess.run(
+                [
+                    VRIF_BENCHMARK_RECOVERY_GIT,
+                    "-C",
+                    str(workspace_path),
+                    "config",
+                    "--null",
+                    "--list",
+                ],
+                check=False,
+                capture_output=True,
+                env=PortalImplementationDaemon._vrif_benchmark_owner_environment(),
+                shell=False,
+                timeout=15.0,
+            )
+            replacements = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace_path,
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/replace/",
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        raw = bytes(configured.stdout or b"")
+        if (
+            configured.returncode != 0
+            or len(raw) > 1024 * 1024
+            or replacements.returncode != 0
+            or bytes(replacements.stdout or b"").strip()
+        ):
+            return False
+        for record in raw.split(b"\0"):
+            if not record:
+                continue
+            raw_key, separator, _value = record.partition(b"\n")
+            if not separator:
+                return False
+            key = raw_key.decode("utf-8", errors="replace").lower()
+            if (
+                key in {"core.fsmonitor", "core.hookspath", "diff.external"}
+                or (
+                    key.startswith("diff.")
+                    and key.rsplit(".", 1)[-1] in {"command", "textconv"}
+                )
+                or (
+                    key.startswith("filter.")
+                    and key.rsplit(".", 1)[-1]
+                    in {"clean", "smudge", "process"}
+                )
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _vrif_benchmark_workspace_identity(
+        workspace_path: Path,
+    ) -> dict[str, Any]:
+        """Return a Git-hardened identity for the reserved owner path."""
+
+        requested = Path(workspace_path)
+        try:
+            metadata = requested.lstat()
+            workspace = requested.resolve(strict=True)
+        except (OSError, RuntimeError, ValueError):
+            return {"verified": False, "errors": ["workspace_unavailable"]}
+        if (
+            stat_module.S_ISLNK(metadata.st_mode)
+            or not stat_module.S_ISDIR(metadata.st_mode)
+            or not PortalImplementationDaemon._vrif_benchmark_repository_git_controls_safe(
+                workspace
+            )
+        ):
+            return {"verified": False, "errors": ["workspace_untrusted"]}
+        try:
+            top = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace, "rev-parse", "--show-toplevel"
+            )
+            head = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace, "rev-parse", "--verify", "HEAD^{commit}"
+            )
+            tree = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace, "rev-parse", "--verify", "HEAD^{tree}"
+            )
+            branch = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace, "symbolic-ref", "--quiet", "--short", "HEAD"
+            )
+            status = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace,
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+            )
+            observed_root = Path(
+                bytes(top.stdout or b"").decode("utf-8").strip()
+            ).resolve(strict=True)
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
+            return {"verified": False, "errors": ["git_identity_unavailable"]}
+        raw_status = bytes(status.stdout or b"")
+        head_text = bytes(head.stdout or b"").decode(
+            "ascii", errors="ignore"
+        ).strip()
+        tree_text = bytes(tree.stdout or b"").decode(
+            "ascii", errors="ignore"
+        ).strip()
+        branch_text = bytes(branch.stdout or b"").decode(
+            "utf-8", errors="ignore"
+        ).strip()
+        verified = bool(
+            top.returncode == 0
+            and observed_root == workspace
+            and head.returncode == 0
+            and re.fullmatch(r"[0-9a-f]{40}", head_text)
+            and tree.returncode == 0
+            and re.fullmatch(r"[0-9a-f]{40}", tree_text)
+            and branch.returncode == 0
+            and branch_text
+            and status.returncode == 0
+        )
+        return {
+            "verified": verified,
+            "head": head_text,
+            "tree": tree_text,
+            "branch": branch_text,
+            "status_clean": status.returncode == 0 and not raw_status,
+            "status_fingerprint": "sha256:"
+            + hashlib.sha256(raw_status).hexdigest(),
+            "status_bytes": len(raw_status),
+            "errors": [] if verified else ["git_identity_invalid"],
+        }
+
+    @classmethod
+    def _vrif_benchmark_immutable_workspace_matches(
+        cls,
+        workspace_path: Path,
+        *,
+        baseline_ref: str,
+    ) -> bool:
+        """Verify immutable owner inputs and ordinary index flags."""
+
+        workspace = Path(workspace_path).resolve(strict=False)
+        if not cls._vrif_benchmark_repository_git_controls_safe(workspace):
+            return False
+        immutable_paths = (
+            *VRIF_BENCHMARK_RECOVERY_TRUSTED_CODE_PATHS,
+            *(
+                path
+                for path in VRIF_BENCHMARK_RECOVERY_DATA_PATHS
+                if path not in VRIF_BENCHMARK_RECOVERY_OUTPUTS
+            ),
+        )
+        for relative_path in immutable_paths:
+            if not cls._vrif_benchmark_regular_path_beneath(
+                workspace, relative_path
+            ):
+                return False
+            baseline_blob = cls._vrif_benchmark_baseline_regular_blob(
+                workspace,
+                baseline_ref=baseline_ref,
+                relative_path=relative_path,
+            )
+            current = cls._vrif_benchmark_read_regular_nofollow(
+                workspace / relative_path
+            )
+            if (
+                baseline_blob is None
+                or baseline_blob[0] not in {"100644", "100755"}
+                or current is None
+                or current != baseline_blob[2]
+            ):
+                return False
+        try:
+            flags = cls._vrif_benchmark_git(
+                workspace, "ls-files", "-v", "-z"
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        records = tuple(
+            record for record in bytes(flags.stdout or b"").split(b"\0") if record
+        )
+        return bool(
+            flags.returncode == 0
+            and records
+            and all(record.startswith(b"H ") for record in records)
+        )
+
+    @staticmethod
+    def _vrif_benchmark_read_regular_nofollow(
+        path: Path,
+        *,
+        max_bytes: int = 8 * 1024 * 1024,
+    ) -> bytes | None:
+        """Read one bounded regular file without following a final symlink."""
+
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except OSError:
+            return None
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat_module.S_ISREG(metadata.st_mode)
+                or metadata.st_size < 0
+                or metadata.st_size > max_bytes
+            ):
+                return None
+            chunks: list[bytes] = []
+            remaining = int(metadata.st_size)
+            while remaining:
+                chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+                if not chunk:
+                    return None
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            if os.read(descriptor, 1):
+                return None
+            return b"".join(chunks)
+        except OSError:
+            return None
+        finally:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+    @staticmethod
+    def _vrif_benchmark_regular_path_beneath(
+        workspace_path: Path,
+        relative_path: str,
+    ) -> bool:
+        """Prove every path component is in-workspace and symlink-free."""
+
+        relative = PurePosixPath(str(relative_path or ""))
+        if (
+            not relative.parts
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or "." in relative.parts
+            or "\\" in str(relative_path or "")
+            or relative.as_posix() != str(relative_path or "")
+        ):
+            return False
+        try:
+            root = Path(workspace_path).resolve(strict=True)
+            root_metadata = root.lstat()
+        except (OSError, RuntimeError, ValueError):
+            return False
+        if (
+            stat_module.S_ISLNK(root_metadata.st_mode)
+            or not stat_module.S_ISDIR(root_metadata.st_mode)
+        ):
+            return False
+        current = root
+        for index, component in enumerate(relative.parts):
+            current = current / component
+            try:
+                metadata = current.lstat()
+            except OSError:
+                return False
+            if stat_module.S_ISLNK(metadata.st_mode):
+                return False
+            if index < len(relative.parts) - 1:
+                if not stat_module.S_ISDIR(metadata.st_mode):
+                    return False
+            elif not stat_module.S_ISREG(metadata.st_mode):
+                return False
+        try:
+            current.resolve(strict=True).relative_to(root)
+        except (OSError, RuntimeError, ValueError):
+            return False
+        return True
+
+    @staticmethod
+    def _vrif_benchmark_baseline_regular_blob(
+        workspace_path: Path,
+        *,
+        baseline_ref: str,
+        relative_path: str,
+    ) -> tuple[str, str, bytes] | None:
+        """Return one exact regular baseline blob and its mode/object ID."""
+
+        try:
+            entry = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace_path,
+                "ls-tree",
+                "-z",
+                baseline_ref,
+                "--",
+                relative_path,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if entry.returncode != 0:
+            return None
+        match = re.fullmatch(
+            rb"(100644|100755) blob ([0-9a-f]{40})\t"
+            + re.escape(relative_path.encode("utf-8"))
+            + rb"\0",
+            bytes(entry.stdout or b""),
+        )
+        if match is None:
+            return None
+        object_id = match.group(2).decode("ascii")
+        try:
+            blob = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace_path,
+                "cat-file",
+                "blob",
+                object_id,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if blob.returncode != 0:
+            return None
+        return (
+            match.group(1).decode("ascii"),
+            object_id,
+            bytes(blob.stdout or b""),
+        )
+
+    @staticmethod
+    def _vrif_benchmark_tree_has_exact_output_modes(
+        workspace_path: Path,
+        *,
+        treeish: str,
+    ) -> bool:
+        """Require the three candidate outputs to remain regular 100644 blobs."""
+
+        try:
+            listing = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace_path,
+                "ls-tree",
+                "-z",
+                treeish,
+                "--",
+                *VRIF_BENCHMARK_RECOVERY_OUTPUTS,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        paths: list[str] = []
+        for record in bytes(listing.stdout or b"").split(b"\0"):
+            if not record:
+                continue
+            match = re.fullmatch(rb"100644 blob [0-9a-f]{40}\t(.+)", record)
+            if match is None:
+                return False
+            try:
+                paths.append(match.group(1).decode("utf-8"))
+            except UnicodeDecodeError:
+                return False
+        return bool(
+            listing.returncode == 0
+            and set(paths) == set(VRIF_BENCHMARK_RECOVERY_OUTPUTS)
+            and len(paths) == len(VRIF_BENCHMARK_RECOVERY_OUTPUTS)
+        )
+
+    @staticmethod
+    def _vrif_benchmark_recovery_contract_matches(
+        task: PortalTask,
+        baseline_ref: str,
+    ) -> bool:
+        outputs = tuple(task_declared_output_paths(task))
+        return bool(
+            str(task.task_id or "") == VRIF_BENCHMARK_RECOVERY_TASK_ID
+            and outputs == VRIF_BENCHMARK_RECOVERY_DECLARED_OUTPUTS
+            and tuple(getattr(task, "validation", ()) or ())
+            == (VRIF_BENCHMARK_RECOVERY_VALIDATION,)
+            and re.fullmatch(r"[0-9a-f]{40}", str(baseline_ref or ""))
+            is not None
+            and str(getattr(task, "canonical_task_cid", "") or "").strip()
+        )
+
+    @staticmethod
+    def _vrif_benchmark_owner_recovery_requested(
+        *,
+        task: PortalTask,
+        validation_result: Mapping[str, Any],
+    ) -> bool:
+        """Identify the reserved VRIF empty-patch edge before exact checks."""
+
+        return bool(
+            str(task.task_id or "") == VRIF_BENCHMARK_RECOVERY_TASK_ID
+            and validation_result.get("passed") is False
+            and validation_result.get("reason")
+            == "no_change_completion_not_allowed"
+        )
+
+    @staticmethod
+    def _vrif_benchmark_exact_empty_gate(
+        *,
+        task: PortalTask,
+        baseline_ref: str,
+        validation_result: Mapping[str, Any],
+    ) -> bool:
+        """Verify the exact rejected empty candidate that permits repair."""
+
+        proposal = validation_result.get("proposal_gate")
+        no_change = validation_result.get("no_change_policy_gate")
+        review = validation_result.get("failure_review")
+        if not all(
+            isinstance(value, Mapping)
+            for value in (proposal, no_change, review)
+        ):
+            return False
+        assert isinstance(proposal, Mapping)
+        assert isinstance(no_change, Mapping)
+        assert isinstance(review, Mapping)
+
+        hex64 = r"[0-9a-f]{64}"
+        policy_id = str(proposal.get("policy_id") or "")
+        proposal_id = str(proposal.get("proposal_id") or "")
+        receipt_id = str(proposal.get("receipt_id") or "")
+        canonical_task_cid = str(task.canonical_task_cid or "").strip()
+        actual_findings = no_change.get("actual_findings")
+        expected_findings = no_change.get("expected_findings")
+        try:
+            actual_tuple = tuple(tuple(item) for item in actual_findings or ())
+            expected_tuple = tuple(tuple(item) for item in expected_findings or ())
+        except TypeError:
+            return False
+
+        return bool(
+            validation_result.get("attempted") is False
+            and validation_result.get("passed") is False
+            and type(validation_result.get("returncode")) is int
+            and validation_result.get("returncode")
+            == PROPOSAL_VALIDATION_FAILURE_RETURN_CODE
+            and validation_result.get("results") == []
+            and validation_result.get("reason")
+            == "no_change_completion_not_allowed"
+            and proposal.get("attempted") is True
+            and proposal.get("accepted") is False
+            and proposal.get("changed_paths") == []
+            and proposal.get("completion_authoritative") is False
+            and proposal.get("proof_authoritative") is False
+            and proposal.get("reason")
+            == "empty_patch_reserved_for_no_change_gate"
+            and proposal.get("reason_codes")
+            == ["empty_patch", "missing_required_field"]
+            and proposal.get("repository_tree_id") == baseline_ref
+            and re.fullmatch(hex64, policy_id) is not None
+            and re.fullmatch(hex64, proposal_id) is not None
+            and re.fullmatch(hex64, receipt_id) is not None
+            and no_change.get("schema")
+            == VRIF_BENCHMARK_RECOVERY_NO_CHANGE_SCHEMA
+            and no_change.get("attempted") is True
+            and no_change.get("accepted") is False
+            and no_change.get("baseline_id") == baseline_ref
+            and no_change.get("repository_tree_id") == baseline_ref
+            and no_change.get("task_id") == VRIF_BENCHMARK_RECOVERY_TASK_ID
+            and no_change.get("canonical_task_cid") == canonical_task_cid
+            and no_change.get("context_id") == canonical_task_cid
+            and no_change.get("objective_id") == canonical_task_cid
+            and no_change.get("changed_paths") == []
+            and no_change.get("completion_mode") == ""
+            and no_change.get("completion_authoritative") is False
+            and no_change.get("proof_authoritative") is False
+            and no_change.get("proposal_accepted") is False
+            and no_change.get("proposal_collection_error") == ""
+            and no_change.get("reason")
+            == "no_change_completion_not_allowed"
+            and no_change.get("candidate_fingerprint")
+            == "sha256:" + VRIF_BENCHMARK_RECOVERY_EMPTY_DIFF_DIGEST
+            and no_change.get("diff_digest")
+            == VRIF_BENCHMARK_RECOVERY_EMPTY_DIFF_DIGEST
+            and no_change.get("policy_id") == policy_id
+            and no_change.get("proposal_id") == proposal_id
+            and no_change.get("proposal_receipt_id") == receipt_id
+            and actual_tuple == VRIF_BENCHMARK_RECOVERY_EMPTY_FINDINGS
+            and expected_tuple == VRIF_BENCHMARK_RECOVERY_EMPTY_FINDINGS
+            and review.get("schema")
+            == "ipfs_accelerate_py/agent-supervisor/"
+            "implementation-failure-review@1"
+            and review.get("task_id") == VRIF_BENCHMARK_RECOVERY_TASK_ID
+            and review.get("accepted") is False
+            and review.get("decision") == "guide_rescue"
+            and review.get("finding_codes")
+            == ["empty_patch", "missing_required_field"]
+            and review.get("reason_codes") == ["generic_implementation_failure"]
+            and review.get("changed_paths") == []
+            and review.get("denied_paths") == []
+            and review.get("out_of_scope_paths") == []
+            and review.get("missing_expected_outputs") == []
+            and review.get("failed_commands") == []
+            and review.get("expected_outputs")
+            == list(VRIF_BENCHMARK_RECOVERY_OUTPUTS)
+            and review.get("completion_authoritative") is False
+            and review.get("proof_authoritative") is False
+        )
+
+    @staticmethod
+    def _vrif_benchmark_owner_materialize_argv(
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        baseline_ref: str,
+        validation_result: Mapping[str, Any],
+    ) -> tuple[str, ...]:
+        """Return an argv descriptor only for the exact trusted VRIF edge."""
+
+        if (
+            not PortalImplementationDaemon._vrif_benchmark_recovery_contract_matches(
+                task,
+                baseline_ref,
+            )
+            or not PortalImplementationDaemon._vrif_benchmark_exact_empty_gate(
+                task=task,
+                baseline_ref=baseline_ref,
+                validation_result=validation_result,
+            )
+        ):
+            return ()
+        try:
+            requested_workspace = Path(workspace_path)
+            workspace_metadata = requested_workspace.lstat()
+            if (
+                stat_module.S_ISLNK(workspace_metadata.st_mode)
+                or not stat_module.S_ISDIR(workspace_metadata.st_mode)
+            ):
+                return ()
+            workspace = requested_workspace.resolve(strict=True)
+            materializer_path = workspace / VRIF_BENCHMARK_RECOVERY_MATERIALIZER
+            materializer_metadata = materializer_path.lstat()
+            if (
+                stat_module.S_ISLNK(materializer_metadata.st_mode)
+                or not stat_module.S_ISREG(materializer_metadata.st_mode)
+            ):
+                return ()
+        except (OSError, RuntimeError, ValueError):
+            return ()
+        if any(
+            not PortalImplementationDaemon._vrif_benchmark_regular_path_beneath(
+                workspace,
+                relative_path,
+            )
+            for relative_path in (
+                *VRIF_BENCHMARK_RECOVERY_TRUSTED_CODE_PATHS,
+                *VRIF_BENCHMARK_RECOVERY_DATA_PATHS,
+            )
+        ):
+            return ()
+        if not PortalImplementationDaemon._vrif_benchmark_repository_git_controls_safe(
+            workspace
+        ):
+            return ()
+
+        try:
+            top_level = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace,
+                "rev-parse",
+                "--show-toplevel",
+            )
+            head = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace,
+                "rev-parse",
+                "--verify",
+                "HEAD^{commit}",
+            )
+            status = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace,
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            )
+            index_flags = PortalImplementationDaemon._vrif_benchmark_git(
+                workspace,
+                "ls-files",
+                "-v",
+                "-z",
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ()
+        try:
+            observed_root = Path(
+                bytes(top_level.stdout or b"").decode("utf-8").strip()
+            ).resolve(strict=True)
+        except (OSError, UnicodeDecodeError, ValueError):
+            return ()
+        flag_records = tuple(
+            record
+            for record in bytes(index_flags.stdout or b"").split(b"\0")
+            if record
+        )
+        baseline_materializer = (
+            PortalImplementationDaemon._vrif_benchmark_baseline_regular_blob(
+                workspace,
+                baseline_ref=baseline_ref,
+                relative_path=VRIF_BENCHMARK_RECOVERY_MATERIALIZER,
+            )
+        )
+        current_materializer = (
+            PortalImplementationDaemon._vrif_benchmark_read_regular_nofollow(
+                materializer_path
+            )
+        )
+        if (
+            top_level.returncode != 0
+            or observed_root != workspace
+            or head.returncode != 0
+            or bytes(head.stdout or b"").decode("ascii", errors="ignore").strip()
+            != baseline_ref
+            or status.returncode != 0
+            or bytes(status.stdout or b"")
+            or index_flags.returncode != 0
+            or not flag_records
+            or any(not record.startswith(b"H ") for record in flag_records)
+            or baseline_materializer is None
+            or baseline_materializer[0] != "100644"
+            or current_materializer is None
+            or baseline_materializer[2] != current_materializer
+        ):
+            return ()
+        return (
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            VRIF_BENCHMARK_RECOVERY_MATERIALIZER,
+            "--repo-root",
+            str(workspace),
+            "--baseline-commit",
+            baseline_ref,
+            "--write",
+        )
+
+    @staticmethod
+    def _vrif_benchmark_strict_json_object(raw: str) -> dict[str, Any] | None:
+        def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate materializer receipt key")
+                result[key] = value
+            return result
+
+        try:
+            parsed = json.loads(
+                raw,
+                object_pairs_hook=object_pairs,
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"invalid JSON constant: {value}")
+                ),
+            )
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    @staticmethod
+    def _vrif_benchmark_status_paths(
+        raw: bytes,
+        *,
+        expected_prefix: bytes,
+    ) -> tuple[str, ...] | None:
+        paths: list[str] = []
+        for record in raw.split(b"\0"):
+            if not record:
+                continue
+            if len(record) < 4 or record[:3] != expected_prefix + b" ":
+                return None
+            try:
+                path = record[3:].decode("utf-8")
+            except UnicodeDecodeError:
+                return None
+            if (
+                not path
+                or path.startswith("/")
+                or "\\" in path
+                or ".." in PurePosixPath(path).parts
+            ):
+                return None
+            paths.append(path)
+        return tuple(paths)
+
+    @classmethod
+    def _stage_vrif_benchmark_owner_outputs(
+        cls,
+        workspace_path: Path,
+        *,
+        baseline_ref: str,
+    ) -> tuple[str, ...]:
+        """Stage the exact three outputs without Git filters or hooks."""
+
+        workspace = Path(workspace_path).resolve(strict=False)
+        if not cls._vrif_benchmark_repository_git_controls_safe(workspace):
+            return ()
+        staged: list[str] = []
+        for relative_path in VRIF_BENCHMARK_RECOVERY_OUTPUTS:
+            if not cls._vrif_benchmark_regular_path_beneath(
+                workspace,
+                relative_path,
+            ):
+                return ()
+            baseline_blob = cls._vrif_benchmark_baseline_regular_blob(
+                workspace,
+                baseline_ref=baseline_ref,
+                relative_path=relative_path,
+            )
+            payload = cls._vrif_benchmark_read_regular_nofollow(
+                workspace / relative_path
+            )
+            if (
+                baseline_blob is None
+                or baseline_blob[0] != "100644"
+                or payload is None
+            ):
+                return ()
+            try:
+                hashed = cls._vrif_benchmark_git(
+                    workspace,
+                    "hash-object",
+                    "-w",
+                    "--no-filters",
+                    "--stdin",
+                    input_bytes=payload,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return ()
+            object_id = bytes(hashed.stdout or b"").decode(
+                "ascii", errors="ignore"
+            ).strip()
+            if (
+                hashed.returncode != 0
+                or re.fullmatch(r"[0-9a-f]{40}", object_id) is None
+            ):
+                return ()
+            try:
+                updated = cls._vrif_benchmark_git(
+                    workspace,
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    f"100644,{object_id},{relative_path}",
+                )
+                indexed = cls._vrif_benchmark_git(
+                    workspace,
+                    "ls-files",
+                    "--stage",
+                    "-z",
+                    "--",
+                    relative_path,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return ()
+            expected_index = (
+                f"100644 {object_id} 0\t{relative_path}\0".encode("utf-8")
+            )
+            if (
+                updated.returncode != 0
+                or indexed.returncode != 0
+                or bytes(indexed.stdout or b"") != expected_index
+            ):
+                return ()
+            staged.append(relative_path)
+        return tuple(staged)
+
+    def _commit_vrif_benchmark_owner_changes(
+        self,
+        workspace_path: Path,
+        *,
+        task: PortalTask,
+        attempt: int,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Commit only the sealed VRIF owner candidate with hardened Git."""
+
+        failure: dict[str, Any] = {
+            "committed": False,
+            "reason": "vrif_benchmark_owner_commit_not_authorized",
+        }
+        if not self._vrif_benchmark_recovery_contract_matches(task, baseline_ref):
+            return failure
+        before = self._vrif_benchmark_workspace_identity(workspace_path)
+        if (
+            before.get("verified") is not True
+            or not before.get("branch")
+            or not self._vrif_benchmark_immutable_workspace_matches(
+                workspace_path,
+                baseline_ref=baseline_ref,
+            )
+        ):
+            return failure
+        expected_set = set(VRIF_BENCHMARK_RECOVERY_OUTPUTS)
+        if before.get("head") != baseline_ref:
+            existing = self._vrif_benchmark_git(
+                workspace_path,
+                "rev-list",
+                "--parents",
+                "-n",
+                "1",
+                "HEAD",
+            )
+            clean = self._vrif_benchmark_git(
+                workspace_path,
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            )
+            committed_paths = self._vrif_benchmark_git(
+                workspace_path,
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--name-only",
+                "-z",
+                baseline_ref,
+                "HEAD",
+                "--",
+            )
+            try:
+                commit_line = bytes(existing.stdout or b"").decode(
+                    "ascii"
+                ).strip().split()
+                path_tuple = tuple(
+                    item.decode("utf-8")
+                    for item in bytes(committed_paths.stdout or b"").split(b"\0")
+                    if item
+                )
+            except UnicodeDecodeError:
+                commit_line = []
+                path_tuple = ()
+            if (
+                before.get("status_clean") is not True
+                or existing.returncode != 0
+                or commit_line != [str(before.get("head") or ""), baseline_ref]
+                or clean.returncode != 0
+                or bytes(clean.stdout or b"")
+                or committed_paths.returncode != 0
+                or set(path_tuple) != expected_set
+                or len(path_tuple) != len(expected_set)
+                or not all(
+                    self._vrif_benchmark_regular_path_beneath(
+                        Path(workspace_path), relative_path
+                    )
+                    for relative_path in VRIF_BENCHMARK_RECOVERY_OUTPUTS
+                )
+                or not self._vrif_benchmark_repository_git_controls_safe(
+                    Path(workspace_path)
+                )
+                or not self._vrif_benchmark_tree_has_exact_output_modes(
+                    Path(workspace_path),
+                    treeish="HEAD",
+                )
+            ):
+                return failure
+            return {
+                "committed": True,
+                "commit": str(before.get("head") or ""),
+                "baseline_ref": baseline_ref,
+                "status": "\n".join(f"M  {path}" for path in path_tuple),
+                "reason": "vrif_benchmark_owner_existing_commit",
+            }
+        if before.get("status_clean") is True:
+            return failure
+        staged_paths = self._stage_vrif_benchmark_owner_outputs(
+            workspace_path,
+            baseline_ref=baseline_ref,
+        )
+        if staged_paths != VRIF_BENCHMARK_RECOVERY_OUTPUTS:
+            return failure
+        cached = self._vrif_benchmark_git(
+            workspace_path,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--cached",
+            "--name-only",
+            "-z",
+            baseline_ref,
+            "--",
+        )
+        unstaged = self._vrif_benchmark_git(
+            workspace_path,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--name-only",
+            "-z",
+            "--",
+        )
+        status = self._vrif_benchmark_git(
+            workspace_path,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        )
+        try:
+            cached_paths = tuple(
+                item.decode("utf-8")
+                for item in bytes(cached.stdout or b"").split(b"\0")
+                if item
+            )
+        except UnicodeDecodeError:
+            cached_paths = ()
+        status_paths = self._vrif_benchmark_status_paths(
+            bytes(status.stdout or b""),
+            expected_prefix=b"M ",
+        )
+        index_bound = True
+        for relative_path in VRIF_BENCHMARK_RECOVERY_OUTPUTS:
+            payload = self._vrif_benchmark_read_regular_nofollow(
+                Path(workspace_path) / relative_path
+            )
+            if (
+                payload is None
+                or not self._vrif_benchmark_regular_path_beneath(
+                    Path(workspace_path), relative_path
+                )
+            ):
+                index_bound = False
+                break
+            hashed = self._vrif_benchmark_git(
+                workspace_path,
+                "hash-object",
+                "--no-filters",
+                "--stdin",
+                input_bytes=payload,
+            )
+            object_id = bytes(hashed.stdout or b"").decode(
+                "ascii", errors="ignore"
+            ).strip()
+            indexed = self._vrif_benchmark_git(
+                workspace_path,
+                "ls-files",
+                "--stage",
+                "-z",
+                "--",
+                relative_path,
+            )
+            if (
+                hashed.returncode != 0
+                or re.fullmatch(r"[0-9a-f]{40}", object_id) is None
+                or indexed.returncode != 0
+                or bytes(indexed.stdout or b"")
+                != f"100644 {object_id} 0\t{relative_path}\0".encode("utf-8")
+            ):
+                index_bound = False
+                break
+        if (
+            not self._vrif_benchmark_repository_git_controls_safe(
+                Path(workspace_path)
+            )
+            or cached.returncode != 0
+            or set(cached_paths) != expected_set
+            or len(cached_paths) != len(expected_set)
+            or unstaged.returncode != 0
+            or bytes(unstaged.stdout or b"")
+            or status.returncode != 0
+            or status_paths is None
+            or set(status_paths) != expected_set
+            or len(status_paths) != len(expected_set)
+            or not index_bound
+            or not self._vrif_benchmark_immutable_workspace_matches(
+                workspace_path,
+                baseline_ref=baseline_ref,
+            )
+        ):
+            return failure
+        committed = self._vrif_benchmark_git(
+            workspace_path,
+            "-c",
+            "user.name=Implementation Daemon",
+            "-c",
+            "user.email=implementation-daemon@example.invalid",
+            "-c",
+            "commit.gpgSign=false",
+            "commit",
+            "--no-verify",
+            "-m",
+            f"{task.task_id}: {task.title or 'implementation attempt'}",
+            "-m",
+            f"Attempt: {attempt}",
+        )
+        if committed.returncode != 0:
+            return {
+                **failure,
+                "reason": "vrif_benchmark_owner_git_commit_failed",
+                "returncode": int(committed.returncode),
+                "stderr": bytes(committed.stderr or b"")[-1000:].decode(
+                    "utf-8", errors="replace"
+                ),
+            }
+        head = self._vrif_benchmark_git(
+            workspace_path, "rev-parse", "--verify", "HEAD^{commit}"
+        )
+        parent = self._vrif_benchmark_git(
+            workspace_path, "rev-parse", "--verify", "HEAD^1"
+        )
+        branch = self._vrif_benchmark_git(
+            workspace_path, "symbolic-ref", "--quiet", "--short", "HEAD"
+        )
+        clean = self._vrif_benchmark_git(
+            workspace_path,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        )
+        committed_paths = self._vrif_benchmark_git(
+            workspace_path,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--name-only",
+            "-z",
+            baseline_ref,
+            "HEAD",
+            "--",
+        )
+        try:
+            path_tuple = tuple(
+                item.decode("utf-8")
+                for item in bytes(committed_paths.stdout or b"").split(b"\0")
+                if item
+            )
+        except UnicodeDecodeError:
+            path_tuple = ()
+        commit_ref = bytes(head.stdout or b"").decode(
+            "ascii", errors="ignore"
+        ).strip()
+        if (
+            head.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}", commit_ref) is None
+            or commit_ref == baseline_ref
+            or parent.returncode != 0
+            or bytes(parent.stdout or b"").decode(
+                "ascii", errors="ignore"
+            ).strip()
+            != baseline_ref
+            or branch.returncode != 0
+            or bytes(branch.stdout or b"").strip()
+            != str(before.get("branch") or "").encode("utf-8")
+            or clean.returncode != 0
+            or bytes(clean.stdout or b"")
+            or committed_paths.returncode != 0
+            or set(path_tuple) != expected_set
+            or len(path_tuple) != len(expected_set)
+            or not self._vrif_benchmark_repository_git_controls_safe(
+                Path(workspace_path)
+            )
+            or not self._vrif_benchmark_tree_has_exact_output_modes(
+                Path(workspace_path),
+                treeish="HEAD",
+            )
+        ):
+            return {
+                **failure,
+                "reason": "vrif_benchmark_owner_commit_postcheck_failed",
+                "candidate_commit": commit_ref,
+            }
+        return {
+            "committed": True,
+            "commit": commit_ref,
+            "status": "\n".join(f"M  {path}" for path in path_tuple),
+            "reason": "vrif_benchmark_owner_committed",
+        }
+
+    def _run_vrif_benchmark_owner_materializer(
+        self,
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        attempt: int,
+        baseline_ref: str,
+        argv: Sequence[str],
+        log_path: Path,
+    ) -> dict[str, Any]:
+        """Execute a baseline-blob materializer in a private import root."""
+
+        requested_workspace = Path(workspace_path)
+        workspace = requested_workspace.resolve(strict=False)
+        expected_argv = (
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            VRIF_BENCHMARK_RECOVERY_MATERIALIZER,
+            "--repo-root",
+            str(workspace),
+            "--baseline-commit",
+            baseline_ref,
+            "--write",
+        )
+        failure: dict[str, Any] = {
+            "attempted": False,
+            "passed": False,
+            "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+            "reason": "vrif_benchmark_owner_materializer_preflight_failed",
+            "changed_paths": [],
+        }
+        if (
+            tuple(argv) != expected_argv
+            or not self._vrif_benchmark_recovery_contract_matches(
+                task,
+                baseline_ref,
+            )
+        ):
+            return failure
+        try:
+            workspace_metadata = requested_workspace.lstat()
+        except OSError:
+            return failure
+        if (
+            stat_module.S_ISLNK(workspace_metadata.st_mode)
+            or not stat_module.S_ISDIR(workspace_metadata.st_mode)
+        ):
+            return failure
+        if any(
+            not self._vrif_benchmark_regular_path_beneath(
+                workspace,
+                relative_path,
+            )
+            for relative_path in (
+                *VRIF_BENCHMARK_RECOVERY_TRUSTED_CODE_PATHS,
+                *VRIF_BENCHMARK_RECOVERY_DATA_PATHS,
+            )
+        ):
+            return failure
+        if not self._vrif_benchmark_repository_git_controls_safe(workspace):
+            return failure
+
+        trusted_blobs: dict[str, bytes] = {}
+        for relative_path in VRIF_BENCHMARK_RECOVERY_TRUSTED_CODE_PATHS:
+            baseline_blob = self._vrif_benchmark_baseline_regular_blob(
+                workspace,
+                baseline_ref=baseline_ref,
+                relative_path=relative_path,
+            )
+            if (
+                baseline_blob is None
+                or baseline_blob[0] != "100644"
+                or len(baseline_blob[2]) > 8 * 1024 * 1024
+            ):
+                return failure
+            trusted_blobs[relative_path] = baseline_blob[2]
+
+        data_blobs: dict[str, bytes] = {}
+        for relative_path in VRIF_BENCHMARK_RECOVERY_DATA_PATHS:
+            baseline_blob = self._vrif_benchmark_baseline_regular_blob(
+                workspace,
+                baseline_ref=baseline_ref,
+                relative_path=relative_path,
+            )
+            current_blob = self._vrif_benchmark_read_regular_nofollow(
+                workspace / relative_path
+            )
+            if (
+                baseline_blob is None
+                or baseline_blob[0] not in {"100644", "100755"}
+                or len(baseline_blob[2]) > 8 * 1024 * 1024
+                or current_blob is None
+                or current_blob != baseline_blob[2]
+            ):
+                return failure
+            data_blobs[relative_path] = baseline_blob[2]
+
+        current_materializer = self._vrif_benchmark_read_regular_nofollow(
+            workspace / VRIF_BENCHMARK_RECOVERY_MATERIALIZER
+        )
+        try:
+            top_level = self._vrif_benchmark_git(
+                workspace,
+                "rev-parse",
+                "--show-toplevel",
+            )
+            head = self._vrif_benchmark_git(
+                workspace,
+                "rev-parse",
+                "--verify",
+                "HEAD^{commit}",
+            )
+            branch_before = self._vrif_benchmark_git(
+                workspace,
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "HEAD",
+            )
+            status_before = self._vrif_benchmark_git(
+                workspace,
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            )
+            index_flags = self._vrif_benchmark_git(
+                workspace,
+                "ls-files",
+                "-v",
+                "-z",
+            )
+            observed_root = Path(
+                bytes(top_level.stdout or b"").decode("utf-8").strip()
+            ).resolve(strict=True)
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
+            return failure
+        flag_records = tuple(
+            record
+            for record in bytes(index_flags.stdout or b"").split(b"\0")
+            if record
+        )
+        if (
+            top_level.returncode != 0
+            or observed_root != workspace
+            or head.returncode != 0
+            or bytes(head.stdout or b"").decode("ascii", errors="ignore").strip()
+            != baseline_ref
+            or branch_before.returncode != 0
+            or not bytes(branch_before.stdout or b"").strip()
+            or status_before.returncode != 0
+            or bytes(status_before.stdout or b"")
+            or index_flags.returncode != 0
+            or not flag_records
+            or any(not record.startswith(b"H ") for record in flag_records)
+            or current_materializer is None
+            or current_materializer
+            != trusted_blobs[VRIF_BENCHMARK_RECOVERY_MATERIALIZER]
+        ):
+            return failure
+
+        completed: subprocess.CompletedProcess[str] | None = None
+        execution_error = ""
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix="ipfs-accelerate-vrif-owner-code-",
+                dir="/tmp",
+            ) as private_name:
+                private_root = Path(private_name)
+                for relative_path in VRIF_BENCHMARK_RECOVERY_PRIVATE_PACKAGE_INITS:
+                    target = private_root / relative_path
+                    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    target.write_bytes(b"")
+                    target.chmod(0o400)
+                for relative_path, payload in trusted_blobs.items():
+                    target = private_root / relative_path
+                    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    target.write_bytes(payload)
+                    target.chmod(0o400)
+                execution_argv = list(expected_argv)
+                execution_argv[4] = str(
+                    private_root / VRIF_BENCHMARK_RECOVERY_MATERIALIZER
+                )
+                completed = subprocess.run(
+                    execution_argv,
+                    cwd=workspace,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    env=self._vrif_benchmark_owner_environment(),
+                    shell=False,
+                    timeout=VRIF_BENCHMARK_RECOVERY_TIMEOUT_SECONDS,
+                )
+        except (OSError, subprocess.SubprocessError) as exc:
+            execution_error = f"{type(exc).__name__}: {exc}"[:1000]
+
+        if completed is None:
+            failure["attempted"] = True
+            failure["reason"] = "vrif_benchmark_owner_materializer_execution_failed"
+            if execution_error:
+                failure["error"] = execution_error
+            return failure
+        stdout = str(completed.stdout or "")
+        stderr = str(completed.stderr or "")
+        with _open_private_implementation_log(log_path, "a") as log_fh:
+            log_fh.write(
+                "\n[vrif-owner-materializer] "
+                f"returncode={completed.returncode}\n"
+            )
+            if stderr:
+                log_fh.write(stderr[-4000:])
+                if not stderr.endswith("\n"):
+                    log_fh.write("\n")
+        failure["attempted"] = True
+        failure["returncode"] = int(completed.returncode)
+        if (
+            completed.returncode != 0
+            or len(stdout.encode("utf-8")) > 256 * 1024
+            or len(stderr.encode("utf-8")) > 256 * 1024
+            or len(stdout.splitlines()) != 1
+        ):
+            failure["reason"] = "vrif_benchmark_owner_materializer_rejected"
+            failure["stderr_tail"] = stderr[-1000:]
+            return failure
+        receipt = self._vrif_benchmark_strict_json_object(stdout.strip())
+        expected_receipt_keys = {
+            "schema",
+            "mode",
+            "baseline_commit",
+            "baseline_tree",
+            "changed_paths",
+            "case_count",
+            "case_root",
+            "binding_set_id",
+            "freeze_id",
+            "output_identities",
+        }
+        identity_pattern = r"sha256:[0-9a-f]{64}"
+        if not isinstance(receipt, Mapping):
+            failure["reason"] = "vrif_benchmark_owner_materializer_receipt_invalid"
+            return failure
+        output_identities = receipt.get("output_identities")
+        receipt_valid = bool(
+            set(receipt) == expected_receipt_keys
+            and receipt.get("schema")
+            == VRIF_BENCHMARK_RECOVERY_MATERIALIZATION_SCHEMA
+            and receipt.get("mode") == "write"
+            and receipt.get("baseline_commit") == baseline_ref
+            and re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(receipt.get("baseline_tree") or ""),
+            )
+            is not None
+            and receipt.get("changed_paths")
+            == list(VRIF_BENCHMARK_RECOVERY_MATERIALIZED_OUTPUT_ORDER)
+            and type(receipt.get("case_count")) is int
+            and receipt.get("case_count") == 96
+            and all(
+                re.fullmatch(identity_pattern, str(receipt.get(key) or ""))
+                is not None
+                for key in ("case_root", "binding_set_id", "freeze_id")
+            )
+            and isinstance(output_identities, Mapping)
+            and set(output_identities) == set(VRIF_BENCHMARK_RECOVERY_OUTPUTS)
+            and all(
+                re.fullmatch(identity_pattern, str(value or "")) is not None
+                for value in output_identities.values()
+            )
+        )
+        if not receipt_valid:
+            failure["reason"] = "vrif_benchmark_owner_materializer_receipt_invalid"
+            return failure
+
+        tree = self._vrif_benchmark_git(
+            workspace,
+            "rev-parse",
+            "--verify",
+            f"{baseline_ref}^{{tree}}",
+        )
+        head = self._vrif_benchmark_git(
+            workspace,
+            "rev-parse",
+            "--verify",
+            "HEAD^{commit}",
+        )
+        branch_after = self._vrif_benchmark_git(
+            workspace,
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "HEAD",
+        )
+        status = self._vrif_benchmark_git(
+            workspace,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        )
+        index_flags_after = self._vrif_benchmark_git(
+            workspace,
+            "ls-files",
+            "-v",
+            "-z",
+        )
+        changed_paths = self._vrif_benchmark_status_paths(
+            bytes(status.stdout or b""),
+            expected_prefix=b" M",
+        )
+        observed_identities: dict[str, str] = {}
+        for relative_path in VRIF_BENCHMARK_RECOVERY_OUTPUTS:
+            if not self._vrif_benchmark_regular_path_beneath(
+                workspace,
+                relative_path,
+            ):
+                observed_identities = {}
+                break
+            payload = self._vrif_benchmark_read_regular_nofollow(
+                workspace / relative_path
+            )
+            if payload is None:
+                observed_identities = {}
+                break
+            observed_identities[relative_path] = (
+                "sha256:" + hashlib.sha256(payload).hexdigest()
+            )
+        immutable_paths = (
+            *VRIF_BENCHMARK_RECOVERY_TRUSTED_CODE_PATHS,
+            *(
+                path
+                for path in VRIF_BENCHMARK_RECOVERY_DATA_PATHS
+                if path not in VRIF_BENCHMARK_RECOVERY_OUTPUTS
+            ),
+        )
+        immutable_bytes_match = all(
+            self._vrif_benchmark_regular_path_beneath(workspace, relative_path)
+            and self._vrif_benchmark_read_regular_nofollow(
+                workspace / relative_path
+            )
+            == (
+                trusted_blobs[relative_path]
+                if relative_path in trusted_blobs
+                else data_blobs[relative_path]
+            )
+            for relative_path in immutable_paths
+        )
+        flag_records_after = tuple(
+            record
+            for record in bytes(index_flags_after.stdout or b"").split(b"\0")
+            if record
+        )
+        if (
+            tree.returncode != 0
+            or bytes(tree.stdout or b"").decode("ascii", errors="ignore").strip()
+            != receipt.get("baseline_tree")
+            or head.returncode != 0
+            or bytes(head.stdout or b"").decode("ascii", errors="ignore").strip()
+            != baseline_ref
+            or branch_after.returncode != 0
+            or bytes(branch_after.stdout or b"").strip()
+            != bytes(branch_before.stdout or b"").strip()
+            or status.returncode != 0
+            or index_flags_after.returncode != 0
+            or not flag_records_after
+            or any(not record.startswith(b"H ") for record in flag_records_after)
+            or not self._vrif_benchmark_repository_git_controls_safe(workspace)
+            or not immutable_bytes_match
+            or changed_paths is None
+            or set(changed_paths) != set(VRIF_BENCHMARK_RECOVERY_OUTPUTS)
+            or len(changed_paths) != len(VRIF_BENCHMARK_RECOVERY_OUTPUTS)
+            or observed_identities != dict(output_identities)
+        ):
+            failure["reason"] = "vrif_benchmark_owner_materializer_postcheck_failed"
+            failure["changed_paths"] = list(changed_paths or ())
+            return failure
+
+        success = {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "reason": "vrif_benchmark_owner_materialized",
+            "changed_paths": list(changed_paths),
+            "receipt": dict(receipt),
+            "output_identities": observed_identities,
+        }
+        self._record_event(
+            "implementation_vrif_benchmark_owner_materialized",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "baseline_ref": baseline_ref,
+                **success,
+            },
+        )
+        return success
+
+    def _run_vrif_benchmark_owner_recovery_after_review(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        workspace_path: Path,
+        branch_name: str,
+        baseline_ref: str,
+        validation_result: Mapping[str, Any],
+        log_path: Path,
+        state: PortalTaskState | None,
+        replayable_consumed_proposal_ids: Sequence[str] = (),
+    ) -> dict[str, Any] | None:
+        """Repair the one sealed VRIF-030 empty candidate, or fail closed.
+
+        ``None`` means this is not the reserved recovery edge.  Once the task
+        and top-level no-change reason select this edge, every preflight,
+        materialization, staging, proposal, or validation failure is terminal
+        for the attempt and cannot fall through to generic/provider rescue.
+        """
+
+        if not self._vrif_benchmark_owner_recovery_requested(
+            task=task,
+            validation_result=validation_result,
+        ):
+            return None
+
+        original = dict(validation_result)
+
+        def terminal(
+            reason: str,
+            *,
+            detail: Mapping[str, Any] | None = None,
+            proposal_gate: Mapping[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            failed = self._sanitize_failed_validation_result(original)
+            failed.update(
+                {
+                    "passed": False,
+                    "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                    "reason": reason,
+                    "error": reason,
+                    "auto_rescue_terminal": True,
+                    "auto_rescue": {
+                        "succeeded": False,
+                        "owner_recovery": True,
+                        "provider_passes": 0,
+                        "reason": reason,
+                    },
+                }
+            )
+            if isinstance(detail, Mapping):
+                failed["vrif_benchmark_owner_materialization"] = dict(detail)
+                failed["auto_rescue"]["materializer_attempted"] = bool(
+                    detail.get("attempted")
+                )
+            if isinstance(proposal_gate, Mapping):
+                failed["proposal_gate"] = dict(proposal_gate)
+            self._record_event(
+                "implementation_vrif_benchmark_owner_recovery_failed",
+                {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "baseline_ref": baseline_ref,
+                    "reason": reason,
+                    "materializer_reason": str(
+                        (detail or {}).get("reason") or ""
+                    ),
+                    "proposal_gate": dict(proposal_gate or {}),
+                },
+            )
+            return failed
+
+        if not self._vrif_benchmark_recovery_contract_matches(
+            task,
+            baseline_ref,
+        ):
+            return terminal("vrif_benchmark_owner_contract_mismatch")
+
+        before = self._vrif_benchmark_workspace_identity(workspace_path)
+        baseline_tree = self._vrif_benchmark_git(
+            workspace_path,
+            "rev-parse",
+            "--verify",
+            f"{baseline_ref}^{{tree}}",
+        )
+        expected_tree = (
+            bytes(baseline_tree.stdout or b"")
+            .decode("ascii", errors="ignore")
+            .strip()
+        )
+        if (
+            baseline_tree.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}", expected_tree) is None
+            or before.get("verified") is not True
+            or before.get("head") != baseline_ref
+            or before.get("tree") != expected_tree
+            or before.get("branch") != branch_name
+            or before.get("status_clean") is not True
+        ):
+            return terminal("vrif_benchmark_owner_workspace_identity_mismatch")
+
+        argv = self._vrif_benchmark_owner_materialize_argv(
+            workspace_path=workspace_path,
+            task=task,
+            baseline_ref=baseline_ref,
+            validation_result=original,
+        )
+        if not argv:
+            return terminal("vrif_benchmark_owner_materializer_not_authorized")
+        materialized = self._run_vrif_benchmark_owner_materializer(
+            workspace_path=workspace_path,
+            task=task,
+            attempt=attempt,
+            baseline_ref=baseline_ref,
+            argv=argv,
+            log_path=log_path,
+        )
+        if materialized.get("passed") is not True:
+            return terminal(
+                "vrif_benchmark_owner_materialization_failed",
+                detail=materialized,
+            )
+
+        staged = self._stage_vrif_benchmark_owner_outputs(
+            workspace_path,
+            baseline_ref=baseline_ref,
+        )
+        cached = self._vrif_benchmark_git(
+            workspace_path,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--cached",
+            "--name-only",
+            "-z",
+            baseline_ref,
+            "--",
+        )
+        unstaged = self._vrif_benchmark_git(
+            workspace_path,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--name-only",
+            "-z",
+            "--",
+        )
+        status = self._vrif_benchmark_git(
+            workspace_path,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        )
+        try:
+            cached_paths = tuple(
+                item.decode("utf-8")
+                for item in bytes(cached.stdout or b"").split(b"\0")
+                if item
+            )
+        except UnicodeDecodeError:
+            cached_paths = ()
+        status_paths = self._vrif_benchmark_status_paths(
+            bytes(status.stdout or b""),
+            expected_prefix=b"M ",
+        )
+        expected_set = set(VRIF_BENCHMARK_RECOVERY_OUTPUTS)
+        if (
+            set(staged) != expected_set
+            or len(staged) != len(expected_set)
+            or cached.returncode != 0
+            or set(cached_paths) != expected_set
+            or len(cached_paths) != len(expected_set)
+            or unstaged.returncode != 0
+            or bytes(unstaged.stdout or b"")
+            or status.returncode != 0
+            or status_paths is None
+            or set(status_paths) != expected_set
+            or len(status_paths) != len(expected_set)
+        ):
+            return terminal(
+                "vrif_benchmark_owner_staging_failed",
+                detail={
+                    **materialized,
+                    "staged_paths": list(staged),
+                    "cached_paths": list(cached_paths),
+                    "status_paths": list(status_paths or ()),
+                },
+            )
+
+        proposal_validation = self._validate_implementation_patch(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+            replayable_consumed_proposal_ids=tuple(
+                replayable_consumed_proposal_ids
+            ),
+        )
+        compact_proposal = self._compact_proposal_validation(
+            proposal_validation
+        )
+        if (
+            getattr(proposal_validation, "accepted", None) is not True
+            or set(compact_proposal.get("changed_paths") or ()) != expected_set
+            or len(compact_proposal.get("changed_paths") or ())
+            != len(expected_set)
+            or compact_proposal.get("repository_tree_id") != baseline_ref
+        ):
+            return terminal(
+                "vrif_benchmark_owner_proposal_rejected",
+                detail=materialized,
+                proposal_gate=compact_proposal,
+            )
+
+        validated = self._run_validation_commands(
+            workspace_path,
+            task,
+            log_path,
+            state=state,
+            proposal_validation=proposal_validation,
+            force_uncached=True,
+        )
+        validated["proposal_validation"] = proposal_validation
+        if validated.get("passed") is True and not (
+            self._vrif_benchmark_immutable_workspace_matches(
+                workspace_path,
+                baseline_ref=baseline_ref,
+            )
+        ):
+            validated = {
+                **validated,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "reason": "vrif_benchmark_owner_post_validation_trust_failed",
+                "error": "vrif_benchmark_owner_post_validation_trust_failed",
+            }
+        if validated.get("passed") is True:
+            validated = self._verify_post_validation_candidate_binding(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+                proposal_validation=proposal_validation,
+                validation_result=validated,
+            )
+        if validated.get("passed") is True and not (
+            self._vrif_benchmark_immutable_workspace_matches(
+                workspace_path,
+                baseline_ref=baseline_ref,
+            )
+        ):
+            validated = {
+                **validated,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "reason": "vrif_benchmark_owner_candidate_binding_trust_failed",
+                "error": "vrif_benchmark_owner_candidate_binding_trust_failed",
+            }
+        validated["proposal_validation"] = proposal_validation
+        if validated.get("passed") is not True:
+            original.clear()
+            original.update(
+                self._detach_in_process_proposal_validation(validated)
+            )
+            return terminal(
+                "vrif_benchmark_owner_validation_failed",
+                detail=materialized,
+                proposal_gate=compact_proposal,
+            )
+
+        result = dict(validated)
+        result["reason"] = "vrif_benchmark_owner_materialization_validated"
+        result["vrif_benchmark_owner_materialization"] = dict(materialized)
+        result["auto_rescue_terminal"] = True
+        result["auto_rescue"] = {
+            "succeeded": True,
+            "owner_recovery": True,
+            "provider_passes": 0,
+            "materializer_attempted": True,
+            "changed_paths": list(VRIF_BENCHMARK_RECOVERY_OUTPUTS),
+        }
+        self._record_event(
+            "implementation_vrif_benchmark_owner_recovery_succeeded",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "baseline_ref": baseline_ref,
+                "proposal_gate": compact_proposal,
+                "materialization_receipt": dict(
+                    materialized.get("receipt") or {}
+                ),
+            },
+        )
+        return result
 
     def _run_auto_rescue_materialize_commands(
         self,

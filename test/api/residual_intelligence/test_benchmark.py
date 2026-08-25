@@ -1,34 +1,191 @@
 from __future__ import annotations
 
 import copy
+import json
 import re
+import subprocess
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.residual_intelligence.benchmark import (
     IDENTITY_FIELDS,
+    MANIFEST_SCHEMA,
     PARTITIONS,
     REQUIRED_BINDINGS,
     REQUIRED_KINDS,
     PairedBenchmarkRunner,
     ResidualBenchmarkManifest,
+    build_frozen_benchmark_contract,
     load_cases,
     load_frozen_benchmark,
     load_manifest,
+    sha256_identity,
     validate_frozen_benchmark,
 )
 from ipfs_accelerate_py.agent_supervisor.residual_intelligence.contracts import (
+    PROGRAM_ID,
     ExpertDisposition,
     ResidualIntelligenceError,
     ResidualTaskFamily,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    content_identity,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "benchmarks/agent_supervisor/residual_intelligence/manifest.json"
 CASES = ROOT / "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl"
 SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
+
+# BEGIN VRIF-030 PORTAL BASELINE (materializer-owned)
+VRIF_PORTAL_BASELINE_COMMIT = "04dccbc05d5f2b6806275128fdae356d94f2e48f"
+VRIF_PORTAL_BASELINE_TREE = "1f8d79e4574b007cf738cfc8c7f6579e3e160f32"
+# END VRIF-030 PORTAL BASELINE (materializer-owned)
+
+
+def _strict_json_object(path: Path) -> dict[str, Any]:
+    def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise AssertionError(f"{path} contains duplicate key {key!r}")
+            result[key] = value
+        return result
+
+    value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=object_pairs)
+    assert isinstance(value, dict)
+    return value
+
+
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+
+def test_current_artifacts_equal_independent_owner_reconstruction() -> None:
+    assert re.fullmatch(r"[0-9a-f]{40}", VRIF_PORTAL_BASELINE_COMMIT)
+    assert re.fullmatch(r"[0-9a-f]{40}", VRIF_PORTAL_BASELINE_TREE)
+    resolved_commit = _git(
+        "rev-parse", "--verify", f"{VRIF_PORTAL_BASELINE_COMMIT}^{{commit}}"
+    )
+    resolved_tree = _git(
+        "rev-parse", "--verify", f"{VRIF_PORTAL_BASELINE_COMMIT}^{{tree}}"
+    )
+    ancestry = _git("merge-base", "--is-ancestor", VRIF_PORTAL_BASELINE_COMMIT, "HEAD")
+    assert resolved_commit.returncode == 0
+    assert resolved_commit.stdout.strip() == VRIF_PORTAL_BASELINE_COMMIT
+    assert resolved_tree.returncode == 0
+    assert resolved_tree.stdout.strip() == VRIF_PORTAL_BASELINE_TREE
+    assert ancestry.returncode == 0
+
+    manifest = load_manifest(MANIFEST)
+    freeze = manifest["benchmark_freeze"]
+    source = {
+        "commit": VRIF_PORTAL_BASELINE_COMMIT,
+        "tree": VRIF_PORTAL_BASELINE_TREE,
+    }
+    assert manifest["source_revision"] == VRIF_PORTAL_BASELINE_COMMIT
+    assert freeze["source"] == source
+
+    objective_paths = (
+        "docs/architecture/agent_supervisor_residual_intelligence.objectives.md",
+        "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
+    )
+    operation_path = "ipfs_accelerate_py/agent_supervisor/control/control_plane.py"
+    provider_path = "config/agent_supervisor_residual_intelligence_scheduler.json"
+    admission_path = (
+        "benchmarks/agent_supervisor/residual_intelligence/"
+        "synthetic_training_admission.json"
+    )
+    split_path = (
+        "benchmarks/agent_supervisor/residual_intelligence/"
+        "synthetic_split_manifest.json"
+    )
+    inventory_path = (
+        "docs/architecture/residual_intelligence_inventory/"
+        "residual_model_call_inventory.json"
+    )
+    admission = _strict_json_object(ROOT / admission_path)
+    split = _strict_json_object(ROOT / split_path)
+    admission_body = dict(admission)
+    admission_id = admission_body.pop("admission_id")
+    assert admission_id == content_identity(admission_body)
+
+    base_bindings = {
+        "repository_states": sha256_identity(source),
+        "objective_revisions": sha256_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "residual-benchmark-objective-revisions@1"
+                ),
+                "artifacts": {
+                    path: sha256_identity((ROOT / path).read_bytes())
+                    for path in objective_paths
+                },
+            }
+        ),
+        "operation_catalog": sha256_identity((ROOT / operation_path).read_bytes()),
+        "provider_policy": sha256_identity((ROOT / provider_path).read_bytes()),
+        "tokenizer": sha256_identity(
+            {
+                "admission_id": admission_id,
+                "disposition": "no_learned_tokenizer_admitted",
+            }
+        ),
+        "model_versions": sha256_identity(
+            {
+                "inventory_blob_identity": sha256_identity(
+                    (ROOT / inventory_path).read_bytes()
+                ),
+                "disposition": "training_unavailable",
+            }
+        ),
+        "validation_policy": sha256_identity(
+            {
+                "argv": [
+                    [
+                        "python3 -m pytest -q "
+                        "test/api/residual_intelligence/test_benchmark.py"
+                    ]
+                ],
+                "test_blob_identity": sha256_identity(Path(__file__).read_bytes()),
+            }
+        ),
+    }
+    task_families = [family.value for family in ResidualTaskFamily]
+    expected = build_frozen_benchmark_contract(
+        task_families=task_families,
+        source_commit=VRIF_PORTAL_BASELINE_COMMIT,
+        source_tree=VRIF_PORTAL_BASELINE_TREE,
+        split_root=str(split["split_root"]),
+        base_bindings=base_bindings,
+    )
+    expected_manifest = {
+        "schema": MANIFEST_SCHEMA,
+        "program_identifier": PROGRAM_ID,
+        "status": "staged_not_qualified",
+        "owner_task": "VRIF-030",
+        "source_revision": VRIF_PORTAL_BASELINE_COMMIT,
+        "partitions": expected["partitions"],
+        "required_case_kinds": expected["case_kinds"],
+        "task_families": task_families,
+        "training_admission": "training_unavailable",
+        "weights_committed": False,
+        "large_corpus_committed": False,
+        "promotion_evidence": False,
+        "benchmark_freeze": expected["benchmark_freeze"],
+    }
+    assert manifest == expected_manifest
+    assert [case.to_dict() for case in load_cases(CASES)] == expected["cases"]
 
 
 def test_frozen_catalog_covers_every_family_and_owner_scheduled_partition() -> None:
