@@ -1,11 +1,14 @@
-"""Fail-closed runtime settlement guard for the VRIF completion CAS.
+"""Fail-closed runtime settlement and terminal checkpoint gates for VRIF.
 
 The canonical task and goal authority remains the Quack-owned control store.
-This module reads only the four lane-local coordination/execution sidecars and
-the configured merge queue.  It never constructs a daemon, queue, directory,
-lock, or database.  The context-manager API is the authorization boundary: it
-retains the master launch fence, every lane writer/policy lock, and the merge
-queue lock until the caller's compare-and-swap has finished.
+The settlement APIs read only the four lane-local coordination/execution
+sidecars and configured merge queue; they never construct or repair runtime
+state.  The one explicit mutation API is the terminal-only sidecar checkpoint:
+after the master has proven every process tree fenced, it takes the same
+existing master/lane locks, requires exact zero-active stores, and asks DuckDB
+to checkpoint committed WALs without changing logical rows or unlinking files.
+The settlement context manager remains the completion-CAS authorization
+boundary and retains every lock until the caller's compare-and-swap finishes.
 """
 
 from __future__ import annotations
@@ -60,6 +63,9 @@ VRIF_RETIRED_COORDINATION_LINEAGE_SCHEMA: Final[str] = (
 VRIF_RUNTIME_SETTLEMENT_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/vrif-runtime-settlement-binding@1"
 )
+VRIF_TERMINAL_SIDECAR_CHECKPOINT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/vrif-terminal-sidecar-checkpoint@1"
+)
 VRIF_CONFIG_SCHEMA: Final[str] = (
     "ipfs_accelerate_py.agent_supervisor."
     "verified-residual-intelligence-foundry.scheduler_config@1"
@@ -68,6 +74,9 @@ VRIF_PROGRAM_IDENTIFIER: Final[str] = (
     "agent-supervisor-verified-residual-intelligence-foundry-v1"
 )
 VRIF_TASK_PREFIX: Final[str] = "VRIF-"
+VRIF_SCHEDULER_CONFIG_RELATIVE_PATH: Final[str] = (
+    "config/agent_supervisor_residual_intelligence_scheduler.json"
+)
 VRIF_STATE_RELATIVE_PATH: Final[str] = (
     "data/agent_supervisor/residual_intelligence_foundry/state"
 )
@@ -3486,6 +3495,304 @@ def _lane_runtime_paths(state_path: Path, index: int) -> dict[str, Path]:
     }
 
 
+def _require_current_master_pid_projection(
+    path: Path,
+    *,
+    expected_pid: int,
+) -> dict[str, Any]:
+    """Bind terminal maintenance to the still-live owning master process."""
+
+    if (
+        type(expected_pid) is not int
+        or expected_pid <= 0
+        or expected_pid != os.getpid()
+    ):
+        raise VRIFRuntimeSettlementError(
+            "terminal checkpoint master PID is not the current process"
+        )
+    identity = _file_identity(
+        path,
+        label="VRIF terminal checkpoint master PID marker",
+        require_nonempty=True,
+    )
+    expected_payload = f"{expected_pid}\n".encode("ascii")
+    if (
+        identity["uid"] != os.geteuid()
+        or identity["mode"] != 0o600
+        or identity["size_bytes"] != len(expected_payload)
+    ):
+        raise VRIFRuntimeSettlementError(
+            "terminal checkpoint master PID marker ownership differs"
+        )
+    payload = _read_stable_regular_bytes(
+        path,
+        expected=identity,
+        label="VRIF terminal checkpoint master PID marker",
+        max_bytes=_PID_MAX_BYTES,
+    )
+    if payload != expected_payload:
+        raise VRIFRuntimeSettlementError(
+            "terminal checkpoint master PID marker identity differs"
+        )
+    return identity
+
+
+def _checkpoint_vrif_sidecar(database_path: Path) -> dict[str, Any]:
+    """Checkpoint one already-locked local sidecar without deleting its WAL."""
+
+    before = _store_identity(database_path)
+    connection: Any | None = None
+    try:
+        import duckdb
+
+        connection = connect_duckdb_with_policy(duckdb, database_path)
+        connection.execute("CHECKPOINT")
+    except Exception as exc:
+        if isinstance(exc, VRIFRuntimeSettlementError):
+            raise
+        raise VRIFRuntimeSettlementError(
+            f"terminal sidecar checkpoint failed: {database_path.name}"
+        ) from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+    after_database = _file_identity(
+        database_path,
+        label="checkpointed sidecar database",
+        require_nonempty=True,
+    )
+    stable_identity_fields = ("path", "device", "inode", "mode", "link_count", "uid")
+    if any(
+        after_database[field] != before["database"][field]
+        for field in stable_identity_fields
+    ):
+        raise VRIFRuntimeSettlementError(
+            "checkpointed sidecar database identity changed"
+        )
+    wal_after = _optional_wal_identity(database_path)
+    if wal_after["state"] != "absent":
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar WAL remained after checkpoint"
+        )
+    return {
+        "database_path": str(database_path),
+        "wal_before": before["wal"]["state"],
+        "wal_after": "absent",
+        "checkpoint_executed": True,
+    }
+
+
+def checkpoint_vrif_terminal_sidecars(
+    config_path: Path | str,
+    *,
+    repository_root: Path | str,
+    target_branch: str,
+    master_pid_path: Path | str,
+    expected_master_pid: int,
+    max_active_ids: int = 256,
+    lock_timeout_seconds: float = 1.0,
+) -> dict[str, Any]:
+    """Checkpoint exact zero-active VRIF sidecars after every lane is fenced.
+
+    This is a bounded terminal-shutdown operation, not a repair primitive.  It
+    takes the same master, lifetime-writer, and policy locks as runtime
+    settlement, validates all current sidecars through read-only settlement
+    readers, and only then issues DuckDB's ``CHECKPOINT``.  Logical rows are
+    never changed and WAL files are never unlinked by Python.
+    """
+
+    timeout = _validate_public_inputs(
+        target_repository_id=VRIF_TARGET_REPOSITORY_ID,
+        target_branch=target_branch,
+        owner_generation=1,
+        max_active_ids=max_active_ids,
+        lock_timeout_seconds=lock_timeout_seconds,
+    )
+    root = _absolute_lexical(repository_root)
+    _require_real_directory(root, label="repository_root")
+    _config, profile = _read_config(
+        config_path,
+        repository_root=root,
+        target_branch=target_branch,
+    )
+    state_path = Path(profile["state_path"])
+    expected_master_path = state_path / "configured-board-master.pid"
+    supplied_master_path = _absolute_lexical(master_pid_path)
+    if supplied_master_path != expected_master_path:
+        raise VRIFRuntimeSettlementError(
+            "terminal checkpoint master PID path differs from the VRIF profile"
+        )
+    _contained_existing_path(
+        root,
+        supplied_master_path,
+        label="VRIF terminal checkpoint master PID marker",
+        kind="file",
+    )
+    master_fence_path = state_path / ".configured-board-master.pid.update.lock"
+    lane_paths = [_lane_runtime_paths(state_path, index) for index in range(4)]
+
+    with _hold_existing_lock(
+        master_fence_path,
+        label="VRIF master launch fence",
+        timeout_seconds=timeout,
+    ):
+        _require_config_unchanged(profile)
+        master_identity = _require_current_master_pid_projection(
+            supplied_master_path,
+            expected_pid=expected_master_pid,
+        )
+        with ExitStack() as lane_locks:
+            for index, paths in enumerate(lane_paths):
+                lane_locks.enter_context(
+                    _hold_existing_lock(
+                        paths["writer_lock"],
+                        label=(
+                            f"VRIF lane {index} execution lifetime writer lock"
+                        ),
+                        timeout_seconds=timeout,
+                    )
+                )
+            policy_specs = sorted(
+                (
+                    (paths["coordination_lock"], index, "coordination")
+                    for index, paths in enumerate(lane_paths)
+                ),
+                key=lambda item: str(item[0]),
+            ) + sorted(
+                (
+                    (paths["execution_lock"], index, "execution")
+                    for index, paths in enumerate(lane_paths)
+                ),
+                key=lambda item: str(item[0]),
+            )
+            # Preserve the settlement lock order globally, not by lock kind.
+            policy_specs.sort(key=lambda item: str(item[0]))
+            for lock_path, index, kind in policy_specs:
+                lane_locks.enter_context(
+                    _hold_existing_lock(
+                        lock_path,
+                        label=f"VRIF lane {index} {kind} policy lock",
+                        timeout_seconds=timeout,
+                    )
+                )
+
+            lane_pid_observations = [
+                _pid_observation(
+                    state_path
+                    / f"lane-{index}"
+                    / f"vrif_lane_{index}_supervisor.pid",
+                    label=f"VRIF lane {index} supervisor PID marker",
+                )
+                for index in range(4)
+            ]
+            active_coordination = 0
+            active_execution = 0
+            for paths in lane_paths:
+                coordination_store = _store_identity(paths["coordination"])
+                execution_store = _store_identity(paths["execution"])
+                owner_id = _logical_owner_id(
+                    logical_database_path=paths["logical"],
+                    coordination_path=paths["logical"],
+                    execution_path=paths["execution"],
+                )
+                coordination = _read_coordination_snapshot(
+                    paths["coordination"],
+                    store_identity=coordination_store,
+                    max_active_ids=max_active_ids,
+                )
+                execution = _read_execution_snapshot(
+                    paths["execution"],
+                    store_identity=execution_store,
+                    expected_owner_session_id=owner_id,
+                    max_active_ids=max_active_ids,
+                )
+                active_coordination += int(coordination["active_count"])
+                active_execution += int(execution["active_count"])
+            if active_coordination != 0 or active_execution != 0:
+                raise VRIFRuntimeSettlementError(
+                    "terminal sidecar checkpoint requires exact zero-active stores"
+                )
+
+            checkpointed_lanes: list[dict[str, Any]] = []
+            for index, paths in enumerate(lane_paths):
+                checkpointed_lanes.append(
+                    {
+                        "index": index,
+                        "coordination": _checkpoint_vrif_sidecar(
+                            paths["coordination"]
+                        ),
+                        "execution": _checkpoint_vrif_sidecar(paths["execution"]),
+                    }
+                )
+
+            for index, paths in enumerate(lane_paths):
+                owner_id = _logical_owner_id(
+                    logical_database_path=paths["logical"],
+                    coordination_path=paths["logical"],
+                    execution_path=paths["execution"],
+                )
+                coordination_store = _store_identity(paths["coordination"])
+                execution_store = _store_identity(paths["execution"])
+                if (
+                    coordination_store["wal"]["state"] != "absent"
+                    or execution_store["wal"]["state"] != "absent"
+                    or _read_coordination_snapshot(
+                        paths["coordination"],
+                        store_identity=coordination_store,
+                        max_active_ids=max_active_ids,
+                    )["active_count"]
+                    != 0
+                    or _read_execution_snapshot(
+                        paths["execution"],
+                        store_identity=execution_store,
+                        expected_owner_session_id=owner_id,
+                        max_active_ids=max_active_ids,
+                    )["active_count"]
+                    != 0
+                ):
+                    raise VRIFRuntimeSettlementError(
+                        f"VRIF lane {index} changed during terminal checkpoint"
+                    )
+
+            _require_config_unchanged(profile)
+            if (
+                _require_current_master_pid_projection(
+                    supplied_master_path,
+                    expected_pid=expected_master_pid,
+                )
+                != master_identity
+                or [
+                    _pid_observation(
+                        state_path
+                        / f"lane-{index}"
+                        / f"vrif_lane_{index}_supervisor.pid",
+                        label=f"VRIF lane {index} supervisor PID marker",
+                    )
+                    for index in range(4)
+                ]
+                != lane_pid_observations
+            ):
+                raise VRIFRuntimeSettlementError(
+                    "VRIF lifecycle state changed during terminal checkpoint"
+                )
+
+            receipt: dict[str, Any] = {
+                "schema": VRIF_TERMINAL_SIDECAR_CHECKPOINT_SCHEMA,
+                "config_cid": profile["config_cid"],
+                "master_pid": expected_master_pid,
+                "active_counts": {
+                    "coordination": active_coordination,
+                    "execution": active_execution,
+                    "total": active_coordination + active_execution,
+                },
+                "lane_count": len(checkpointed_lanes),
+                "lanes": checkpointed_lanes,
+            }
+            receipt["receipt_cid"] = _content_id(receipt)
+            return receipt
+
+
 def _validate_public_inputs(
     *,
     target_repository_id: str,
@@ -5894,7 +6201,10 @@ __all__ = [
     "VRIF_RUNTIME_SETTLEMENT_BINDING_SCHEMA",
     "VRIF_RUNTIME_SETTLEMENT_CONFIG_SCHEMA",
     "VRIF_RUNTIME_SETTLEMENT_SCHEMA",
+    "VRIF_SCHEDULER_CONFIG_RELATIVE_PATH",
+    "VRIF_TERMINAL_SIDECAR_CHECKPOINT_SCHEMA",
     "VRIFRuntimeSettlementError",
+    "checkpoint_vrif_terminal_sidecars",
     "hold_vrif_runtime_settlement",
     "read_vrif_runtime_settlement",
     "validate_vrif_runtime_settlement_receipt",

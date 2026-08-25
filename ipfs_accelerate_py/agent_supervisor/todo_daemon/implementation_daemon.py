@@ -89241,19 +89241,48 @@ class DatabaseImplementationDaemon:
                 for item in self.phase_history(current.attempt_id)
                 if item.get("phase") == ATTEMPT_PHASE_VALIDATION
             ]
-            validation_body = (
+            stored_validation_body = (
                 dict(validation_history[-1].get("body") or {})
                 if validation_history
                 else {}
             )
-            if self.require_real_execution and (
-                str(validation_body.get("outcome") or "").strip().lower()
-                != "passed"
-                or not str(validation_body.get("evidence_digest") or "").strip()
-            ):
-                raise DatabaseImplementationAuthorityError(
-                    "production validation phase has no replayable passing evidence"
+            validation_body = stored_validation_body
+            if self.require_real_execution:
+                callback = validation_fn or self._validation_fn
+                if callback is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "production database task has no replay validator; "
+                        "refusing cached validation completion"
+                    )
+                # A committed validation row proves what an earlier process
+                # observed, not that a later process still accepts the cached
+                # effect.  Re-run the read-only validation callback before
+                # completion so newly hardened acceptance policy also covers
+                # pre-policy effect and validation receipts after restart.
+                fresh_validation_body = dict(
+                    self._run_with_attempt_heartbeat(
+                        current,
+                        lambda: callback(current, effect_result),
+                    )
                 )
+                if (
+                    str(fresh_validation_body.get("outcome") or "")
+                    .strip()
+                    .lower()
+                    != "passed"
+                    or not str(
+                        fresh_validation_body.get("evidence_digest") or ""
+                    ).strip()
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "production cached validation did not pass current "
+                        "revalidation"
+                    )
+                if fresh_validation_body != stored_validation_body:
+                    raise DatabaseImplementationAuthorityError(
+                        "production cached validation does not exactly match "
+                        "current revalidation"
+                    )
             validation_result = {
                 **validation_body,
                 "replayed": True,

@@ -100,7 +100,7 @@ GOAL_TERMINAL_REPORT_CONTRACT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-terminal-report-contract@1"
 )
 GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/goal-terminal-report-evidence@1"
+    "ipfs_accelerate_py/agent-supervisor/goal-terminal-report-evidence@2"
 )
 _DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-completion-binding@1"
@@ -1594,28 +1594,38 @@ def _goal_terminal_report_evidence(value: Mapping[str, Any]) -> dict[str, Any]:
         maximum=MAX_OUTPUTS,
     ):
         artifact = _mapping(item, noun="terminal report artifact")
-        if set(artifact) != {"path", "blob_identity", "bootstrap_blob_identity"}:
+        if set(artifact) != {
+            "path",
+            "blob_identity",
+            "portal_baseline_blob_identity",
+        }:
             raise IntentRepositoryIntegrityError(
                 "terminal report artifact schema is not closed"
             )
         path = _identifier(artifact.get("path"), noun="terminal report artifact path")
         blob_identity = str(artifact.get("blob_identity") or "")
-        bootstrap_blob_identity = str(artifact.get("bootstrap_blob_identity") or "")
+        portal_baseline_blob_identity = str(
+            artifact.get("portal_baseline_blob_identity") or ""
+        )
         if (
             path in artifact_paths
             or re.fullmatch(r"sha256:[0-9a-f]{64}", blob_identity) is None
-            or re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_blob_identity) is None
-            or blob_identity == bootstrap_blob_identity
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", portal_baseline_blob_identity
+            )
+            is None
+            or blob_identity == portal_baseline_blob_identity
         ):
             raise IntentRepositoryIntegrityError(
-                "terminal report artifact identity is invalid or still bootstrap evidence"
+                "terminal report artifact identity is invalid or unchanged from its "
+                "Portal baseline"
             )
         artifact_paths.add(path)
         artifacts.append(
             {
                 "path": path,
                 "blob_identity": blob_identity,
-                "bootstrap_blob_identity": bootstrap_blob_identity,
+                "portal_baseline_blob_identity": portal_baseline_blob_identity,
             }
         )
     if len(artifacts) != 2:

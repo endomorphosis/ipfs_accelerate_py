@@ -9,6 +9,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     multi_supervisor_runner as runner,
+    vrif_runtime_settlement as runtime_settlement,
 )
 
 
@@ -282,3 +283,173 @@ def test_stop_tracks_does_not_retire_a_still_live_wrapper_marker(
     assert process.wait_timeouts == []
     assert removed == []
     assert any("could not verify complete shutdown" in item for item in messages)
+
+
+def _run_vrif_terminal_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    terminal: bool,
+    checkpoint_error: Exception | None = None,
+    remove_master: bool = True,
+) -> tuple[dict[str, object], list[str]]:
+    state = tmp_path / "data/agent_supervisor/residual_intelligence_foundry/state"
+    lane = state / "lane-0"
+    lane.mkdir(parents=True)
+    track = runner.SupervisorTrack(
+        name="vrif-lane-0",
+        script_path=Path("wrapper.py"),
+        log_path=lane / "lane.log",
+        supervisor_pid_path=lane / "vrif_lane_0_supervisor.pid",
+        daemon_pid_path=lane / "vrif_lane_0_managed_daemon.pid",
+    )
+    process = _StillLiveProcess()
+    events: list[str] = []
+    monkeypatch.setattr(runner, "start_track", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(runner, "pid_alive", lambda _pid: True)
+    monkeypatch.setattr(runner, "daemon_pid_health_fields", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        runner,
+        "supervisor_status_health_fields",
+        lambda *_a, **_k: {"restart_supervisor": False},
+    )
+    monkeypatch.setattr(runner, "format_supervisor_status_fields", lambda _v: "")
+    monkeypatch.setattr(runner, "format_daemon_heartbeat_fields", lambda _v: "")
+    monkeypatch.setattr(
+        runner,
+        "terminal_task_state_fields",
+        lambda *_a, **_k: {"terminal_quiescent": terminal},
+    )
+
+    def stop(*_args, **_kwargs):
+        events.append("stop")
+        return {
+            "stopped_count": 1,
+            "all_trees_fenced": True,
+            "removed_runtime_markers": [],
+        }
+
+    def checkpoint(*_args, **_kwargs):
+        events.append("checkpoint")
+        if checkpoint_error is not None:
+            raise checkpoint_error
+        return {"schema": "test-checkpoint", "checkpointed": True}
+
+    def remove(*_args, **_kwargs):
+        events.append("remove-master")
+        return remove_master
+
+    monkeypatch.setattr(runner, "stop_tracks", stop)
+    monkeypatch.setattr(
+        runtime_settlement,
+        "checkpoint_vrif_terminal_sidecars",
+        checkpoint,
+    )
+    monkeypatch.setattr(runner, "_remove_owned_pid_projection", remove)
+    result = runner.run_supervisor_tracks(
+        (track,),
+        repo_root=tmp_path,
+        common_args=(
+            "--merge-target-branch",
+            "codex/verified-residual-intelligence-foundry-v1",
+        ),
+        duration_seconds=0.01,
+        heartbeat_interval_seconds=0.001,
+        stop_grace_seconds=0.01,
+        master_pid_path=(
+            state.relative_to(tmp_path) / "configured-board-master.pid"
+        ),
+        label=runtime_settlement.VRIF_PROGRAM_IDENTIFIER,
+        exit_when_all_tracks_terminal=True,
+        output=lambda _message: None,
+    )
+    return result, events
+
+
+def test_terminal_checkpoint_runs_after_fencing_before_master_retirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, events = _run_vrif_terminal_hook(
+        tmp_path,
+        monkeypatch,
+        terminal=True,
+    )
+
+    assert events == ["stop", "checkpoint", "remove-master"]
+    assert result["completed"] is True
+    assert result["terminal_quiescent"] is True
+    assert result["terminal_sidecar_checkpoint"] == {
+        "schema": "test-checkpoint",
+        "checkpointed": True,
+    }
+
+
+def test_terminal_checkpoint_failure_downgrades_terminal_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, events = _run_vrif_terminal_hook(
+        tmp_path,
+        monkeypatch,
+        terminal=True,
+        checkpoint_error=RuntimeError("checkpoint unavailable"),
+    )
+
+    assert events == ["stop", "checkpoint", "remove-master"]
+    assert result["completed"] is False
+    assert result["terminal_quiescent"] is False
+    assert "terminal sidecar checkpoint failed" in str(result["blocked"])
+    assert result["terminal_sidecar_checkpoint"] == {
+        "checkpointed": False,
+        "error_type": "RuntimeError",
+        "error": "checkpoint unavailable",
+    }
+
+
+def test_terminal_checkpoint_is_not_run_for_duration_shutdown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, events = _run_vrif_terminal_hook(
+        tmp_path,
+        monkeypatch,
+        terminal=False,
+    )
+
+    assert events == ["stop", "remove-master"]
+    assert result["terminal_quiescent"] is False
+    assert result["terminal_sidecar_checkpoint"] is None
+
+
+def test_terminal_checkpoint_requires_master_marker_retirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, events = _run_vrif_terminal_hook(
+        tmp_path,
+        monkeypatch,
+        terminal=True,
+        remove_master=False,
+    )
+
+    assert events == ["stop", "checkpoint", "remove-master"]
+    assert result["completed"] is False
+    assert result["terminal_quiescent"] is False
+    assert result["master_pid_removed"] is False
+    assert result["blocked"] == "VRIF terminal master PID marker retirement failed"
+
+
+def test_non_plan_runner_exit_code_propagates_fail_closed_result() -> None:
+    assert runner._supervisor_run_exit_code(
+        {"completed": False, "all_trees_fenced": True},
+        plan_bound_wave=False,
+    ) == 2
+    assert runner._supervisor_run_exit_code(
+        {"completed": True, "all_trees_fenced": False},
+        plan_bound_wave=False,
+    ) == 2
+    assert runner._supervisor_run_exit_code(
+        {"completed": True, "all_trees_fenced": True},
+        plan_bound_wave=False,
+    ) == 0

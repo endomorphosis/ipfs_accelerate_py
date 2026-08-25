@@ -12,6 +12,7 @@ not duplicate provider/effect work.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import os
@@ -74,6 +75,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
+    DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA,
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
     DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
@@ -92,6 +94,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ATTEMPT_PHASE_EFFECT,
     ATTEMPT_PHASE_FAILED,
     ATTEMPT_PHASE_PROVIDER,
+    ATTEMPT_PHASE_VALIDATION,
     DATABASE_DECLARED_OUTPUT_REARM_SCHEMA,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
@@ -323,6 +326,68 @@ def _open_daemon(
         require_real_execution=True,
         clock_ms=clock_ms,
     )
+
+
+def _sha256_json_identity(value: Mapping[str, object]) -> str:
+    encoded = json.dumps(
+        dict(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _legacy_portal_effect(
+    attempt: DatabaseTaskAttempt,
+    *,
+    baseline_commit: str,
+    baseline_tree: str,
+    implementation_commit: str,
+) -> dict[str, object]:
+    """Return a structurally exact effect without granting semantic authority."""
+
+    binding_id = "sha256:" + "1" * 64
+    portal_receipt_id = "sha256:" + "2" * 64
+    evidence_digest = "sha256:" + "3" * 64
+    completion_event_id = "sha256:" + "4" * 64
+    binding: dict[str, object] = {
+        "schema": DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA,
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "binding_id": binding_id,
+        "portal_receipt_id": portal_receipt_id,
+        "evidence_digest": evidence_digest,
+        "baseline_commit": baseline_commit,
+        "baseline_tree": baseline_tree,
+        "implementation_commit": implementation_commit,
+        "completion_event_id": completion_event_id,
+    }
+    binding["receipt_id"] = _sha256_json_identity(binding)
+    return {
+        "status": "applied",
+        "effect": "portal-supervised-accepted-effect",
+        "effect_key": f"portal:{attempt.task_cid}:{attempt.attempt_id}",
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "binding_id": binding_id,
+        "portal_receipt_id": portal_receipt_id,
+        "evidence_digest": evidence_digest,
+        "baseline_commit": baseline_commit,
+        "baseline_tree": baseline_tree,
+        "implementation_commit": implementation_commit,
+        "completion_event_id": completion_event_id,
+        "portal_completion_binding": binding,
+    }
+
+
+def _single_task_population(task_alias: str) -> dict[str, object]:
+    population = _population(1)
+    tasks = population["tasks"]
+    assert isinstance(tasks, list)
+    tasks[0]["task_id"] = task_alias
+    return population
 
 
 TYPED_DEFERRAL_RECOVERY_TEST_PATH = (
@@ -2224,6 +2289,329 @@ def test_effect_phase_resume_skips_both_provider_and_effect(tmp_path: Path) -> N
         assert result["status"] == "succeeded"
     finally:
         second.close()
+
+
+def test_vrif_cached_effect_resume_rechecks_current_semantic_acceptance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, baseline_commit, baseline_tree = _git_recovery_repo(tmp_path)
+    implementation_commit, _ = _git_commit(
+        repo,
+        name="semantic-candidate.txt",
+        content="candidate\n",
+    )
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.repository_root = repo
+    reject = {"enabled": False}
+    semantic_calls: list[dict[str, object]] = []
+
+    def semantic_acceptance(**kwargs: object) -> None:
+        semantic_calls.append(dict(kwargs))
+        if reject["enabled"]:
+            raise DatabasePortalBridgeError(
+                "VRIF-030 artifacts differ from the owner-exact benchmark contract"
+            )
+
+    monkeypatch.setattr(
+        bridge,
+        "_verify_vrif_semantic_acceptance",
+        semantic_acceptance,
+    )
+
+    def legacy_effect(
+        attempt: DatabaseTaskAttempt,
+        _provider_result: dict[str, object],
+    ) -> dict[str, object]:
+        return _legacy_portal_effect(
+            attempt,
+            baseline_commit=baseline_commit,
+            baseline_tree=baseline_tree,
+            implementation_commit=implementation_commit,
+        )
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:vrif-effect-replay",
+        effect_fn=legacy_effect,
+        validation_fn=bridge.validate_effect,
+    )
+    try:
+        first.materialize_population(_single_task_population("VRIF-030"))
+        attempt = first.claim_next()
+        assert attempt is not None
+        attempt = first.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        attempt, provider_result, _ = first.run_provider(attempt)
+        attempt, cached_effect, duplicated = first.run_effect(
+            attempt,
+            provider_result,
+        )
+        assert duplicated is False
+        assert cached_effect["status"] == "applied"
+        assert attempt.committed_phase == ATTEMPT_PHASE_EFFECT
+        attempt_id = attempt.attempt_id
+    finally:
+        first.close()
+
+    reject["enabled"] = True
+    semantic_calls.clear()
+    resumed = _open_daemon(
+        tmp_path,
+        session="session:vrif-effect-replay",
+        effect_fn=legacy_effect,
+        validation_fn=bridge.validate_effect,
+    )
+    try:
+        cached_attempt = resumed.get_attempt(attempt_id)
+        assert cached_attempt is not None
+        with pytest.raises(
+            DatabasePortalBridgeError,
+            match="owner-exact benchmark contract",
+        ):
+            resumed.resume_attempt(cached_attempt)
+
+        assert len(semantic_calls) == 1
+        assert semantic_calls[0]["baseline_commit"] == baseline_commit
+        assert semantic_calls[0]["baseline_tree"] == baseline_tree
+        assert semantic_calls[0]["implementation_commit"] == implementation_commit
+        after = resumed.get_attempt(attempt_id)
+        assert after is not None
+        assert after.committed_phase == ATTEMPT_PHASE_EFFECT
+        assert after.status == "running"
+        task = resumed.task_source.get(after.task_cid)
+        assert task is not None
+        assert task.status == "in_progress"
+    finally:
+        resumed.close()
+
+
+def test_vrif_committed_validation_replay_rechecks_semantic_acceptance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, baseline_commit, baseline_tree = _git_recovery_repo(tmp_path)
+    implementation_commit, _ = _git_commit(
+        repo,
+        name="legacy-validation-candidate.txt",
+        content="candidate\n",
+    )
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.repository_root = repo
+    reject = {"enabled": False}
+    semantic_calls: list[dict[str, object]] = []
+
+    def semantic_acceptance(**kwargs: object) -> None:
+        semantic_calls.append(dict(kwargs))
+        if reject["enabled"]:
+            raise DatabasePortalBridgeError(
+                "VRIF-030 artifacts differ from the owner-exact benchmark contract"
+            )
+
+    monkeypatch.setattr(
+        bridge,
+        "_verify_vrif_semantic_acceptance",
+        semantic_acceptance,
+    )
+
+    def legacy_effect(
+        attempt: DatabaseTaskAttempt,
+        _provider_result: dict[str, object],
+    ) -> dict[str, object]:
+        return _legacy_portal_effect(
+            attempt,
+            baseline_commit=baseline_commit,
+            baseline_tree=baseline_tree,
+            implementation_commit=implementation_commit,
+        )
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:vrif-validation-replay",
+        effect_fn=legacy_effect,
+        validation_fn=bridge.validate_effect,
+    )
+    try:
+        first.materialize_population(_single_task_population("VRIF-030"))
+        attempt = first.claim_next()
+        assert attempt is not None
+        attempt = first.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        attempt, provider_result, _ = first.run_provider(attempt)
+        attempt, cached_effect, _ = first.run_effect(attempt, provider_result)
+        stored_validation = dict(bridge.validate_effect(attempt, cached_effect))
+        attempt = first.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_VALIDATION,
+            body=stored_validation,
+        )
+        assert attempt.committed_phase == ATTEMPT_PHASE_VALIDATION
+        attempt_id = attempt.attempt_id
+    finally:
+        first.close()
+
+    assert len(semantic_calls) == 1
+    reject["enabled"] = True
+    semantic_calls.clear()
+    resumed = _open_daemon(
+        tmp_path,
+        session="session:vrif-validation-replay",
+        effect_fn=legacy_effect,
+        validation_fn=bridge.validate_effect,
+    )
+    try:
+        cached_attempt = resumed.get_attempt(attempt_id)
+        assert cached_attempt is not None
+        with pytest.raises(
+            DatabasePortalBridgeError,
+            match="owner-exact benchmark contract",
+        ):
+            resumed.resume_attempt(cached_attempt)
+
+        assert len(semantic_calls) == 1
+        after = resumed.get_attempt(attempt_id)
+        assert after is not None
+        assert after.committed_phase == ATTEMPT_PHASE_VALIDATION
+        assert after.status == "running"
+        task = resumed.task_source.get(after.task_cid)
+        assert task is not None
+        assert task.status == "in_progress"
+    finally:
+        resumed.close()
+
+
+def test_committed_validation_replay_rejects_fresh_passing_drift(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    stored_validation = {
+        "outcome": "passed",
+        "evidence_digest": "sha256:" + "a" * 64,
+        "argv": ["stored-validation"],
+    }
+    first = _open_daemon(
+        tmp_path,
+        session="session:validation-drift",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        attempt = first.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        attempt, provider_result, _ = first.run_provider(attempt)
+        attempt, _effect_result, _ = first.run_effect(attempt, provider_result)
+        attempt = first.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_VALIDATION,
+            body=stored_validation,
+        )
+        attempt_id = attempt.attempt_id
+    finally:
+        first.close()
+
+    def drifted_validation(
+        _attempt: DatabaseTaskAttempt,
+        _effect_result: dict[str, object],
+    ) -> dict[str, object]:
+        return {
+            **stored_validation,
+            "argv": ["different-current-validation"],
+        }
+
+    resumed = _open_daemon(
+        tmp_path,
+        session="session:validation-drift",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        validation_fn=drifted_validation,
+    )
+    try:
+        cached_attempt = resumed.get_attempt(attempt_id)
+        assert cached_attempt is not None
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            resumed.resume_attempt(cached_attempt)
+
+        assert provider_calls == ["task:cid:001"]
+        assert effect_calls == ["task:cid:001"]
+        after = resumed.get_attempt(attempt_id)
+        assert after is not None
+        assert after.committed_phase == ATTEMPT_PHASE_VALIDATION
+        assert after.status == "running"
+        task = resumed.task_source.get(after.task_cid)
+        assert task is not None
+        assert task.status == "in_progress"
+    finally:
+        resumed.close()
+
+
+def test_non_vrif_committed_validation_replay_remains_idempotent(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    validation_calls: list[str] = []
+    stored_validation = {
+        "outcome": "passed",
+        "evidence_digest": "sha256:" + "b" * 64,
+        "argv": ["stable-current-validation"],
+    }
+
+    def stable_validation(
+        attempt: DatabaseTaskAttempt,
+        _effect_result: dict[str, object],
+    ) -> dict[str, object]:
+        validation_calls.append(attempt.task_cid)
+        return dict(stored_validation)
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:stable-validation-replay",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        validation_fn=stable_validation,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt = first.claim_next()
+        assert attempt is not None
+        attempt = first.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        attempt, provider_result, _ = first.run_provider(attempt)
+        attempt, _effect_result, _ = first.run_effect(attempt, provider_result)
+        attempt = first.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_VALIDATION,
+            body=stored_validation,
+        )
+        attempt_id = attempt.attempt_id
+    finally:
+        first.close()
+
+    resumed = _open_daemon(
+        tmp_path,
+        session="session:stable-validation-replay",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        validation_fn=stable_validation,
+    )
+    try:
+        cached_attempt = resumed.get_attempt(attempt_id)
+        assert cached_attempt is not None
+        result = resumed.resume_attempt(cached_attempt)
+
+        assert result["resumed"] is True
+        assert result["provider_duplicated"] is True
+        assert result["effect_duplicated"] is True
+        assert result["status"] == "succeeded"
+        assert result["committed_phase"] == ATTEMPT_PHASE_COMPLETE
+        assert validation_calls == ["task:cid:001"]
+        assert provider_calls == ["task:cid:001"]
+        assert effect_calls == ["task:cid:001"]
+        task = resumed.task_source.get(cached_attempt.task_cid)
+        assert task is not None
+        assert task.status == "completed"
+    finally:
+        resumed.close()
 
 
 def test_provider_heartbeat_renews_exact_task_claim(tmp_path: Path) -> None:

@@ -2002,70 +2002,13 @@ def _vrif_portal_completion_binding(
 
 
 def _vrif_release_report_markdown(report: Mapping[str, Any]) -> str:
-    """Render the exact human companion for one closed machine report."""
+    """Delegate to the trusted canonical release-report renderer."""
 
-    sections: list[tuple[str, Any]] = [
-        (
-            "Lineage",
-            {
-                "start_tree": report.get("start_tree"),
-                "end_tree": report.get("end_tree"),
-            },
-        ),
-        ("Files and Symbols", report.get("files_symbols")),
-        ("Corpus Rights and Splits", report.get("corpus_rights_splits")),
-        (
-            "Architecture, Tokenizer, Checkpoint, and Training",
-            report.get("architecture_tokenizer_checkpoint"),
-        ),
-        ("Expert Dispositions", report.get("expert_dispositions")),
-        (
-            "Before/After Denominators",
-            {"before": report.get("before"), "after": report.get("after")},
-        ),
-        ("Costs and Break-even", report.get("costs")),
-        ("Proof and Validation", report.get("proof_validation")),
-        ("Drift", report.get("drift")),
-        (
-            "Rollback, Blockers, and Eligibility",
-            report.get("rollback_blocker_eligibility"),
-        ),
-        ("Unsupported Gaps", report.get("gaps")),
-    ]
-    rendered = [
-        "# VRIF Final Release Report\n\n",
-        "This report is non-authoritative and cannot promote a residual expert.\n\n",
-    ]
-    for title, payload in sections:
-        rendered.extend(
-            (
-                f"## {title}\n\n",
-                "```json\n",
-                json.dumps(
-                    payload,
-                    indent=2,
-                    sort_keys=True,
-                    ensure_ascii=False,
-                    allow_nan=False,
-                ),
-                "\n```\n\n",
-            )
-        )
-    rendered.extend(
-        (
-            "## Complete Machine Report\n\n",
-            "```json\n",
-            json.dumps(
-                report,
-                indent=2,
-                sort_keys=True,
-                ensure_ascii=False,
-                allow_nan=False,
-            ),
-            "\n```\n",
-        )
+    from ipfs_accelerate_py.agent_supervisor.residual_intelligence.release import (
+        render_vrif_release_report_markdown,
     )
-    return "".join(rendered)
+
+    return render_vrif_release_report_markdown(report)
 
 
 def _vrif_terminal_report_evidence(
@@ -2724,20 +2667,20 @@ def _vrif_terminal_report_evidence(
                 return None
             if path not in required_paths:
                 continue
-            bootstrap_blob = regular_blob(
-                bootstrap_head,
+            portal_baseline_blob = regular_blob(
+                portal_baseline_commit,
                 path,
-                field=f"bootstrap terminal report {path}",
+                field=f"Portal baseline terminal report {path}",
             )
-            bootstrap_identity = _identity(bootstrap_blob)
-            if current_identity == bootstrap_identity:
+            portal_baseline_identity = _identity(portal_baseline_blob)
+            if current_identity == portal_baseline_identity:
                 return None
             current_blobs[path] = current_blob
             artifacts.append(
                 {
                     "path": path,
                     "blob_identity": current_identity,
-                    "bootstrap_blob_identity": bootstrap_identity,
+                    "portal_baseline_blob_identity": portal_baseline_identity,
                 }
             )
         anchor_payloads: dict[str, Mapping[str, Any]] = {}

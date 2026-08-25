@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    vrif_runtime_settlement as runtime_settlement_module,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
     TASK_COMPLETION_PREPARATION_SCHEMA,
@@ -21,7 +24,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
 from ipfs_accelerate_py.agent_supervisor.runtime.vrif_runtime_settlement import (
     VRIF_RUNTIME_SETTLEMENT_BINDING_SCHEMA,
+    VRIF_TERMINAL_SIDECAR_CHECKPOINT_SCHEMA,
     VRIFRuntimeSettlementError,
+    checkpoint_vrif_terminal_sidecars,
     hold_vrif_runtime_settlement,
     read_vrif_runtime_settlement,
     validate_vrif_runtime_settlement_receipt,
@@ -884,6 +889,155 @@ os._exit(0)
     wal_path = Path(str(database_path) + ".wal")
     assert wal_path.is_file() and wal_path.stat().st_size > 0
     return wal_path
+
+
+def _leave_committed_coordination_wal(database_path: Path, *, suffix: str) -> Path:
+    script = """
+import os
+import sys
+import duckdb
+path, suffix = sys.argv[1:]
+connection = duckdb.connect(path)
+connection.execute(
+    "INSERT INTO coordination_tasks VALUES (?, ?, '', 1, FALSE, '{}')",
+    [f'task:wal:{suffix}', f'VRIF-WAL-{suffix}'],
+)
+os._exit(0)
+"""
+    subprocess.run(
+        [sys.executable, "-c", script, str(database_path), suffix],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    wal_path = Path(str(database_path) + ".wal")
+    assert wal_path.is_file() and wal_path.stat().st_size > 0
+    return wal_path
+
+
+def _publish_current_master_marker(runtime: RuntimeFixture) -> Path:
+    marker = runtime.state_path / "configured-board-master.pid"
+    marker.write_text(f"{os.getpid()}\n", encoding="ascii")
+    marker.chmod(0o600)
+    return marker
+
+
+def test_terminal_checkpoint_replays_zero_active_coordination_and_execution_wals(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    wal_paths = [
+        *(
+            _leave_committed_coordination_wal(path, suffix=str(index))
+            for index, path in enumerate(runtime.coordination_paths)
+        ),
+        *(_leave_committed_wal(path) for path in runtime.execution_paths),
+    ]
+
+    receipt = checkpoint_vrif_terminal_sidecars(
+        runtime.config_path,
+        repository_root=runtime.root,
+        target_branch=_TARGET_BRANCH,
+        master_pid_path=marker,
+        expected_master_pid=os.getpid(),
+        lock_timeout_seconds=0.0,
+    )
+
+    assert receipt["schema"] == VRIF_TERMINAL_SIDECAR_CHECKPOINT_SCHEMA
+    assert receipt["active_counts"] == {
+        "coordination": 0,
+        "execution": 0,
+        "total": 0,
+    }
+    assert receipt["lane_count"] == 4
+    assert all(not path.exists() for path in wal_paths)
+    marker.unlink()
+    assert _read(runtime)["settled"] is True
+
+
+def test_terminal_checkpoint_rejects_active_sidecar_without_checkpointing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    wal_path = _leave_committed_wal(runtime.execution_paths[3])
+    coordinator = DatabaseCoordinator(runtime.coordination_paths[0]).open()
+    try:
+        coordinator.register_task(task_cid="task:still-ready", task_id="VRIF-ACTIVE")
+    finally:
+        coordinator.close()
+
+    checkpoint_calls: list[Path] = []
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match="zero-active"):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert checkpoint_calls == []
+    assert wal_path.is_file() and wal_path.stat().st_size > 0
+
+
+def test_terminal_checkpoint_rejects_busy_lane_writer_lock(tmp_path: Path) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    writer_lock = runtime.execution_paths[2].with_name(
+        f".{runtime.execution_paths[2].name}.writer.lock"
+    )
+    descriptor = os.open(writer_lock, os.O_RDWR)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(VRIFRuntimeSettlementError, match="writer lock is busy"):
+            checkpoint_vrif_terminal_sidecars(
+                runtime.config_path,
+                repository_root=runtime.root,
+                target_branch=_TARGET_BRANCH,
+                master_pid_path=marker,
+                expected_master_pid=os.getpid(),
+                lock_timeout_seconds=0.0,
+            )
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def test_terminal_checkpoint_rejects_master_marker_tamper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    marker.write_text(f"{os.getpid() + 1}\n", encoding="ascii")
+    checkpoint_calls: list[Path] = []
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match="PID marker identity"):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert checkpoint_calls == []
 
 
 def test_optional_committed_sidecar_wal_is_bound_and_read_only(

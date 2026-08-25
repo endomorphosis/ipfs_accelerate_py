@@ -116,6 +116,73 @@ def _canonical_sha256(value: Mapping[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
+def render_vrif_release_report_markdown(report: Mapping[str, Any]) -> str:
+    """Render the exact human companion for one closed VRIF machine report."""
+
+    sections: list[tuple[str, Any]] = [
+        (
+            "Lineage",
+            {
+                "start_tree": report.get("start_tree"),
+                "end_tree": report.get("end_tree"),
+            },
+        ),
+        ("Files and Symbols", report.get("files_symbols")),
+        ("Corpus Rights and Splits", report.get("corpus_rights_splits")),
+        (
+            "Architecture, Tokenizer, Checkpoint, and Training",
+            report.get("architecture_tokenizer_checkpoint"),
+        ),
+        ("Expert Dispositions", report.get("expert_dispositions")),
+        (
+            "Before/After Denominators",
+            {"before": report.get("before"), "after": report.get("after")},
+        ),
+        ("Costs and Break-even", report.get("costs")),
+        ("Proof and Validation", report.get("proof_validation")),
+        ("Drift", report.get("drift")),
+        (
+            "Rollback, Blockers, and Eligibility",
+            report.get("rollback_blocker_eligibility"),
+        ),
+        ("Unsupported Gaps", report.get("gaps")),
+    ]
+    rendered = [
+        "# VRIF Final Release Report\n\n",
+        "This report is non-authoritative and cannot promote a residual expert.\n\n",
+    ]
+    for title, payload in sections:
+        rendered.extend(
+            (
+                f"## {title}\n\n",
+                "```json\n",
+                json.dumps(
+                    payload,
+                    indent=2,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ),
+                "\n```\n\n",
+            )
+        )
+    rendered.extend(
+        (
+            "## Complete Machine Report\n\n",
+            "```json\n",
+            json.dumps(
+                report,
+                indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+                allow_nan=False,
+            ),
+            "\n```\n",
+        )
+    )
+    return "".join(rendered)
+
+
 def _nonnegative_int(value: Any, name: str) -> int:
     if type(value) is not int or value < 0:
         raise ResidualIntelligenceError(f"{name} must be a non-negative integer")
@@ -715,5 +782,6 @@ __all__ = (
     "REPORT_SCHEMA",
     "ResidualGapReport",
     "ResidualIntelligenceReleaseReport",
+    "render_vrif_release_report_markdown",
     "validate_release_claims",
 )

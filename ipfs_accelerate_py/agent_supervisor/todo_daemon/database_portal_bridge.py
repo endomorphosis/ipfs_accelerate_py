@@ -117,6 +117,22 @@ _VRIF_TERMINAL_REPORT_FIELDS: Final[tuple[str, ...]] = (
     "drift",
     "rollback_blocker_eligibility",
 )
+_VRIF_BENCHMARK_MANIFEST_PATH: Final[str] = (
+    "benchmarks/agent_supervisor/residual_intelligence/manifest.json"
+)
+_VRIF_BENCHMARK_CASES_PATH: Final[str] = (
+    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl"
+)
+_VRIF_BENCHMARK_TEST_PATH: Final[str] = (
+    "test/api/residual_intelligence/test_benchmark.py"
+)
+_VRIF_RELEASE_REPORT_JSON_PATH: Final[str] = (
+    "docs/architecture/residual_intelligence_inventory/final_release_report.json"
+)
+_VRIF_RELEASE_REPORT_MARKDOWN_PATH: Final[str] = (
+    "docs/architecture/residual_intelligence_inventory/final_release_report.md"
+)
+_VRIF_SEMANTIC_BLOB_MAX_BYTES: Final[int] = 8 * 1024 * 1024
 _DATABASE_PORTAL_COMPLETION_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "schema",
@@ -931,6 +947,113 @@ def _canonical_json(value: Any) -> bytes:
 
 def _sha256_bytes(value: bytes) -> str:
     return f"sha256:{hashlib.sha256(value).hexdigest()}"
+
+
+def _strict_json_bytes(value: bytes, *, noun: str) -> Any:
+    """Decode one bounded UTF-8 JSON value without duplicate object keys."""
+
+    def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise DatabasePortalBridgeError(
+                    f"{noun} contains duplicate key {key!r}"
+                )
+            result[key] = item
+        return result
+
+    try:
+        text = value.decode("utf-8")
+        return json.loads(text, object_pairs_hook=object_pairs)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise DatabasePortalBridgeError(f"{noun} is not strict UTF-8 JSON") from exc
+
+
+def _git_blob_at_commit(
+    repository_root: Path,
+    *,
+    commit: str,
+    path: str,
+    max_bytes: int = _VRIF_SEMANTIC_BLOB_MAX_BYTES,
+) -> bytes:
+    """Read one exact bounded regular Git blob from an immutable commit."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise DatabasePortalBridgeError("VRIF semantic commit identity is malformed")
+    safe_path = _safe_output_path(path)
+
+    try:
+        tree_entry = subprocess.run(
+            ["git", "ls-tree", "-z", commit, "--", safe_path],
+            cwd=repository_root,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DatabasePortalBridgeError(
+            f"VRIF semantic artifact is unavailable: {safe_path}"
+        ) from exc
+    match = re.fullmatch(
+        rb"(100644|100755) blob ([0-9a-f]{40})\t([^\0]+)\0",
+        tree_entry.stdout,
+    )
+    try:
+        observed_path = match.group(3).decode("utf-8") if match is not None else ""
+    except UnicodeDecodeError as exc:
+        raise DatabasePortalBridgeError(
+            f"VRIF semantic artifact path is malformed: {safe_path}"
+        ) from exc
+    if (
+        tree_entry.returncode != 0
+        or match is None
+        or observed_path != safe_path
+    ):
+        raise DatabasePortalBridgeError(
+            f"VRIF semantic artifact is absent or not a regular blob: {safe_path}"
+        )
+    object_id = match.group(2).decode("ascii")
+
+    def cat_file(mode: str) -> subprocess.CompletedProcess[bytes]:
+        try:
+            return subprocess.run(
+                ["git", "cat-file", mode, object_id],
+                cwd=repository_root,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise DatabasePortalBridgeError(
+                f"VRIF semantic artifact is unavailable: {safe_path}"
+            ) from exc
+
+    object_type = cat_file("-t")
+    object_size = cat_file("-s")
+    try:
+        type_text = object_type.stdout.decode("ascii").strip()
+        size = int(object_size.stdout.decode("ascii").strip())
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise DatabasePortalBridgeError(
+            f"VRIF semantic artifact metadata is malformed: {safe_path}"
+        ) from exc
+    if (
+        object_type.returncode != 0
+        or object_size.returncode != 0
+        or type_text != "blob"
+        or isinstance(size, bool)
+        or size < 0
+        or size > max_bytes
+    ):
+        raise DatabasePortalBridgeError(
+            f"VRIF semantic artifact is absent, non-blob, or oversized: {safe_path}"
+        )
+    payload = cat_file("blob")
+    if payload.returncode != 0 or len(payload.stdout) != size:
+        raise DatabasePortalBridgeError(
+            f"VRIF semantic artifact changed during read: {safe_path}"
+        )
+    return bytes(payload.stdout)
 
 
 def _content_addressed_record(
@@ -4316,6 +4439,19 @@ class DatabasePortalExecutionBridge:
                         "test_benchmark.py"
                     ),
                     (
+                        "- Construction order: finish the candidate "
+                        "test_benchmark.py bytes first, then hash that exact "
+                        "tracked payload for validation_policy before "
+                        "regenerating manifest.json and every cases.jsonl row"
+                    ),
+                    (
+                        "- Independent-validation requirement: self-consistency "
+                        "through load_frozen_benchmark is insufficient; "
+                        "test_benchmark.py must independently reconstruct the "
+                        "owner base_frozen_bindings and prove exact equality "
+                        "with the owner-derived freeze and 96-case schedule"
+                    ),
+                    (
                         "- Dynamic identity rule: recompute every schedule, "
                         "binding, case, baseline, and freeze identity for this "
                         "Portal baseline/candidate; never copy an earlier "
@@ -4350,6 +4486,19 @@ class DatabasePortalExecutionBridge:
                         "- Human report contract: render byte-for-byte with "
                         "scripts/run_agent_supervisor_residual_intelligence.py::"
                         "_vrif_release_report_markdown"
+                    ),
+                    (
+                        "- Human-report validation: replace substring-only "
+                        "checks in test_release_report.py with exact UTF-8 byte "
+                        "equality between final_release_report.md and "
+                        "_vrif_release_report_markdown(parsed_machine_report)"
+                    ),
+                    (
+                        "- Retry lineage rule: derive end_tree and "
+                        "drift.evaluated_tree from this attempt's Portal "
+                        "baseline tree, refresh every VRIF-030 producer/freeze "
+                        "identity, and modify all three declared outputs "
+                        "relative to the retry baseline"
                     ),
                     (
                         "- Producer artifact contract: bind the declared "
@@ -9869,6 +10018,298 @@ class DatabasePortalExecutionBridge:
             "portal_attempt": source_portal_attempt,
         }
 
+    def _verify_vrif_benchmark_acceptance(
+        self,
+        *,
+        record: Any,
+        baseline_commit: str,
+        baseline_tree: str,
+        implementation_commit: str,
+    ) -> None:
+        """Independently reproduce the owner-exact VRIF-030 benchmark."""
+
+        if self.repository_root is None:
+            raise DatabasePortalBridgeError(
+                "VRIF-030 acceptance has no repository authority"
+            )
+        body = getattr(record, "body", None)
+        body = body if isinstance(body, Mapping) else {}
+        outputs = {_safe_output_path(path) for path in _output_values(record, body)}
+        validations = _validation_values(record, body)
+        if outputs != set(_VRIF_BENCHMARK_OUTPUT_PATHS) or len(validations) != 1:
+            raise DatabasePortalBridgeError(
+                "VRIF-030 acceptance contract differs from the sealed task"
+            )
+
+        from ..residual_intelligence.benchmark import (
+            MANIFEST_SCHEMA,
+            build_frozen_benchmark_contract,
+            sha256_identity,
+        )
+        from ..residual_intelligence.contracts import (
+            PROGRAM_ID,
+            ResidualIntelligenceError,
+            ResidualTaskFamily,
+        )
+        from ..task_sources.control_plane_contracts import content_identity
+
+        def blob(path: str) -> bytes:
+            return _git_blob_at_commit(
+                self.repository_root,
+                commit=implementation_commit,
+                path=path,
+            )
+
+        objective_paths = (
+            "docs/architecture/agent_supervisor_residual_intelligence.objectives.md",
+            "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
+        )
+        operation_path = (
+            "ipfs_accelerate_py/agent_supervisor/control/control_plane.py"
+        )
+        provider_path = (
+            "config/agent_supervisor_residual_intelligence_scheduler.json"
+        )
+        admission_path = (
+            "benchmarks/agent_supervisor/residual_intelligence/"
+            "synthetic_training_admission.json"
+        )
+        split_path = (
+            "benchmarks/agent_supervisor/residual_intelligence/"
+            "synthetic_split_manifest.json"
+        )
+        inventory_path = (
+            "docs/architecture/residual_intelligence_inventory/"
+            "residual_model_call_inventory.json"
+        )
+        objective_artifacts = {
+            path: sha256_identity(blob(path)) for path in objective_paths
+        }
+        admission = _strict_json_bytes(
+            blob(admission_path),
+            noun="VRIF-030 training admission",
+        )
+        split = _strict_json_bytes(
+            blob(split_path),
+            noun="VRIF-030 split manifest",
+        )
+        if not isinstance(admission, Mapping) or not isinstance(split, Mapping):
+            raise DatabasePortalBridgeError(
+                "VRIF-030 owner inputs are not JSON objects"
+            )
+        admission_body = dict(admission)
+        admission_id = str(admission_body.pop("admission_id", "") or "")
+        if admission_id != content_identity(admission_body):
+            raise DatabasePortalBridgeError(
+                "VRIF-030 training admission identity does not verify"
+            )
+        base_bindings = {
+            "repository_states": sha256_identity(
+                {"commit": baseline_commit, "tree": baseline_tree}
+            ),
+            "objective_revisions": sha256_identity(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "residual-benchmark-objective-revisions@1"
+                    ),
+                    "artifacts": objective_artifacts,
+                }
+            ),
+            "operation_catalog": sha256_identity(blob(operation_path)),
+            "provider_policy": sha256_identity(blob(provider_path)),
+            "tokenizer": sha256_identity(
+                {
+                    "admission_id": admission_id,
+                    "disposition": "no_learned_tokenizer_admitted",
+                }
+            ),
+            "model_versions": sha256_identity(
+                {
+                    "inventory_blob_identity": sha256_identity(
+                        blob(inventory_path)
+                    ),
+                    "disposition": "training_unavailable",
+                }
+            ),
+            "validation_policy": sha256_identity(
+                {
+                    "argv": [[command] for command in validations],
+                    "test_blob_identity": sha256_identity(
+                        blob(_VRIF_BENCHMARK_TEST_PATH)
+                    ),
+                }
+            ),
+        }
+        task_families = [family.value for family in ResidualTaskFamily]
+        try:
+            expected = build_frozen_benchmark_contract(
+                task_families=task_families,
+                source_commit=baseline_commit,
+                source_tree=baseline_tree,
+                split_root=str(split.get("split_root") or ""),
+                base_bindings=base_bindings,
+            )
+        except ResidualIntelligenceError as exc:
+            raise DatabasePortalBridgeError(
+                "VRIF-030 owner benchmark reconstruction failed"
+            ) from exc
+
+        manifest = _strict_json_bytes(
+            blob(_VRIF_BENCHMARK_MANIFEST_PATH),
+            noun="VRIF-030 benchmark manifest",
+        )
+        cases_blob = blob(_VRIF_BENCHMARK_CASES_PATH)
+        try:
+            case_lines = cases_blob.decode("utf-8").splitlines()
+        except UnicodeDecodeError as exc:
+            raise DatabasePortalBridgeError(
+                "VRIF-030 benchmark cases are not UTF-8"
+            ) from exc
+        if not case_lines or any(not line.strip() for line in case_lines):
+            raise DatabasePortalBridgeError(
+                "VRIF-030 benchmark cases are empty or contain blank lines"
+            )
+        cases = [
+            _strict_json_bytes(
+                line.encode("utf-8"),
+                noun=f"VRIF-030 benchmark case line {index}",
+            )
+            for index, line in enumerate(case_lines, start=1)
+        ]
+        expected_manifest = {
+            "schema": MANIFEST_SCHEMA,
+            "program_identifier": PROGRAM_ID,
+            "status": "staged_not_qualified",
+            "owner_task": _VRIF_BENCHMARK_TASK_ALIAS,
+            "source_revision": baseline_commit,
+            "partitions": expected["partitions"],
+            "required_case_kinds": expected["case_kinds"],
+            "task_families": task_families,
+            "training_admission": "training_unavailable",
+            "weights_committed": False,
+            "large_corpus_committed": False,
+            "promotion_evidence": False,
+            "benchmark_freeze": expected["benchmark_freeze"],
+        }
+        if manifest != expected_manifest or cases != expected["cases"]:
+            raise DatabasePortalBridgeError(
+                "VRIF-030 artifacts differ from the owner-exact benchmark contract"
+            )
+
+    def _verify_vrif_terminal_acceptance(
+        self,
+        *,
+        record: Any,
+        baseline_commit: str,
+        baseline_tree: str,
+        implementation_commit: str,
+    ) -> None:
+        """Require owner-canonical VRIF-032 JSON/Markdown before completion."""
+
+        if self.repository_root is None:
+            raise DatabasePortalBridgeError(
+                "VRIF-032 acceptance has no repository authority"
+            )
+        body = getattr(record, "body", None)
+        body = body if isinstance(body, Mapping) else {}
+        outputs = {_safe_output_path(path) for path in _output_values(record, body)}
+        if outputs != set(_VRIF_TERMINAL_OUTPUT_PATHS):
+            raise DatabasePortalBridgeError(
+                "VRIF-032 acceptance contract differs from the sealed task"
+            )
+        report_blob = _git_blob_at_commit(
+            self.repository_root,
+            commit=implementation_commit,
+            path=_VRIF_RELEASE_REPORT_JSON_PATH,
+        )
+        markdown_blob = _git_blob_at_commit(
+            self.repository_root,
+            commit=implementation_commit,
+            path=_VRIF_RELEASE_REPORT_MARKDOWN_PATH,
+        )
+        report = _strict_json_bytes(
+            report_blob,
+            noun="VRIF-032 release report",
+        )
+        drift = report.get("drift") if isinstance(report, Mapping) else None
+        if (
+            not isinstance(report, Mapping)
+            or set(report) != set(_VRIF_TERMINAL_REPORT_FIELDS)
+            or report.get("end_tree") != baseline_tree
+            or not isinstance(drift, Mapping)
+            or drift.get("evaluated_tree") != baseline_tree
+        ):
+            raise DatabasePortalBridgeError(
+                "VRIF-032 report does not bind the exact Portal baseline tree"
+            )
+        from ..residual_intelligence.contracts import ResidualIntelligenceError
+        from ..residual_intelligence.release import (
+            ResidualIntelligenceReleaseReport,
+            render_vrif_release_report_markdown,
+            validate_release_claims,
+        )
+
+        try:
+            typed_report = validate_release_claims(
+                ResidualIntelligenceReleaseReport.from_dict(report)
+            )
+        except ResidualIntelligenceError as exc:
+            raise DatabasePortalBridgeError(
+                "VRIF-032 report fails the trusted release contract"
+            ) from exc
+        if typed_report.to_dict() != dict(report):
+            raise DatabasePortalBridgeError(
+                "VRIF-032 report differs from its trusted typed projection"
+            )
+
+        expected_markdown = render_vrif_release_report_markdown(report).encode(
+            "utf-8"
+        )
+        if markdown_blob != expected_markdown:
+            raise DatabasePortalBridgeError(
+                "VRIF-032 Markdown is not the owner-canonical report rendering"
+            )
+        for path, current_blob in (
+            (_VRIF_RELEASE_REPORT_JSON_PATH, report_blob),
+            (_VRIF_RELEASE_REPORT_MARKDOWN_PATH, markdown_blob),
+        ):
+            if _git_blob_at_commit(
+                self.repository_root,
+                commit=baseline_commit,
+                path=path,
+            ) == current_blob:
+                raise DatabasePortalBridgeError(
+                    "VRIF-032 report is unchanged from its Portal baseline"
+                )
+
+    def _verify_vrif_semantic_acceptance(
+        self,
+        *,
+        attempt: Any,
+        baseline_commit: str,
+        baseline_tree: str,
+        implementation_commit: str,
+    ) -> None:
+        alias = str(getattr(attempt, "task_alias", "") or "")
+        if alias not in {_VRIF_BENCHMARK_TASK_ALIAS, _VRIF_TERMINAL_TASK_ALIAS}:
+            return
+        record = self._record_for_attempt(self.task_source, attempt)
+        if alias == _VRIF_BENCHMARK_TASK_ALIAS:
+            self._verify_vrif_benchmark_acceptance(
+                record=record,
+                baseline_commit=baseline_commit,
+                baseline_tree=baseline_tree,
+                implementation_commit=implementation_commit,
+            )
+        else:
+            self._verify_vrif_terminal_acceptance(
+                record=record,
+                baseline_commit=baseline_commit,
+                baseline_tree=baseline_tree,
+                implementation_commit=implementation_commit,
+            )
+
     def _acceptance_receipt(
         self,
         *,
@@ -11515,6 +11956,98 @@ class DatabasePortalExecutionBridge:
             "write_count": 0,
         }
 
+    def _require_portal_commit_lineage(
+        self,
+        *,
+        baseline_commit: str,
+        implementation_commit: str,
+    ) -> str:
+        """Resolve one exact Portal baseline tree and descendant commit."""
+
+        if self.repository_root is None:
+            raise DatabasePortalBridgeError(
+                "database effect has no repository for Portal lineage proof"
+            )
+        if (
+            not re.fullmatch(r"[0-9a-f]{40}", baseline_commit)
+            or not re.fullmatch(r"[0-9a-f]{40}", implementation_commit)
+        ):
+            raise DatabasePortalBridgeError(
+                "database effect rejected malformed Portal commit lineage"
+            )
+        try:
+            resolved_baseline = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{baseline_commit}^{{commit}}",
+                ],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=10,
+            )
+            baseline_tree_result = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{baseline_commit}^{{tree}}",
+                ],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=10,
+            )
+            resolved_implementation = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{implementation_commit}^{{commit}}",
+                ],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=10,
+            )
+            ancestry = subprocess.run(
+                [
+                    "git",
+                    "merge-base",
+                    "--is-ancestor",
+                    baseline_commit,
+                    implementation_commit,
+                ],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise DatabasePortalBridgeError(
+                "database effect Portal lineage proof is unavailable"
+            ) from exc
+        baseline_tree = baseline_tree_result.stdout.strip()
+        if (
+            resolved_baseline.returncode != 0
+            or resolved_baseline.stdout.strip() != baseline_commit
+            or resolved_implementation.returncode != 0
+            or resolved_implementation.stdout.strip() != implementation_commit
+            or ancestry.returncode != 0
+            or baseline_tree_result.returncode != 0
+            or not re.fullmatch(r"[0-9a-f]{40}", baseline_tree)
+        ):
+            raise DatabasePortalBridgeError(
+                "database effect rejected unproven Portal commit lineage"
+            )
+        return baseline_tree
+
     def _require_accepted_provider(
         self,
         attempt: Any,
@@ -11639,81 +12172,16 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "database effect rejected malformed Portal evidence identity"
             )
-        if self.repository_root is None:
-            raise DatabasePortalBridgeError(
-                "database effect has no repository for Portal lineage proof"
-            )
-        try:
-            resolved_baseline = subprocess.run(
-                [
-                    "git",
-                    "rev-parse",
-                    "--verify",
-                    f"{baseline_commit}^{{commit}}",
-                ],
-                cwd=self.repository_root,
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=10,
-            )
-            baseline_tree_result = subprocess.run(
-                [
-                    "git",
-                    "rev-parse",
-                    "--verify",
-                    f"{baseline_commit}^{{tree}}",
-                ],
-                cwd=self.repository_root,
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=10,
-            )
-            resolved_implementation = subprocess.run(
-                [
-                    "git",
-                    "rev-parse",
-                    "--verify",
-                    f"{implementation_commit}^{{commit}}",
-                ],
-                cwd=self.repository_root,
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=10,
-            )
-            ancestry = subprocess.run(
-                [
-                    "git",
-                    "merge-base",
-                    "--is-ancestor",
-                    baseline_commit,
-                    implementation_commit,
-                ],
-                cwd=self.repository_root,
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise DatabasePortalBridgeError(
-                "database effect Portal lineage proof is unavailable"
-            ) from exc
-        baseline_tree = baseline_tree_result.stdout.strip()
-        if (
-            resolved_baseline.returncode != 0
-            or resolved_baseline.stdout.strip() != baseline_commit
-            or resolved_implementation.returncode != 0
-            or resolved_implementation.stdout.strip() != implementation_commit
-            or ancestry.returncode != 0
-            or baseline_tree_result.returncode != 0
-            or not re.fullmatch(r"[0-9a-f]{40}", baseline_tree)
-        ):
-            raise DatabasePortalBridgeError(
-                "database effect rejected unproven Portal commit lineage"
-            )
+        baseline_tree = self._require_portal_commit_lineage(
+            baseline_commit=baseline_commit,
+            implementation_commit=implementation_commit,
+        )
+        self._verify_vrif_semantic_acceptance(
+            attempt=attempt,
+            baseline_commit=baseline_commit,
+            baseline_tree=baseline_tree,
+            implementation_commit=implementation_commit,
+        )
         return {
             "receipt_id": receipt_id,
             "evidence_digest": digest,
@@ -11840,6 +12308,31 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "database validation rejected unbound Portal effect evidence"
             )
+        # Effect receipts are durable and may predate the currently running
+        # bridge process.  Re-run the owner-computed VRIF acceptance contract
+        # at the validation boundary as well as at fresh effect admission so
+        # a crash/restart cannot replay a structurally valid legacy receipt
+        # around a newly introduced semantic guard.
+        baseline_commit = str(effect_result.get("baseline_commit") or "")
+        implementation_commit = str(
+            effect_result.get("implementation_commit") or ""
+        )
+        resolved_baseline_tree = self._require_portal_commit_lineage(
+            baseline_commit=baseline_commit,
+            implementation_commit=implementation_commit,
+        )
+        if resolved_baseline_tree != str(
+            effect_result.get("baseline_tree") or ""
+        ):
+            raise DatabasePortalBridgeError(
+                "database validation rejected a stale Portal baseline tree"
+            )
+        self._verify_vrif_semantic_acceptance(
+            attempt=attempt,
+            baseline_commit=baseline_commit,
+            baseline_tree=resolved_baseline_tree,
+            implementation_commit=implementation_commit,
+        )
         return {
             "outcome": "passed",
             "evidence_digest": digest,

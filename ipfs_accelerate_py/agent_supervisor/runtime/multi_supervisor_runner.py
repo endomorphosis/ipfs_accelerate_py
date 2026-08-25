@@ -7365,6 +7365,8 @@ def run_supervisor_tracks(
     interrupted = ""
     blocked = ""
     terminal_quiescent = False
+    terminal_sidecar_checkpoint: dict[str, Any] | None = None
+    vrif_terminal_checkpoint_attempted = False
     bounded_finished_tracks: set[str] = set()
     pending_failed_slices: list[
         tuple[PlanBoundSupervisorChild, subprocess.Popen[bytes]]
@@ -7882,7 +7884,7 @@ def run_supervisor_tracks(
             )
             _emit(output, f"blocked: {blocked}")
         if terminal_quiescent:
-            _emit(output, "completed after terminal board drain")
+            _emit(output, "terminal board drain observed; fencing supervisors")
         else:
             _emit(output, "completed requested run window")
     except PlanBoundProcessBirthError as exc:
@@ -7908,11 +7910,80 @@ def run_supervisor_tracks(
             grace_seconds=stop_grace_seconds,
             output=output,
         )
+        if terminal_quiescent and not stop_payload["all_trees_fenced"]:
+            blocked = "terminal board drain process fencing was incomplete"
+            terminal_quiescent = False
+            _emit(output, f"blocked: {blocked}")
+        if (
+            terminal_quiescent
+            and stop_payload["all_trees_fenced"]
+            and not plan_bound_children
+        ):
+            from .vrif_runtime_settlement import (
+                VRIF_PROGRAM_IDENTIFIER,
+                VRIF_SCHEDULER_CONFIG_RELATIVE_PATH,
+                checkpoint_vrif_terminal_sidecars,
+            )
+
+            if label == VRIF_PROGRAM_IDENTIFIER:
+                vrif_terminal_checkpoint_attempted = True
+                try:
+                    target_branches = _profile_option_values(
+                        common_args,
+                        "--merge-target-branch",
+                    )
+                    if len(target_branches) != 1:
+                        raise ValueError(
+                            "VRIF terminal checkpoint requires one exact target branch"
+                        )
+                    if resolved_master_pid is None:
+                        raise ValueError(
+                            "VRIF terminal checkpoint requires the master PID marker"
+                        )
+                    terminal_sidecar_checkpoint = (
+                        checkpoint_vrif_terminal_sidecars(
+                            resolved_repo_root
+                            / VRIF_SCHEDULER_CONFIG_RELATIVE_PATH,
+                            repository_root=resolved_repo_root,
+                            target_branch=target_branches[0],
+                            master_pid_path=resolved_master_pid,
+                            expected_master_pid=os.getpid(),
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001 - terminal fail-closed gate
+                    blocked = (
+                        "terminal sidecar checkpoint failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    terminal_quiescent = False
+                    terminal_sidecar_checkpoint = {
+                        "checkpointed": False,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                    _emit(output, f"blocked: {blocked}")
+                else:
+                    _emit(
+                        output,
+                        "completed terminal sidecar checkpoint after board drain",
+                    )
         master_pid_removed = bool(
             resolved_master_pid is not None
             and stop_payload["all_trees_fenced"]
             and _remove_owned_pid_projection(resolved_master_pid, os.getpid())
         )
+        if (
+            terminal_quiescent
+            and vrif_terminal_checkpoint_attempted
+            and terminal_sidecar_checkpoint is not None
+            and resolved_master_pid is not None
+            and not master_pid_removed
+        ):
+            blocked = "VRIF terminal master PID marker retirement failed"
+            terminal_quiescent = False
+            _emit(output, f"blocked: {blocked}")
+        if terminal_quiescent:
+            _emit(output, "completed after terminal board drain")
     return {
         "completed": not interrupted and not blocked,
         "interrupted": interrupted,
@@ -7926,6 +7997,7 @@ def run_supervisor_tracks(
         "removed_runtime_markers": stop_payload["removed_runtime_markers"],
         "master_pid_removed": master_pid_removed,
         "terminal_quiescent": terminal_quiescent,
+        "terminal_sidecar_checkpoint": terminal_sidecar_checkpoint,
         "replan_required": replan_required,
         "scope_drift_receipts": scope_drift_receipts,
     }
@@ -8498,6 +8570,27 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
     return 78
 
 
+def _supervisor_run_exit_code(
+    run_result: Mapping[str, Any],
+    *,
+    plan_bound_wave: bool,
+) -> int:
+    """Map a fenced runner result to its process-level completion signal."""
+
+    if (
+        plan_bound_wave
+        and run_result.get("replan_required") is True
+        and run_result.get("all_trees_fenced") is True
+    ):
+        return PLAN_BOUND_REPLAN_RETURN_CODE
+    if (
+        run_result.get("completed") is not True
+        or run_result.get("all_trees_fenced") is not True
+    ):
+        return 2
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     from .process_security import harden_state_authority_process
 
@@ -8618,18 +8711,10 @@ def main(argv: list[str] | None = None) -> int:
             accepted_control_plane_descriptor=args.accepted_control_plane_fd,
             output=output,
         )
-    if (
-        args.plan_bound_wave
-        and run_result.get("replan_required") is True
-        and run_result.get("all_trees_fenced") is True
-    ):
-        return PLAN_BOUND_REPLAN_RETURN_CODE
-    if args.plan_bound_wave and (
-        run_result.get("completed") is not True
-        or run_result.get("all_trees_fenced") is not True
-    ):
-        return 2
-    return 0
+    return _supervisor_run_exit_code(
+        run_result,
+        plan_bound_wave=bool(args.plan_bound_wave),
+    )
 
 
 if __name__ == "__main__":

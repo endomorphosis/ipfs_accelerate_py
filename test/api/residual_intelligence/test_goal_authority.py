@@ -88,6 +88,9 @@ TERMINAL_REPORT_PATHS = (
     "docs/architecture/residual_intelligence_inventory/final_release_report.json",
     "docs/architecture/residual_intelligence_inventory/final_release_report.md",
 )
+SEALED_BOOTSTRAP_COMMIT = "9f1d407f999835294ff70710dc05efb650ecff90"
+VRIF_032_PORTAL_BASELINE_COMMIT = "d694b164cf196c2df48b45b494b3df4fdd3f3e87"
+VRIF_032_PORTAL_IMPLEMENTATION_COMMIT = "554be0a183b6c6e22aef64e1b3cdafc5620c3275"
 
 
 def _sha256_identity(value: object) -> str:
@@ -575,7 +578,8 @@ def _root_gate(
             {
                 "path": path,
                 "blob_identity": "sha256:" + (str(index + 1) * 64),
-                "bootstrap_blob_identity": "sha256:" + (str(index + 3) * 64),
+                "portal_baseline_blob_identity": "sha256:"
+                + (str(index + 3) * 64),
             }
             for index, path in enumerate(TERMINAL_REPORT_PATHS)
         ],
@@ -1151,6 +1155,54 @@ def test_arbitrary_vrif_032_receipt_and_bootstrap_reports_keep_root_open(
         connection.close()
 
 
+def test_actual_vrif_032_history_binds_reports_to_portal_baseline() -> None:
+    operator = _operator()
+    for path in TERMINAL_REPORT_PATHS:
+        assert str(
+            operator._git("ls-tree", SEALED_BOOTSTRAP_COMMIT, "--", path)
+        ).strip() == ""
+
+        baseline_row = str(
+            operator._git("ls-tree", VRIF_032_PORTAL_BASELINE_COMMIT, "--", path)
+        ).strip()
+        current_row = str(
+            operator._git(
+                "ls-tree", VRIF_032_PORTAL_IMPLEMENTATION_COMMIT, "--", path
+            )
+        ).strip()
+        for row in (baseline_row, current_row):
+            mode, object_type, _object_id, observed_path = row.split(maxsplit=3)
+            assert mode in {"100644", "100755"}
+            assert object_type == "blob"
+            assert observed_path == path
+
+        portal_baseline_blob = operator._git_blob_at(
+            head=VRIF_032_PORTAL_BASELINE_COMMIT,
+            path=ROOT / path,
+            field=f"actual VRIF-032 Portal baseline report {path}",
+        )
+        current_blob = operator._git_blob_at(
+            head=VRIF_032_PORTAL_IMPLEMENTATION_COMMIT,
+            path=ROOT / path,
+            field=f"actual VRIF-032 implementation report {path}",
+        )
+        assert _sha256_identity(portal_baseline_blob) != _sha256_identity(current_blob)
+
+    terminal_contract = _specification()["terminal_report_contract"]
+    assert isinstance(terminal_contract, dict)
+    changed_paths = str(
+        operator._git(
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            VRIF_032_PORTAL_BASELINE_COMMIT,
+            VRIF_032_PORTAL_IMPLEMENTATION_COMMIT,
+        )
+    ).splitlines()
+    assert changed_paths == terminal_contract["declared_output_paths"]
+
+
 @pytest.mark.parametrize(
     "tamper",
     [
@@ -1169,6 +1221,8 @@ def test_arbitrary_vrif_032_receipt_and_bootstrap_reports_keep_root_open(
         "omitted_section",
         "meaningless_markdown",
         "extra_changed_path",
+        "portal_baseline_missing",
+        "portal_baseline_unchanged",
         "producer_rewrite",
         "missing_family",
         "missing_required_kind",
@@ -1228,6 +1282,7 @@ def test_terminal_report_semantics_require_exact_producer_anchors(
         )
         portal_completion_binding = terminal_evidence["portal_completion_binding"]
         assert isinstance(portal_completion_binding, dict)
+        portal_baseline_commit = str(portal_completion_binding["baseline_commit"])
         evaluated_tree = str(portal_completion_binding["baseline_tree"])
         terminal_contract = specification["terminal_report_contract"]
         assert isinstance(terminal_contract, dict)
@@ -1526,7 +1581,7 @@ def test_terminal_report_semantics_require_exact_producer_anchors(
 
         operator = _operator()
         current_head = "a" * 40
-        bootstrap_head = "b" * 40
+        bootstrap_head = SEALED_BOOTSTRAP_COMMIT
         implementation_commit = "c" * 40
         producer_paths = {
             path
@@ -1559,6 +1614,12 @@ def test_terminal_report_semantics_require_exact_producer_anchors(
             del binary
             if arguments and arguments[0] == "ls-tree":
                 path = arguments[-1]
+                if (
+                    tamper == "portal_baseline_missing"
+                    and arguments[1] == portal_baseline_commit
+                    and path in TERMINAL_REPORT_PATHS
+                ):
+                    return ""
                 return f"100644 blob {'f' * 40}\t{path}"
             if arguments and arguments[0] == "diff-tree":
                 changed_paths = list(terminal_contract["declared_output_paths"])
@@ -1581,21 +1642,35 @@ def test_terminal_report_semantics_require_exact_producer_anchors(
             del field
             relative = path.relative_to(ROOT).as_posix()
             if relative == TERMINAL_REPORT_PATHS[0]:
+                if head == bootstrap_head:
+                    raise AssertionError(
+                        "terminal report artifacts must not query the sealed bootstrap"
+                    )
+                if head == portal_baseline_commit:
+                    return (
+                        json.dumps(report, sort_keys=True).encode("utf-8")
+                        if tamper == "portal_baseline_unchanged"
+                        else b'{"portal_baseline":"report"}'
+                    )
                 return (
-                    b'{"bootstrap":"fixture"}'
-                    if head == bootstrap_head
-                    else json.dumps(report, sort_keys=True).encode("utf-8")
+                    json.dumps(report, sort_keys=True).encode("utf-8")
                 )
             if relative == TERMINAL_REPORT_PATHS[1]:
+                if head == bootstrap_head:
+                    raise AssertionError(
+                        "terminal report artifacts must not query the sealed bootstrap"
+                    )
+                if head == portal_baseline_commit:
+                    return (
+                        operator._vrif_release_report_markdown(report).encode("utf-8")
+                        if tamper == "portal_baseline_unchanged"
+                        else b"Portal baseline report fixture\n"
+                    )
                 return (
-                    b"bootstrap fixture"
-                    if head == bootstrap_head
-                    else (
-                        b"x"
-                        if tamper == "meaningless_markdown"
-                        else operator._vrif_release_report_markdown(report).encode(
-                            "utf-8"
-                        )
+                    b"x"
+                    if tamper == "meaningless_markdown"
+                    else operator._vrif_release_report_markdown(report).encode(
+                        "utf-8"
                     )
                 )
             if relative == (
@@ -1652,6 +1727,12 @@ def test_terminal_report_semantics_require_exact_producer_anchors(
         if tamper in {"canonical", "later_catalog_change"}:
             assert observed is not None
             assert observed["producer_artifacts"] == producer_artifacts
+            assert observed["schema"] == GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA
+            assert all(
+                set(artifact)
+                == {"path", "blob_identity", "portal_baseline_blob_identity"}
+                for artifact in observed["report_artifacts"]
+            )
         else:
             assert observed is None
     finally:

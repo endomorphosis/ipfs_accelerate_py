@@ -23,6 +23,21 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.residual_intelligence.benchmark import (
+    MANIFEST_SCHEMA as VRIF_BENCHMARK_MANIFEST_SCHEMA,
+    build_frozen_benchmark_contract,
+    load_frozen_benchmark,
+    sha256_identity as vrif_sha256_identity,
+)
+from ipfs_accelerate_py.agent_supervisor.residual_intelligence.contracts import (
+    PROGRAM_ID as VRIF_PROGRAM_ID,
+    ResidualTaskFamily,
+)
+from ipfs_accelerate_py.agent_supervisor.residual_intelligence.release import (
+    ResidualIntelligenceReleaseReport,
+    render_vrif_release_report_markdown,
+    validate_release_claims,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -476,6 +491,310 @@ def _git_completion_lineage(repo: Path) -> tuple[str, str, str]:
         capture_output=True,
         text=True,
     ).stdout.strip()
+    return baseline_commit, baseline_tree, implementation_commit
+
+
+_VRIF_BENCHMARK_VALIDATION = (
+    "python -m pytest -q test/api/residual_intelligence/test_benchmark.py"
+)
+_VRIF_BENCHMARK_OUTPUTS = (
+    "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
+    "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
+    "test/api/residual_intelligence/test_benchmark.py",
+)
+_VRIF_TERMINAL_OUTPUTS = (
+    (
+        "docs/architecture/residual_intelligence_inventory/"
+        "final_release_report.json"
+    ),
+    (
+        "docs/architecture/residual_intelligence_inventory/"
+        "final_release_report.md"
+    ),
+    "test/api/residual_intelligence/test_release_report.py",
+)
+
+
+def _json_bytes(value: object) -> bytes:
+    return (
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+
+
+def _write_git_fixture(repo: Path, path: str, payload: bytes) -> None:
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(payload)
+
+
+def _commit_git_fixture(repo: Path, message: str) -> str:
+    subprocess.run(["git", "add", "--all"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", message], cwd=repo, check=True)
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _git_tree(repo: Path, commit: str) -> str:
+    return subprocess.run(
+        ["git", "rev-parse", f"{commit}^{{tree}}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _init_git_fixture(repo: Path) -> None:
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "vrif-acceptance@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "VRIF Acceptance Test"],
+        cwd=repo,
+        check=True,
+    )
+
+
+def _vrif_benchmark_record(*, task_cid: str = "task:vrif:030") -> SimpleNamespace:
+    return SimpleNamespace(
+        task_cid=task_cid,
+        task_alias="VRIF-030",
+        goal_cid="goal:vrif:release",
+        plan_cid="plan:vrif:1",
+        revision=31,
+        priority="P0",
+        dependencies=(),
+        outputs=tuple({"path": path} for path in _VRIF_BENCHMARK_OUTPUTS),
+        validations=({"argv": [_VRIF_BENCHMARK_VALIDATION]},),
+        acceptance=({"criterion": "The frozen benchmark is owner-exact"},),
+        body={
+            "objective": "Publish the owner-exact frozen benchmark",
+            "completion": "auto",
+            "track": "benchmark",
+        },
+    )
+
+
+def _git_vrif_benchmark_lineage(
+    repo: Path,
+    *,
+    self_consistent_wrong_binding: bool = False,
+) -> tuple[str, str, str]:
+    """Build a synthetic benchmark using the trusted pure VRIF builder."""
+
+    _init_git_fixture(repo)
+    objective_paths = (
+        "docs/architecture/agent_supervisor_residual_intelligence.objectives.md",
+        "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
+    )
+    operation_path = "ipfs_accelerate_py/agent_supervisor/control/control_plane.py"
+    provider_path = "config/agent_supervisor_residual_intelligence_scheduler.json"
+    admission_path = (
+        "benchmarks/agent_supervisor/residual_intelligence/"
+        "synthetic_training_admission.json"
+    )
+    split_path = (
+        "benchmarks/agent_supervisor/residual_intelligence/"
+        "synthetic_split_manifest.json"
+    )
+    inventory_path = (
+        "docs/architecture/residual_intelligence_inventory/"
+        "residual_model_call_inventory.json"
+    )
+    implementation_inputs = {
+        objective_paths[0]: b"# Synthetic objectives\n",
+        objective_paths[1]: b"# Synthetic tasks\n",
+        operation_path: b"# Synthetic operation catalogue\n",
+        provider_path: b'{"provider":"synthetic"}\n',
+        inventory_path: b'{"model_calls":[]}\n',
+    }
+    split_root = vrif_sha256_identity({"fixture": "synthetic split"})
+    split = {"split_root": split_root}
+    admission_body = {
+        "schema": "vrif-acceptance-test-admission@1",
+        "disposition": "training_unavailable",
+        "corpus_root": vrif_sha256_identity({"fixture": "corpus"}),
+        "source_rights_root": vrif_sha256_identity({"fixture": "rights"}),
+        "split_root": split_root,
+    }
+    admission = {
+        **admission_body,
+        "admission_id": content_identity(admission_body),
+    }
+    implementation_inputs[admission_path] = _json_bytes(admission)
+    implementation_inputs[split_path] = _json_bytes(split)
+    for path, payload in implementation_inputs.items():
+        _write_git_fixture(repo, path, payload)
+    for path in _VRIF_BENCHMARK_OUTPUTS:
+        _write_git_fixture(repo, path, b"# baseline placeholder\n")
+    baseline_commit = _commit_git_fixture(repo, "synthetic VRIF baseline")
+    baseline_tree = _git_tree(repo, baseline_commit)
+
+    benchmark_test = (
+        b"def test_synthetic_owner_exact_benchmark():\n"
+        b"    assert True\n"
+    )
+    _write_git_fixture(repo, _VRIF_BENCHMARK_OUTPUTS[2], benchmark_test)
+    objective_artifacts = {
+        path: vrif_sha256_identity(implementation_inputs[path])
+        for path in objective_paths
+    }
+    inventory_identity = vrif_sha256_identity(implementation_inputs[inventory_path])
+    base_bindings = {
+        "repository_states": vrif_sha256_identity(
+            {"commit": baseline_commit, "tree": baseline_tree}
+        ),
+        "objective_revisions": vrif_sha256_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "residual-benchmark-objective-revisions@1"
+                ),
+                "artifacts": objective_artifacts,
+            }
+        ),
+        "operation_catalog": vrif_sha256_identity(
+            implementation_inputs[operation_path]
+        ),
+        "provider_policy": vrif_sha256_identity(
+            implementation_inputs[provider_path]
+        ),
+        "tokenizer": vrif_sha256_identity(
+            {
+                "admission_id": admission["admission_id"],
+                "disposition": "no_learned_tokenizer_admitted",
+            }
+        ),
+        "model_versions": vrif_sha256_identity(
+            {
+                "inventory_blob_identity": inventory_identity,
+                "disposition": "training_unavailable",
+            }
+        ),
+        "validation_policy": vrif_sha256_identity(
+            {
+                "argv": [[_VRIF_BENCHMARK_VALIDATION]],
+                "test_blob_identity": vrif_sha256_identity(benchmark_test),
+            }
+        ),
+    }
+    if self_consistent_wrong_binding:
+        base_bindings["model_versions"] = vrif_sha256_identity(
+            {
+                "inventory_blob_identity": inventory_identity,
+                "disposition": "self_consistent_but_not_owner_computed",
+            }
+        )
+    contract = build_frozen_benchmark_contract(
+        task_families=[family.value for family in ResidualTaskFamily],
+        source_commit=baseline_commit,
+        source_tree=baseline_tree,
+        split_root=split_root,
+        base_bindings=base_bindings,
+    )
+    manifest = {
+        "schema": VRIF_BENCHMARK_MANIFEST_SCHEMA,
+        "program_identifier": VRIF_PROGRAM_ID,
+        "status": "staged_not_qualified",
+        "owner_task": "VRIF-030",
+        "source_revision": baseline_commit,
+        "partitions": contract["partitions"],
+        "required_case_kinds": contract["case_kinds"],
+        "task_families": [family.value for family in ResidualTaskFamily],
+        "training_admission": "training_unavailable",
+        "weights_committed": False,
+        "large_corpus_committed": False,
+        "promotion_evidence": False,
+        "benchmark_freeze": contract["benchmark_freeze"],
+    }
+    cases = b"".join(_json_bytes(case) for case in contract["cases"])
+    _write_git_fixture(repo, _VRIF_BENCHMARK_OUTPUTS[0], _json_bytes(manifest))
+    _write_git_fixture(repo, _VRIF_BENCHMARK_OUTPUTS[1], cases)
+    implementation_commit = _commit_git_fixture(
+        repo,
+        "synthetic VRIF benchmark implementation",
+    )
+    return baseline_commit, baseline_tree, implementation_commit
+
+
+def _vrif_terminal_record() -> SimpleNamespace:
+    return SimpleNamespace(
+        task_cid="task:vrif:032",
+        task_alias="VRIF-032",
+        goal_cid="goal:vrif:root",
+        plan_cid="plan:vrif:1",
+        revision=15,
+        priority="P0",
+        dependencies=(),
+        outputs=tuple({"path": path} for path in _VRIF_TERMINAL_OUTPUTS),
+        validations=(),
+        acceptance=({"criterion": "The terminal report is owner-exact"},),
+        body={
+            "objective": "Publish the final root-gated release report",
+            "completion": "auto",
+            "track": "release",
+        },
+    )
+
+
+def _git_vrif_terminal_lineage(
+    repo: Path,
+    *,
+    noncanonical_markdown: bool = False,
+    wrong_baseline_tree: bool = False,
+) -> tuple[str, str, str]:
+    """Build a synthetic release pair using the trusted typed renderer."""
+
+    _init_git_fixture(repo)
+    _write_git_fixture(repo, _VRIF_TERMINAL_OUTPUTS[0], b'{"baseline":true}\n')
+    _write_git_fixture(repo, _VRIF_TERMINAL_OUTPUTS[1], b"# Baseline report\n")
+    _write_git_fixture(repo, _VRIF_TERMINAL_OUTPUTS[2], b"# baseline test\n")
+    baseline_commit = _commit_git_fixture(repo, "synthetic VRIF terminal baseline")
+    baseline_tree = _git_tree(repo, baseline_commit)
+
+    source_report = (
+        Path(__file__).resolve().parents[2]
+        / "docs/architecture/residual_intelligence_inventory/"
+        "final_release_report.json"
+    )
+    report = json.loads(source_report.read_text(encoding="utf-8"))
+    evaluated_tree = "f" * 40 if wrong_baseline_tree else baseline_tree
+    report["end_tree"] = evaluated_tree
+    report["drift"]["evaluated_tree"] = evaluated_tree
+    typed = validate_release_claims(
+        ResidualIntelligenceReleaseReport.from_dict(report)
+    )
+    report = typed.to_dict()
+    markdown = render_vrif_release_report_markdown(report).encode("utf-8")
+    if noncanonical_markdown:
+        markdown += b"\n<!-- self-consistent substring checks could miss this -->\n"
+    _write_git_fixture(repo, _VRIF_TERMINAL_OUTPUTS[0], _json_bytes(report))
+    _write_git_fixture(repo, _VRIF_TERMINAL_OUTPUTS[1], markdown)
+    _write_git_fixture(
+        repo,
+        _VRIF_TERMINAL_OUTPUTS[2],
+        b"def test_synthetic_terminal_report():\n    assert True\n",
+    )
+    implementation_commit = _commit_git_fixture(
+        repo,
+        "synthetic VRIF terminal implementation",
+    )
     return baseline_commit, baseline_tree, implementation_commit
 
 
@@ -4412,6 +4731,9 @@ def test_bridge_projects_exact_vrif_benchmark_contract_without_expanding_scope(
     assert "group_id, input_identity, input_disposition" in projection
     assert "exactly 96 cases" in projection
     assert "legacy Cartesian 384-case population" in projection
+    assert "finish the candidate test_benchmark.py bytes first" in projection
+    assert "self-consistency through load_frozen_benchmark is insufficient" in projection
+    assert "independently reconstruct the owner base_frozen_bindings" in projection
     projected_outputs = next(
         line.removeprefix("- Outputs: ").split(", ")
         for line in projection.splitlines()
@@ -4488,6 +4810,10 @@ def test_bridge_projects_exact_vrif_root_report_contract_without_expanding_scope
     ) in projection
     assert "_vrif_terminal_report_evidence" in projection
     assert "_vrif_release_report_markdown" in projection
+    assert "replace substring-only checks" in projection
+    assert "exact UTF-8 byte equality" in projection
+    assert "derive end_tree and drift.evaluated_tree" in projection
+    assert "modify all three declared outputs" in projection
     assert "test/api/residual_intelligence/test_goal_authority.py" in projection
     projected_outputs = next(
         line.removeprefix("- Outputs: ").split(", ")
@@ -4495,6 +4821,242 @@ def test_bridge_projects_exact_vrif_root_report_contract_without_expanding_scope
         if line.startswith("- Outputs: ")
     )
     assert projected_outputs == [item["path"] for item in outputs]
+
+
+def test_bridge_accepts_independently_reconstructed_vrif_benchmark(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repository"
+    baseline_commit, baseline_tree, implementation_commit = (
+        _git_vrif_benchmark_lineage(repository_root)
+    )
+    record = _vrif_benchmark_record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repository_root,
+    )
+
+    bridge._verify_vrif_benchmark_acceptance(
+        record=record,
+        baseline_commit=baseline_commit,
+        baseline_tree=baseline_tree,
+        implementation_commit=implementation_commit,
+    )
+
+
+def test_bridge_rejects_self_consistent_but_not_owner_computed_vrif_benchmark(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repository"
+    baseline_commit, baseline_tree, implementation_commit = (
+        _git_vrif_benchmark_lineage(
+            repository_root,
+            self_consistent_wrong_binding=True,
+        )
+    )
+    manifest, cases = load_frozen_benchmark(
+        repository_root / _VRIF_BENCHMARK_OUTPUTS[0],
+        repository_root / _VRIF_BENCHMARK_OUTPUTS[1],
+    )
+    assert manifest.benchmark_freeze["case_count"] == len(cases) == 96
+    record = _vrif_benchmark_record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repository_root,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="owner-exact benchmark contract",
+    ):
+        bridge._verify_vrif_benchmark_acceptance(
+            record=record,
+            baseline_commit=baseline_commit,
+            baseline_tree=baseline_tree,
+            implementation_commit=implementation_commit,
+        )
+
+
+def test_bridge_accepts_typed_canonical_vrif_terminal_report(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repository"
+    baseline_commit, baseline_tree, implementation_commit = (
+        _git_vrif_terminal_lineage(repository_root)
+    )
+    record = _vrif_terminal_record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repository_root,
+    )
+
+    bridge._verify_vrif_terminal_acceptance(
+        record=record,
+        baseline_commit=baseline_commit,
+        baseline_tree=baseline_tree,
+        implementation_commit=implementation_commit,
+    )
+
+
+@pytest.mark.parametrize(
+    ("fixture_options", "message"),
+    (
+        (
+            {"noncanonical_markdown": True},
+            "Markdown is not the owner-canonical report rendering",
+        ),
+        (
+            {"wrong_baseline_tree": True},
+            "exact Portal baseline tree",
+        ),
+    ),
+)
+def test_bridge_rejects_noncanonical_vrif_terminal_report(
+    tmp_path: Path,
+    fixture_options: dict[str, bool],
+    message: str,
+) -> None:
+    repository_root = tmp_path / "repository"
+    baseline_commit, baseline_tree, implementation_commit = (
+        _git_vrif_terminal_lineage(repository_root, **fixture_options)
+    )
+    record = _vrif_terminal_record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repository_root,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match=message):
+        bridge._verify_vrif_terminal_acceptance(
+            record=record,
+            baseline_commit=baseline_commit,
+            baseline_tree=baseline_tree,
+            implementation_commit=implementation_commit,
+        )
+
+
+def test_bridge_calls_vrif_semantic_acceptance_at_effect_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository_root = tmp_path / "repository"
+    baseline_commit, baseline_tree, implementation_commit = (
+        _git_completion_lineage(repository_root)
+    )
+    attempt = DatabaseTaskAttempt(
+        **{
+            **asdict(_attempt()),
+            "task_alias": "VRIF-030",
+        }
+    )
+    record = _vrif_benchmark_record(task_cid=attempt.task_cid)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(
+            paths,
+            alias,
+            baseline_commit=baseline_commit,
+            implementation_commit=implementation_commit,
+        ),
+        repository_root=repository_root,
+    )
+    provider = bridge.run_provider(attempt)
+    observed: dict[str, object] = {}
+
+    def verify_semantics(**kwargs: object) -> None:
+        observed.update(kwargs)
+
+    monkeypatch.setattr(
+        bridge,
+        "_verify_vrif_semantic_acceptance",
+        verify_semantics,
+    )
+
+    effect = bridge.apply_effect(attempt, provider)
+
+    assert effect["status"] == "applied"
+    assert observed == {
+        "attempt": attempt,
+        "baseline_commit": baseline_commit,
+        "baseline_tree": baseline_tree,
+        "implementation_commit": implementation_commit,
+    }
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("stale-tree", "stale Portal baseline tree"),
+        ("non-ancestor", "unproven Portal commit lineage"),
+    ),
+)
+def test_bridge_cached_effect_validation_rechecks_exact_git_lineage_before_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    message: str,
+) -> None:
+    repository_root = tmp_path / "repository"
+    baseline_commit, _baseline_tree, implementation_commit = (
+        _git_completion_lineage(repository_root)
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(
+            paths,
+            alias,
+            baseline_commit=baseline_commit,
+            implementation_commit=implementation_commit,
+        ),
+        repository_root=repository_root,
+    )
+    provider = bridge.run_provider(_attempt())
+    cached_effect = dict(bridge.apply_effect(_attempt(), provider))
+    binding = dict(cached_effect["portal_completion_binding"])
+    if mutation == "stale-tree":
+        cached_effect["baseline_tree"] = "f" * 40
+        binding["baseline_tree"] = "f" * 40
+    else:
+        implementation_tree = subprocess.run(
+            ["git", "rev-parse", f"{implementation_commit}^{{tree}}"],
+            cwd=repository_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        nonancestor = subprocess.run(
+            ["git", "commit-tree", implementation_tree],
+            cwd=repository_root,
+            check=True,
+            input="synthetic unrelated candidate\n",
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        cached_effect["implementation_commit"] = nonancestor
+        binding["implementation_commit"] = nonancestor
+    binding["receipt_id"] = _capacity_record_id(binding, "receipt_id")
+    cached_effect["portal_completion_binding"] = binding
+    semantic_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        bridge,
+        "_verify_vrif_semantic_acceptance",
+        lambda **kwargs: semantic_calls.append(dict(kwargs)),
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match=message):
+        bridge.validate_effect(_attempt(), cached_effect)
+
+    assert semantic_calls == []
 
 
 @pytest.mark.parametrize(
