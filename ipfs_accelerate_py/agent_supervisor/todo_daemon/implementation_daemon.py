@@ -368,6 +368,9 @@ MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
 IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
 PROVIDER_RUNNER_BIRTH_TIMEOUT_SECONDS = 2.0
 PROVIDER_RUNNER_BIRTH_POLL_SECONDS = 0.005
+MAX_ACTIONABLE_RETRY_EVIDENCE_BYTES = 16 * 1024
+MAX_ACTIONABLE_RETRY_TEXT_BYTES = 2_048
+ACTIONABLE_RETRY_EVIDENCE_SCHEMA = "ptr/actionable-retry-evidence@1"
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
@@ -20666,8 +20669,12 @@ class PortalImplementationDaemon:
             authority_revalidation_only
             or self._task_uses_typed_local_execution(task)
         )
+        owner_recovery_task = (
+            self._vrif_benchmark_owner_recovery_task_contract(task)
+        )
         retry_probe_eligible = bool(
             not deterministic_only
+            and not owner_recovery_task
             and self.use_ephemeral_worktree
             and self._retry_no_change_pre_dispatch_scope(task, state)
             is not None
@@ -20687,7 +20694,7 @@ class PortalImplementationDaemon:
             return result
         provider_backoff = (
             {}
-            if deterministic_only or retry_probe_eligible
+            if deterministic_only or retry_probe_eligible or owner_recovery_task
             else self._active_provider_capacity_backoff_for_task(task)
         )
         if provider_backoff:
@@ -20964,6 +20971,15 @@ class PortalImplementationDaemon:
                         "implementation dispatch cancelled"
                     )
                 prompt = ""
+            elif owner_recovery_task:
+                # This one exact task is recovered by the sealed local owner
+                # materializer after the clean-candidate review.  Its progress
+                # must not depend on provider readiness or prompt compilation.
+                if self._implementation_cancel_requested():
+                    raise ImplementationRetryDeferred(
+                        "implementation dispatch cancelled"
+                    )
+                prompt = ""
             else:
                 self._require_primary_provider_readiness(task)
                 prompt = self._build_implementation_prompt(task, attempt)
@@ -21144,7 +21160,7 @@ class PortalImplementationDaemon:
             checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
             timeout_policy = self._implementation_timeout_policy(task)
             if self.use_ephemeral_worktree:
-                if not retry_probe_eligible:
+                if not retry_probe_eligible and not owner_recovery_task:
                     context_receipt_path = (
                         self._persist_implementation_context_receipt(
                             task,
@@ -34748,6 +34764,7 @@ class PortalImplementationDaemon:
         task_execution_receipt_path: Path | None = None
         task_execution_receipt: dict[str, Any] = {}
         provider_dispatched = False
+        owner_recovery_reserved = False
         seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
@@ -34911,7 +34928,11 @@ class PortalImplementationDaemon:
             ] = dependency_preflight
             command = (
                 []
-                if deterministic_only or retry_no_change_probe_only
+                if (
+                    deterministic_only
+                    or retry_no_change_probe_only
+                    or self._vrif_benchmark_owner_recovery_task_contract(task)
+                )
                 else self._build_implementation_command(
                     worktree_path,
                     task=task,
@@ -35045,6 +35066,12 @@ class PortalImplementationDaemon:
                         attempt=attempt,
                         worktree_path=worktree_path,
                     )
+                    owner_recovery_reserved = bool(
+                        provider_gate.get("owner_recovery_reserved") is True
+                        and self._vrif_benchmark_owner_recovery_task_contract(
+                            task
+                        )
+                    )
                     self._record_event(
                         "pre_implementation_kernel_evaluated",
                         dict(provider_gate.get("event") or {}),
@@ -35067,7 +35094,7 @@ class PortalImplementationDaemon:
                                 returncode=0,
                             )
                         elif (
-                            provider_gate.get("owner_recovery_reserved") is True
+                            owner_recovery_reserved
                             and str(task.task_id or "")
                             == VRIF_BENCHMARK_RECOVERY_TASK_ID
                             and disposition == "abstain_review"
@@ -35603,6 +35630,9 @@ class PortalImplementationDaemon:
                                             validation_result=validation_result,
                                             log_path=log_path,
                                             state=state,
+                                            owner_recovery_reserved=(
+                                                owner_recovery_reserved
+                                            ),
                                             replayable_consumed_proposal_ids=(
                                                 seed_replayable_proposal_ids
                                             ),
@@ -35631,7 +35661,8 @@ class PortalImplementationDaemon:
                                             state=state,
                                             command=command,
                                             base_prompt=prompt,
-                                            allow_provider_rescue=bool(command),
+                                            allow_provider_rescue=bool(command)
+                                            and not owner_recovery_reserved,
                                             replayable_consumed_proposal_ids=(
                                                 seed_replayable_proposal_ids
                                             ),
@@ -50251,19 +50282,31 @@ class PortalImplementationDaemon:
         )
 
     @staticmethod
+    def _vrif_benchmark_owner_recovery_task_contract(
+        task: PortalTask,
+    ) -> bool:
+        """Recognize the exact provider-free VRIF owner-recovery task."""
+
+        return bool(
+            str(task.task_id or "") == VRIF_BENCHMARK_RECOVERY_TASK_ID
+            and tuple(task_declared_output_paths(task))
+            == VRIF_BENCHMARK_RECOVERY_DECLARED_OUTPUTS
+            and tuple(getattr(task, "validation", ()) or ())
+            == (VRIF_BENCHMARK_RECOVERY_VALIDATION,)
+            and str(getattr(task, "canonical_task_cid", "") or "").strip()
+        )
+
+    @staticmethod
     def _vrif_benchmark_recovery_contract_matches(
         task: PortalTask,
         baseline_ref: str,
     ) -> bool:
-        outputs = tuple(task_declared_output_paths(task))
         return bool(
-            str(task.task_id or "") == VRIF_BENCHMARK_RECOVERY_TASK_ID
-            and outputs == VRIF_BENCHMARK_RECOVERY_DECLARED_OUTPUTS
-            and tuple(getattr(task, "validation", ()) or ())
-            == (VRIF_BENCHMARK_RECOVERY_VALIDATION,)
+            PortalImplementationDaemon._vrif_benchmark_owner_recovery_task_contract(
+                task
+            )
             and re.fullmatch(r"[0-9a-f]{40}", str(baseline_ref or ""))
             is not None
-            and str(getattr(task, "canonical_task_cid", "") or "").strip()
         )
 
     @staticmethod
@@ -51362,6 +51405,7 @@ class PortalImplementationDaemon:
         validation_result: Mapping[str, Any],
         log_path: Path,
         state: PortalTaskState | None,
+        owner_recovery_reserved: bool = False,
         replayable_consumed_proposal_ids: Sequence[str] = (),
     ) -> dict[str, Any] | None:
         """Repair the one sealed VRIF-030 empty candidate, or fail closed.
@@ -51372,10 +51416,11 @@ class PortalImplementationDaemon:
         for the attempt and cannot fall through to generic/provider rescue.
         """
 
-        if not self._vrif_benchmark_owner_recovery_requested(
+        recovery_requested = self._vrif_benchmark_owner_recovery_requested(
             task=task,
             validation_result=validation_result,
-        ):
+        )
+        if not recovery_requested and not owner_recovery_reserved:
             return None
 
         original = dict(validation_result)
@@ -51423,6 +51468,9 @@ class PortalImplementationDaemon:
                 },
             )
             return failed
+
+        if not recovery_requested:
+            return terminal("vrif_benchmark_owner_reserved_candidate_rejected")
 
         if not self._vrif_benchmark_recovery_contract_matches(
             task,

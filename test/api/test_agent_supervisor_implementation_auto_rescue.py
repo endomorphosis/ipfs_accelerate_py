@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
+    PortalTaskState,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.implementation_auto_rescue import (
     AutoRescueAction,
@@ -178,6 +179,235 @@ def test_vrif_owner_gate_reserves_provider_free_empty_candidate(
     assert ordinary["skip_provider"] is False
     assert ordinary["provider_authorized"] is True
     assert ordinary["owner_recovery_reserved"] is False
+
+
+def test_vrif_reserved_candidate_is_provider_independent_and_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = PortalImplementationDaemon(
+        todo_path=ROOT
+        / "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=ROOT,
+        implement=True,
+        implementation_command="provider-must-remain-unreachable",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = _vrif_task()
+    state = PortalTaskState()
+    baseline = "a" * 40
+
+    def seed(worktree_path: Path, _branch_name: str, *, task=None) -> str:
+        worktree_path.mkdir(parents=True)
+        return baseline
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", seed)
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        lambda *_args, **_kwargs: {
+            "attempted": False,
+            "passed": False,
+            "returncode": (
+                implementation_daemon.PROPOSAL_VALIDATION_FAILURE_RETURN_CODE
+            ),
+            "results": [],
+            "reason": "synthetic_reserved_candidate_rejected",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_apply_implementation_failure_review",
+        lambda **kwargs: dict(kwargs["validation_result"]),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_failed_validation_worktree",
+        lambda *_args, **_kwargs: {
+            "commit_result": {"committed": False},
+            "cleanup_result": {"cleaned": False, "preserved": True},
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: pytest.fail(
+            "reserved owner recovery must not construct a provider command"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_automatic_implementation_rescue",
+        lambda **_kwargs: pytest.fail(
+            "reserved owner recovery must not fall through to generic rescue"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "reserved owner recovery must not invoke a provider"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_evaluate_pre_implementation_provider_gate",
+        lambda **_kwargs: {
+            "skip_provider": True,
+            "provider_authorized": False,
+            "disposition": "abstain_review",
+            "reason_code": "no_analytical_close",
+            "receipt_cid": "baguqeera-reserved-gate",
+            "owner_recovery_reserved": True,
+            "event": {},
+        },
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at="2026-08-25T00:00:00+00:00",
+        log_path=tmp_path / "implementation.log",
+        prompt="provider prompt must remain unused",
+    )
+
+    assert result["provider_dispatched"] is False
+    assert result["returncode"] != 0
+    assert (
+        result["validation_result"]["reason"]
+        == "vrif_benchmark_owner_reserved_candidate_rejected"
+    )
+    assert result["validation_result"]["auto_rescue_terminal"] is True
+    assert result["validation_result"]["auto_rescue"]["provider_passes"] == 0
+
+
+def test_vrif_owner_dispatch_bypasses_every_provider_prerequisite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = PortalImplementationDaemon(
+        todo_path=ROOT
+        / "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=ROOT,
+        implement=True,
+        implementation_command="provider-must-remain-unreachable",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = _vrif_task()
+    state = PortalTaskState()
+    observed: dict[str, object] = {}
+
+    def forbidden(name: str):
+        return lambda *_args, **_kwargs: pytest.fail(
+            f"reserved owner recovery reached provider prerequisite {name}"
+        )
+
+    monkeypatch.setattr(daemon, "_board_task_is_completed", lambda *_args: False)
+    monkeypatch.setattr(daemon, "_find_live_inflight_implementation", lambda: None)
+    monkeypatch.setattr(
+        daemon, "_require_plan_runtime_before_claim", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_try_acquire_implementation_dispatch_intent",
+        lambda *_args, **_kwargs: (True, "acquired", None, None, None),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_implementation_resource_claims",
+        lambda *_args, **_kwargs: ([], "", "", None),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_try_acquire_implementation_lock",
+        lambda *_args, **_kwargs: (True, "acquired", None),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_implementation_lock",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_implementation_task_claim",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_implementation_resource_claims",
+        lambda *_args, **_kwargs: None,
+    )
+    for name in (
+        "_retry_no_change_pre_dispatch_scope",
+        "_active_provider_capacity_backoff_for_task",
+        "_require_primary_provider_readiness",
+        "_build_implementation_prompt",
+        "_persist_implementation_context_receipt",
+    ):
+        monkeypatch.setattr(daemon, name, forbidden(name))
+
+    def run_ephemeral(**kwargs):
+        observed.update(kwargs)
+        return {
+            "task_id": task.task_id,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": False,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        run_ephemeral,
+    )
+
+    result = daemon._run_implementation(task, state)
+
+    assert result["returncode"] == 0
+    assert result["provider_dispatched"] is False
+    assert observed["prompt"] == ""
+    assert observed["retry_no_change_probe_only"] is False
 
 
 def _vrif_exact_empty_patch_result(baseline: str) -> dict[str, object]:
