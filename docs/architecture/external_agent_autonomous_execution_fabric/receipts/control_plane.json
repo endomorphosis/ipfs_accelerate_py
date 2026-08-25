@@ -1,0 +1,31 @@
+{
+  "schema": "qualification-receipt@1",
+  "task_id": "EAAEF-097",
+  "task_alias": "EAAEF-097",
+  "interface": "ExternalAgentControlPlaneQualification@1",
+  "evidence_mode": "contract_fail_closed",
+  "live_runtime_invoked": false,
+  "live_quack_contacted": false,
+  "attached_live_quack": false,
+  "live_quack_port": 19495,
+  "owner": "in_memory_ExternalQuackOwner",
+  "shard_id": "disposable-test-shard",
+  "result": "pass",
+  "checks": [
+    "sole_owner_applies_envelopes",
+    "stale_fence_epoch_rejected",
+    "retries_idempotent",
+    "remote_update_sql_refused",
+    "ducklake_loss_lag_never_changes_claims_leases_fences_merge_authority"
+  ],
+  "cases": [
+    "sole_owner_apply",
+    "idempotent_retry",
+    "stale_epoch_rejected",
+    "remote_sql_refused",
+    "ducklake_loss_does_not_grant_authority"
+  ],
+  "focused_tests": [
+    "test/integration/test_external_agent_control_plane.py"
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/qualification-receipt@1",
+  "task_alias": "EAAEF-044",
+  "evidence_mode": "contract_fail_closed",
+  "live_runtime_invoked": false,
+  "live_eight_container_evidence": false,
+  "result": "pass",
+  "notes": [
+    "Generic inventory never admits mutation (mutation_admitted always false).",
+    "Python with tests classifies as supported_inventory; that is a mutation candidate only.",
+    "PythonProjectAdapter.mutation_admitted currently returns false: qualification of the adapter is not live mutation admission."
+  ],
+  "focused_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_agent_project_onboarding.py",
+    "-o",
+    "cache_dir=/tmp/eaaef-pytest-cache-a"
+  ],
+  "pytest": {
+    "collected": 3,
+    "passed": 3,
+    "skipped": 0,
+    "xfailed": 0,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "id": "supported_python_fixture_is_inventory_not_live_mutation",
+      "result": "pass",
+      "detail": "python+tests -> supported_inventory; mutation_admitted false"
+    },
+    {
+      "id": "unsupported_language_is_not_mutation_admitted",
+      "result": "pass",
+      "detail": "rust-only fixture is unsupported_language, preview_only or unsupported_build_system; mutation_admitted false"
+    },
+    {
+      "id": "malicious_repository_is_unsafe_and_not_mutation_admitted",
+      "result": "pass",
+      "detail": ".git/hooks, symlink escape and secrets raise RepositoryPolicyError or unsafe_repository; mutation_admitted false"
+    }
+  ]
+}

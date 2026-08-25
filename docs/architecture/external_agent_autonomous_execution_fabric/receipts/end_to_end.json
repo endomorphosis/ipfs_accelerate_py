@@ -1,0 +1,25 @@
+{
+  "accepted_stale_write": false,
+  "admitted_plan_id": "baguqeeradnqerxhlk2vetbzgpq4aoovf3qxwr46wvlbxilcxvczog3lijqeq",
+  "evidence_mode": "contract_fail_closed",
+  "frontier_task_ids": [
+    "task-a",
+    "task-b"
+  ],
+  "live_cluster_required": false,
+  "live_eight_container_qualification": false,
+  "live_runtime_invoked": false,
+  "run_id": "baguqeera3cett6lfa7gt7vslbmdhmoki26g2a7yaklxe6hm62qxcnv3owqmq",
+  "run_status": "approved",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
+  "stages": [
+    "handoff",
+    "plan_admit",
+    "frontier",
+    "quack_owner_apply",
+    "recovery",
+    "typed_terminal"
+  ],
+  "task_id": "EAAEF-145",
+  "terminal": "completed"
+}

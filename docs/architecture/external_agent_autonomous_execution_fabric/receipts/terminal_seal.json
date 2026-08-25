@@ -1,0 +1,17 @@
+{
+  "claims": [],
+  "content_id": "sha256:05aa51247042ec7c76b7b68a66b6f983f198f2faf3f8c62761b7001ad3d2bf7b",
+  "ducklake_cursor": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "evidence_mode": "contract_fail_closed",
+  "live_eight_container_qualification": false,
+  "live_runtime_invoked": false,
+  "merge_queue": [],
+  "proofs_present": true,
+  "schema": "ipfs_accelerate_py/agent-supervisor/external-agent-terminal-seal@1",
+  "sealer_id": "sealer:independent-reviewer",
+  "semantic_root": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "source_root": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "terminal_report_id": "sha256:05aa51247042ec7c76b7b68a66b6f983f198f2faf3f8c62761b7001ad3d2bf7b",
+  "tests_present": true,
+  "worker_self_seal": false
+}

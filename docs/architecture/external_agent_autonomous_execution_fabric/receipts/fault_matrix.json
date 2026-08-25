@@ -1,0 +1,21 @@
+{
+  "accepted_stale_write": false,
+  "cases": {
+    "ducklake_outage_no_invented_authority": true,
+    "duplicate_transaction_rejected": true,
+    "recovery_does_not_invent_authority": true,
+    "remote_sql_refused": true,
+    "stale_backup_epoch_rejected": true,
+    "stale_owner_epoch_rejected": true,
+    "supervisor_crash_failover": true,
+    "unsigned_envelope_rejected": true
+  },
+  "evidence_mode": "contract_fail_closed",
+  "failover_epoch": 2,
+  "invented_authority": false,
+  "live_eight_container_qualification": false,
+  "live_quack_invoked": false,
+  "live_runtime_invoked": false,
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
+  "task_id": "EAAEF-144"
+}

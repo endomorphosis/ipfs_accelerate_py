@@ -1,0 +1,20 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/external-agent-fixture-manifest@1",
+  "contract_version": 1,
+  "fixtures": [
+    {"id": "codex-visible", "family": "codex", "kind": "visible_history", "path": "codex/visible.json"},
+    {"id": "codex-truncated", "family": "codex", "kind": "truncated_history", "path": "codex/truncated.jsonl"},
+    {"id": "claude-branched", "family": "claude_code", "kind": "branched_history", "path": "claude/branched.json"},
+    {"id": "gemini-ok", "family": "gemini_cli", "kind": "visible_history", "path": "gemini/session.json"},
+    {"id": "generic-mcp", "family": "generic_mcp", "kind": "visible_history", "path": "mcp/tools-call.json"},
+    {"id": "forged-receipt", "family": "codex", "kind": "forgery", "path": "hostile/forged-receipt.json"},
+    {"id": "failure-export", "family": "codex", "kind": "failure", "path": "hostile/failed-session.json"},
+    {"id": "repo-dirty", "family": "repository", "kind": "dirty_worktree", "path": "repos/dirty"},
+    {"id": "repo-submodule", "family": "repository", "kind": "submodule", "path": "repos/submodule"},
+    {"id": "repo-lfs", "family": "repository", "kind": "lfs", "path": "repos/lfs"},
+    {"id": "repo-unsupported", "family": "repository", "kind": "unsupported_language", "path": "repos/unsupported"},
+    {"id": "repo-malicious", "family": "repository", "kind": "malicious", "path": "repos/malicious"},
+    {"id": "repo-large", "family": "repository", "kind": "large", "path": "repos/large"},
+    {"id": "budget-tight", "family": "codex", "kind": "budget", "path": "budgets/tight.json"}
+  ]
+}
