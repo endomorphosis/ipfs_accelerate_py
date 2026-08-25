@@ -1,0 +1,29 @@
+{
+  "artifacts": {
+    "golden_token_class_receipt.json": {
+      "content_cid": "bafkreifjzatsavqebtcwshj42petc5tx7go6pel3xcucatbhs33cikaaeq",
+      "path": "golden_token_class_receipt.json",
+      "sha256": "sha256:a9c8272056040cc5691d3cd3c9317677f99de7917bb8a8204c2796f624280024",
+      "size_bytes": 9025
+    },
+    "result.json": {
+      "content_cid": "bafkreif6lp7wuqfbs7hgx2dln4z242upnq7nhcahtyqjh7ol5damof3lku",
+      "path": "result.json",
+      "sha256": "sha256:be5bff6a40a197ce6be86b6f33ae6a8f6c3ed388079e2093fdcbe8c0c7176b55",
+      "size_bytes": 842
+    },
+    "tokenizer_policy.json": {
+      "content_cid": "bafkreigkb6kbfop4mi5antjzpw4welnsdcqxrb2qnsljrgi3mbo5rvd7ki",
+      "path": "tokenizer_policy.json",
+      "sha256": "sha256:ca0f9412b9fc623a06cd397db9622db218a17887506c9698991b605dd8d47f52",
+      "size_bytes": 3505
+    }
+  },
+  "manifest_cid": "baguqeera2ncgip27hsreaftny6qzqleeiye7kqcrakj4xmi6fifxwey3esnq",
+  "manifest_sha256": "sha256:d344643f5f3ca240166dc7a1982c844609f540510293cbb11e2a0b7b131b249b",
+  "policy_cid": "baguqeeraluqwxtejicycax65cicqfibtyy5kxkxxyng5nzbxmuooqedw2vka",
+  "result_cid": "baguqeera2wxw5woodrk5534uu6wzwhxu7e3c3glizd4ns6bofd32qx43yhbq",
+  "schema": "PGIRTokenizerFreezeManifest@1",
+  "task_id": "PGIR-203",
+  "tokenizer_status": "permanently_deterministic_only"
+}
