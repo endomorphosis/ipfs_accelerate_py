@@ -23,6 +23,7 @@ MARKDOWN_RELATIVE_PATH = (
     "docs/architecture/causal_event_federation_inventory/final_qualification_report.md"
 )
 SUITE_RELATIVE_PATH = "benchmarks/agent_supervisor/causal_event_federation/manifest.json"
+TEST_RELATIVE_PATH = "test/api/causal_federation/test_qualification_report.py"
 REPORT_PATH = ROOT / REPORT_RELATIVE_PATH
 MARKDOWN_PATH = ROOT / MARKDOWN_RELATIVE_PATH
 SUITE_PATH = ROOT / SUITE_RELATIVE_PATH
@@ -53,9 +54,14 @@ _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 _CONTENT_REF_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 _SECRET_KEY_RE = re.compile(
-    r"^(?:api[_-]?key|access[_-]?token|password|secret|credential|private[_-]?key|authorization)$",
+    r"(?:^|[_-])(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd|secret|credential|private[_-]?key|authorization|bearer|cookie|session[_-]?key)(?:$|[_-])",
     re.IGNORECASE,
 )
+_SECRET_VALUE_RE = re.compile(
+    r"(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|passwd)\s*[:=]\s*\S+|\bBearer\s+\S+|\bgh[pousr]_[A-Za-z0-9]{8,}|\bAKIA[0-9A-Z]{16}\b)",
+    re.IGNORECASE,
+)
+_ALLOWED_SECURITY_KEYS = frozenset({"secret_leakage"})
 
 TOP_LEVEL_FIELDS = frozenset(
     {
@@ -75,6 +81,7 @@ TOP_LEVEL_FIELDS = frozenset(
         "starting_baseline",
         "qualification_input_snapshot",
         "final_tree_binding",
+        "source_binding_scope",
         "source_bindings",
         "control_plane",
         "capabilities",
@@ -136,11 +143,15 @@ PROMOTION_REASON_CODES = frozenset(
         "unavailable:casf_039_live_not_run",
         "unavailable:casf_040_live_not_run",
         "unavailable:casf_041_live_not_run",
+        "missing:rollback_state_owner_predecessor_receipt",
     }
 )
 CORE_REASON_CODES = (
     "accepted_current_generation_qualification_identity_unavailable",
     "accepted_current_tree_state_owner_attestation_unavailable",
+    "accepted_single_owner_typed_quack_receipt_unavailable",
+    "remote_no_lost_wakeup_qualification_unavailable",
+    "current_generation_fence_bound_population_attestation_unavailable",
     "missing:casf_030_accepted_producer_provenance",
     "missing:casf_030_full_qualification_identity_binding",
     "missing:casf_030_state_owner_provenance",
@@ -155,13 +166,17 @@ CORE_REASON_CODES = (
     "unavailable:casf_039_live_not_run",
     "unavailable:casf_040_live_not_run",
     "unavailable:casf_041_live_not_run",
+    "frozen_live_profiles_not_run",
     "benchmark_result_artifacts_absent",
     "accepted_conjunctive_promotion_decision_unavailable",
+    "missing:rollback_state_owner_predecessor_receipt",
+    "fenced_rollback_verification_unavailable",
 )
 GAP_IDS = (
     "CASF-043-FINAL-TREE-ACCEPTANCE",
     "CASF-043-LIVE-TYPED-QUACK-STATE-OWNER",
     "CASF-043-CASF-030-PROVENANCE",
+    "CASF-043-CASF-031-DUCKLAKE-PROJECTION-ACCEPTANCE",
     "CASF-043-CASF-032-DUCKLAKE-PROVENANCE",
     "CASF-043-CASF-033-PROVENANCE",
     "CASF-043-CASF-034-STATE-OWNER-CAPABILITY",
@@ -175,6 +190,154 @@ GAP_IDS = (
     "CASF-043-BENCHMARK-RESULT-ARTIFACTS",
     "CASF-043-CONJUNCTIVE-PROMOTION-DECISION",
     "CASF-043-ROLLBACK-VERIFICATION",
+)
+ROLLBACK_AUTHORITY = (
+    "registered typed state-owner rollback decision bound to a verified predecessor "
+    "qualification identity and current fence"
+)
+GAP_CONTRACTS = (
+    (
+        "CASF-043-FINAL-TREE-ACCEPTANCE",
+        "blocking_release",
+        "qualification, promotion, release, and root completion",
+        ("accepted_current_generation_qualification_identity_unavailable",),
+        "A registered state-owner producer and independent verifier must bind the actual merged revision and tree, schema, generation, policy, capability, task, attempt, assignment, worktree, lease, and fence to accepted validation and result identities.",
+    ),
+    (
+        "CASF-043-LIVE-TYPED-QUACK-STATE-OWNER",
+        "blocking_core",
+        "DuckDB plus Quack core qualification and contention-free operation",
+        (
+            "accepted_current_tree_state_owner_attestation_unavailable",
+            "accepted_single_owner_typed_quack_receipt_unavailable",
+            "remote_no_lost_wakeup_qualification_unavailable",
+            "current_generation_fence_bound_population_attestation_unavailable",
+        ),
+        "Admit and independently verify one authenticated typed Quack state owner, a current generation and schema fingerprint, fence-bound population, and a remote no-lost-wakeup event-wait path without direct DuckDB or file fallback.",
+    ),
+    (
+        "CASF-043-CASF-030-PROVENANCE",
+        "blocking_core",
+        "fixed-point evidence",
+        (
+            "missing:casf_030_accepted_producer_provenance",
+            "missing:casf_030_full_qualification_identity_binding",
+            "missing:casf_030_state_owner_provenance",
+        ),
+        "Produce a current-tree fixed-point receipt through an accepted producer with the full qualification identity and state-owner provenance.",
+    ),
+    (
+        "CASF-043-CASF-031-DUCKLAKE-PROJECTION-ACCEPTANCE",
+        "blocking_ducklake_profile",
+        "CASF-031 current-tree DuckLake projection acceptance only; it does not block the core profile",
+        (
+            "missing:casf_031_current_tree_projection_acceptance",
+            "accepted_non_authoritative_projection_receipts_unavailable",
+        ),
+        "Accept the CASF-031 current-tree projection implementation and its non-authoritative typed projection evidence before DuckLake promotion.",
+    ),
+    (
+        "CASF-043-CASF-032-DUCKLAKE-PROVENANCE",
+        "blocking_ducklake_profile",
+        "DuckLake plus Quack promotion only; it does not block the core profile",
+        (
+            "missing:casf_032_accepted_producer_provenance",
+            "missing:casf_032_full_qualification_identity_binding",
+            "missing:casf_032_state_owner_provenance",
+        ),
+        "Produce current projection and recovery receipts through accepted producers with full qualification identity and state-owner provenance while retaining DuckLake non-authority.",
+    ),
+    (
+        "CASF-043-CASF-033-PROVENANCE",
+        "blocking_core",
+        "architecture and event drift evidence",
+        (
+            "missing:casf_033_accepted_producer_provenance",
+            "missing:casf_033_full_qualification_identity_binding",
+            "missing:casf_033_state_owner_provenance",
+        ),
+        "Produce a current-tree drift report through an accepted producer with the full qualification identity and state-owner provenance.",
+    ),
+    (
+        "CASF-043-CASF-034-STATE-OWNER-CAPABILITY",
+        "blocking_core",
+        "typed control audit",
+        ("blocked:casf_034_current_state_owner_capability_unattested",),
+        "Attest the current typed state-owner capability and bind the accepted control audit to the exact qualification identity.",
+    ),
+    (
+        "CASF-043-CASF-035-CONTROL-PARITY-DECODER",
+        "blocking_core",
+        "control-surface parity evidence",
+        ("missing:casf_035_control_parity_report_decoder",),
+        "Implement and independently validate the canonical control-parity report decoder before admitting CASF-035 evidence.",
+    ),
+    (
+        "CASF-043-CASF-036-FORMAL-DECODER",
+        "blocking_core",
+        "formal-model evidence",
+        ("missing:casf_036_formal_report_decoder",),
+        "Implement and independently validate the canonical formal-model report decoder before admitting CASF-036 evidence.",
+    ),
+    (
+        "CASF-043-CASF-037-LOCAL-QUALIFICATION",
+        "blocking_core",
+        "adversarial and chaos evidence",
+        ("blocked:casf_037_local_qualification_unavailable",),
+        "Run and admit the upstream-reverified current-tree adversarial qualification; the repository-only unavailable report cannot substitute for it.",
+    ),
+    (
+        "CASF-043-CASF-038-IDLE-NOT-RUN",
+        "blocking_core",
+        "event-driven idle claims",
+        ("unavailable:casf_038_live_not_run",),
+        "Run the frozen idle profile through the admitted typed Quack live path and retain a current-tree content-addressed result.",
+    ),
+    (
+        "CASF-043-CASF-039-PARALLEL-NOT-RUN",
+        "blocking_core",
+        "twelve-supervisor parallel and throughput claims",
+        ("unavailable:casf_039_live_not_run",),
+        "Run the frozen real-process twelve-supervisor profile and retain a current-tree content-addressed result satisfying every zero-tolerance gate.",
+    ),
+    (
+        "CASF-043-CASF-040-LOAD-NOT-RUN",
+        "blocking_core",
+        "bounded 256-agent load claims",
+        ("unavailable:casf_040_live_not_run",),
+        "Run the frozen bounded 256-agent profile and retain a current-tree content-addressed result satisfying every zero-tolerance gate.",
+    ),
+    (
+        "CASF-043-CASF-041-TOKEN-NOT-RUN",
+        "blocking_core",
+        "cross-supervisor token and context efficiency claims",
+        ("unavailable:casf_041_live_not_run",),
+        "Run the frozen same-population baseline and twelve-supervisor comparison and retain current-tree result receipts meeting every target without reduced assurance.",
+    ),
+    (
+        "CASF-043-BENCHMARK-RESULT-ARTIFACTS",
+        "blocking_core",
+        "benchmark result, metric, and promotion evidence",
+        ("frozen_live_profiles_not_run", "benchmark_result_artifacts_absent"),
+        "Retain exact content-addressed result artifacts with non-null result references; metrics remain omitted until those runs occur.",
+    ),
+    (
+        "CASF-043-CONJUNCTIVE-PROMOTION-DECISION",
+        "blocking_release",
+        "promotion, quarantine disposition, and release",
+        ("accepted_conjunctive_promotion_decision_unavailable",),
+        "Submit the complete exact-identity evidence bundle to the registered gate and independently validate an accepted decision; this report cannot create, apply, or authorize it.",
+    ),
+    (
+        "CASF-043-ROLLBACK-VERIFICATION",
+        "blocking_release",
+        "root completion and recovery",
+        (
+            "missing:rollback_state_owner_predecessor_receipt",
+            "fenced_rollback_verification_unavailable",
+        ),
+        "Verify a fenced rollback path for only the CASF-043-owned artifacts against the pre-report component snapshot without rewriting history or applying production effects.",
+    ),
 )
 RESULT_FIELDS = frozenset(
     {
@@ -335,13 +498,17 @@ def _validate_json_limits(value: Any, *, depth: int = 0) -> int:
     if type(value) is str:
         if len(value.encode("utf-8")) > _MAX_TEXT_BYTES or "\x00" in value:
             raise QualificationReportError("JSON text is unbounded or contains NUL")
+        if _SECRET_VALUE_RE.search(value):
+            raise QualificationReportError("secret-shaped JSON text")
         return 1
     if type(value) is list:
         total = 1 + sum(_validate_json_limits(item, depth=depth + 1) for item in value)
     elif type(value) is dict:
         total = 1
         for key, item in value.items():
-            if type(key) is not str or _SECRET_KEY_RE.fullmatch(key):
+            if type(key) is not str or (
+                _SECRET_KEY_RE.search(key) and key not in _ALLOWED_SECURITY_KEYS
+            ):
                 raise QualificationReportError("secret-shaped or non-text JSON key")
             total += _validate_json_limits(item, depth=depth + 1)
     else:
@@ -414,6 +581,15 @@ def _decode_json_bytes(payload: bytes, name: str) -> dict[str, Any]:
 def _read_report(root: Path = ROOT) -> tuple[dict[str, Any], bytes]:
     payload = _read_regular_bytes(root, REPORT_RELATIVE_PATH, maximum=_MAX_REPORT_BYTES)
     return _decode_json_bytes(payload, "qualification report"), payload
+
+
+def _reseal(report: dict[str, Any]) -> None:
+    report["report_id"] = (
+        "sha256:"
+        + hashlib.sha256(
+            _canonical_bytes({key: item for key, item in report.items() if key != "report_id"})
+        ).hexdigest()
+    )
 
 
 def _binding(value: Any, name: str, *, schema: bool = False) -> dict[str, Any]:
@@ -634,6 +810,11 @@ def _validate_report(value: Any) -> dict[str, Any]:
         final[field] is not None for field in final if field != "status"
     ):
         raise QualificationReportError("pending final-tree evidence was invented")
+    if (
+        report["source_binding_scope"]
+        != "qualification_input_git_objects_only_not_current_head_or_worktree"
+    ):
+        raise QualificationReportError("source binding scope was broadened")
 
     bindings = _exact_list(report["source_bindings"], "source bindings", maximum=len(SOURCE_PATHS))
     if len(bindings) != len(SOURCE_PATHS):
@@ -875,13 +1056,31 @@ def _validate_report(value: Any) -> dict[str, Any]:
         "authority_created",
         "completion_created",
     )
+    core_reason_codes = tuple(
+        dict.fromkeys(
+            reason
+            for _gap_id, status, _scope, reasons, _resolution in GAP_CONTRACTS
+            if status != "blocking_ducklake_profile"
+            for reason in reasons
+        )
+    )
+    ducklake_reason_codes = tuple(
+        dict.fromkeys(
+            reason
+            for _gap_id, status, _scope, reasons, _resolution in GAP_CONTRACTS
+            if status == "blocking_ducklake_profile"
+            for reason in reasons
+        )
+    )
+    if core_reason_codes != CORE_REASON_CODES:
+        raise QualificationReportError("core blocker contract and summary diverged")
     if (
         qualification["status"] != "not_qualified"
         or qualification["disposition"] != "quarantine_recommended"
         or any(qualification[field] is not False for field in false_fields)
         or qualification["upstream_reverification_required"] is not True
         or qualification["promotion_decision_ref"] is not None
-        or qualification["reason_codes"] != list(CORE_REASON_CODES)
+        or qualification["reason_codes"] != list(core_reason_codes)
     ):
         raise QualificationReportError("qualification disposition was overstated")
     profiles = _exact_dict(
@@ -893,6 +1092,7 @@ def _validate_report(value: Any) -> dict[str, Any]:
             "single_state_owner_required": True,
             "contention_free_operation_qualified": False,
             "decision_ref": None,
+            "reason_codes": list(core_reason_codes),
         },
         "ducklake_quack": {
             "status": "not_qualified",
@@ -900,6 +1100,7 @@ def _validate_report(value: Any) -> dict[str, Any]:
             "scheduling_authority": False,
             "blocks_core_qualification": False,
             "decision_ref": None,
+            "additional_reason_codes": list(ducklake_reason_codes),
         },
     }:
         raise QualificationReportError("qualification profiles changed")
@@ -908,14 +1109,12 @@ def _validate_report(value: Any) -> dict[str, Any]:
     if len(gaps) != len(GAP_IDS) or tuple(item.get("gap_id") for item in gaps) != GAP_IDS:
         raise QualificationReportError("residual gaps must be unique, ordered, and complete")
     all_gap_reasons: set[str] = set()
-    for index, gap_value in enumerate(gaps):
+    for index, (gap_value, expected_contract) in enumerate(zip(gaps, GAP_CONTRACTS, strict=True)):
         gap = _exact_dict(
             gap_value,
             frozenset({"gap_id", "status", "scope", "reason_codes", "required_resolution"}),
             f"residual gap {index}",
         )
-        if gap["status"] not in {"blocking_core", "blocking_ducklake_profile", "blocking_release"}:
-            raise QualificationReportError("residual gap status is unknown")
         _text(gap["scope"], f"gap {index}.scope")
         _text(gap["required_resolution"], f"gap {index}.required_resolution")
         reasons = _exact_list(gap["reason_codes"], f"gap {index}.reason_codes", maximum=8)
@@ -923,9 +1122,18 @@ def _validate_report(value: Any) -> dict[str, Any]:
             raise QualificationReportError("gap reason codes must be nonempty and unique")
         for reason in reasons:
             all_gap_reasons.add(_text(reason, f"gap {index}.reason_code", maximum=256))
-    if not set(CORE_REASON_CODES).issubset(all_gap_reasons) or not PROMOTION_REASON_CODES.issubset(
-        all_gap_reasons
-    ):
+        observed_contract = (
+            gap["gap_id"],
+            gap["status"],
+            gap["scope"],
+            tuple(reasons),
+            gap["required_resolution"],
+        )
+        if observed_contract != expected_contract:
+            raise QualificationReportError("residual gap contract changed")
+    if all_gap_reasons != set(core_reason_codes) | set(ducklake_reason_codes):
+        raise QualificationReportError("residual gap reason summary diverged")
+    if not PROMOTION_REASON_CODES.issubset(all_gap_reasons):
         raise QualificationReportError("promotion blockers are missing from residual gaps")
 
     rollback = _exact_dict(
@@ -946,18 +1154,17 @@ def _validate_report(value: Any) -> dict[str, Any]:
     )
     if (
         rollback["status"] != "not_authorized"
-        or rollback["scope"]
-        != [REPORT_RELATIVE_PATH, MARKDOWN_RELATIVE_PATH, __file__.split(str(ROOT) + os.sep, 1)[1]]
+        or rollback["scope"] != [REPORT_RELATIVE_PATH, MARKDOWN_RELATIVE_PATH, TEST_RELATIVE_PATH]
         or rollback["target"] != {"revision": INPUT_REVISION, "tree_id": INPUT_TREE}
         or rollback["applied"] is not False
         or rollback["executable"] is not False
         or rollback["decision_ref"] is not None
+        or rollback["required_authority"] != ROLLBACK_AUTHORITY
         or rollback["history_rewrite_permitted"] is not False
     ):
         raise QualificationReportError(
             "rollback boundary is not the inert owned-artifact predecessor"
         )
-    _text(rollback["required_authority"], "rollback.required_authority")
     provenance = _exact_dict(
         report["provenance"],
         frozenset(
@@ -1050,7 +1257,9 @@ create them.
 {source_rows}
 
 These bindings describe repository objects at the qualification input. They
-prove byte identity and lineage only; they are not live or execution evidence.
+prove byte identity and lineage only; they do not assert currency at the current
+HEAD or working tree and are not live or execution evidence. Binding scope:
+`{report["source_binding_scope"]}`.
 
 ## Benchmark suite
 
@@ -1178,6 +1387,26 @@ def _git_text(root: Path, *args: str) -> str:
         raise QualificationReportError("Git returned non-UTF-8 identity output") from exc
 
 
+def _reject_internal_object_alternates(root: Path) -> None:
+    common_text = _git_text(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    common_dir = Path(common_text)
+    try:
+        common_stat = common_dir.lstat()
+    except OSError as exc:
+        raise QualificationReportError("Git common directory is unavailable") from exc
+    if not common_dir.is_absolute() or not stat.S_ISDIR(common_stat.st_mode):
+        raise QualificationReportError("Git common directory is not an absolute directory")
+    for name in ("alternates", "http-alternates"):
+        candidate = common_dir / "objects" / "info" / name
+        try:
+            candidate.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise QualificationReportError("cannot inspect internal object alternates") from exc
+        raise QualificationReportError("internal Git object alternates are not admitted")
+
+
 def _require_ancestor(root: Path, ancestor: str, descendant: str) -> None:
     result = _git_result(root, "merge-base", "--is-ancestor", ancestor, descendant, check=False)
     if result.returncode != 0:
@@ -1216,10 +1445,15 @@ def _verify_binding_at(root: Path, revision: str, binding: dict[str, Any]) -> by
     return payload
 
 
-def _verify_worktree_matches_head(root: Path, relative_path: str, maximum: int) -> bytes:
+def _verify_worktree_matches_head(
+    root: Path, relative_path: str, maximum: int, revision: str | None = None
+) -> bytes:
     working = _read_regular_bytes(root, relative_path, maximum=maximum)
-    head = _oid(_git_text(root, "rev-parse", "--verify", "HEAD^{commit}"), "HEAD")
-    _oid(_git_text(root, "rev-parse", "--verify", "HEAD^{tree}"), "HEAD tree")
+    head = (
+        _oid(revision, "bound HEAD")
+        if revision is not None
+        else _oid(_git_text(root, "rev-parse", "--verify", "HEAD^{commit}"), "HEAD")
+    )
     _oid_at_head, committed = _blob_at(root, head, relative_path)
     if working != committed:
         raise QualificationReportError(f"working bytes differ from tracked HEAD: {relative_path}")
@@ -1237,6 +1471,7 @@ def _validate_repository(root: Path = ROOT) -> dict[str, Any]:
     top = Path(_git_text(root, "rev-parse", "--show-toplevel")).resolve(strict=True)
     if top != root.resolve(strict=True):
         raise QualificationReportError("Git top level differs from the report repository")
+    _reject_internal_object_alternates(root)
     first_head = _oid(_git_text(root, "rev-parse", "--verify", "HEAD^{commit}"), "HEAD")
     first_tree = _oid(_git_text(root, "rev-parse", "--verify", "HEAD^{tree}"), "HEAD tree")
     if _git_text(root, "rev-parse", "--verify", f"{STARTING_REVISION}^{{tree}}") != STARTING_TREE:
@@ -1246,9 +1481,11 @@ def _validate_repository(root: Path = ROOT) -> dict[str, Any]:
     _require_ancestor(root, STARTING_REVISION, INPUT_REVISION)
     _require_ancestor(root, INPUT_REVISION, first_head)
 
-    report_bytes = _verify_worktree_matches_head(root, REPORT_RELATIVE_PATH, _MAX_REPORT_BYTES)
+    report_bytes = _verify_worktree_matches_head(
+        root, REPORT_RELATIVE_PATH, _MAX_REPORT_BYTES, first_head
+    )
     markdown_bytes = _verify_worktree_matches_head(
-        root, MARKDOWN_RELATIVE_PATH, _MAX_MARKDOWN_BYTES
+        root, MARKDOWN_RELATIVE_PATH, _MAX_MARKDOWN_BYTES, first_head
     )
     report = _validate_report(_decode_json_bytes(report_bytes, "qualification report"))
     for binding in report["source_bindings"]:
@@ -1277,7 +1514,7 @@ def _validate_repository(root: Path = ROOT) -> dict[str, Any]:
     ):
         raise QualificationReportError("suite projection object changed")
     current_suite_bytes = _verify_worktree_matches_head(
-        root, SUITE_RELATIVE_PATH, _MAX_REPORT_BYTES
+        root, SUITE_RELATIVE_PATH, _MAX_REPORT_BYTES, first_head
     )
     current_suite = _decode_json_bytes(current_suite_bytes, "benchmark suite")
     if current_suite != suite or suite_projection_bytes != current_suite_bytes:
@@ -1308,6 +1545,7 @@ def _validate_repository(root: Path = ROOT) -> dict[str, Any]:
         b'"missing:casf_035_control_parity_report_decoder"',
         b'"missing:casf_036_formal_report_decoder"',
         b'"blocked:casf_037_local_qualification_unavailable"',
+        b'"missing:rollback_state_owner_predecessor_receipt"',
         b'"CASF-030"',
         b'"CASF-032"',
         b'"CASF-033"',
@@ -1333,6 +1571,19 @@ def _validate_repository(root: Path = ROOT) -> dict[str, Any]:
 def test_report_schema_identity_and_truthful_disposition() -> None:
     report, _payload = _read_report()
     assert _validate_report(report) == report
+
+
+def test_source_bindings_are_historical_and_final_currency_is_withheld() -> None:
+    report, _payload = _read_report()
+    assert (
+        report["source_binding_scope"]
+        == "qualification_input_git_objects_only_not_current_head_or_worktree"
+    )
+    assert report["qualification_input_snapshot"]["revision"] == INPUT_REVISION
+    assert report["final_tree_binding"]["status"] == "pending_post_merge_state_owner_acceptance"
+    assert all(
+        value is None for key, value in report["final_tree_binding"].items() if key != "status"
+    )
 
 
 def test_exact_repository_suite_and_markdown_bindings() -> None:
@@ -1379,6 +1630,29 @@ def test_mutations_cannot_create_authority_or_hide_required_gaps(mutate: Any) ->
 
 
 @pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda value: value["residual_gaps"][0].update({"status": "blocking_core"}),
+        lambda value: value["residual_gaps"][1].update({"scope": "No action"}),
+        lambda value: value["residual_gaps"][2].update({"required_resolution": "No action"}),
+        lambda value: value["residual_gaps"][3]["reason_codes"].append(
+            "passed:casf_031_projection"
+        ),
+        lambda value: value["rollback"].update({"required_authority": "No authorization"}),
+        lambda value: value["residual_gaps"][4].update(
+            {"required_resolution": "Bearer ghp_examplecredential123"}
+        ),
+    ],
+)
+def test_resealed_semantic_mutations_cannot_weaken_gap_contracts(mutate: Any) -> None:
+    report, _payload = _read_report()
+    mutate(report)
+    _reseal(report)
+    with pytest.raises(QualificationReportError):
+        _validate_report(report)
+
+
+@pytest.mark.parametrize(
     "payload,match",
     [
         (b'{"schema":"one","schema":"two"}', "duplicate JSON key"),
@@ -1386,6 +1660,7 @@ def test_mutations_cannot_create_authority_or_hide_required_gaps(mutate: Any) ->
         (b'{"value":Infinity}', "non-finite JSON number"),
         (b'{"value":1.5}', "floating-point values"),
         (b'{"value":{"api_key":"secret"}}', "secret-shaped"),
+        (b'{"value":"Bearer credential123"}', "secret-shaped"),
     ],
 )
 def test_strict_json_rejects_duplicate_nonfinite_float_and_secret_shapes(
@@ -1495,6 +1770,23 @@ def _minimal_repository(tmp_path: Path) -> Path:
     return root
 
 
+@pytest.mark.parametrize("kind", ["file", "symlink"])
+def test_internal_object_alternates_fail_closed(tmp_path: Path, kind: str) -> None:
+    root = _minimal_repository(tmp_path)
+    common_dir = Path(
+        _run_fixture_git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    )
+    info_dir = common_dir / "objects" / "info"
+    info_dir.mkdir(parents=True, exist_ok=True)
+    candidate = info_dir / "alternates"
+    if kind == "file":
+        candidate.write_text("/untrusted/objects\n", encoding="utf-8")
+    else:
+        candidate.symlink_to(tmp_path / "alternate-source")
+    with pytest.raises(QualificationReportError, match="alternates are not admitted"):
+        _reject_internal_object_alternates(root)
+
+
 @pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
 def test_hidden_index_flags_cannot_substitute_working_bytes(tmp_path: Path, flag: str) -> None:
     root = _minimal_repository(tmp_path)
@@ -1537,7 +1829,7 @@ def test_two_pass_repository_identity_detects_toctou(monkeypatch: pytest.MonkeyP
         value = original(root, *args)
         if args == ("rev-parse", "--verify", "HEAD^{commit}"):
             head_reads += 1
-            if head_reads >= 5:
+            if head_reads >= 2:
                 return "f" * 40
         return value
 
