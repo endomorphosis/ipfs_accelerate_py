@@ -80,17 +80,11 @@
     "canonical_tree": "7aa6f3c7c2bd90a046bb1514d7b3a92c7af55714"
   },
   "bootstrap_runtime_binding": {
-    "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding@1",
+    "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding-template@1",
     "launcher": {
-      "resolved_path": "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/scripts/launch_external_agent_autonomous_execution_fabric_materializer.py",
+      "repository_relative_path": "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py",
       "sha256": "sha256:57247a7f8fe617e8d865e2a0221b59a5e327f4b590773bff623624320a3db3d7",
-      "argv_prefix": [
-        "/usr/bin/python3.12",
-        "-I",
-        "-S",
-        "-B",
-        "/home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
-      ],
+      "interpreter_flags": ["-I", "-S", "-B"],
       "allowed_commands": ["build", "runtime-check", "materialize", "verify", "launch-plan", "configured-board-launch"]
     },
     "interpreter": {

@@ -26,6 +26,11 @@ from ..planning.external_agent_plan_r2 import (
     AUTHORIZED_PLAN_R2_REPOSITORY_INTERFACE,
 )
 from ..task_sources.control_plane_contracts import CommandKind
+from ..task_sources.eaaef_plan_r2_owner_service import (
+    EAAEF_PLAN_R2_SINGLE_OWNER_PRODUCTION_BLOCKER,
+    EAAEFPlanR2TypedOwnerCommandClient,
+    bind_eaaef_plan_r2_typed_owner_command_client,
+)
 from ..task_sources.external_agent_state_repository import (
     APPLY_PLAN_R2_OPERATION,
     OBSERVE_PLAN_R2_OPERATION,
@@ -63,6 +68,9 @@ PLAN_R2_REMOTE_RUNTIME_PRODUCTION_BLOCKERS: Final = (
     "external_plan_r2_remote_owner_capability_absent",
     "qualified_process_remote_wire_channel_factory_absent",
     "supervisor_plan_r2_remote_repository_wiring_absent",
+)
+PLAN_R2_TYPED_OWNER_CHANNEL_QUALIFICATION_STATUS: Final = (
+    "typed_owner_canonical_channel_implemented_cutover_unqualified"
 )
 
 _REQUEST_FIELDS: Final = frozenset(
@@ -130,6 +138,7 @@ _FORBIDDEN_CHANNEL_AUTHORITY: Final = (
     "transport_token",
 )
 _JOURNAL_FACTORY_TOKEN = object()
+_TYPED_OWNER_CHANNEL_FACTORY_TOKEN = object()
 
 
 class PlanR2RemoteOwnerError(RuntimeError):
@@ -476,6 +485,204 @@ class PlanR2CanonicalWireChannel(Protocol):
     ) -> bytes: ...
 
     def close(self) -> None: ...
+
+
+class TypedStateOwnerPlanR2CanonicalWireChannel:
+    """Canonical-byte channel over one authenticated typed-owner session.
+
+    The factory accepts neither a socket path nor token.  It narrows an
+    already-authenticated :class:`TypedStateOwnerConnection` to the existing
+    three-operation EAAEF Plan-R2 client, then binds both public channel IDs
+    directly from the exact signed remote-owner admission.  The underlying
+    typed-owner connection remains shared and is not closed by this view.
+
+    This closes the source-level channel implementation gap only.  The
+    independently signed single-owner cutover remains a separate production
+    gate and is deliberately exposed by :meth:`require_production_admission`.
+    """
+
+    INTERFACE: ClassVar[str] = PLAN_R2_REMOTE_WIRE_CHANNEL_INTERFACE
+    __slots__ = (
+        "_request_channel_id",
+        "_response_channel_id",
+        "_admission",
+        "_client",
+        "_attached",
+        "_closed",
+    )
+
+    def __init__(
+        self,
+        token: object,
+        *,
+        client: EAAEFPlanR2TypedOwnerCommandClient,
+        admission: VerifiedPlanR2RemoteOwnerAdmission,
+    ) -> None:
+        if (
+            token is not _TYPED_OWNER_CHANNEL_FACTORY_TOKEN
+            or type(client) is not EAAEFPlanR2TypedOwnerCommandClient
+            or type(admission) is not VerifiedPlanR2RemoteOwnerAdmission
+        ):
+            raise PlanR2RemoteOwnerError(
+                "typed-owner Plan-R2 channels require the exact authenticated "
+                "client and verified admission"
+            )
+        client_bindings = {
+            "capability_cid": client._remote_capability_cid,  # noqa: SLF001
+            "plan_r2_operational_capability_cid": (
+                client._operational_capability_cid  # noqa: SLF001
+            ),
+            "plan_r2_authorization_cid": client._authorization_cid,  # noqa: SLF001
+        }
+        mismatched = sorted(
+            name
+            for name, observed in client_bindings.items()
+            if observed != admission[name]
+        )
+        if mismatched:
+            raise PlanR2RemoteOwnerError(
+                "typed-owner Plan-R2 client differs from signed admission: "
+                + ", ".join(mismatched)
+            )
+        self._request_channel_id = str(admission["request_channel_id"])
+        self._response_channel_id = str(admission["response_channel_id"])
+        self._admission = admission
+        self._client = client
+        self._attached = False
+        self._closed = False
+
+    @property
+    def request_channel_id(self) -> str:
+        return self._request_channel_id
+
+    @property
+    def response_channel_id(self) -> str:
+        return self._response_channel_id
+
+    def attach(self) -> None:
+        if self._closed:
+            raise PlanR2RemoteOwnerError("typed-owner Plan-R2 channel is closed")
+        if not self._attached:
+            self._client.attach()
+            self._attached = True
+
+    def exchange(
+        self,
+        request_bytes: bytes,
+        *,
+        request_cid: str,
+        maximum_wait_ms: int,
+    ) -> bytes:
+        if self._closed or not self._attached:
+            raise PlanR2RemoteOwnerError(
+                "typed-owner Plan-R2 channel is not attached"
+            )
+        if (
+            type(request_cid) is not str
+            or type(maximum_wait_ms) is not int
+            or maximum_wait_ms != int(self._admission["maximum_wait_ms"])
+        ):
+            raise PlanR2RemoteOwnerError(
+                "typed-owner Plan-R2 exchange differs from signed wait authority"
+            )
+        raw_request = _decode_exact_object(
+            request_bytes,
+            noun="typed-owner Plan-R2 request",
+            maximum=int(self._admission["maximum_request_bytes"]),
+        )
+        request, envelope, payload = _validate_request(
+            raw_request,
+            admission=self._admission,
+        )
+        if request["request_cid"] != request_cid:
+            raise PlanR2RemoteReplayDiverged(
+                "typed-owner Plan-R2 request CID differs from its exchange"
+            )
+        result = self._client.submit_authorized_plan_r2_operation(
+            envelope,
+            payload,
+        )
+        if not isinstance(result, Mapping):
+            raise PlanR2RemoteOwnerError(
+                "typed owner returned a non-object Plan-R2 result"
+            )
+        response = _build_response(
+            admission=self._admission,
+            request=request,
+            envelope=envelope,
+            payload=payload,
+            result=result,
+        )
+        return encode_plan_r2_remote_response(
+            response,
+            request=request,
+            admission=self._admission,
+        )
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._client.close()
+        self._attached = False
+        self._closed = True
+
+    def require_production_admission(self) -> None:
+        """Preserve the independent single-owner cutover gate."""
+
+        self._client.require_production_admission()
+
+    def evidence(self) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                "interface": self.INTERFACE,
+                "qualification_status": (
+                    PLAN_R2_TYPED_OWNER_CHANNEL_QUALIFICATION_STATUS
+                ),
+                "production_admitted": False,
+                "production_blocker": (
+                    EAAEF_PLAN_R2_SINGLE_OWNER_PRODUCTION_BLOCKER
+                ),
+                "request_channel_id": self.request_channel_id,
+                "response_channel_id": self.response_channel_id,
+                "transport": "authenticated_typed_state_owner_connection",
+                "canonical_bytes_only": True,
+                "r1_operations_allowed": False,
+                "generic_state_command_allowed": False,
+                "database_authority_exposed": False,
+                "filesystem_path_authority_exposed": False,
+                "transport_token_exposed": False,
+                "sql_exposed": False,
+                "closes_shared_owner_connection": False,
+                "attached": self._attached,
+            }
+        )
+
+
+def bind_typed_state_owner_plan_r2_canonical_wire_channel(
+    *,
+    owner_connection: object,
+    admission: VerifiedPlanR2RemoteOwnerAdmission,
+) -> TypedStateOwnerPlanR2CanonicalWireChannel:
+    """Narrow one authenticated typed-owner connection to canonical bytes.
+
+    No socket path, token, callback, SQL surface, or database handle is
+    accepted by this factory.  The existing typed-owner binder verifies the
+    exact connection type and admission before this narrower channel is made.
+    """
+
+    if type(admission) is not VerifiedPlanR2RemoteOwnerAdmission:
+        raise PlanR2RemoteOwnerError(
+            "typed-owner Plan-R2 channel requires exact verified admission"
+        )
+    client = bind_eaaef_plan_r2_typed_owner_command_client(
+        owner_connection=owner_connection,
+        admission=admission,
+    )
+    return TypedStateOwnerPlanR2CanonicalWireChannel(
+        _TYPED_OWNER_CHANNEL_FACTORY_TOKEN,
+        client=client,
+        admission=admission,
+    )
 
 
 class PlanR2RemoteExactEnvelopeJournal:
@@ -931,6 +1138,7 @@ __all__ = (
     "PLAN_R2_REMOTE_EXACT_ENVELOPE_JOURNAL_SCHEMA",
     "PLAN_R2_REMOTE_RUNTIME_PRODUCTION_BLOCKERS",
     "PLAN_R2_REMOTE_RUNTIME_QUALIFICATION_STATUS",
+    "PLAN_R2_TYPED_OWNER_CHANNEL_QUALIFICATION_STATUS",
     "PlanR2CanonicalWireChannel",
     "PlanR2ProcessRemoteOwnerGateway",
     "PlanR2RemoteExactEnvelopeJournal",
@@ -938,8 +1146,10 @@ __all__ = (
     "PlanR2RemoteOwnerService",
     "PlanR2RemoteReplayDiverged",
     "PlanR2RemoteResponseUnavailable",
+    "TypedStateOwnerPlanR2CanonicalWireChannel",
     "bind_plan_r2_process_remote_owner_gateway",
     "bind_plan_r2_remote_exact_envelope_journal",
+    "bind_typed_state_owner_plan_r2_canonical_wire_channel",
     "build_plan_r2_remote_request",
     "decode_plan_r2_remote_request",
     "decode_plan_r2_remote_response",
