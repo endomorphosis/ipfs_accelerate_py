@@ -73291,18 +73291,25 @@ class DatabaseImplementationDaemon:
         exhausted_budget = exhausted_receipt.get("retry_budget")
         if not isinstance(exhausted_budget, Mapping):
             return False
+        # Derive the restart-time attempt witness from the embedded exhausted
+        # receipt, not from the supersession's parallel top-level fields.  The
+        # validator can then prove that both copies reproduce one another
+        # instead of comparing a caller-controlled top-level identity to
+        # itself.
         attempt = {
-            field: supersession.get(field)
-            for field in (
-                "task_cid",
-                "attempt_id",
-                "attempt_number",
-                "claim_id",
-                "lease_id",
-                "owner_session_id",
-                "fencing_token",
-                "fence_epoch",
-            )
+            "task_cid": str(getattr(task, "task_cid", "") or ""),
+            **{
+                field: exhausted_receipt.get(field)
+                for field in (
+                    "attempt_id",
+                    "attempt_number",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
         }
         return bool(
             typed_deferral_budget_supersession_matches(
@@ -73318,6 +73325,110 @@ class DatabaseImplementationDaemon:
                 supersession
             )
         )
+
+    def _typed_deferral_supersession_reconciliation_observation(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Observe an admitted owner supersession without retired sidecars.
+
+        Typed-deferral histories are lane-local, so one lane can retain only a
+        prefix of the globally exhausted generation and a replacement sidecar
+        can retain no coordination rows for the final attempt at all.  The
+        owner-authored retrying receipt embeds the exact exhausted receipt and
+        is independently reproduced by ``_typed_deferral_claim_is_admitted``.
+        Once that proof succeeds, reconciliation is observation-only and must
+        not require disposable claim/attempt/lease rows or overwrite the
+        owner's recovery receipt as an ordinary retry.
+        """
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            return None
+        body = getattr(task, "body", None)
+        supersession = (
+            body.get("completion_receipt") if isinstance(body, Mapping) else None
+        )
+        if (
+            not isinstance(supersession, Mapping)
+            or supersession.get("operation")
+            != TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION
+        ):
+            return None
+        exhausted_receipt = supersession.get("exhausted_receipt")
+        exhausted_budget = (
+            exhausted_receipt.get("retry_budget")
+            if isinstance(exhausted_receipt, Mapping)
+            else None
+        )
+        local_budget = evidence.get("typed_deferral_budget")
+        local_finished_at_ms = attempt.finished_at_ms
+        exhausted_finished_at_ms = (
+            exhausted_receipt.get("execution_finished_at_ms")
+            if isinstance(exhausted_receipt, Mapping)
+            else None
+        )
+        same_attempt_id = (
+            attempt.attempt_id == exhausted_receipt.get("attempt_id")
+            if isinstance(exhausted_receipt, Mapping)
+            else False
+        )
+        exact_exhausted_attempt = bool(
+            same_attempt_id
+            and attempt.task_cid == getattr(task, "task_cid", "")
+            and attempt.attempt_number
+            == exhausted_receipt.get("attempt_number")
+            and attempt.claim_id == exhausted_receipt.get("claim_id")
+            and attempt.lease_id == exhausted_receipt.get("lease_id")
+            and attempt.owner_session_id
+            == exhausted_receipt.get("owner_session_id")
+            and attempt.fencing_token
+            == exhausted_receipt.get("fencing_token")
+            and attempt.fence_epoch == exhausted_receipt.get("fence_epoch")
+            and attempt.committed_phase
+            == exhausted_receipt.get("execution_phase")
+            and attempt.revision == exhausted_receipt.get("execution_revision")
+            and local_finished_at_ms == exhausted_finished_at_ms
+        )
+        if (
+            not isinstance(local_budget, Mapping)
+            or not isinstance(exhausted_budget, Mapping)
+            or not str(local_budget.get("generation_fingerprint") or "")
+            or local_budget.get("generation_fingerprint")
+            != exhausted_budget.get("generation_fingerprint")
+            or isinstance(local_finished_at_ms, bool)
+            or not isinstance(local_finished_at_ms, int)
+            or local_finished_at_ms <= 0
+            or isinstance(exhausted_finished_at_ms, bool)
+            or not isinstance(exhausted_finished_at_ms, int)
+            or exhausted_finished_at_ms <= 0
+            or (same_attempt_id and not exact_exhausted_attempt)
+            or (
+                not same_attempt_id
+                and local_finished_at_ms >= exhausted_finished_at_ms
+            )
+            or not self._typed_deferral_claim_is_admitted(task)
+        ):
+            return None
+        coordination = exhausted_receipt.get("coordination")
+        return {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "status": "retrying",
+            "changed": False,
+            "reason": "typed_portal_deferral_budget_superseded",
+            "supersession_id": str(
+                supersession.get("supersession_id") or ""
+            ),
+            "supersession_attempt_id": str(
+                supersession.get("attempt_id") or ""
+            ),
+            "control_revision": int(getattr(task, "revision", 0) or 0),
+            "coordination": (
+                dict(coordination) if isinstance(coordination, Mapping) else {}
+            ),
+        }
 
     def _rearm_blocked_tasks_with_outputs_on_head(self) -> dict[str, Any]:
         """Rearm blocked DuckDB tasks whose declared outputs already exist.
@@ -85525,6 +85636,21 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     f"failed attempt {attempt.attempt_id} has no control task"
                 )
+            status = str(task.status or "").strip().lower()
+            if self._automatic_claim_forbidden(task):
+                raise DatabaseImplementationAuthorityError(
+                    "automatic retry reconciliation rejected a manual/review-only task"
+                )
+            supersession_observation = (
+                self._typed_deferral_supersession_reconciliation_observation(
+                    attempt,
+                    task,
+                    evidence,
+                )
+            )
+            if supersession_observation is not None:
+                outcomes.append(supersession_observation)
+                continue
             control_supersession = (
                 self._fresh_failed_attempt_control_supersession(attempt)
             )
@@ -85536,11 +85662,6 @@ class DatabaseImplementationDaemon:
             ):
                 outcomes.append(control_supersession)
                 continue
-            status = str(task.status or "").strip().lower()
-            if self._automatic_claim_forbidden(task):
-                raise DatabaseImplementationAuthorityError(
-                    "automatic retry reconciliation rejected a manual/review-only task"
-                )
             budget = evidence.get("typed_deferral_budget")
             if isinstance(budget, Mapping) and budget.get("exhausted") is True:
                 # A later authoritative terminal CAS supersedes this immutable

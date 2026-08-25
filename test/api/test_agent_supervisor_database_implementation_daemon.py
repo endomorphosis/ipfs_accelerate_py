@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -3658,8 +3659,9 @@ def test_exhausted_supersession_with_admitted_repair_survives_reconciliation(
         assert reconciled[0]["reason"] == (
             "typed_portal_deferral_budget_superseded"
         )
-        assert reconciled[0]["coordination"]["historical_expired"] is True
-        assert reconciled[0]["coordination"]["expired_now"] is False
+        assert reconciled[0]["coordination"] == blocked.body[
+            "completion_receipt"
+        ]["coordination"]
         assert daemon.task_source.get(task_cid).status == "retrying"
 
         successor_projection = (
@@ -3717,6 +3719,185 @@ def test_exhausted_supersession_with_admitted_repair_survives_reconciliation(
         assert daemon.task_source.get(task_cid).status == "completed"
     finally:
         daemon.close()
+
+
+def test_admitted_exhausted_supersession_is_observed_from_partial_lane(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    repo, base_head, base_tree = _git_recovery_repo(tmp_path)
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    producer = _open_daemon(
+        tmp_path,
+        session="session:typed-budget-partial-producer",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["base_revision"] = base_head
+        tasks[0]["base_repository_tree_id"] = base_tree
+        producer.materialize_population(population)
+        first = producer.run_once()
+        first_attempt = producer.get_attempt(str(first["attempt_id"]))
+        assert first_attempt is not None
+        first_evidence = producer._terminal_retry_evidence(first_attempt)
+        assert first_evidence is not None
+        first_budget = first_evidence["typed_deferral_budget"]
+        assert isinstance(first_budget, Mapping)
+        assert first_budget["exhausted"] is False
+    finally:
+        producer.close()
+
+    # Preserve the retired lane's one-attempt execution prefix.  Its new
+    # coordination sidecar deliberately has no claim, lease, or attempt rows.
+    shutil.copy2(
+        tmp_path / "execution.duckdb",
+        tmp_path / "execution-partial.duckdb",
+    )
+
+    now["ms"] = 301_001
+    producer = _open_daemon(
+        tmp_path,
+        session="session:typed-budget-partial-producer",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        exhausted = producer.run_once()
+        assert exhausted["implementation_result"][
+            "retry_budget_exhausted"
+        ] is True
+        task_cid = str(exhausted["claimed_task_cid"])
+        blocked = producer.task_source.get(task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        repair_head, repair_tree = _git_commit(
+            repo,
+            name=TYPED_DEFERRAL_RECOVERY_TEST_PATH,
+            content="quota/high route repair\n",
+        )
+        failure, route_outcome = _successful_quota_high_pair()
+        request = database_task_source_module._build_owner_typed_deferral_budget_supersession_request(
+            task_cid=blocked.task_cid,
+            task_revision=blocked.revision,
+            task_body=blocked.body,
+            repair_head=repair_head,
+            repair_tree=repair_tree,
+            quota_probe_receipt=failure,
+            route_outcome=route_outcome,
+            owner_command_request_id="f" * 32,
+            owner_store_id="store:test-partial-reconciliation",
+            owner_store_generation="generation:test-partial-reconciliation",
+            admitted_at_ms=int(failure["observed_at_ms"]),
+            _owner_admission_sentinel=(
+                database_task_source_module._TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL
+            ),
+        )
+        retrying = producer.task_source.rearm_blocked_task(
+            task_cid,
+            receipt=request,
+        ).task
+        assert retrying.status == "retrying"
+        task_before = retrying.to_dict()
+        queue = producer.task_source.get_queue_entry(task_cid)
+        assert queue is not None
+        queue_before = queue.to_dict()
+    finally:
+        producer.close()
+
+    observer = _open_daemon(
+        tmp_path,
+        session="session:typed-budget-partial-observer",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+        lane="partial",
+    )
+    try:
+        observer._merge_repo_root = repo
+        local_attempts = observer._latest_failed_attempts()
+        assert len(local_attempts) == 1
+        local_attempt = local_attempts[0]
+        assert local_attempt.attempt_id == first_attempt.attempt_id
+        local_evidence = observer._terminal_retry_evidence(local_attempt)
+        assert local_evidence is not None
+        local_budget = local_evidence["typed_deferral_budget"]
+        assert isinstance(local_budget, Mapping)
+        assert local_budget["exhausted"] is False
+        assert observer.coordinator.get_task_claim(
+            local_attempt.claim_id
+        ) is None
+
+        # A distinct attempt with only a same-millisecond ordering witness is
+        # not a proved prefix of the exhausted attempt.
+        canonical = observer.task_source.get(task_cid)
+        assert canonical is not None
+        exhausted_receipt = canonical.body["completion_receipt"][
+            "exhausted_receipt"
+        ]
+        equal_timestamp_attempt = replace(
+            local_attempt,
+            finished_at_ms=int(
+                exhausted_receipt["execution_finished_at_ms"]
+            ),
+        )
+        assert observer._typed_deferral_supersession_reconciliation_observation(
+            equal_timestamp_attempt,
+            canonical,
+            local_evidence,
+        ) is None
+
+        reconciled = observer.reconcile_terminal_retry_states()
+        assert len(reconciled) == 1
+        assert reconciled[0]["changed"] is False
+        assert reconciled[0]["status"] == "retrying"
+        assert reconciled[0]["reason"] == (
+            "typed_portal_deferral_budget_superseded"
+        )
+        assert reconciled[0]["attempt_id"] == first_attempt.attempt_id
+        assert reconciled[0]["supersession_attempt_id"] == str(
+            exhausted["attempt_id"]
+        )
+        assert observer.task_source.get(task_cid).to_dict() == task_before
+        observed_queue = observer.task_source.get_queue_entry(task_cid)
+        assert observed_queue is not None
+        assert observed_queue.to_dict() == queue_before
+
+        # Recomputing the content identity cannot make a caller-controlled
+        # top-level attempt identity disagree with its embedded receipt.
+        tampered_body = json.loads(json.dumps(task_before["body"]))
+        tampered_supersession = tampered_body["completion_receipt"]
+        tampered_supersession["claim_id"] = "claim:tampered-top-level"
+        tampered_supersession.pop("supersession_id")
+        tampered_supersession["supersession_id"] = content_identity(
+            tampered_supersession
+        )
+        tampered_task = SimpleNamespace(
+            task_cid=task_before["task_cid"],
+            task_alias=task_before["task_alias"],
+            revision=task_before["revision"],
+            status=task_before["status"],
+            body=tampered_body,
+        )
+        assert observer._typed_deferral_claim_is_admitted(
+            tampered_task
+        ) is False
+    finally:
+        observer.close()
 
 
 @pytest.mark.parametrize(
