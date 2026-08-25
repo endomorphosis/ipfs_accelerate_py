@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -8,9 +10,10 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.residual_intelligence.benchmark import (
     IDENTITY_FIELDS,
     PARTITIONS,
+    REQUIRED_BINDINGS,
     REQUIRED_KINDS,
-    FrozenBenchmarkCase,
     PairedBenchmarkRunner,
+    ResidualBenchmarkManifest,
     load_cases,
     load_frozen_benchmark,
     load_manifest,
@@ -25,95 +28,132 @@ from ipfs_accelerate_py.agent_supervisor.residual_intelligence.contracts import 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "benchmarks/agent_supervisor/residual_intelligence/manifest.json"
 CASES = ROOT / "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl"
+SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
-def test_frozen_catalog_covers_every_family_partition_and_case_class() -> None:
+def test_frozen_catalog_covers_every_family_and_owner_scheduled_partition() -> None:
     manifest, cases = load_frozen_benchmark(MANIFEST, CASES)
 
-    assert len(cases) == len(ResidualTaskFamily) * len(PARTITIONS) * len(REQUIRED_KINDS)
-    assert {
-        (case.family, case.partition, case.kind) for case in cases
-    } == {
+    assert len(cases) == len(ResidualTaskFamily) * len(PARTITIONS)
+    assert [(case.family, case.partition, case.kind) for case in cases] == [
         (family, partition, kind)
         for family in ResidualTaskFamily
-        for partition in PARTITIONS
-        for kind in REQUIRED_KINDS
-    }
+        for partition, kind in zip(PARTITIONS, REQUIRED_KINDS, strict=True)
+    ]
     assert manifest.frozen_root == manifest.computed_frozen_root
+    assert manifest.case_catalog_root == manifest.benchmark_freeze["case_root"]
     assert manifest.training_admission == "training_unavailable"
 
 
-def test_every_case_binds_identities_and_denies_hidden_tests_to_training() -> None:
-    cases = load_cases(CASES)
+def test_cases_are_group_lineage_safe_and_hidden_inputs_are_denied() -> None:
+    _, cases = load_frozen_benchmark(MANIFEST, CASES)
 
+    assert len({case.group_id for case in cases}) == len(cases)
     for case in cases:
-        assert all(getattr(case, field) for field in IDENTITY_FIELDS)
+        assert all(SHA256_ID.fullmatch(getattr(case, field)) for field in IDENTITY_FIELDS)
         assert case.hidden_test is (case.partition in {"held_out", "adversarial"})
-        if case.kind == "cross_repository":
-            assert case.cross_repository_identity
-            assert case.cross_repository_identity != case.repository_identity
-            assert case.expected_disposition is ExpertDisposition.REJECT_INPUT
-        elif case.kind == "unknown_ood":
-            assert case.expected_disposition is ExpertDisposition.OUT_OF_DISTRIBUTION
-        else:
-            assert case.cross_repository_identity == ""
+        assert case.input_disposition == "payload_unavailable_training_unavailable"
+        assert case.expected_outcome is ExpertDisposition.CAPABILITY_UNAVAILABLE
+
+    cross_repository = [case for case in cases if case.kind == "cross_repository"]
+    unknown_ood = [case for case in cases if case.kind == "unknown_ood"]
+    assert len(cross_repository) == len(ResidualTaskFamily)
+    assert {case.partition for case in cross_repository} == {"held_out"}
+    assert all(case.hidden_test for case in cross_repository)
+    assert len(unknown_ood) == len(ResidualTaskFamily)
+    assert {case.partition for case in unknown_ood} == {"adversarial"}
+    assert all(case.hidden_test for case in unknown_ood)
 
 
-def test_frozen_roots_and_semantic_lineage_fail_closed_on_tampering() -> None:
+def test_manifest_freezes_all_required_identity_bindings_and_roots() -> None:
     manifest, cases = load_frozen_benchmark(MANIFEST, CASES)
-    training_case = next(case for case in cases if case.partition == "training")
-    held_out_case = next(case for case in cases if case.partition == "held_out")
+    freeze = manifest.benchmark_freeze
 
-    altered_identity = replace(training_case, tokenizer_identity="tokenizer:changed@1")
-    with pytest.raises(ResidualIntelligenceError, match="catalog root"):
-        validate_frozen_benchmark(manifest, (altered_identity, *cases[1:]))
+    assert set(freeze["bindings"]) == set(REQUIRED_BINDINGS)
+    assert all(SHA256_ID.fullmatch(value) for value in freeze["bindings"].values())
+    assert re.fullmatch(r"[0-9a-f]{40}", freeze["source"]["commit"])
+    assert re.fullmatch(r"[0-9a-f]{40}", freeze["source"]["tree"])
+    assert freeze["source"]["commit"] == manifest.source_revision
+    assert freeze["case_count"] == len(cases) == 96
+    assert freeze["fault_schedule"]["entries"] == [
+        {
+            "family": case.family.value,
+            "partition": case.partition,
+            "kind": case.kind,
+            "hidden_test": case.hidden_test,
+            "group_id": case.group_id,
+        }
+        for case in cases
+    ]
 
-    mixed_lineage = replace(held_out_case, lineage_group=training_case.lineage_group)
-    replaced = tuple(mixed_lineage if item.case_id == held_out_case.case_id else item for item in cases)
-    with pytest.raises(ResidualIntelligenceError, match="semantic lineage crosses"):
+
+def test_frozen_roots_and_group_lineage_fail_closed_on_tampering() -> None:
+    manifest, cases = load_frozen_benchmark(MANIFEST, CASES)
+    altered_input = replace(cases[0], input_identity="sha256:" + "0" * 64)
+    with pytest.raises(ResidualIntelligenceError, match="96-case schedule"):
+        validate_frozen_benchmark(manifest, (altered_input, *cases[1:]))
+
+    held_out = next(case for case in cases if case.partition == "held_out")
+    training = next(case for case in cases if case.partition == "training")
+    mixed_lineage = replace(held_out, group_id=training.group_id)
+    replaced = tuple(mixed_lineage if case.case_id == held_out.case_id else case for case in cases)
+    with pytest.raises(ResidualIntelligenceError, match="96-case schedule"):
         validate_frozen_benchmark(manifest, replaced)
 
+    altered_manifest = copy.deepcopy(manifest.to_dict())
+    altered_manifest["benchmark_freeze"]["bindings"]["validation_policy"] = (
+        "sha256:" + "f" * 64
+    )
+    with pytest.raises(ResidualIntelligenceError, match="binding set"):
+        validate_frozen_benchmark(ResidualBenchmarkManifest.from_dict(altered_manifest), cases)
 
-def test_paired_runner_preserves_complete_frozen_denominators() -> None:
+
+def test_paired_baseline_preserves_complete_frozen_all_abstain_denominators() -> None:
     manifest, cases = load_frozen_benchmark(MANIFEST, CASES)
-    result = PairedBenchmarkRunner().evaluate(
+    expected = manifest.benchmark_freeze["paired_baseline"]
+    runner = PairedBenchmarkRunner()
+
+    assert runner.evaluate(manifest, cases) == expected
+    assert runner.evaluate(
         manifest,
         cases,
-        prior={"accept": 100, "abstain": 284},
-        current={"accept": 100, "abstain": 284},
-    )
+        prior=expected["before"],
+        current=expected["after"],
+    ) == expected
+    assert expected["candidate_only"] is True
+    assert expected["training_performed"] is False
+    assert expected["case_count"] == len(cases)
+    assert expected["before"] == expected["after"]
+    assert expected["before"]["accept"] == 0
+    assert expected["before"]["abstain"] == len(cases)
+    assert set(expected["before"]["denominators_by_family"]) == {
+        family.value for family in ResidualTaskFamily
+    }
+    assert set(expected["before"]["denominators_by_family"].values()) == {len(PARTITIONS)}
+    with pytest.raises(ResidualIntelligenceError, match="all-abstain"):
+        runner.evaluate(manifest, cases, prior={"accept": 1}, current={"accept": 1})
 
-    assert result["candidate_only"] is True
-    assert result["frozen_root"] == manifest.frozen_root
-    assert result["total_denominator"] == len(cases)
-    assert set(result["denominators"]) == {family.value for family in ResidualTaskFamily}
-    assert set(result["denominators"].values()) == {len(PARTITIONS) * len(REQUIRED_KINDS)}
-    with pytest.raises(ResidualIntelligenceError, match="identical metrics"):
-        PairedBenchmarkRunner().evaluate(
-            manifest,
-            cases,
-            prior={"accept": 1},
-            current={"abstain": 1},
-        )
 
-
-def test_strict_loader_rejects_unpinned_or_duplicate_json_fields(tmp_path: Path) -> None:
+def test_strict_loader_rejects_duplicate_or_legacy_fields_and_bad_hidden_flags(
+    tmp_path: Path,
+) -> None:
     raw = load_manifest(MANIFEST)
-    assert raw["frozen_roots"]["benchmark"]
+    assert set(raw) == set(ResidualBenchmarkManifest._FIELDS)
+    assert raw["benchmark_freeze"]["freeze_id"]
+
     duplicate_case = tmp_path / "duplicate.jsonl"
     duplicate_case.write_text(
-        '{"family":"TASK_CLASSIFICATION","family":"RISK_CLASSIFICATION"}\n',
+        '{"family":"TASK_CLASSIFICATION","family":"RISK_CLASSIFICATION"}\\n',
         encoding="utf-8",
     )
     with pytest.raises(ResidualIntelligenceError, match="duplicate key"):
         load_cases(duplicate_case)
 
-    sample = next(case for case in load_cases(CASES) if case.kind == "cross_repository")
-    with pytest.raises(ResidualIntelligenceError, match="distinct repository"):
-        replace(sample, cross_repository_identity=sample.repository_identity)
+    legacy_manifest = dict(raw)
+    legacy_manifest["frozen_roots"] = {}
+    with pytest.raises(ResidualIntelligenceError, match="unknown fields"):
+        ResidualBenchmarkManifest.from_dict(legacy_manifest)
 
-
-def test_case_contract_requires_all_partition_appropriate_hidden_flags() -> None:
-    sample = next(case for case in load_cases(CASES) if case.partition == "training")
+    training = next(case for case in load_cases(CASES) if case.partition == "training")
     with pytest.raises(ResidualIntelligenceError, match="hidden_test"):
-        replace(sample, hidden_test=True)
+        replace(training, hidden_test=True)
