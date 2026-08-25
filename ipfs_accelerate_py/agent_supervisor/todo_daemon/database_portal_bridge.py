@@ -170,6 +170,9 @@ DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2: Final[str] = (
 DATABASE_POST_MERGE_COMPLETION_LINEAGE_FAILURE_REASON: Final[str] = (
     "Portal completion lacks one exact implementation commit"
 )
+DATABASE_POST_MERGE_COMPLETION_EVALUATED_BASELINE_MISSING_REASON: Final[str] = (
+    "Portal completion lacks one exact evaluated baseline"
+)
 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON: Final[str] = (
     "post-merge completion recovery seed target generation changed"
 )
@@ -178,6 +181,7 @@ _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS: Final[
 ] = frozenset(
     {
         DATABASE_POST_MERGE_COMPLETION_LINEAGE_FAILURE_REASON,
+        DATABASE_POST_MERGE_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
         DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
     }
 )
@@ -579,6 +583,35 @@ _POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_FIELDS: Final[frozenset[str]] = (
         }
     )
 )
+_POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-integration-requalification@1"
+)
+_POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "schema",
+        "task_ids",
+        "task_cid",
+        "request_id",
+        "candidate_commit",
+        "baseline_commit",
+        "integration_commit",
+        "source_event_id",
+        "source_event_digest",
+        "source_validation_result_digest",
+        "queue_validation_proof_digest",
+        "train_dedupe_key",
+        "train_receipt_id",
+        "train_receipt",
+        "current_target_commit",
+        "current_target_tree",
+        "entries",
+        "validation",
+        "receipt_id",
+    }
+)
 _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "schema",
@@ -621,6 +654,10 @@ _DATABASE_POST_MERGE_RECOVERY_SCHEMA: Final[str] = (
 _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-requalification-recovery@1"
+)
+_DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-callback-integration-recovery@1"
 )
 _DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -1738,7 +1775,7 @@ class DatabasePortalExecutionBridge:
         self,
         task_cids: Sequence[str],
     ) -> tuple[Any, ...]:
-        """Resolve exact blocked-task repair rows outside the fair cursor.
+        """Resolve exact blocked-task completion rows outside the fair cursor.
 
         The database owner supplies the bounded latest-terminal task
         identities.  Each identity is queried directly in the target-bound
@@ -1759,7 +1796,7 @@ class DatabasePortalExecutionBridge:
             return ()
         selected: list[Any] = []
         for task_cid in normalized:
-            matches = tuple(
+            repair_matches = tuple(
                 completed(
                     limit=2,
                     completion_schema=(
@@ -1772,6 +1809,29 @@ class DatabasePortalExecutionBridge:
                 )
                 or ()
             )
+            callback_candidates = tuple(
+                completed(
+                    limit=256,
+                    canonical_task_id=task_cid,
+                )
+                or ()
+            )
+            callback_matches = tuple(
+                item
+                for item in callback_candidates
+                if isinstance(getattr(item, "metadata", None), Mapping)
+                and item.metadata.get("schema")
+                == _MERGE_CANDIDATE_SCHEMA
+                and "completion" not in item.metadata
+            )
+            if len(repair_matches) > 1 or len(callback_matches) > 1:
+                continue
+            by_request_id = {
+                str(getattr(item, "request_id", "") or ""): item
+                for item in (*repair_matches, *callback_matches)
+                if str(getattr(item, "request_id", "") or "")
+            }
+            matches = tuple(by_request_id.values())
             if (
                 len(matches) == 1
                 and str(
@@ -2318,11 +2378,19 @@ class DatabasePortalExecutionBridge:
         projection: _DatabasePortalRecoveryProjection,
         *,
         evidence_digest: Callable[[Mapping[str, Any]], str],
+        train: Any | None = None,
     ) -> dict[str, Any] | None:
         """Compile the exact completed-row receipt into the database contract."""
 
         metadata = getattr(request, "metadata", None)
         completion = metadata.get("completion") if isinstance(metadata, Mapping) else None
+        if completion is None:
+            return self._post_merge_callback_integration_evidence(
+                request,
+                projection,
+                evidence_digest=evidence_digest,
+                train=train,
+            )
         expected_completion_fields = {
             "schema",
             "status",
@@ -2457,8 +2525,7 @@ class DatabasePortalExecutionBridge:
 
         metadata = getattr(request, "metadata", None)
         if (
-            projection.task_status != "blocked"
-            or str(getattr(request, "status", "") or "") != "completed"
+            str(getattr(request, "status", "") or "") != "completed"
             or not isinstance(metadata, Mapping)
             or "completion" in metadata
         ):
@@ -3223,6 +3290,857 @@ class DatabasePortalExecutionBridge:
             current_tree=current_tree,
         )
 
+    def _callback_integration_source_evidence(
+        self,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        *,
+        train: Any,
+    ) -> dict[str, Any] | None:
+        """Verify one legacy callback integration that missed reconciliation.
+
+        This is intentionally closed over the historical schema-v3 shape.  A
+        completed row with a successful receipt is not enough: the queue row,
+        full train receipt, queued Portal source, later bare completion, Git
+        lineage, and every declared output blob must all agree exactly.
+        """
+
+        if self.repository_root is None or self.merge_queue is None:
+            return None
+        metadata = getattr(request, "metadata", None)
+        task_alias = str(getattr(request, "task_id", "") or "")
+        task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        task_key = str(getattr(request, "canonical_task_key", "") or "")
+        request_id = str(getattr(request, "request_id", "") or "")
+        candidate = str(getattr(request, "commit_sha", "") or "")
+        canonical = str(getattr(request, "canonical_identity", "") or "")
+        dedupe_key = str(getattr(request, "dedupe_key", "") or "")
+        completion_task_cids = (
+            metadata.get("completion_task_cids")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        task_payload = metadata.get("task") if isinstance(metadata, Mapping) else None
+        outputs = task_payload.get("outputs") if isinstance(task_payload, Mapping) else None
+        validation_proof = (
+            metadata.get("validation_proof")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        baseline = str(metadata.get("baseline_ref") or "") if isinstance(metadata, Mapping) else ""
+        candidate_tree = str(metadata.get("candidate_tree") or "") if isinstance(metadata, Mapping) else ""
+        events_path = str(metadata.get("events_path") or "") if isinstance(metadata, Mapping) else ""
+        if (
+            str(getattr(request, "status", "") or "") != "completed"
+            or not isinstance(metadata, Mapping)
+            or metadata.get("schema") != _MERGE_CANDIDATE_SCHEMA
+            or "completion" in metadata
+            or not request_id
+            or not task_alias
+            or not task_cid
+            or not task_key
+            or canonical != task_key
+            or re.fullmatch(r"[0-9a-f]{40}", candidate) is None
+            or re.fullmatch(r"[0-9a-f]{40}", baseline) is None
+            or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", candidate_tree)
+            is None
+            or metadata.get("implementation_commit") != candidate
+            or completion_task_cids != {task_alias: task_cid}
+            or not isinstance(task_payload, Mapping)
+            or task_payload.get("task_id") != task_alias
+            or task_payload.get("canonical_task_cid") != task_cid
+            or task_payload.get("canonical_task_key") != task_key
+            or not isinstance(outputs, list)
+            or not outputs
+            or len(outputs) > 4096
+            or len(set(str(item) for item in outputs)) != len(outputs)
+            or any(not isinstance(item, str) or not item for item in outputs)
+            or not isinstance(validation_proof, Mapping)
+            or validation_proof.get("attempted") is not True
+            or validation_proof.get("passed") is not True
+            or validation_proof.get("returncode") != 0
+            or validation_proof.get("target_commit") != candidate
+        ):
+            return None
+        try:
+            if Path(events_path).resolve() != projection.paths.events.resolve():
+                return None
+        except (OSError, RuntimeError, ValueError):
+            return None
+
+        make_key = getattr(train, "_dedupe_key", None)
+        read_receipt = getattr(train, "_read_receipt", None)
+        receipt_path = getattr(train, "_receipt_path", None)
+        if (
+            not callable(make_key)
+            or not callable(read_receipt)
+            or not callable(receipt_path)
+        ):
+            raise DatabasePortalBridgeError(
+                "merge train lacks callback integration recovery verification"
+            )
+        receipt_key = str(make_key(canonical, candidate) or "")
+        if not receipt_key or receipt_key != dedupe_key:
+            return None
+        try:
+            if (
+                receipt_path(receipt_key).stat().st_size
+                > _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+            ):
+                return None
+        except (FileNotFoundError, OSError):
+            return None
+        receipt = read_receipt(receipt_key)
+        top_fields = {
+            "acceptance_pending",
+            "accepted",
+            "callback_owned_integration",
+            "canonical_task_id",
+            "commit_sha",
+            "distributed_publication_admission",
+            "finished_at",
+            "integrated",
+            "merge_commit",
+            "merge_result",
+            "merged",
+            "request_id",
+            "started_at",
+            "status",
+            "target_branch",
+            "target_commit",
+            "task_id",
+        }
+        if not isinstance(receipt, Mapping) or set(receipt) != top_fields:
+            return None
+        receipt = dict(receipt)
+        integration = str(receipt.get("target_commit") or "")
+        started_at = receipt.get("started_at")
+        finished_at = receipt.get("finished_at")
+        admission = receipt.get("distributed_publication_admission")
+        merge_result = receipt.get("merge_result")
+        proof = (
+            merge_result.get("integration_commit_proof")
+            if isinstance(merge_result, Mapping)
+            else None
+        )
+        invariant = (
+            merge_result.get("post_merge_declared_output_invariant")
+            if isinstance(merge_result, Mapping)
+            else None
+        )
+        todo = (
+            merge_result.get("todo_update_result")
+            if isinstance(merge_result, Mapping)
+            else None
+        )
+        completion_receipts = (
+            todo.get("completion_receipts") if isinstance(todo, Mapping) else None
+        )
+        member = (
+            completion_receipts[0]
+            if isinstance(completion_receipts, list)
+            and len(completion_receipts) == 1
+            else None
+        )
+        checks = invariant.get("checks") if isinstance(invariant, Mapping) else None
+        observed_check_paths = (
+            [str(item.get("path") or "") for item in checks]
+            if isinstance(checks, list)
+            and all(isinstance(item, Mapping) for item in checks)
+            else []
+        )
+        if (
+            receipt.get("status") != "merged"
+            or receipt.get("accepted") is not True
+            or receipt.get("integrated") is not True
+            or receipt.get("merged") is not True
+            or receipt.get("callback_owned_integration") is not True
+            or receipt.get("acceptance_pending") is not False
+            or receipt.get("request_id") != request_id
+            or receipt.get("task_id") != task_alias
+            or receipt.get("canonical_task_id") != canonical
+            or receipt.get("commit_sha") != candidate
+            or receipt.get("target_branch") != self.merge_target_branch
+            or receipt.get("merge_commit") != integration
+            or re.fullmatch(r"[0-9a-f]{40}", integration) is None
+            or isinstance(started_at, bool)
+            or not isinstance(started_at, (int, float))
+            or isinstance(finished_at, bool)
+            or not isinstance(finished_at, (int, float))
+            or not math.isfinite(float(started_at))
+            or not math.isfinite(float(finished_at))
+            or float(started_at) > float(finished_at)
+            or not isinstance(admission, Mapping)
+            or set(admission)
+            != {"schema", "admitted", "distributed", "request_id", "status"}
+            or admission.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/distributed-lane-admission@1"
+            or admission.get("admitted") is not True
+            or admission.get("distributed") is not False
+            or admission.get("request_id") != request_id
+            or admission.get("status") != "local"
+            or not isinstance(merge_result, Mapping)
+            or merge_result.get("attempted") is not True
+            or merge_result.get("merged") is not True
+            or merge_result.get("returncode") != 0
+            or merge_result.get("merge_commit") != integration
+            or merge_result.get("target_branch") != self.merge_target_branch
+            or not isinstance(proof, Mapping)
+            or set(proof)
+            != {
+                "implementation_commit",
+                "integration_commit",
+                "integration_ref",
+                "passed",
+                "reasons",
+                "target_branch",
+            }
+            or proof.get("implementation_commit") != candidate
+            or proof.get("integration_commit") != integration
+            or proof.get("integration_ref") != integration
+            or proof.get("passed") is not True
+            or proof.get("reasons") != []
+            or proof.get("target_branch") != self.merge_target_branch
+            or not isinstance(invariant, Mapping)
+            or invariant.get("passed") is not True
+            or invariant.get("reason") != "declared_outputs_tracked"
+            or invariant.get("mode") != "repository_tree"
+            or invariant.get("repository_ref") != integration
+            or invariant.get("task_ids") != [task_alias]
+            or invariant.get("missing_outputs") != []
+            or invariant.get("unsafe_outputs") != []
+            or invariant.get("untracked_outputs") != []
+            or observed_check_paths != outputs
+            or any(
+                set(item)
+                != {
+                    "exists",
+                    "path",
+                    "reason",
+                    "repository",
+                    "repository_ref",
+                    "task_id",
+                    "tracked",
+                    "tracked_path",
+                }
+                or item.get("exists") is not True
+                or item.get("tracked") is not True
+                or item.get("reason") != "declared_output_tracked"
+                or item.get("repository") != "."
+                or item.get("repository_ref") != integration
+                or item.get("task_id") != task_alias
+                or item.get("tracked_path") != item.get("path")
+                for item in (checks or ())
+            )
+            or not isinstance(todo, Mapping)
+            or set(todo)
+            != {
+                "already_completed_task_ids",
+                "commit_result",
+                "completion_reason",
+                "completion_receipts",
+                "inserted_status_task_ids",
+                "missing_status_task_ids",
+                "missing_task_ids",
+                "path",
+                "task_id",
+                "updated",
+                "updated_checkbox_task_ids",
+                "updated_task_ids",
+            }
+            or todo.get("task_id") != task_alias
+            or todo.get("updated") is not True
+            or todo.get("completion_reason") != "single_task"
+            or todo.get("updated_task_ids") != [task_alias]
+            or todo.get("missing_task_ids") != []
+            or todo.get("missing_status_task_ids") != []
+            or not isinstance(member, Mapping)
+            or set(member)
+            != {
+                "board_namespace",
+                "canonical_task_cid",
+                "canonical_task_key",
+                "schema",
+                "status",
+                "task_id",
+            }
+            or member.get("schema")
+            != "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
+            or member.get("status") != "succeeded"
+            or member.get("task_id") != task_alias
+            or member.get("canonical_task_cid") != task_cid
+            or member.get("canonical_task_key") != task_key
+        ):
+            return None
+
+        try:
+            events = self._verified_event_chain(projection.paths)
+        except DatabasePortalBridgeError:
+            return None
+
+        def event_request_id(event: Mapping[str, Any]) -> str:
+            direct = str(event.get("request_id") or "")
+            event_merge = event.get("merge_result")
+            return direct or (
+                str(event_merge.get("request_id") or "")
+                if isinstance(event_merge, Mapping)
+                else ""
+            )
+
+        request_sources = [
+            event
+            for event in events
+            if event.get("type") == "implementation_finished"
+            and event_request_id(event) == request_id
+        ]
+        if len(request_sources) != 1:
+            return None
+        source_event = request_sources[0]
+        event_merge = source_event.get("merge_result")
+        event_validation = source_event.get("validation_result")
+        event_board = source_event.get("board_completion")
+        source_sequence = source_event.get("sequence")
+        source_attempt = source_event.get("attempt")
+        source_event_id = str(source_event.get("event_id") or "")
+        completions = [
+            event
+            for event in events
+            if event.get("type") == "task_completed"
+            and event.get("task_id") == task_alias
+            and event.get("canonical_task_cid") == task_cid
+        ]
+        reconciliations = [
+            event
+            for event in events
+            if event.get("type") == "merge_reconciled"
+            and (
+                event_request_id(event) == request_id
+                or event.get("completion_source_event_id") == source_event_id
+                or (
+                    event.get("task_id") == task_alias
+                    and event.get("canonical_task_cid") == task_cid
+                    and event.get("implementation_commit") == candidate
+                )
+            )
+        ]
+        completion_sequence = completions[0].get("sequence") if len(completions) == 1 else None
+        if (
+            source_event.get("task_id") != task_alias
+            or source_event.get("canonical_task_cid") != task_cid
+            or source_event.get("canonical_task_key") != task_key
+            or isinstance(source_attempt, bool)
+            or not isinstance(source_attempt, int)
+            or source_attempt < 1
+            or source_event.get("attempt_consumed") is not True
+            or source_event.get("provider_dispatched") is not True
+            or source_event.get("returncode") != 0
+            or source_event.get("baseline_ref") != baseline
+            or source_event.get("implementation_commit") != candidate
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", source_event_id) is None
+            or isinstance(source_sequence, bool)
+            or not isinstance(source_sequence, int)
+            or not isinstance(event_validation, Mapping)
+            or event_validation.get("attempted") is not True
+            or event_validation.get("passed") is not True
+            or event_validation.get("returncode") != 0
+            or not isinstance(event_merge, Mapping)
+            or event_merge.get("queued") is not True
+            or event_merge.get("merged") is not False
+            or event_merge.get("reason") != "merge_queued"
+            or event_merge.get("request_id") != request_id
+            or event_merge.get("implementation_commit") != candidate
+            or event_merge.get("completion_task_cids") != {task_alias: task_cid}
+            or not isinstance(event_board, Mapping)
+            or event_board.get("complete") is not False
+            or event_board.get("pending_merge") is not True
+            or event_board.get("reason") != "merge_queued_awaiting_integration"
+            or len(completions) != 1
+            or completions[0].get("reason") != "task_became_completed"
+            or completions[0].get("completion_receipt_repair") is not False
+            or isinstance(completion_sequence, bool)
+            or not isinstance(completion_sequence, int)
+            or completion_sequence <= source_sequence
+            or reconciliations
+        ):
+            return None
+
+        def git(*arguments: str) -> subprocess.CompletedProcess[Any]:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+
+        try:
+            head = git(
+                "rev-parse",
+                "--verify",
+                f"refs/heads/{self.merge_target_branch}^{{commit}}",
+            )
+            head_text = head.stdout.decode().strip() if isinstance(head.stdout, bytes) else str(head.stdout).strip()
+            current_tree_result = git("rev-parse", "--verify", f"{head_text}^{{tree}}")
+            current_tree = current_tree_result.stdout.decode().strip() if isinstance(current_tree_result.stdout, bytes) else str(current_tree_result.stdout).strip()
+            candidate_tree_result = git("rev-parse", "--verify", f"{candidate}^{{tree}}")
+            candidate_tree_text = candidate_tree_result.stdout.decode().strip() if isinstance(candidate_tree_result.stdout, bytes) else str(candidate_tree_result.stdout).strip()
+            parents = git("rev-list", "--parents", "-n", "1", candidate)
+            parent_text = parents.stdout.decode().strip() if isinstance(parents.stdout, bytes) else str(parents.stdout).strip()
+            candidate_integration = git("merge-base", "--is-ancestor", candidate, integration)
+            integration_current = git("merge-base", "--is-ancestor", integration, head_text)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if (
+            head.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}", head_text) is None
+            or current_tree_result.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", current_tree) is None
+            or candidate_tree_result.returncode != 0
+            or candidate_tree_text != candidate_tree
+            or parents.returncode != 0
+            or parent_text.split() != [candidate, baseline]
+            or candidate_integration.returncode != 0
+            or integration_current.returncode != 0
+        ):
+            return None
+        entries: list[dict[str, Any]] = []
+        for path in outputs:
+            try:
+                safe_path = _safe_output_path(path)
+                observed = [
+                    git("ls-tree", "-z", commit, "--", safe_path)
+                    for commit in (candidate, integration, head_text)
+                ]
+            except (DatabasePortalBridgeError, OSError, subprocess.SubprocessError):
+                return None
+            if any(item.returncode != 0 for item in observed):
+                return None
+            raw_entry = observed[0].stdout
+            if not isinstance(raw_entry, bytes):
+                raw_entry = str(raw_entry).encode("utf-8")
+            if not raw_entry or any(item.stdout != observed[0].stdout for item in observed[1:]):
+                return None
+            match = re.fullmatch(
+                rb"([0-9]{6}) (blob) ([0-9a-f]{40}(?:[0-9a-f]{24})?)\t([^\0]+)\0",
+                raw_entry,
+            )
+            if match is None or match.group(4).decode("utf-8") != safe_path:
+                return None
+            entries.append(
+                {
+                    "path": safe_path,
+                    "mode": match.group(1).decode("ascii"),
+                    "object_type": "blob",
+                    "object_id": match.group(3).decode("ascii"),
+                }
+            )
+        canonical_train_receipt = _canonical_json(receipt)
+        if len(canonical_train_receipt) > _MAX_DATABASE_PORTAL_PROJECTION_BYTES:
+            return None
+        return {
+            "task_ids": [task_alias],
+            "task_cid": task_cid,
+            "request_id": request_id,
+            "candidate_commit": candidate,
+            "baseline_commit": baseline,
+            "integration_commit": integration,
+            "source_event_id": source_event_id,
+            "source_event_digest": _sha256_bytes(_canonical_json(source_event)),
+            "source_validation_result_digest": _sha256_bytes(
+                _canonical_json(event_validation)
+            ),
+            "queue_validation_proof_digest": _sha256_bytes(
+                _canonical_json(validation_proof)
+            ),
+            "train_dedupe_key": receipt_key,
+            "train_receipt_id": _sha256_bytes(canonical_train_receipt),
+            # Formal content identities reject floats.  Preserve the complete
+            # legacy receipt, including float timestamps, as exact bounded
+            # canonical JSON and hash those UTF-8 bytes independently.
+            "train_receipt": canonical_train_receipt.decode("utf-8"),
+            "current_target_commit": head_text,
+            "current_target_tree": current_tree,
+            "entries": entries,
+        }
+
+    @staticmethod
+    def _post_merge_callback_integration_receipt_path(
+        projection: _DatabasePortalRecoveryProjection,
+        *,
+        train_receipt_id: str,
+        current_head: str,
+        current_tree: str,
+    ) -> Path:
+        key = hashlib.sha256(
+            _canonical_json(
+                {
+                    "train_receipt_id": train_receipt_id,
+                    "current_target_commit": current_head,
+                    "current_target_tree": current_tree,
+                }
+            )
+        ).hexdigest()
+        return (
+            projection.paths.root
+            / "post-merge-callback-integration-requalification"
+            / f"{key}.json"
+        )
+
+    @staticmethod
+    def _verified_post_merge_callback_integration_receipt(
+        raw: Any,
+        *,
+        source: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        from ..proof.formal_verification_contracts import content_identity
+
+        if not isinstance(raw, Mapping):
+            return None
+        value = dict(raw)
+        receipt_id = str(value.pop("receipt_id", "") or "")
+        validation = value.get("validation")
+        expected_source_fields = {
+            key for key in _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_FIELDS
+            if key not in {"schema", "validation", "receipt_id"}
+        }
+        if (
+            set(raw) != _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_FIELDS
+            or value.get("schema")
+            != _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+            or any(value.get(key) != source.get(key) for key in expected_source_fields)
+            or not isinstance(validation, list)
+            or len(validation) != 1
+            or receipt_id != content_identity(value)
+        ):
+            return None
+        item = validation[0]
+        digests = item.get("validation_result_digests") if isinstance(item, Mapping) else None
+        command_count = item.get("command_count") if isinstance(item, Mapping) else None
+        if (
+            not isinstance(item, Mapping)
+            or set(item)
+            != {
+                "task_id",
+                "passed",
+                "returncode",
+                "validation_result_digests",
+                "command_count",
+                "log_sha256",
+            }
+            or item.get("task_id") != source.get("task_ids", [""])[0]
+            or item.get("passed") is not True
+            or item.get("returncode") != 0
+            or isinstance(command_count, bool)
+            or not isinstance(command_count, int)
+            or command_count < 1
+            or not isinstance(digests, list)
+            or len(digests) != command_count
+            or any(re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", str(digest)) is None for digest in digests)
+            or re.fullmatch(r"[0-9a-f]{64}", str(item.get("log_sha256") or "")) is None
+        ):
+            return None
+        return {**value, "receipt_id": receipt_id}
+
+    def _load_post_merge_callback_integration_receipt(
+        self,
+        path: Path,
+        *,
+        source: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        try:
+            if path.stat().st_size > _MAX_DATABASE_PORTAL_PROJECTION_BYTES:
+                return None
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError):
+            return None
+        return self._verified_post_merge_callback_integration_receipt(
+            raw,
+            source=source,
+        )
+
+    def _requalify_callback_integration(
+        self,
+        source: Mapping[str, Any],
+        *,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+    ) -> dict[str, Any] | None:
+        """Run one fresh uncached declared validation at the bound target."""
+
+        if self.repository_root is None or self.merge_queue is None:
+            return None
+        task_alias = str(getattr(request, "task_id", "") or "")
+        task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        current_head = str(source.get("current_target_commit") or "")
+        current_tree = str(source.get("current_target_tree") or "")
+        if source.get("task_ids") != [task_alias] or source.get("task_cid") != task_cid:
+            return None
+        path = self._post_merge_callback_integration_receipt_path(
+            projection,
+            train_receipt_id=str(source.get("train_receipt_id") or ""),
+            current_head=current_head,
+            current_tree=current_tree,
+        )
+        if path.exists():
+            return self._load_post_merge_callback_integration_receipt(
+                path,
+                source=source,
+            )
+        portal = self.portal_factory(projection.paths, task_alias)
+        if portal is None:
+            raise DatabasePortalBridgeError(
+                "portal_factory did not return a Portal-compatible daemon"
+            )
+        close = getattr(portal, "close_event_runtime", None) or getattr(portal, "close", None)
+        try:
+            load_tasks = getattr(portal, "_load_tasks", None)
+            run_validation = getattr(portal, "_run_validation_commands", None)
+            run_mutation = getattr(portal, "_run_checkout_mutation_transaction", None)
+            cleanup_workspace = getattr(portal, "_cleanup_main_merge_workspace", None)
+            portal_root = getattr(portal, "repo_root", None)
+            if (
+                getattr(portal, "merge_queue", None) is not self.merge_queue
+                or portal_root is None
+                or Path(portal_root).absolute() != self.repository_root
+                or str(getattr(portal, "resolved_merge_target_branch", "") or "")
+                != self.merge_target_branch
+                or not callable(load_tasks)
+                or not callable(run_validation)
+                or not callable(run_mutation)
+                or not callable(cleanup_workspace)
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal recovery daemon lacks callback requalification authority"
+                )
+            tasks = list(load_tasks())
+            if (
+                len(tasks) != 1
+                or str(getattr(tasks[0], "task_id", "") or "") != task_alias
+                or str(getattr(tasks[0], "canonical_task_cid", "") or "") != task_cid
+                or not tuple(getattr(tasks[0], "validation", ()) or ())
+            ):
+                return None
+
+            def validate() -> dict[str, Any]:
+                result: dict[str, Any] = {"passed": False, "validation": []}
+                root = projection.paths.root / "post-merge-callback-integration-requalification"
+                root.mkdir(parents=True, exist_ok=True)
+                temporary = Path(tempfile.mkdtemp(prefix="worktree-", dir=root))
+                temporary.rmdir()
+                added = False
+                try:
+                    before = subprocess.run(
+                        ["git", "rev-parse", "--verify", f"refs/heads/{self.merge_target_branch}^{{commit}}"],
+                        cwd=self.repository_root,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=10,
+                    )
+                    if before.returncode != 0 or before.stdout.strip() != current_head:
+                        return result
+                    worktree = subprocess.run(
+                        ["git", "worktree", "add", "--detach", str(temporary), current_head],
+                        cwd=self.repository_root,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=30,
+                    )
+                    if worktree.returncode != 0:
+                        return result
+                    added = True
+                    log_root = projection.paths.implementation_logs / "post-merge-callback-integration-requalification"
+                    log_root.mkdir(parents=True, exist_ok=True)
+                    log_path = log_root / f"{task_alias}-{current_head[:16]}.log"
+                    validation = run_validation(
+                        temporary,
+                        tasks[0],
+                        log_path,
+                        force_uncached=True,
+                    )
+                    command_results = validation.get("results") if isinstance(validation, Mapping) else None
+                    digests = (
+                        [str(item.get("validation_result_digest") or "") for item in command_results]
+                        if isinstance(command_results, list)
+                        and all(isinstance(item, Mapping) for item in command_results)
+                        else []
+                    )
+                    head = subprocess.run(
+                        ["git", "rev-parse", "--verify", "HEAD^{commit}"], cwd=temporary,
+                        capture_output=True, check=False, text=True, timeout=10,
+                    )
+                    tree = subprocess.run(
+                        ["git", "rev-parse", "--verify", "HEAD^{tree}"], cwd=temporary,
+                        capture_output=True, check=False, text=True, timeout=10,
+                    )
+                    status = subprocess.run(
+                        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+                        cwd=temporary, capture_output=True, check=False, timeout=10,
+                    )
+                    after = subprocess.run(
+                        ["git", "rev-parse", "--verify", f"refs/heads/{self.merge_target_branch}^{{commit}}"],
+                        cwd=self.repository_root, capture_output=True, check=False, text=True, timeout=10,
+                    )
+                    if (
+                        not isinstance(validation, Mapping)
+                        or validation.get("passed") is not True
+                        or validation.get("returncode") != 0
+                        or not isinstance(command_results, list)
+                        or not command_results
+                        or len(digests) != len(command_results)
+                        or any(re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", item) is None for item in digests)
+                        or not log_path.is_file()
+                        or head.returncode != 0
+                        or head.stdout.strip() != current_head
+                        or tree.returncode != 0
+                        or tree.stdout.strip() != current_tree
+                        or status.returncode != 0
+                        or status.stdout
+                        or after.returncode != 0
+                        or after.stdout.strip() != current_head
+                    ):
+                        return result
+                    result.update(
+                        passed=True,
+                        validation=[
+                            {
+                                "task_id": task_alias,
+                                "passed": True,
+                                "returncode": 0,
+                                "validation_result_digests": digests,
+                                "command_count": len(command_results),
+                                "log_sha256": hashlib.sha256(log_path.read_bytes()).hexdigest(),
+                            }
+                        ],
+                    )
+                    return result
+                except (OSError, subprocess.SubprocessError):
+                    return result
+                finally:
+                    if added:
+                        cleanup = cleanup_workspace(temporary, ephemeral=True)
+                        if not isinstance(cleanup, Mapping) or cleanup.get("cleaned") is not True:
+                            result["passed"] = False
+
+            transaction = run_mutation(
+                task_id=task_alias,
+                branch=self.merge_target_branch,
+                operation="requalify_post_merge_callback_integration",
+                callback=validate,
+                failure_fields={"passed": False},
+                extra={
+                    "current_target_commit": current_head,
+                    "source_integration_commit": str(source.get("integration_commit") or ""),
+                },
+            )
+            validations = transaction.get("validation") if isinstance(transaction, Mapping) else None
+            if (
+                not isinstance(transaction, Mapping)
+                or transaction.get("passed") is not True
+                or not isinstance(validations, list)
+                or len(validations) != 1
+            ):
+                return None
+        finally:
+            if callable(close):
+                close()
+        from ..proof.formal_verification_contracts import content_identity
+
+        qualified = {
+            "schema": _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA,
+            **dict(source),
+            "validation": [dict(item) for item in validations],
+        }
+        qualified["receipt_id"] = content_identity(qualified)
+        _atomic_write_once(
+            path,
+            json.dumps(qualified, indent=2, sort_keys=True).encode("utf-8") + b"\n",
+        )
+        return self._load_post_merge_callback_integration_receipt(
+            path,
+            source=source,
+        )
+
+    def _post_merge_callback_integration_evidence(
+        self,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        *,
+        evidence_digest: Callable[[Mapping[str, Any]], str],
+        train: Any | None = None,
+    ) -> dict[str, Any] | None:
+        if train is None:
+            if self.repository_root is None or self.merge_queue is None:
+                return None
+            from ..merge.merge_train import MergeTrain
+
+            train = MergeTrain(
+                repo_root=self.repository_root,
+                queue=self.merge_queue,
+                target_branch=self.merge_target_branch,
+                max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
+            )
+        source = self._callback_integration_source_evidence(
+            request,
+            projection,
+            train=train,
+        )
+        if source is None:
+            return None
+        qualification = self._requalify_callback_integration(
+            source,
+            request=request,
+            projection=projection,
+        )
+        if qualification is None:
+            return None
+        binding = projection.binding
+        evidence: dict[str, Any] = {
+            "schema": _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA,
+            "request_id": str(getattr(request, "request_id", "") or ""),
+            "task_cid": str(getattr(request, "canonical_task_id", "") or ""),
+            "task_alias": str(getattr(request, "task_id", "") or ""),
+            "candidate_commit": str(getattr(request, "commit_sha", "") or ""),
+            "source_attempt_id": str(binding.get("attempt_id") or ""),
+            "source_claim_id": str(binding.get("claim_id") or ""),
+            "source_lease_id": str(binding.get("lease_id") or ""),
+            "source_fencing_token": binding.get("fencing_token"),
+            "source_fence_epoch": binding.get("fence_epoch"),
+            "source_binding_id": str(binding.get("binding_id") or ""),
+            "source_projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "qualified_target_commit": str(
+                qualification.get("current_target_commit") or ""
+            ),
+            "callback_requalification_receipt_id": str(
+                qualification.get("receipt_id") or ""
+            ),
+            "callback_requalification_receipt": dict(qualification),
+        }
+        if (
+            not evidence["request_id"]
+            or not evidence["source_attempt_id"]
+            or not evidence["source_claim_id"]
+            or not evidence["source_lease_id"]
+            or type(evidence["source_fencing_token"]) is not int
+            or type(evidence["source_fence_epoch"]) is not int
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", evidence["source_binding_id"])
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                evidence["source_projection_immutable_digest"],
+            )
+            is None
+        ):
+            return None
+        evidence_id = evidence_digest(evidence)
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", str(evidence_id or "")) is None:
+            return None
+        evidence["evidence_id"] = str(evidence_id)
+        return evidence
+
     @staticmethod
     def _record_for_attempt(task_source: Any, attempt: Any) -> Any:
         getter = getattr(task_source, "get_task", None) or getattr(task_source, "get", None)
@@ -3540,6 +4458,588 @@ class DatabasePortalExecutionBridge:
                 return True
         return False
 
+    @staticmethod
+    def _exact_callback_reconciliation_for_completion_source(
+        reconciliation: Mapping[str, Any],
+        source: Mapping[str, Any],
+        *,
+        alias: str,
+        task_cid: str,
+    ) -> bool:
+        """Verify the complete callback handoff, not merely its landed SHA."""
+
+        from ..proof.formal_verification_contracts import content_identity
+
+        source_merge = source.get("merge_result")
+        source_validation = source.get("validation_result")
+        source_board = source.get("board_completion")
+        source_type = str(source.get("type") or "")
+        source_branch = str(source.get("branch") or "")
+        if (
+            not isinstance(source_merge, Mapping)
+            or not isinstance(source_validation, Mapping)
+            or not isinstance(source_board, Mapping)
+        ):
+            return False
+        request_id = str(source_merge.get("request_id") or "")
+        baseline = str(source.get("baseline_ref") or "")
+        implementation = str(source.get("implementation_commit") or "")
+        source_event_id = str(source.get("event_id") or "")
+        source_attempt = source.get("attempt")
+        completion_task_cids = source_merge.get("completion_task_cids")
+        common_source_required_fields = {
+            "attempt",
+            "attempt_consumed",
+            "baseline_ref",
+            "board_completion",
+            "branch",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "implementation_commit",
+            "merge_result",
+            "provider_dispatched",
+            "returncode",
+            "task_id",
+            "validation_result",
+        } | set(_PORTAL_EVENT_ENVELOPE_FIELDS)
+        common_source_fields = common_source_required_fields | {
+            "board_namespace",
+            "task_source_identity",
+        }
+        implementation_source_fields = common_source_fields | {
+            "cache_hit",
+            "cleanup_result",
+            "commit_result",
+            "completion_receipt_degraded",
+            "deferred",
+            "dependency_preflight",
+            "diagnostic_receipt_id",
+            "exception_result",
+            "failed_preservation_result",
+            "failure_kind",
+            "implementation_result",
+            "infrastructure_failure",
+            "lifecycle_finalize",
+            "log_path",
+            "protected_path_violation",
+            "provider_call_allowed",
+            "reason",
+            "saved_duration_seconds",
+            "setup_duration_seconds",
+            "submodule_init_failures",
+            "task_cid",
+            "task_execution_receipt_id",
+            "task_execution_receipt_path",
+            "termination_result",
+            "timeout_result",
+            "todo_update_result",
+            "workspace_setup",
+            "worktree_path",
+        }
+        projected_source_fields = common_source_fields | {
+            "database_portal_merge_continuation_source",
+            "merge_queue_synchronous_source",
+            "reason",
+        }
+        source_fields = (
+            implementation_source_fields
+            if source_type == "implementation_finished"
+            else projected_source_fields
+            if source_type == "worktree_reconciliation_candidate_queued"
+            else set()
+        )
+        if (
+            not source_fields
+            or not common_source_required_fields <= set(source)
+            or not set(source) <= source_fields
+            or not request_id
+            or re.fullmatch(r"[0-9a-f]{40}", baseline) is None
+            or re.fullmatch(r"[0-9a-f]{40}", implementation) is None
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", source_event_id) is None
+            or type(source_attempt) is not int
+            or source_attempt < 1
+            or source_merge.get("queued") is not True
+            or source_merge.get("merged") is not False
+            or source_merge.get("attempted") is not False
+            or source_merge.get("reason") != "merge_queued"
+            or source_merge.get("request_id") != request_id
+            or source_merge.get("branch") != source_branch
+            or source_merge.get("implementation_commit") != implementation
+            or source_merge.get("canonical_task_cid") != task_cid
+            or source_merge.get("canonical_task_key")
+            != str(source.get("canonical_task_key") or "")
+            or not str(source_merge.get("target_repository_id") or "")
+            or not str(source_merge.get("target_branch") or "")
+            or not isinstance(completion_task_cids, Mapping)
+            or str(completion_task_cids.get(alias) or "") != task_cid
+            or source.get("returncode") != 0
+            or source_validation.get("attempted") is not True
+            or source_validation.get("passed") is not True
+            or type(source_validation.get("returncode")) is not int
+            or source_validation.get("returncode") != 0
+            or source_board
+            != {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            }
+        ):
+            return False
+        if source_type == "implementation_finished":
+            if (
+                source.get("attempt_consumed") is not True
+                or type(source.get("provider_dispatched")) is not bool
+            ):
+                return False
+        else:
+            reason = str(source.get("reason") or "")
+            provenance_key = (
+                "database_portal_merge_continuation_source"
+                if reason
+                == "database_portal_merge_continuation_source_projected"
+                else "merge_queue_synchronous_source"
+                if reason == "merge_queue_synchronous_source_projected"
+                else ""
+            )
+            provenance = source.get(provenance_key) if provenance_key else None
+            if (
+                not provenance_key
+                or source.get("attempt_consumed") is not False
+                or source.get("provider_dispatched") is not False
+                or not isinstance(provenance, Mapping)
+            ):
+                return False
+            provenance_body = dict(provenance)
+            source_projection_id = str(
+                provenance_body.pop("source_projection_id", "") or ""
+            )
+            expected_schema = (
+                "ipfs_accelerate_py.agent_supervisor."
+                "database-portal-merge-continuation-source@1"
+                if provenance_key
+                == "database_portal_merge_continuation_source"
+                else (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "merge-queue-synchronous-source@1"
+                )
+            )
+            continuation_provenance_fields = {
+                "canonical_task_key",
+                "consumer_attempt_id",
+                "consumer_binding_id",
+                "goal_cid",
+                "plan_cid",
+                "producer_attempt_id",
+                "producer_binding_id",
+                "producer_completion_source_event_id",
+                "producer_events_path",
+                "producer_portal_attempt",
+                "producer_projection_immutable_digest",
+                "producer_projection_path",
+                "producer_provider_dispatched",
+                "producer_state_path",
+                "producer_strategy_path",
+                "request_id",
+                "schema",
+                "task_cid",
+                "task_id",
+            }
+            synchronous_provenance_fields = {
+                "baseline_ref",
+                "branch",
+                "canonical_task_key",
+                "implementation_commit",
+                "merge_candidate_enqueued_event_id",
+                "portal_attempt",
+                "request_id",
+                "schema",
+                "task_cid",
+                "task_id",
+                "validation_repository_tree_id",
+                "validation_target_commit",
+                "validation_target_tree",
+            }
+            expected_provenance_fields = (
+                continuation_provenance_fields
+                if provenance_key
+                == "database_portal_merge_continuation_source"
+                else synchronous_provenance_fields
+            )
+            if (
+                source_validation
+                != {"attempted": True, "passed": True, "returncode": 0}
+                or set(provenance_body) != expected_provenance_fields
+                or provenance_body.get("schema") != expected_schema
+                or provenance_body.get("request_id") != request_id
+                or provenance_body.get("task_id") != alias
+                or provenance_body.get("task_cid") != task_cid
+                or provenance_body.get("canonical_task_key")
+                != str(source.get("canonical_task_key") or "")
+                or source_projection_id != content_identity(provenance_body)
+            ):
+                return False
+            if provenance_key == "merge_queue_synchronous_source":
+                validation_tree = str(
+                    provenance_body.get("validation_target_tree") or ""
+                )
+                if (
+                    provenance_body.get("portal_attempt") != source_attempt
+                    or provenance_body.get("branch") != source_branch
+                    or provenance_body.get("baseline_ref") != baseline
+                    or provenance_body.get("implementation_commit")
+                    != implementation
+                    or provenance_body.get("validation_target_commit")
+                    != implementation
+                    or re.fullmatch(r"[0-9a-f]{40}", validation_tree) is None
+                    or provenance_body.get("validation_repository_tree_id")
+                    != f"git-tree:{validation_tree}"
+                    or re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(
+                            provenance_body.get(
+                                "merge_candidate_enqueued_event_id"
+                            )
+                            or ""
+                        ),
+                    )
+                    is None
+                ):
+                    return False
+            else:
+                producer_projection = Path(
+                    str(
+                        provenance_body.get("producer_projection_path")
+                        or ""
+                    )
+                )
+                producer_root = producer_projection.parent
+                if (
+                    provenance_body.get("producer_portal_attempt")
+                    != source_attempt
+                    or type(
+                        provenance_body.get("producer_provider_dispatched")
+                    )
+                    is not bool
+                    or re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(
+                            provenance_body.get(
+                                "producer_completion_source_event_id"
+                            )
+                            or ""
+                        ),
+                    )
+                    is None
+                    or not str(provenance_body.get("goal_cid") or "")
+                    or not str(provenance_body.get("plan_cid") or "")
+                    or not str(
+                        provenance_body.get("producer_binding_id") or ""
+                    )
+                    or not str(
+                        provenance_body.get("consumer_binding_id") or ""
+                    )
+                    or provenance_body.get("producer_binding_id")
+                    == provenance_body.get("consumer_binding_id")
+                    or not str(
+                        provenance_body.get("producer_attempt_id") or ""
+                    )
+                    or not str(
+                        provenance_body.get("consumer_attempt_id") or ""
+                    )
+                    or provenance_body.get("producer_attempt_id")
+                    == provenance_body.get("consumer_attempt_id")
+                    or producer_projection.name != "task-projection.md"
+                    or Path(
+                        str(provenance_body.get("producer_state_path") or "")
+                    )
+                    != producer_root / "portal-task-state.json"
+                    or Path(
+                        str(
+                            provenance_body.get("producer_strategy_path")
+                            or ""
+                        )
+                    )
+                    != producer_root / "portal-strategy.json"
+                    or Path(
+                        str(provenance_body.get("producer_events_path") or "")
+                    )
+                    != producer_root / "portal-events.jsonl"
+                    or re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(
+                            provenance_body.get(
+                                "producer_projection_immutable_digest"
+                            )
+                            or ""
+                        ),
+                    )
+                    is None
+                ):
+                    return False
+        expected_task_cids = {
+            str(task_id): str(cid)
+            for task_id, cid in completion_task_cids.items()
+        }
+        if (
+            not expected_task_cids
+            or any(not task_id or not cid for task_id, cid in expected_task_cids.items())
+        ):
+            return False
+
+        integration = str(reconciliation.get("merge_commit") or "")
+        target = str(reconciliation.get("target_commit") or "")
+        branch = str(reconciliation.get("branch") or "")
+        candidate_key = content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "merge-queue-reconciled-candidate@1"
+                ),
+                "task_id": alias,
+                "task_cid": task_cid,
+                "request_id": request_id,
+                "baseline_ref": baseline,
+                "implementation_commit": implementation,
+                "completion_source_event_id": source_event_id,
+            }
+        )
+        merge_result = reconciliation.get("merge_result")
+        expected_merge_result = {
+            "attempted": True,
+            "merged": True,
+            "queued": False,
+            "reason": "merge_queue_callback_completed",
+            "request_id": request_id,
+            "merge_commit": integration,
+            "target_commit": integration,
+        }
+        reconciliation_required_fields = {
+            "attempt",
+            "baseline_ref",
+            "branch",
+            "canonical_task_cid",
+            "completion_receipt_evidence",
+            "completion_source_event_id",
+            "completion_task_cids",
+            "implementation_commit",
+            "integration_commit_proof",
+            "landed_commit",
+            "merge_commit",
+            "merge_result",
+            "post_merge_declared_output_invariant",
+            "reason",
+            "reconciled_candidate_key",
+            "request_id",
+            "resolved",
+            "target_commit",
+            "task_id",
+        }
+        reconciliation_optional_fields = {
+            "board_namespace",
+            "canonical_task_key",
+            "database_portal_merge_continuation_source",
+            "task_source_identity",
+        }
+        reconciliation_fields = set(reconciliation)
+        if (
+            not reconciliation_required_fields <= reconciliation_fields
+            or not reconciliation_fields
+            <= (
+                reconciliation_required_fields
+                | reconciliation_optional_fields
+                | set(_PORTAL_EVENT_ENVELOPE_FIELDS)
+            )
+            or reconciliation.get("resolved") is not True
+            or str(reconciliation.get("reason") or "")
+            != "merge_queue_callback_completed"
+            or str(reconciliation.get("task_id") or "") != alias
+            or str(reconciliation.get("canonical_task_cid") or "") != task_cid
+            or reconciliation.get("attempt") != source_attempt
+            or branch != source_branch
+            or (
+                "canonical_task_key" in reconciliation
+                and reconciliation.get("canonical_task_key")
+                != source.get("canonical_task_key")
+            )
+            or ("board_namespace" in reconciliation)
+            != ("board_namespace" in source)
+            or (
+                "board_namespace" in reconciliation
+                and (
+                    not str(reconciliation.get("board_namespace") or "")
+                    or reconciliation.get("board_namespace")
+                    != source.get("board_namespace")
+                )
+            )
+            or ("task_source_identity" in reconciliation)
+            != ("task_source_identity" in source)
+            or (
+                "task_source_identity" in reconciliation
+                and (
+                    not isinstance(
+                        reconciliation.get("task_source_identity"), Mapping
+                    )
+                    or reconciliation.get("task_source_identity")
+                    != source.get("task_source_identity")
+                )
+            )
+            or (
+                "database_portal_merge_continuation_source" in reconciliation
+                and reconciliation.get(
+                    "database_portal_merge_continuation_source"
+                )
+                != source.get("database_portal_merge_continuation_source")
+            )
+            or str(reconciliation.get("request_id") or "") != request_id
+            or str(reconciliation.get("completion_source_event_id") or "")
+            != source_event_id
+            or str(reconciliation.get("baseline_ref") or "") != baseline
+            or str(reconciliation.get("implementation_commit") or "")
+            != implementation
+            or str(reconciliation.get("landed_commit") or "") != implementation
+            or re.fullmatch(r"[0-9a-f]{40}", integration) is None
+            or target != integration
+            or reconciliation.get("completion_task_cids") != expected_task_cids
+            or str(reconciliation.get("reconciled_candidate_key") or "")
+            != candidate_key
+            or merge_result != expected_merge_result
+        ):
+            return False
+
+        proof = reconciliation.get("integration_commit_proof")
+        if (
+            not isinstance(proof, Mapping)
+            or set(proof)
+            != {
+                "implementation_commit",
+                "integration_commit",
+                "integration_ref",
+                "passed",
+                "reasons",
+                "target_branch",
+            }
+            or proof.get("passed") is not True
+            or proof.get("reasons") != []
+            or str(proof.get("implementation_commit") or "") != implementation
+            or str(proof.get("integration_commit") or "") != integration
+            or str(proof.get("integration_ref") or "") != integration
+            or str(proof.get("target_branch") or "")
+            != str(source_merge.get("target_branch") or "")
+        ):
+            return False
+
+        invariant = reconciliation.get("post_merge_declared_output_invariant")
+        if (
+            not isinstance(invariant, Mapping)
+            or set(invariant)
+            != {
+                "checks",
+                "missing_outputs",
+                "mode",
+                "passed",
+                "reason",
+                "repository_ref",
+                "task_ids",
+                "unsafe_outputs",
+                "untracked_outputs",
+            }
+            or invariant.get("passed") is not True
+            or invariant.get("mode") != "repository_tree"
+            or invariant.get("reason") != "declared_outputs_tracked"
+            or str(invariant.get("repository_ref") or "") != integration
+            or invariant.get("missing_outputs") != []
+            or invariant.get("unsafe_outputs") != []
+            or invariant.get("untracked_outputs") != []
+            or not isinstance(invariant.get("checks"), list)
+            or invariant.get("task_ids") != list(expected_task_cids)
+        ):
+            return False
+        for check in invariant["checks"]:
+            if (
+                not isinstance(check, Mapping)
+                or set(check)
+                != {
+                    "exists",
+                    "path",
+                    "reason",
+                    "repository",
+                    "repository_ref",
+                    "task_id",
+                    "tracked",
+                    "tracked_path",
+                }
+                or check.get("exists") is not True
+                or check.get("tracked") is not True
+                or check.get("reason") != "declared_output_tracked"
+                or not str(check.get("path") or "")
+                or not str(check.get("repository") or "")
+                or check.get("tracked_path") != check.get("path")
+                or str(check.get("repository_ref") or "") != integration
+                or str(check.get("task_id") or "") not in expected_task_cids
+            ):
+                return False
+
+        receipt_evidence = reconciliation.get("completion_receipt_evidence")
+        if not isinstance(receipt_evidence, Mapping):
+            return False
+        receipt_body = dict(receipt_evidence)
+        receipt_id = str(receipt_body.pop("receipt_id", "") or "")
+        receipts = receipt_body.get("completion_receipts")
+        if (
+            set(receipt_evidence)
+            != {
+                "schema",
+                "request_id",
+                "completion_source_event_id",
+                "integration_commit",
+                "completion_task_cids",
+                "completion_receipts",
+                "receipt_id",
+            }
+            or receipt_body.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "merge-queue-callback-completion-receipt@1"
+            )
+            or receipt_body.get("request_id") != request_id
+            or receipt_body.get("completion_source_event_id") != source_event_id
+            or receipt_body.get("integration_commit") != integration
+            or receipt_body.get("completion_task_cids") != expected_task_cids
+            or not isinstance(receipts, list)
+            or receipt_id != content_identity(receipt_body)
+        ):
+            return False
+        receipt_cids: dict[str, str] = {}
+        for receipt in receipts:
+            if (
+                not isinstance(receipt, Mapping)
+                or set(receipt)
+                != {
+                    "board_namespace",
+                    "canonical_task_cid",
+                    "canonical_task_key",
+                    "schema",
+                    "status",
+                    "task_id",
+                }
+                or receipt.get("schema")
+                != (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "member_completion_receipt@1"
+                )
+                or receipt.get("status") != "succeeded"
+                or not str(receipt.get("board_namespace") or "")
+                or not str(receipt.get("canonical_task_key") or "")
+            ):
+                return False
+            receipt_cids[str(receipt.get("task_id") or "")] = str(
+                receipt.get("canonical_task_cid") or ""
+            )
+        return (
+            len(receipts) == len(expected_task_cids)
+            and receipt_cids == expected_task_cids
+        )
+
     @classmethod
     def _completion_event_evidence(
         cls,
@@ -3591,6 +5091,8 @@ class DatabasePortalExecutionBridge:
 
         reconciled_commits: set[str] = set()
         reconciled_commit_indices: dict[str, list[int]] = {}
+        callback_reconciliations: list[tuple[int, Mapping[str, Any]]] = []
+        callback_reconciliation_indices: dict[str, list[int]] = {}
         sources: list[dict[str, Any]] = []
         for event_index, event in enumerate(events[:completion_index]):
             if (
@@ -3623,6 +5125,12 @@ class DatabasePortalExecutionBridge:
                     and isinstance(merge_result, Mapping)
                     and merge_result.get("merged") is True
                 ):
+                    if (
+                        str(event.get("reason") or "")
+                        == "merge_queue_callback_completed"
+                    ):
+                        callback_reconciliations.append((event_index, event))
+                        continue
                     reconciled_commit = str(
                         event.get("implementation_commit") or ""
                     )
@@ -3672,10 +5180,123 @@ class DatabasePortalExecutionBridge:
                     "completion_source_event_type": event_type,
                     "completion_source_portal_attempt": portal_attempt,
                     "_source_event_index": event_index,
+                    "_source_event": event,
                     "_source_merged": merge_result.get("merged") is True,
                     "_source_queued": merge_result.get("queued") is True,
                 }
             )
+
+        source_by_event_id = {
+            str(source.get("completion_source_event_id") or ""): source
+            for source in sources
+        }
+        if len(source_by_event_id) != len(sources):
+            raise DatabasePortalBridgeError(
+                "Portal completion source event identity is ambiguous"
+            )
+
+        def exact_projected_source_history(
+            source_record: Mapping[str, Any],
+        ) -> bool:
+            """Bind a local deterministic projection to its prior enqueue."""
+
+            source_event = source_record.get("_source_event")
+            if not isinstance(source_event, Mapping):
+                return False
+            if source_event.get("type") != (
+                "worktree_reconciliation_candidate_queued"
+            ):
+                return True
+            if source_event.get("reason") == (
+                "database_portal_merge_continuation_source_projected"
+            ):
+                # The exact, content-addressed continuation provenance above
+                # is the sealed local replay record.  Reopening producer
+                # history here would make completion depend on mutable
+                # cross-attempt availability.
+                return True
+            provenance = source_event.get("merge_queue_synchronous_source")
+            source_merge = source_event.get("merge_result")
+            if not isinstance(provenance, Mapping) or not isinstance(
+                source_merge, Mapping
+            ):
+                return False
+            source_index = int(source_record.get("_source_event_index") or 0)
+            enqueue_event_id = str(
+                provenance.get("merge_candidate_enqueued_event_id") or ""
+            )
+            enqueue_matches = [
+                event
+                for event in events[:source_index]
+                if event.get("type") == "merge_candidate_enqueued"
+                and str(event.get("event_id") or "") == enqueue_event_id
+            ]
+            if len(enqueue_matches) != 1:
+                return False
+            enqueue = enqueue_matches[0]
+            return bool(
+                str(enqueue.get("task_id") or "") == alias
+                and str(enqueue.get("canonical_task_cid") or "") == task_cid
+                and enqueue.get("canonical_task_key")
+                == source_event.get("canonical_task_key")
+                and enqueue.get("attempt") == source_event.get("attempt")
+                and enqueue.get("request_id") == source_merge.get("request_id")
+                and enqueue.get("branch") == source_event.get("branch")
+                and enqueue.get("baseline_ref")
+                == source_event.get("baseline_ref")
+                and enqueue.get("implementation_commit")
+                == source_event.get("implementation_commit")
+                and enqueue.get("attempted") is False
+                and enqueue.get("queued") is True
+                and enqueue.get("merged") is False
+                and enqueue.get("reason") == "merge_queued"
+                and enqueue.get("completion_task_cids")
+                == source_merge.get("completion_task_cids")
+                and enqueue.get("target_repository_id")
+                == source_merge.get("target_repository_id")
+                and enqueue.get("target_branch")
+                == source_merge.get("target_branch")
+            )
+
+        for reconciliation_index, reconciliation in callback_reconciliations:
+            reconciliation_source_id = str(
+                reconciliation.get("completion_source_event_id") or ""
+            )
+            reconciliation_source = source_by_event_id.get(
+                reconciliation_source_id
+            )
+            if (
+                reconciliation_source is None
+                or reconciliation_index
+                <= int(reconciliation_source["_source_event_index"])
+                or not exact_projected_source_history(reconciliation_source)
+                or not cls._exact_callback_reconciliation_for_completion_source(
+                    reconciliation,
+                    reconciliation_source["_source_event"],
+                    alias=alias,
+                    task_cid=task_cid,
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal callback reconciliation binding is invalid"
+                )
+            if callback_reconciliation_indices.get(reconciliation_source_id):
+                raise DatabasePortalBridgeError(
+                    "Portal callback reconciliation binding is ambiguous"
+                )
+            callback_reconciliation_indices.setdefault(
+                reconciliation_source_id,
+                [],
+            ).append(reconciliation_index)
+            reconciled_commit = str(
+                reconciliation.get("implementation_commit") or ""
+            )
+            completion_commits.add(reconciled_commit)
+            reconciled_commits.add(reconciled_commit)
+            reconciled_commit_indices.setdefault(
+                reconciled_commit,
+                [],
+            ).append(reconciliation_index)
 
         source_commits = {
             source["implementation_commit"] for source in sources
@@ -3692,6 +5313,96 @@ class DatabasePortalExecutionBridge:
             for source in sources
             if source["implementation_commit"] == implementation_commit
         ]
+        if len(matching_sources) == 2:
+            queued_sources = [
+                source
+                for source in matching_sources
+                if source.get("_source_queued") is True
+                and source.get("_source_event", {}).get("type")
+                == "worktree_reconciliation_candidate_queued"
+            ]
+            terminal_sources = [
+                source
+                for source in matching_sources
+                if source.get("_source_merged") is True
+                and source.get("_source_event", {}).get("type")
+                == "implementation_finished"
+            ]
+            if len(queued_sources) == 1 and len(terminal_sources) == 1:
+                queued_source = queued_sources[0]
+                terminal_source = terminal_sources[0]
+                queued_event = queued_source["_source_event"]
+                terminal_event = terminal_source["_source_event"]
+                queued_merge = queued_event.get("merge_result")
+                terminal_merge = terminal_event.get("merge_result")
+                terminal_validation = terminal_event.get("validation_result")
+                reconciliation_positions = callback_reconciliation_indices.get(
+                    str(queued_source.get("completion_source_event_id") or ""),
+                    [],
+                )
+                reconciliation_event = (
+                    events[reconciliation_positions[0]]
+                    if len(reconciliation_positions) == 1
+                    else {}
+                )
+                ordered_confirmation = bool(
+                    len(reconciliation_positions) == 1
+                    and queued_source["_source_event_index"]
+                    < reconciliation_positions[0]
+                    < terminal_source["_source_event_index"]
+                    and terminal_source["baseline_commit"]
+                    == queued_source["baseline_commit"]
+                    and terminal_source["completion_source_portal_attempt"]
+                    == queued_source["completion_source_portal_attempt"]
+                    and terminal_event.get("returncode") == 0
+                    and terminal_event.get("attempt_consumed") is True
+                    and type(terminal_event.get("provider_dispatched")) is bool
+                    and terminal_event.get("branch")
+                    == queued_event.get("branch")
+                    and terminal_event.get("canonical_task_key")
+                    == queued_event.get("canonical_task_key")
+                    and isinstance(terminal_validation, Mapping)
+                    and terminal_validation.get("attempted") is True
+                    and terminal_validation.get("passed") is True
+                    and type(terminal_validation.get("returncode")) is int
+                    and terminal_validation.get("returncode") == 0
+                    and terminal_event.get("board_completion")
+                    == {
+                        "complete": True,
+                        "pending_merge": False,
+                        "reason": "merged_into_target",
+                    }
+                    and isinstance(queued_merge, Mapping)
+                    and isinstance(terminal_merge, Mapping)
+                    and terminal_merge.get("attempted") is True
+                    and terminal_merge.get("merged") is True
+                    and terminal_merge.get("queued") is False
+                    and terminal_merge.get("request_id")
+                    == queued_merge.get("request_id")
+                    and terminal_merge.get("branch")
+                    == queued_merge.get("branch")
+                    and terminal_merge.get("implementation_commit")
+                    == queued_merge.get("implementation_commit")
+                    and terminal_merge.get("canonical_task_key")
+                    == queued_merge.get("canonical_task_key")
+                    and terminal_merge.get("canonical_task_cid")
+                    == queued_merge.get("canonical_task_cid")
+                    and terminal_merge.get("completion_task_cids")
+                    == queued_merge.get("completion_task_cids")
+                    and terminal_merge.get("target_repository_id")
+                    == queued_merge.get("target_repository_id")
+                    and terminal_merge.get("target_branch")
+                    == queued_merge.get("target_branch")
+                    and terminal_merge.get("merge_commit")
+                    == reconciliation_event.get("merge_commit")
+                    and terminal_merge.get("target_commit")
+                    == reconciliation_event.get("target_commit")
+                )
+                if ordered_confirmation:
+                    # The producer appends this terminal confirmation after
+                    # the synchronous callback returns.  It supersedes only
+                    # the one reconciled deterministic source it confirms.
+                    matching_sources = [terminal_source]
         source_handoff_admitted = False
         if len(matching_sources) == 1:
             selected_source = matching_sources[0]
@@ -3699,14 +5410,28 @@ class DatabasePortalExecutionBridge:
                 selected_source.get("_source_merged") is True
                 or (
                     selected_source.get("_source_queued") is True
-                    and implementation_commit in reconciled_commits
-                    and any(
-                        reconciliation_index
-                        > selected_source["_source_event_index"]
-                        for reconciliation_index in (
-                            reconciled_commit_indices.get(
-                                implementation_commit,
-                                (),
+                    and (
+                        bool(
+                            callback_reconciliation_indices.get(
+                                str(
+                                    selected_source.get(
+                                        "completion_source_event_id"
+                                    )
+                                    or ""
+                                )
+                            )
+                        )
+                        or (
+                            implementation_commit in reconciled_commits
+                            and any(
+                                reconciliation_index
+                                > selected_source["_source_event_index"]
+                                for reconciliation_index in (
+                                    reconciled_commit_indices.get(
+                                        implementation_commit,
+                                        (),
+                                    )
+                                )
                             )
                         )
                     )
@@ -3721,6 +5446,7 @@ class DatabasePortalExecutionBridge:
             )
         source = matching_sources[-1]
         source.pop("_source_event_index", None)
+        source.pop("_source_event", None)
         source.pop("_source_merged", None)
         source.pop("_source_queued", None)
         claimed_source_event_id = str(
@@ -8316,7 +10042,8 @@ class DatabasePortalExecutionBridge:
             )
             or value.get("terminal_reason")
             not in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
-            or value.get("qualification_kind") not in {"repair", "requalification"}
+            or value.get("qualification_kind")
+            not in {"repair", "requalification", "callback_integration"}
             or any(
                 re.fullmatch(r"[0-9a-f]{40}", str(value.get(field) or ""))
                 is None
@@ -8416,69 +10143,72 @@ class DatabasePortalExecutionBridge:
             if isinstance(completion, Mapping)
             else None
         )
-        if not isinstance(repair_receipt, Mapping):
-            raise DatabasePortalBridgeError(
-                "post-merge completion recovery seed has no repair receipt"
-            )
-        target_identity = self._repair_receipt_current_target_identity(
-            repair_receipt
-        )
-        if (
-            target_identity is None
-            or target_identity[0] != value["qualified_target_commit"]
-            or (
-                value["qualification_kind"] == "repair"
-                and target_identity[2] is not True
-            )
-            or (
-                value["qualification_kind"] == "requalification"
-                and target_identity[2] is not False
-            )
-        ):
-            raise DatabasePortalBridgeError(
-                "post-merge completion recovery seed target generation changed"
-            )
-        if value["qualification_kind"] == "requalification":
-            receipt_path = self._post_merge_requalification_receipt_path(
-                projection,
-                source_receipt_id=str(repair_receipt.get("receipt_id") or ""),
-                current_head=target_identity[0],
-                current_tree=target_identity[1],
-            )
-            if not receipt_path.is_file():
+        if value["qualification_kind"] != "callback_integration":
+            if not isinstance(repair_receipt, Mapping):
                 raise DatabasePortalBridgeError(
-                    "post-merge completion recovery seed lacks durable requalification"
+                    "post-merge completion recovery seed has no repair receipt"
                 )
+            target_identity = self._repair_receipt_current_target_identity(
+                repair_receipt
+            )
+            if (
+                target_identity is None
+                or target_identity[0] != value["qualified_target_commit"]
+                or (
+                    value["qualification_kind"] == "repair"
+                    and target_identity[2] is not True
+                )
+                or (
+                    value["qualification_kind"] == "requalification"
+                    and target_identity[2] is not False
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "post-merge completion recovery seed target generation changed"
+                )
+            if value["qualification_kind"] == "requalification":
+                receipt_path = self._post_merge_requalification_receipt_path(
+                    projection,
+                    source_receipt_id=str(
+                        repair_receipt.get("receipt_id") or ""
+                    ),
+                    current_head=target_identity[0],
+                    current_tree=target_identity[1],
+                )
+                if not receipt_path.is_file():
+                    raise DatabasePortalBridgeError(
+                        "post-merge completion recovery seed lacks durable requalification"
+                    )
         evidence = self._post_merge_recovery_evidence(
             request,
             projection,
             evidence_digest=lambda item: _sha256_bytes(_canonical_json(item)),
         )
-        qualification_field = (
-            "repair_receipt"
-            if value["qualification_kind"] == "repair"
-            else "requalification_receipt"
-        )
+        qualification_field = {
+            "repair": "repair_receipt",
+            "requalification": "requalification_receipt",
+            "callback_integration": "callback_requalification_receipt",
+        }[str(value["qualification_kind"])]
         qualification = (
             evidence.get(qualification_field)
             if isinstance(evidence, Mapping)
             else None
         )
-        expected_schema = (
-            _DATABASE_POST_MERGE_RECOVERY_SCHEMA
-            if value["qualification_kind"] == "repair"
-            else _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA
-        )
+        expected_schema = {
+            "repair": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            "requalification": _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA,
+            "callback_integration": _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA,
+        }[str(value["qualification_kind"])]
         expected_target_field = (
             "repair_commit"
             if value["qualification_kind"] == "repair"
             else "qualified_target_commit"
         )
-        expected_receipt_field = (
-            "repair_receipt_id"
-            if value["qualification_kind"] == "repair"
-            else "requalification_receipt_id"
-        )
+        expected_receipt_field = {
+            "repair": "repair_receipt_id",
+            "requalification": "requalification_receipt_id",
+            "callback_integration": "callback_requalification_receipt_id",
+        }[str(value["qualification_kind"])]
         if (
             not isinstance(evidence, Mapping)
             or evidence.get("schema") != expected_schema
@@ -8496,7 +10226,8 @@ class DatabasePortalExecutionBridge:
             )
         source_repair = (
             qualification
-            if value["qualification_kind"] == "repair"
+            if value["qualification_kind"]
+            in {"repair", "callback_integration"}
             else qualification.get("source_repair_receipt")
         )
         validations = qualification.get("validation")
@@ -9346,6 +11077,7 @@ class DatabasePortalExecutionBridge:
                     completed,
                     projection,
                     evidence_digest=digest,
+                    train=train,
                 )
                 if evidence is not None:
                     try:
@@ -9732,6 +11464,7 @@ class DatabasePortalExecutionBridge:
                     completed,
                     projection,
                     evidence_digest=digest,
+                    train=train,
                 )
                 if completed is not None and projection is not None
                 else None

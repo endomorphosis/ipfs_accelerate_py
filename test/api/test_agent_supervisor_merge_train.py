@@ -1573,6 +1573,7 @@ def test_declared_output_and_ancestry_git_errors_remain_indeterminate(
 
 def test_database_portal_retry_continues_merge_into_current_projection(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = _repo(tmp_path)
     merge_queue_dir = tmp_path / "merge-queue"
@@ -1603,13 +1604,21 @@ def test_database_portal_retry_continues_merge_into_current_projection(
         attempt=consumer_attempt,
         record=_database_projection_record(revision=4),
     )
-    _git(repo, "branch", "implementation/ref-040")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/ref-040")
+    (repo / "base.txt").write_text(
+        "database continuation candidate\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "database continuation candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
     task = producer._load_tasks()[0]
-    commit = _git(repo, "rev-parse", "HEAD")
-    request, _queued = producer._enqueue_merge_candidate(
+    request, queued = producer._enqueue_merge_candidate(
         branch_name="implementation/ref-040",
-        implementation_commit=commit,
-        baseline_ref=commit,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
         worktree_path=None,
         task=task,
         attempt=1,
@@ -1621,10 +1630,40 @@ def test_database_portal_retry_continues_merge_into_current_projection(
             "selection": {"scope": "pre_merge"},
         },
     )
+    producer._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "branch": request.branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": candidate,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+            },
+            "merge_result": dict(queued),
+            "board_completion": {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            },
+        },
+    )
+    [producer_source] = [
+        event
+        for event in producer._iter_merge_lifecycle_events()
+        if event.get("type") == "implementation_finished"
+    ]
 
     result = consumer._merge_train_callback(request)
 
-    assert result.get("merged") is True or result.get("already_merged") is True
+    assert result.get("merged") is True
     continuation = result["database_portal_merge_continuation"]
     assert continuation["task_id"] == "REF-040"
     assert continuation["task_cid"] == task_cid
@@ -1645,6 +1684,52 @@ def test_database_portal_retry_continues_merge_into_current_projection(
         and event.get("task_id") == "REF-040"
         for event in consumer_events
     )
+    [local_source] = [
+        event
+        for event in consumer_events
+        if event.get("type") == "worktree_reconciliation_candidate_queued"
+    ]
+    [reconciled] = [
+        event
+        for event in consumer_events
+        if event.get("type") == "merge_reconciled"
+    ]
+    assert consumer_events.index(local_source) < consumer_events.index(reconciled)
+    assert not any(
+        event.get("type") == "task_completed" for event in consumer_events
+    )
+    provenance = local_source["database_portal_merge_continuation_source"]
+    assert (
+        provenance["producer_completion_source_event_id"]
+        == producer_source["event_id"]
+    )
+    assert provenance["producer_binding_id"] == producer_binding["binding_id"]
+    assert provenance["consumer_binding_id"] == consumer_binding["binding_id"]
+    assert provenance["producer_projection_path"] == str(
+        producer_paths.task_projection.resolve()
+    )
+    assert provenance["producer_state_path"] == str(
+        producer_paths.state.resolve()
+    )
+    assert provenance["producer_events_path"] == str(
+        producer_paths.events.resolve()
+    )
+    assert reconciled["completion_source_event_id"] == local_source["event_id"]
+    assert reconciled["database_portal_merge_continuation_source"] == provenance
+
+    before_replay = consumer_paths.events.read_bytes()
+    monkeypatch.setattr(
+        consumer,
+        "_completion_daemon_for_merge_request",
+        lambda _metadata: pytest.fail(
+            "sealed local replay reopened producer history"
+        ),
+    )
+    replay = consumer._merge_train_callback(request)
+    assert replay.get("merged") is True or replay.get("already_merged") is True
+    assert replay["merge_reconciliation_receipt"]["replayed"] is True
+    assert consumer_paths.events.read_bytes() == before_replay
+
     consumer.merge_queue.cancel(
         request.request_id,
         reason="direct_callback_already_integrated",
@@ -1659,6 +1744,13 @@ def test_database_portal_retry_continues_merge_into_current_projection(
         and event.get("task_id") == "REF-040"
         for event in consumer_events
     )
+    [task_completed] = [
+        event
+        for event in consumer_events
+        if event.get("type") == "task_completed"
+        and event.get("task_id") == "REF-040"
+    ]
+    assert consumer_events.index(reconciled) < consumer_events.index(task_completed)
     producer_events = (
         [
             json.loads(line)
@@ -1672,9 +1764,508 @@ def test_database_portal_retry_continues_merge_into_current_projection(
     assert not any(event.get("type") == "task_completed" for event in producer_events)
 
 
+def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:delayed-callback",
+        claim_id="claim:delayed-callback",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/delayed-callback")
+    (repo / "base.txt").write_text("delayed candidate\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "delayed callback candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    task = daemon._load_tasks()[0]
+    task_cid = daemon._canonical_ref(task)
+    request, queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/delayed-callback",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": False,
+            "branch": request.branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": candidate,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+            },
+            "merge_result": dict(queued),
+            "board_completion": {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            },
+        },
+    )
+    [source] = [
+        event
+        for event in daemon._iter_merge_lifecycle_events()
+        if event.get("type") == "implementation_finished"
+    ]
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    events = daemon._iter_merge_lifecycle_events()
+    [reconciled] = [
+        event for event in events if event.get("type") == "merge_reconciled"
+    ]
+    assert events.index(source) < events.index(reconciled)
+    assert not any(event.get("type") == "task_completed" for event in events)
+    assert reconciled["resolved"] is True
+    assert reconciled["task_id"] == task.task_id
+    assert reconciled["canonical_task_cid"] == task_cid
+    assert reconciled["attempt"] == 1
+    assert reconciled["request_id"] == request.request_id
+    assert reconciled["completion_source_event_id"] == source["event_id"]
+    assert reconciled["baseline_ref"] == baseline
+    assert reconciled["implementation_commit"] == candidate
+    assert reconciled["landed_commit"] == candidate
+    assert reconciled["merge_commit"] == result["merge_commit"]
+    assert reconciled["target_commit"] == result["merge_commit"]
+    assert reconciled["merge_result"]["merged"] is True
+    assert reconciled["merge_result"]["queued"] is False
+    assert reconciled["integration_commit_proof"]["passed"] is True
+    evidence = reconciled["completion_receipt_evidence"]
+    assert evidence["completion_task_cids"] == {task.task_id: task_cid}
+    assert evidence["completion_receipts"][0]["canonical_task_cid"] == task_cid
+    assert evidence["receipt_id"] == content_identity(
+        {key: value for key, value in evidence.items() if key != "receipt_id"}
+    )
+
+    before_replay = paths.events.read_bytes()
+    replay = daemon._merge_train_callback(request)
+
+    assert (
+        replay.get("merged") is True or replay.get("already_merged") is True
+    ), replay
+    assert replay["merge_reconciliation_receipt"]["replayed"] is True
+    assert paths.events.read_bytes() == before_replay
+
+    for tamper in ("extra_field", "foreign_completion_receipts"):
+        forged = json.loads(json.dumps(reconciled))
+        if tamper == "extra_field":
+            forged["attacker_extension"] = True
+        else:
+            forged_evidence = forged["completion_receipt_evidence"]
+            forged_evidence["completion_receipts"][0][
+                "attacker_extension"
+            ] = True
+            forged_evidence["receipt_id"] = content_identity(
+                {
+                    key: value
+                    for key, value in forged_evidence.items()
+                    if key != "receipt_id"
+                }
+            )
+        forged_events = [
+            forged if event.get("event_id") == reconciled["event_id"] else event
+            for event in events
+        ]
+        monkeypatch.setattr(
+            daemon,
+            "_iter_merge_lifecycle_events",
+            lambda forged_events=forged_events: forged_events,
+        )
+        conflict = daemon._record_merge_queue_callback_reconciliation(
+            request=request,
+            task=task,
+            metadata=request.metadata,
+            implementation_commit=candidate,
+            integration_commit=result["merge_commit"],
+            integration_commit_proof=result["integration_commit_proof"],
+            completion_task_cids=request.metadata["completion_task_cids"],
+            completion_receipts=result["todo_update_result"][
+                "completion_receipts"
+            ],
+            declared_output_invariant=result[
+                "post_merge_declared_output_invariant"
+            ],
+        )
+        assert conflict["recorded"] is False
+        assert conflict["reason"] == (
+            "merge_queue_reconciliation_receipt_conflict"
+        )
+
+
+def test_synchronous_schema_v3_callback_projects_source_before_completion(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:synchronous-callback",
+        claim_id="claim:synchronous-callback",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/synchronous-callback")
+    (repo / "base.txt").write_text(
+        "synchronous callback candidate\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "synchronous callback candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    candidate_tree = _git(repo, "rev-parse", f"{candidate}^{{tree}}")
+    _git(repo, "switch", "main")
+    task = daemon._load_tasks()[0]
+    task_cid = daemon._canonical_ref(task)
+    request, queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/synchronous-callback",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    events = daemon._iter_merge_lifecycle_events()
+    [enqueue_source] = [
+        event
+        for event in events
+        if event.get("type") == "merge_candidate_enqueued"
+    ]
+    [projected_source] = [
+        event
+        for event in events
+        if event.get("type")
+        == "worktree_reconciliation_candidate_queued"
+    ]
+    [reconciled] = [
+        event for event in events if event.get("type") == "merge_reconciled"
+    ]
+    [todo_updated] = [
+        event for event in events if event.get("type") == "todo_status_updated"
+    ]
+    assert events.index(enqueue_source) < events.index(projected_source)
+    assert events.index(projected_source) < events.index(reconciled)
+    assert events.index(reconciled) < events.index(todo_updated)
+    assert not any(
+        event.get("type") in {"implementation_finished", "task_completed"}
+        for event in events
+    )
+    provenance = projected_source["merge_queue_synchronous_source"]
+    assert provenance["merge_candidate_enqueued_event_id"] == (
+        enqueue_source["event_id"]
+    )
+    assert provenance["portal_attempt"] == 1
+    assert provenance["baseline_ref"] == baseline
+    assert provenance["implementation_commit"] == candidate
+    assert provenance["validation_target_commit"] == candidate
+    assert provenance["validation_target_tree"] == candidate_tree
+    assert provenance["validation_repository_tree_id"] == (
+        f"git-tree:{candidate_tree}"
+    )
+    assert reconciled["completion_source_event_id"] == (
+        projected_source["event_id"]
+    )
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+    terminal_merge = dict(queued)
+    terminal_merge.update(
+        {
+            "attempted": True,
+            "merged": True,
+            "queued": False,
+            "merge_commit": result["merge_commit"],
+            "target_commit": result["merge_commit"],
+        }
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": False,
+            "branch": request.branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": candidate,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+            },
+            "merge_result": terminal_merge,
+            "board_completion": {
+                "complete": True,
+                "pending_merge": False,
+                "reason": "merged_into_target",
+            },
+        },
+    )
+    replay = daemon._record_merge_queue_callback_reconciliation(
+        request=request,
+        task=task,
+        metadata=request.metadata,
+        implementation_commit=candidate,
+        integration_commit=result["merge_commit"],
+        integration_commit_proof=result["integration_commit_proof"],
+        completion_task_cids=request.metadata["completion_task_cids"],
+        completion_receipts=result["todo_update_result"][
+            "completion_receipts"
+        ],
+        declared_output_invariant=result[
+            "post_merge_declared_output_invariant"
+        ],
+    )
+    assert replay["recorded"] is True
+    assert replay["replayed"] is True
+
+
+def test_missing_callback_source_never_publishes_completion(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:missing-callback-source",
+        claim_id="claim:missing-callback-source",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/missing-callback-source")
+    (repo / "base.txt").write_text(
+        "candidate whose source is unavailable\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "missing callback source candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    task = daemon._load_tasks()[0]
+    request, _queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/missing-callback-source",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    paths.events.unlink()
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["completion_skipped"] is True
+    assert result["reason"] == "merge_queue_reconciliation_source_pending"
+    assert "todo_update_result" not in result
+    assert "- Status: ready" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    events = daemon._iter_merge_lifecycle_events()
+    assert not any(
+        event.get("type")
+        in {
+            "worktree_reconciliation_candidate_queued",
+            "merge_reconciled",
+            "todo_status_updated",
+            "task_completed",
+        }
+        for event in events
+    )
+
+
+def test_reconciliation_failure_precedes_all_completion_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:reconciliation-failure",
+        claim_id="claim:reconciliation-failure",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/reconciliation-failure")
+    (repo / "base.txt").write_text(
+        "integrated without completion publication\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "reconciliation failure candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    task = daemon._load_tasks()[0]
+    task_cid = daemon._canonical_ref(task)
+    request, queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/reconciliation-failure",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": False,
+            "branch": request.branch_name,
+            "baseline_ref": baseline,
+            "implementation_commit": candidate,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+            },
+            "merge_result": dict(queued),
+            "board_completion": {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            },
+        },
+    )
+    observed_receipts: list[dict[str, object]] = []
+
+    def reject_reconciliation(**kwargs: object) -> dict[str, object]:
+        observed_receipts.extend(
+            dict(receipt)
+            for receipt in kwargs["completion_receipts"]  # type: ignore[index]
+        )
+        return {
+            "recorded": False,
+            "reason": "forced_reconciliation_failure",
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_record_merge_queue_callback_reconciliation",
+        reject_reconciliation,
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["reason"] == "forced_reconciliation_failure"
+    assert result["completion_skipped"] is True
+    assert result["integration_occurred"] is True
+    assert "todo_update_result" not in result
+    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert "- Status: ready" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert observed_receipts == [
+        {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "member_completion_receipt@1"
+            ),
+            "task_id": task.task_id,
+            "canonical_task_key": request.canonical_task_key,
+            "canonical_task_cid": task_cid,
+            "board_namespace": observed_receipts[0]["board_namespace"],
+            "status": "succeeded",
+        }
+    ]
+    events = daemon._iter_merge_lifecycle_events()
+    assert not any(
+        event.get("type")
+        in {"merge_reconciled", "todo_status_updated", "task_completed"}
+        for event in events
+    )
+
+
 @pytest.mark.parametrize(
     "tamper",
-    ("missing_binding", "projection_authority", "task_cid_mismatch"),
+    (
+        "missing_binding",
+        "projection_authority",
+        "task_cid_mismatch",
+        "producer_events_path",
+        "producer_state_path",
+        "producer_events_symlink",
+    ),
 )
 def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
     tmp_path: Path,
@@ -1750,6 +2341,19 @@ def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
             "selection": {"scope": "pre_merge"},
         },
     )
+    if tamper == "producer_events_path":
+        request.metadata["events_path"] = str(
+            tmp_path / "foreign-events.jsonl"
+        )
+    elif tamper == "producer_state_path":
+        request.metadata["state_path"] = str(
+            tmp_path / "foreign-state.json"
+        )
+    elif tamper == "producer_events_symlink":
+        foreign_events = tmp_path / "foreign-events.jsonl"
+        foreign_events.write_bytes(producer_paths.events.read_bytes())
+        producer_paths.events.unlink()
+        producer_paths.events.symlink_to(foreign_events)
     target_before = _git(repo, "rev-parse", "main")
 
     result = consumer._merge_train_callback(request)
@@ -1767,7 +2371,7 @@ def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
     )
 
 
-def test_same_projection_skips_stale_candidate_when_outputs_on_head(
+def test_same_projection_does_not_complete_nonancestor_stale_candidate(
     tmp_path: Path,
 ) -> None:
     repo = _repo(tmp_path)
@@ -1812,8 +2416,12 @@ def test_same_projection_skips_stale_candidate_when_outputs_on_head(
 
     result = daemon._merge_train_callback(request)
 
-    assert result.get("already_merged") is True
-    assert result.get("reason") == "declared_outputs_already_on_target"
+    assert result.get("merged") is False
+    assert result.get("already_merged") is False
+    assert result.get("completion_skipped") is True
+    assert result.get("reason") == (
+        "merge_queue_reconciliation_completion_gate_invalid"
+    )
     side_probe = subprocess.run(
         ["git", "cat-file", "-e", "HEAD:side.txt"],
         cwd=repo,
@@ -1822,7 +2430,7 @@ def test_same_projection_skips_stale_candidate_when_outputs_on_head(
         check=False,
     )
     assert side_probe.returncode != 0
-    assert "- Status: completed" in paths.task_projection.read_text(
+    assert "- Status: ready" in paths.task_projection.read_text(
         encoding="utf-8"
     )
 
@@ -1865,6 +2473,13 @@ def test_false_completion_reopen_merges_and_seals_qualification_receipt(
         worktree_path=None,
         task=task,
         attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
     )
     claimed = daemon.merge_queue.claim_pending_request(
         request.request_id,
@@ -1872,16 +2487,32 @@ def test_false_completion_reopen_merges_and_seals_qualification_receipt(
     )
     assert claimed is not None
     original_identity_check = daemon._declared_outputs_match_commits
+    original_reconciliation = (
+        daemon._record_merge_queue_callback_reconciliation
+    )
     monkeypatch.setattr(
         daemon,
         "_declared_outputs_match_commits",
         lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_merge_queue_callback_reconciliation",
+        lambda **_kwargs: {
+            "recorded": True,
+            "legacy_false_completion_fixture": True,
+        },
     )
     false_callback = daemon._merge_train_callback(claimed)
     monkeypatch.setattr(
         daemon,
         "_declared_outputs_match_commits",
         original_identity_check,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_merge_queue_callback_reconciliation",
+        original_reconciliation,
     )
     assert false_callback["reason"] == "declared_outputs_already_on_target"
     assert false_callback["already_merged"] is True

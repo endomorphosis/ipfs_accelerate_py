@@ -1044,7 +1044,7 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             "--state-dir",
             str(tmp_path / "state"),
             "--state-prefix",
-            "lane-0",
+            "example",
             "--merge-queue-dir",
             str(tmp_path / "merge-queue"),
             "--merge-target-branch",
@@ -1080,6 +1080,7 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
         "merge_queue": bridge.merge_queue,
         "repo_root": repo,
         "merge_target_branch": "main",
+        "portal_attempt_root": bridge.attempt_root,
     }
     portal = bridge.portal_factory(
         argparse.Namespace(

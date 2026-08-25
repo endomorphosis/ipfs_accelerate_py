@@ -1460,6 +1460,7 @@ def bind_database_portal_execution_from_args(
             merge_queue=recovery_queue,
             repo_root=repo_root,
             merge_target_branch=configured_merge_target_branch,
+            portal_attempt_root=bridge.attempt_root,
         )
     return bridge
 
