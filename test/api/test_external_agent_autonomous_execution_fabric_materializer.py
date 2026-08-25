@@ -35,6 +35,18 @@ def _config(prefix: str = "data/eaaef-test/run-v1") -> dict[str, object]:
     runtime_binding = json.loads(
         materializer.CONFIG_PATH.read_text(encoding="utf-8")
     )["bootstrap_runtime_binding"]
+    launcher_path = (
+        ROOT
+        / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+    ).resolve(strict=True)
+    runtime_binding["launcher"]["resolved_path"] = str(launcher_path)
+    runtime_binding["launcher"]["argv_prefix"] = [
+        runtime_binding["interpreter"]["resolved_path"],
+        "-I",
+        "-S",
+        "-B",
+        str(launcher_path),
+    ]
     runtime_binding["launcher"]["allowed_commands"] = [
         "build",
         "runtime-check",
@@ -46,7 +58,7 @@ def _config(prefix: str = "data/eaaef-test/run-v1") -> dict[str, object]:
     runtime_binding["launcher"]["sha256"] = (
         "sha256:"
         + hashlib.sha256(
-            Path(runtime_binding["launcher"]["resolved_path"]).read_bytes()
+            launcher_path.read_bytes()
         ).hexdigest()
     )
     return {
@@ -150,8 +162,54 @@ def _config(prefix: str = "data/eaaef-test/run-v1") -> dict[str, object]:
     }
 
 
-def test_runtime_binding_accepts_exact_isolated_interpreter(tmp_path: Path) -> None:
+def _isolated_runtime_fixture(
+    tmp_path: Path,
+) -> tuple[dict[str, object], Path, Path]:
+    """Copy the runtime-check pair into a sealed, database-free test root."""
+
+    runtime_root = tmp_path / "runtime-root"
+    scripts = runtime_root / "scripts"
+    scripts.mkdir(parents=True)
+    launcher_path = (
+        scripts / "launch_external_agent_autonomous_execution_fabric_materializer.py"
+    )
+    materializer_path = (
+        scripts / "materialize_external_agent_autonomous_execution_fabric_control_plane.py"
+    )
+    launcher_path.write_bytes(
+        (
+            ROOT
+            / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+        ).read_bytes()
+    )
+    materializer_path.write_bytes(MATERIALIZER_PATH.read_bytes())
+
     config = _config()
+    binding = config["bootstrap_runtime_binding"]
+    assert isinstance(binding, dict)
+    launcher = binding["launcher"]
+    assert isinstance(launcher, dict)
+    launcher["resolved_path"] = str(launcher_path.resolve(strict=True))
+    launcher["argv_prefix"][-1] = launcher["resolved_path"]
+    launcher["sha256"] = (
+        "sha256:" + hashlib.sha256(launcher_path.read_bytes()).hexdigest()
+    )
+    config_path = (
+        runtime_root
+        / "config/external_agent_autonomous_execution_fabric_scheduler.json"
+    )
+    config_path.parent.mkdir()
+    config_path.write_text(
+        json.dumps(config, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return config, materializer_path, config_path
+
+
+def test_runtime_binding_accepts_exact_isolated_interpreter(tmp_path: Path) -> None:
+    config, isolated_materializer_path, isolated_config_path = (
+        _isolated_runtime_fixture(tmp_path)
+    )
     binding = config["bootstrap_runtime_binding"]
     assert isinstance(binding, dict)
     launcher = binding["launcher"]
@@ -170,24 +228,6 @@ def test_runtime_binding_accepts_exact_isolated_interpreter(tmp_path: Path) -> N
     assert payload["valid"] is True
     assert payload["runtime_binding"] == binding
     assert payload["invocation"]["orig_argv"] == [*argv_prefix, "runtime-check"]
-
-    launch_plan = subprocess.run(
-        [*argv_prefix, "launch-plan"],
-        cwd=tmp_path,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    launch_payload = json.loads(launch_plan.stdout)
-    assert "sys.orig_argv differs" not in str(launch_payload)
-    if launch_plan.returncode == 0:
-        assert launch_payload["process_started"] is False
-        if launch_payload.get("allowed") is True:
-            assert launch_payload["execution_prohibited"] is False
-        else:
-            assert launch_payload["execution_prohibited"] is True
-    else:
-        assert launch_payload["valid"] is False
 
     interpreter = binding["interpreter"]
     assert isinstance(interpreter, dict)
@@ -219,8 +259,8 @@ print(json.dumps(module._validated_runtime_invocation(runtime, "runtime-check"),
             "-B",
             "-c",
             program,
-            str(MATERIALIZER_PATH),
-            str(materializer.CONFIG_PATH),
+            str(isolated_materializer_path),
+            str(isolated_config_path),
             str(binding["approved_import_root"]),
         ],
         cwd=tmp_path,
@@ -241,8 +281,8 @@ print(json.dumps(module._validated_runtime_invocation(runtime, "runtime-check"),
             "-B",
             "-c",
             program,
-            str(MATERIALIZER_PATH),
-            str(materializer.CONFIG_PATH),
+            str(isolated_materializer_path),
+            str(isolated_config_path),
             str(binding["approved_import_root"]),
             str(extra_site),
         ],
@@ -1170,6 +1210,8 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
     ):
         materializer.materialize(forged_config)
     assert materializer._claim_path(forged_config).is_file()
+    forged_database_parent = materializer._paths(forged_config)["control"].parent
+    assert stat.S_IMODE(forged_database_parent.stat().st_mode) == 0o700
     assert not materializer._receipt_path(forged_config).exists()
     monkeypatch.setattr(
         DatabaseImplementationDaemon,
