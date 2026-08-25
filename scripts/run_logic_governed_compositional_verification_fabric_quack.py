@@ -6,7 +6,7 @@ configuration remains an embedded, single-writer recovery target.  This
 operator therefore has two explicit stages:
 
 * ``bootstrap`` verifies the canonical run-v17 recovery and publishes one
-  no-overwrite run-v21 database clone with a provenance receipt;
+  no-overwrite run-v22 database clone with a provenance receipt;
 * ``bootstrap-sealed-continuity`` admits a separately preserved run-v17 only
   through six explicit raw-byte pins, exact target-state reconstruction, and
   an operational-continuity-only authority ceiling;
@@ -78,7 +78,7 @@ PROGRAM_ROOT_RELATIVE: Final = Path(
     "data/agent_supervisor/logic_governed_compositional_verification_fabric"
 )
 SOURCE_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v17"
-SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v21"
+SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v22"
 SOURCE_DATABASE_RELATIVE: Final = SOURCE_RUN_RELATIVE / "control.duckdb"
 SUCCESSOR_DATABASE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "control.duckdb"
 OWNER_STATE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "quack-owner"
@@ -2328,12 +2328,12 @@ def clone_verified_successor(
         ) from exc
     if (
         source.parent.name != "run-v17"
-        or final_run.name != "run-v21"
+        or final_run.name != "run-v22"
         or target.name != "control.duckdb"
         or len(provenance_relative.parts) != 2
         or provenance_relative.parts[0] != "evidence"
     ):
-        raise SuccessorOperatorError("successor clone must be run-v17 -> run-v21")
+        raise SuccessorOperatorError("successor clone must be run-v17 -> run-v22")
     if source == target:
         raise SuccessorOperatorError("successor source and target are identical")
     try:
@@ -2396,7 +2396,7 @@ def clone_verified_successor(
     _privatize_owned_directory(publish_parent, noun="successor publication parent")
     # Keep the unpublished generation under the same reviewed run-v* ignore
     # boundary as the final generation.  Sealed admission is repeated after
-    # cloning; a hidden .run-v21.* stage would otherwise appear as untracked
+    # cloning; a hidden .run-v22.* stage would otherwise appear as untracked
     # worktree dirt and make every real bootstrap fail closed on itself.
     stage = publish_parent / f"{final_run.name}.stage-{uuid.uuid4().hex}"
     os.mkdir(stage, mode=0o700)
@@ -2444,7 +2444,7 @@ def clone_verified_successor(
             while view:
                 written = os.write(target_descriptor, view)
                 if written <= 0:
-                    raise SuccessorOperatorError("run-v21 clone write made no progress")
+                    raise SuccessorOperatorError("run-v22 clone write made no progress")
                 view = view[written:]
         os.fsync(target_descriptor)
         os.close(target_descriptor)
@@ -2464,7 +2464,7 @@ def clone_verified_successor(
             or target_verification.get("schema_fingerprint")
             != source_verification.get("schema_fingerprint")
         ):
-            raise SuccessorOperatorError("run-v21 clone differs from verified run-v17")
+            raise SuccessorOperatorError("run-v22 clone differs from verified run-v17")
         if sealed_source_paths is not None:
             pins = recovery_verification.get("pins") or {}
             refreshed = verify_sealed_target_continuity(
@@ -2486,7 +2486,7 @@ def clone_verified_successor(
             "schema": PROVENANCE_SCHEMA,
             "issued_at": _utc_now(),
             "source_generation": "lgcvf-run-v17",
-            "target_generation": "lgcvf-run-v21",
+            "target_generation": "lgcvf-run-v22",
             "source_database": str(source),
             "target_database": str(target),
             "source_sha256": source_digest,
@@ -2712,8 +2712,8 @@ def _require_ignored_successor(root: Path) -> None:
         / ".control.duckdb.lock"
     )
     for relative, noun in (
-        (SUCCESSOR_DATABASE_RELATIVE, "run-v21 successor Git-ignore policy"),
-        (stage_lock, "run-v21 staging Git-ignore policy"),
+        (SUCCESSOR_DATABASE_RELATIVE, "run-v22 successor Git-ignore policy"),
+        (stage_lock, "run-v22 staging Git-ignore policy"),
     ):
         _git_quiet(
             root,
@@ -2766,7 +2766,12 @@ def bootstrap_sealed_successor(
     )
 
 
-def _load_provenance(paths: Mapping[str, Path], *, root: Path = ROOT) -> dict[str, Any]:
+def _load_provenance(
+    paths: Mapping[str, Path],
+    *,
+    root: Path = ROOT,
+    expected_receipt: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     database = paths["successor_database"]
     _require_private_directory(database.parent, noun="successor generation")
     _require_private_directory(
@@ -2780,6 +2785,10 @@ def _load_provenance(paths: Mapping[str, Path], *, root: Path = ROOT) -> dict[st
         require_private_owner=True,
         verify_content_identity=False,
     )
+    if expected_receipt is not None and initial_receipt != dict(expected_receipt):
+        raise SuccessorOperatorError(
+            "verified successor provenance differs from native authorization"
+        )
     if initial_receipt.get("admission_mode") == SEALED_CONTINUITY_MODE:
         _candidate_runtime_continuity(root)
     receipt = _strict_json(
@@ -2816,7 +2825,7 @@ def _load_provenance(paths: Mapping[str, Path], *, root: Path = ROOT) -> dict[st
             or receipt.get("authoritative_for_release") is not False
             or receipt.get("production_authorized") is not False
             or receipt.get("source_generation") != "lgcvf-run-v17"
-            or receipt.get("target_generation") != "lgcvf-run-v21"
+            or receipt.get("target_generation") != "lgcvf-run-v22"
             or receipt.get("clone_preserves_database_uuid") is not True
             or receipt.get("owner_generation_rotates_on_start") is not True
         ):
@@ -2972,7 +2981,7 @@ def _load_lgcvf_live_raw_provenance_receipt(
         or re.fullmatch(r"[a-z2-7]{32,256}", receipt_cid) is None
         or receipt.get("target_database") != str(paths["successor_database"])
         or receipt.get("source_generation") != "lgcvf-run-v17"
-        or receipt.get("target_generation") != "lgcvf-run-v21"
+        or receipt.get("target_generation") != "lgcvf-run-v22"
         or receipt.get("admission_mode")
         not in {"canonical_fresh_generation_recovery", SEALED_CONTINUITY_MODE}
     ):
@@ -3023,7 +3032,7 @@ def _validate_successor_board(
         or program.endpoint_secret_handle != SECRET_HANDLE
         or program.store_id != expected_store
         or program.runtime_registry_path != expected_registry
-        or program.store_generation != "lgcvf-run-v21"
+        or program.store_generation != "lgcvf-run-v22"
         or program.schema_revision != "datasets-authoritative-operational-v1"
         or not isinstance(raw_program, Mapping)
         or raw_program.get("schema_profile") != "datasets-authoritative-operational"
@@ -3333,7 +3342,7 @@ def _lgcvf_live_native_authorization_id(
         "board_namespace": (
             "logic-governed-compositional-verification-fabric-v1"
         ),
-        "target_generation": "lgcvf-run-v21",
+        "target_generation": "lgcvf-run-v22",
         "source_head": source_head,
         "source_tree": source_tree,
         "candidate_config_path": DEFAULT_SUCCESSOR_CONFIG_RELATIVE.as_posix(),
@@ -3966,8 +3975,9 @@ def _prepare_lgcvf_configured_board_live_launch(
 
     This function has no database or Quack-owner effect.  It may create only a
     private content-addressed capsule, sealed anonymous descriptors, and the
-    verified load-only extension HOME.  Its caller must close both descriptors
-    on every exit path.
+    verified load-only extension HOME.  It deliberately leaves the candidate
+    import boundary intact for provenance verification.  Its caller must close
+    both descriptors on every exit path.
     """
 
     expected_config = _contained(root, DEFAULT_SUCCESSOR_CONFIG_RELATIVE)
@@ -4176,10 +4186,6 @@ def _prepare_lgcvf_configured_board_live_launch(
             raise SuccessorOperatorError(
                 "LGCVF live source changed after controller closure admission"
             )
-        retargeted_packages = _retarget_lgcvf_live_repository_imports(
-            root=root,
-            archive_path=archive_path,
-        )
         return {
             "capsule_parent": capsule_parent,
             "capsule_pin": capsule_pin,
@@ -4196,9 +4202,10 @@ def _prepare_lgcvf_configured_board_live_launch(
             "host": host,
             "port": port,
             "sealed_config_raw": sealed_config_raw,
+            "archive_path": archive_path,
+            "continuity": dict(continuity),
             "preloaded_modules": preloaded_modules,
             "audited_modules": audited_modules,
-            "retargeted_packages": retargeted_packages,
         }
     except BaseException:
         if native_launch is not None:
@@ -4213,6 +4220,79 @@ def _prepare_lgcvf_configured_board_live_launch(
                 pass
         _remove_private_live_capsule_parent(capsule_parent)
         raise
+
+
+def _verify_lgcvf_live_provenance_before_import_retarget(
+    *,
+    paths: Mapping[str, Path],
+    root: Path,
+    raw_provenance: Mapping[str, Any],
+    live_launch: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify state, re-audit newly loaded source, then seal import routing."""
+
+    provenance = _load_provenance(
+        paths,
+        root=root,
+        expected_receipt=raw_provenance,
+    )
+    if provenance != raw_provenance:
+        raise SuccessorOperatorError(
+            "verified successor provenance differs from native authorization"
+        )
+    archive_path = live_launch.get("archive_path")
+    admitted_continuity = live_launch.get("continuity")
+    capsule_pin = live_launch.get("capsule_pin")
+    capsule_descriptor = getattr(live_launch.get("capsule"), "descriptor", None)
+    if (
+        not isinstance(archive_path, str)
+        or not isinstance(admitted_continuity, Mapping)
+        or type(capsule_descriptor) is not int
+        or capsule_descriptor < 3
+    ):
+        raise SuccessorOperatorError(
+            "LGCVF live controller admission is incomplete before import sealing"
+        )
+    post_provenance_preloaded_modules = (
+        _preload_lgcvf_live_controller_dependency_closure()
+    )
+    refreshed_archive_path, manifest_files = (
+        _lgcvf_live_sealed_manifest_inventory(
+            capsule_pin,
+            capsule_descriptor,
+        )
+    )
+    if refreshed_archive_path != archive_path:
+        raise SuccessorOperatorError(
+            "LGCVF live sealed import root changed during provenance verification"
+        )
+    try:
+        with zipfile.ZipFile(archive_path, mode="r") as archive:
+            audited_modules = _audit_lgcvf_live_loaded_repository_modules(
+                root=root,
+                operator_path=Path(__file__),
+                manifest_files=manifest_files,
+                read_member=archive.read,
+            )
+    except (OSError, RuntimeError, ValueError, zipfile.BadZipFile) as exc:
+        raise SuccessorOperatorError(
+            "LGCVF live sealed controller closure is unreadable"
+        ) from exc
+    final_continuity = _candidate_runtime_continuity(root)
+    if final_continuity != admitted_continuity:
+        raise SuccessorOperatorError(
+            "LGCVF live source changed during provenance verification"
+        )
+    retargeted_packages = _retarget_lgcvf_live_repository_imports(
+        root=root,
+        archive_path=archive_path,
+    )
+    return {
+        "provenance": provenance,
+        "preloaded_modules": post_provenance_preloaded_modules,
+        "audited_modules": audited_modules,
+        "retargeted_packages": retargeted_packages,
+    }
 
 
 def _close_lgcvf_configured_board_live_launch(
@@ -4277,7 +4357,7 @@ def _run_locked_successor(
             BOARD_EXTENSION_INSTALL_POLICY_ENV: (
                 BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
             ),
-            STORE_GENERATION_ENV: "lgcvf-run-v21",
+            STORE_GENERATION_ENV: "lgcvf-run-v22",
         }
         previous_extension_environment.update(
             {name: os.environ.get(name) for name in extension_environment}
@@ -4297,11 +4377,13 @@ def _run_locked_successor(
         )
 
         preload_agent_supervisor_native_dependency(live_launch["native_launch"])
-        provenance = _load_provenance(paths, root=root)
-        if provenance != raw_provenance:
-            raise SuccessorOperatorError(
-                "verified successor provenance differs from native authorization"
-            )
+        sealed_admission = _verify_lgcvf_live_provenance_before_import_retarget(
+            paths=paths,
+            root=root,
+            raw_provenance=raw_provenance,
+            live_launch=live_launch,
+        )
+        provenance = sealed_admission["provenance"]
         from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
             current_process_birth,
         )

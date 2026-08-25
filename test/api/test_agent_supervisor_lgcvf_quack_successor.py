@@ -149,8 +149,8 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v21" / "control.duckdb"
-    provenance = tmp_path / "run-v21" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v22" / "control.duckdb"
+    provenance = tmp_path / "run-v22" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
     source_digest = operator._sha256_regular_file(source)
@@ -177,7 +177,7 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
         "evidence",
     }
     assert {item.name for item in provenance.parent.iterdir()} == {provenance.name}
-    assert not tuple(tmp_path.glob("run-v21.stage-*"))
+    assert not tuple(tmp_path.glob("run-v22.stage-*"))
     for path, expected_mode in (
         (target.parent, 0o700),
         (provenance.parent, 0o700),
@@ -189,7 +189,7 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
         if path.is_file():
             assert metadata.st_nlink == 1
     assert receipt["source_generation"] == "lgcvf-run-v17"
-    assert receipt["target_generation"] == "lgcvf-run-v21"
+    assert receipt["target_generation"] == "lgcvf-run-v22"
     assert receipt["source_database_statuses_read"] is False
     assert (
         operator._strict_json(
@@ -213,8 +213,8 @@ def test_successor_bootstrap_rejects_any_preexisting_generation(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v21" / "control.duckdb"
-    provenance = tmp_path / "run-v21" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v22" / "control.duckdb"
+    provenance = tmp_path / "run-v22" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
     if existing_kind == "directory":
@@ -222,7 +222,7 @@ def test_successor_bootstrap_rejects_any_preexisting_generation(
     elif existing_kind == "file":
         target.parent.write_bytes(b"occupied")
     else:
-        target.parent.symlink_to("missing-run-v21")
+        target.parent.symlink_to("missing-run-v22")
     before = os.lstat(target.parent)
     recovery = {
         "valid": True,
@@ -252,8 +252,8 @@ def test_successor_receipt_failure_never_publishes_database_only_generation(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v21" / "control.duckdb"
-    provenance = tmp_path / "run-v21" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v22" / "control.duckdb"
+    provenance = tmp_path / "run-v22" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
 
@@ -275,7 +275,7 @@ def test_successor_receipt_failure_never_publishes_database_only_generation(
         )
 
     assert not os.path.lexists(target.parent)
-    assert not tuple(tmp_path.glob("run-v21.stage-*"))
+    assert not tuple(tmp_path.glob("run-v22.stage-*"))
 
 
 def test_successor_stage_remains_clean_during_reverification(
@@ -299,8 +299,8 @@ def test_successor_stage_remains_clean_during_reverification(
             env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
         )
     source = repository / "run-v17" / "control.duckdb"
-    target = repository / "run-v21" / "control.duckdb"
-    provenance = repository / "run-v21" / "evidence" / "provenance.json"
+    target = repository / "run-v22" / "control.duckdb"
+    provenance = repository / "run-v22" / "evidence" / "provenance.json"
     source.parent.mkdir()
     _seed_datasets_profile(source)
     operator._require_ignored_successor(repository)
@@ -336,7 +336,7 @@ def test_successor_stage_remains_clean_during_reverification(
     )
 
     assert observed_status == [""]
-    assert not tuple(repository.glob("run-v21.stage-*"))
+    assert not tuple(repository.glob("run-v22.stage-*"))
 
 
 @pytest.mark.parametrize(
@@ -352,8 +352,8 @@ def test_successor_load_rejects_aliases_and_live_wal(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v21" / "control.duckdb"
-    provenance = tmp_path / "run-v21" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v22" / "control.duckdb"
+    provenance = tmp_path / "run-v22" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
     operator.clone_verified_successor(
@@ -418,6 +418,183 @@ def test_controller_lock_is_held_before_locked_admission(
         fcntl.flock(held.fileno(), fcntl.LOCK_UN)
         held.close()
     assert entered is False
+
+
+def test_live_launch_verifies_provenance_before_import_retarget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py import llm_router
+
+    operator = _operator()
+    events: list[str] = []
+    provenance_loaded = False
+    raw_provenance = {"receipt_cid": "baguqeera-test-live-provenance"}
+    verified_provenance = dict(raw_provenance)
+    continuity = {"current_head": "a" * 40, "current_tree": "b" * 40}
+    native_launch = object()
+    capsule_pin = object()
+
+    class Capsule:
+        descriptor = 991
+
+    capsule = Capsule()
+
+    class RetargetReached(BaseException):
+        pass
+
+    class SealedArchive:
+        def __init__(self, path: str, *, mode: str) -> None:
+            assert path == "/proc/self/fd/991"
+            assert mode == "r"
+
+        def __enter__(self) -> SealedArchive:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self, _member: str) -> bytes:
+            return b"sealed"
+
+    def load_raw(_paths: object) -> dict[str, str]:
+        events.append("raw")
+        return raw_provenance
+
+    def prepare(**kwargs: object) -> dict[str, object]:
+        events.append("prepare")
+        assert kwargs["provenance"] is raw_provenance
+        return {
+            "launch_home": tmp_path / "qualification-home",
+            "native_launch": native_launch,
+            "capsule_pin": capsule_pin,
+            "capsule": capsule,
+            "archive_path": "/proc/self/fd/991",
+            "continuity": continuity,
+        }
+
+    def preload(observed_launch: object) -> None:
+        events.append("native")
+        assert observed_launch is native_launch
+
+    def load_verified(
+        _paths: object,
+        *,
+        root: Path,
+        expected_receipt: object,
+    ) -> dict[str, str]:
+        nonlocal provenance_loaded
+        events.append("provenance")
+        assert root == tmp_path
+        assert expected_receipt is raw_provenance
+        provenance_loaded = True
+        return verified_provenance
+
+    def post_provenance_preload() -> tuple[str, ...]:
+        events.append("post_provenance_preload")
+        assert provenance_loaded is True
+        return ("ipfs_accelerate_py.loaded_during_provenance",)
+
+    def refresh_manifest(
+        observed_pin: object,
+        observed_descriptor: int,
+    ) -> tuple[str, dict[str, str]]:
+        events.append("manifest")
+        assert provenance_loaded is True
+        assert observed_pin is capsule_pin
+        assert observed_descriptor == capsule.descriptor
+        return (
+            "/proc/self/fd/991",
+            {"sealed.py": "sha256:" + ("c" * 64)},
+        )
+
+    def audit(**kwargs: object) -> tuple[str, ...]:
+        events.append("audit")
+        assert provenance_loaded is True
+        assert callable(kwargs["read_member"])
+        return ("ipfs_accelerate_py.loaded_during_provenance",)
+
+    def final_continuity(root: Path) -> dict[str, str]:
+        events.append("final_continuity")
+        assert provenance_loaded is True
+        assert root == tmp_path
+        return dict(continuity)
+
+    def retarget(**kwargs: object) -> tuple[str, ...]:
+        events.append("retarget")
+        assert provenance_loaded is True
+        assert kwargs == {"root": tmp_path, "archive_path": "/proc/self/fd/991"}
+        raise RetargetReached
+
+    monkeypatch.setattr(
+        operator,
+        "_load_lgcvf_live_raw_provenance_receipt",
+        load_raw,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_prepare_lgcvf_configured_board_live_launch",
+        prepare,
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "preload_agent_supervisor_native_dependency",
+        preload,
+    )
+    monkeypatch.setattr(operator, "_load_provenance", load_verified)
+    monkeypatch.setattr(
+        operator,
+        "_preload_lgcvf_live_controller_dependency_closure",
+        post_provenance_preload,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_lgcvf_live_sealed_manifest_inventory",
+        refresh_manifest,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_audit_lgcvf_live_loaded_repository_modules",
+        audit,
+    )
+    monkeypatch.setattr(operator, "_candidate_runtime_continuity", final_continuity)
+    monkeypatch.setattr(
+        operator,
+        "_retarget_lgcvf_live_repository_imports",
+        retarget,
+    )
+    monkeypatch.setattr(operator.zipfile, "ZipFile", SealedArchive)
+    monkeypatch.setattr(
+        operator,
+        "_close_lgcvf_configured_board_live_launch",
+        lambda _launch: events.append("cleanup"),
+    )
+    for name in tuple(os.environ):
+        if name.startswith("LD_") or name == "GLIBC_TUNABLES":
+            monkeypatch.delenv(name)
+
+    with pytest.raises(RetargetReached):
+        operator._run_locked_successor(
+            tmp_path / "candidate.json",
+            root=tmp_path,
+            implement=True,
+            duration_seconds=float("inf"),
+        )
+
+    assert verified_provenance == raw_provenance
+    assert verified_provenance is not raw_provenance
+    assert events == [
+        "raw",
+        "prepare",
+        "native",
+        "provenance",
+        "post_provenance_preload",
+        "manifest",
+        "audit",
+        "final_continuity",
+        "retarget",
+        "cleanup",
+    ]
 
 
 def _live_controller_source_audit_fixture(
@@ -1358,7 +1535,7 @@ def test_real_four_process_quack_cas_has_one_winner_and_private_sidecars(
         )
 
     operator = _operator()
-    runtime = tmp_path / "run-v21"
+    runtime = tmp_path / "run-v22"
     database = runtime / "control.duckdb"
     owner_state = runtime / "quack-owner"
     logical_generation = "lgcvf-synthetic-v1"
