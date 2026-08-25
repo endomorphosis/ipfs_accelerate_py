@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     MAINTENANCE_LEASE_INTERFACE,
     RESOURCE_CLAIM_INTERFACE,
     TASK_CLAIM_INTERFACE,
+    TASK_COMPLETION_REARM_SCHEMA,
     TASK_DEPENDENCY_AMENDMENT_SCHEMA,
     AttemptStatus,
     DatabaseCoordinationConflictError,
@@ -110,6 +111,58 @@ def _incomplete_control_task(prepared: dict[str, object]) -> dict[str, object]:
         "status": prepared["control_expected_status"],
         "revision": prepared["control_expected_revision"],
         "body": {},
+    }
+
+
+def _settled_control_completion(
+    coordinator: DatabaseCoordinator,
+    task_cid: str,
+    *,
+    expected_revision: int = 2,
+) -> tuple[TaskClaim, dict[str, object]]:
+    claim = coordinator.claim_task(
+        task_cid=task_cid,
+        owner_session_id=f"session:{task_cid}",
+    )
+    prepared = coordinator.prepare_task_completion(
+        claim,
+        control_expected_revision=expected_revision,
+        evidence_digest=f"sha256:{task_cid}",
+    )
+    control_task = _completed_control_task(prepared)
+    coordinator.complete_task_claim(
+        claim,
+        control_completion_receipt=control_task,
+    )
+    coordinator.settle_task_claim(claim)
+    return claim, control_task
+
+
+def _control_rearm_observation(
+    *,
+    task_cid: str,
+    task_alias: str,
+    revision: int = 4,
+    status: str = "retrying",
+    nested: bool = True,
+) -> dict[str, object]:
+    task: dict[str, object] = {
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "status": status,
+        "revision": revision,
+        "body": {},
+    }
+    if not nested:
+        return task
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-task-cas@1",
+        "task": task,
+        "previous_status": "completed",
+        "revision": revision,
+        "event_cursor": 9,
+        "changed": True,
+        "receipt_cid": "cid:control-rearm",
     }
 
 
@@ -1661,6 +1714,269 @@ def test_claim_aware_completion_and_successful_settlement_are_ordered(
             coordinator.protect_task_claim(
                 claim,
                 allow_logically_completed=True,
+            )
+    finally:
+        coordinator.close()
+
+
+def test_control_rearm_removes_exact_completion_and_is_replay_safe(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:rearm", task_id="REARM")
+        first_claim, _control_task = _settled_control_completion(
+            coordinator,
+            "task:rearm",
+        )
+        observation = _control_rearm_observation(
+            task_cid="task:rearm",
+            task_alias="REARM",
+            nested=True,
+        )
+
+        rearmed = coordinator.rearm_task_from_control(
+            "task:rearm",
+            control_task_observation=observation,
+        )
+        assert rearmed == {
+            "schema": TASK_COMPLETION_REARM_SCHEMA,
+            "task_cid": "task:rearm",
+            "previous_control_revision": 3,
+            "control_revision": 4,
+            "control_status": "retrying",
+            "ready": True,
+            "replayed": False,
+        }
+        assert coordinator.claimability("task:rearm")["claimable"] is True
+        projection = coordinator.coordination_registry_projection()
+        assert projection["logical_completions"] == []
+        assert projection["tasks"][0]["ready"] is True
+
+        # Response-loss replay requires the same exact typed CAS receipt.
+        replay = coordinator.rearm_task_from_control(
+            "task:rearm",
+            control_task_observation=observation,
+        )
+        assert replay == {**rearmed, "replayed": True}
+
+        replacement = coordinator.claim_task(
+            task_cid="task:rearm",
+            owner_session_id="session:replacement",
+        )
+        assert replacement.attempt_number == first_claim.attempt_number + 1
+        assert replacement.fencing_token > first_claim.fencing_token
+    finally:
+        coordinator.close()
+
+
+def test_control_rearm_recomputes_blocked_dependency_readiness(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:rearm-dep", task_id="REARM-DEP")
+        coordinator.register_task(
+            task_cid="task:rearm-child",
+            task_id="REARM-CHILD",
+            dependency_task_cids=("task:rearm-dep",),
+        )
+        _settled_control_completion(coordinator, "task:rearm-dep")
+        _settled_control_completion(coordinator, "task:rearm-child")
+
+        dependency = coordinator.rearm_task_from_control(
+            "task:rearm-dep",
+            control_task_observation=_control_rearm_observation(
+                task_cid="task:rearm-dep",
+                task_alias="REARM-DEP",
+            ),
+        )
+        assert dependency["ready"] is True
+        child = coordinator.rearm_task_from_control(
+            "task:rearm-child",
+            control_task_observation=_control_rearm_observation(
+                task_cid="task:rearm-child",
+                task_alias="REARM-CHILD",
+            ),
+        )
+        assert child["ready"] is False
+        readiness = coordinator.claimability("task:rearm-child")
+        assert readiness["claimable"] is False
+        assert readiness["blocked_dependency_task_cids"] == ["task:rearm-dep"]
+
+        # Projection validation also proves the exact required ready index was
+        # recreated after both indexed boolean updates.
+        projection = coordinator.coordination_registry_projection()
+        tasks = {item["task_cid"]: item for item in projection["tasks"]}
+        assert tasks["task:rearm-dep"]["ready"] is True
+        assert tasks["task:rearm-child"]["ready"] is False
+    finally:
+        coordinator.close()
+
+
+def test_control_rearm_rejects_active_completion_authority(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:rearm-live", task_id="REARM-LIVE")
+        claim = coordinator.claim_task(
+            task_cid="task:rearm-live",
+            owner_session_id="session:live-rearm",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:live-rearm",
+        )
+        coordinator.complete_task_claim(
+            claim,
+            control_completion_receipt=_completed_control_task(prepared),
+        )
+        observation = _control_rearm_observation(
+            task_cid="task:rearm-live",
+            task_alias="REARM-LIVE",
+            nested=True,
+        )
+
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="requires a quiescent sidecar",
+        ):
+            coordinator.rearm_task_from_control(
+                "task:rearm-live",
+                control_task_observation=observation,
+            )
+        assert coordinator.claimability("task:rearm-live")[
+            "completion_status"
+        ] == AttemptStatus.SUCCEEDED.value
+
+        coordinator.settle_task_claim(claim)
+        maintenance = coordinator.acquire_maintenance_lease(
+            owner_session_id="session:rearm-maintenance",
+            scope="rearm-maintenance",
+        )
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="requires a quiescent sidecar",
+        ):
+            coordinator.rearm_task_from_control(
+                "task:rearm-live",
+                control_task_observation=observation,
+            )
+        coordinator.release(maintenance.as_fenced_lease())
+        assert coordinator.rearm_task_from_control(
+            "task:rearm-live",
+            control_task_observation=observation,
+        )["ready"] is True
+    finally:
+        coordinator.close()
+
+
+def test_control_rearm_rejects_malformed_stale_or_mismatched_observations(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:rearm-closed", task_id="REARM-CLOSED")
+        _settled_control_completion(coordinator, "task:rearm-closed")
+        invalid_observations: list[dict[str, object]] = [
+            {},
+            {"task_cid": "task:rearm-closed", "status": "retrying"},
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                nested=False,
+            ),
+            _control_rearm_observation(
+                task_cid="task:not-the-task",
+                task_alias="REARM-CLOSED",
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="NOT-THE-REGISTERED-TASK",
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                revision=3,
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                status="completed",
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                status="blocked",
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                status="in_progress",
+            ),
+            {
+                "task_cid": "task:rearm-closed",
+                "task_alias": "REARM-CLOSED",
+                "status": "retrying",
+                "revision": "4",
+            },
+            {
+                **_control_rearm_observation(
+                    task_cid="task:rearm-closed",
+                    task_alias="REARM-CLOSED",
+                    nested=True,
+                ),
+                "changed": False,
+            },
+            {
+                **_control_rearm_observation(
+                    task_cid="task:rearm-closed",
+                    task_alias="REARM-CLOSED",
+                ),
+                "receipt_cid": "",
+            },
+        ]
+        for observation in invalid_observations:
+            with pytest.raises(
+                (
+                    DatabaseCoordinationStaleFenceError,
+                    DatabaseCoordinationNotReadyError,
+                )
+            ):
+                coordinator.rearm_task_from_control(
+                    "task:rearm-closed",
+                    control_task_observation=observation,
+                )
+            assert coordinator.claimability("task:rearm-closed")[
+                "completion_status"
+            ] == AttemptStatus.SUCCEEDED.value
+
+        valid = _control_rearm_observation(
+            task_cid="task:rearm-closed",
+            task_alias="REARM-CLOSED",
+        )
+        coordinator.rearm_task_from_control(
+            "task:rearm-closed",
+            control_task_observation=valid,
+        )
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.rearm_task_from_control(
+                "task:rearm-closed",
+                control_task_observation={
+                    **valid,
+                    "receipt_cid": "cid:forged-control-rearm",
+                },
+            )
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.rearm_task_from_control(
+                "task:rearm-closed",
+                control_task_observation=_control_rearm_observation(
+                    task_cid="task:rearm-closed",
+                    task_alias="REARM-CLOSED",
+                    revision=5,
+                ),
             )
     finally:
         coordinator.close()

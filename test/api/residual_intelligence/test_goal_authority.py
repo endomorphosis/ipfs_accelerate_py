@@ -215,6 +215,41 @@ def _terminal_control_receipt() -> tuple[dict[str, object], str]:
     return _portal_control_receipt(32, implementation_commit="c" * 40)
 
 
+@pytest.mark.parametrize("replayed", [False, True])
+def test_operator_portal_binding_accepts_boolean_replayed_marker(
+    replayed: bool,
+) -> None:
+    receipt, _ = _portal_control_receipt(30)
+    validation = receipt["validation"]
+    assert isinstance(validation, dict)
+    validation["replayed"] = replayed
+
+    binding = _operator()._vrif_portal_completion_binding(
+        receipt,
+        task_cid=_task_cid(30),
+    )
+
+    assert binding == validation["portal_completion_binding"]
+
+
+@pytest.mark.parametrize("replayed", [0, 1, "false", None])
+def test_operator_portal_binding_rejects_non_boolean_replayed_marker(
+    replayed: object,
+) -> None:
+    receipt, _ = _portal_control_receipt(30)
+    validation = receipt["validation"]
+    assert isinstance(validation, dict)
+    validation["replayed"] = replayed
+
+    assert (
+        _operator()._vrif_portal_completion_binding(
+            receipt,
+            task_cid=_task_cid(30),
+        )
+        is None
+    )
+
+
 def _terminal_completion_binding() -> dict[str, object]:
     control_receipt, evidence_digest = _terminal_control_receipt()
     revision = 2
@@ -587,6 +622,7 @@ def _seed(
     *,
     skipped_task: int | None = None,
     arbitrary_terminal_receipt: bool = False,
+    producer_validation_patch: dict[str, object] | None = None,
 ) -> None:
     specification = _specification()
     with open_intent_repository(path, owner_id="owner:goal-authority-seed") as repository:
@@ -676,6 +712,8 @@ def _seed(
                 )
                 validation = control_receipt["validation"]
                 assert isinstance(validation, dict)
+                if not terminal and producer_validation_patch is not None:
+                    validation.update(producer_validation_patch)
                 repository.record_validation_result(
                     task_cid=str(task["task_cid"]),
                     outcome="passed",
@@ -2271,6 +2309,128 @@ def test_root_requires_exact_retired_ready_task_lineage(tmp_path: Path) -> None:
         connection.close()
 
 
+def test_root_accepts_later_successfully_receipted_retired_ready_tasks(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "later-retired-ready-lineage.duckdb"
+    specification = _specification()
+    _seed(path)
+    connection, repository = _bound_repository(path)
+    try:
+        gate = _root_gate(specification, connection)
+        binding = dict(gate["runtime_settlement_binding"])
+        binding.pop("binding_id")
+        binding["retired_ready_task_cids"] = sorted(
+            [*binding["retired_ready_task_cids"], _task_cid(12)]
+        )
+        binding["binding_id"] = _sha256_identity(binding)
+        gate.pop("gate_id")
+        gate["runtime_settlement_binding"] = binding
+        gate["gate_id"] = content_identity(gate)
+
+        observed = repository.reconcile_goal_completion_authority(
+            specification,
+            root_completion_gate=gate,
+        )
+        assert observed["goal_authority"]["completion_gates"][
+            "retired_ready_tasks_satisfied"
+        ] is True
+        assert observed["goal_authority"]["all_goals_satisfied"] is True
+    finally:
+        repository.close()
+        connection.close()
+
+
+@pytest.mark.parametrize("invalid_extra", ["unknown", "unreceipted"])
+def test_root_rejects_invalid_later_retired_ready_tasks(
+    tmp_path: Path,
+    invalid_extra: str,
+) -> None:
+    path = tmp_path / f"invalid-later-retired-ready-{invalid_extra}.duckdb"
+    specification = _specification()
+    _seed(path)
+    connection, repository = _bound_repository(path)
+    try:
+        extra_task_cid = _task_cid(99 if invalid_extra == "unknown" else 12)
+        if invalid_extra == "unreceipted":
+            connection.execute(
+                "DELETE FROM completion_receipts WHERE task_cid = ?",
+                [extra_task_cid],
+            )
+        gate = _root_gate(specification, connection)
+        binding = dict(gate["runtime_settlement_binding"])
+        binding.pop("binding_id")
+        binding["retired_ready_task_cids"] = sorted(
+            [*binding["retired_ready_task_cids"], extra_task_cid]
+        )
+        binding["binding_id"] = _sha256_identity(binding)
+        gate.pop("gate_id")
+        gate["runtime_settlement_binding"] = binding
+        gate["gate_id"] = content_identity(gate)
+
+        observed = repository.reconcile_goal_completion_authority(
+            specification,
+            root_completion_gate=gate,
+        )
+        assert observed["goal_authority"]["completion_gates"][
+            "retired_ready_tasks_satisfied"
+        ] is False
+        assert observed["goal_authority"]["all_goals_satisfied"] is False
+    finally:
+        repository.close()
+        connection.close()
+
+
+@pytest.mark.parametrize("replayed", [False, True])
+def test_producer_portal_validation_accepts_boolean_replayed_marker(
+    tmp_path: Path,
+    replayed: bool,
+) -> None:
+    path = tmp_path / f"producer-portal-replayed-{replayed}.duckdb"
+    specification = _specification()
+    _seed(path, producer_validation_patch={"replayed": replayed})
+    connection, repository = _bound_repository(path)
+    try:
+        observed = repository.reconcile_goal_completion_authority(
+            specification,
+            root_completion_gate=_root_gate(specification, connection),
+        )
+        assert observed["goal_authority"]["completion_gates"][
+            "terminal_report_producer_portal_bindings_satisfied"
+        ] is True
+        assert observed["goal_authority"]["all_goals_satisfied"] is True
+    finally:
+        repository.close()
+        connection.close()
+
+
+@pytest.mark.parametrize(
+    "producer_validation_patch",
+    [{"replayed": 1}, {"replayed": "true"}, {"unexpected": True}],
+    ids=["integer-replayed", "string-replayed", "unknown-field"],
+)
+def test_producer_portal_validation_rejects_non_boolean_or_unknown_fields(
+    tmp_path: Path,
+    producer_validation_patch: dict[str, object],
+) -> None:
+    path = tmp_path / "producer-portal-invalid-fields.duckdb"
+    specification = _specification()
+    _seed(path, producer_validation_patch=producer_validation_patch)
+    connection, repository = _bound_repository(path)
+    try:
+        observed = repository.reconcile_goal_completion_authority(
+            specification,
+            root_completion_gate=_root_gate(specification, connection),
+        )
+        assert observed["goal_authority"]["completion_gates"][
+            "terminal_report_producer_portal_bindings_satisfied"
+        ] is False
+        assert observed["goal_authority"]["all_goals_satisfied"] is False
+    finally:
+        repository.close()
+        connection.close()
+
+
 def test_assignment_orphan_survives_event_rebuild_and_blocks_root(
     tmp_path: Path,
 ) -> None:
@@ -2389,6 +2549,75 @@ def test_projection_reuses_raw_duckdb_caller_transaction(tmp_path: Path) -> None
         assert projected["goal_count"] == 9
         connection.execute("COMMIT")
         assert connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0] == 9
+    finally:
+        connection.close()
+
+
+def test_projection_materializes_terminal_validation_lineage_without_join(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    path = tmp_path / "separate-terminal-validation-scans.duckdb"
+    specification = _specification()
+    _seed(path)
+    connection = duckdb.connect(str(path))
+
+    class RejectStreamingValidationJoin:
+        def __init__(self, raw_connection: object) -> None:
+            self.raw_connection = raw_connection
+            self.validation_scans: list[str] = []
+
+        @property
+        def in_transaction(self) -> bool:
+            return bool(getattr(self.raw_connection, "in_transaction", False))
+
+        def execute(self, sql: str, parameters: object = None):
+            normalized = " ".join(sql.strip().split()).upper()
+            if (
+                "FROM VALIDATION_RUNS AS VR" in normalized
+                and "JOIN VALIDATION_RESULTS AS RESULT" in normalized
+            ):
+                raise AssertionError("Quack-incompatible validation lineage join")
+            if normalized.startswith(
+                "SELECT RUN_ID, ATTEMPT_ID, STATUS, COMMAND_DIGEST, BODY_JSON "
+                "FROM VALIDATION_RUNS"
+            ):
+                self.validation_scans.append("runs")
+            if normalized.startswith(
+                "SELECT RUN_ID, RESULT_ID, OUTCOME, EVIDENCE_DIGEST, BODY_JSON "
+                "FROM VALIDATION_RESULTS"
+            ):
+                self.validation_scans.append("results")
+            if parameters is None:
+                return self.raw_connection.execute(sql)
+            return self.raw_connection.execute(sql, parameters)
+
+    try:
+        gate = _root_gate(specification, connection)
+        proxy = RejectStreamingValidationJoin(connection)
+        projected = goal_authority_projection_on_connection(
+            proxy,
+            specification,
+            root_gate_context={
+                "current_tree_clean": True,
+                "source_head": gate["source_head"],
+                "repository_tree_id": gate["repository_tree_id"],
+                "runtime_settlement_binding": gate["runtime_settlement_binding"],
+            },
+        )
+        assert proxy.validation_scans == ["runs", "results"]
+        assert projected["terminal_report_authority"]["validation_lineage"] == {
+            "validation_run_id": gate["terminal_report_evidence"][
+                "validation_run_id"
+            ],
+            "validation_result_id": gate["terminal_report_evidence"][
+                "validation_result_id"
+            ],
+            "validation_evidence_id": gate["terminal_report_evidence"][
+                "validation_evidence_id"
+            ],
+        }
     finally:
         connection.close()
 

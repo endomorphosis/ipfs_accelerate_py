@@ -3493,6 +3493,7 @@ class IntentRepository:
             "portal_receipt_id",
             "portal_completion_binding",
         }
+        replayed_portal_validation_fields = portal_validation_fields | {"replayed"}
         for producer_task_cid in terminal_producer_task_cids:
             producer_task = tasks[producer_task_cid]
             producer_alias = task_alias_by_cid[producer_task_cid]
@@ -3532,7 +3533,14 @@ class IntentRepository:
                 and isinstance(producer_control_receipt, Mapping)
                 and producer_control_receipt.get("operation") == "database_complete"
                 and isinstance(producer_validation, Mapping)
-                and set(producer_validation) == portal_validation_fields
+                and (
+                    set(producer_validation) == portal_validation_fields
+                    or (
+                        set(producer_validation)
+                        == replayed_portal_validation_fields
+                        and type(producer_validation.get("replayed")) is bool
+                    )
+                )
                 and producer_validation.get("outcome") == "passed"
                 and producer_validation.get("argv")
                 == list(_TERMINAL_REPORT_VALIDATION_ARGV)
@@ -3604,18 +3612,42 @@ class IntentRepository:
             isinstance(terminal_control_receipt, Mapping)
             and isinstance(terminal_validation, Mapping)
         ):
-            validation_lineage_rows = connection.execute(
-                """
-                SELECT vr.run_id, vr.attempt_id, vr.status, vr.command_digest,
-                       vr.body_json, result.result_id, result.outcome,
-                       result.evidence_digest, result.body_json
-                FROM validation_runs AS vr
-                JOIN validation_results AS result ON result.run_id = vr.run_id
-                WHERE vr.task_cid = ? AND result.task_cid = ?
-                ORDER BY vr.run_id, result.result_id
-                """,
-                [terminal_task["task_cid"], terminal_task["task_cid"]],
-            ).fetchall()
+            validation_run_rows = [
+                tuple(row[index] for index in range(5))
+                for row in connection.execute(
+                    """
+                    SELECT run_id, attempt_id, status, command_digest, body_json
+                    FROM validation_runs
+                    WHERE task_cid = ?
+                    ORDER BY run_id
+                    """,
+                    [terminal_task["task_cid"]],
+                ).fetchall()
+            ]
+            validation_result_rows = [
+                tuple(row[index] for index in range(5))
+                for row in connection.execute(
+                    """
+                    SELECT run_id, result_id, outcome, evidence_digest, body_json
+                    FROM validation_results
+                    WHERE task_cid = ?
+                    ORDER BY run_id, result_id
+                    """,
+                    [terminal_task["task_cid"]],
+                ).fetchall()
+            ]
+            # Quack materializes each remote scan independently and cannot execute
+            # the corresponding two-table streaming join.  Preserve every match
+            # (including duplicates) so ambiguous lineage still fails closed below.
+            validation_lineage_rows = sorted(
+                (
+                    (*run_row, *result_row[1:])
+                    for run_row in validation_run_rows
+                    for result_row in validation_result_rows
+                    if str(run_row[0]) == str(result_row[0])
+                ),
+                key=lambda row: (str(row[0]), str(row[5])),
+            )
             matching_validation_lineage: list[dict[str, str]] = []
             expected_validation_body = dict(terminal_validation)
             expected_validation_run_body = {
@@ -3992,14 +4024,15 @@ class IntentRepository:
                 )
                 database_gates["retired_ready_tasks_satisfied"] = bool(
                     len(expected_retired_ready_task_cids) == 3
-                    and observed_retired_ready_task_cids
-                    == expected_retired_ready_task_cids
+                    and set(expected_retired_ready_task_cids).issubset(
+                        observed_retired_ready_task_cids
+                    )
                     and all(
                         task_cid in tasks
                         and str(tasks[task_cid]["status"] or "").strip().lower()
                         in _SUCCESSFUL_TASK_STATUSES
                         and task_bindings.get(task_cid) is not None
-                        for task_cid in expected_retired_ready_task_cids
+                        for task_cid in observed_retired_ready_task_cids
                     )
                 )
                 terminal_gate_evidence = (

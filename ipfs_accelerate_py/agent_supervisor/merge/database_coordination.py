@@ -107,6 +107,16 @@ TASK_COMPLETION_PREPARATION_SCHEMA: Final[str] = (
 TASK_DEPENDENCY_AMENDMENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-dependency-amendment@1"
 )
+TASK_COMPLETION_REARM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/task-completion-rearm@1"
+)
+TASK_COMPLETION_REARM_EVENT: Final[str] = "task_completion_rearmed"
+_DATABASE_TASK_CAS_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-task-cas@1"
+)
+_CONTROL_TASK_SUCCESS_STATUSES: Final[frozenset[str]] = frozenset(
+    {"completed", "complete", "done"}
+)
 CROSS_STORE_FENCE_GUARD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/cross-store-fence-guard@1"
 )
@@ -2031,6 +2041,567 @@ class DatabaseCoordinator:
                     "task_cid": cid,
                     "completed_at_ms": now,
                     "status": status_text,
+                }
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
+    @staticmethod
+    def _validate_control_rearm_observation(
+        *,
+        task_cid: str,
+        observation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Validate one fresh typed control CAS from success to retrying."""
+
+        if not isinstance(observation, Mapping):
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm observation must be a mapping"
+            )
+        raw = _bounded_mapping(observation, name="control_task_observation")
+        expected_fields = {
+            "schema",
+            "task",
+            "previous_status",
+            "revision",
+            "event_cursor",
+            "changed",
+            "receipt_cid",
+        }
+        if set(raw) != expected_fields or raw.get("schema") != _DATABASE_TASK_CAS_SCHEMA:
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm observation is not a closed typed CAS result"
+            )
+        task_raw = raw.get("task")
+        if not isinstance(task_raw, Mapping):
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm CAS has no task projection"
+            )
+        task = dict(task_raw)
+
+        observed_task_cid = task.get("task_cid")
+        observed_status = task.get("status")
+        observed_revision = task.get("revision")
+        if (
+            not isinstance(observed_task_cid, str)
+            or observed_task_cid.strip() != task_cid
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm observation does not match the exact task CID"
+            )
+        if not isinstance(observed_status, str) or not observed_status.strip():
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm observation has no valid task status"
+            )
+        status = observed_status.strip().lower()
+        if status != "retrying":
+            raise DatabaseCoordinationNotReadyError(
+                f"control task {task_cid} is not freshly retrying",
+                evidence={
+                    "task_cid": task_cid,
+                    "control_status": status,
+                    "reason": "control_task_not_rearmable",
+                },
+            )
+        if (
+            type(observed_revision) is not int
+            or int(observed_revision) < 1
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm observation has no valid positive revision"
+            )
+
+        raw_revision = raw.get("revision")
+        raw_previous_status = raw.get("previous_status")
+        event_cursor = raw.get("event_cursor")
+        if raw.get("changed") is not True:
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm CAS did not record a fresh change"
+            )
+        if (
+            type(raw_revision) is not int
+            or int(raw_revision) != int(observed_revision)
+            or type(event_cursor) is not int
+            or int(event_cursor) < 0
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm CAS revision or event cursor is malformed"
+            )
+        if (
+            not isinstance(raw_previous_status, str)
+            or raw_previous_status.strip().lower()
+            not in _CONTROL_TASK_SUCCESS_STATUSES
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm CAS has no successful previous task status"
+            )
+        receipt_cid = raw.get("receipt_cid")
+        if not isinstance(receipt_cid, str) or not receipt_cid.strip():
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm CAS has no durable receipt CID"
+            )
+
+        task_alias = task.get("task_alias")
+        if task_alias is not None and (
+            not isinstance(task_alias, str) or not task_alias.strip()
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "control rearm observation has a malformed task alias"
+            )
+        return {
+            "task_cid": task_cid,
+            "task_alias": str(task_alias or "").strip(),
+            "status": status,
+            "revision": int(observed_revision),
+            "previous_status": raw_previous_status.strip().lower(),
+            "receipt_cid": receipt_cid.strip(),
+            "receipt_digest": _sha256_hex(
+                _canonical_json(raw).encode("utf-8")
+            ),
+        }
+
+    @staticmethod
+    def _assert_task_rearm_quiescent_unlocked(
+        connection: Any,
+        task_cid: str,
+    ) -> None:
+        """Require whole-sidecar quiescence before transactional index DDL."""
+
+        active_queries = {
+            "accepted_task_claims": (
+                "SELECT COUNT(*) AS active_count FROM task_claims "
+                "WHERE state = ?",
+                LeaseState.ACCEPTED.value,
+            ),
+            "running_task_attempts": (
+                "SELECT COUNT(*) AS active_count FROM task_attempts "
+                "WHERE status = ?",
+                AttemptStatus.RUNNING.value,
+            ),
+            "accepted_fenced_leases": (
+                "SELECT COUNT(*) AS active_count FROM fenced_leases "
+                "WHERE state = ?",
+                LeaseState.ACCEPTED.value,
+            ),
+            "accepted_resource_claims": (
+                "SELECT COUNT(*) AS active_count FROM resource_claims "
+                "WHERE state = ?",
+                LeaseState.ACCEPTED.value,
+            ),
+            "accepted_maintenance_leases": (
+                "SELECT COUNT(*) AS active_count FROM maintenance_leases "
+                "WHERE state = ?",
+                LeaseState.ACCEPTED.value,
+            ),
+        }
+        active_counts: dict[str, int] = {}
+        for name, (statement, state) in active_queries.items():
+            row = connection.execute(statement, [state]).fetchone()
+            count = int(
+                _row_get(
+                    _row_mapping(row),
+                    "active_count",
+                    "0",
+                    default=0,
+                )
+            )
+            if count:
+                active_counts[name] = count
+        if active_counts:
+            details = ", ".join(
+                f"{name}={count}" for name, count in sorted(active_counts.items())
+            )
+            raise DatabaseCoordinationConflictError(
+                f"task {task_cid} requires a quiescent sidecar for rearm: "
+                f"{details}"
+            )
+
+    @staticmethod
+    def _set_task_ready_with_index_rebuild_unlocked(
+        connection: Any,
+        *,
+        task_cid: str,
+        ready: bool,
+    ) -> None:
+        """Update the indexed ready bit without DuckDB ART-index rewrites.
+
+        The caller must first prove whole-sidecar quiescence.  DuckDB 1.5 can
+        fatally invalidate this secondary ART index while updating an indexed
+        boolean.  Under that single-writer precondition, dropping and
+        recreating the exact index inside the caller's transaction keeps the
+        schema unchanged at commit; any failure rolls the row mutation and DDL
+        back together.
+        """
+
+        connection.execute("DROP INDEX coordination_tasks_ready_idx")
+        connection.execute(
+            "UPDATE coordination_tasks SET ready = ? WHERE task_cid = ?",
+            [bool(ready), task_cid],
+        )
+        row = connection.execute(
+            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone()
+        if row is None or bool(
+            _row_get(_row_mapping(row), "ready", "0", default=not ready)
+        ) is not bool(ready):
+            raise DatabaseCoordinationStaleFenceError(
+                "task ready-bit rearm lost its exact registry row"
+            )
+        connection.execute(
+            """
+            CREATE INDEX coordination_tasks_ready_idx
+                ON coordination_tasks(ready, registered_at_ms, task_cid)
+            """
+        )
+
+    def rearm_task_from_control(
+        self,
+        task_cid: str,
+        *,
+        control_task_observation: Mapping[str, Any],
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Remove a stale logical completion after a newer control reopen.
+
+        The operation is deliberately narrower than a generic completion
+        delete.  It accepts only a fresh typed ``completed -> retrying`` CAS at
+        exactly the next revision, requires the prior logical completion to
+        carry its durable control-completion revision, and requires the entire
+        lane-local sidecar to be quiescent.  Completion removal and
+        dependency-derived ready recomputation commit atomically.
+        """
+
+        cid = _text(task_cid, "task_cid")
+        observation = self._validate_control_rearm_observation(
+            task_cid=cid,
+            observation=control_task_observation,
+        )
+        now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope=cid,
+            task_cid=cid,
+        )
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                task_row = connection.execute(
+                    "SELECT task_cid, task_id, ready FROM coordination_tasks "
+                    "WHERE task_cid = ?",
+                    [cid],
+                ).fetchone()
+                if task_row is None:
+                    raise DatabaseCoordinationConflictError(
+                        f"task is absent from the coordination registry: {cid}"
+                    )
+                task_mapping = _row_mapping(task_row)
+                registered_cid = str(
+                    _row_get(task_mapping, "task_cid", "0", default="") or ""
+                )
+                registered_task_id = str(
+                    _row_get(task_mapping, "task_id", "1", default="") or ""
+                )
+                if registered_cid != cid:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "coordination registry returned a mismatched task identity"
+                    )
+                if (
+                    observation["task_alias"]
+                    and observation["task_alias"] != registered_task_id
+                ):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "control task alias does not match the registered task identity"
+                    )
+
+                completion_row = connection.execute(
+                    "SELECT status, body_json FROM task_completions "
+                    "WHERE task_cid = ?",
+                    [cid],
+                ).fetchone()
+                if completion_row is None:
+                    self._assert_task_rearm_quiescent_unlocked(connection, cid)
+                    event_row = connection.execute(
+                        """
+                        SELECT event_id, lease_id, fencing_token, fence_epoch,
+                               body_json
+                        FROM lease_events
+                        WHERE scope_key = ? AND event_type = ?
+                        ORDER BY CAST(
+                            json_extract_string(body_json, '$.control_revision')
+                            AS BIGINT
+                        ) DESC, event_id DESC
+                        LIMIT 1
+                        """,
+                        [scope_key, TASK_COMPLETION_REARM_EVENT],
+                    ).fetchone()
+                    if event_row is None:
+                        raise DatabaseCoordinationStaleFenceError(
+                            f"task {cid} has no logical completion or exact rearm receipt"
+                        )
+                    event_mapping = _row_mapping(event_row)
+                    event_id = str(
+                        _row_get(event_mapping, "event_id", "0", default="") or ""
+                    )
+                    event_body = _decode_coordination_body(
+                        _row_get(event_mapping, "body_json", "4", default="{}"),
+                        table="lease_events",
+                        identity=event_id,
+                    )
+                    replay_checks = {
+                        "schema": event_body.get("schema")
+                        == TASK_COMPLETION_REARM_SCHEMA,
+                        "task_cid": event_body.get("task_cid") == cid,
+                        "control_revision": event_body.get("control_revision")
+                        == observation["revision"],
+                        "control_status": event_body.get("control_status")
+                        == observation["status"],
+                        "previous_status": event_body.get(
+                            "previous_control_status"
+                        )
+                        == observation["previous_status"],
+                        "control_receipt_cid": event_body.get(
+                            "control_cas_receipt_cid"
+                        )
+                        == observation["receipt_cid"],
+                        "control_receipt_digest": event_body.get(
+                            "control_cas_receipt_digest"
+                        )
+                        == observation["receipt_digest"],
+                        "lease_id": event_body.get("lease_id")
+                        == str(
+                            _row_get(
+                                event_mapping,
+                                "lease_id",
+                                "1",
+                                default="",
+                            )
+                            or ""
+                        ),
+                        "fencing_token": event_body.get("fencing_token")
+                        == int(
+                            _row_get(
+                                event_mapping,
+                                "fencing_token",
+                                "2",
+                                default=0,
+                            )
+                        ),
+                        "fence_epoch": event_body.get("fence_epoch")
+                        == int(
+                            _row_get(
+                                event_mapping,
+                                "fence_epoch",
+                                "3",
+                                default=0,
+                            )
+                        ),
+                        "ready_type": type(event_body.get("ready")) is bool,
+                        "attempt_number_type": type(
+                            event_body.get("prior_attempt_number")
+                        )
+                        is int,
+                    }
+                    mismatches = [
+                        name for name, matches in replay_checks.items() if not matches
+                    ]
+                    if mismatches:
+                        raise DatabaseCoordinationStaleFenceError(
+                            "control rearm replay does not match its durable receipt: "
+                            + ", ".join(mismatches)
+                        )
+                    attempt_row = connection.execute(
+                        "SELECT COALESCE(MAX(attempt_number), 0) "
+                        "AS latest_attempt_number "
+                        "FROM task_attempts WHERE task_cid = ?",
+                        [cid],
+                    ).fetchone()
+                    latest_attempt = int(
+                        _row_get(
+                            _row_mapping(attempt_row),
+                            "latest_attempt_number",
+                            "0",
+                            default=0,
+                        )
+                    )
+                    if latest_attempt != int(event_body["prior_attempt_number"]):
+                        raise DatabaseCoordinationStaleFenceError(
+                            "task has attempt history newer than the rearm receipt"
+                        )
+                    readiness = self._claimability_unlocked(connection, cid)
+                    stored_ready = bool(
+                        _row_get(task_mapping, "ready", "2", default=False)
+                    )
+                    expected_ready = bool(event_body["ready"])
+                    if (
+                        stored_ready is not expected_ready
+                        or bool(readiness["claimable"]) is not expected_ready
+                    ):
+                        raise DatabaseCoordinationStaleFenceError(
+                            "task readiness changed after the rearm receipt"
+                        )
+                    self._commit_if_idle(connection)
+                    return {
+                        "schema": TASK_COMPLETION_REARM_SCHEMA,
+                        "task_cid": cid,
+                        "previous_control_revision": int(
+                            event_body["previous_control_revision"]
+                        ),
+                        "control_revision": int(observation["revision"]),
+                        "control_status": str(observation["status"]),
+                        "ready": expected_ready,
+                        "replayed": True,
+                    }
+
+                completion_mapping = _row_mapping(completion_row)
+                completion_status = str(
+                    _row_get(completion_mapping, "status", "0", default="") or ""
+                )
+                if completion_status != AttemptStatus.SUCCEEDED.value:
+                    raise DatabaseCoordinationNotReadyError(
+                        f"task {cid} has no successfully promoted completion to rearm",
+                        evidence={
+                            "task_cid": cid,
+                            "completion_status": completion_status,
+                            "reason": "promoted_completion_missing",
+                        },
+                    )
+                completion = self._prepared_completion_unlocked(
+                    connection,
+                    cid,
+                    required=True,
+                    include_promoted=True,
+                )
+                assert completion is not None
+                control_completion = completion.get("control_completion")
+                if not isinstance(control_completion, Mapping):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "logical completion has no durable control completion"
+                    )
+                expected_control_fields = {
+                    "task_cid",
+                    "status",
+                    "revision",
+                    "receipt_cid",
+                    "receipt_digest",
+                }
+                if set(control_completion) != expected_control_fields:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "logical completion control binding is malformed"
+                    )
+                prior_revision = control_completion.get("revision")
+                prior_status = control_completion.get("status")
+                if (
+                    control_completion.get("task_cid") != cid
+                    or type(prior_revision) is not int
+                    or int(prior_revision) < 1
+                    or not isinstance(prior_status, str)
+                    or prior_status.strip().lower()
+                    not in _CONTROL_TASK_SUCCESS_STATUSES
+                    or not isinstance(control_completion.get("receipt_cid"), str)
+                    or not isinstance(control_completion.get("receipt_digest"), str)
+                    or not str(control_completion.get("receipt_digest") or "").strip()
+                ):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "logical completion control binding is invalid"
+                    )
+                prior_status_text = prior_status.strip().lower()
+                if int(observation["revision"]) != int(prior_revision) + 1:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "control rearm revision is not the completion's next revision"
+                    )
+                if observation["previous_status"] != prior_status_text:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "control rearm CAS prior status does not match the completion"
+                    )
+                self._assert_task_rearm_quiescent_unlocked(connection, cid)
+                identity, _lease, lease_state, attempt_status = (
+                    self._completion_authority_state_unlocked(
+                        connection,
+                        prepared=completion,
+                        now=now,
+                    )
+                )
+                if (
+                    lease_state
+                    not in {LeaseState.RELEASED, LeaseState.COMPLETED}
+                    or attempt_status is not AttemptStatus.SUCCEEDED
+                ):
+                    raise DatabaseCoordinationConflictError(
+                        "logical completion authority must be terminal before rearm"
+                    )
+                completion_body_raw = str(
+                    _row_get(
+                        completion_mapping,
+                        "body_json",
+                        "1",
+                        default="",
+                    )
+                    or ""
+                )
+                connection.execute(
+                    """
+                    DELETE FROM task_completions
+                    WHERE task_cid = ? AND status = ? AND body_json = ?
+                    """,
+                    [cid, AttemptStatus.SUCCEEDED.value, completion_body_raw],
+                )
+                if connection.execute(
+                    "SELECT 1 FROM task_completions WHERE task_cid = ?",
+                    [cid],
+                ).fetchone() is not None:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "logical completion changed during its rearm"
+                    )
+                readiness = self._claimability_unlocked(connection, cid)
+                ready = bool(readiness["claimable"])
+                self._set_task_ready_with_index_rebuild_unlocked(
+                    connection,
+                    task_cid=cid,
+                    ready=ready,
+                )
+                event_body = {
+                    "schema": TASK_COMPLETION_REARM_SCHEMA,
+                    "task_cid": cid,
+                    "claim_id": str(identity["claim_id"]),
+                    "attempt_id": str(identity["attempt_id"]),
+                    "prior_attempt_number": int(identity["attempt_number"]),
+                    "lease_id": str(identity["lease_id"]),
+                    "fencing_token": int(identity["fencing_token"]),
+                    "fence_epoch": int(identity["fence_epoch"]),
+                    "previous_control_revision": int(prior_revision),
+                    "previous_control_status": prior_status_text,
+                    "control_revision": int(observation["revision"]),
+                    "control_status": str(observation["status"]),
+                    "control_cas_receipt_cid": str(observation["receipt_cid"]),
+                    "control_cas_receipt_digest": str(
+                        observation["receipt_digest"]
+                    ),
+                    "completion_digest": _sha256_hex(
+                        completion_body_raw.encode("utf-8")
+                    ),
+                    "ready": ready,
+                }
+                self._record_event(
+                    connection,
+                    lease_id=str(identity["lease_id"]),
+                    scope_key=scope_key,
+                    event_type=TASK_COMPLETION_REARM_EVENT,
+                    fencing_token=int(identity["fencing_token"]),
+                    fence_epoch=int(identity["fence_epoch"]),
+                    observed_at_ms=now,
+                    body=event_body,
+                )
+                self._commit_if_idle(connection)
+                return {
+                    "schema": TASK_COMPLETION_REARM_SCHEMA,
+                    "task_cid": cid,
+                    "previous_control_revision": int(prior_revision),
+                    "control_revision": int(observation["revision"]),
+                    "control_status": str(observation["status"]),
+                    "ready": ready,
+                    "replayed": False,
                 }
             except Exception:
                 self._rollback_if_open(connection)
@@ -6912,6 +7483,7 @@ __all__ = [
     "DATABASE_COORDINATION_SCHEMA",
     "COORDINATION_REGISTRY_PROJECTION_SCHEMA",
     "COORDINATION_HISTORY_PROJECTION_SCHEMA",
+    "TASK_COMPLETION_REARM_SCHEMA",
     "TASK_DEPENDENCY_AMENDMENT_SCHEMA",
     "FENCED_LEASE_SCHEMA",
     "TASK_CLAIM_SCHEMA",

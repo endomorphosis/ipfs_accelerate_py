@@ -840,6 +840,15 @@ def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
             self.count += 1
             return {"count": self.count}
 
+        def materialize_task_state_compatibility_projection(
+            self,
+            *,
+            state_path: Path,
+            pass_result: dict[str, int],
+        ) -> dict[str, object]:
+            calls.append(f"projection:{state_path}:{pass_result['count']}")
+            return {"written": True}
+
     parsed = argparse.Namespace(once=True, interval=999)
     context = ImplementationDaemonRunContext(
         parsed=parsed,
@@ -870,9 +879,46 @@ def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
             pass_complete_message="fake pass complete: %s",
         )
 
-    assert calls == ["before:0", "after:0"]
+    assert calls == [
+        "before:0",
+        "after:0",
+        "projection:state.json:1",
+    ]
     assert "before hook: ['before-result']" in caplog.text
     assert "after hook: ['after-result']" in caplog.text
+
+
+def test_database_projection_persistence_failure_aborts_loop() -> None:
+    class FakeDaemon:
+        def run_once(self) -> dict[str, int]:
+            return {"count": 1}
+
+        def materialize_task_state_compatibility_projection(
+            self,
+            *,
+            state_path: Path,
+            pass_result: dict[str, int],
+        ) -> dict[str, object]:
+            del state_path, pass_result
+            return {"written": False}
+
+    context = ImplementationDaemonRunContext(
+        parsed=argparse.Namespace(once=True, interval=999),
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("events.jsonl"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="compatibility projection was not persisted",
+    ):
+        run_portal_implementation_daemon_loop(
+            FakeDaemon(),
+            context,
+            logger=logging.getLogger("test-daemon-runner-projection-failure"),
+            pass_complete_message="fake pass complete: %s",
+        )
 
 
 def test_run_portal_implementation_daemon_loop_suppresses_hooks_for_revalidation_only():

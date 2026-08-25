@@ -221,6 +221,7 @@ from .implementation_daemon_runner import (
     bounded_daemon_wait_timeout,
     daemon_pass_is_idle,
     log_daemon_pass_result,
+    materialize_database_task_state_compatibility_projection,
     resolve_database_implementation_paths,
 )
 from ..task_sources.taskboard_store import (
@@ -71701,6 +71702,10 @@ DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
 DATABASE_TASK_ATTEMPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
 )
+DATABASE_TASK_STATE_COMPATIBILITY_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-task-state-compatibility-projection@1"
+)
 
 # Ordered execution phases. Crash/restart resumes after the last committed phase.
 ATTEMPT_PHASE_CLAIMED = "claimed"
@@ -73688,6 +73693,161 @@ class DatabaseImplementationDaemon:
         """JSON queue/status/events/PID projections are never required."""
 
         return False
+
+    @staticmethod
+    def _incomplete_task_state_compatibility_projection(
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Return a marker which can never satisfy terminal quiescence."""
+
+        return {
+            "schema": DATABASE_TASK_STATE_COMPATIBILITY_PROJECTION_SCHEMA,
+            "authority": "non_authoritative_compatibility_projection",
+            "projection_authority": False,
+            "authoritative_task_store": "duckdb",
+            "projection_complete": False,
+            "projection_error": str(reason or "projection_incomplete"),
+            "task_count": 0,
+            "completed_count": 0,
+            "ready_count": 0,
+            "eligible_ready_count": 0,
+            "blocked_count": 0,
+            "external_reserved_count": 0,
+            "active_task_id": "",
+            "implementation_in_progress": True,
+            "selection_idle_reason": "database_task_state_projection_incomplete",
+            "task_statuses": {},
+            "heartbeat_at": utc_now(),
+        }
+
+    def materialize_task_state_compatibility_projection(
+        self,
+        *,
+        state_path: Path | str,
+        pass_result: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Write one fail-closed task-state view for supervisor termination.
+
+        This file is disposable and never grants task, claim, completion, or
+        execution authority.  A nonterminal marker is written before querying
+        the canonical source so a failed or interrupted refresh cannot leave a
+        terminal payload from an earlier pass in place.
+        """
+
+        path = Path(state_path).absolute()
+        incomplete = self._incomplete_task_state_compatibility_projection(
+            reason="projection_refresh_pending",
+        )
+        try:
+            write_json_atomic(path, incomplete)
+        except Exception as exc:
+            return MappingProxyType(
+                {
+                    **incomplete,
+                    "projection_error": "projection_marker_write_failed",
+                    "error_type": type(exc).__name__,
+                    "written": False,
+                }
+            )
+
+        try:
+            before = self.task_source.snapshot()
+            tasks: list[Any] = []
+            cursor = ""
+            while True:
+                page = self.task_source.list_tasks(
+                    cursor=cursor,
+                    limit=TASK_SOURCE_QUERY_LIMIT,
+                )
+                if int(page.revision) != int(before.revision):
+                    raise DatabaseImplementationAuthorityError(
+                        "task-state compatibility scan changed revision"
+                    )
+                tasks.extend(page.tasks)
+                cursor = str(page.next_cursor or "")
+                if not cursor:
+                    break
+            after = self.task_source.snapshot()
+            if (
+                int(after.revision) != int(before.revision)
+                or str(after.projection_cid) != str(before.projection_cid)
+                or int(after.task_count) != len(tasks)
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "task-state compatibility scan was not a stable snapshot"
+                )
+
+            task_statuses: dict[str, str] = {}
+            completed_task_ids: list[str] = []
+            ready_task_ids: list[str] = []
+            blocked_task_ids: list[str] = []
+            for task in tasks:
+                task_id = str(task.task_alias or task.task_cid or "").strip()
+                if not task_id or task_id in task_statuses:
+                    raise DatabaseImplementationAuthorityError(
+                        "task-state compatibility scan has ambiguous task identity"
+                    )
+                status = normalize_status(str(task.status or ""))
+                task_statuses[task_id] = status
+                if status == "completed":
+                    completed_task_ids.append(task_id)
+                elif status == "blocked":
+                    blocked_task_ids.append(task_id)
+                elif status == "todo":
+                    ready_task_ids.append(task_id)
+
+            active_task_id = str(pass_result.get("active_task_id") or "").strip()
+            exact_idle = bool(
+                daemon_pass_is_idle(pass_result)
+                and pass_result.get("selection_idle_reason") == "no_ready_tasks"
+                and not active_task_id
+            )
+            payload = {
+                "schema": DATABASE_TASK_STATE_COMPATIBILITY_PROJECTION_SCHEMA,
+                "authority": "non_authoritative_compatibility_projection",
+                "projection_authority": False,
+                "authoritative_task_store": "duckdb",
+                "projection_complete": True,
+                "source_projection_cid": str(before.projection_cid),
+                "source_revision": int(before.revision),
+                "task_count": len(tasks),
+                "completed_count": len(completed_task_ids),
+                "ready_count": len(ready_task_ids),
+                "eligible_ready_count": len(ready_task_ids),
+                "blocked_count": len(blocked_task_ids),
+                "external_reserved_count": 0,
+                "active_task_id": active_task_id,
+                "implementation_in_progress": not exact_idle,
+                "selection_idle_reason": str(
+                    pass_result.get("selection_idle_reason") or ""
+                ),
+                "task_statuses": dict(sorted(task_statuses.items())),
+                "completed_task_ids": sorted(completed_task_ids),
+                "ready_task_ids": sorted(ready_task_ids),
+                "blocked_task_ids": sorted(blocked_task_ids),
+                "heartbeat_at": utc_now(),
+            }
+            write_json_atomic(path, payload)
+            return MappingProxyType({**payload, "written": True})
+        except Exception as exc:
+            failed = {
+                **incomplete,
+                "projection_error": "projection_refresh_failed",
+                "error_type": type(exc).__name__,
+            }
+            try:
+                write_json_atomic(path, failed)
+                return MappingProxyType({**failed, "written": True})
+            except Exception as write_exc:
+                return MappingProxyType(
+                    {
+                        **failed,
+                        "projection_error": "projection_failure_write_failed",
+                        "write_error_type": type(write_exc).__name__,
+                        "written": False,
+                    }
+                )
 
     @staticmethod
     def _todo_vector_record_int(record: dict[str, Any], key: str) -> int:
@@ -87938,6 +88098,11 @@ def main(argv: list[str] | None = None) -> None:
         last_idle_info_at: float | None = None
         while True:
             result = daemon.run_once()
+            materialize_database_task_state_compatibility_projection(
+                daemon,
+                state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
+                result=result,
+            )
             now = time.monotonic()
             emit_idle_info = (
                 bool(args.once)

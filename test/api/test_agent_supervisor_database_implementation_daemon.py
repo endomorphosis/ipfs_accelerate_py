@@ -43,6 +43,8 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DATABASE_PROGRAM_JSON_ENV,
     DatabaseProgramConfig,
+    SupervisorTrack,
+    terminal_task_state_fields,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import (
     build_grok_failure_receipt,
@@ -1441,6 +1443,162 @@ def test_json_projections_can_be_absent(tmp_path: Path) -> None:
         assert not (tmp_path / "events.jsonl").exists()
         assert not (tmp_path / "task_queue.json").exists()
         assert not list(tmp_path.glob("*.pid"))
+    finally:
+        daemon.close()
+
+
+def test_database_task_state_compatibility_projection_marks_exact_idle_completion(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:terminal-projection")
+    state_path = tmp_path / "state" / "lane_task_state.json"
+    try:
+        daemon.materialize_population(_population(1))
+
+        active_pass = daemon.run_once()
+        active_projection = daemon.materialize_task_state_compatibility_projection(
+            state_path=state_path,
+            pass_result=active_pass,
+        )
+        assert active_projection["projection_complete"] is True
+        assert active_projection["task_count"] == 1
+        assert active_projection["completed_count"] == 1
+        assert active_projection["implementation_in_progress"] is True
+
+        idle_pass = daemon.run_once()
+        assert idle_pass["selection_idle_reason"] == "no_ready_tasks"
+        assert idle_pass["unchanged"] is True
+        projection = daemon.materialize_task_state_compatibility_projection(
+            state_path=state_path,
+            pass_result=idle_pass,
+        )
+
+        assert projection["projection_complete"] is True
+        assert projection["authority"] == "non_authoritative_compatibility_projection"
+        assert projection["projection_authority"] is False
+        assert projection["authoritative_task_store"] == "duckdb"
+        assert projection["task_count"] == 1
+        assert projection["completed_count"] == 1
+        assert projection["eligible_ready_count"] == 0
+        assert projection["blocked_count"] == 0
+        assert projection["external_reserved_count"] == 0
+        assert projection["active_task_id"] == ""
+        assert projection["implementation_in_progress"] is False
+        assert projection["task_statuses"] == {"DQP-T001": "completed"}
+        persisted = json.loads(state_path.read_text(encoding="utf-8"))
+        assert persisted == {
+            key: value for key, value in projection.items() if key != "written"
+        }
+        terminal = terminal_task_state_fields(
+            SupervisorTrack(
+                name="lane",
+                script_path=tmp_path / "unused.py",
+                log_path=tmp_path / "lane.log",
+                supervisor_pid_path=state_path.parent / "lane_supervisor.pid",
+                daemon_pid_path=state_path.parent / "lane_daemon.pid",
+            ),
+            repo_root=tmp_path,
+            fresh_after_epoch_seconds=state_path.stat().st_mtime - 1.0,
+        )
+        assert terminal["task_state_status"] == "terminal"
+        assert terminal["terminal_quiescent"] is True
+        assert terminal["task_state_projection_valid"] is True
+
+        persisted["projection_authority"] = True
+        state_path.write_text(json.dumps(persisted), encoding="utf-8")
+        rejected = terminal_task_state_fields(
+            SupervisorTrack(
+                name="lane",
+                script_path=tmp_path / "unused.py",
+                log_path=tmp_path / "lane.log",
+                supervisor_pid_path=state_path.parent / "lane_supervisor.pid",
+                daemon_pid_path=state_path.parent / "lane_daemon.pid",
+            ),
+            repo_root=tmp_path,
+            fresh_after_epoch_seconds=state_path.stat().st_mtime - 1.0,
+        )
+        assert rejected["task_state_projection_valid"] is False
+        assert rejected["terminal_quiescent"] is False
+    finally:
+        daemon.close()
+
+
+def test_database_task_state_compatibility_projection_overwrites_stale_terminal_on_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:terminal-projection-error")
+    state_path = tmp_path / "state" / "lane_task_state.json"
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        idle_pass = daemon.run_once()
+        terminal = daemon.materialize_task_state_compatibility_projection(
+            state_path=state_path,
+            pass_result=idle_pass,
+        )
+        assert terminal["implementation_in_progress"] is False
+
+        def fail_snapshot() -> object:
+            raise RuntimeError("source unavailable")
+
+        monkeypatch.setattr(daemon.task_source, "snapshot", fail_snapshot)
+        failed = daemon.materialize_task_state_compatibility_projection(
+            state_path=state_path,
+            pass_result=idle_pass,
+        )
+
+        assert failed["projection_complete"] is False
+        assert failed["projection_error"] == "projection_refresh_failed"
+        assert failed["implementation_in_progress"] is True
+        persisted = json.loads(state_path.read_text(encoding="utf-8"))
+        assert persisted["task_count"] == 0
+        assert persisted["completed_count"] == 0
+        assert persisted["implementation_in_progress"] is True
+    finally:
+        daemon.close()
+
+
+def test_database_task_state_compatibility_projection_keeps_skipped_board_nonterminal(
+    tmp_path: Path,
+) -> None:
+    """VRIF completion requires success; skipped is terminal but not complete."""
+
+    daemon = _open_daemon(tmp_path, session="session:terminal-projection-skipped")
+    state_path = tmp_path / "state" / "lane_task_state.json"
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["status"] = "skipped"
+        daemon.materialize_population(population)
+
+        projection = daemon.materialize_task_state_compatibility_projection(
+            state_path=state_path,
+            pass_result={
+                "unchanged": True,
+                "write_count": 0,
+                "active_task_id": "",
+                "selection_idle_reason": "no_ready_tasks",
+            },
+        )
+
+        assert projection["task_count"] == 1
+        assert projection["completed_count"] == 0
+        assert projection["task_statuses"] == {"DQP-T001": "skipped"}
+        terminal = terminal_task_state_fields(
+            SupervisorTrack(
+                name="lane",
+                script_path=tmp_path / "unused.py",
+                log_path=tmp_path / "lane.log",
+                supervisor_pid_path=state_path.parent / "lane_supervisor.pid",
+                daemon_pid_path=state_path.parent / "lane_daemon.pid",
+            ),
+            repo_root=tmp_path,
+            fresh_after_epoch_seconds=state_path.stat().st_mtime - 1.0,
+        )
+        assert terminal["task_state_projection_valid"] is True
+        assert terminal["terminal_quiescent"] is False
     finally:
         daemon.close()
 

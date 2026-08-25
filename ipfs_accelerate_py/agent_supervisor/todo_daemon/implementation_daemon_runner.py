@@ -95,6 +95,35 @@ def bounded_daemon_wait_timeout(
     return min(timeout, max(0.0, retry_after))
 
 
+def materialize_database_task_state_compatibility_projection(
+    daemon: object,
+    *,
+    state_path: Path,
+    result: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Refresh a database daemon's non-authoritative supervisor projection.
+
+    Database authority does not require JSON state.  The multi-supervisor's
+    terminal-quiescence compatibility probe does, however, consume the
+    conventional ``*_task_state.json`` path.  Capability detection keeps
+    legacy Portal daemons on their existing projection path.
+    """
+
+    materialize = getattr(
+        daemon,
+        "materialize_task_state_compatibility_projection",
+        None,
+    )
+    if not callable(materialize):
+        return None
+    projection = materialize(state_path=state_path, pass_result=result)
+    if not isinstance(projection, Mapping) or projection.get("written") is not True:
+        raise RuntimeError(
+            "database task-state compatibility projection was not persisted"
+        )
+    return projection
+
+
 class DaemonHookTimeoutError(TimeoutError):
     """Raised when a daemon before/after hook exceeds its bounded runtime."""
 
@@ -1760,6 +1789,11 @@ def run_portal_implementation_daemon_loop(
                 phase="after",
                 context=pass_context,
                 logger=logger,
+            )
+            materialize_database_task_state_compatibility_projection(
+                daemon,
+                state_path=pass_context.state_path,
+                result=result,
             )
             now = time.monotonic()
             emit_idle_info = (

@@ -1929,6 +1929,7 @@ def _vrif_portal_completion_binding(
         "portal_receipt_id",
         "portal_completion_binding",
     }
+    replayed_validation_fields = validation_fields | {"replayed"}
     binding_fields = {
         "schema",
         "task_cid",
@@ -1950,7 +1951,13 @@ def _vrif_portal_completion_binding(
     if (
         control_receipt.get("operation") != "database_complete"
         or not isinstance(validation, Mapping)
-        or set(validation) != validation_fields
+        or (
+            set(validation) != validation_fields
+            and not (
+                set(validation) == replayed_validation_fields
+                and type(validation.get("replayed")) is bool
+            )
+        )
         or not isinstance(raw_binding, Mapping)
         or set(raw_binding) != binding_fields
     ):

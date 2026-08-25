@@ -4390,6 +4390,24 @@ def terminal_task_state_fields(
     except OSError:
         modified_at = 0.0
     fresh = modified_at + 1e-6 >= float(fresh_after_epoch_seconds)
+    compatibility_schema = (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "database-task-state-compatibility-projection@1"
+    )
+    compatibility_projection_valid = bool(
+        payload.get("schema") != compatibility_schema
+        or (
+            payload.get("authority")
+            == "non_authoritative_compatibility_projection"
+            and payload.get("projection_authority") is False
+            and payload.get("authoritative_task_store") == "duckdb"
+            and payload.get("projection_complete") is True
+            and isinstance(payload.get("source_projection_cid"), str)
+            and bool(str(payload.get("source_projection_cid") or "").strip())
+            and type(payload.get("source_revision")) is int
+            and int(payload.get("source_revision") or 0) > 0
+        )
+    )
     task_count = int(payload.get("task_count") or 0)
     completed_count = int(payload.get("completed_count") or 0)
     active_task_id = str(payload.get("active_task_id") or "").strip()
@@ -4424,6 +4442,7 @@ def terminal_task_state_fields(
         }
         terminal = bool(
             fresh
+            and compatibility_projection_valid
             and len(set(slice_task_ids)) == len(slice_task_ids)
             and all(
                 statuses.get(task_id) in terminal_statuses
@@ -4435,6 +4454,7 @@ def terminal_task_state_fields(
     else:
         terminal = bool(
             fresh
+            and compatibility_projection_valid
             and task_count > 0
             and completed_count == task_count
             and not active_task_id
@@ -4448,6 +4468,7 @@ def terminal_task_state_fields(
         "task_state_status": "terminal" if terminal else "nonterminal",
         "task_state_path": str(path),
         "task_state_fresh": fresh,
+        "task_state_projection_valid": compatibility_projection_valid,
         "task_count": task_count,
         "completed_count": completed_count,
         "active_task_id": active_task_id,
