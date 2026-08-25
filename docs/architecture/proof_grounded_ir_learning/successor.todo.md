@@ -347,7 +347,7 @@ evidence.
 
 ## PGIR-208 Seal and adjudicate the PGIR-200 through PGIR-202 source chain
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
