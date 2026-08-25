@@ -55,7 +55,7 @@ RUNTIME_ROOT = (
 )
 QUACK_OWNER = f"{RUNTIME_ROOT}/quack-owner"
 QUACK_HANDLE = "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
-QUACK_ENDPOINT = "quack:127.0.0.1:45688"
+QUACK_ENDPOINT = "quack:127.0.0.1:24688"
 
 
 def _load_json(path: Path) -> dict[str, object]:

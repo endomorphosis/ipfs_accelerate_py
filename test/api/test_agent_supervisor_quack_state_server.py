@@ -1693,6 +1693,50 @@ def test_live_query_retries_quack_could_not_connect_birth_race(
     assert attempts == 2
 
 
+def test_transport_start_does_not_fall_back_after_bind_ioerror() -> None:
+    class IOException(Exception):
+        pass
+
+    class BindFailureConnection(FakeConnection):
+        def __init__(self) -> None:
+            super().__init__()
+            self.serve_attempts = 0
+
+        def execute(self, sql: str, params: Any = None) -> _Result:
+            if "quack_serve" in sql:
+                self.serve_attempts += 1
+                raise IOException("Failed to bind DuckDB Quack RPC server")
+            return super().execute(sql, params)
+
+    identity = StateServerIdentity(
+        server_id="server:bind-failure",
+        store_id="store:bind-failure",
+        database_uuid=_UUID,
+        schema_revision=1,
+        schema_fingerprint=_DIGEST,
+        generation=1,
+        fence_epoch=1,
+        revision=0,
+        process_birth=_birth(),
+        listen_uri="quack:127.0.0.1:24689",
+        extension_fingerprint=_DIGEST,
+        credential_generation=1,
+        secret_handle="handle:bind-failure",
+    )
+    connection = BindFailureConnection()
+
+    with pytest.raises(QuackStateServerCapabilityError, match="IOException"):
+        InProcessQuackTransport().start(
+            connection,
+            host="127.0.0.1",
+            port=24689,
+            token="isolated-bind-failure-token",
+            identity=identity,
+        )
+
+    assert connection.serve_attempts == 1
+
+
 def test_start_ready_checkpoint_stop_lifecycle(tmp_path: Path) -> None:
     transport = FakeQuackTransport()
     server = _server(tmp_path, transport=transport, port=0)

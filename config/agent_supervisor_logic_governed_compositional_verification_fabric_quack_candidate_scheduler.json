@@ -62,7 +62,7 @@
     "authoritative_records_schema_cas_and_fencing": true,
     "task_source_kind": "duckdb",
     "endpoint_secret_handle": "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
-    "quack_endpoint": "quack:127.0.0.1:45688",
+    "quack_endpoint": "quack:127.0.0.1:24688",
     "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/control.duckdb",
     "store_generation": "lgcvf-run-v25",
     "schema_revision": "datasets-authoritative-operational-v1",

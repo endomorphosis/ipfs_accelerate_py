@@ -1629,6 +1629,15 @@ class InProcessQuackTransport:
                 break
             except Exception as exc:  # pragma: no cover - depends on extension
                 last_error = exc
+                # Only call-shape errors authorize a compatibility fallback.
+                # A runtime bind/transport failure must not silently start the
+                # default endpoint while advertising the requested endpoint.
+                if type(exc).__name__ not in {
+                    "BinderException",
+                    "CatalogException",
+                    "InvalidInputException",
+                }:
+                    break
                 continue
         if last_error is not None:
             raise QuackStateServerCapabilityError(
