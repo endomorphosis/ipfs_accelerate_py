@@ -1772,6 +1772,69 @@ def test_normal_start_owner_cannot_be_adopted_as_an_offline_handoff(
         server.stop()
 
 
+def test_normal_start_binding_failure_releases_flock_and_preserves_foreign_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    calls: list[str] = []
+    server.capability_probe = (
+        lambda **_kwargs: calls.append("capability") or _compatible_report()
+    )
+    server.migrate = lambda _path: calls.append("migration") or _migration_report()
+    server.connection_factory = (
+        lambda _path: calls.append("database_open") or FakeConnection()
+    )
+    real_bind = ExclusiveOwnerLease._bind_new_state_owner  # noqa: SLF001
+    acquired: list[ExclusiveOwnerLease] = []
+    foreign_marker: OwnerMarker | None = None
+
+    def tamper_before_binding(owner: ExclusiveOwnerLease) -> None:
+        nonlocal foreign_marker
+        acquired.append(owner)
+        current = owner.marker
+        assert current is not None
+        foreign_marker = OwnerMarker(
+            server_id="server:foreign-during-normal-bind",
+            process_birth=current.process_birth,
+            database_path=current.database_path,
+            started_at=current.started_at,
+            fence_token="foreign-normal-bind-fence",
+            generation=current.generation,
+        )
+        owner.marker_path.write_text(
+            json.dumps(foreign_marker.to_dict()),
+            encoding="utf-8",
+        )
+        real_bind(owner)
+
+    monkeypatch.setattr(
+        ExclusiveOwnerLease,
+        "_bind_new_state_owner",
+        tamper_before_binding,
+    )
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="marker differs before state-owner binding",
+    ):
+        server.start()
+
+    assert calls == []
+    assert foreign_marker is not None
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert server._owner is None  # noqa: SLF001 - emergency cleanup completed
+    assert len(acquired) == 1
+    assert acquired[0].held is False
+    assert acquired[0]._lock_open is False  # noqa: SLF001 - no stranded flock
+    assert OwnerMarker.from_dict(
+        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+    ) == foreign_marker
+    _assert_raw_lock_acquirable(server.owner_lock_path())
+    server.owner_marker_path().unlink()
+
+
 def test_offline_lease_handoff_keeps_competitor_before_migration_and_open(
     tmp_path: Path,
 ) -> None:

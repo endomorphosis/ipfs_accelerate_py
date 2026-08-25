@@ -5858,11 +5858,15 @@ class QuackStateServer:
                         database_path=self.config.database_path,
                         generation=1,
                     )
+                    # Acquisition has published the marker and retained the
+                    # flock.  Install cleanup authority before any subsequent
+                    # corroboration can fail, so emergency cleanup can always
+                    # close the descriptor while preserving a foreign marker.
+                    self._owner = owner
                     # A lease created by the long-lived server is not an
                     # offline-writer handoff capability.  Close the same
-                    # shared one-shot gate before retaining cleanup authority.
+                    # shared one-shot gate before any startup effects proceed.
                     owner._bind_new_state_owner()  # noqa: SLF001
-                    self._owner = owner
                 # A previous generation's ready projection must never survive
                 # as a launch signal while this generation is qualifying.
                 self.status_path().unlink(missing_ok=True)
