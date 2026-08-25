@@ -1,153 +1,63 @@
 {
   "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-release-report@2",
   "start_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
-  "end_tree": "4b8d07d8f7f25c28e3aa645e79e23b0ea23290f5",
+  "end_tree": "d121b4339de73a1a079c32c97b4c5a41f164e128",
   "corpus_admission_id": "baguqeera3dp4lnpqc6wgksk5erxj54dt5sxhlp6opf2z5xyz6qvbg45abf2a",
   "expert_dispositions": {
-    "registered_expert_count": 0,
-    "disposition_counts": {"ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0},
-    "status": "no_registered_or_promoted_expert"
+    "TASK_CLASSIFICATION": "CAPABILITY_UNAVAILABLE", "RISK_CLASSIFICATION": "CAPABILITY_UNAVAILABLE", "EFFECT_CLASSIFICATION": "CAPABILITY_UNAVAILABLE", "AUTHORITY_REQUIREMENT_CLASSIFICATION": "CAPABILITY_UNAVAILABLE", "CONTEXT_SUFFICIENCY": "CAPABILITY_UNAVAILABLE", "EVIDENCE_RANKING": "CAPABILITY_UNAVAILABLE", "PROCEDURE_MATCHING": "CAPABILITY_UNAVAILABLE", "PLAN_BRANCH_RANKING": "CAPABILITY_UNAVAILABLE", "TEST_SELECTION": "CAPABILITY_UNAVAILABLE", "PROOF_SELECTION": "CAPABILITY_UNAVAILABLE", "FAILURE_ATTRIBUTION": "CAPABILITY_UNAVAILABLE", "RETRY_OR_ESCALATE": "CAPABILITY_UNAVAILABLE", "CACHE_REUSE_CLASSIFICATION": "CAPABILITY_UNAVAILABLE", "MERGE_CONFLICT_CLASSIFICATION": "CAPABILITY_UNAVAILABLE", "PATCH_TEMPLATE_SELECTION": "CAPABILITY_UNAVAILABLE", "PROCEDURE_HOLE_FILLING": "CAPABILITY_UNAVAILABLE", "PATCH_SKETCH_GENERATION": "CAPABILITY_UNAVAILABLE", "LEMMA_SUGGESTION": "CAPABILITY_UNAVAILABLE", "TACTIC_SUGGESTION": "CAPABILITY_UNAVAILABLE", "COUNTEREXAMPLE_EXPLANATION": "CAPABILITY_UNAVAILABLE", "GOAL_REFINEMENT_CANDIDATE": "CAPABILITY_UNAVAILABLE", "DOCUMENTATION_CLAIM_CLASSIFICATION": "CAPABILITY_UNAVAILABLE", "HUMAN_ESCALATION_CLASSIFICATION": "CAPABILITY_UNAVAILABLE", "NOVEL_UNBOUNDED_REASONING": "CAPABILITY_UNAVAILABLE"
   },
-  "before": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0},
-  "after": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0},
-  "costs": {
-    "status": "not_run",
-    "denominators": {"frozen_benchmark_cases": 384, "evaluated_cases": 0, "local_attempts": 0, "remote_attempts": 0, "validation_runs": 0, "training_runs": 0, "shadow_runs": 0, "human_reviews": 0, "rollback_events": 0},
-    "break_even": {"status": "not_applicable", "reason": "no_training_or_evaluation_cost_and_no_per_use_saving_observed"}
+  "before": {
+    "accept": 0, "abstain": 96, "total": 96,
+    "denominators_by_family": {
+      "TASK_CLASSIFICATION": 4, "RISK_CLASSIFICATION": 4, "EFFECT_CLASSIFICATION": 4, "AUTHORITY_REQUIREMENT_CLASSIFICATION": 4, "CONTEXT_SUFFICIENCY": 4, "EVIDENCE_RANKING": 4, "PROCEDURE_MATCHING": 4, "PLAN_BRANCH_RANKING": 4, "TEST_SELECTION": 4, "PROOF_SELECTION": 4, "FAILURE_ATTRIBUTION": 4, "RETRY_OR_ESCALATE": 4, "CACHE_REUSE_CLASSIFICATION": 4, "MERGE_CONFLICT_CLASSIFICATION": 4, "PATCH_TEMPLATE_SELECTION": 4, "PROCEDURE_HOLE_FILLING": 4, "PATCH_SKETCH_GENERATION": 4, "LEMMA_SUGGESTION": 4, "TACTIC_SUGGESTION": 4, "COUNTEREXAMPLE_EXPLANATION": 4, "GOAL_REFINEMENT_CANDIDATE": 4, "DOCUMENTATION_CLAIM_CLASSIFICATION": 4, "HUMAN_ESCALATION_CLASSIFICATION": 4, "NOVEL_UNBOUNDED_REASONING": 4
+    }
   },
+  "after": {
+    "accept": 0, "abstain": 96, "total": 96,
+    "denominators_by_family": {
+      "TASK_CLASSIFICATION": 4, "RISK_CLASSIFICATION": 4, "EFFECT_CLASSIFICATION": 4, "AUTHORITY_REQUIREMENT_CLASSIFICATION": 4, "CONTEXT_SUFFICIENCY": 4, "EVIDENCE_RANKING": 4, "PROCEDURE_MATCHING": 4, "PLAN_BRANCH_RANKING": 4, "TEST_SELECTION": 4, "PROOF_SELECTION": 4, "FAILURE_ATTRIBUTION": 4, "RETRY_OR_ESCALATE": 4, "CACHE_REUSE_CLASSIFICATION": 4, "MERGE_CONFLICT_CLASSIFICATION": 4, "PATCH_TEMPLATE_SELECTION": 4, "PROCEDURE_HOLE_FILLING": 4, "PATCH_SKETCH_GENERATION": 4, "LEMMA_SUGGESTION": 4, "TACTIC_SUGGESTION": 4, "COUNTEREXAMPLE_EXPLANATION": 4, "GOAL_REFINEMENT_CANDIDATE": 4, "DOCUMENTATION_CLAIM_CLASSIFICATION": 4, "HUMAN_ESCALATION_CLASSIFICATION": 4, "NOVEL_UNBOUNDED_REASONING": 4
+    }
+  },
+  "costs": {"tokens": 0, "break_even": 0},
   "promotion_eligible": false,
-  "rollback_target": "no-promoted-expert-route",
+  "rollback_target": "84a056e41e48a81d4484be43840196578d6c87da",
   "gaps": {
-    "blockers": ["training_unavailable", "no_admitted_production_corpus", "no_learned_tokenizer_admitted", "no_candidate_checkpoint", "benchmark_staged_not_qualified", "no_current_tree_promotion_evidence", "gpu_live_qualification_unavailable"],
+    "blockers": ["training_unavailable"],
     "unsupported_claims": ["learned", "verified", "safe", "autonomous", "token-efficient", "production-ready"],
-    "not_run": ["current_tree_paired_benchmark_execution", "current_tree_proof_receipt", "live_gpu_runtime_qualification", "promotion_cas_execution", "rollback_cas_execution", "amortization_measurement"]
+    "not_run": ["gpu_live_qualification", "promotion", "training"]
   },
-  "lineage": {
-    "start": {"commit": "84a056e41e48a81d4484be43840196578d6c87da", "tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b"},
-    "end": {"commit": "06d4958dc96983f16bdb0cb12ce165b5159c90d9", "tree": "4b8d07d8f7f25c28e3aa645e79e23b0ea23290f5"},
-    "snapshot_scope": "The end snapshot is the actual final merged implementation tree inspected before this refreshed nonauthoritative report artifact; the report does not recursively qualify its own replacement."
+  "producer_artifacts": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/goal-terminal-producer-artifacts@1",
+    "digest_algorithm": "sha256",
+    "tasks": [
+      {"task_alias": "VRIF-028", "artifacts": [{"path": "docs/architecture/residual_intelligence_inventory/adversarial_campaign_report.json", "blob_identity": "sha256:1851994f7db86af0cadae8c914c8d4e7510241b3d6555881426fa64ccc866437"}, {"path": "ipfs_accelerate_py/agent_supervisor/residual_intelligence/adversarial.py", "blob_identity": "sha256:c8be87609044bc9f5bfaf96b3b56440d5e7732587643426c977b79544c41732a"}, {"path": "test/api/residual_intelligence/test_adversarial.py", "blob_identity": "sha256:32483d78f54d097b5411d540c94c0f740490cf667411a3c112b336347e98bb5c"}], "bundle_id": "sha256:4e988f5f4c3a8a4275250fc2363e71408bb801a6e82fd9e35cb06e0b79f2ffd7"},
+      {"task_alias": "VRIF-029", "artifacts": [{"path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py", "blob_identity": "sha256:140f47378cc3f9947d506b2974cd96b4a3fd376d3f33c39e2324655626606292"}, {"path": "ipfs_accelerate_py/agent_supervisor/residual_intelligence/cli.py", "blob_identity": "sha256:0324644e110e2b57adcbec6e0db7769c7718231692f8e3a0c7db3719fb5b7871"}, {"path": "test/api/residual_intelligence/test_control_surface.py", "blob_identity": "sha256:b5c804a24934fcbade490fe04f4360c000ca7bafac86a860093f1bb212fcc12f"}], "bundle_id": "sha256:3c0d06b9a55f67d5be6a8badfacc6e09fb65fff58f236371044a6d5dd49eb4b1"},
+      {"task_alias": "VRIF-030", "artifacts": [{"path": "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl", "blob_identity": "sha256:e8224ed7ce57d80c767c05e9df77cbb4ba47d0bd5e480a1236abd5e0c294eb8f"}, {"path": "benchmarks/agent_supervisor/residual_intelligence/manifest.json", "blob_identity": "sha256:1e7cae9c5fa7425d9b0ed79ca7998d48ab28506065cc9c88fbb39935bd56a839"}, {"path": "test/api/residual_intelligence/test_benchmark.py", "blob_identity": "sha256:6cc7c3300b317e21e9f9a75d9df93e04f60da5a76c2d3679e6c750a15e398eea"}], "bundle_id": "sha256:a3a152ef58900447f57762a2e922c044fe0a36d4f589b9237bb2656a31098b05"},
+      {"task_alias": "VRIF-031", "artifacts": [{"path": "ipfs_accelerate_py/agent_supervisor/residual_intelligence/promotion.py", "blob_identity": "sha256:3498b337c620707808c6cedee85af64de894411bd5aee23d657c6ef2ec6a6bfc"}, {"path": "test/api/residual_intelligence/test_promotion.py", "blob_identity": "sha256:3fd9e0867a9d5ec0c847e9098ba5dcc6460bcabecd2c47b2b0e40c7d4038b65d"}], "bundle_id": "sha256:2699cff942eb209759e4e2f5b042a2e4bc95ee110a22105781efc591f6b4da62"}
+    ],
+    "bundle_id": "sha256:43ff8ab2ff038ab6ae2ea17acd84952afc54f088f73d282227c74bc0d4c9972c"
   },
-  "files_and_symbols": {
-    "declared_outputs": ["docs/architecture/residual_intelligence_inventory/final_release_report.json", "docs/architecture/residual_intelligence_inventory/final_release_report.md", "test/api/residual_intelligence/test_release_report.py"],
-    "implementation_symbols": ["contracts.py: ResidualIntelligenceError, ResidualTaskFamily, RiskClass, PrivacyClass, ExpertDisposition", "residual_ir.py: ResidualTaskInput, ResidualTaskOutput, ResidualIntelligenceIR", "rights.py: TrainingCorpusAdmission, LeakageAudit, source_rights_identity", "splits.py: SemanticSplitPolicy, SemanticSplitManifest, semantic_lineage_split", "expert_specs.py: ResidualExpertSpec, ModelSizePolicy", "baselines.py: DeterministicResidualExpert, LinearResidualExpert, BaselineEvaluation", "calibration.py: CalibrationGroup, CalibrationEvidence, CalibrationThresholdBinding", "abstention.py: SelectivePredictionPolicy, AbstentionDecision", "ood.py: BoundaryContract, OODAssessment, conservative_ood_assessment", "cascade.py: ResidualCascade, ResidualCascadeWalk", "benchmark.py: ResidualBenchmarkManifest, validate_frozen_benchmark, PairedBenchmarkRunner", "corpus.py: ResidualDistillationCorpus, ResidualDistillationExample", "labels.py: IndependentLabelProducer, TeacherDisagreement, ProofGroundedLabel", "distillation.py: DistillationBudget, DistillationResult", "active_learning.py: AcquisitionBudget, ResidualActiveLearningPlanner", "continual_learning.py: TrainingEpochLimits, ResumeCompatibility, ContinualLearningEpoch", "checkpoint.py: ExpertCheckpointLineage, ResidualCheckpointAdapter, validate_residual_resume", "packaging.py: ExpertRuntimeManifest, PackagedExpert, QuantizationQualification", "runtime.py: ResidualInferenceRuntime, ExpertResourceLease, BatchInferenceReceipt", "router.py: ResidualExpertRouter, ResidualRouteRequest, ResidualRouteDecision", "structured_decoding.py: ExpertGrammar, StructuredDecodeResult", "structured_specialist.py: ConstrainedStructuredExpert, StructuredDecodeRequest", "procedure_experts.py: ProcedureHoleExpertAdapter, ProcedureHoleResolution", "proof_experts.py: ProofExpertAdapter, PremiseRanking, TacticCandidate", "patch_experts.py: PatchExpertAdapter, PatchSketchIR, TestSketchIR", "local_experts.py: LocalClassificationExpert, LocalRankingExpert, IndependentValidationReceipt", "privacy.py: InformationFlowPolicy, PrivacyRouteDecision, CorpusWithdrawal", "adversarial.py: ResidualMutantCampaign, ResidualAdversarialAdapter", "promotion.py: PromotionEvidence, PromotionDecision, ExpertRollbackReceipt, ExpertPromotionGate", "drift.py: ExpertDriftMonitor, DriftEvent", "cli.py: ExpertControlRequest, ExpertControlResult, ResidualExpertControlBackend", "release.py: ResidualGapReport, ResidualIntelligenceReleaseReport, validate_release_claims"],
-    "snapshot_changed_files": [
-      "docs/architecture/residual_intelligence_inventory/README.md",
-      "docs/architecture/residual_intelligence_inventory/adversarial_campaign_report.json",
-      "docs/architecture/residual_intelligence_inventory/baseline.json",
-      "docs/architecture/residual_intelligence_inventory/corpus_construction.json",
-      "docs/architecture/residual_intelligence_inventory/final_release_report.json",
-      "docs/architecture/residual_intelligence_inventory/final_release_report.md",
-      "docs/architecture/residual_intelligence_inventory/pgir_training_gate.json",
-      "docs/architecture/residual_intelligence_inventory/prerequisite_matrix.json",
-      "docs/architecture/residual_intelligence_inventory/residual_model_call_inventory.json",
-      "benchmarks/agent_supervisor/residual_intelligence/README.md",
-      "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
-      "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
-      "benchmarks/agent_supervisor/residual_intelligence/synthetic_split_manifest.json",
-      "benchmarks/agent_supervisor/residual_intelligence/synthetic_training_admission.json",
-      "benchmarks/agent_supervisor/residual_intelligence/tranche1_contract_cases.json",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/contracts.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/rights.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/splits.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/benchmark.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/checkpoint.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/packaging.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/adversarial.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/promotion.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/drift.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/release.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/__init__.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/abstention.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/active_learning.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/baselines.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/calibration.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/cascade.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/cli.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/continual_learning.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/corpus.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/distillation.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/expert_specs.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/inventory.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/labels.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/local_experts.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/ood.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/patch_experts.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/privacy.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/procedure_experts.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/proof_experts.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/residual_ir.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/router.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/runtime.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/structured_decoding.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/structured_specialist.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/task_families.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/training_plan.py",
-      "test/api/residual_intelligence/test_contracts_and_ir.py",
-      "test/api/residual_intelligence/test_corpus_rights_and_splits.py",
-      "test/api/residual_intelligence/test_benchmark.py",
-      "test/api/residual_intelligence/test_checkpoint_lineage.py",
-      "test/api/residual_intelligence/test_packaging.py",
-      "test/api/residual_intelligence/test_adversarial.py",
-      "test/api/residual_intelligence/test_promotion.py",
-      "test/api/residual_intelligence/test_drift.py",
-      "test/api/residual_intelligence/test_release_report.py",
-      "test/api/residual_intelligence/__init__.py",
-      "test/api/residual_intelligence/helpers.py",
-      "test/api/residual_intelligence/test_active_learning.py",
-      "test/api/residual_intelligence/test_baselines.py",
-      "test/api/residual_intelligence/test_calibration_abstention.py",
-      "test/api/residual_intelligence/test_board.py",
-      "test/api/residual_intelligence/test_continual_learning.py",
-      "test/api/residual_intelligence/test_control_surface.py",
-      "test/api/residual_intelligence/test_expert_specs.py",
-      "test/api/residual_intelligence/test_goal_authority.py",
-      "test/api/residual_intelligence/test_inventory.py",
-      "test/api/residual_intelligence/test_inventory_artifacts.py",
-      "test/api/residual_intelligence/test_label_production.py",
-      "test/api/residual_intelligence/test_local_experts.py",
-      "test/api/residual_intelligence/test_ood.py",
-      "test/api/residual_intelligence/test_patch_experts.py",
-      "test/api/residual_intelligence/test_privacy.py",
-      "test/api/residual_intelligence/test_procedure_experts.py",
-      "test/api/residual_intelligence/test_proof_experts.py",
-      "test/api/residual_intelligence/test_router.py",
-      "test/api/residual_intelligence/test_runtime_batching.py",
-      "test/api/residual_intelligence/test_runtime_bootstrap.py",
-      "test/api/residual_intelligence/test_runtime_settlement.py",
-      "test/api/residual_intelligence/test_structured_decoding.py",
-      "test/api/residual_intelligence/test_structured_specialist.py",
-      "test/api/residual_intelligence/test_teacher_disagreement.py"
-    ]
+  "files_symbols": {
+    "disposition": "current_tracked_blobs_bound",
+    "declared_output_paths": ["docs/architecture/residual_intelligence_inventory/final_release_report.json", "docs/architecture/residual_intelligence_inventory/final_release_report.md", "test/api/residual_intelligence/test_release_report.py"],
+    "required_report_paths": ["docs/architecture/residual_intelligence_inventory/final_release_report.json", "docs/architecture/residual_intelligence_inventory/final_release_report.md"],
+    "declared_symbols": ["ResidualIntelligenceReleaseReport", "ResidualGapReport", "validate_release_claims"],
+    "producer_artifact_bundle_id": "sha256:43ff8ab2ff038ab6ae2ea17acd84952afc54f088f73d282227c74bc0d4c9972c"
   },
   "corpus_rights_splits": {
-    "admission_id": "baguqeera3dp4lnpqc6wgksk5erxj54dt5sxhlp6opf2z5xyz6qvbg45abf2a",
-    "decision": "training_unavailable",
-    "rights_root": "baguqeerappawi4jtwvs3jfkoehdfc2xsh64lszuwjg6xzplgmckpg4ltjxda",
-    "split_root": "baguqeeradbwccksw3vppbhz3xiu2l55isclxhi2xixthngpyeiy422jhmhzq",
-    "leakage_audit": {"audit_id": "baguqeeraesdhp3ttjf3w3neqly4dyctasjp3wdtjeem2zmjeykgzxyjwscbq", "passed": true, "train_groups": 1, "development_groups": 1, "holdout_groups": 1, "adversarial_groups": 1, "cross_partition_groups": 0, "hidden_test_bodies_accessed": false},
-    "public_summary_only": true
+    "disposition": "training_unavailable", "admission_id": "baguqeera3dp4lnpqc6wgksk5erxj54dt5sxhlp6opf2z5xyz6qvbg45abf2a", "corpus_root": "corpus:synthetic:vrif-fixtures-v1", "source_rights_root": "baguqeerappawi4jtwvs3jfkoehdfc2xsh64lszuwjg6xzplgmckpg4ltjxda", "split_root": "baguqeeradbwccksw3vppbhz3xiu2l55isclxhi2xixthngpyeiy422jhmhzq", "partitions": ["training", "development", "held_out", "adversarial"], "hidden_test_bodies_accessed": false, "privacy_disposition": "public_report_bounded"
   },
-  "architecture_tokenizer_checkpoint": {
-    "architecture": {"status": "no_packaged_expert", "runtime_contract": "ExpertRuntimeManifest@1", "reason": "no admitted training epoch or expert artifact"},
-    "tokenizer": {"status": "no_learned_tokenizer_admitted", "fixture_identity": "tokenizer:fixture-v1", "fixture_is_not_training_permission": true},
-    "checkpoint": {"created": false, "simulated": false, "identity": null, "lineage_status": "no_candidate_checkpoint"}
-  },
-  "metrics": {
-    "status": "not_run_on_current_tree",
-    "before": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0},
-    "after": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0}
-  },
+  "architecture_tokenizer_checkpoint": {"disposition": "training_unavailable", "architecture": "not_selected", "tokenizer": "no_learned_tokenizer_admitted", "checkpoint": "not_created", "training": "not_attempted"},
   "proof_validation": {
-    "proof_status": "not_run_no_current_proof_receipt",
-    "validation_status": "report_contract_validation_only",
-    "evidence": ["docs/architecture/residual_intelligence_inventory/pgir_training_gate.json", "docs/architecture/residual_intelligence_inventory/adversarial_campaign_report.json", "benchmarks/agent_supervisor/residual_intelligence/manifest.json", "test/api/residual_intelligence/test_release_report.py"]
+    "disposition": "owner_receipts_required",
+    "validation_commands": [["python3 -m pytest -q test/api/residual_intelligence/test_release_report.py && python3 scripts/validate_agent_supervisor_residual_intelligence_board.py --check-all"]],
+    "producer_artifact_bundle_id": "sha256:43ff8ab2ff038ab6ae2ea17acd84952afc54f088f73d282227c74bc0d4c9972c",
+    "benchmark_freeze_id": "sha256:7bdb979305c19f49b9b6f26535c9900b0f52b772f9352485df1904f508858404",
+    "benchmark_case_root": "sha256:82e1f8419d0d897a12e3fcd679a0c6d852a4aca91229403e070f76796f7beb63",
+    "benchmark_binding_set_id": "sha256:f8b85bdde66e3fd87c0c493cb6b7e94c1ae8e3dd3284943998e0bd9084b3d439",
+    "paired_baseline_id": "sha256:759b80899b2ebc632219937bd97fbd35d90ccb0b81da3c3d3a06fd8bc3405dbd",
+    "benchmark_case_payload_disposition": "payload_unavailable_training_unavailable", "benchmark_evaluation_disposition": "all_abstain_not_run", "producer_database_portal_validations": "required", "terminal_database_portal_validation": "required", "report_authoritative": false
   },
-  "drift": {"status": "not_observed_no_registered_expert", "routable": false, "required_action": "retain_candidate_only_and_requalify_after_admitted_evidence"},
-  "promotion": {
-    "eligible": false,
-    "decision": "not_eligible",
-    "hard_gate_status": {"rights": "not_satisfied", "lineage": "not_satisfied", "leakage": "fixture_only_not_production_evidence", "privacy": "not_satisfied", "safety": "not_satisfied", "quality": "not_satisfied", "efficiency": "not_satisfied", "autonomy": "not_satisfied", "amortization": "not_satisfied"}
-  },
-  "rollback": {"target": "no-promoted-expert-route", "report_rebuild_tree": "4b8d07d8f7f25c28e3aa645e79e23b0ea23290f5", "policy": "Revoke the report root and regenerate from corrected current-tree evidence; do not rewrite evidence or promote from this report."},
-  "report_authority": {"completion_authoritative": false, "promotion_authoritative": false, "proof_authoritative": false}
+  "drift": {"disposition": "not_run_training_unavailable", "reference_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b", "evaluated_tree": "d121b4339de73a1a079c32c97b4c5a41f164e128", "checkpoint_available": false, "detectors_run": [], "reason_codes": ["no_admitted_checkpoint", "training_unavailable"]},
+  "rollback_blocker_eligibility": {"promotion_eligible": false, "rollback_target": "84a056e41e48a81d4484be43840196578d6c87da", "blockers": ["training_unavailable"], "not_run": ["gpu_live_qualification", "promotion", "training"], "report_authority": "non_authoritative"}
 }
