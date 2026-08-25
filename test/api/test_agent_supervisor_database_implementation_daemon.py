@@ -1064,14 +1064,10 @@ def test_fresh_strict_lane_seeds_completed_dependency_before_claim(
                 "task_cid": "task:cid:001",
                 "status": "succeeded",
                 "body": {
-                    "authority": "task_source",
-                    "authoritative_status": "skipped",
-                    "authoritative_revision": 1,
-                    "restart_recovery_ready": False,
-                    "restart_recovery_owner_session_id": "",
-                    "restart_recovery_binding": {},
-                    "authoritative_attempt_floor": 0,
-                    "authoritative_attempt_floor_source": "",
+                    "authority": "database_task_source",
+                    "source_status": "skipped",
+                    "task_alias": "DQP-COMPLETE",
+                    "task_revision": 1,
                 },
             }
         ]

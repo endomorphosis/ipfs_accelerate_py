@@ -253,7 +253,7 @@ def test_skipped_canonical_prerequisite_satisfies_lane_local_dependency(
     successor_lane = _open_lane(tmp_path, lane=0)
     try:
         assert successor_lane.sync_ready_tasks_into_coordination() == [
-            "task:cid:pcar-002"
+            "task:cid:pcar-002",
         ]
         projection = successor_lane.coordinator.coordination_registry_projection()
         assert projection["logical_completions"][0]["status"] == "succeeded"
