@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -14,6 +15,8 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py import agent_implementation_route as route
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _git(root: Path, *arguments: str) -> str:
@@ -117,6 +120,37 @@ def _seed_repository(tmp_path: Path) -> tuple[Path, str, str]:
     (unselected_gitlink / "README.md").write_text("unselected gitlink\n")
     _commit(unselected_gitlink, "unselected nested repository")
     _commit(root, "superproject")
+    return root, _git(root, "rev-parse", "HEAD"), _git(
+        root, "rev-parse", "HEAD^{tree}"
+    )
+
+
+def _seed_real_daemon_repository(tmp_path: Path) -> tuple[Path, str, str]:
+    root = tmp_path / "real-daemon-repository"
+    root.mkdir()
+    _git(root, "init", "-q")
+    datasets = root / "ipfs_datasets_py"
+    datasets.mkdir()
+    _git(datasets, "init", "-q")
+    (datasets / "__init__.py").write_text("# nested root\n")
+    nested_package = datasets / "ipfs_datasets_py"
+    nested_package.mkdir()
+    (nested_package / "__init__.py").write_text("# nested package\n")
+    _commit(datasets, "nested")
+
+    supervisor_root = REPO_ROOT / "ipfs_accelerate_py/agent_supervisor"
+    for source in supervisor_root.rglob("*.py"):
+        relative = source.relative_to(REPO_ROOT)
+        destination = root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+    for relative in route._LGCVF_LIVE_REQUIRED_SUPERPROJECT_FILES:
+        destination = root / relative
+        if destination.exists():
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO_ROOT / relative, destination)
+    _commit(root, "real daemon closure")
     return root, _git(root, "rev-parse", "HEAD"), _git(
         root, "rev-parse", "HEAD^{tree}"
     )
@@ -291,5 +325,85 @@ def test_lgcvf_live_capsule_materialize_seal_read_and_project(
         ).read_bytes() == Path(
             str(runtime["paths"]["httpfs"]) + ".info"
         ).read_bytes()
+    finally:
+        os.close(sealed.descriptor)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed LGCVF capsules require Linux memfd sealing",
+)
+def test_lgcvf_sealed_capsule_imports_real_daemon_main_dependency_closure(
+    tmp_path: Path,
+) -> None:
+    root, head, tree = _seed_real_daemon_repository(tmp_path)
+    runtime = _seed_duckdb_runtime(tmp_path)
+    pin = route.materialize_lgcvf_configured_board_live_capsule(
+        source_root=root,
+        capsule_parent=tmp_path / "real-daemon-capsules",
+        source_head=head,
+        source_tree=tree,
+        python_executable=sys.executable,
+        duckdb_package_root=runtime["package"],
+        duckdb_distribution_metadata_root=runtime["metadata"],
+        duckdb_distribution_version="1.5.5",
+        quack_extension_path=runtime["paths"]["quack"],
+        quack_extension_version=runtime["versions"]["quack"],
+        httpfs_extension_path=runtime["paths"]["httpfs"],
+        httpfs_extension_version=runtime["versions"]["httpfs"],
+        ducklake_extension_path=runtime["paths"]["ducklake"],
+        ducklake_extension_version=runtime["versions"]["ducklake"],
+        native_authorization_id="sha256:" + "a" * 64,
+        native_dependency_id="sha256:" + "b" * 64,
+    )
+    sealed = route.seal_lgcvf_configured_board_live_capsule(pin)
+    archive = f"/proc/self/fd/{sealed.descriptor}"
+    probe = r"""
+import importlib
+import sys
+
+archive = sys.argv[1]
+stdlib = [
+    entry
+    for entry in sys.path
+    if isinstance(entry, str)
+    and entry
+    and "site-packages" not in entry.casefold()
+    and "dist-packages" not in entry.casefold()
+]
+sys.path[:] = [archive, *stdlib]
+daemon = importlib.import_module(
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+)
+owner = importlib.import_module(
+    "ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner"
+)
+intent = importlib.import_module(
+    "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository"
+)
+prefix = archive + "/"
+for module in (daemon, owner, intent):
+    origin = getattr(module, "__file__", "")
+    if not isinstance(origin, str) or not origin.startswith(prefix):
+        raise SystemExit(76)
+if not callable(getattr(daemon, "main", None)):
+    raise SystemExit(77)
+daemon.main(["--help"])
+"""
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-I", "-S", "-B", "-c", probe, archive],
+            cwd=tmp_path,
+            env={"PATH": os.environ.get("PATH", "")},
+            pass_fds=(sealed.descriptor,),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert completed.stdout.startswith("usage: -c ")
+        assert completed.stderr == ""
     finally:
         os.close(sealed.descriptor)
