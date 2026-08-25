@@ -531,13 +531,13 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     except OSError:
         return None
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
+        payload = json.loads(raw, object_pairs_hook=_json_duplicate_guard)
+    except (json.JSONDecodeError, ValueError):
         return None
     return payload if isinstance(payload, dict) else None
 
 
-def _mutation_duplicate_guard(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+def _json_duplicate_guard(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     value: dict[str, Any] = {}
     for key, item in pairs:
         if key in value:
@@ -562,7 +562,7 @@ def _read_bounded_canonical_json(path: Path) -> dict[str, Any]:
     if len(raw) > QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES:
         raise QuackStateServerMutationError("request_too_large")
     try:
-        payload = json.loads(raw, object_pairs_hook=_mutation_duplicate_guard)
+        payload = json.loads(raw, object_pairs_hook=_json_duplicate_guard)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise QuackStateServerMutationError("request_not_canonical_json") from exc
     if not isinstance(payload, dict):
@@ -597,7 +597,7 @@ def _canonical_object(text: object, *, code: str) -> dict[str, Any]:
     if not isinstance(text, str) or len(text.encode("utf-8")) > QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES:
         raise QuackStateServerMutationError(code)
     try:
-        value = json.loads(text, object_pairs_hook=_mutation_duplicate_guard)
+        value = json.loads(text, object_pairs_hook=_json_duplicate_guard)
     except (json.JSONDecodeError, ValueError) as exc:
         raise QuackStateServerMutationError(code) from exc
     if not isinstance(value, dict) or canonical_json_bytes(value) != text.encode("utf-8"):
@@ -1294,14 +1294,57 @@ class OwnerMarker:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> OwnerMarker:
-        birth = ProcessBirthIdentity.from_dict(payload.get("process_birth"))
+        if not isinstance(payload, Mapping) or set(payload) != _OWNER_MARKER_FIELDS:
+            raise ValueError("owner marker fields are not exact")
+        if payload.get("schema") != cls.SCHEMA:
+            raise ValueError("owner marker schema is not current")
+        for name in (
+            "server_id",
+            "database_path",
+            "started_at",
+            "fence_token",
+        ):
+            if type(payload.get(name)) is not str or not payload[name]:
+                raise ValueError(f"owner marker {name} must be a non-empty string")
+        generation = payload.get("generation")
+        if type(generation) is not int or generation < 1:
+            raise ValueError("owner marker generation must be a positive integer")
+        birth_payload = payload.get("process_birth")
+        if (
+            not isinstance(birth_payload, Mapping)
+            or set(birth_payload) != _OWNER_MARKER_PROCESS_BIRTH_FIELDS
+        ):
+            raise ValueError("owner marker process_birth fields are not exact")
+        for name in ("pid", "start_time_ticks", "parent_pid"):
+            if type(birth_payload.get(name)) is not int:
+                raise ValueError(
+                    f"owner marker process_birth.{name} must be an integer"
+                )
+        if birth_payload["pid"] <= 0:
+            raise ValueError("owner marker process_birth.pid must be positive")
+        if birth_payload["start_time_ticks"] < 0:
+            raise ValueError(
+                "owner marker process_birth.start_time_ticks must be non-negative"
+            )
+        if birth_payload["parent_pid"] < 0:
+            raise ValueError(
+                "owner marker process_birth.parent_pid must be non-negative"
+            )
+        if type(birth_payload.get("boot_id")) is not str:
+            raise ValueError("owner marker process_birth.boot_id must be a string")
+        birth = ProcessBirthIdentity(
+            pid=birth_payload["pid"],
+            start_time_ticks=birth_payload["start_time_ticks"],
+            boot_id=birth_payload["boot_id"],
+            parent_pid=birth_payload["parent_pid"],
+        )
         return cls(
-            server_id=str(payload.get("server_id") or ""),
+            server_id=payload["server_id"],
             process_birth=birth,
-            database_path=str(payload.get("database_path") or ""),
-            started_at=str(payload.get("started_at") or ""),
-            fence_token=str(payload.get("fence_token") or ""),
-            generation=int(payload.get("generation") or 1),
+            database_path=payload["database_path"],
+            started_at=payload["started_at"],
+            fence_token=payload["fence_token"],
+            generation=generation,
         )
 
 
@@ -1315,6 +1358,9 @@ _OWNER_MARKER_FIELDS: Final = frozenset(
         "fence_token",
         "generation",
     }
+)
+_OWNER_MARKER_PROCESS_BIRTH_FIELDS: Final = frozenset(
+    {"pid", "start_time_ticks", "boot_id", "parent_pid"}
 )
 _OWNER_MARKER_MAX_BYTES: Final[int] = 64 * 1024
 
@@ -1343,6 +1389,11 @@ class _ExclusiveOwnerLeaseState:
         self.marker: OwnerMarker | None = None
         self.fence_token = ""
         self.owner_process_birth: ProcessBirthIdentity | None = None
+        # Separate cleanup/rebind authority from the globally one-shot
+        # offline-writer -> state-owner binding gate.  A fresh receiver must
+        # retain cleanup authority, but it must never become transfer-eligible
+        # again merely because its authority token is current.
+        self.state_owner_bound = False
 
 
 class ExclusiveOwnerLease:
@@ -1551,7 +1602,10 @@ class ExclusiveOwnerLease:
         if raw is None:
             return "invalid", None
         try:
-            payload = json.loads(bytes(raw).decode("utf-8"))
+            payload = json.loads(
+                bytes(raw).decode("utf-8"),
+                object_pairs_hook=_json_duplicate_guard,
+            )
             if (
                 not isinstance(payload, dict)
                 or set(payload) != _OWNER_MARKER_FIELDS
@@ -1967,13 +2021,24 @@ class ExclusiveOwnerLease:
             self._require_owning_process_locked()
             if (
                 self._state.phase != "held"
+                or self._state.state_owner_bound
                 or self.lock_path != Path(lock_path)
                 or self.marker_path != Path(marker_path)
                 or not self._lock_path_matches_locked()
             ):
                 raise QuackStateServerOwnershipError(
-                    "owner lease handoff paths or lock identity differ"
+                    "owner lease is already state-owner bound or its handoff "
+                    "paths/lock identity differ"
                 )
+            # Allocate the receiver and its token before the marker CAS.  Once
+            # the marker changes, only non-raising shared-state assignments
+            # remain, so eligibility and authority cannot diverge after a
+            # successfully published server binding.
+            new_authority = object()
+            receiver = self._receive_transfer(
+                self,
+                authority_token=new_authority,
+            )
             rebound = self._rebind_held_marker_locked(
                 expected_server_id=expected_server_id,
                 server_id=server_id,
@@ -1981,14 +2046,34 @@ class ExclusiveOwnerLease:
                 database_path=database_path,
                 generation=generation,
             )
-            new_authority = object()
-            receiver = self._receive_transfer(
-                self,
-                authority_token=new_authority,
-            )
+            # This transition is protected by the shared gate and is never
+            # reversed by release, generation rebind, wrapper transfer, or
+            # cleanup.  Every existing/future wrapper observes the same bit.
+            self._state.state_owner_bound = True
             self._state.authority_token = new_authority
             self._state.marker = rebound
             return receiver
+
+    def _bind_new_state_owner(self) -> None:
+        """Irreversibly close transfer eligibility for a normal server start."""
+
+        with self._state.gate:
+            self._require_owning_process_locked()
+            if (
+                self._state.phase != "held"
+                or self._state.state_owner_bound
+                or self._state.marker is None
+                or not self._lock_path_matches_locked()
+            ):
+                raise QuackStateServerOwnershipError(
+                    "owner lease cannot enter state-owner binding"
+                )
+            status, current = self._read_marker_locked()
+            if status != "ok" or current != self._state.marker:
+                raise QuackStateServerOwnershipError(
+                    "owner lease marker differs before state-owner binding"
+                )
+            self._state.state_owner_bound = True
 
     def _rebind_held_marker(
         self,
@@ -2011,6 +2096,10 @@ class ExclusiveOwnerLease:
 
         with self._state.gate:
             self._require_owning_process_locked()
+            if not self._state.state_owner_bound:
+                raise QuackStateServerOwnershipError(
+                    "owner generation rebind requires a bound state owner"
+                )
             return self._rebind_held_marker_locked(
                 expected_server_id=expected_server_id,
                 server_id=server_id,
@@ -3820,7 +3909,7 @@ class QuackStateServer:
             )
         try:
             raw = path.read_bytes()
-            payload = json.loads(raw, object_pairs_hook=_mutation_duplicate_guard)
+            payload = json.loads(raw, object_pairs_hook=_json_duplicate_guard)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise QuackStateServerIsolationError(
                 "isolation receipt is not canonical JSON"
@@ -5769,6 +5858,10 @@ class QuackStateServer:
                         database_path=self.config.database_path,
                         generation=1,
                     )
+                    # A lease created by the long-lived server is not an
+                    # offline-writer handoff capability.  Close the same
+                    # shared one-shot gate before retaining cleanup authority.
+                    owner._bind_new_state_owner()  # noqa: SLF001
                     self._owner = owner
                 # A previous generation's ready projection must never survive
                 # as a launch signal while this generation is qualifying.
