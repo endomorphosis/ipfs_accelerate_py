@@ -126,6 +126,7 @@ from ..merge.checkout_lock import (
     update_checkout_mutation_lease,
 )
 from ..merge.database_coordination import (
+    COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     DatabaseCoordinationExpiredError,
     DatabaseCoordinationStaleFenceError,
 )
@@ -77011,15 +77012,14 @@ class DatabaseImplementationDaemon:
         current_receipt = self._post_merge_completion_history_receipt(
             revisions[-1]
         )
-        latest = {
-            attempt.task_cid: attempt
-            for attempt in self._latest_failed_attempts()
-        }.get(task_cid)
+        latest = self.get_attempt(str(context["current_attempt_id"]))
         if (
             revisions[-1].get("revision")
             != context["exhausted_task_revision"]
             or str(getattr(task, "status", "") or "") != "blocked"
             or latest is None
+            or latest.status != "failed"
+            or latest.committed_phase != ATTEMPT_PHASE_FAILED
             or latest.attempt_id != context["current_attempt_id"]
             or latest.claim_id != context["current_claim_id"]
             or latest.lease_id != context["current_lease_id"]
@@ -77063,19 +77063,34 @@ class DatabaseImplementationDaemon:
             if isinstance(coordination, Mapping) and coordination
             else None
         )
-        if (
-            not isinstance(coordination, Mapping)
-            or not self._terminal_coordination_reproduces_read_only(
+        current_coordination_reproduced = bool(
+            isinstance(coordination, Mapping)
+            and self._terminal_coordination_reproduces_read_only(
                 latest,
                 persisted=persisted,
                 require_expired=not bool(coordination),
             )
+        )
+        portable_coordination_authority = bool(
+            not current_coordination_reproduced
+            and isinstance(coordination, Mapping)
+            and self._post_merge_completion_portable_coordination_authority(
+                latest,
+                persisted=coordination,
+            )
+        )
+        if not (
+            current_coordination_reproduced
+            or portable_coordination_authority
         ):
             return None
         return {
             **context,
             "current_attempt": latest,
             "current_receipt": dict(current_receipt),
+            "portable_coordination_authority": (
+                portable_coordination_authority
+            ),
         }
 
     def _post_merge_completion_consumer_seed(
@@ -78536,14 +78551,20 @@ class DatabaseImplementationDaemon:
             WHERE candidate.task_cid = ?
               AND candidate.status = 'failed'
               AND phase.body_json LIKE ?
-            ORDER BY candidate.attempt_number DESC,
-                     candidate.started_at_ms DESC, candidate.attempt_id DESC
+            ORDER BY CASE
+                         WHEN candidate.attempt_id = ? THEN 0
+                         ELSE 1
+                     END,
+                     candidate.attempt_number DESC,
+                     candidate.started_at_ms DESC,
+                     candidate.attempt_id DESC
             LIMIT ?
             """,
             [
                 ATTEMPT_PHASE_FAILED,
                 attempt.task_cid,
                 fingerprint_marker,
+                attempt.attempt_id,
                 self.max_task_attempts,
             ],
         )
@@ -78736,6 +78757,29 @@ class DatabaseImplementationDaemon:
             expected_attempt_status=expected_attempt_status,
             expected_lease_state=expected_lease_state,
         )
+
+    def _execute_with_portable_post_merge_completion_authority(
+        self,
+        attempt: DatabaseTaskAttempt,
+        coordination_evidence: Mapping[str, Any],
+        callback: Callable[[], Any],
+    ) -> Any:
+        """Recheck portable crash authority immediately before the shared CAS."""
+
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        if not self._post_merge_completion_portable_coordination_authority(
+            attempt,
+            persisted=coordination_evidence,
+        ):
+            raise DatabaseImplementationConflictError(
+                "portable post-merge completion authority was superseded"
+            )
+        # record_queue_backoff_and_cas_status atomically checks both the shared
+        # task revision and the exact receipt verified by the crash classifier.
+        # That shared-row fence is intentionally independent of a disposable
+        # lane-local coordination database.
+        return callback()
 
     def _verified_validation_retry_recovery_state(
         self,
@@ -82314,6 +82358,104 @@ class DatabaseImplementationDaemon:
             return "expired"
         return ""
 
+    def _post_merge_completion_portable_coordination_authority(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        persisted: Mapping[str, Any],
+    ) -> bool:
+        """Admit an expired sealed fence after its local sidecar was replaced.
+
+        Coordination stores are disposable lane-local projections.  The exact
+        six-revision lost-completion classifier above is shared control
+        authority, but its final receipt can outlive the sidecar that originally
+        emitted the coordination observation.  Once that observation's lease is
+        certainly expired, the shared receipt and its revision CAS are portable
+        only when the replacement sidecar contains no authority for this task.
+
+        This helper is deliberately private to that crash classifier.  Generic
+        retries continue to require a reproducible local claim/attempt/lease
+        triple.
+        """
+
+        persisted_state = self._terminal_coordination_projection_state(
+            attempt,
+            persisted,
+        )
+        expires_at_ms = persisted.get("expires_at_ms")
+        if (
+            persisted_state not in {"accepted", "expired"}
+            or isinstance(expires_at_ms, bool)
+            or not isinstance(expires_at_ms, int)
+            or self._now_ms() < expires_at_ms
+        ):
+            return False
+        registry_projection = getattr(
+            self.coordinator,
+            "coordination_registry_projection",
+            None,
+        )
+        if not callable(registry_projection):
+            raise DatabaseImplementationAuthorityError(
+                "portable post-merge completion authority has no current "
+                "coordination projection"
+            )
+        try:
+            projection = registry_projection()
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "portable post-merge completion authority could not read the "
+                "current coordination projection"
+            ) from exc
+        authority_collections = (
+            "logical_completions",
+            "task_claims",
+            "task_attempts",
+            "fenced_leases",
+            "resource_claims",
+        )
+        if (
+            not isinstance(projection, Mapping)
+            or projection.get("schema")
+            != COORDINATION_REGISTRY_PROJECTION_SCHEMA
+            or not isinstance(projection.get("tasks"), list)
+            or any(
+                not isinstance(projection.get(name), list)
+                for name in authority_collections
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "portable post-merge completion authority received a malformed "
+                "current coordination projection"
+            )
+        task_cid = attempt.task_cid
+        tasks = projection["tasks"]
+        if any(not isinstance(item, Mapping) for item in tasks):
+            raise DatabaseImplementationAuthorityError(
+                "portable post-merge completion authority received malformed "
+                "coordination task rows"
+            )
+        for item in tasks:
+            if item.get("task_cid") != task_cid:
+                continue
+            if type(item.get("ready")) is not bool:  # noqa: E721
+                raise DatabaseImplementationAuthorityError(
+                    "portable post-merge completion authority received a "
+                    "malformed current readiness row"
+                )
+            if item.get("ready") is True:
+                return False
+        for name in authority_collections:
+            rows = projection[name]
+            if any(not isinstance(item, Mapping) for item in rows):
+                raise DatabaseImplementationAuthorityError(
+                    "portable post-merge completion authority received "
+                    f"malformed {name} rows"
+                )
+            if any(item.get("task_cid") == task_cid for item in rows):
+                return False
+        return True
+
     def _terminal_coordination_reproduces_read_only(
         self,
         attempt: DatabaseTaskAttempt,
@@ -82442,28 +82584,67 @@ class DatabaseImplementationDaemon:
         """Return bounded exact tasks needing the dedicated queue lookup.
 
         This is an observation-only discovery hook for the Portal bridge.  It
-        exposes no generic blocked tasks: each result must be this lane's
-        latest failed attempt and reproduce the exact shared terminal control
-        receipt, failure token, task revision, and source fence.  The failed
-        attempt query is already bounded; the bridge keyset-paginates this
+        exposes no generic blocked tasks.  Crash-chain tasks are enumerated
+        from the bounded canonical blocked-task page because a replacement
+        sidecar restarts its lane-local attempt counter; canonical history
+        then selects the exact execution attempt.  Legacy terminals retain
+        their local latest-attempt check.  The bridge keyset-paginates the
         deterministically sorted result without pinning on stale early rows.
         """
 
         task_cids: list[str] = []
-        terminal_fields = _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
-        for attempt in self._latest_failed_attempts():
-            task = self.task_source.get(attempt.task_cid)
+        crash_task_cids: set[str] = set()
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge completion discovery cannot list canonical tasks"
+            )
+        blocked_page = list_tasks(
+            status="blocked",
+            limit=TASK_SOURCE_QUERY_LIMIT,
+        )
+        blocked_tasks = getattr(blocked_page, "tasks", None)
+        if not isinstance(blocked_tasks, Sequence) or isinstance(
+            blocked_tasks,
+            (str, bytes, bytearray, memoryview),
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge completion discovery received malformed tasks"
+            )
+        for task in blocked_tasks:
+            body = getattr(task, "body", None)
+            receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if (
+                not isinstance(receipt, Mapping)
+                or receipt.get("operation")
+                != "database_portal_typed_deferral_budget_exhausted"
+            ):
+                continue
             crash_context = (
                 self._post_merge_completion_crash_recovery_context(
                     task,
                     require_current_blocked=True,
                 )
-                if task is not None
-                else None
             )
-            if crash_context is not None:
-                task_cids.append(attempt.task_cid)
+            if crash_context is None:
                 continue
+            task_cid = str(getattr(task, "task_cid", "") or "")
+            if not task_cid:
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge completion discovery found no exact task CID"
+                )
+            crash_task_cids.add(task_cid)
+            task_cids.append(task_cid)
+
+        terminal_fields = _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
+        for attempt in self._latest_failed_attempts():
+            if attempt.task_cid in crash_task_cids:
+                continue
+            task = self.task_source.get(attempt.task_cid)
             body = getattr(task, "body", None)
             receipt = (
                 body.get("completion_receipt")
@@ -82618,18 +82799,22 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery preauthorization rejected historical task "
                 "identity or automation state"
             )
-        latest = {
-            candidate.task_cid: candidate
-            for candidate in self._latest_failed_attempts()
-        }.get(task_cid)
-        if latest is None:
-            raise DatabaseImplementationConflictError(
-                "post-merge recovery preauthorization found no failed attempt"
-            )
         crash_context = self._post_merge_completion_crash_recovery_context(
             task,
             require_current_blocked=True,
         )
+        latest = (
+            crash_context["current_attempt"]
+            if crash_context is not None
+            else {
+                candidate.task_cid: candidate
+                for candidate in self._latest_failed_attempts()
+            }.get(task_cid)
+        )
+        if latest is None:
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery preauthorization found no failed attempt"
+            )
         crash_source_admitted = bool(
             crash_context is not None
             and self._post_merge_completion_crash_source_matches(
@@ -82976,15 +83161,23 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "post-merge recovery rejected task identity or authority"
             )
-        latest = {
-            candidate.task_cid: candidate
-            for candidate in self._latest_failed_attempts()
-        }.get(task_cid)
+        status = str(task.status or "").strip().lower()
+        crash_context = self._post_merge_completion_crash_recovery_context(
+            task,
+            require_current_blocked=True,
+        )
+        latest = (
+            crash_context["current_attempt"]
+            if crash_context is not None
+            else {
+                candidate.task_cid: candidate
+                for candidate in self._latest_failed_attempts()
+            }.get(task_cid)
+        )
         if latest is None:
             raise DatabaseImplementationConflictError(
                 "post-merge recovery requires the latest failed attempt"
             )
-        status = str(task.status or "").strip().lower()
         if status == "retrying":
             task_body = getattr(task, "body", None)
             retry_receipt = (
@@ -83033,10 +83226,6 @@ class DatabaseImplementationDaemon:
                 "write_count": 0,
             }
 
-        crash_context = self._post_merge_completion_crash_recovery_context(
-            task,
-            require_current_blocked=True,
-        )
         crash_source_seed = (
             crash_context.get("source_seed")
             if crash_context is not None
@@ -83192,7 +83381,17 @@ class DatabaseImplementationDaemon:
             else None
         )
 
-        coordination = self._reconcile_failed_attempt_coordination(latest)
+        portable_coordination_authority = bool(
+            crash_source_admitted
+            and crash_context is not None
+            and crash_context.get("portable_coordination_authority") is True
+        )
+        coordination = (
+            dict(crash_context["current_receipt"]["coordination"])
+            if portable_coordination_authority
+            and crash_context is not None
+            else self._reconcile_failed_attempt_coordination(latest)
+        )
         transition_source_coordination = (
             dict(crash_context["source_coordination"])
             if crash_source_admitted and crash_context is not None
@@ -83317,10 +83516,18 @@ class DatabaseImplementationDaemon:
         transition = self._persist_failed_attempt_transition(
             latest,
             status=status,
-            transition=lambda: self._execute_with_retry_transition_authority(
-                latest,
-                coordination,
-                project_recovery,
+            transition=lambda: (
+                self._execute_with_portable_post_merge_completion_authority(
+                    latest,
+                    coordination,
+                    project_recovery,
+                )
+                if portable_coordination_authority
+                else self._execute_with_retry_transition_authority(
+                    latest,
+                    coordination,
+                    project_recovery,
+                )
             ),
         )
         if transition.get("reason") in {
@@ -85318,6 +85525,17 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     f"failed attempt {attempt.attempt_id} has no control task"
                 )
+            control_supersession = (
+                self._fresh_failed_attempt_control_supersession(attempt)
+            )
+            if (
+                control_supersession is not None
+                and control_supersession.get("control_status") == "in_progress"
+                and control_supersession.get("control_operation")
+                == "database_claim"
+            ):
+                outcomes.append(control_supersession)
+                continue
             status = str(task.status or "").strip().lower()
             if self._automatic_claim_forbidden(task):
                 raise DatabaseImplementationAuthorityError(
@@ -85515,7 +85733,18 @@ class DatabaseImplementationDaemon:
             if task is None:
                 raise DatabaseImplementationAuthorityError(
                     f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            control_supersession = (
+                self._fresh_failed_attempt_control_supersession(attempt)
             )
+            if (
+                control_supersession is not None
+                and control_supersession.get("control_status") == "in_progress"
+                and control_supersession.get("control_operation")
+                == "database_claim"
+            ):
+                outcomes.append(control_supersession)
+                continue
             status = str(task.status or "").strip().lower()
             if status == "blocked":
                 if reason == "not_attempted":

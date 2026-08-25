@@ -7060,8 +7060,36 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
         consumer_bridge = fresh_consumer_bridge()
         consumer_bridges.append(consumer_bridge)
 
+        # Put the retained execution/coordination generation well ahead of a
+        # future replacement sidecar.  Attempt numbers are lane-local and the
+        # replacement will restart them at one; canonical receipt identity,
+        # not the incomparable counters, must select a later recurrence.
+        assert consumer_daemon.sync_ready_tasks_into_coordination() == [
+            source_attempt.task_cid
+        ]
+        for preclaim_index in range(10):
+            preclaim = consumer_daemon.coordinator.claim_ready_task(
+                owner_session_id=(
+                    "session:completion-recovery-preclaim:"
+                    f"{preclaim_index}"
+                ),
+                lease_ms=60_000,
+                now_ms=consumer_daemon._now_ms(),
+            )
+            assert preclaim is not None
+            preclaim_lease = consumer_daemon.coordinator.get_lease(
+                preclaim.lease_id
+            )
+            assert preclaim_lease is not None
+            consumer_daemon.coordinator.release(
+                preclaim_lease,
+                reason="test_attempt_frontier_seed",
+                now_ms=consumer_daemon._now_ms(),
+            )
+
         successor = consumer_daemon.claim_next()
         assert successor is not None
+        assert successor.attempt_number == 11
         assert successor.owner_session_id == (
             "session:completion-recovery-consumer"
         )
@@ -7403,6 +7431,136 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             original_history_projection,
         )
 
+        # Replace the disposable lane-local coordination store while keeping
+        # the canonical control history and execution attempts.  This is the
+        # production crash/restart shape: the blocked receipt still seals the
+        # exact old fence, but the fresh sidecar cannot reproduce its rows.
+        blocked_receipt = blocked_record.body["completion_receipt"]
+        portable_coordination = blocked_receipt["coordination"]
+        portable_expiry_ms = int(portable_coordination["expires_at_ms"])
+        consumer_daemon.close()
+        consumer_daemon = DatabaseImplementationDaemon(
+            database_path=tmp_path / "control.duckdb",
+            coordination_path=(
+                tmp_path / "coordination-lane-3-replacement.duckdb"
+            ),
+            execution_path=tmp_path / "execution-3.duckdb",
+            owner_session_id="session:completion-recovery-consumer",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            provider_fn=bridge_provider,
+            effect_fn=bridge_effect,
+            validation_fn=bridge_validation,
+            max_task_attempts=1,
+            require_real_execution=True,
+            clock_ms=lambda: portable_expiry_ms - 1,
+        )
+        consumer_daemon._merge_repo_root = repo
+        consumer_daemon._merge_target_branch = "main"
+        consumer_bridge = fresh_consumer_bridge()
+        consumer_bridges[0] = consumer_bridge
+
+        replacement_blocked = consumer_daemon.task_source.get(
+            successor.task_cid
+        )
+        assert replacement_blocked is not None
+        assert consumer_daemon.coordinator.get_task_claim(
+            exhausted_attempt.claim_id
+        ) is None
+        assert consumer_daemon.coordinator.get_task_attempt(
+            exhausted_attempt.attempt_id
+        ) is None
+        assert consumer_daemon.coordinator.get_lease(
+            exhausted_attempt.lease_id
+        ) is None
+        replacement_projection = (
+            consumer_daemon.coordinator.coordination_registry_projection()
+        )
+        for collection in (
+            "tasks",
+            "logical_completions",
+            "task_claims",
+            "task_attempts",
+            "fenced_leases",
+            "resource_claims",
+        ):
+            assert all(
+                item.get("task_cid") != successor.task_cid
+                for item in replacement_projection[collection]
+            )
+
+        # A missing local triple never grants ordinary retry authority, and
+        # the portable crash classifier remains closed until the sealed lease
+        # has certainly expired.  Both checks are read-only.
+        before_expiry = replacement_blocked.to_dict()
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="has no coordination claim",
+        ):
+            consumer_daemon._reconcile_failed_attempt_coordination(
+                exhausted_attempt
+            )
+        assert (
+            consumer_daemon._post_merge_completion_crash_recovery_context(
+                replacement_blocked,
+                require_current_blocked=True,
+            )
+            is None
+        )
+        assert successor.task_cid not in (
+            consumer_daemon.post_merge_completion_recovery_task_cids()
+        )
+        assert consumer_daemon.task_source.get(
+            successor.task_cid
+        ).to_dict() == before_expiry
+        assert not (
+            consumer_daemon._post_merge_completion_portable_coordination_authority(
+                exhausted_attempt,
+                persisted={},
+            )
+        )
+
+        consumer_daemon._clock_ms = lambda: portable_expiry_ms + 1
+        portable_context = (
+            consumer_daemon._post_merge_completion_crash_recovery_context(
+                replacement_blocked,
+                require_current_blocked=True,
+            )
+        )
+        assert portable_context is not None
+        assert portable_context["portable_coordination_authority"] is True
+        assert consumer_daemon.post_merge_completion_recovery_task_cids() == (
+            successor.task_cid,
+        )
+
+        # Admission is rechecked immediately before the shared CAS.  A new
+        # same-task authority appearing in the replacement sidecar wins this
+        # race without invoking the callback.
+        callback_calls: list[bool] = []
+        with monkeypatch.context() as race_patch:
+            raced_projection = dict(replacement_projection)
+            raced_projection["tasks"] = [
+                {
+                    "task_cid": successor.task_cid,
+                    "ready": True,
+                }
+            ]
+            race_patch.setattr(
+                consumer_daemon.coordinator,
+                "coordination_registry_projection",
+                lambda: raced_projection,
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match="portable post-merge completion authority was superseded",
+            ):
+                consumer_daemon._execute_with_portable_post_merge_completion_authority(
+                    exhausted_attempt,
+                    portable_coordination,
+                    lambda: callback_calls.append(True),
+                )
+        assert callback_calls == []
+
         (repo / "target-generation.txt").write_text(
             "completion recovery generation two\n",
             encoding="utf-8",
@@ -7455,35 +7613,37 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
         assert replay_seed["qualified_target_commit"] == advanced_target
         assert requalification_heads == [advanced_target]
 
-        # The live crash row has no active local claim.  This fixture retained
-        # the synthetic ordinary claim so its accepted coordination could be
-        # sealed in the exhausted control receipt; retire it only after the
-        # recovery CAS has independently reproduced that receipt.
-        exhausted_claim = consumer_daemon.coordinator.get_task_claim(
+        # The retired ordinary claim remains absent from the replacement
+        # sidecar after the shared recovery CAS.
+        assert consumer_daemon.coordinator.get_task_claim(
             exhausted_attempt.claim_id
-        )
-        assert exhausted_claim is not None
-        exhausted_now_ms = int(exhausted_claim.expires_at_ms) + 1
-        consumer_daemon._clock_ms = lambda: exhausted_now_ms
-        consumer_daemon.coordinator.expire_task_claim(
-            exhausted_claim,
-            now_ms=exhausted_now_ms,
-        )
-        exhausted_reconciliation = (
-            consumer_daemon._reconcile_failed_attempt_coordination(
-                exhausted_attempt
-            )
-        )
-        assert exhausted_reconciliation["claim_state"] == "expired"
-        assert exhausted_reconciliation["coordination_attempt_status"] == (
-            "expired"
-        )
+        ) is None
 
         successor = consumer_daemon.claim_next()
         assert successor is not None
+        assert successor.attempt_number == 1
         assert successor.body["post_merge_completion_recovery_seed"] == (
             replay_seed
         )
+        assert {
+            attempt.task_cid: attempt.attempt_id
+            for attempt in consumer_daemon._latest_failed_attempts()
+        }[successor.task_cid] == exhausted_attempt.attempt_id
+        running_control = consumer_daemon.task_source.get(successor.task_cid)
+        assert running_control is not None
+        running_control_before = running_control.to_dict()
+        assert consumer_daemon.reconcile_terminal_portal_failures() == []
+        running_retry_observations = (
+            consumer_daemon.reconcile_terminal_retry_states()
+        )
+        assert len(running_retry_observations) == 1
+        assert running_retry_observations[0]["changed"] is False
+        assert running_retry_observations[0]["reason"] == (
+            "failed_attempt_control_superseded"
+        )
+        assert consumer_daemon.task_source.get(
+            successor.task_cid
+        ).to_dict() == running_control_before
 
         # Lose the v2 zero-provider acceptance at the same boundary.  The
         # next exact suffix must link back through recovery_control_revision
@@ -7550,11 +7710,19 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
                 "typed_deferral": second_typed_receipt,
             },
         )
+        assert second_exhausted_attempt.attempt_number == 2
+        assert {
+            attempt.task_cid: attempt.attempt_id
+            for attempt in consumer_daemon._latest_failed_attempts()
+        }[successor.task_cid] == exhausted_attempt.attempt_id
         second_budget = consumer_daemon._typed_deferral_budget_observation(
             second_exhausted_attempt
         )
         assert second_budget is not None
         assert second_budget["exhausted"] is True
+        assert second_budget["matching_attempts"][0]["attempt_id"] == (
+            second_exhausted_attempt.attempt_id
+        )
         second_exhausted_coordination = (
             consumer_daemon._reconcile_failed_attempt_coordination(
                 second_exhausted_attempt
@@ -7572,6 +7740,15 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             successor.task_cid
         )
         assert second_blocked_record is not None
+        second_blocked_before = second_blocked_record.to_dict()
+        assert consumer_daemon.reconcile_terminal_portal_failures() == []
+        blocked_retry_observations = (
+            consumer_daemon.reconcile_terminal_retry_states()
+        )
+        assert blocked_retry_observations == []
+        assert consumer_daemon.task_source.get(
+            successor.task_cid
+        ).to_dict() == second_blocked_before
         recurrence_context = (
             consumer_daemon._post_merge_completion_crash_recovery_context(
                 second_blocked_record,
@@ -7579,6 +7756,9 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             )
         )
         assert recurrence_context is not None
+        assert recurrence_context["current_attempt"] == (
+            second_exhausted_attempt
+        )
         assert recurrence_context["source_task_revision"] == blocked_revision
         assert recurrence_context["control_task_revision"] == (
             blocked_revision + 5
