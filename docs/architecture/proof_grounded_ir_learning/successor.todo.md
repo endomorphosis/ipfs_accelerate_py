@@ -259,15 +259,15 @@ evidence.
 - Subgoal: superseding-freeze
 - Owning repository: ipfs_accelerate_py
 - Owned paths: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/**
-- Base source revisions: current successor branch plus RESULT(PGIR-200) through RESULT(PGIR-204), RESULT(PGIR-208), RESULT(PGIR-209), and RESULT(PGIR-210)
+- Base source revisions: current successor branch plus RESULT(PGIR-200) through RESULT(PGIR-204), RESULT(PGIR-208), RESULT(PGIR-209), RESULT(PGIR-210), and RESULT(PGIR-211)
 - Objective: Bind new rights, corpus, split, tokenizer, and baseline identities into a superseding campaign input root whose previous_root_cid is the historical no-go freeze.
-- Depends on: PGIR-200, PGIR-201, PGIR-202, PGIR-203, PGIR-204, PGIR-208, PGIR-209, PGIR-210
+- Depends on: PGIR-200, PGIR-201, PGIR-202, PGIR-203, PGIR-204, PGIR-208, PGIR-209, PGIR-210, PGIR-211
 - Resource class: cpu-small
-- Expected inputs: historical RESULT(PGIR-014), RESULT(PGIR-200) through RESULT(PGIR-204), RESULT(PGIR-208), and the superseding evidence adjudications RESULT(PGIR-209) and RESULT(PGIR-210)
+- Expected inputs: historical RESULT(PGIR-014), RESULT(PGIR-200) through RESULT(PGIR-204), RESULT(PGIR-208), and the superseding evidence adjudications RESULT(PGIR-209), RESULT(PGIR-210), and RESULT(PGIR-211), including the exact PGIR-211 implementation, merge, and completion forest
 - Expected outputs: a successor-v1 freeze root, descendant task revisions, plan-admission receipt, and go or documented no-go
 - Allowed effects: successor-v1 freeze artifacts only
 - Prohibited effects: historical freeze mutation, hidden-test access, promotion
-- Acceptance: previous_root_cid binds the historical freeze; learned tasks are eligible only if rights, corpus, holdouts, tokenizer, and current-baseline gates pass
+- Acceptance: previous_root_cid binds the historical freeze; RESULT(PGIR-211), its implementation/merge/completion forest, and a fresh PGIR-211 verifier run bind the integrated evidence at the PGIR-205 baseline; learned tasks are eligible only if rights, corpus, holdouts, tokenizer, current-baseline, integrated-evidence, and portability gates pass, and any portability_no_go requires a documented no-go rather than execution
 - Required proof or evaluation evidence: portable independent verifier, repository-forest binding, plan-admission receipt
 - Result identity: RESULT(PGIR-205) in successor-v1
 - Outputs: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/
@@ -443,3 +443,36 @@ evidence.
 - Submodules: ipfs_datasets_py
 - Exclusive group: source-chain-acceptance-successor-v1-v2
 - Conflict policy: immutable source-chain inputs and one exclusive outer v2 acceptance writer
+
+## PGIR-211 Seal the integrated successor evidence before freeze admission
+
+- Status: todo
+- Completion: supervisor-evidence
+- Is schedulable: true
+- Priority: P0
+- Track: qualification
+- Parent goal: PGIR-G030
+- Goal id: PGIR-G030
+- Board namespace: proof-grounded-ir-learning-successor-v1
+- Subgoal: integrated-post-merge-acceptance
+- Owning repository: ipfs_accelerate_py
+- Owned paths: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/integrated-acceptance/**, scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py
+- Base source revisions: RESULT(PGIR-208), RESULT(PGIR-209), RESULT(PGIR-210); PGIR-209 implementation b435a3cd881183badf6aceb8b833ed8c9674f76f, merge cc9441d0808cea8159d96339c4b167ced1b89302, completion 7e7b49380c2b842f7ccce6b6f1bd414d0d14be14; PGIR-210 implementation 5e374b73ee521e077fb730f32f969019403dcd63, merge 7682ac51d13c29e9bf3f895686ea7b545e954941, completion 75791d58beeab140c2a3ebaf9789705b3e75c151; datasets commits 8736a0023d5d3afe4d0e5b044a3e4480966a8bf7 and 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6
+- Objective: Emit one append-only acceptance that replays the actually integrated PGIR-209 and PGIR-210 results, closes the historical R1 and campaign-root CID graph, and records genuine post-PGIR-210 verification, test, network, and portability evidence before any successor freeze may be admitted.
+- Depends on: PGIR-209, PGIR-210
+- Resource class: network
+- Expected inputs: every tracked RESULT(PGIR-208), RESULT(PGIR-209), and RESULT(PGIR-210) artifact and verifier; all seven PGIR-204 retirement payloads; the complete historical deterministic R1 JSON population; all forty-four campaign-root record occurrences and forty-one unique paths across twelve bindings; exact outer and nested Git objects and remote refs; the exact thirty-four-test suite
+- Expected outputs: canonical integrated acceptance, recursive R1 and campaign-root CID-closure receipt, integrated post-merge verifier receipt, network receipt, thirty-four-test receipt, outer-and-nested portability receipt, and a tracked independent verifier
+- Allowed effects: successor-v1 integrated-acceptance artifacts and its verifier only
+- Prohibited effects: mutation of source-chain-acceptance, source-chain-acceptance-v2, baseline-acceptance, historical or nested artifacts; hidden-test access; publication, materialization, training, model creation, promotion; treating pending, predicted, workspace-only, pre-merge, or self-asserted outcomes as evidence
+- Acceptance: RESULT(PGIR-211) has decision permanent_no_go, completion_authoritative=false, and pgir_205_execution_authorized=false; it binds the exact tracked bytes, SHA-256, raw CIDs, canonical receipt CIDs, and Git blobs for PGIR-208 acceptance baguqeeraburgmpdfo6weea57zlgkmppv7r34v2v3zstrepudxhrj6zrlgabq, PGIR-209 acceptance baguqeerauh6r5lk47ecfmu5zjujmadrjiohd2ixkczcnurc33izkkvf2nb7q, and PGIR-210 acceptance baguqeera4ruaxwivpst2iwslorrgmbpuva6jqxczyjf6uditxg62atltnvkq under an explicit 208 -> 210 -> 211 supersession chain; its integrated forest verifies every named PGIR-209 and PGIR-210 implementation, merge, and completion commit, tree, parent, ancestry, topology, old/new/current gitlink, current outer target 75791d58beeab140c2a3ebaf9789705b3e75c151 with tree e092bc48487226229c0df5c47029c3db36004e18, and checked-out nested commit/tree; it proves the exact unique fourteen-path sealed set equals the PGIR-208 payload set, 8736a0023d5d3afe4d0e5b044a3e4480966a8bf7 is an ancestor of 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6, every PGIR-200 through PGIR-202 nested new commit has the old gitlink as its sole parent, and the intervening PGIR-204 commit has an empty name/status and byte diff for all fourteen paths; its historical closure binds all seven deterministic R1 JSON files, strictly recomputes every declared self CID and manifest population, and recursively proves all forty-four campaign-root record occurrences, forty-one unique paths, twelve binding CIDs, root_sha256, root_cid, declared path-at-revision Git identity, and every linked lineage, reconciliation, source-release, split-manifest, inventory-manifest/result, pinset, implementation, configuration, schema, case, request, result, IR, text, trace, source-map, and recompile CID without loading blind/hidden inputs or reusing historical scores as current evidence; it closes every corpus/split artifact population, result/path/digest link, 7,173 = 2,174 + 4,999 unique exhaustive quarantine rows, zero training eligibility/admission/materialization/derived materialization, empty assignments/examples/samples, leakage value, thirteen named permanent holdout no-go results, and unchanged hidden-test commitment; its network and test receipts are included in the canonical RESULT(PGIR-211) closure and record actual executions after 75791d58beeab140c2a3ebaf9789705b3e75c151 on the clean integrated target with exact commit/tree/gitlink, verifier source SHA/raw CID/Git blob, commands, UTC start/end, exit zero, stdout SHA/raw CID, Python/pytest versions, collected=passed=34, failed=skipped=errors=0, and twenty-one of twenty-one live exact-revision HTTPS response hashes; verifier invocation without required live-network mode fails closed and never returns verified=true; its portability receipt records remote URLs, UTC observation, git ls-remote plus isolated fetch/ref-containment methods, and either an actual clean temporary recursive clone plus verifier replay or portability_no_go listing every referenced missing outer and nested commit including the complete PGIR-209/210 forest, with local stale remote-tracking refs insufficient and PGIR-205 unauthorized on any drift, failure, or unpublished ref
+- Required proof or evaluation evidence: canonical RESULT(PGIR-211) CID, exact integrated forest, PGIR-208/209/210 byte and supersession closure, seven-file historical R1 plus complete recursive campaign-root CID/Git closure, genuine post-integration verifier and network receipts, exact thirty-four-test receipt, verifier source identity, and remote/fresh-checkout portability receipt or typed no-go
+- Result identity: RESULT(PGIR-211) in successor-v1
+- Outputs: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/integrated-acceptance/, scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py
+- Validation: python scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py --network && python -m pytest -q ipfs_datasets_py/tests/unit/logic/intent_ir/graphrag/test_skillcenter_hf_release.py ipfs_datasets_py/tests/unit/logic/ir_learning/source/test_corpus_build.py ipfs_datasets_py/tests/unit/logic/ir_learning/source/test_successor_rights.py ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/test_legal_ir_eval_splits.py && python -m pytest -q ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py
+- Bundle: pgir/successor/integrated-acceptance
+- Parallel lane: integrated-acceptance
+- Predicted files: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/integrated-acceptance/, scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py
+- Submodules: ipfs_datasets_py
+- Exclusive group: integrated-acceptance-successor-v1
+- Conflict policy: immutable predecessor evidence and one exclusive outer integrated-acceptance writer

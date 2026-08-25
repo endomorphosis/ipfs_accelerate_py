@@ -3,7 +3,7 @@
 Status: admitted continuation candidate
 
 This plan moves the original `PGIR-200..207` successor board plus corrective
-tasks `PGIR-208..210` onto the current `ipfs_accelerate_py` agent-supervisor
+tasks `PGIR-208..211` onto the current `ipfs_accelerate_py` agent-supervisor
 control plane without rewriting the historical campaign. The 2026-08-18
 `RESULT(PGIR-111)` decision remains a truthful `no_go`; it is an input and
 completion anchor, not evidence that a learned campaign ran.
@@ -24,8 +24,8 @@ configured-board revision before a worker may claim a task.
 
 `docs/architecture/proof_grounded_ir_learning/successor.todo.md` is the
 executable projection. It contains four completed historical anchors, the
-eight original successor tasks, and one independently admitted source-chain
-acceptance task plus two append-only post-merge evidence adjudications. The
+eight original successor tasks and four append-only corrective evidence
+barriers. The
 original task IDs are retained, while source bindings and output paths are
 revised for the current checkout.
 
@@ -42,7 +42,7 @@ The sealed scheduler config uses the current
 task-source projection, two fenced implementation lanes, isolated worktrees,
 the initialized `ipfs_datasets_py` submodule, and the supervisor's reviewed
 Grok 4.6 to Codex `gpt-5.6-terra` quota-fallback route at high reasoning effort.
-Markdown is retained only as the admitted source format for this eleven-task
+Markdown is retained only as the admitted source format for this twelve-task
 legacy successor; task identity, readiness, leases, validation, and merge
 admission use the current supervisor implementation. Every task declares the
 `proof-grounded-ir-learning-successor-v1` board namespace and an explicit goal
@@ -63,8 +63,9 @@ Launch is fail-closed:
 The dependency path is:
 
 `PGIR-200 -> PGIR-201 -> PGIR-202 -> (PGIR-203 || PGIR-204 || PGIR-208)`, then
-`PGIR-204 -> PGIR-209`, `(PGIR-204 + PGIR-208) -> PGIR-210`, and only
-`(PGIR-203 + PGIR-209 + PGIR-210) -> PGIR-205 -> PGIR-206 -> PGIR-207`.
+`PGIR-204 -> PGIR-209`, `(PGIR-204 + PGIR-208) -> PGIR-210`, then
+`(PGIR-209 + PGIR-210) -> PGIR-211`, and only
+`(PGIR-203 + PGIR-211) -> PGIR-205 -> PGIR-206 -> PGIR-207`.
 
 `PGIR-200` may admit rows only from exact, cited source and transformation
 rights. Ambiguous metadata remains quarantined. A permanent-zero decision is
@@ -97,8 +98,19 @@ omitted persistent network, verifier-source, test, post-merge, and fresh-clone
 receipts and did not recursively replay every historical/corpus/split/CAS
 binding. `PGIR-210` supersedes that seal append-only, accepts the descendant
 only after ancestry and byte-identity proofs, closes the missing semantics,
-and records a typed outer-and-nested publication blocker. `PGIR-205` remains
-dependency-blocked until both adjudications complete.
+and records a typed outer-and-nested publication blocker.
+
+Independent review of the integrated PGIR-209/210 results found that the
+safety conclusions remained fail-closed but the durable evidence did not meet
+the admitted contracts. PGIR-209 omitted part of the historical R1 CID graph.
+PGIR-210 recorded a pre-merge outer forest and self-asserted network/test
+receipts before its own implementation and concurrent PGIR-209 merge existed;
+its portability population also omitted the integrated commits. `PGIR-211`
+therefore binds the actual completed PGIR-209/210 forest, complete recursive
+CID graph, genuine post-integration runs, and exact outer/nested publication
+blocker. `PGIR-205` must bind PGIR-211's later implementation, merge, and
+completion identities and rerun its verifier at the freeze baseline, avoiding
+a circular self-reference in RESULT(PGIR-211).
 
 `PGIR-206` may run R1-R6 only when the superseding freeze authorizes it.
 Otherwise it must emit typed `not_run` evidence. `PGIR-207` must resolve all

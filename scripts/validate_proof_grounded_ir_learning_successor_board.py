@@ -32,7 +32,7 @@ DECISION_CID = "baguqeeraejs56hwzs3bqtgzoayrc2fxwgfnhcsxjthi4dh7gh64wptlkfhwa"
 
 ANCHORS = ("PGIR-072", "PGIR-090", "PGIR-100", "PGIR-111")
 SOURCE_OPEN_TASKS = tuple(f"PGIR-{number}" for number in range(200, 208))
-CORRECTIVE_TASKS = ("PGIR-208", "PGIR-209", "PGIR-210")
+CORRECTIVE_TASKS = ("PGIR-208", "PGIR-209", "PGIR-210", "PGIR-211")
 OPEN_TASKS = (*SOURCE_OPEN_TASKS, *CORRECTIVE_TASKS)
 EXPECTED_TASKS = (*ANCHORS, *OPEN_TASKS)
 EXPECTED_DEPENDENCIES = {
@@ -54,12 +54,14 @@ EXPECTED_DEPENDENCIES = {
         "PGIR-208",
         "PGIR-209",
         "PGIR-210",
+        "PGIR-211",
     ),
     "PGIR-206": ("PGIR-205",),
     "PGIR-207": ("PGIR-072", "PGIR-090", "PGIR-100", "PGIR-206"),
     "PGIR-208": ("PGIR-200", "PGIR-201", "PGIR-202"),
     "PGIR-209": ("PGIR-202", "PGIR-204"),
     "PGIR-210": ("PGIR-204", "PGIR-208"),
+    "PGIR-211": ("PGIR-209", "PGIR-210"),
 }
 EXPECTED_GOALS = {
     "PGIR-072": "PGIR-G090",
@@ -77,6 +79,7 @@ EXPECTED_GOALS = {
     "PGIR-208": "PGIR-G030",
     "PGIR-209": "PGIR-G040",
     "PGIR-210": "PGIR-G030",
+    "PGIR-211": "PGIR-G030",
 }
 BOARD_NAMESPACE = "proof-grounded-ir-learning-successor-v1"
 ALLOWED_OPEN_STATUSES = {
