@@ -1,11 +1,45 @@
 {
-  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-benchmark-manifest@1",
-  "program_identifier": "agent-supervisor-verified-residual-intelligence-foundry-v1",
-  "status": "staged_not_qualified",
+  "frozen_bindings_required_before_qualification": [
+    "repository_states",
+    "objective_revisions",
+    "operation_catalog",
+    "provider_policy",
+    "tokenizer",
+    "model_versions",
+    "fault_schedule",
+    "validation_policy"
+  ],
+  "frozen_roots": {
+    "benchmark": "baguqeera52373goqb4i5h2qwhgqbnxsqsjg76ezxoiue2xr5l77yxauwwwcq",
+    "case_catalog": "baguqeerakwttzuincb37qk3jnyhrydxhkw6qqsuhfxhkoyspiduquo6wlbza",
+    "partitions": {
+      "adversarial": "baguqeera35e2rhliujsqt6bb4zd3etp7ebcpqrfjuq7xau65txvlu5msdnaq",
+      "development": "baguqeerarq3iae76v76jrriydfhh5x2ozp47qbfdjrgvmxmhzd7bypkxva2q",
+      "held_out": "baguqeerayxrey2pudzbo3et3kzj2mmewomy5xhkbdg2pp7jgqf7kilw67njq",
+      "training": "baguqeera2whlag2gdavat67svo7gp2xhr2g252z5cskfiwnbzp2saopvvklq"
+    },
+    "semantic_lineage": "baguqeerafgiavxxnqgo232nonfdo7kj2r33kj52vxhjf6rmxajo4spifxxla"
+  },
+  "large_corpus_committed": false,
   "owner_task": "VRIF-030",
-  "source_revision": "84a056e41e48a81d4484be43840196578d6c87da",
-  "partitions": ["training", "development", "held_out", "adversarial"],
-  "required_case_kinds": ["boundary", "negative", "cross_repository", "unknown_ood"],
+  "partitions": [
+    "training",
+    "development",
+    "held_out",
+    "adversarial"
+  ],
+  "program_identifier": "agent-supervisor-verified-residual-intelligence-foundry-v1",
+  "promotion_evidence": false,
+  "required_case_kinds": [
+    "boundary",
+    "negative",
+    "cross_repository",
+    "unknown_ood"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-benchmark-manifest@1",
+  "source_revision": "6ccfe5db10f16fc711e0ae78f7d674e527ffbe25",
+  "source_tree": "0c245e4e87807b75459a03f738dcaab7b87807f5",
+  "status": "staged_not_qualified",
   "task_families": [
     "TASK_CLASSIFICATION",
     "RISK_CLASSIFICATION",
@@ -32,18 +66,6 @@
     "HUMAN_ESCALATION_CLASSIFICATION",
     "NOVEL_UNBOUNDED_REASONING"
   ],
-  "frozen_bindings_required_before_qualification": [
-    "repository_states",
-    "objective_revisions",
-    "operation_catalog",
-    "provider_policy",
-    "tokenizer",
-    "model_versions",
-    "fault_schedule",
-    "validation_policy"
-  ],
   "training_admission": "training_unavailable",
-  "weights_committed": false,
-  "large_corpus_committed": false,
-  "promotion_evidence": false
+  "weights_committed": false
 }
