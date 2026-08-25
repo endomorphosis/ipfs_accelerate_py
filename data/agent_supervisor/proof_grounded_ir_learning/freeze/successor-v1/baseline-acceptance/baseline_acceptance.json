@@ -1,0 +1,82 @@
+{
+  "schema": "proof-grounded-ir-learning/successor-baseline-acceptance/v1",
+  "task_id": "PGIR-209",
+  "result_identity": "RESULT(PGIR-209)",
+  "decision": "baseline_retired_fail_closed",
+  "completion_authoritative": false,
+  "pgir_205_execution_authorized": false,
+  "correction": {
+    "nested_payloads_preserved_byte_identical": true,
+    "legacy_frozen_field": "identities.json.repository.repository_tree",
+    "legacy_value": "c4cf42fccb58d73b9f48c7f70799165b29cfe3a9",
+    "legacy_value_object_type": "commit",
+    "legacy_value_commit_tree": "df137b9691df22a4d928d998062e81a24491705a",
+    "corrected_interpretation": "The frozen value is an outer commit, not a repository tree. This outer adjudication records its commit/tree relation without rewriting RESULT(PGIR-204).",
+    "corrected_partition_terminology": "The fifteen holdout axes are protected holdout axes, never declared non-hidden partitions; the frozen legacy wording is retained only as byte-identical historical evidence."
+  },
+  "payloads": [
+    {"task_id":"PGIR-204","result_identity":"RESULT(PGIR-204)","path":"ipfs_datasets_py/data/ir_learning/evaluations/deterministic/successor-v1/identities.json","size_bytes":2033,"sha256":"sha256:598d99c0d1e24e6d7f4bf39033ec32fa9cc0b5907ae5fa65c028d70d91aa8ff0","raw_cid":"bafkreiczrwm4bupcjzwx6s7tsaz6ymx2ttalled24x5glqbi24gzdkup6a"},
+    {"task_id":"PGIR-204","result_identity":"RESULT(PGIR-204)","path":"ipfs_datasets_py/data/ir_learning/evaluations/deterministic/successor-v1/manifest.json","size_bytes":1535,"sha256":"sha256:ed7218470237abc8adae3b199cde5f47dc90401f5c042ebfae791da9700dc59e","raw_cid":"bafkreihnoimeoarxvpek3lr3dgon4x2h3sieah24aqxl7ltzdwuxadofty"},
+    {"task_id":"PGIR-204","result_identity":"RESULT(PGIR-204)","path":"ipfs_datasets_py/data/ir_learning/evaluations/deterministic/successor-v1/recipe.json","size_bytes":1605,"sha256":"sha256:3bc259328bb371c22b5bcd9b5f73ed5c33effbf36f5309dd8c2482e992259e4b","raw_cid":"bafkreib3yjmtfc5tohbcww6ntnpxh3k4gpx7x43pkme53dbeqluzejm6jm"},
+    {"task_id":"PGIR-204","result_identity":"RESULT(PGIR-204)","path":"ipfs_datasets_py/data/ir_learning/evaluations/deterministic/successor-v1/replay_receipt.json","size_bytes":2534,"sha256":"sha256:b73772ca3489fc3800a09272a773ad9100d8a50511b33182186eb9fa8e0d34b3","raw_cid":"bafkreifxg5zmunej7q4abiesoktxhlmradmkkbirwmyyegdoxh5i4djuwm"},
+    {"task_id":"PGIR-204","result_identity":"RESULT(PGIR-204)","path":"ipfs_datasets_py/data/ir_learning/evaluations/deterministic/successor-v1/retirement_receipt.json","size_bytes":1755,"sha256":"sha256:c5d73c558ff21a1007111df6ff4b9680b5543bba324652344b48b7669a43be15","raw_cid":"bafkreigf246fld7sdiiaoei5637uxfuawvkdxorsizjdis2iw5tjuq56cu"},
+    {"task_id":"PGIR-204","result_identity":"RESULT(PGIR-204)","path":"ipfs_datasets_py/data/ir_learning/evaluations/deterministic/successor-v1/strata.json","size_bytes":2513,"sha256":"sha256:d1f02b362e3caf0a463446e4b6df35c63b9d7a2d377c17a3db3dbe35f5caaa4d","raw_cid":"bafkreigr6avtmlr4v4femncg4s3n6noghooxuljxpql2hwz5xy27lsvkju"},
+    {"task_id":"PGIR-204","result_identity":"RESULT(PGIR-204)","path":"ipfs_datasets_py/data/ir_learning/evaluations/deterministic/successor-v1/tool_versions.json","size_bytes":712,"sha256":"sha256:cc4616ac80dd001389c5840a64f5160828b8fa39a8f1c316a12847d14bb58c10","raw_cid":"bafkreigmiylkzag5aajytrmebjspkfqifc4puoni6hbrnijii7iuxnmmca"}
+  ],
+  "input_closure": [
+    {"path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/corpus_root.json","size_bytes":3026,"sha256":"sha256:dad49081ef48583061d06ed084f7250d957836b12ae8d9d090cc5961c0c6e108","raw_cid":"bafkreig22siid32ilaygdudo2ccpojinsv4dnmjk5dm5begmlfq4brxbba"},
+    {"path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/rights_manifest.json","size_bytes":1485,"sha256":"sha256:20ca50484e765146e85275ca38fd122c51be7886d30ab20244796b251a92c294","raw_cid":"bafkreibazjieqttwkfdoqutvzi4p2ermkg7hrbwtbkzaerdznmsrvewcsq"},
+    {"path":"ipfs_datasets_py/data/ir_learning/splits/successor-v1/split_root.json","size_bytes":3190,"sha256":"sha256:7e67323e939a262025a6b1e5116a59cd7e795c405206b2fbeb4a3e3c57ae921d","raw_cid":"bafkreid6m4zd5e42eyqcljvr4uiwuwonpz4vyqcsa2zpx22khy6fplusdu"},
+    {"path":"ipfs_datasets_py/data/ir_learning/splits/successor-v1/holdout_report.json","size_bytes":3432,"sha256":"sha256:8e4359199614897bd48f5548b0ee8da10ce20241c90d4cd22e2a8535feb2f1fc","raw_cid":"bafkreieoinmrtfqurf55jd2vjcyo5dnbbtraeqojbvgnelrkqu275mxr7q"},
+    {"path":"ipfs_datasets_py/data/ir_learning/splits/successor-v1/leakage_report.json","size_bytes":293,"sha256":"sha256:1dd1a49d6415aa2c1963fa3d31d4a51c633a245fff8bd31b857fa5d3f338de3f","raw_cid":"bafkreia52gsj2zavviwbsy72huy5jji4mm5cix77rpjrxbl7uxj7gog6h4"},
+    {"path":"ipfs_datasets_py/data/ir_learning/splits/successor-v1/ir_split_manifest.json","size_bytes":6989,"sha256":"sha256:5b99840e76df31174c2b4deb882624ca6d773671f7fa3ba24f95b34005d8f37f","raw_cid":"bafkreic3tgca45w7geluyk2n5oecmjgknv3tm4px7i52et4vwnaalwhtp4"},
+    {"path":"ipfs_datasets_py/data/ir_learning/evaluations/deterministic/manifest.json","size_bytes":1944,"sha256":"sha256:66e0b869849a09afb1c79cfe099f6d83b187d2429cad4ced90a7da076686e8e0","raw_cid":"bafkreidg4c4gtbe2bgx3dr447yez63mdwgd5equ4vvgo3efh3idwnbxi4a"},
+    {"path":"ipfs_datasets_py/data/ir_learning/evaluations/deterministic/r1_baseline.json","size_bytes":46687,"sha256":"sha256:a3d409963760b68146b945d366d7f08ea4ad72ddecd14581f457a968ebb636b3","raw_cid":"bafkreifd2qezmn3aw2aunokf2ntnp4eouswxfxpm2fcyd5cxvfuoxnrwwm"}
+  ],
+  "partition_protection_table": [
+    {"partition":"train","protection_state":"unprotected_training_partition","non_hidden":true,"assigned_rows":0,"status":"empty_not_run"},
+    {"partition":"validation","protection_state":"protected_evaluation_partition","non_hidden":false,"assigned_rows":0,"status":"empty_not_run"},
+    {"partition":"canary","protection_state":"protected_evaluation_partition","non_hidden":false,"assigned_rows":0,"status":"empty_not_run"},
+    {"partition":"holdout","protection_state":"protected_evaluation_partition","non_hidden":false,"assigned_rows":0,"status":"empty_not_run"},
+    {"partition":"statute_family","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"family","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"jurisdiction","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"jurisdiction","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"temporal","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"time","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"external_test","protection_state":"protected_evaluation_partition","non_hidden":false,"assigned_rows":0,"status":"empty_not_run"},
+    {"partition":"lineage","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"lineage","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"publication","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"publication","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"domain","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"domain","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"notation","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"notation","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"type","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"type","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"compiler","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"compiler","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"proof_library","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"proof_library","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"premise","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"premise","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"length","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"length","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"rare_operator","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"rare_operator","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"exception","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"exception","reason_code":"no_rights_admitted_materialized_rows"},
+    {"partition":"cross_reference","protection_state":"protected_holdout_axis","non_hidden":false,"assigned_rows":0,"status":"permanent_no_go","holdout_key":"cross_reference","reason_code":"no_rights_admitted_materialized_rows"}
+  ],
+  "forest": {
+    "outer_commits": [
+      {"role":"predecessor","commit":"c4cf42fccb58d73b9f48c7f70799165b29cfe3a9","tree":"df137b9691df22a4d928d998062e81a24491705a","parents":["249e7fcac0d8e6e6baa0034ee4bb5b24034c74f5"],"datasets_gitlink":"8736a0023d5d3afe4d0e5b044a3e4480966a8bf7"},
+      {"role":"implementation","commit":"fdf3839bc11c60c7e0b801397499a7b4ce0d4634","tree":"b96e7fc8b740de160344a5c3e86d8690275e67e5","parents":["c4cf42fccb58d73b9f48c7f70799165b29cfe3a9"],"datasets_gitlink":"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6"},
+      {"role":"merge","commit":"a0f54e787e141d6d03fcef56b7d48ff42ce516f1","tree":"cf9170dce76572314ded06125dc7efc5f49d1b15","parents":["b87bc6d28fbfefd836696f972f51ee9a677b5071","fdf3839bc11c60c7e0b801397499a7b4ce0d4634"],"datasets_gitlink":"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6"},
+      {"role":"completion","commit":"b9c7aaece6c75b1413a6a951f647ca409834dff9","tree":"4e14c0b54bb6c38661917481e8e4ed07481fde48","parents":["a0f54e787e141d6d03fcef56b7d48ff42ce516f1"],"datasets_gitlink":"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6"}
+    ],
+    "datasets_commits": [
+      {"role":"pgir_202_predecessor","commit":"8736a0023d5d3afe4d0e5b044a3e4480966a8bf7","tree":"33ff339e87858fba7ee812db16fbc8c8565716ca","parents":["8cc72c77736d3ff2db7cc2530e619bf09b5be027"]},
+      {"role":"pgir_204_nested_result","commit":"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6","tree":"7169c2a67929044a02350bc26d0a51c853a4981b","parents":["8736a0023d5d3afe4d0e5b044a3e4480966a8bf7"]}
+    ]
+  },
+  "portability_policy": {
+    "unavailable_remote_ref_status": "portability_no_go",
+    "unavailable_remote_ref_effect": "PGIR-205 remains fail-closed; no materialization, training, promotion, or execution is authorized.",
+    "fresh_recursive_checkout_claim": "A fresh recursive checkout is asserted only when a remote-tracking ref contains the sealed nested commit."
+  },
+  "verifier": {
+    "path": "scripts/verify_proof_grounded_ir_learning_successor_baseline.py",
+    "sha256": "sha256:87f7ffb35d11530830b3fcfe1b4497436b6f4cd5006da0ea7380d210b77e8c5f",
+    "raw_cid": "bafkreieh6773gxirkmedbm747ynujf2dnnxuzvianwqou44a2iilo7uml4"
+  },
+  "acceptance_sha256": "sha256:a1fd1ead5cf9045653b94d12c00e29438e3d22ea1644da445bda32a554ba687f",
+  "acceptance_cid": "baguqeerauh6r5lk47ecfmu5zjujmadrjiohd2ixkczcnurc33izkkvf2nb7q"
+}
