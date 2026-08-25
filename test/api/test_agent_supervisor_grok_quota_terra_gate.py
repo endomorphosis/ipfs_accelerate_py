@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import subprocess
+import urllib.parse
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,8 +58,15 @@ def _write_native_session_home(
     updates: list[dict[str, object]],
     *,
     session_id: str = _NATIVE_SESSION_ID,
+    workspace: Path | None = None,
 ) -> Path:
-    session = grok_home / "sessions" / session_id
+    session_root = grok_home / "sessions"
+    summary_info = {"id": session_id}
+    if workspace is not None:
+        resolved_workspace = workspace.resolve(strict=True)
+        session_root /= urllib.parse.quote(str(resolved_workspace), safe="")
+        summary_info["cwd"] = str(resolved_workspace)
+    session = session_root / session_id
     session.mkdir(parents=True)
     (session / "updates.jsonl").write_text(
         "".join(json.dumps(item, sort_keys=True) + "\n" for item in updates),
@@ -67,7 +75,7 @@ def _write_native_session_home(
     (session / "summary.json").write_text(
         json.dumps(
             {
-                "info": {"id": session_id},
+                "info": summary_info,
                 "current_model_id": "grok-4.6",
                 "grok_home": str(grok_home),
             },
@@ -169,6 +177,21 @@ def _seal_auth_or_quota_route(monkeypatch: pytest.MonkeyPatch) -> None:
         "_configured_agent_implementation_route_plan",
         lambda _repo_root: llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE,
     )
+
+
+def _seal_quota_high_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    values = {
+        implementation_daemon.IMPLEMENTATION_PROVIDER_ENV: "grok_cli",
+        implementation_daemon.IMPLEMENTATION_FALLBACK_PROVIDER_ENV: "codex",
+        implementation_daemon.IMPLEMENTATION_FALLBACK_TRIGGER_ENV: (
+            "primary_quota_exhausted"
+        ),
+        implementation_daemon._GROK_MODEL_ENV: "grok-4.6",
+        implementation_daemon._CODEX_MODEL_ENV: "gpt-5.6-terra",
+        implementation_daemon._CODEX_REASONING_EFFORT_ENV: "high",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
 
 
 def _install_fake_grok_docker_primary(
@@ -354,6 +377,114 @@ def test_daemon_auth_or_quota_route_embeds_strict_terra_high_fallback(
     head = command[: command.index("--codex-fallback-command-json")]
     assert fallback[0] not in head
     assert json.dumps(fallback, separators=(",", ":")) not in head
+
+
+def test_daemon_quota_high_route_reaches_exact_typed_fallback_runner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seal_quota_high_route(monkeypatch)
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(implementation_daemon, "_grok_cli_available", lambda: True)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/opt/providers/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: "/opt/providers/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/opt/providers/codex",
+    )
+
+    daemon = _daemon(tmp_path)
+    daemon._require_primary_provider_readiness(None)
+    command = daemon._build_implementation_command(tmp_path)
+
+    assert "--canonical-legacy-preflight-route" not in command
+    assert "--grok-failure-receipt-nonce" in command
+    nonce = command[command.index("--grok-failure-receipt-nonce") + 1]
+    assert re.fullmatch(r"[0-9a-f]{64}", nonce)
+    route = json.loads(
+        command[command.index("--agent-implementation-route-json") + 1]
+    )
+    assert route == llm_router._QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE.as_binding_dict()
+    assert route["authorization"] is None
+    assert route["invocation_binding"] is None
+    fallback = json.loads(
+        command[command.index("--codex-fallback-command-json") + 1]
+    )
+    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="high"' in fallback
+
+
+def test_daemon_quota_only_route_requires_authenticated_grok(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seal_quota_high_route(monkeypatch)
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(implementation_daemon, "_grok_cli_available", lambda: False)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/opt/providers/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: "/opt/providers/codex" if name == "codex" else None,
+    )
+    daemon = _daemon(tmp_path)
+
+    with pytest.raises(
+        implementation_daemon.ImplementationRetryDeferred,
+        match="quota-only.*authenticated Grok CLI",
+    ):
+        daemon._require_primary_provider_readiness(None)
+    with pytest.raises(RuntimeError, match="Grok CLI is not authenticated"):
+        daemon._build_implementation_command(tmp_path)
+
+
+def test_daemon_quota_route_requires_trusted_codex_at_both_boundaries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seal_quota_high_route(monkeypatch)
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(implementation_daemon, "_grok_cli_available", lambda: True)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/opt/providers/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: "/opt/providers/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "",
+    )
+    daemon = _daemon(tmp_path)
+
+    with pytest.raises(
+        implementation_daemon.ImplementationRetryDeferred,
+        match="requires both pinned provider CLIs",
+    ):
+        daemon._require_primary_provider_readiness(None)
+    with pytest.raises(
+        RuntimeError,
+        match="sealed Grok/Codex route requires a trusted Codex CLI",
+    ):
+        daemon._build_implementation_command(tmp_path)
 
 
 @pytest.mark.parametrize("override_source", ("constructor", "environment"))
@@ -864,6 +995,9 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
 ) -> None:
     captured: dict[str, object] = {}
     verifier_home = tmp_path / "verifier-home"
+    inherited_temp = tmp_path.joinpath(*(["long-inherited-temp-root"] * 12))
+    inherited_temp.mkdir(parents=True)
+    monkeypatch.setattr(grok_cli_runner.tempfile, "tempdir", str(inherited_temp))
 
     class FakeIsolatedHome:
         name = str(verifier_home)
@@ -883,6 +1017,7 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
     def fake_run(command, **kwargs):
         captured["cwd"] = kwargs["cwd"]
         captured["env"] = dict(kwargs["env"])
+        captured["umask"] = kwargs["umask"]
         session_id = command[command.index("--session-id") + 1]
         _write_native_session_home(
             verifier_home,
@@ -891,6 +1026,7 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
                 _spending_limit_terminal(session_id=session_id),
             ],
             session_id=session_id,
+            workspace=Path(kwargs["cwd"]),
         )
         return subprocess.CompletedProcess(command, 23)
 
@@ -917,6 +1053,45 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
     assert evidence is not None
     assert captured["env"]["PWD"] == str(captured["cwd"])
     assert "OLDPWD" not in captured["env"]
+    assert captured["umask"] == 0o077
+    verifier_workspace = Path(captured["cwd"])
+    assert verifier_workspace.parent.parent == Path("/tmp")
+    assert len(
+        urllib.parse.quote(str(verifier_workspace), safe="").encode("utf-8")
+    ) <= 255
+
+
+def test_native_quota_verifier_rejects_ambiguous_session_layouts(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    verifier_home = tmp_path / "verifier-home"
+    updates = [_spending_limit_retry(), _spending_limit_terminal()]
+    _write_native_session_home(verifier_home, updates)
+    _write_native_session_home(
+        verifier_home,
+        updates,
+        workspace=workspace,
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="1" * 64,
+        model="grok-4.6",
+        probe_returncode=41,
+        primary_dispatched=False,
+    )
+
+    assert (
+        llm_router.validate_agent_implementation_quota_evidence(
+            grok_home=verifier_home,
+            expected_session_id=_NATIVE_SESSION_ID,
+            verifier_returncode=41,
+            failure_receipt=receipt,
+            verifier_workspace=workspace,
+        )
+        is None
+    )
 
 
 def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:
@@ -1075,6 +1250,35 @@ def test_direct_no_nonce_native_quota_cannot_cross_providers(
 
     assert returncode == 23
     assert "Direct no-nonce Grok failure cannot authorize" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("nonce", "route_binding"),
+    (
+        ("ab" * 32, ""),
+        ("", "{}"),
+        ("ab" * 32, "{}"),
+    ),
+)
+def test_typed_route_metadata_without_codex_fallback_is_rejected(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    nonce: str,
+    route_binding: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    argv = ["--workspace", str(workspace)]
+    if nonce:
+        argv.extend(["--grok-failure-receipt-nonce", nonce])
+    if route_binding:
+        argv.extend(["--agent-implementation-route-json", route_binding])
+
+    assert grok_cli_runner.main(argv) == 2
+    assert (
+        "typed Grok route requires a Codex fallback command"
+        in capsys.readouterr().err
+    )
 
 
 def test_merge_resolver_marker_mints_fresh_legacy_preflight_route(

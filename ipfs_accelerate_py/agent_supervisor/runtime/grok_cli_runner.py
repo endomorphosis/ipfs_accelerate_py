@@ -28,6 +28,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
@@ -4400,11 +4401,38 @@ def _independently_verify_grok_quota(
 
     from ipfs_accelerate_py.llm_router import build_grok_cli_command, build_grok_cli_env
 
-    verifier_root = Path(tempfile.mkdtemp(prefix="asref-grok-quota-verifier-"))
+    # Grok scopes current session storage by the percent-encoded absolute cwd.
+    # Pin this tiny verifier to the bounded system temporary root so inherited
+    # TMPDIR depth cannot trigger Grok's alternate slug/hash layout and make
+    # independently generated evidence undiscoverable.
+    verifier_parent = Path("/tmp")
+    try:
+        parent_stat = verifier_parent.lstat()
+        if (
+            verifier_parent.is_symlink()
+            or not stat.S_ISDIR(parent_stat.st_mode)
+            or parent_stat.st_uid != 0
+            or not stat.S_IMODE(parent_stat.st_mode) & stat.S_ISVTX
+        ):
+            return ""
+        verifier_root = Path(
+            tempfile.mkdtemp(
+                prefix="asref-grok-quota-verifier-",
+                dir=verifier_parent,
+            )
+        )
+    except OSError:
+        return ""
     isolated_home: tempfile.TemporaryDirectory[str] | None = None
     try:
         verifier_workspace = verifier_root / "workspace"
         verifier_workspace.mkdir(mode=0o700)
+        encoded_workspace = urllib.parse.quote(
+            str(verifier_workspace.resolve(strict=True)),
+            safe="",
+        )
+        if len(encoded_workspace.encode("utf-8")) > 255:
+            return ""
         prompt_path = verifier_root / "prompt.txt"
         prompt_path.write_text(
             "Reply with exactly the single word OK.",
@@ -4462,6 +4490,7 @@ def _independently_verify_grok_quota(
                 stderr=subprocess.DEVNULL,
                 timeout=90,
                 check=False,
+                umask=0o077,
             )
         except (OSError, subprocess.TimeoutExpired):
             return ""
@@ -4477,6 +4506,7 @@ def _independently_verify_grok_quota(
                 expected_session_id=verifier_session_id,
                 verifier_returncode=int(completed.returncode),
                 failure_receipt=failure_receipt,
+                verifier_workspace=verifier_workspace,
             )
         return _validate_quota_evidence_in_accepted_child(
             grok_home=verifier_home,
@@ -5080,6 +5110,15 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     if internal_legacy_preflight and not codex_fallback_command:
         print(
             "canonical legacy preflight requires a Codex fallback command",
+            file=sys.stderr,
+        )
+        return 2
+    if (
+        str(args.grok_failure_receipt_nonce or "").strip()
+        or str(args.agent_implementation_route_json or "").strip()
+    ) and not codex_fallback_command:
+        print(
+            "typed Grok route requires a Codex fallback command",
             file=sys.stderr,
         )
         return 2

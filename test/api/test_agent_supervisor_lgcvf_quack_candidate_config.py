@@ -15,7 +15,13 @@ from ipfs_accelerate_py.agent_supervisor.runtime import (
     multi_supervisor_runner as multi_runner_module,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+    CODEX_MODEL_ENV,
+    CODEX_REASONING_EFFORT_ENV,
     ConfiguredBoardError,
+    FALLBACK_PROVIDER_ENV,
+    FALLBACK_TRIGGER_ENV,
+    GROK_MODEL_ENV,
+    PROVIDER_ENV,
     configured_board_common_args,
     configured_board_launch_plan,
     load_configured_board,
@@ -51,11 +57,11 @@ CANONICAL_PATH = ROOT / (
 BOARD_BRANCH = "agent/logic-governed-compositional-verification-fabric-v1"
 RUNTIME_ROOT = (
     "data/agent_supervisor/"
-    "logic_governed_compositional_verification_fabric/run-v27"
+    "logic_governed_compositional_verification_fabric/run-v28"
 )
 QUACK_OWNER = f"{RUNTIME_ROOT}/quack-owner"
 QUACK_HANDLE = "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
-QUACK_ENDPOINT = "quack:127.0.0.1:24689"
+QUACK_ENDPOINT = "quack:127.0.0.1:24690"
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -71,7 +77,7 @@ def _option_value(argv: list[str], option: str) -> str:
     return argv[argv.index(option) + 1]
 
 
-def test_lgcvf_quack_candidate_is_additive_run_v27_fail_closed_profile() -> None:
+def test_lgcvf_quack_candidate_is_additive_run_v28_fail_closed_profile() -> None:
     candidate = _load_json(CANDIDATE_PATH)
     canonical = _load_json(CANONICAL_PATH)
 
@@ -122,8 +128,8 @@ def test_lgcvf_quack_candidate_is_additive_run_v27_fail_closed_profile() -> None
     assert program["quack_endpoint"] == QUACK_ENDPOINT
     assert program["runtime_registry_path"] == runtime["quack_owner"]
     assert program["store_id"] == f"{RUNTIME_ROOT}/control.duckdb"
-    assert program["store_generation"] == "lgcvf-run-v27"
-    assert program["export_profile"] == "lgcvf-run-v27"
+    assert program["store_generation"] == "lgcvf-run-v28"
+    assert program["export_profile"] == "lgcvf-run-v28"
     assert program["failover_policy"] == "fail_closed"
     assert program["explicit_legacy"] is False
     assert program["claim_policy"] == {
@@ -265,12 +271,18 @@ def test_lgcvf_quack_candidate_loads_and_renders_detached_launch_plan(
     assert environment[STATE_FAILOVER_POLICY_ENV] == "fail_closed"
     assert environment[STATE_ENDPOINT_SECRET_HANDLE_ENV] == QUACK_HANDLE
     assert environment[STATE_QUACK_ENDPOINT_ENV] == QUACK_ENDPOINT
-    assert environment[STATE_STORE_GENERATION_ENV] == "lgcvf-run-v27"
+    assert environment[STATE_STORE_GENERATION_ENV] == "lgcvf-run-v28"
     expected_owner = str((ROOT / QUACK_OWNER).resolve())
     assert environment[RUNTIME_REGISTRY_PATH_ENV] == expected_owner
     assert environment[STATE_QUACK_MUTATION_DIR_ENV] == (
         f"{expected_owner}/mutations"
     )
+    assert environment[PROVIDER_ENV] == "grok_cli"
+    assert environment[GROK_MODEL_ENV] == "grok-4.6"
+    assert environment[FALLBACK_PROVIDER_ENV] == "codex"
+    assert environment[CODEX_MODEL_ENV] == "gpt-5.6-terra"
+    assert environment[FALLBACK_TRIGGER_ENV] == "primary_quota_exhausted"
+    assert environment[CODEX_REASONING_EFFORT_ENV] == "high"
     assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in environment
     rendered_program = json.loads(environment[DATABASE_PROGRAM_JSON_ENV])
     assert rendered_program["runtime_registry_path"] == QUACK_OWNER

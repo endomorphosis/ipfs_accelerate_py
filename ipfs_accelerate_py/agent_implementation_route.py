@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import uuid
 import zipfile
 from collections.abc import Mapping, Sequence
@@ -3291,6 +3292,65 @@ def _canonical_agent_quota_verifier_command(
     return tuple(command) if command == expected else None
 
 
+def _agent_native_quota_session_paths(
+    *,
+    grok_home: Path,
+    expected_session_id: str,
+    verifier_workspace: Path | str | None,
+) -> tuple[Path, Path, Path | None] | None:
+    """Resolve one unambiguous native Grok session layout.
+
+    Grok originally stored sessions directly below ``sessions/<session-id>``.
+    Current releases scope them below a percent-encoded absolute workspace
+    before the session id.  Accept either exact native layout, but never both,
+    and derive the scoped directory from the verifier workspace rather than
+    searching provider-controlled state.
+    """
+
+    session_root = grok_home / "sessions"
+    candidates: list[tuple[Path, Path | None]] = [
+        (session_root / expected_session_id, None)
+    ]
+    if verifier_workspace is not None:
+        raw_workspace = Path(verifier_workspace)
+        if not raw_workspace.is_absolute() or ".." in raw_workspace.parts:
+            return None
+        try:
+            workspace = raw_workspace.resolve(strict=True)
+            workspace_stat = workspace.stat()
+        except OSError:
+            return None
+        if not stat_module.S_ISDIR(workspace_stat.st_mode):
+            return None
+        encoded_workspace = urllib.parse.quote(str(workspace), safe="")
+        if (
+            not encoded_workspace
+            or encoded_workspace in {".", ".."}
+            or "/" in encoded_workspace
+            or "\\" in encoded_workspace
+            or "\x00" in encoded_workspace
+        ):
+            return None
+        candidates.insert(
+            0,
+            (
+                session_root / encoded_workspace / expected_session_id,
+                workspace,
+            ),
+        )
+
+    present = [
+        (directory, workspace)
+        for directory, workspace in candidates
+        if os.path.lexists(directory / "updates.jsonl")
+        or os.path.lexists(directory / "summary.json")
+    ]
+    if len(present) != 1:
+        return None
+    directory, workspace = present[0]
+    return directory / "updates.jsonl", directory / "summary.json", workspace
+
+
 def validate_agent_implementation_quota_evidence(
     *,
     grok_home: Path | str,
@@ -3350,7 +3410,14 @@ def validate_agent_implementation_quota_evidence(
         uuid.UUID(expected_session_id)
     except ValueError:
         return None
-    record = home / "sessions" / expected_session_id / "updates.jsonl"
+    session_paths = _agent_native_quota_session_paths(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    )
+    if session_paths is None:
+        return None
+    record, summary_path, scoped_workspace = session_paths
     try:
         home_resolved = home.resolve(strict=True)
         transcript_read = _read_stable_agent_implementation_evidence_file(
@@ -3463,7 +3530,6 @@ def validate_agent_implementation_quota_evidence(
         elif update_type == "user_message_chunk":
             user_message_count += 1
 
-    summary_path = record.parent / "summary.json"
     try:
         summary_read = _read_stable_agent_implementation_evidence_file(
             summary_path,
@@ -3494,6 +3560,10 @@ def validate_agent_implementation_quota_evidence(
         or user_message_count > 1
         or not isinstance(summary_info, dict)
         or summary_info.get("id") != recorded_session_id
+        or (
+            scoped_workspace is not None
+            and summary_info.get("cwd") != str(scoped_workspace)
+        )
         or summary.get("current_model_id") != expected_model
         or summary_home != home_resolved
         or latest_failure not in _AGENT_IMPLEMENTATION_NATIVE_QUOTA_FAILURES

@@ -2912,6 +2912,24 @@ def _grok_cli_available() -> bool:
         return False
 
 
+def _trusted_codex_quota_fallback_executable(
+    *,
+    workspace_path: Path,
+) -> str:
+    """Resolve Codex through the same trust boundary used by the runner."""
+
+    from ..runtime.grok_cli_runner import (
+        resolve_codex_quota_fallback_executable,
+    )
+
+    return resolve_codex_quota_fallback_executable(
+        workspace=workspace_path.resolve(),
+        configured=str(
+            _host_cli_binary("codex") or shutil.which("codex") or ""
+        ),
+    )
+
+
 def _grok_cli_command(
     *,
     workspace_path: Path,
@@ -2962,8 +2980,8 @@ def _grok_cli_command(
         workspace=workspace_path.resolve(),
         python_executable=sys.executable,
         grok_bin=grok,
-        codex_bin=str(
-            _host_cli_binary("codex") or shutil.which("codex") or ""
+        codex_bin=_trusted_codex_quota_fallback_executable(
+            workspace_path=workspace_path,
         ),
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
         fallback_reasoning_effort=fallback_reasoning_effort,
@@ -2986,11 +3004,11 @@ def _grok_cli_command(
         ),
     )
     if (
-        allow_auth_unavailable_fallback
+        (allow_auth_unavailable_fallback or route_plan is not None)
         and "--codex-fallback-command-json" not in command
     ):
         raise RuntimeError(
-            "typed Grok authentication fallback requires a trusted Codex CLI"
+            "sealed Grok/Codex route requires a trusted Codex CLI"
         )
     # Preserve explicit model override after the packaged Grok-4.5 default.
     if model and model != "grok-4.6":
@@ -65858,7 +65876,7 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
-        if route_plan and route_plan.permits_authentication_unavailable:
+        if route_plan:
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
                     "sealed Grok/Codex route rejects explicit implementation "
@@ -65889,11 +65907,22 @@ class PortalImplementationDaemon:
                     "that requires independent Codex review",
                     backoff_seconds=300,
                 )
-            if _grok_binary() and shutil.which("codex"):
+            if (
+                not route_plan.permits_authentication_unavailable
+                and not _grok_cli_available()
+            ):
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only Grok/Codex route requires authenticated "
+                    "Grok CLI",
+                    backoff_seconds=300,
+                )
+            if _grok_binary() and _trusted_codex_quota_fallback_executable(
+                workspace_path=Path(self.repo_root),
+            ):
                 # Authentication is intentionally not a readiness condition
-                # for this exact route. The fixed runner preflight turns a
-                # missing/expired credential into a typed, nonce-bound receipt
-                # before the task prompt and may then enter Terra/high.
+                # only for the reviewed auth-or-quota route. Its fixed runner
+                # preflight may turn an unavailable credential into a typed,
+                # nonce-bound receipt before the task prompt.
                 return
             raise ImplementationRetryDeferred(
                 "sealed Grok/Codex route requires both pinned provider CLIs",
@@ -66634,7 +66663,7 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
-        if route_plan and route_plan.permits_authentication_unavailable:
+        if route_plan:
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
                     "sealed Grok/Codex route rejects explicit implementation "
@@ -66692,7 +66721,9 @@ class PortalImplementationDaemon:
                 workspace_path=workspace_path,
                 model_override=route_plan.primary_model_id,
                 failure_receipt_nonce=secrets.token_hex(32),
-                allow_auth_unavailable_fallback=True,
+                allow_auth_unavailable_fallback=(
+                    route_plan.permits_authentication_unavailable
+                ),
                 fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
                 route_plan=route_plan,
                 sealed_runner_path=(
