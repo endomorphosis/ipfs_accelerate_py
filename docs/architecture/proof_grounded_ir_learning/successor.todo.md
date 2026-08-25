@@ -83,7 +83,7 @@ evidence.
 
 ## PGIR-200 Admit or permanently quarantine JusticeDAO source rights
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
