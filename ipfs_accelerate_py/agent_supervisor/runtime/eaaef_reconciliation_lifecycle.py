@@ -35,6 +35,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, Protocol, runtime_checkable
 
+from ..entrypoints.local_profile import (
+    LocalProfileTampered,
+    ed25519_public_key_from_did,
+)
 from ..planning.external_agent_plan_r2 import (
     ExternalAgentPlanR2Error,
     plan_r2_operational_capability_signing_payload,
@@ -469,6 +473,22 @@ def _canonical_bytes(value: Any) -> bytes:
 def _cid(value: Any) -> str:
     raw = value if isinstance(value, bytes) else _canonical_bytes(value)
     return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _require_ed25519_did(value: object, noun: str) -> str:
+    """Decode one Ed25519 DID while preserving the EAAEF typed error surface."""
+
+    if not isinstance(value, str):
+        raise EAAEFReconciliationIdentityError(
+            f"{noun} is not a valid Ed25519 did:key"
+        )
+    try:
+        ed25519_public_key_from_did(value)
+    except LocalProfileTampered as exc:
+        raise EAAEFReconciliationIdentityError(
+            f"{noun} is not a valid Ed25519 did:key"
+        ) from exc
+    return value
 
 
 def _eaaef_source_cid(value: Any) -> str:
@@ -2710,21 +2730,42 @@ def build_fresh_plan_r2_signing_request_projection(
     issued_at_ms: int,
     expires_at_ms: int,
 ) -> dict[str, Any]:
-    """Project exact public stage-one signing payloads without authority effects."""
+    """Project exact public signing payloads without authority effects.
+
+    This pure request boundary does not resolve an owner, keys, or trust roots;
+    sign, persist an artifact or state, run preflight or launch; or permit a
+    provider/supervisor birth.  The public CLI may perform only the preceding
+    sealed-source qualification: captured read-only Git children, the exact
+    isolated structural-validator child, and transient validator storage that
+    is removed before this function is entered.
+    """
+
+    stage_identities = tuple(
+        _require_ed25519_did(identity, noun)
+        for identity, noun in (
+            (operator_identity_did, "fresh Plan-R2 operator identity"),
+            (
+                security_reviewer_identity_did,
+                "fresh Plan-R2 security reviewer identity",
+            ),
+            (
+                capability_reviewer_identity_did,
+                "fresh Plan-R2 capability reviewer identity",
+            ),
+        )
+    )
 
     statement = build_unsigned_fresh_plan_r2_statement(
         population=population,
         bootstrap_snapshot=bootstrap_snapshot,
     )
-    stage_identities = (
-        operator_identity_did,
-        security_reviewer_identity_did,
-        capability_reviewer_identity_did,
+    owner_principal_did = _require_ed25519_did(
+        statement.get("owner_principal_did"),
+        "fresh Plan-R2 owner principal",
     )
     if (
-        any(not _DID_RE.fullmatch(identity) for identity in stage_identities)
-        or len(set(stage_identities)) != len(stage_identities)
-        or statement["owner_principal_did"] in stage_identities
+        len(set(stage_identities)) != len(stage_identities)
+        or owner_principal_did in stage_identities
     ):
         raise EAAEFReconciliationIdentityError(
             "fresh Plan-R2 signing identities are not independent exact did:key values"
@@ -4311,9 +4352,14 @@ def _argument_parser() -> argparse.ArgumentParser:
     )
     signing_request = commands.add_parser(
         "signing-request",
-        help=(
-            "Print exact public stage-one Plan-R2 signing payloads; never load keys "
-            "or write ceremony artifacts."
+        help="Print exact public stage-one Plan-R2 signing payloads.",
+        description=(
+            "Print exact public stage-one Plan-R2 signing payloads after read-only "
+            "sealed-source qualification. Qualification may use captured Git children, "
+            "one exact isolated structural-validator child, and cleaned transient "
+            "storage; this command never resolves owners/keys/trust, signs, writes "
+            "durable artifacts/state, runs preflight/launch, or births providers/"
+            "supervisors."
         ),
     )
     signing_request.add_argument("--bootstrap-snapshot", required=True)

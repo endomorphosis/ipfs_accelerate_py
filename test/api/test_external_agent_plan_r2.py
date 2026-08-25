@@ -7,11 +7,41 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
+    LocalProfileTampered,
     ed25519_did_key,
 )
 from ipfs_accelerate_py.agent_supervisor.planning import external_agent_plan_r2 as r2
 
 NOW_MS = 1_800_000_000_000
+
+
+def _deterministic_did(fill: int) -> str:
+    return ed25519_did_key(bytes([fill]) * 32)
+
+
+def _base58btc(value: bytes) -> str:
+    alphabet = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    zeroes = len(value) - len(value.lstrip(b"\0"))
+    integer = int.from_bytes(value, "big")
+    encoded = bytearray()
+    while integer:
+        integer, remainder = divmod(integer, 58)
+        encoded.append(alphabet[remainder])
+    return (b"1" * zeroes + bytes(reversed(encoded))).decode("ascii")
+
+
+OWNER_IDENTITY_DID = _deterministic_did(1)
+MALFORMED_ED25519_DIDS = (
+    pytest.param("did:key:z0", id="invalid-base58"),
+    pytest.param(
+        "did:key:z" + _base58btc(b"\xec\x01" + bytes([2]) * 32),
+        id="wrong-multicodec",
+    ),
+    pytest.param(
+        "did:key:z" + _base58btc(b"\xed\x01" + bytes([3]) * 31),
+        id="wrong-length",
+    ),
+)
 
 
 def _sha(token: str) -> str:
@@ -58,7 +88,7 @@ def _statement() -> dict[str, object]:
         r1_launch_capsule_cid=_sha("5"),
         quack_owner_qualification_cid=_sha("6"),
         quack_command_fabric_qualification_cid=_sha("7"),
-        owner_principal_did="did:key:zOwner",
+        owner_principal_did=OWNER_IDENTITY_DID,
         shard_id="eaaef-control",
         store_id="eaaef-control-run-v5",
         owner_generation=3,
@@ -440,6 +470,62 @@ def test_operational_capability_payload_and_sealer_are_keyless_and_self_addresse
             issued_at_ms=NOW_MS - 500,
             expires_at_ms=NOW_MS + 50_000,
         )
+
+
+@pytest.mark.parametrize("malformed_did", MALFORMED_ED25519_DIDS)
+def test_keyless_signer_boundaries_reject_malformed_ed25519_dids_without_payloads(
+    malformed_did: str,
+) -> None:
+    statement = _statement()
+    valid_signer = _deterministic_did(4)
+    valid_reviewer = _deterministic_did(5)
+    approval = r2.prepare_plan_r2_transition_approval(
+        statement,
+        role="independent_operator",
+        identity_did=valid_signer,
+        issued_at_ms=NOW_MS - 500,
+        expires_at_ms=NOW_MS + 50_000,
+    )
+    capability = r2.plan_r2_operational_capability_signing_payload(
+        statement,
+        reviewer_identity_did=valid_reviewer,
+        issued_at_ms=NOW_MS - 500,
+        expires_at_ms=NOW_MS + 50_000,
+    )
+
+    with pytest.raises(r2.ExternalAgentPlanR2Error) as approval_builder_error:
+        r2.prepare_plan_r2_transition_approval(
+            statement,
+            role="independent_operator",
+            identity_did=malformed_did,
+            issued_at_ms=NOW_MS - 500,
+            expires_at_ms=NOW_MS + 50_000,
+        )
+    assert isinstance(approval_builder_error.value.__cause__, LocalProfileTampered)
+
+    with pytest.raises(r2.ExternalAgentPlanR2Error) as approval_sealer_error:
+        r2.seal_plan_r2_transition_approval(
+            statement,
+            {**approval, "identity_did": malformed_did},
+            signature="externally-produced-signature",
+        )
+    assert isinstance(approval_sealer_error.value.__cause__, LocalProfileTampered)
+
+    with pytest.raises(r2.ExternalAgentPlanR2Error) as capability_builder_error:
+        r2.plan_r2_operational_capability_signing_payload(
+            statement,
+            reviewer_identity_did=malformed_did,
+            issued_at_ms=NOW_MS - 500,
+            expires_at_ms=NOW_MS + 50_000,
+        )
+    assert isinstance(capability_builder_error.value.__cause__, LocalProfileTampered)
+
+    with pytest.raises(r2.ExternalAgentPlanR2Error) as capability_sealer_error:
+        r2.seal_plan_r2_operational_capability(
+            {**capability, "reviewer_identity_did": malformed_did},
+            reviewer_signature="externally-produced-signature",
+        )
+    assert isinstance(capability_sealer_error.value.__cause__, LocalProfileTampered)
 
 
 def test_authorization_is_separate_from_process_birth_and_binds_full_rows() -> None:

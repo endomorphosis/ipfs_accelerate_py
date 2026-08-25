@@ -19,6 +19,7 @@ from typing import Any, Final, Protocol, runtime_checkable
 
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     LocalProfileTampered,
+    ed25519_public_key_from_did,
     verify_did_key_signature,
 )
 
@@ -392,6 +393,20 @@ def _require_safe_id(value: object, noun: str) -> str:
     if not _SAFE_ID.fullmatch(text):
         raise ExternalAgentPlanR2Error(f"{noun} is not a bounded identifier")
     return text
+
+
+def _require_ed25519_did(value: object, noun: str) -> str:
+    """Decode one Ed25519 ``did:key`` and keep profile errors inside Plan R2."""
+
+    if not isinstance(value, str):
+        raise ExternalAgentPlanR2Error(f"{noun} is not a valid Ed25519 did:key")
+    try:
+        ed25519_public_key_from_did(value)
+    except LocalProfileTampered as exc:
+        raise ExternalAgentPlanR2Error(
+            f"{noun} is not a valid Ed25519 did:key"
+        ) from exc
+    return value
 
 
 def _closed_mapping(value: object, fields: frozenset[str], noun: str) -> dict[str, Any]:
@@ -795,10 +810,13 @@ def prepare_plan_r2_transition_approval(
     expires_at_ms: int,
 ) -> dict[str, Any]:
     _validate_statement(statement)
+    identity = _require_ed25519_did(
+        identity_did,
+        "Plan R2 transition approval identity",
+    )
     if (
         role not in {"independent_operator", "independent_security_reviewer"}
-        or not identity_did.startswith("did:key:z")
-        or identity_did == statement["owner_principal_did"]
+        or identity == statement["owner_principal_did"]
         or not _positive_int(issued_at_ms)
         or not _positive_int(expires_at_ms)
         or issued_at_ms < int(statement["issued_at_ms"])
@@ -809,7 +827,7 @@ def prepare_plan_r2_transition_approval(
     return {
         "schema": PLAN_R2_TRANSITION_APPROVAL_SCHEMA,
         "role": role,
-        "identity_did": identity_did,
+        "identity_did": identity,
         "statement_cid": statement["statement_cid"],
         "one_use_nonce": statement["one_use_nonce"],
         "issued_at_ms": issued_at_ms,
@@ -991,6 +1009,14 @@ def _validate_plan_r2_operational_capability_signing_payload(
         _CAPABILITY_SIGNING_FIELDS,
         "Plan R2 operational capability signing payload",
     )
+    owner_principal_did = _require_ed25519_did(
+        value.get("owner_principal_did"),
+        "Plan R2 operational capability owner principal",
+    )
+    reviewer_identity_did = _require_ed25519_did(
+        value.get("reviewer_identity_did"),
+        "Plan R2 operational capability reviewer",
+    )
     if (
         value.get("schema") != PLAN_R2_OPERATIONAL_CAPABILITY_SCHEMA
         or value.get("allowed") is not True
@@ -1010,9 +1036,7 @@ def _validate_plan_r2_operational_capability_signing_payload(
                 "quack_command_fabric_qualification_cid",
             )
         )
-        or not str(value.get("owner_principal_did") or "").startswith("did:key:z")
-        or not str(value.get("reviewer_identity_did") or "").startswith("did:key:z")
-        or value.get("reviewer_identity_did") == value.get("owner_principal_did")
+        or reviewer_identity_did == owner_principal_did
         or not _SAFE_ID.fullmatch(str(value.get("shard_id") or ""))
         or not all(
             _positive_int(value.get(field))
@@ -1069,9 +1093,16 @@ def plan_r2_operational_capability_signing_payload(
     """Build public Plan-R2 capability claims for an independent reviewer."""
 
     statement = _plan_r2_statement_binding(transition)
+    owner_principal_did = _require_ed25519_did(
+        statement.get("owner_principal_did"),
+        "Plan R2 transition owner principal",
+    )
+    reviewer_identity = _require_ed25519_did(
+        reviewer_identity_did,
+        "Plan R2 operational capability reviewer",
+    )
     if (
-        not reviewer_identity_did.startswith("did:key:z")
-        or reviewer_identity_did == statement["owner_principal_did"]
+        reviewer_identity == owner_principal_did
         or not _positive_int(issued_at_ms)
         or not _positive_int(expires_at_ms)
         or issued_at_ms < int(statement["issued_at_ms"])
@@ -1103,7 +1134,7 @@ def plan_r2_operational_capability_signing_payload(
             "ipfs_accelerate_py/agent-supervisor/authorized-state-command@1"
         ),
         **{field: True for field in _CAPABILITY_REQUIRED_TRUE},
-        "reviewer_identity_did": reviewer_identity_did,
+        "reviewer_identity_did": reviewer_identity,
         "issued_at_ms": issued_at_ms,
         "expires_at_ms": expires_at_ms,
     }
