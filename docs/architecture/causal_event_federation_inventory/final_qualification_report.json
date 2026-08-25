@@ -1,141 +1,364 @@
 {
-  "artifact_type": "casf_final_qualification_report",
   "schema": "casf/qualification-report@1",
+  "report_id": "sha256:aef8c9036eb09c42e04269723265fb9fb869ffbec9091150fcd8ca12512c0237",
+  "artifact_type": "casf_final_qualification_report",
   "artifact_version": 1,
   "program_id": "agent-supervisor-causal-event-federation-v1",
-  "root_objective_id": "CASF-G000",
+  "repository_id": "endomorphosis/ipfs_accelerate_py",
+  "root_goal_id": "CASF-G000",
+  "tranche_goal_id": "CASF-G040",
+  "goal_id": "CASF-G043",
   "task_id": "CASF-043",
+  "report_kind": "repository_qualification_observation",
+  "status": "not_qualified",
   "authority": {
     "authoritative": false,
     "qualification_authority": false,
     "completion_authority": false,
     "promotion_authority": false,
     "scheduling_authority": false,
-    "reason": "This is a current-tree observation. Only independently verified, registered state-owner receipts may support a future qualification or promotion decision."
+    "release_authority": false
   },
-  "baseline": {
+  "starting_baseline": {
     "revision": "84a056e41e48a81d4484be43840196578d6c87da",
     "tree_id": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
-    "source": "docs/architecture/causal_event_federation_inventory/starting_tree.json"
+    "source_path": "docs/architecture/causal_event_federation_inventory/starting_tree.json"
   },
-  "observed_component_snapshot": {
+  "qualification_input_snapshot": {
     "revision": "5796d3f78b77b2b6c1c59a2b74c86020a0b141ae",
     "tree_id": "14b36ca1f21bfd03dd4b88a7866a0c1a40059249",
-    "observation_kind": "committed_source_tree_before_report_artifact",
-    "observed_at_utc": "2026-08-25T01:38:42Z",
-    "report_artifact_in_snapshot": false,
-    "qualification_identity_available": false,
-    "reason": "A Git-committed report cannot contain a self-referential final tree identity. The report therefore records the last complete predecessor component tree and fails closed until a registered producer emits an exact merged-tree qualification identity and independently verifies it."
+    "snapshot_kind": "pre_report_component_snapshot",
+    "report_artifacts_present": false,
+    "accepted_dependency_receipt_ref": null,
+    "state_owner_attestation_ref": null
   },
+  "final_tree_binding": {
+    "status": "pending_post_merge_state_owner_acceptance",
+    "revision": null,
+    "tree_id": null,
+    "control_plane_generation": null,
+    "schema_fingerprint": null,
+    "qualification_identity_ref": null,
+    "validation_receipt_ref": null,
+    "acceptance_receipt_ref": null,
+    "final_result_identity": null
+  },
+  "source_bindings": [
+    {
+      "path": "docs/architecture/causal_event_federation_inventory/starting_tree.json",
+      "git_blob_oid": "6f41ac8b1933b120cd3222bbd29668e48eb67194",
+      "raw_sha256": "8a4e2a658eb8c019e315afd28ea56ff956432e62dcc51fdf6e17a1c5239b83ed",
+      "byte_count": 2127
+    },
+    {
+      "path": "docs/architecture/causal_event_federation_inventory/authorities.json",
+      "git_blob_oid": "949044ab598f07ec11a0416dca8f5739f8e975fb",
+      "raw_sha256": "e787ce33bf647b5545548545c2a8f2d57de3be6ebb7478bb920490baa532a879",
+      "byte_count": 28884
+    },
+    {
+      "path": "docs/architecture/causal_event_federation_inventory/capability_snapshot.json",
+      "git_blob_oid": "0f8012a9dfb77bf9630df925b672f5a61a04eab3",
+      "raw_sha256": "48474ed9f70bc033968512cf23406f5679618f7655d26eb9e8dc447f1de1525e",
+      "byte_count": 6307
+    },
+    {
+      "path": "docs/architecture/causal_event_federation_inventory/README.md",
+      "git_blob_oid": "581bc6f9ed59fad19d900fcc030d8dcbd129f0b8",
+      "raw_sha256": "6749ac9d8fc46c2a388a4b8fe543ae630bfb1d24d717a0659b7b6b9e6a9d638b",
+      "byte_count": 9143
+    },
+    {
+      "path": "docs/architecture/agent_supervisor_causal_event_federation.objectives.md",
+      "git_blob_oid": "b4adc69f3f3dae288ae102daf6efbaeafd8a642f",
+      "raw_sha256": "ed6b2df4386c1ee52c90b228e3cfb96a059affbcd2235f3dc27e22be7011de08",
+      "byte_count": 25786
+    },
+    {
+      "path": "docs/architecture/agent_supervisor_causal_event_federation.todo.md",
+      "git_blob_oid": "4a8524af600c0db1c58dee5c44a5e25944582b07",
+      "raw_sha256": "a7fa2702e975714d4432c633ea9307c97d987db8b5683fb50af0f565f3b57408",
+      "byte_count": 244654
+    },
+    {
+      "path": "scripts/validate_agent_supervisor_causal_event_federation_board.py",
+      "git_blob_oid": "a685af0e15b7a7333fdd4ecd531478a4360bf633",
+      "raw_sha256": "1747b00a3e0844f52007cf544b7ab88ef13c06426d892c1d8ffb424df43503d4",
+      "byte_count": 47251
+    },
+    {
+      "path": "config/agent_supervisor_causal_event_federation_scheduler.json",
+      "git_blob_oid": "1ee6f72095ab171f37b655fc6bd89dd7f41d354a",
+      "raw_sha256": "708f8b00fbd5343fc7e1ca9eaf668e553992ebe89f9d6e8cbe2f1bdb58cf426f",
+      "byte_count": 18104
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/federation/promotion.py",
+      "git_blob_oid": "17ea2beb7e9a7f54ddf703a04beecd13bcdf8405",
+      "raw_sha256": "d2258f9685959ea2d6a89e03bb809c0876cbff4fd669169398c76498ed5128c3",
+      "byte_count": 69427
+    },
+    {
+      "path": "test/api/causal_federation/test_promotion.py",
+      "git_blob_oid": "36d293be2c7d3781237fb042e3f31790c778fe1a",
+      "raw_sha256": "953aab7f37ea49cb2ac687023e48489a517c1199a3122ec78fcd96bba1e68831",
+      "byte_count": 35215
+    },
+    {
+      "path": "benchmarks/agent_supervisor/causal_event_federation/manifest.json",
+      "git_blob_oid": "ed4682d69c60509f960f71023c6a38838fdf88f4",
+      "raw_sha256": "0d6280f6dc982dae824f24fe6de4ef245afa4f9e30b7ad18ceb48bea71ff3646",
+      "byte_count": 6037
+    }
+  ],
   "control_plane": {
-    "state": "not_observed",
+    "status": "not_observed",
     "generation_id": null,
     "schema_fingerprint": null,
-    "reason": "No registered state-owner current-tree qualification receipt supplied a generation and schema fingerprint. This report does not open DuckDB or infer either value from source files."
+    "state_owner_receipt_ref": null,
+    "reason_code": "accepted_current_tree_state_owner_attestation_unavailable"
   },
   "capabilities": {
-    "state_owner": {
-      "status": "not_live_qualified",
+    "duckdb_quack": {
+      "status": "not_qualified",
       "evidence_ref": null,
-      "reason": "No authenticated typed Quack live state-owner receipt is bound to the observed component snapshot."
+      "blocks_core_qualification": true,
+      "blocks_ducklake_promotion": true,
+      "reason_code": "accepted_single_owner_typed_quack_receipt_unavailable"
     },
-    "quack_event_wait": {
-      "status": "owner_local_hermetic_only",
+    "typed_quack_event_wait": {
+      "status": "not_qualified",
       "evidence_ref": null,
-      "reason": "Owner-local event waiting does not establish a qualified remote multi-supervisor Quack transport."
+      "blocks_core_qualification": true,
+      "blocks_ducklake_promotion": true,
+      "reason_code": "remote_no_lost_wakeup_qualification_unavailable"
     },
-    "ducklake_projection": {
-      "status": "not_currently_qualified",
+    "ducklake_quack": {
+      "status": "not_qualified",
       "evidence_ref": null,
-      "reason": "DuckLake remains optional and non-authoritative; no exact-snapshot promotion receipt was supplied."
+      "blocks_core_qualification": false,
+      "blocks_ducklake_promotion": true,
+      "reason_code": "accepted_non_authoritative_projection_receipts_unavailable"
     },
-    "live_scale_capacity": {
+    "live_scale": {
       "status": "unavailable",
       "evidence_ref": null,
-      "reason": "The frozen 12-supervisor, 256-agent, and token manifests declare their admitted live profiles unavailable and not run."
+      "blocks_core_qualification": true,
+      "blocks_ducklake_promotion": true,
+      "reason_code": "frozen_live_profiles_not_run"
     }
   },
   "population_and_concurrency": {
-    "federation_population": "not_observed",
-    "supervisor_processes": "not_observed",
-    "registered_logical_agents": "not_observed",
-    "maximum_concurrent_subagents": "not_observed",
+    "status": "not_observed",
+    "federation_population": null,
+    "supervisor_processes": null,
+    "registered_logical_agents": null,
+    "maximum_concurrent_subagents": null,
     "qualified_live_population": false,
-    "reason": "No current generation, fence-bound, state-owner attestation establishes a live population. Frozen benchmark targets and in-process objects are not population evidence."
+    "contention_free_operation_qualified": false,
+    "reason_code": "current_generation_fence_bound_population_attestation_unavailable"
   },
-  "benchmark_evidence": {
-    "suite_path": "benchmarks/agent_supervisor/causal_event_federation/manifest.json",
-    "suite_component_snapshot": {
-      "revision": "75f9487ff051ce5defd6171d7b41dd8127a0d59f",
-      "tree_id": "4e31236de005816686e68a336adb1a7fe679e6fa"
+  "benchmark_suite": {
+    "path": "benchmarks/agent_supervisor/causal_event_federation/manifest.json",
+    "projection_binding": {
+      "revision": "edeb276d83713315864d38eb81dc09b519f5360e",
+      "tree_id": "1853e8297c44b7b5ee67f8a015fd67107670eb2a",
+      "git_blob_oid": "ed4682d69c60509f960f71023c6a38838fdf88f4",
+      "raw_sha256": "0d6280f6dc982dae824f24fe6de4ef245afa4f9e30b7ad18ceb48bea71ff3646"
     },
-    "suite_current_for_observed_component_snapshot": false,
-    "suite_status": "not_run",
-    "authoritative": false,
-    "promotion_eligible": false,
-    "components": [
+    "relationship_to_qualification_input": {
+      "component_snapshot_is_ancestor": true,
+      "suite_projection_is_ancestor": true,
+      "all_bound_inputs_exact_at_qualification_input": true
+    },
+    "manifest": {
+      "schema": "casf/benchmark-suite@1",
+      "suite_id": "sha256:aa916a4418b4345e90c75b7955f5d0bdefde657158c5fb4f2834ae6cfea3eb0b",
+      "program_id": "agent-supervisor-causal-event-federation-v1",
+      "root_goal_id": "CASF-G000",
+      "tranche_goal_id": "CASF-G040",
+      "goal_id": "CASF-G043",
+      "component_snapshot": {
+        "revision": "75f9487ff051ce5defd6171d7b41dd8127a0d59f",
+        "tree_id": "4e31236de005816686e68a336adb1a7fe679e6fa"
+      },
+      "matrix_binding": {
+        "path": "benchmarks/agent_supervisor/causal_event_federation/matrix.yaml",
+        "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation-benchmark-matrix@1",
+        "git_blob_oid": "ab0482d40968e1ae238923225d76bbcb9ca3551e",
+        "raw_sha256": "b23681a8c811f2020ef97e1b1b0172c15c87577d7882a4323f67e072dd7dfd9f"
+      },
+      "components": [
+        {
+          "task_id": "CASF-038",
+          "benchmark_id": "casf-idle-event-driven-v2",
+          "manifest_state": "specification_only",
+          "manifest_binding": {
+            "path": "benchmarks/agent_supervisor/causal_event_federation/idle_manifest.json",
+            "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/idle-benchmark-manifest@2",
+            "git_blob_oid": "f5a43c848a969cd8cd1a8815f4154e7bc5a51a34",
+            "raw_sha256": "4a9d80d5905202433b145b1b5b0ff809e7137962f3fccedc725699f0701a3bd0"
+          },
+          "runner_binding": {
+            "path": "benchmarks/agent_supervisor/causal_event_federation/run_idle.py",
+            "git_blob_oid": "ba14e4cb0feb8c2687d13fa9b56fceecc9df5975",
+            "raw_sha256": "56a29287e2e0d2d63f19d6ac777a5a962c79a45052ec70f9f487222597159287"
+          },
+          "result_schema": "casf/idle-benchmark@1",
+          "availability": "unavailable",
+          "execution_status": "not_run",
+          "reason_code": "typed_quack_live_endpoint_not_supplied",
+          "result_ref": null,
+          "metrics_omitted": true,
+          "qualified": false,
+          "promotion_eligible": false
+        },
+        {
+          "task_id": "CASF-039",
+          "benchmark_id": "casf-parallel-twelve-supervisor-v1",
+          "manifest_state": "capability_unavailable",
+          "manifest_binding": {
+            "path": "benchmarks/agent_supervisor/causal_event_federation/parallel_manifest.json",
+            "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/parallel-benchmark-manifest@1",
+            "git_blob_oid": "9f438387fc30e0fd451c5eed6069ccebdb9d49a7",
+            "raw_sha256": "2d2c506f6fb2a68074449b50e09ac0748f373ea357642176d4e27fc7c1c7bae6"
+          },
+          "runner_binding": {
+            "path": "benchmarks/agent_supervisor/causal_event_federation/run_parallel.py",
+            "git_blob_oid": "476fca00c099b1ba6c054a9f0c370e0cfa8d6478",
+            "raw_sha256": "25b7a286ee4e7113847045dc4184bb7b61336a2ed2e899e7196e9e283b6e29af"
+          },
+          "result_schema": "casf/parallel-benchmark@1",
+          "availability": "unavailable",
+          "execution_status": "not_run",
+          "reason_code": "qualified_twelve_supervisor_live_capacity_not_admitted",
+          "result_ref": null,
+          "metrics_omitted": true,
+          "qualified": false,
+          "promotion_eligible": false
+        },
+        {
+          "task_id": "CASF-040",
+          "benchmark_id": "casf-load-256-agent-bounded-v1",
+          "manifest_state": "capability_unavailable",
+          "manifest_binding": {
+            "path": "benchmarks/agent_supervisor/causal_event_federation/load_manifest.json",
+            "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/load-benchmark-manifest@1",
+            "git_blob_oid": "07033204492131adb125be108857f8115d2aae9b",
+            "raw_sha256": "0585e25bb98036edb1941477db43780d46ebb736a2f826b90d3ce6e12539b357"
+          },
+          "runner_binding": {
+            "path": "benchmarks/agent_supervisor/causal_event_federation/run_load.py",
+            "git_blob_oid": "e7796dc33ba6c38894ea3286ffe124aac193fc41",
+            "raw_sha256": "2e3f037486d6067029333518d690e696b17af624f7bb60f31001ba3cefb18808"
+          },
+          "result_schema": "casf/load-benchmark@1",
+          "availability": "unavailable",
+          "execution_status": "not_run",
+          "reason_code": "qualified_256_agent_bounded_load_live_capacity_not_admitted",
+          "result_ref": null,
+          "metrics_omitted": true,
+          "qualified": false,
+          "promotion_eligible": false
+        },
+        {
+          "task_id": "CASF-041",
+          "benchmark_id": "casf-token-cross-supervisor-v1",
+          "manifest_state": "capability_unavailable",
+          "manifest_binding": {
+            "path": "benchmarks/agent_supervisor/causal_event_federation/token_manifest.json",
+            "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/token-benchmark-manifest@1",
+            "git_blob_oid": "3aff1d97497f6ef66c0a0a239d158f7366cb0e67",
+            "raw_sha256": "34cbda396f72dc5bdee7eda5ec6639bdfbf7574e9da132bea01536c5d0cd924e"
+          },
+          "runner_binding": {
+            "path": "benchmarks/agent_supervisor/causal_event_federation/run_token.py",
+            "git_blob_oid": "6ae63feb3a7570a235cf64d7bc1597f2983bf2dd",
+            "raw_sha256": "b14b2531a8b13876bd9240b96b1e17992abd2ccb8ceaa40f79f1ccae247c8604"
+          },
+          "result_schema": "casf/token-benchmark@1",
+          "availability": "unavailable",
+          "execution_status": "not_run",
+          "reason_code": "qualified_cross_supervisor_token_live_capacity_not_admitted",
+          "result_ref": null,
+          "metrics_omitted": true,
+          "qualified": false,
+          "promotion_eligible": false
+        }
+      ],
+      "result_artifacts": [],
+      "suite_status": "not_run",
+      "authoritative": false,
+      "scheduling_authority": false,
+      "qualification_authority": false,
+      "completion_authority": false,
+      "ducklake_authoritative": false,
+      "promotion_eligible": false,
+      "release_eligible": false,
+      "blockers": [
+        "unavailable:casf_038_live_not_run",
+        "unavailable:casf_039_live_not_run",
+        "unavailable:casf_040_live_not_run",
+        "unavailable:casf_041_live_not_run"
+      ],
+      "nonclaims": [
+        "Frozen specifications and thresholds are not observations.",
+        "No benchmark metrics or qualification are asserted.",
+        "DuckLake grants no scheduling, acceptance, completion, or promotion authority."
+      ]
+    }
+  },
+  "evidence_disposition": {
+    "verified": [
       {
-        "task_id": "CASF-038",
-        "schema": "casf/idle-benchmark@1",
-        "availability": "unavailable",
-        "execution_status": "not_run",
-        "qualified": false,
-        "promotion_eligible": false,
-        "reason_code": "typed_quack_live_endpoint_not_supplied"
+        "evidence_id": "qualification_input_source_bindings",
+        "scope": "repository_objects_at_qualification_input"
       },
       {
-        "task_id": "CASF-039",
-        "schema": "casf/parallel-benchmark@1",
-        "availability": "unavailable",
-        "execution_status": "not_run",
-        "qualified": false,
-        "promotion_eligible": false,
-        "reason_code": "qualified_twelve_supervisor_live_capacity_not_admitted"
-      },
-      {
-        "task_id": "CASF-040",
-        "schema": "casf/load-benchmark@1",
-        "availability": "unavailable",
-        "execution_status": "not_run",
-        "qualified": false,
-        "promotion_eligible": false,
-        "reason_code": "qualified_256_agent_bounded_load_live_capacity_not_admitted"
-      },
-      {
-        "task_id": "CASF-041",
-        "schema": "casf/token-benchmark@1",
-        "availability": "unavailable",
-        "execution_status": "not_run",
-        "qualified": false,
-        "promotion_eligible": false,
-        "reason_code": "qualified_cross_supervisor_token_live_capacity_not_admitted"
+        "evidence_id": "benchmark_suite_specification_bindings",
+        "scope": "component_and_projection_ancestry_plus_exact_blobs"
       }
-    ]
-  },
-  "result_coverage": {
-    "task_and_dedup": "not_currently_qualified",
-    "causal_graph_and_abstraction": "not_currently_qualified",
-    "interventions_and_independence": "not_currently_qualified",
-    "events_outbox_dead_letters_and_wakeups": "not_currently_qualified",
-    "idle_behavior": "not_currently_qualified",
-    "parallel_throughput_and_merge": "not_currently_qualified",
-    "model_context_and_token_efficiency": "not_currently_qualified",
-    "proof_and_validation": "not_currently_qualified",
-    "ducklake_projection": "not_currently_qualified",
-    "recovery_and_failures": "not_currently_qualified"
-  },
-  "execution_evidence": {
-    "executed_current_tree_receipts": [],
-    "unexecuted_or_not_current": [
+    ],
+    "failed": [],
+    "skipped": [
+      {
+        "evidence_id": "live_runtime_and_database_observation",
+        "reason_code": "repository_only_report_has_no_runtime_authority"
+      },
+      {
+        "evidence_id": "ducklake_live_profile",
+        "reason_code": "optional_profile_not_admitted"
+      }
+    ],
+    "not_run": [
       "casf/idle-benchmark@1",
       "casf/parallel-benchmark@1",
       "casf/load-benchmark@1",
-      "casf/token-benchmark@1",
-      "casf/promotion-decision@1",
-      "casf/federation-completion-receipt@1"
+      "casf/token-benchmark@1"
     ],
-    "models_executed": [],
-    "reason": "No receipt is inferred from source presence, a task-board state, a test name, a process exit, a quiet queue, or a historical artifact."
+    "missing_or_unaccepted": [
+      "casf/qualification-identity@1",
+      "casf/promotion-evidence-bundle@1",
+      "casf/promotion-decision@1",
+      "casf/promotion-decision-validation@1",
+      "casf/federation-completion-receipt@1",
+      "casf/fixed-point@1 accepted-producer provenance",
+      "casf/drift-report@1 accepted-producer provenance",
+      "casf/control-parity@1 decoder",
+      "casf/formal-model-report@1 decoder"
+    ]
+  },
+  "result_coverage": {
+    "task_and_dedup": "not_qualified",
+    "causal_graph_and_abstraction": "not_qualified",
+    "interventions_and_independence": "not_qualified",
+    "events_outbox_dead_letters_and_wakeups": "not_qualified",
+    "idle_behavior": "not_qualified",
+    "parallel_throughput_and_merge": "not_qualified",
+    "model_context_and_token_efficiency": "not_qualified",
+    "proof_and_validation": "not_qualified",
+    "ducklake_projection": "not_qualified",
+    "recovery_and_failures": "not_qualified"
   },
   "safety_gates": {
     "direct_multi_process_file_mutation": "unverified",
@@ -160,68 +383,251 @@
     "causally_coordinated": false,
     "multi_supervisor": false,
     "parallel": false,
+    "contention_free": false,
     "token_efficient": false,
     "production_ready": false,
+    "duckdb_quack_qualified": false,
+    "ducklake_quack_qualified": false,
     "ducklake_promotion_qualified": false,
     "exactly_once_network_delivery": false
   },
-  "residual_gaps": [
-    {
-      "gap_id": "CASF-043-EXACT-MERGED-TREE-IDENTITY",
-      "status": "blocking",
-      "scope": "all qualification and promotion claims",
-      "required_resolution": "A registered state-owner producer must emit and an independent verifier must validate a qualification identity for the exact merged tree, schema, generation, policy, capabilities, task, attempt, assignment, worktree, and fence."
-    },
-    {
-      "gap_id": "CASF-043-LIVE-TYPED-QUACK",
-      "status": "blocking",
-      "scope": "event-driven, multi-supervisor, parallel, and production claims",
-      "required_resolution": "Admit and independently verify an authenticated typed Quack live event-wait path with no-lost-wakeup evidence; polling and owner-local evidence do not resolve this gap."
-    },
-    {
-      "gap_id": "CASF-043-SCALE-BENCHMARKS-NOT-RUN",
-      "status": "blocking",
-      "scope": "parallel, load, and throughput claims",
-      "required_resolution": "Run the admitted real-process 12-supervisor and 256-agent profiles against the exact current tree, retain raw content-addressed results, and satisfy every zero-tolerance gate."
-    },
-    {
-      "gap_id": "CASF-043-TOKEN-BENCHMARK-NOT-RUN",
-      "status": "blocking",
-      "scope": "token-efficient claim",
-      "required_resolution": "Run the frozen same-population baseline and 12-supervisor token comparison with current receipt-backed identities and meet every threshold without reducing assurance."
-    },
-    {
-      "gap_id": "CASF-043-CONJUNCTIVE-GATE-DECISION",
-      "status": "blocking",
-      "scope": "promotion and release",
-      "required_resolution": "Submit complete exact-identity evidence to the registered promotion gate and independently validate a permitted decision; this report cannot create or apply that decision."
-    }
-  ],
   "qualification": {
-    "status": "blocked",
+    "status": "not_qualified",
+    "profiles": {
+      "duckdb_quack": {
+        "status": "not_qualified",
+        "single_state_owner_required": true,
+        "contention_free_operation_qualified": false,
+        "decision_ref": null
+      },
+      "ducklake_quack": {
+        "status": "not_qualified",
+        "authoritative": false,
+        "scheduling_authority": false,
+        "blocks_core_qualification": false,
+        "decision_ref": null
+      }
+    },
     "promotion_eligible": false,
     "release_eligible": false,
-    "quarantine_required": true,
+    "disposition": "quarantine_recommended",
+    "disposition_authoritative": false,
+    "quarantine_applied": false,
     "promotion_applied": false,
     "rollback_applied": false,
-    "authoritative_state_changed": false,
+    "production_state_changed": false,
+    "authority_created": false,
     "completion_created": false,
     "upstream_reverification_required": true,
-    "reason": "All promotion gates are conjunctive. Missing current-tree identity and live benchmark evidence blocks rather than degrades the required claim."
+    "promotion_decision_ref": null,
+    "reason_codes": [
+      "accepted_current_generation_qualification_identity_unavailable",
+      "accepted_current_tree_state_owner_attestation_unavailable",
+      "missing:casf_030_accepted_producer_provenance",
+      "missing:casf_030_full_qualification_identity_binding",
+      "missing:casf_030_state_owner_provenance",
+      "missing:casf_033_accepted_producer_provenance",
+      "missing:casf_033_full_qualification_identity_binding",
+      "missing:casf_033_state_owner_provenance",
+      "blocked:casf_034_current_state_owner_capability_unattested",
+      "missing:casf_035_control_parity_report_decoder",
+      "missing:casf_036_formal_report_decoder",
+      "blocked:casf_037_local_qualification_unavailable",
+      "unavailable:casf_038_live_not_run",
+      "unavailable:casf_039_live_not_run",
+      "unavailable:casf_040_live_not_run",
+      "unavailable:casf_041_live_not_run",
+      "benchmark_result_artifacts_absent",
+      "accepted_conjunctive_promotion_decision_unavailable"
+    ]
   },
-  "rollback": {
-    "status": "not_authorized_by_this_report",
-    "target": {
-      "revision": "84a056e41e48a81d4484be43840196578d6c87da",
-      "tree_id": "40f0771e77d394ac91d92cc1edb02f7860f6131b"
+  "residual_gaps": [
+    {
+      "gap_id": "CASF-043-FINAL-TREE-ACCEPTANCE",
+      "status": "blocking_release",
+      "scope": "qualification, promotion, release, and root completion",
+      "reason_codes": [
+        "accepted_current_generation_qualification_identity_unavailable"
+      ],
+      "required_resolution": "A registered state-owner producer and independent verifier must bind the actual merged revision and tree, schema, generation, policy, capability, task, attempt, assignment, worktree, lease, and fence to accepted validation and result identities."
     },
-    "required_authority": "registered typed state-owner rollback decision bound to a verified predecessor qualification identity",
+    {
+      "gap_id": "CASF-043-LIVE-TYPED-QUACK-STATE-OWNER",
+      "status": "blocking_core",
+      "scope": "DuckDB plus Quack core qualification and contention-free operation",
+      "reason_codes": [
+        "accepted_current_tree_state_owner_attestation_unavailable",
+        "remote_no_lost_wakeup_qualification_unavailable"
+      ],
+      "required_resolution": "Admit and independently verify one authenticated typed Quack state owner, a current generation and schema fingerprint, fence-bound population, and a remote no-lost-wakeup event-wait path without direct DuckDB or file fallback."
+    },
+    {
+      "gap_id": "CASF-043-CASF-030-PROVENANCE",
+      "status": "blocking_core",
+      "scope": "fixed-point evidence",
+      "reason_codes": [
+        "missing:casf_030_accepted_producer_provenance",
+        "missing:casf_030_full_qualification_identity_binding",
+        "missing:casf_030_state_owner_provenance"
+      ],
+      "required_resolution": "Produce a current-tree fixed-point receipt through an accepted producer with the full qualification identity and state-owner provenance."
+    },
+    {
+      "gap_id": "CASF-043-CASF-032-DUCKLAKE-PROVENANCE",
+      "status": "blocking_ducklake_profile",
+      "scope": "DuckLake plus Quack promotion only; it does not block the core profile",
+      "reason_codes": [
+        "missing:casf_032_accepted_producer_provenance",
+        "missing:casf_032_full_qualification_identity_binding",
+        "missing:casf_032_state_owner_provenance"
+      ],
+      "required_resolution": "Produce current projection and recovery receipts through accepted producers with full qualification identity and state-owner provenance while retaining DuckLake non-authority."
+    },
+    {
+      "gap_id": "CASF-043-CASF-033-PROVENANCE",
+      "status": "blocking_core",
+      "scope": "architecture and event drift evidence",
+      "reason_codes": [
+        "missing:casf_033_accepted_producer_provenance",
+        "missing:casf_033_full_qualification_identity_binding",
+        "missing:casf_033_state_owner_provenance"
+      ],
+      "required_resolution": "Produce a current-tree drift report through an accepted producer with the full qualification identity and state-owner provenance."
+    },
+    {
+      "gap_id": "CASF-043-CASF-034-STATE-OWNER-CAPABILITY",
+      "status": "blocking_core",
+      "scope": "typed control audit",
+      "reason_codes": [
+        "blocked:casf_034_current_state_owner_capability_unattested"
+      ],
+      "required_resolution": "Attest the current typed state-owner capability and bind the accepted control audit to the exact qualification identity."
+    },
+    {
+      "gap_id": "CASF-043-CASF-035-CONTROL-PARITY-DECODER",
+      "status": "blocking_core",
+      "scope": "control-surface parity evidence",
+      "reason_codes": [
+        "missing:casf_035_control_parity_report_decoder"
+      ],
+      "required_resolution": "Implement and independently validate the canonical control-parity report decoder before admitting CASF-035 evidence."
+    },
+    {
+      "gap_id": "CASF-043-CASF-036-FORMAL-DECODER",
+      "status": "blocking_core",
+      "scope": "formal-model evidence",
+      "reason_codes": [
+        "missing:casf_036_formal_report_decoder"
+      ],
+      "required_resolution": "Implement and independently validate the canonical formal-model report decoder before admitting CASF-036 evidence."
+    },
+    {
+      "gap_id": "CASF-043-CASF-037-LOCAL-QUALIFICATION",
+      "status": "blocking_core",
+      "scope": "adversarial and chaos evidence",
+      "reason_codes": [
+        "blocked:casf_037_local_qualification_unavailable"
+      ],
+      "required_resolution": "Run and admit the upstream-reverified current-tree adversarial qualification; the repository-only unavailable report cannot substitute for it."
+    },
+    {
+      "gap_id": "CASF-043-CASF-038-IDLE-NOT-RUN",
+      "status": "blocking_core",
+      "scope": "event-driven idle claims",
+      "reason_codes": [
+        "unavailable:casf_038_live_not_run"
+      ],
+      "required_resolution": "Run the frozen idle profile through the admitted typed Quack live path and retain a current-tree content-addressed result."
+    },
+    {
+      "gap_id": "CASF-043-CASF-039-PARALLEL-NOT-RUN",
+      "status": "blocking_core",
+      "scope": "twelve-supervisor parallel and throughput claims",
+      "reason_codes": [
+        "unavailable:casf_039_live_not_run"
+      ],
+      "required_resolution": "Run the frozen real-process twelve-supervisor profile and retain a current-tree content-addressed result satisfying every zero-tolerance gate."
+    },
+    {
+      "gap_id": "CASF-043-CASF-040-LOAD-NOT-RUN",
+      "status": "blocking_core",
+      "scope": "bounded 256-agent load claims",
+      "reason_codes": [
+        "unavailable:casf_040_live_not_run"
+      ],
+      "required_resolution": "Run the frozen bounded 256-agent profile and retain a current-tree content-addressed result satisfying every zero-tolerance gate."
+    },
+    {
+      "gap_id": "CASF-043-CASF-041-TOKEN-NOT-RUN",
+      "status": "blocking_core",
+      "scope": "cross-supervisor token and context efficiency claims",
+      "reason_codes": [
+        "unavailable:casf_041_live_not_run"
+      ],
+      "required_resolution": "Run the frozen same-population baseline and twelve-supervisor comparison and retain current-tree result receipts meeting every target without reduced assurance."
+    },
+    {
+      "gap_id": "CASF-043-BENCHMARK-RESULT-ARTIFACTS",
+      "status": "blocking_core",
+      "scope": "benchmark result, metric, and promotion evidence",
+      "reason_codes": [
+        "benchmark_result_artifacts_absent"
+      ],
+      "required_resolution": "Retain exact content-addressed result artifacts with non-null result references; metrics remain omitted until those runs occur."
+    },
+    {
+      "gap_id": "CASF-043-CONJUNCTIVE-PROMOTION-DECISION",
+      "status": "blocking_release",
+      "scope": "promotion, quarantine disposition, and release",
+      "reason_codes": [
+        "accepted_conjunctive_promotion_decision_unavailable"
+      ],
+      "required_resolution": "Submit the complete exact-identity evidence bundle to the registered gate and independently validate an accepted decision; this report cannot create, apply, or authorize it."
+    },
+    {
+      "gap_id": "CASF-043-ROLLBACK-VERIFICATION",
+      "status": "blocking_release",
+      "scope": "root completion and recovery",
+      "reason_codes": [
+        "fenced_rollback_verification_unavailable"
+      ],
+      "required_resolution": "Verify a fenced rollback path for only the CASF-043-owned artifacts against the pre-report component snapshot without rewriting history or applying production effects."
+    }
+  ],
+  "rollback": {
+    "status": "not_authorized",
+    "scope": [
+      "docs/architecture/causal_event_federation_inventory/final_qualification_report.json",
+      "docs/architecture/causal_event_federation_inventory/final_qualification_report.md",
+      "test/api/causal_federation/test_qualification_report.py"
+    ],
+    "target": {
+      "revision": "5796d3f78b77b2b6c1c59a2b74c86020a0b141ae",
+      "tree_id": "14b36ca1f21bfd03dd4b88a7866a0c1a40059249"
+    },
+    "applied": false,
+    "executable": false,
+    "decision_ref": null,
+    "required_authority": "registered typed state-owner rollback decision bound to a verified predecessor qualification identity and current fence",
     "history_rewrite_permitted": false
   },
+  "provenance": {
+    "evidence_source": "repository_only",
+    "source_binding_method": "git_blob_oid_plus_raw_sha256",
+    "qualification_database_queried": false,
+    "qualification_runtime_contacted": false,
+    "qualification_network_used": false,
+    "qualification_provider_output_admitted": false,
+    "model_output_admitted_as_evidence": false,
+    "task_board_status_admitted_as_evidence": false,
+    "ducklake_projection_admitted_as_authority": false
+  },
   "nonclaims": [
-    "This report is not a federation-completion receipt, policy decision, release manifest, or promotion decision.",
-    "No task-board status, source module, test name, process exit, quiet queue, model statement, historical receipt, metric, or DuckLake projection is treated as current-tree qualification evidence.",
-    "No direct DuckDB access, Quack-to-file fallback, DuckLake scheduling authority, model-created authority, model-created policy permission, or model-created completion is authorized by this report.",
-    "A blocked qualification is not evidence that any safety gate failed; it records that the required exact current-tree evidence was not supplied."
+    "This report is not a federation-completion receipt, accepted qualification identity, policy decision, release authority, or promotion decision.",
+    "Repository bindings verify bytes and lineage only; they do not verify a live control plane, population, event transport, safety gate, benchmark result, or provider execution.",
+    "No task-board status, source module, test name, process exit, quiet queue, model statement, historical receipt, metric, or DuckLake projection is current-tree qualification evidence.",
+    "No direct DuckDB access, Quack-to-file fallback, DuckLake scheduling authority, model-created authority, model-created policy permission, or model-created completion is authorized.",
+    "Not qualified and quarantine recommended do not assert that a safety gate failed, that quarantine was applied, or that production state changed.",
+    "Exactly-once network delivery is not claimed; only separately verified fenced idempotent authoritative effects could have an exactly-once scope."
   ]
 }
