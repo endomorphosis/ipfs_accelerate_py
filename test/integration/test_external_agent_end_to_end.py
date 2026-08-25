@@ -8,6 +8,7 @@ claimed.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -49,6 +50,14 @@ STORE_ID = "eaaef-145-control"
 RECEIPT_PATH = (
     Path(__file__).resolve().parents[2]
     / "docs/architecture/external_agent_autonomous_execution_fabric/receipts/end_to_end.json"
+)
+REQUIRED_PRODUCTION_STAGES = (
+    "handoff",
+    "plan_admit",
+    "frontier",
+    "typed_quack_owner_apply",
+    "recovery",
+    "typed_terminal",
 )
 
 
@@ -96,12 +105,36 @@ def _server(root: Path) -> QuackStateServer:
     )
 
 
+def _fixture_cid(label: str) -> str:
+    return "sha256:" + hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
+def _is_evidence_cid(value: object) -> bool:
+    text = str(value or "")
+    return (
+        len(text) == 71
+        and text.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in text[7:])
+    )
+
+
 def _validate_current_receipt(payload: object) -> None:
     assert isinstance(payload, Mapping)
     assert payload.get("schema") == "qualification-receipt@1"
     assert payload.get("task_id") == "EAAEF-145"
-    assert payload.get("evidence_mode") != "contract_fail_closed"
+    assert payload.get("evidence_mode") == "observed_live"
+    assert payload.get("live_runtime_invoked") is True
+    assert payload.get("live_eight_container_qualification") is True
     assert "in_memory_ExternalQuackOwner" not in json.dumps(payload, sort_keys=True)
+
+    owner_evidence = payload.get("owner_evidence")
+    assert isinstance(owner_evidence, Mapping)
+    assert owner_evidence.get("interface") == "ExternalQuackOwner@1"
+    assert owner_evidence.get("backing_owner_interface") == "QuackStateServer@1"
+    assert str(owner_evidence.get("server_id") or "").startswith("server:")
+    assert _is_evidence_cid(owner_evidence.get("lease_cid"))
+    assert owner_evidence.get("production_admitted") is True
+    assert list(owner_evidence.get("production_blockers") or ()) == []
 
     stages = payload.get("stages")
     assert isinstance(stages, list)
@@ -113,17 +146,74 @@ def _validate_current_receipt(payload: object) -> None:
         stage_name = str(stage.get("stage") or "")
         assert stage_name
         assert stage.get("observed") is True
-        assert str(stage.get("evidence_cid") or "")
+        assert stage.get("outcome") == "passed"
+        assert _is_evidence_cid(stage.get("evidence_cid"))
         observed_stage_names.append(stage_name)
 
     assert "quack_owner_apply" not in observed_stage_names
-    assert "typed_terminal" not in observed_stage_names
-    assert "quack_owner_dispatch_refused" in observed_stage_names
-    assert "typed_nonterminal" in observed_stage_names
-    assert payload.get("owner_dispatch_admitted") is False
-    assert payload.get("completion_claimed") is False
-    assert payload.get("terminal") == "not_complete"
-    assert EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER in set(payload.get("production_blockers") or ())
+    assert observed_stage_names == list(REQUIRED_PRODUCTION_STAGES)
+    assert payload.get("owner_dispatch_admitted") is True
+    assert payload.get("completion_claimed") is True
+    assert payload.get("terminal") == "completed"
+    assert payload.get("qualification_status") == "qualified"
+    assert payload.get("result") == "pass"
+    assert list(payload.get("production_blockers") or ()) == []
+
+
+def _truthful_production_receipt_fixture() -> dict[str, object]:
+    server_id = "server:observed-e2e-production-owner"
+    return {
+        "schema": "qualification-receipt@1",
+        "task_id": "EAAEF-145",
+        "evidence_mode": "observed_live",
+        "live_runtime_invoked": True,
+        "live_eight_container_qualification": True,
+        "owner_dispatch_admitted": True,
+        "completion_claimed": True,
+        "terminal": "completed",
+        "qualification_status": "qualified",
+        "result": "pass",
+        "production_blockers": [],
+        "owner_evidence": {
+            "interface": "ExternalQuackOwner@1",
+            "backing_owner_interface": "QuackStateServer@1",
+            "server_id": server_id,
+            "lease_cid": _fixture_cid("eaaef-145-production-owner-lease"),
+            "production_admitted": True,
+            "production_blockers": [],
+        },
+        "stages": [
+            {
+                "stage": stage,
+                "observed": True,
+                "outcome": "passed",
+                "evidence_cid": _fixture_cid(f"eaaef-145:{stage}"),
+            }
+            for stage in REQUIRED_PRODUCTION_STAGES
+        ],
+    }
+
+
+def test_receipt_validator_accepts_only_observed_production_fixture() -> None:
+    truthful = _truthful_production_receipt_fixture()
+    _validate_current_receipt(truthful)
+
+    archived_strings = json.loads(json.dumps(truthful))
+    archived_strings["stages"] = [
+        "handoff",
+        "plan_admit",
+        "frontier",
+        "quack_owner_apply",
+        "recovery",
+        "typed_terminal",
+    ]
+    with pytest.raises(AssertionError):
+        _validate_current_receipt(archived_strings)
+
+    legacy = json.loads(json.dumps(truthful))
+    legacy["owner"] = "in_memory_ExternalQuackOwner"
+    with pytest.raises(AssertionError):
+        _validate_current_receipt(legacy)
 
 
 def test_handoff_plan_frontier_owner_recovery_remains_nonterminal(
