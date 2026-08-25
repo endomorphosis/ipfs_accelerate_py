@@ -140,6 +140,46 @@ def _vrif_task(**changes: object) -> PortalTask:
     return replace(task, **changes)
 
 
+def test_vrif_owner_gate_reserves_provider_free_empty_candidate(
+    tmp_path: Path,
+) -> None:
+    daemon = PortalImplementationDaemon(
+        todo_path=ROOT
+        / "docs/architecture/agent_supervisor_residual_intelligence.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=ROOT,
+        implement=True,
+    )
+
+    reserved = daemon._evaluate_pre_implementation_provider_gate(
+        task=_vrif_task(),
+        attempt=1,
+        worktree_path=ROOT,
+    )
+    ordinary = daemon._evaluate_pre_implementation_provider_gate(
+        task=_vrif_task(
+            task_id="VRIF-999",
+            outputs=["ordinary.txt"],
+            validation=["python3 -m py_compile ordinary.py"],
+            canonical_task_cid="baguqeera-ordinary-fixture",
+        ),
+        attempt=1,
+        worktree_path=ROOT,
+    )
+
+    assert reserved["disposition"] == "abstain_review"
+    assert reserved["reason_code"] == "no_analytical_close"
+    assert reserved["skip_provider"] is True
+    assert reserved["provider_authorized"] is False
+    assert reserved["owner_recovery_reserved"] is True
+    assert ordinary["reason_code"] == "no_analytical_close_provider_dispatched"
+    assert ordinary["skip_provider"] is False
+    assert ordinary["provider_authorized"] is True
+    assert ordinary["owner_recovery_reserved"] is False
+
+
 def _vrif_exact_empty_patch_result(baseline: str) -> dict[str, object]:
     proposal_id = "1" * 64
     policy_id = "2" * 64

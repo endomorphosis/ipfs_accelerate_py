@@ -20568,6 +20568,13 @@ class PortalImplementationDaemon:
         provider_authorized = decision.provider_authorized
         disposition = decision.disposition.value
         reason_code = decision.reason_code
+        owner_recovery_reserved = bool(
+            str(getattr(task, "task_id", "") or "")
+            == VRIF_BENCHMARK_RECOVERY_TASK_ID
+            and skip_provider
+            and disposition == "abstain_review"
+            and reason_code == "no_analytical_close"
+        )
         # Implementation-authorized auto tasks with no unique analytical close
         # still need the reviewed Grok/Codex route.  The kernel remains honest
         # about abstaining; this board cannot mint residual authority receipts
@@ -20577,6 +20584,7 @@ class PortalImplementationDaemon:
             and reason_code == "no_analytical_close"
             and bool(getattr(self, "implement", True))
             and self._lgswf_writer_path(getattr(task, "task_id", "")) is None
+            and not owner_recovery_reserved
         ):
             skip_provider = False
             provider_authorized = True
@@ -20589,6 +20597,7 @@ class PortalImplementationDaemon:
             "receipt_cid": decision.receipt_cid,
             "residual_packet_cid": decision.residual_packet_cid,
             "provider_hook_count": decision.provider_hook_count,
+            "owner_recovery_reserved": owner_recovery_reserved,
             "event": decision.to_event_payload(
                 task_id=task.task_id,
                 attempt=int(attempt),
@@ -35053,6 +35062,29 @@ class PortalImplementationDaemon:
                         if disposition == "closed_deterministic":
                             # Analytical / doctor path closed the claim —
                             # do not invoke the model provider.
+                            completed = subprocess.CompletedProcess(
+                                args=(),
+                                returncode=0,
+                            )
+                        elif (
+                            provider_gate.get("owner_recovery_reserved") is True
+                            and str(task.task_id or "")
+                            == VRIF_BENCHMARK_RECOVERY_TASK_ID
+                            and disposition == "abstain_review"
+                            and reason_code == "no_analytical_close"
+                        ):
+                            # VRIF-030 has a sealed owner materializer and an
+                            # exact three-output commit contract.  Preserve the
+                            # reviewed empty candidate so the terminal owner
+                            # recovery path can reconstruct, validate, and
+                            # commit all three outputs without a provider
+                            # producing a valid-but-uncommittable subset.
+                            log_fh.write(
+                                "VRIFBenchmarkOwnerRecovery: "
+                                "reserved_empty_candidate=true "
+                                "provider_call_allowed=false\n"
+                            )
+                            log_fh.flush()
                             completed = subprocess.CompletedProcess(
                                 args=(),
                                 returncode=0,
