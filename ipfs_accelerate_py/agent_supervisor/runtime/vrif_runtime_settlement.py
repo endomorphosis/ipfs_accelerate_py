@@ -98,6 +98,7 @@ _PID_MAX_BYTES = 32
 _PID_PAYLOAD = re.compile(rb"[1-9][0-9]*\n")
 _PROCESS_INSTANCE = re.compile(r"process:[0-9a-f]{24}")
 _SHA256_CID = re.compile(r"sha256:[0-9a-f]{64}")
+_CONTROL_CONTENT_CID = re.compile(r"b[a-z2-7]{20,}")
 
 _EXPECTED_LANES: Final[tuple[dict[str, Any], ...]] = (
     {
@@ -212,7 +213,85 @@ _LEASE_EVENT_TYPES: Final[tuple[str, ...]] = (
     "task_claimed",
     "task_completion_prepared",
     "task_completion_promoted",
+    _coordination.CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
     _coordination.TASK_COMPLETION_REARM_EVENT,
+)
+_TASK_COMPLETION_REARM_EVENT_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "task_cid",
+        "claim_id",
+        "attempt_id",
+        "prior_attempt_number",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "previous_control_revision",
+        "previous_control_status",
+        "control_revision",
+        "control_status",
+        "control_cas_receipt_cid",
+        "control_cas_receipt_digest",
+        "completion_digest",
+        "ready",
+    }
+)
+_CONTROL_READY_FRONTIER_RECONCILIATION_EVENT_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "schema",
+            "task_cid",
+            "task_alias",
+            "control_task_status",
+            "control_task_revision",
+            "control_snapshot_revision",
+            "control_inventory_task_count",
+            "control_inventory_projection_digest",
+            "ready_frontier_task_count",
+            "ready_frontier_projection_digest",
+            "control_observation_digest",
+            "direction",
+            "ready_before",
+            "ready_after",
+            "task_completion_count",
+            "task_claim_count",
+            "task_attempt_count",
+            "task_history_preserved",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "receipt_cid",
+        }
+    )
+)
+_CONTROL_READY_FRONTIER_RECONCILIATION_LEASE_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "schema",
+            "task_cid",
+            "task_alias",
+            "control_snapshot_revision",
+            "control_inventory_projection_digest",
+            "ready_frontier_projection_digest",
+            "control_observation_digest",
+            "ready_after",
+        }
+    )
+)
+_CONTROL_READY_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"}
+)
+_CONTROL_TERMINAL_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "completed",
+        "complete",
+        "done",
+        "skipped",
+        "cancelled",
+        "failed",
+        "quarantined",
+        "rejected",
+    }
 )
 _MERGE_QUEUE_STATES: Final[tuple[str, ...]] = (
     "pending",
@@ -1166,6 +1245,604 @@ def _logical_owner_id(
     return f"embedded-store:{hashlib.sha256(payload).hexdigest()[:32]}"
 
 
+def _exact_nonempty_text(value: Any) -> bool:
+    return (
+        type(value) is str
+        and bool(value)
+        and value == value.strip()
+        and "\x00" not in value
+    )
+
+
+def _control_receipt_cid(value: Any) -> bool:
+    return bool(
+        type(value) is str
+        and (
+            _SHA256_CID.fullmatch(value) is not None
+            or _CONTROL_CONTENT_CID.fullmatch(value) is not None
+        )
+    )
+
+
+def _coordination_records_by_id(
+    connection: Any,
+    *,
+    table: str,
+    columns: tuple[str, ...],
+) -> dict[str, dict[str, Any]]:
+    rows = connection.execute(
+        f"SELECT {', '.join(columns)} FROM {table} ORDER BY {columns[0]}"
+    ).fetchall()
+    return {
+        str(row[0] or ""): dict(zip(columns, row, strict=True))
+        for row in rows
+    }
+
+
+def _validate_task_completion_rearm_events(
+    connection: Any,
+    *,
+    json_rows: Mapping[str, Mapping[str, Mapping[str, Any]]],
+) -> None:
+    """Validate typed completion-rearm history, not only its event name."""
+
+    events = connection.execute(
+        """
+        SELECT event_id, lease_id, scope_key, fencing_token, fence_epoch
+        FROM lease_events
+        WHERE event_type = ?
+        ORDER BY event_id
+        LIMIT ?
+        """,
+        [
+            _coordination.TASK_COMPLETION_REARM_EVENT,
+            _HISTORY_ROW_BOUND + 1,
+        ],
+    ).fetchall()
+    if len(events) > _HISTORY_ROW_BOUND:
+        raise VRIFRuntimeSettlementError(
+            "coordination task-completion rearm history exceeds its bound"
+        )
+    if not events:
+        return
+
+    leases = _coordination_records_by_id(
+        connection,
+        table="fenced_leases",
+        columns=(
+            "lease_id",
+            "lease_kind",
+            "scope_key",
+            "scope",
+            "mode",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "state",
+            "task_cid",
+            "claim_id",
+            "attempt_id",
+            "attempt_number",
+        ),
+    )
+    claims = _coordination_records_by_id(
+        connection,
+        table="task_claims",
+        columns=(
+            "claim_id",
+            "task_cid",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "state",
+            "attempt_id",
+            "attempt_number",
+            "lease_id",
+        ),
+    )
+    attempts = _coordination_records_by_id(
+        connection,
+        table="task_attempts",
+        columns=(
+            "attempt_id",
+            "task_cid",
+            "attempt_number",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "status",
+        ),
+    )
+    task_cids = {
+        str(row[0] or "")
+        for row in connection.execute(
+            "SELECT task_cid FROM coordination_tasks ORDER BY task_cid"
+        ).fetchall()
+    }
+    seen_control_revisions: set[tuple[str, int]] = set()
+    for event_id_raw, event_lease_id_raw, scope_key_raw, token_raw, epoch_raw in events:
+        event_id = str(event_id_raw or "")
+        event_lease_id = str(event_lease_id_raw or "")
+        body = json_rows["lease_events"].get(event_id)
+        if body is None or set(body) != _TASK_COMPLETION_REARM_EVENT_FIELDS:
+            raise VRIFRuntimeSettlementError(
+                "coordination task-completion rearm event body differs"
+            )
+        task_cid = body.get("task_cid")
+        claim_id = body.get("claim_id")
+        attempt_id = body.get("attempt_id")
+        lease_id = body.get("lease_id")
+        prior_attempt_number = body.get("prior_attempt_number")
+        token = body.get("fencing_token")
+        epoch = body.get("fence_epoch")
+        previous_revision = body.get("previous_control_revision")
+        control_revision = body.get("control_revision")
+        text_fields = (
+            task_cid,
+            claim_id,
+            attempt_id,
+            lease_id,
+            body.get("previous_control_status"),
+            body.get("control_status"),
+        )
+        integer_fields = (
+            prior_attempt_number,
+            token,
+            epoch,
+            previous_revision,
+            control_revision,
+        )
+        if (
+            body.get("schema") != _coordination.TASK_COMPLETION_REARM_SCHEMA
+            or any(not _exact_nonempty_text(value) for value in text_fields)
+            or any(type(value) is not int or value <= 0 for value in integer_fields)
+            or body.get("previous_control_status")
+            not in {"completed", "complete", "done"}
+            or body.get("control_status") != "retrying"
+            or control_revision != previous_revision + 1
+            or not _control_receipt_cid(body.get("control_cas_receipt_cid"))
+            or type(body.get("control_cas_receipt_digest")) is not str
+            or _SHA256_CID.fullmatch(body["control_cas_receipt_digest"]) is None
+            or type(body.get("completion_digest")) is not str
+            or _SHA256_CID.fullmatch(body["completion_digest"]) is None
+            or type(body.get("ready")) is not bool
+            or task_cid not in task_cids
+        ):
+            raise VRIFRuntimeSettlementError(
+                "coordination task-completion rearm event is malformed"
+            )
+        revision_identity = (task_cid, control_revision)
+        if revision_identity in seen_control_revisions:
+            raise VRIFRuntimeSettlementError(
+                "coordination task-completion rearm revision is duplicated"
+            )
+        seen_control_revisions.add(revision_identity)
+
+        expected_scope_key = _coordination.exclusive_scope_key(
+            lease_kind=_coordination.LeaseKind.TASK,
+            scope=task_cid,
+            task_cid=task_cid,
+        )
+        lease = leases.get(event_lease_id)
+        claim = claims.get(claim_id)
+        attempt = attempts.get(attempt_id)
+        terminal_state = lease.get("state") if lease is not None else ""
+        expected_claim_state = (
+            terminal_state if terminal_state in {"released", "completed"} else ""
+        )
+        if (
+            event_lease_id != lease_id
+            or str(scope_key_raw or "") != expected_scope_key
+            or type(token_raw) is not int
+            or type(epoch_raw) is not int
+            or token_raw != token
+            or epoch_raw != epoch
+            or lease is None
+            or lease.get("lease_kind") != "task"
+            or lease.get("scope_key") != expected_scope_key
+            or lease.get("scope") != task_cid
+            or lease.get("mode") != "exclusive"
+            or terminal_state not in {"released", "completed"}
+            or lease.get("task_cid") != task_cid
+            or lease.get("claim_id") != claim_id
+            or lease.get("attempt_id") != attempt_id
+            or lease.get("attempt_number") != prior_attempt_number
+            or lease.get("fencing_token") != token
+            or lease.get("fence_epoch") != epoch
+            or claim is None
+            or claim.get("task_cid") != task_cid
+            or claim.get("owner_session_id") != lease.get("owner_session_id")
+            or claim.get("fencing_token") != token
+            or claim.get("fence_epoch") != epoch
+            or claim.get("state") != expected_claim_state
+            or claim.get("attempt_id") != attempt_id
+            or claim.get("attempt_number") != prior_attempt_number
+            or claim.get("lease_id") != lease_id
+            or attempt is None
+            or attempt.get("task_cid") != task_cid
+            or attempt.get("attempt_number") != prior_attempt_number
+            or attempt.get("owner_session_id") != lease.get("owner_session_id")
+            or attempt.get("fencing_token") != token
+            or attempt.get("fence_epoch") != epoch
+            or attempt.get("status") != "succeeded"
+        ):
+            raise VRIFRuntimeSettlementError(
+                "coordination task-completion rearm event is fence-unbound"
+            )
+
+
+def _validate_control_ready_frontier_reconciliation_events(
+    connection: Any,
+    *,
+    json_rows: Mapping[str, Mapping[str, Mapping[str, Any]]],
+) -> None:
+    """Validate exact bidirectional control-frontier synchronization receipts."""
+
+    event_columns = (
+        "event_id",
+        "lease_id",
+        "scope_key",
+        "event_type",
+        "fencing_token",
+        "fence_epoch",
+        "observed_at_ms",
+    )
+    all_events = connection.execute(
+        f"SELECT {', '.join(event_columns)} FROM lease_events ORDER BY event_id"
+    ).fetchall()
+    event_records = [dict(zip(event_columns, row, strict=True)) for row in all_events]
+    events = [
+        event
+        for event in event_records
+        if event["event_type"]
+        == _coordination.CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+    ]
+    if not events:
+        return
+
+    leases = _coordination_records_by_id(
+        connection,
+        table="fenced_leases",
+        columns=(
+            "lease_id",
+            "lease_kind",
+            "scope_key",
+            "scope",
+            "mode",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "acquired_at_ms",
+            "expires_at_ms",
+            "state",
+            "revision",
+            "task_cid",
+            "worktree_id",
+            "resource_kind",
+            "resource_id",
+            "repository_id",
+            "path",
+            "claim_id",
+            "attempt_id",
+            "attempt_number",
+            "idempotency_key",
+        ),
+    )
+    maintenance = _coordination_records_by_id(
+        connection,
+        table="maintenance_leases",
+        columns=(
+            "lease_id",
+            "scope",
+            "owner_session_id",
+            "process_birth_id",
+            "fencing_token",
+            "fence_epoch",
+            "acquired_at_ms",
+            "expires_at_ms",
+            "released_at_ms",
+            "state",
+            "revision",
+        ),
+    )
+    tasks = _coordination_records_by_id(
+        connection,
+        table="coordination_tasks",
+        columns=("task_cid", "task_id"),
+    )
+    current_completion_counts = {
+        str(task_cid or ""): int(count or 0)
+        for task_cid, count in connection.execute(
+            "SELECT task_cid, count(*) FROM task_completions GROUP BY task_cid"
+        ).fetchall()
+    }
+    current_claim_counts = {
+        str(task_cid or ""): int(count or 0)
+        for task_cid, count in connection.execute(
+            "SELECT task_cid, count(*) FROM task_claims GROUP BY task_cid"
+        ).fetchall()
+    }
+    current_attempt_counts = {
+        str(task_cid or ""): int(count or 0)
+        for task_cid, count in connection.execute(
+            "SELECT task_cid, count(*) FROM task_attempts GROUP BY task_cid"
+        ).fetchall()
+    }
+    events_by_lease: dict[str, list[dict[str, Any]]] = {}
+    for event in event_records:
+        events_by_lease.setdefault(str(event["lease_id"] or ""), []).append(event)
+
+    seen_observations: set[tuple[str, str]] = set()
+    seen_receipts: set[str] = set()
+    for event in events:
+        event_id = str(event["event_id"] or "")
+        event_lease_id = str(event["lease_id"] or "")
+        body = json_rows["lease_events"].get(event_id)
+        if (
+            body is None
+            or set(body)
+            != _CONTROL_READY_FRONTIER_RECONCILIATION_EVENT_FIELDS
+        ):
+            raise VRIFRuntimeSettlementError(
+                "coordination control-ready-frontier event body differs"
+            )
+        task_cid = body.get("task_cid")
+        task_alias = body.get("task_alias")
+        task_status = body.get("control_task_status")
+        direction = body.get("direction")
+        lease_id = body.get("lease_id")
+        snapshot_revision = body.get("control_snapshot_revision")
+        inventory_count = body.get("control_inventory_task_count")
+        ready_count = body.get("ready_frontier_task_count")
+        completion_count = body.get("task_completion_count")
+        claim_count = body.get("task_claim_count")
+        attempt_count = body.get("task_attempt_count")
+        token = body.get("fencing_token")
+        epoch = body.get("fence_epoch")
+        control_task_revision = body.get("control_task_revision")
+        nonnegative_integers = (
+            inventory_count,
+            ready_count,
+            completion_count,
+            claim_count,
+            attempt_count,
+        )
+        positive_integers = (
+            snapshot_revision,
+            token,
+            epoch,
+            control_task_revision,
+        )
+        digest_fields = (
+            body.get("control_inventory_projection_digest"),
+            body.get("ready_frontier_projection_digest"),
+            body.get("control_observation_digest"),
+            body.get("receipt_cid"),
+        )
+        direction_valid = (
+            direction == "demote"
+            and body.get("ready_before") is True
+            and body.get("ready_after") is False
+            and task_status in _CONTROL_TERMINAL_TASK_STATUSES
+            and ready_count < inventory_count
+        ) or (
+            direction == "promote"
+            and body.get("ready_before") is False
+            and body.get("ready_after") is True
+            and task_status in _CONTROL_READY_TASK_STATUSES
+            and completion_count == 0
+            and ready_count > 0
+        )
+        if (
+            body.get("schema")
+            != _coordination.CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA
+            or any(
+                not _exact_nonempty_text(value)
+                for value in (task_cid, task_alias, task_status, direction, lease_id)
+            )
+            or any(
+                type(value) is not int or value < 0
+                for value in nonnegative_integers
+            )
+            or any(type(value) is not int or value <= 0 for value in positive_integers)
+            or inventory_count < 1
+            or inventory_count > 1_000
+            or ready_count > inventory_count
+            or completion_count > 1
+            or claim_count != attempt_count
+            or body.get("task_history_preserved") is not True
+            or not direction_valid
+            or any(
+                type(value) is not str or _SHA256_CID.fullmatch(value) is None
+                for value in digest_fields
+            )
+            or task_cid not in tasks
+            or tasks[task_cid].get("task_id") != task_alias
+            or claim_count > current_claim_counts.get(task_cid, 0)
+            or attempt_count > current_attempt_counts.get(task_cid, 0)
+            or (
+                completion_count > current_completion_counts.get(task_cid, 0)
+                and not any(
+                    other.get("event_type")
+                    == _coordination.TASK_COMPLETION_REARM_EVENT
+                    and (
+                        rearm_body := json_rows["lease_events"].get(
+                            str(other.get("event_id") or ""), {}
+                        )
+                    ).get("task_cid")
+                    == task_cid
+                    and type(rearm_body.get("previous_control_revision")) is int
+                    and rearm_body["previous_control_revision"]
+                    >= control_task_revision
+                    for other in event_records
+                )
+            )
+        ):
+            raise VRIFRuntimeSettlementError(
+                "coordination control-ready-frontier event is malformed"
+            )
+
+        expected_observation_digest = _content_id(
+            {
+                "task_cid": task_cid,
+                "control_snapshot_revision": snapshot_revision,
+                "control_inventory_projection_digest": body[
+                    "control_inventory_projection_digest"
+                ],
+                "ready_frontier_projection_digest": body[
+                    "ready_frontier_projection_digest"
+                ],
+            }
+        )
+        receipt_payload = dict(body)
+        stored_receipt = str(receipt_payload.pop("receipt_cid"))
+        if (
+            body["control_observation_digest"] != expected_observation_digest
+            or stored_receipt != _content_id(receipt_payload)
+        ):
+            raise VRIFRuntimeSettlementError(
+                "coordination control-ready-frontier event digest differs"
+            )
+        observation_identity = (task_cid, expected_observation_digest)
+        if observation_identity in seen_observations or stored_receipt in seen_receipts:
+            raise VRIFRuntimeSettlementError(
+                "coordination control-ready-frontier receipt is duplicated"
+            )
+        seen_observations.add(observation_identity)
+        seen_receipts.add(stored_receipt)
+
+        maintenance_scope = f"control-ready-frontier:{task_cid}"
+        expected_scope_key = _coordination.exclusive_scope_key(
+            lease_kind=_coordination.LeaseKind.MAINTENANCE,
+            scope=maintenance_scope,
+        )
+        expected_lease_body = {
+            "schema": _coordination.CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
+            "task_cid": task_cid,
+            "task_alias": task_alias,
+            "control_snapshot_revision": snapshot_revision,
+            "control_inventory_projection_digest": body[
+                "control_inventory_projection_digest"
+            ],
+            "ready_frontier_projection_digest": body[
+                "ready_frontier_projection_digest"
+            ],
+            "control_observation_digest": body["control_observation_digest"],
+            "ready_after": body["ready_after"],
+        }
+        lease = leases.get(event_lease_id)
+        maintenance_lease = maintenance.get(event_lease_id)
+        lease_body = json_rows["fenced_leases"].get(event_lease_id)
+        maintenance_body = json_rows["maintenance_leases"].get(event_lease_id)
+        if (
+            event_lease_id != lease_id
+            or event.get("scope_key") != expected_scope_key
+            or event.get("fencing_token") != token
+            or event.get("fence_epoch") != epoch
+            or lease is None
+            or lease.get("lease_kind") != "maintenance"
+            or lease.get("scope_key") != expected_scope_key
+            or lease.get("scope") != maintenance_scope
+            or lease.get("mode") != "exclusive"
+            or not _exact_nonempty_text(lease.get("owner_session_id"))
+            or lease.get("fencing_token") != token
+            or lease.get("fence_epoch") != epoch
+            or lease.get("state") != "released"
+            or lease.get("revision") != 2
+            or lease.get("task_cid") != ""
+            or lease.get("worktree_id") != ""
+            or lease.get("resource_kind") != ""
+            or lease.get("resource_id") != ""
+            or lease.get("repository_id") != ""
+            or lease.get("path") != ""
+            or lease.get("claim_id") != ""
+            or lease.get("attempt_id") != ""
+            or lease.get("attempt_number") != 0
+            or lease.get("idempotency_key")
+            != f"control-ready-frontier:{body['control_observation_digest']}"
+            or lease_body != expected_lease_body
+            or set(lease_body or {})
+            != _CONTROL_READY_FRONTIER_RECONCILIATION_LEASE_FIELDS
+            or maintenance_lease is None
+            or maintenance_lease.get("scope") != maintenance_scope
+            or maintenance_lease.get("owner_session_id")
+            != lease.get("owner_session_id")
+            or maintenance_lease.get("process_birth_id") != ""
+            or maintenance_lease.get("fencing_token") != token
+            or maintenance_lease.get("fence_epoch") != epoch
+            or maintenance_lease.get("acquired_at_ms")
+            != lease.get("acquired_at_ms")
+            or maintenance_lease.get("acquired_at_ms")
+            != event.get("observed_at_ms")
+            or maintenance_lease.get("expires_at_ms") != lease.get("expires_at_ms")
+            or maintenance_lease.get("released_at_ms") is None
+            or maintenance_lease.get("released_at_ms")
+            != event.get("observed_at_ms")
+            or maintenance_lease.get("state") != "released"
+            or maintenance_lease.get("revision") != 2
+            or maintenance_body != expected_lease_body
+            or set(maintenance_body or {})
+            != _CONTROL_READY_FRONTIER_RECONCILIATION_LEASE_FIELDS
+        ):
+            raise VRIFRuntimeSettlementError(
+                "coordination control-ready-frontier event is maintenance-unbound"
+            )
+
+        related_events = events_by_lease.get(event_lease_id, [])
+        related_types = [str(item.get("event_type") or "") for item in related_events]
+        acquired = [item for item in related_events if item.get("event_type") == "acquired"]
+        released = [item for item in related_events if item.get("event_type") == "released"]
+        reconciled = [
+            item
+            for item in related_events
+            if item.get("event_type")
+            == _coordination.CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+        ]
+        acquired_body = (
+            json_rows["lease_events"].get(str(acquired[0]["event_id"] or ""))
+            if len(acquired) == 1
+            else None
+        )
+        released_body = (
+            json_rows["lease_events"].get(str(released[0]["event_id"] or ""))
+            if len(released) == 1
+            else None
+        )
+        if (
+            sorted(related_types)
+            != sorted(
+                [
+                    "acquired",
+                    _coordination.CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
+                    "released",
+                ]
+            )
+            or len(acquired) != 1
+            or len(released) != 1
+            or len(reconciled) != 1
+            or acquired_body
+            != {
+                "owner_session_id": lease["owner_session_id"],
+                "mode": "exclusive",
+            }
+            or released_body
+            != {
+                "reason": _coordination.CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+            }
+            or acquired[0].get("scope_key") != expected_scope_key
+            or released[0].get("scope_key") != expected_scope_key
+            or acquired[0].get("fencing_token") != token
+            or released[0].get("fencing_token") != token
+            or acquired[0].get("fence_epoch") != epoch
+            or released[0].get("fence_epoch") != epoch
+            or acquired[0].get("observed_at_ms") != event.get("observed_at_ms")
+            or released[0].get("observed_at_ms") != event.get("observed_at_ms")
+        ):
+            raise VRIFRuntimeSettlementError(
+                "coordination control-ready-frontier event lineage differs"
+            )
+
+
 def _read_coordination_snapshot(
     database_path: Path,
     *,
@@ -1639,6 +2316,15 @@ def _read_coordination_snapshot(
             raise VRIFRuntimeSettlementError(
                 "coordination authority state or terminal markers disagree"
             )
+
+        _validate_task_completion_rearm_events(
+            connection,
+            json_rows=json_rows,
+        )
+        _validate_control_ready_frontier_reconciliation_events(
+            connection,
+            json_rows=json_rows,
+        )
 
         barrier_rows = connection.execute(
             """

@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
+    CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
     COORDINATION_HISTORY_PROJECTION_SCHEMA,
     COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     DATABASE_COORDINATOR_INTERFACE,
@@ -163,6 +165,43 @@ def _control_rearm_observation(
         "event_cursor": 9,
         "changed": True,
         "receipt_cid": "cid:control-rearm",
+    }
+
+
+def _control_task_projection(
+    *,
+    task_cid: str,
+    task_alias: str,
+    status: str,
+    revision: int,
+) -> dict[str, object]:
+    return {
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "goal_cid": "goal:control",
+        "plan_cid": "plan:control",
+        "objective_id": "objective:control",
+        "ordinal": 1,
+        "status": status,
+        "revision": revision,
+        "priority": "P0",
+        "body": {"authority": "canonical-control"},
+        "dependencies": [],
+        "outputs": [],
+        "acceptance": [],
+        "validations": [],
+    }
+
+
+def _control_ready_frontier(
+    *tasks: dict[str, object],
+    revision: int = 50,
+) -> dict[str, object]:
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-task-page@1",
+        "tasks": list(tasks),
+        "revision": revision,
+        "next_cursor": "",
     }
 
 
@@ -1766,6 +1805,382 @@ def test_control_rearm_removes_exact_completion_and_is_replay_safe(
         )
         assert replacement.attempt_number == first_claim.attempt_number + 1
         assert replacement.fencing_token > first_claim.fencing_token
+    finally:
+        coordinator.close()
+
+
+def test_control_ready_frontier_reconciliation_demotes_with_art_safe_replay(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    coordinator.register_task(
+        task_cid="task:frontier-stale",
+        task_id="FRONTIER-STALE",
+        body={"preserve": "exactly"},
+    )
+    raw_connection = coordinator._require()  # noqa: SLF001
+
+    class RejectCoordinationTaskUpdate:
+        def __init__(self, raw: object) -> None:
+            self.raw = raw
+
+        @property
+        def in_transaction(self) -> bool:
+            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
+
+        def execute(
+            self,
+            statement: str,
+            parameters: object | None = None,
+        ) -> object:
+            normalized = " ".join(str(statement).upper().split())
+            if normalized.startswith("UPDATE COORDINATION_TASKS"):
+                raise AssertionError(
+                    "ready-frontier reconciliation must rebuild the ART table"
+                )
+            if parameters is None:
+                return self.raw.execute(statement)  # type: ignore[attr-defined]
+            return self.raw.execute(  # type: ignore[attr-defined]
+                statement,
+                parameters,
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.raw, name)
+
+    coordinator._connection = RejectCoordinationTaskUpdate(  # noqa: SLF001
+        raw_connection
+    )
+    terminal = _control_task_projection(
+        task_cid="task:frontier-stale",
+        task_alias="FRONTIER-STALE",
+        status="completed",
+        revision=14,
+    )
+    inventory = _control_ready_frontier(terminal, revision=77)
+    frontier = _control_ready_frontier(revision=77)
+    try:
+        reconciled = coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-stale",
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-reconciler",
+        )
+        assert reconciled == {
+            "schema": CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
+            "task_cid": "task:frontier-stale",
+            "task_alias": "FRONTIER-STALE",
+            "control_task_status": "completed",
+            "control_task_revision": 14,
+            "control_snapshot_revision": 77,
+            "direction": "demote",
+            "ready_before": True,
+            "ready_after": False,
+            "changed": True,
+            "receipt_cid": reconciled["receipt_cid"],
+            "replayed": False,
+        }
+        assert str(reconciled["receipt_cid"]).startswith("sha256:")
+        projection = coordinator.coordination_registry_projection()
+        assert projection["tasks"] == [
+            {
+                "task_cid": "task:frontier-stale",
+                "task_id": "FRONTIER-STALE",
+                "worktree_id": "",
+                "ready": False,
+                "body": {"preserve": "exactly"},
+            }
+        ]
+        events = coordinator.lease_events(limit=20)
+        reconciliation_events = [
+            event
+            for event in events
+            if event["event_type"]
+            == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+        ]
+        assert len(reconciliation_events) == 1
+        assert reconciliation_events[0]["body"]["receipt_cid"] == reconciled[
+            "receipt_cid"
+        ]
+        assert {
+            event["event_type"] for event in events
+        } == {
+            "acquired",
+            "released",
+            CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
+        }
+
+        replay = coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-stale",
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-reconciler",
+        )
+        assert replay == {**reconciled, "replayed": True}
+        assert len(
+            [
+                event
+                for event in coordinator.lease_events(limit=20)
+                if event["event_type"]
+                == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+            ]
+        ) == 1
+
+        reopened = {
+            **terminal,
+            "status": "retrying",
+            "revision": 15,
+        }
+        reopened_inventory = _control_ready_frontier(reopened, revision=78)
+        reopened_frontier = _control_ready_frontier(reopened, revision=78)
+        promoted = coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-stale",
+            control_task_inventory_observation=reopened_inventory,
+            control_ready_frontier_observation=reopened_frontier,
+            owner_session_id="session:frontier-reconciler",
+        )
+        assert promoted["direction"] == "promote"
+        assert promoted["ready_before"] is False
+        assert promoted["ready_after"] is True
+        assert promoted["changed"] is True
+        assert coordinator.claimability("task:frontier-stale")["claimable"] is True
+    finally:
+        coordinator.close()
+
+
+@pytest.mark.parametrize(
+    "tampered_projection",
+    ("fenced_lease_body", "maintenance_process_birth"),
+)
+def test_control_ready_frontier_replay_rejects_tampered_maintenance_projection(
+    tmp_path: Path,
+    tampered_projection: str,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        task_cid = "task:frontier-tampered-replay"
+        task_alias = "FRONTIER-TAMPERED-REPLAY"
+        coordinator.register_task(task_cid=task_cid, task_id=task_alias)
+        terminal = _control_task_projection(
+            task_cid=task_cid,
+            task_alias=task_alias,
+            status="completed",
+            revision=14,
+        )
+        inventory = _control_ready_frontier(terminal, revision=77)
+        frontier = _control_ready_frontier(revision=77)
+        reconciled = coordinator.reconcile_task_from_control_ready_frontier(
+            task_cid,
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-tampered-replay",
+        )
+        event = next(
+            item
+            for item in coordinator.lease_events(limit=20)
+            if item["event_type"]
+            == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+        )
+        lease_id = str(event["lease_id"])
+        connection = coordinator._require()  # noqa: SLF001
+        if tampered_projection == "fenced_lease_body":
+            connection.execute(
+                "UPDATE fenced_leases SET body_json = ? WHERE lease_id = ?",
+                [json.dumps({"tampered": True}), lease_id],
+            )
+        else:
+            connection.execute(
+                "UPDATE maintenance_leases SET process_birth_id = ? "
+                "WHERE lease_id = ?",
+                ["birth:forged", lease_id],
+            )
+
+        with pytest.raises(
+            DatabaseCoordinationStaleFenceError,
+            match="durable receipt: maintenance_lease",
+        ):
+            coordinator.reconcile_task_from_control_ready_frontier(
+                task_cid,
+                control_task_inventory_observation=inventory,
+                control_ready_frontier_observation=frontier,
+                owner_session_id="session:frontier-tampered-replay",
+            )
+        ready_row = connection.execute(
+            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone()
+        assert ready_row is not None and bool(ready_row[0]) is False
+        assert reconciled["ready_after"] is False
+    finally:
+        coordinator.close()
+
+
+def test_control_ready_frontier_reconciliation_preserves_promoted_history(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:frontier-completed",
+            task_id="FRONTIER-COMPLETED",
+        )
+        _settled_control_completion(coordinator, "task:frontier-completed")
+        connection = coordinator._require()  # noqa: SLF001
+
+        def task_history() -> tuple[list[object], list[object], list[object]]:
+            return (
+                list(
+                    connection.execute(
+                        "SELECT * FROM task_completions WHERE task_cid = ?",
+                        ["task:frontier-completed"],
+                    ).fetchall()
+                ),
+                list(
+                    connection.execute(
+                        "SELECT * FROM task_claims WHERE task_cid = ?",
+                        ["task:frontier-completed"],
+                    ).fetchall()
+                ),
+                list(
+                    connection.execute(
+                        "SELECT * FROM task_attempts WHERE task_cid = ?",
+                        ["task:frontier-completed"],
+                    ).fetchall()
+                ),
+            )
+
+        before = task_history()
+        reopened = _control_task_projection(
+            task_cid="task:frontier-completed",
+            task_alias="FRONTIER-COMPLETED",
+            status="retrying",
+            revision=14,
+        )
+        inventory = _control_ready_frontier(reopened, revision=81)
+        frontier = _control_ready_frontier(reopened, revision=81)
+        receipt = coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-completed",
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-history",
+        )
+        assert receipt["changed"] is False
+        assert receipt["direction"] == ""
+        assert receipt["ready_before"] is False
+        assert receipt["ready_after"] is False
+        assert receipt["receipt_cid"] == ""
+        assert task_history() == before
+        assert coordinator.claimability("task:frontier-completed")[
+            "completion_status"
+        ] == AttemptStatus.SUCCEEDED.value
+        assert coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-completed",
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-history",
+        ) == receipt
+        assert task_history() == before
+        assert all(
+            event["event_type"] != CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+            for event in coordinator.lease_events(limit=100)
+        )
+    finally:
+        coordinator.close()
+
+
+def test_control_ready_frontier_reconciliation_fails_closed(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:frontier-closed",
+            task_id="FRONTIER-CLOSED",
+        )
+        terminal = _control_task_projection(
+            task_cid="task:frontier-closed",
+            task_alias="FRONTIER-CLOSED",
+            status="completed",
+            revision=4,
+        )
+        ready_version = {
+            **terminal,
+            "status": "retrying",
+        }
+        invalid_pairs = [
+            (
+                _control_ready_frontier(
+                    {**terminal, "task_alias": "WRONG"}, revision=50
+                ),
+                _control_ready_frontier(revision=50),
+            ),
+            (
+                _control_ready_frontier(
+                    {**terminal, "revision": "4"}, revision=50
+                ),
+                _control_ready_frontier(revision=50),
+            ),
+            (
+                _control_ready_frontier(terminal, revision=50),
+                _control_ready_frontier(ready_version, revision=50),
+            ),
+            (
+                _control_ready_frontier(terminal, revision=50),
+                _control_ready_frontier(
+                    _control_task_projection(
+                        task_cid="task:frontier-not-in-inventory",
+                        task_alias="FRONTIER-NOT-IN-INVENTORY",
+                        status="retrying",
+                        revision=4,
+                    ),
+                    revision=50,
+                ),
+            ),
+            (
+                _control_ready_frontier(terminal, revision=50),
+                _control_ready_frontier(revision=51),
+            ),
+            (
+                _control_ready_frontier(terminal, revision=50),
+                {
+                    **_control_ready_frontier(revision=50),
+                    "next_cursor": "cursor:not-complete",
+                },
+            ),
+        ]
+        for inventory_observation, frontier_observation in invalid_pairs:
+            with pytest.raises(
+                (DatabaseCoordinationError, DatabaseCoordinationNotReadyError)
+            ):
+                coordinator.reconcile_task_from_control_ready_frontier(
+                    "task:frontier-closed",
+                    control_task_inventory_observation=inventory_observation,
+                    control_ready_frontier_observation=frontier_observation,
+                    owner_session_id="session:frontier-closed",
+                )
+            assert coordinator.claimability("task:frontier-closed")[
+                "claimable"
+            ] is True
+
+        claim = coordinator.claim_task(
+            task_cid="task:frontier-closed",
+            owner_session_id="session:active-frontier",
+        )
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="requires a quiescent sidecar",
+        ):
+            coordinator.reconcile_task_from_control_ready_frontier(
+                "task:frontier-closed",
+                control_task_inventory_observation=_control_ready_frontier(
+                    terminal, revision=50
+                ),
+                control_ready_frontier_observation=_control_ready_frontier(
+                    revision=50
+                ),
+                owner_session_id="session:frontier-closed",
+            )
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
     finally:
         coordinator.close()
 

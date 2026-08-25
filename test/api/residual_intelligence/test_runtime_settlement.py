@@ -13,9 +13,9 @@ from typing import Any
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
     TASK_COMPLETION_PREPARATION_SCHEMA,
     TASK_COMPLETION_REARM_EVENT,
-    TASK_COMPLETION_REARM_SCHEMA,
     DatabaseCoordinator,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
@@ -1043,48 +1043,223 @@ def test_runtime_settlement_rejects_unknown_execution_state(
         _read(runtime)
 
 
-def test_runtime_settlement_accepts_completion_rearm_event_and_rejects_unknown(
+def _control_task_projection(*, status: str, revision: int) -> dict[str, Any]:
+    return {
+        "task_cid": "task:0",
+        "task_alias": "VRIF-009",
+        "goal_cid": "goal:control",
+        "plan_cid": "plan:control",
+        "objective_id": "objective:control",
+        "ordinal": 1,
+        "status": status,
+        "revision": revision,
+        "priority": "P0",
+        "body": {"authority": "canonical-control"},
+        "dependencies": [],
+        "outputs": [],
+        "acceptance": [],
+        "validations": [],
+    }
+
+
+def _control_task_page(
+    *tasks: dict[str, Any], revision: int
+) -> dict[str, Any]:
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-task-page@1",
+        "tasks": list(tasks),
+        "revision": revision,
+        "next_cursor": "",
+    }
+
+
+def _install_producer_recovery_history(
+    runtime: RuntimeFixture,
+) -> dict[str, str]:
+    coordinator = DatabaseCoordinator(runtime.coordination_paths[0]).open()
+    claims: list[Any] = []
+    try:
+        coordinator.register_task(task_cid="task:0", task_id="VRIF-009")
+        first_claim = coordinator.claim_task(
+            task_cid="task:0",
+            owner_session_id=runtime.owner_ids[0],
+        )
+        claims.append(first_claim)
+        first_preparation = coordinator.prepare_task_completion(
+            first_claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:" + "1" * 64,
+        )
+        coordinator.complete_task_claim(
+            first_claim,
+            control_completion_receipt={
+                "task_cid": "task:0",
+                "status": "completed",
+                "revision": 3,
+                "body": {
+                    "completion_receipt": {
+                        "operation": "database_complete",
+                        "coordination_preparation": dict(first_preparation),
+                    }
+                },
+            },
+        )
+        coordinator.settle_task_claim(first_claim)
+        coordinator.rearm_task_from_control(
+            "task:0",
+            control_task_observation={
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/database-task-cas@1"
+                ),
+                "task": {
+                    "task_cid": "task:0",
+                    "task_alias": "VRIF-009",
+                    "status": "retrying",
+                    "revision": 4,
+                    "body": {},
+                },
+                "previous_status": "completed",
+                "revision": 4,
+                "event_cursor": 9,
+                "changed": True,
+                "receipt_cid": _content_id({"control_rearm": 4}),
+            },
+        )
+
+        completed = _control_task_projection(status="completed", revision=5)
+        coordinator.reconcile_task_from_control_ready_frontier(
+            "task:0",
+            control_task_inventory_observation=_control_task_page(
+                completed,
+                revision=50,
+            ),
+            control_ready_frontier_observation=_control_task_page(revision=50),
+            owner_session_id=runtime.owner_ids[0],
+        )
+        retrying = _control_task_projection(status="retrying", revision=6)
+        coordinator.reconcile_task_from_control_ready_frontier(
+            "task:0",
+            control_task_inventory_observation=_control_task_page(
+                retrying,
+                revision=51,
+            ),
+            control_ready_frontier_observation=_control_task_page(
+                retrying,
+                revision=51,
+            ),
+            owner_session_id=runtime.owner_ids[0],
+        )
+
+        second_claim = coordinator.claim_task(
+            task_cid="task:0",
+            owner_session_id=runtime.owner_ids[0],
+        )
+        claims.append(second_claim)
+        second_preparation = coordinator.prepare_task_completion(
+            second_claim,
+            control_expected_revision=6,
+            evidence_digest="sha256:" + "2" * 64,
+        )
+        coordinator.complete_task_claim(
+            second_claim,
+            control_completion_receipt={
+                "task_cid": "task:0",
+                "status": "completed",
+                "revision": 7,
+                "body": {
+                    "completion_receipt": {
+                        "operation": "database_complete",
+                        "coordination_preparation": dict(second_preparation),
+                    }
+                },
+            },
+        )
+        coordinator.settle_task_claim(second_claim)
+        events = coordinator.lease_events(limit=100)
+        rearm_event = next(
+            event
+            for event in events
+            if event["event_type"] == TASK_COMPLETION_REARM_EVENT
+        )
+        frontier_events = [
+            event
+            for event in events
+            if event["event_type"] == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+        ]
+        assert {event["body"]["direction"] for event in frontier_events} == {
+            "demote",
+            "promote",
+        }
+    finally:
+        coordinator.close()
+
+    with open_duckdb_connection(runtime.execution_paths[0]) as connection:
+        for index, claim in enumerate(claims):
+            started_at_ms = 10 + index * 10
+            finished_at_ms = started_at_ms + 1
+            connection.execute(
+                """
+                INSERT INTO database_task_attempts(
+                    attempt_id, claim_id, task_cid, task_alias, attempt_number,
+                    owner_session_id, fencing_token, fence_epoch, lease_id,
+                    committed_phase, status, started_at_ms, finished_at_ms,
+                    revision, body_json
+                ) VALUES (?, ?, ?, 'VRIF-009', ?, ?, ?, ?, ?, 'complete',
+                          'succeeded', ?, ?, 1, '{}')
+                """,
+                [
+                    claim.attempt_id,
+                    claim.claim_id,
+                    claim.task_cid,
+                    claim.attempt_number,
+                    claim.owner_session_id,
+                    claim.fencing_token,
+                    claim.fence_epoch,
+                    claim.lease_id,
+                    started_at_ms,
+                    finished_at_ms,
+                ],
+            )
+            for phase in ("claimed", "complete"):
+                connection.execute(
+                    """
+                    INSERT INTO attempt_phases(
+                        attempt_id, phase, committed_at_ms, fencing_token,
+                        fence_epoch, revision, body_json
+                    ) VALUES (?, ?, ?, ?, ?, 1, '{}')
+                    """,
+                    [
+                        claim.attempt_id,
+                        phase,
+                        started_at_ms,
+                        claim.fencing_token,
+                        claim.fence_epoch,
+                    ],
+                )
+    return {
+        "rearm_event_id": str(rearm_event["event_id"]),
+        "demote_event_id": str(
+            next(
+                event["event_id"]
+                for event in frontier_events
+                if event["body"]["direction"] == "demote"
+            )
+        ),
+        "promote_event_id": str(
+            next(
+                event["event_id"]
+                for event in frontier_events
+                if event["body"]["direction"] == "promote"
+            )
+        ),
+    }
+
+
+def test_runtime_settlement_accepts_exact_producer_recovery_events(
     tmp_path: Path,
 ) -> None:
     runtime = _runtime(tmp_path)
-    attempt_id = _insert_execution_attempt(
-        runtime,
-        status="succeeded",
-        phase="complete",
-        finished_at_ms=2,
-    )
-    rearm_body = {
-        "schema": TASK_COMPLETION_REARM_SCHEMA,
-        "task_cid": "task:0",
-        "claim_id": "claim:0",
-        "attempt_id": attempt_id,
-        "prior_attempt_number": 1,
-        "lease_id": "lease:0",
-        "fencing_token": 1,
-        "fence_epoch": 1,
-        "previous_control_revision": 3,
-        "previous_control_status": "completed",
-        "control_revision": 4,
-        "control_status": "retrying",
-        "control_cas_receipt_cid": "cid:control-rearm",
-        "control_cas_receipt_digest": "0" * 64,
-        "completion_digest": "1" * 64,
-        "ready": False,
-    }
-    with open_duckdb_connection(runtime.coordination_paths[0]) as connection:
-        connection.execute(
-            """
-            INSERT INTO lease_events(
-                event_id, lease_id, scope_key, event_type, fencing_token,
-                fence_epoch, observed_at_ms, body_json
-            ) VALUES ('lease-event:completion-rearm', 'lease:0', 'task:task:0',
-                      ?, 1, 1, 2, ?)
-            """,
-            [
-                TASK_COMPLETION_REARM_EVENT,
-                json.dumps(rearm_body, sort_keys=True, separators=(",", ":")),
-            ],
-        )
+    identities = _install_producer_recovery_history(runtime)
 
     receipt = _read(runtime)
 
@@ -1098,17 +1273,75 @@ def test_runtime_settlement_accepts_completion_rearm_event_and_rejects_unknown(
 
     with open_duckdb_connection(runtime.coordination_paths[0]) as connection:
         connection.execute(
-            """
-            UPDATE lease_events
-            SET event_type = 'arbitrary_unknown_event'
-            WHERE event_id = 'lease-event:completion-rearm'
-            """
+            "UPDATE lease_events SET event_type = 'arbitrary_unknown_event' "
+            "WHERE event_id = ?",
+            [identities["rearm_event_id"]],
         )
 
     with pytest.raises(
         VRIFRuntimeSettlementError,
         match="lease_events.event_type contains an unknown value",
     ):
+        _read(runtime)
+
+
+@pytest.mark.parametrize(
+    "target",
+    ("rearm_event", "frontier_event", "frontier_lease"),
+)
+def test_runtime_settlement_rejects_recovery_event_semantic_tamper(
+    tmp_path: Path,
+    target: str,
+) -> None:
+    runtime = _runtime(tmp_path)
+    identities = _install_producer_recovery_history(runtime)
+    with open_duckdb_connection(runtime.coordination_paths[0]) as connection:
+        if target == "rearm_event":
+            event_id = identities["rearm_event_id"]
+            table = "lease_events"
+        elif target == "frontier_event":
+            event_id = identities["promote_event_id"]
+            table = "lease_events"
+        else:
+            event_id = identities["promote_event_id"]
+            lease_id = str(
+                connection.execute(
+                    "SELECT lease_id FROM lease_events WHERE event_id = ?",
+                    [event_id],
+                ).fetchone()[0]
+            )
+            for table in ("fenced_leases", "maintenance_leases"):
+                body = json.loads(
+                    str(
+                        connection.execute(
+                            f"SELECT body_json FROM {table} WHERE lease_id = ?",
+                            [lease_id],
+                        ).fetchone()[0]
+                    )
+                )
+                body["unexpected"] = True
+                connection.execute(
+                    f"UPDATE {table} SET body_json = ? WHERE lease_id = ?",
+                    [json.dumps(body, sort_keys=True, separators=(",", ":")), lease_id],
+                )
+            event_id = ""
+            table = ""
+        if event_id:
+            body = json.loads(
+                str(
+                    connection.execute(
+                        f"SELECT body_json FROM {table} WHERE event_id = ?",
+                        [event_id],
+                    ).fetchone()[0]
+                )
+            )
+            body["unexpected"] = True
+            connection.execute(
+                f"UPDATE {table} SET body_json = ? WHERE event_id = ?",
+                [json.dumps(body, sort_keys=True, separators=(",", ":")), event_id],
+            )
+
+    with pytest.raises(VRIFRuntimeSettlementError):
         _read(runtime)
 
 

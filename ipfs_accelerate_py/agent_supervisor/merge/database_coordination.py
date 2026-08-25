@@ -111,6 +111,50 @@ TASK_COMPLETION_REARM_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-completion-rearm@1"
 )
 TASK_COMPLETION_REARM_EVENT: Final[str] = "task_completion_rearmed"
+CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "control-ready-frontier-reconciliation@1"
+)
+CONTROL_READY_FRONTIER_RECONCILIATION_EVENT: Final[str] = (
+    "control_ready_frontier_reconciled"
+)
+_DATABASE_TASK_PAGE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-task-page@1"
+)
+_CONTROL_TASK_PROJECTION_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "task_cid",
+        "task_alias",
+        "goal_cid",
+        "plan_cid",
+        "objective_id",
+        "ordinal",
+        "status",
+        "revision",
+        "priority",
+        "body",
+        "dependencies",
+        "outputs",
+        "acceptance",
+        "validations",
+    }
+)
+_CONTROL_READY_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"}
+)
+_CONTROL_TERMINAL_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "completed",
+        "complete",
+        "done",
+        "skipped",
+        "cancelled",
+        "failed",
+        "quarantined",
+        "rejected",
+    }
+)
+_MAX_CONTROL_READY_FRONTIER_OBSERVATION_BYTES: Final[int] = 4_194_304
 _DATABASE_TASK_CAS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-task-cas@1"
 )
@@ -2161,6 +2205,195 @@ class DatabaseCoordinator:
         }
 
     @staticmethod
+    def _validate_control_task_projection(
+        observation: Mapping[str, Any],
+        *,
+        name: str,
+    ) -> dict[str, Any]:
+        """Return one closed ``DatabaseTaskSource`` task projection.
+
+        Ready-frontier reconciliation consumes the public ``TaskRecord``
+        projection emitted by the canonical control owner.  It deliberately
+        does not accept a caller-invented four-field summary: retaining the
+        complete closed record makes its content digest bind the exact task
+        observation from which CID, alias, status, and revision were read.
+        """
+
+        if not isinstance(observation, Mapping):
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} must be a canonical task projection"
+            )
+        raw = _bounded_mapping(
+            observation,
+            name=name,
+            max_bytes=_MAX_CONTROL_READY_FRONTIER_OBSERVATION_BYTES,
+        )
+        try:
+            json_projection = json.loads(
+                json.dumps(
+                    raw,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} is not an exact JSON task projection"
+            ) from exc
+        if raw != json_projection:
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} contains noncanonical JSON values"
+            )
+        if set(raw) != _CONTROL_TASK_PROJECTION_FIELDS:
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} has a noncanonical field set"
+            )
+        required_text = ("task_cid", "task_alias", "status")
+        if any(
+            type(raw.get(field)) is not str or not str(raw[field]).strip()
+            for field in required_text
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} has no exact task CID, alias, or status"
+            )
+        if any(
+            str(raw[field]) != str(raw[field]).strip()
+            for field in ("task_cid", "task_alias")
+        ) or str(raw["status"]) != str(raw["status"]).strip().lower():
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} contains a noncanonical task identity or status"
+            )
+        for field_name in ("goal_cid", "plan_cid", "objective_id", "priority"):
+            if type(raw.get(field_name)) is not str:
+                raise DatabaseCoordinationStaleFenceError(
+                    f"{name}.{field_name} must be a string"
+                )
+        ordinal = raw.get("ordinal")
+        revision = raw.get("revision")
+        if type(ordinal) is not int or int(ordinal) < 0:
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} has no valid task ordinal"
+            )
+        if type(revision) is not int or int(revision) < 1:
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} has no valid positive task revision"
+            )
+        if not isinstance(raw.get("body"), Mapping):
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name}.body must be a mapping"
+            )
+        dependencies = raw.get("dependencies")
+        if (
+            not isinstance(dependencies, list)
+            or any(type(item) is not str or not item for item in dependencies)
+            or len(dependencies) != len(set(dependencies))
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name}.dependencies must contain unique task CIDs"
+            )
+        for field_name in ("outputs", "acceptance", "validations"):
+            values = raw.get(field_name)
+            if not isinstance(values, list) or any(
+                not isinstance(item, Mapping) for item in values
+            ):
+                raise DatabaseCoordinationStaleFenceError(
+                    f"{name}.{field_name} must contain mappings"
+                )
+        # Normalize proxy/tuple implementations to the exact public to_dict
+        # JSON shape before computing any cross-store content identity.
+        return {
+            "task_cid": str(raw["task_cid"]),
+            "task_alias": str(raw["task_alias"]),
+            "goal_cid": str(raw["goal_cid"]),
+            "plan_cid": str(raw["plan_cid"]),
+            "objective_id": str(raw["objective_id"]),
+            "ordinal": int(ordinal),
+            "status": str(raw["status"]).strip().lower(),
+            "revision": int(revision),
+            "priority": str(raw["priority"]),
+            "body": dict(raw["body"]),
+            "dependencies": list(dependencies),
+            "outputs": [dict(item) for item in raw["outputs"]],
+            "acceptance": [dict(item) for item in raw["acceptance"]],
+            "validations": [dict(item) for item in raw["validations"]],
+        }
+
+    @classmethod
+    def _validate_control_task_page_projection(
+        cls,
+        observation: Mapping[str, Any],
+        *,
+        name: str,
+        ready_only: bool,
+    ) -> dict[str, Any]:
+        """Return one complete, bounded canonical task page."""
+
+        if not isinstance(observation, Mapping):
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} must be a canonical task page"
+            )
+        raw = _bounded_mapping(
+            observation,
+            name=name,
+            max_bytes=_MAX_CONTROL_READY_FRONTIER_OBSERVATION_BYTES,
+        )
+        if set(raw) != {"schema", "tasks", "revision", "next_cursor"}:
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} has a noncanonical field set"
+            )
+        if raw.get("schema") != _DATABASE_TASK_PAGE_SCHEMA:
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} has an unknown task-page schema"
+            )
+        revision = raw.get("revision")
+        if type(revision) is not int or int(revision) < 1:
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} has no valid positive revision"
+            )
+        if raw.get("next_cursor") != "":
+            raise DatabaseCoordinationBoundsError(
+                f"{name} is incomplete; continuation is present"
+            )
+        tasks_raw = raw.get("tasks")
+        if not isinstance(tasks_raw, list) or len(tasks_raw) > 1_000:
+            raise DatabaseCoordinationBoundsError(
+                f"{name} exceeds its exact task bound"
+            )
+        tasks = [
+            cls._validate_control_task_projection(
+                item,
+                name=f"{name}.tasks[{index}]",
+            )
+            for index, item in enumerate(tasks_raw)
+        ]
+        task_cids = [str(item["task_cid"]) for item in tasks]
+        if len(task_cids) != len(set(task_cids)):
+            raise DatabaseCoordinationStaleFenceError(
+                f"{name} repeats a task CID"
+            )
+        if ready_only:
+            invalid_statuses = sorted(
+                {
+                    str(item["status"])
+                    for item in tasks
+                    if str(item["status"]) not in _CONTROL_READY_TASK_STATUSES
+                }
+            )
+            if invalid_statuses:
+                raise DatabaseCoordinationStaleFenceError(
+                    f"{name} contains non-ready task statuses: "
+                    + ", ".join(invalid_statuses)
+                )
+        return {
+            "schema": _DATABASE_TASK_PAGE_SCHEMA,
+            "tasks": tasks,
+            "revision": int(revision),
+            "next_cursor": "",
+        }
+
+    @staticmethod
     def _assert_task_rearm_quiescent_unlocked(
         connection: Any,
         task_cid: str,
@@ -2355,6 +2588,857 @@ class DatabaseCoordinator:
                 "task ready-bit rearm lost its exact registry row"
             )
         _validate_coordination_authority(connection)
+
+    @staticmethod
+    def _task_history_counts_unlocked(
+        connection: Any,
+        task_cid: str,
+    ) -> dict[str, int]:
+        row = connection.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM task_completions WHERE task_cid = ?)
+                    AS task_completion_count,
+                (SELECT COUNT(*) FROM task_claims WHERE task_cid = ?)
+                    AS task_claim_count,
+                (SELECT COUNT(*) FROM task_attempts WHERE task_cid = ?)
+                    AS task_attempt_count
+            """,
+            [task_cid, task_cid, task_cid],
+        ).fetchone()
+        mapping = _row_mapping(row)
+        return {
+            "task_completion_count": int(
+                _row_get(mapping, "task_completion_count", "0", default=0)
+            ),
+            "task_claim_count": int(
+                _row_get(mapping, "task_claim_count", "1", default=0)
+            ),
+            "task_attempt_count": int(
+                _row_get(mapping, "task_attempt_count", "2", default=0)
+            ),
+        }
+
+    def reconcile_task_from_control_ready_frontier(
+        self,
+        task_cid: str,
+        *,
+        control_task_inventory_observation: Mapping[str, Any],
+        control_ready_frontier_observation: Mapping[str, Any],
+        owner_session_id: str,
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Converge one existing local ready bit to a canonical task snapshot.
+
+        The complete inventory and ready-frontier pages must carry the same
+        canonical control revision.  A frontier member may promote a false
+        local bit only when no local logical completion exists.  A terminal
+        inventory member absent from the frontier may demote a true bit.
+        Other observations are no-ops, and this method never creates a task
+        row or removes any execution history.
+
+        The complete sidecar must be quiescent.  If its indexed ready bit is
+        stale, it is replaced with the same ART-safe transactional table
+        copy/swap used by task rearm.  Task completions, claims, attempts, and
+        all earlier fence history remain untouched.  The observation and
+        before/after state are sealed into a maintenance-fenced durable event,
+        making response-loss retries exact and idempotent.
+        """
+
+        cid = _text(task_cid, "task_cid")
+        owner = _text(owner_session_id, "owner_session_id")
+        inventory = self._validate_control_task_page_projection(
+            control_task_inventory_observation,
+            name="control_task_inventory_observation",
+            ready_only=False,
+        )
+        frontier = self._validate_control_task_page_projection(
+            control_ready_frontier_observation,
+            name="control_ready_frontier_observation",
+            ready_only=True,
+        )
+        if int(inventory["revision"]) != int(frontier["revision"]):
+            raise DatabaseCoordinationStaleFenceError(
+                "control inventory and ready frontier revisions differ"
+            )
+        inventory_by_cid = {
+            str(item["task_cid"]): item for item in inventory["tasks"]
+        }
+        control_task = inventory_by_cid.get(cid)
+        if control_task is None:
+            raise DatabaseCoordinationStaleFenceError(
+                "local task is absent from the complete control inventory"
+            )
+        frontier_by_cid = {
+            str(item["task_cid"]): item for item in frontier["tasks"]
+        }
+        inconsistent_frontier_cids = sorted(
+            frontier_cid
+            for frontier_cid, frontier_record in frontier_by_cid.items()
+            if inventory_by_cid.get(frontier_cid) != frontier_record
+        )
+        if inconsistent_frontier_cids:
+            raise DatabaseCoordinationStaleFenceError(
+                "ready frontier is not an exact same-revision inventory subset: "
+                + ", ".join(inconsistent_frontier_cids)
+            )
+        frontier_task = frontier_by_cid.get(cid)
+        control_status = str(control_task["status"])
+        if frontier_task is not None:
+            desired_ready: bool | None = True
+            direction = "promote"
+        elif control_status in _CONTROL_TERMINAL_TASK_STATUSES:
+            desired_ready = False
+            direction = "demote"
+        else:
+            desired_ready = None
+            direction = ""
+
+        inventory_digest = _sha256_hex(
+            _canonical_json(inventory).encode("utf-8")
+        )
+        frontier_digest = _sha256_hex(
+            _canonical_json(frontier).encode("utf-8")
+        )
+        observation_digest = _sha256_hex(
+            _canonical_json(
+                {
+                    "task_cid": cid,
+                    "control_snapshot_revision": int(inventory["revision"]),
+                    "control_inventory_projection_digest": inventory_digest,
+                    "ready_frontier_projection_digest": frontier_digest,
+                }
+            ).encode("utf-8")
+        )
+        now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
+        maintenance_scope = f"control-ready-frontier:{cid}"
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.MAINTENANCE,
+            scope=maintenance_scope,
+        )
+        expected_lease_body = (
+            None
+            if desired_ready is None
+            else {
+                "schema": CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
+                "task_cid": cid,
+                "task_alias": str(control_task["task_alias"]),
+                "control_snapshot_revision": int(inventory["revision"]),
+                "control_inventory_projection_digest": inventory_digest,
+                "ready_frontier_projection_digest": frontier_digest,
+                "control_observation_digest": observation_digest,
+                "ready_after": bool(desired_ready),
+            }
+        )
+        event_fields = {
+            "schema",
+            "task_cid",
+            "task_alias",
+            "control_task_status",
+            "control_task_revision",
+            "control_snapshot_revision",
+            "control_inventory_task_count",
+            "control_inventory_projection_digest",
+            "ready_frontier_task_count",
+            "ready_frontier_projection_digest",
+            "control_observation_digest",
+            "direction",
+            "ready_before",
+            "ready_after",
+            "task_completion_count",
+            "task_claim_count",
+            "task_attempt_count",
+            "task_history_preserved",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "receipt_cid",
+        }
+
+        with self._lock:
+            connection = self._require()
+            self._begin_task_rearm_transaction_unlocked(connection)
+            try:
+                task_row = connection.execute(
+                    "SELECT task_cid, task_id, ready FROM coordination_tasks "
+                    "WHERE task_cid = ?",
+                    [cid],
+                ).fetchone()
+                if task_row is None:
+                    raise DatabaseCoordinationConflictError(
+                        f"task is absent from the coordination registry: {cid}"
+                    )
+                task_mapping = _row_mapping(task_row)
+                registered_cid = str(
+                    _row_get(task_mapping, "task_cid", "0", default="") or ""
+                )
+                registered_alias = str(
+                    _row_get(task_mapping, "task_id", "1", default="") or ""
+                )
+                if registered_cid != cid:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "coordination registry returned a mismatched task identity"
+                    )
+                if registered_alias != str(control_task["task_alias"]):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "control task alias does not match the registered task identity"
+                    )
+                task_history = self._task_history_counts_unlocked(connection, cid)
+                ready_before = bool(
+                    _row_get(task_mapping, "ready", "2", default=False)
+                )
+
+                replay_rows = connection.execute(
+                    """
+                    SELECT event_id, lease_id, fencing_token, fence_epoch,
+                           body_json, observed_at_ms
+                    FROM lease_events
+                    WHERE scope_key = ? AND event_type = ?
+                      AND json_extract_string(
+                          body_json, '$.control_observation_digest'
+                      ) = ?
+                    ORDER BY event_id
+                    """,
+                    [
+                        scope_key,
+                        CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
+                        observation_digest,
+                    ],
+                ).fetchall()
+                if len(replay_rows) > 1:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "control ready-frontier observation has duplicate receipts"
+                    )
+                if replay_rows:
+                    event_mapping = _row_mapping(replay_rows[0])
+                    event_id = str(
+                        _row_get(event_mapping, "event_id", "0", default="") or ""
+                    )
+                    event_lease_id = str(
+                        _row_get(event_mapping, "lease_id", "1", default="") or ""
+                    )
+                    event_token = int(
+                        _row_get(event_mapping, "fencing_token", "2", default=0)
+                    )
+                    event_epoch = int(
+                        _row_get(event_mapping, "fence_epoch", "3", default=0)
+                    )
+                    event_observed_at_ms = int(
+                        _row_get(
+                            event_mapping,
+                            "observed_at_ms",
+                            "5",
+                            default=-1,
+                        )
+                    )
+                    event_body = _decode_coordination_body(
+                        _row_get(event_mapping, "body_json", "4", default="{}"),
+                        table="lease_events",
+                        identity=event_id,
+                    )
+                    if set(event_body) != event_fields:
+                        raise DatabaseCoordinationStaleFenceError(
+                            "control ready-frontier receipt has a noncanonical field set"
+                        )
+                    receipt_payload = dict(event_body)
+                    stored_receipt_cid = receipt_payload.pop("receipt_cid", None)
+                    expected_receipt_cid = _sha256_hex(
+                        _canonical_json(receipt_payload).encode("utf-8")
+                    )
+                    replay_checks = {
+                        "schema": event_body.get("schema")
+                        == CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
+                        "task_cid": event_body.get("task_cid") == cid,
+                        "task_alias": event_body.get("task_alias")
+                        == control_task["task_alias"],
+                        "control_task_status": event_body.get(
+                            "control_task_status"
+                        )
+                        == control_status,
+                        "control_task_revision": event_body.get(
+                            "control_task_revision"
+                        )
+                        == control_task["revision"],
+                        "control_snapshot_revision": event_body.get(
+                            "control_snapshot_revision"
+                        )
+                        == inventory["revision"],
+                        "control_inventory_task_count": event_body.get(
+                            "control_inventory_task_count"
+                        )
+                        == len(inventory["tasks"]),
+                        "control_inventory_projection_digest": event_body.get(
+                            "control_inventory_projection_digest"
+                        )
+                        == inventory_digest,
+                        "ready_frontier_task_count": event_body.get(
+                            "ready_frontier_task_count"
+                        )
+                        == len(frontier["tasks"]),
+                        "ready_frontier_projection_digest": event_body.get(
+                            "ready_frontier_projection_digest"
+                        )
+                        == frontier_digest,
+                        "control_observation_digest": event_body.get(
+                            "control_observation_digest"
+                        )
+                        == observation_digest,
+                        "direction": event_body.get("direction") == direction,
+                        "ready_before_type": type(event_body.get("ready_before"))
+                        is bool,
+                        "ready_after_type": type(event_body.get("ready_after"))
+                        is bool,
+                        "ready_before": event_body.get("ready_before")
+                        is (not bool(desired_ready)),
+                        "ready_after": event_body.get("ready_after")
+                        is bool(desired_ready),
+                        "ready_transition": event_body.get("ready_before")
+                        is not event_body.get("ready_after"),
+                        "task_completion_count": event_body.get(
+                            "task_completion_count"
+                        )
+                        == task_history["task_completion_count"],
+                        "task_claim_count": event_body.get("task_claim_count")
+                        == task_history["task_claim_count"],
+                        "task_attempt_count": event_body.get("task_attempt_count")
+                        == task_history["task_attempt_count"],
+                        "task_history_preserved": event_body.get(
+                            "task_history_preserved"
+                        )
+                        is True,
+                        "lease_id": event_body.get("lease_id")
+                        == event_lease_id,
+                        "fencing_token": event_body.get("fencing_token")
+                        == event_token,
+                        "fence_epoch": event_body.get("fence_epoch")
+                        == event_epoch,
+                        "receipt_cid": stored_receipt_cid
+                        == expected_receipt_cid,
+                    }
+                    mismatches = [
+                        field for field, matches in replay_checks.items() if not matches
+                    ]
+                    lease_row = connection.execute(
+                        "SELECT * FROM fenced_leases WHERE lease_id = ?",
+                        [event_lease_id],
+                    ).fetchone()
+                    maintenance_row = connection.execute(
+                        "SELECT * FROM maintenance_leases WHERE lease_id = ?",
+                        [event_lease_id],
+                    ).fetchone()
+                    if lease_row is None or maintenance_row is None:
+                        mismatches.append("maintenance_lease")
+                    else:
+                        lease = self._lease_from_row(lease_row)
+                        maintenance_mapping = _row_mapping(maintenance_row)
+                        maintenance_body = _decode_coordination_body(
+                            _row_get(
+                                maintenance_mapping,
+                                "body_json",
+                                "11",
+                                default="{}",
+                            ),
+                            table="maintenance_leases",
+                            identity=event_lease_id,
+                        )
+                        lease_matches = (
+                            lease.lease_kind is LeaseKind.MAINTENANCE
+                        ) and all(
+                            (
+                                lease.scope_key == scope_key,
+                                lease.scope == maintenance_scope,
+                                lease.mode is LeaseMode.EXCLUSIVE,
+                                lease.owner_session_id == owner,
+                                lease.state is LeaseState.RELEASED,
+                                lease.revision == 2,
+                                lease.fencing_token == event_token,
+                                lease.fence_epoch == event_epoch,
+                                lease.acquired_at_ms == event_observed_at_ms,
+                                lease.expires_at_ms
+                                == event_observed_at_ms + self._default_lease_ms,
+                                lease.idempotency_key
+                                == f"control-ready-frontier:{observation_digest}",
+                                dict(lease.body) == expected_lease_body,
+                                not lease.task_cid,
+                                not lease.worktree_id,
+                                not lease.resource_kind,
+                                not lease.resource_id,
+                                not lease.repository_id,
+                                not lease.path,
+                                not lease.claim_id,
+                                not lease.attempt_id,
+                                lease.attempt_number == 0,
+                            )
+                        )
+                        maintenance_matches = all(
+                            (
+                                str(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "lease_id",
+                                        "0",
+                                        default="",
+                                    )
+                                )
+                                == event_lease_id,
+                                str(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "scope",
+                                        "1",
+                                        default="",
+                                    )
+                                )
+                                == maintenance_scope,
+                                str(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "owner_session_id",
+                                        "2",
+                                        default="",
+                                    )
+                                )
+                                == owner,
+                                str(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "process_birth_id",
+                                        "3",
+                                        default="",
+                                    )
+                                )
+                                == "",
+                                int(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "fencing_token",
+                                        "4",
+                                        default=0,
+                                    )
+                                )
+                                == event_token,
+                                int(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "fence_epoch",
+                                        "5",
+                                        default=0,
+                                    )
+                                )
+                                == event_epoch,
+                                int(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "acquired_at_ms",
+                                        "6",
+                                        default=-1,
+                                    )
+                                )
+                                == event_observed_at_ms,
+                                int(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "expires_at_ms",
+                                        "7",
+                                        default=-1,
+                                    )
+                                )
+                                == event_observed_at_ms + self._default_lease_ms,
+                                int(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "released_at_ms",
+                                        "8",
+                                        default=-1,
+                                    )
+                                )
+                                == event_observed_at_ms,
+                                str(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "state",
+                                        "9",
+                                        default="",
+                                    )
+                                )
+                                == LeaseState.RELEASED.value,
+                                int(
+                                    _row_get(
+                                        maintenance_mapping,
+                                        "revision",
+                                        "10",
+                                        default=0,
+                                    )
+                                )
+                                == 2,
+                                maintenance_body == expected_lease_body,
+                            )
+                        )
+                        if not lease_matches or not maintenance_matches:
+                            mismatches.append("maintenance_lease")
+                    lineage_rows = connection.execute(
+                        """
+                        SELECT event_type, scope_key, fencing_token, fence_epoch,
+                               observed_at_ms, body_json
+                        FROM lease_events WHERE lease_id = ?
+                        ORDER BY event_type
+                        """,
+                        [event_lease_id],
+                    ).fetchall()
+                    lineage: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+                    for lineage_row in lineage_rows:
+                        lineage_mapping = _row_mapping(lineage_row)
+                        lineage_type = str(
+                            _row_get(
+                                lineage_mapping,
+                                "event_type",
+                                "0",
+                                default="",
+                            )
+                        )
+                        if lineage_type in lineage:
+                            mismatches.append("maintenance_event_lineage")
+                            continue
+                        lineage[lineage_type] = (
+                            lineage_mapping,
+                            _decode_coordination_body(
+                                _row_get(
+                                    lineage_mapping,
+                                    "body_json",
+                                    "5",
+                                    default="{}",
+                                ),
+                                table="lease_events",
+                                identity=f"{event_lease_id}:{lineage_type}",
+                            ),
+                        )
+                    if set(lineage) != {
+                        "acquired",
+                        CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
+                        "released",
+                    }:
+                        mismatches.append("maintenance_event_lineage")
+                    else:
+                        expected_lineage_bodies = {
+                            "acquired": {
+                                "owner_session_id": owner,
+                                "mode": LeaseMode.EXCLUSIVE.value,
+                            },
+                            CONTROL_READY_FRONTIER_RECONCILIATION_EVENT: event_body,
+                            "released": {
+                                "reason": CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+                            },
+                        }
+                        for lineage_type, (
+                            lineage_mapping,
+                            lineage_body,
+                        ) in lineage.items():
+                            if (
+                                str(
+                                    _row_get(
+                                        lineage_mapping,
+                                        "scope_key",
+                                        "1",
+                                        default="",
+                                    )
+                                )
+                                != scope_key
+                                or int(
+                                    _row_get(
+                                        lineage_mapping,
+                                        "fencing_token",
+                                        "2",
+                                        default=0,
+                                    )
+                                )
+                                != event_token
+                                or int(
+                                    _row_get(
+                                        lineage_mapping,
+                                        "fence_epoch",
+                                        "3",
+                                        default=0,
+                                    )
+                                )
+                                != event_epoch
+                                or int(
+                                    _row_get(
+                                        lineage_mapping,
+                                        "observed_at_ms",
+                                        "4",
+                                        default=-1,
+                                    )
+                                )
+                                != event_observed_at_ms
+                                or lineage_body
+                                != expected_lineage_bodies[lineage_type]
+                            ):
+                                mismatches.append("maintenance_event_lineage")
+                    stored_ready = bool(
+                        _row_get(task_mapping, "ready", "2", default=True)
+                    )
+                    if stored_ready is not bool(event_body.get("ready_after")):
+                        mismatches.append("ready_after")
+                    if mismatches:
+                        raise DatabaseCoordinationStaleFenceError(
+                            "control ready-frontier replay differs from its durable "
+                            "receipt: "
+                            + ", ".join(sorted(set(mismatches)))
+                        )
+                    self._commit_task_rearm_transaction_unlocked(connection)
+                    return {
+                        "schema": CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
+                        "task_cid": cid,
+                        "task_alias": str(control_task["task_alias"]),
+                        "control_task_status": control_status,
+                        "control_task_revision": int(control_task["revision"]),
+                        "control_snapshot_revision": int(inventory["revision"]),
+                        "direction": str(event_body["direction"]),
+                        "ready_before": bool(event_body["ready_before"]),
+                        "ready_after": bool(event_body["ready_after"]),
+                        "changed": True,
+                        "receipt_cid": str(stored_receipt_cid),
+                        "replayed": True,
+                    }
+
+                if (
+                    desired_ready is None
+                    or (
+                        desired_ready is True
+                        and task_history["task_completion_count"] > 0
+                    )
+                    or ready_before is desired_ready
+                ):
+                    self._commit_task_rearm_transaction_unlocked(connection)
+                    return {
+                        "schema": CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
+                        "task_cid": cid,
+                        "task_alias": str(control_task["task_alias"]),
+                        "control_task_status": control_status,
+                        "control_task_revision": int(control_task["revision"]),
+                        "control_snapshot_revision": int(inventory["revision"]),
+                        "direction": "",
+                        "ready_before": ready_before,
+                        "ready_after": ready_before,
+                        "changed": False,
+                        "receipt_cid": "",
+                        "replayed": False,
+                    }
+
+                self._assert_task_rearm_quiescent_unlocked(connection, cid)
+                assert expected_lease_body is not None
+                token, epoch = self._next_fence(connection, scope_key)
+                lease_id = _new_id("lease")
+                idempotency_key = f"control-ready-frontier:{observation_digest}"
+                lease_body = expected_lease_body
+                lease = FencedLease(
+                    lease_id=lease_id,
+                    lease_kind=LeaseKind.MAINTENANCE,
+                    scope_key=scope_key,
+                    scope=maintenance_scope,
+                    mode=LeaseMode.EXCLUSIVE,
+                    owner_session_id=owner,
+                    fencing_token=token,
+                    fence_epoch=epoch,
+                    acquired_at_ms=now,
+                    expires_at_ms=now + self._default_lease_ms,
+                    state=LeaseState.ACCEPTED,
+                    revision=1,
+                    idempotency_key=idempotency_key,
+                    body=lease_body,
+                )
+                self._insert_fenced_lease(connection, lease)
+                self._record_token(
+                    connection,
+                    scope_key=scope_key,
+                    fencing_token=token,
+                    fence_epoch=epoch,
+                    now=now,
+                )
+                self._record_event(
+                    connection,
+                    lease_id=lease_id,
+                    scope_key=scope_key,
+                    event_type="acquired",
+                    fencing_token=token,
+                    fence_epoch=epoch,
+                    observed_at_ms=now,
+                    body={
+                        "owner_session_id": owner,
+                        "mode": LeaseMode.EXCLUSIVE.value,
+                    },
+                )
+                connection.execute(
+                    """
+                    INSERT INTO maintenance_leases(
+                        lease_id, scope, owner_session_id, process_birth_id,
+                        fencing_token, fence_epoch, acquired_at_ms, expires_at_ms,
+                        released_at_ms, state, revision, body_json
+                    ) VALUES (?, ?, ?, '', ?, ?, ?, ?, NULL, ?, 1, ?)
+                    """,
+                    [
+                        lease_id,
+                        maintenance_scope,
+                        owner,
+                        token,
+                        epoch,
+                        now,
+                        now + self._default_lease_ms,
+                        LeaseState.ACCEPTED.value,
+                        _canonical_json(lease_body),
+                    ],
+                )
+                self._set_task_ready_with_table_rebuild_unlocked(
+                    connection,
+                    task_cid=cid,
+                    ready=bool(desired_ready),
+                )
+                final_task_row = connection.execute(
+                    "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+                    [cid],
+                ).fetchone()
+                final_history = self._task_history_counts_unlocked(connection, cid)
+                if (
+                    final_task_row is None
+                    or bool(
+                        _row_get(
+                            _row_mapping(final_task_row),
+                            "ready",
+                            "0",
+                            default=not bool(desired_ready),
+                        )
+                    )
+                    is not bool(desired_ready)
+                    or final_history != task_history
+                ):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "control ready-frontier reconciliation changed task history"
+                    )
+
+                event_body = {
+                    "schema": CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
+                    "task_cid": cid,
+                    "task_alias": str(control_task["task_alias"]),
+                    "control_task_status": control_status,
+                    "control_task_revision": int(control_task["revision"]),
+                    "control_snapshot_revision": int(inventory["revision"]),
+                    "control_inventory_task_count": len(inventory["tasks"]),
+                    "control_inventory_projection_digest": inventory_digest,
+                    "ready_frontier_task_count": len(frontier["tasks"]),
+                    "ready_frontier_projection_digest": frontier_digest,
+                    "control_observation_digest": observation_digest,
+                    "direction": direction,
+                    "ready_before": ready_before,
+                    "ready_after": bool(desired_ready),
+                    **task_history,
+                    "task_history_preserved": True,
+                    "lease_id": lease_id,
+                    "fencing_token": token,
+                    "fence_epoch": epoch,
+                }
+                event_body["receipt_cid"] = _sha256_hex(
+                    _canonical_json(event_body).encode("utf-8")
+                )
+                self._record_event(
+                    connection,
+                    lease_id=lease_id,
+                    scope_key=scope_key,
+                    event_type=CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
+                    fencing_token=token,
+                    fence_epoch=epoch,
+                    observed_at_ms=now,
+                    body=event_body,
+                )
+                connection.execute(
+                    """
+                    UPDATE fenced_leases
+                    SET state = ?, revision = revision + 1
+                    WHERE lease_id = ? AND state = ?
+                      AND fencing_token = ? AND fence_epoch = ?
+                    """,
+                    [
+                        LeaseState.RELEASED.value,
+                        lease_id,
+                        LeaseState.ACCEPTED.value,
+                        token,
+                        epoch,
+                    ],
+                )
+                connection.execute(
+                    """
+                    UPDATE maintenance_leases
+                    SET state = ?, released_at_ms = ?, revision = revision + 1
+                    WHERE lease_id = ? AND state = ?
+                    """,
+                    [
+                        LeaseState.RELEASED.value,
+                        now,
+                        lease_id,
+                        LeaseState.ACCEPTED.value,
+                    ],
+                )
+                self._record_event(
+                    connection,
+                    lease_id=lease_id,
+                    scope_key=scope_key,
+                    event_type="released",
+                    fencing_token=token,
+                    fence_epoch=epoch,
+                    observed_at_ms=now,
+                    body={"reason": CONTROL_READY_FRONTIER_RECONCILIATION_EVENT},
+                )
+                final_lease_row = connection.execute(
+                    "SELECT state FROM fenced_leases WHERE lease_id = ?",
+                    [lease_id],
+                ).fetchone()
+                final_maintenance_row = connection.execute(
+                    "SELECT state FROM maintenance_leases WHERE lease_id = ?",
+                    [lease_id],
+                ).fetchone()
+                if (
+                    final_lease_row is None
+                    or final_maintenance_row is None
+                    or str(
+                        _row_get(
+                            _row_mapping(final_lease_row),
+                            "state",
+                            "0",
+                            default="",
+                        )
+                    )
+                    != LeaseState.RELEASED.value
+                    or str(
+                        _row_get(
+                            _row_mapping(final_maintenance_row),
+                            "state",
+                            "0",
+                            default="",
+                        )
+                    )
+                    != LeaseState.RELEASED.value
+                ):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "control ready-frontier maintenance fence did not settle"
+                    )
+                _validate_coordination_authority(connection)
+                self._commit_task_rearm_transaction_unlocked(connection)
+                return {
+                    "schema": CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
+                    "task_cid": cid,
+                    "task_alias": str(control_task["task_alias"]),
+                    "control_task_status": control_status,
+                    "control_task_revision": int(control_task["revision"]),
+                    "control_snapshot_revision": int(inventory["revision"]),
+                    "direction": direction,
+                    "ready_before": ready_before,
+                    "ready_after": bool(desired_ready),
+                    "changed": True,
+                    "receipt_cid": str(event_body["receipt_cid"]),
+                    "replayed": False,
+                }
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
 
     def rearm_task_from_control(
         self,
@@ -7585,6 +8669,8 @@ __all__ = [
     "COORDINATION_REGISTRY_PROJECTION_SCHEMA",
     "COORDINATION_HISTORY_PROJECTION_SCHEMA",
     "TASK_COMPLETION_REARM_SCHEMA",
+    "CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA",
+    "CONTROL_READY_FRONTIER_RECONCILIATION_EVENT",
     "TASK_DEPENDENCY_AMENDMENT_SCHEMA",
     "FENCED_LEASE_SCHEMA",
     "TASK_CLAIM_SCHEMA",

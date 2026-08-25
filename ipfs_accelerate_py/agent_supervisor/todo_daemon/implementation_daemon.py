@@ -466,6 +466,7 @@ IMPLEMENTATION_TASK_TERMINAL_STATUSES = frozenset(
         "rejected",
     }
 )
+CONTROL_READY_FRONTIER_SNAPSHOT_RETRY_LIMIT = 16
 WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
     "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_LEASE_SECONDS"
 )
@@ -74749,7 +74750,121 @@ class DatabaseImplementationDaemon:
     def sync_ready_tasks_into_coordination(self) -> list[str]:
         """Ensure ready tasks from the intent repository are claimable."""
 
-        ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        canonical_tasks: Any | None = None
+        ready: Any | None = None
+        canonical_observation: Mapping[str, Any] | None = None
+        ready_observation: Mapping[str, Any] | None = None
+        for _snapshot_attempt in range(
+            CONTROL_READY_FRONTIER_SNAPSHOT_RETRY_LIMIT
+        ):
+            candidate_inventory = self.task_source.list_tasks(
+                limit=TASK_SOURCE_QUERY_LIMIT
+            )
+            candidate_ready = self.task_source.ready_tasks(
+                limit=TASK_SOURCE_QUERY_LIMIT
+            )
+            inventory_to_dict = getattr(candidate_inventory, "to_dict", None)
+            ready_to_dict = getattr(candidate_ready, "to_dict", None)
+            if not callable(inventory_to_dict) or not callable(ready_to_dict):
+                raise DatabaseImplementationAuthorityError(
+                    "canonical task source returned no typed task-page projection"
+                )
+            candidate_inventory_observation = inventory_to_dict()
+            candidate_ready_observation = ready_to_dict()
+            if (
+                not isinstance(candidate_inventory_observation, Mapping)
+                or not isinstance(candidate_ready_observation, Mapping)
+                or str(candidate_inventory_observation.get("next_cursor") or "")
+                or str(candidate_ready_observation.get("next_cursor") or "")
+                or type(candidate_inventory_observation.get("revision")) is not int
+                or type(candidate_ready_observation.get("revision")) is not int
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "canonical task inventory exceeds the closed synchronization "
+                    "bound"
+                )
+            if int(candidate_inventory_observation["revision"]) != int(
+                candidate_ready_observation["revision"]
+            ):
+                continue
+            canonical_tasks = candidate_inventory
+            ready = candidate_ready
+            canonical_observation = candidate_inventory_observation
+            ready_observation = candidate_ready_observation
+            break
+        if (
+            canonical_tasks is None
+            or ready is None
+            or canonical_observation is None
+            or ready_observation is None
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "canonical task inventory and ready frontier did not stabilize "
+                "at one revision"
+            )
+        canonical_by_cid = {
+            str(task.task_cid): task for task in canonical_tasks.tasks
+        }
+        canonical_ready_task_cids = {
+            str(task.task_cid) for task in ready.tasks
+        }
+        registry_projection = self.coordinator.coordination_registry_projection()
+        registry_tasks = registry_projection.get("tasks")
+        if not isinstance(registry_tasks, list):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator returned no typed task registry projection"
+            )
+
+        # Lane-local sidecars can retain a ready bit after another shard has
+        # completed the canonical task, or retain a false bit when the control
+        # owner reopens a task immediately after a settled snapshot.  Converge
+        # only rows this sidecar had already registered.  Both full pages come
+        # directly from one canonical revision; terminal tasks are never
+        # mirrored into a fresh sidecar merely to make all control tasks appear
+        # locally.
+        for local_task in registry_tasks:
+            if not isinstance(local_task, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator task registry projection is malformed"
+                )
+            local_task_cid = local_task.get("task_cid")
+            local_ready = local_task.get("ready")
+            if type(local_task_cid) is not str or not local_task_cid:
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator task registry contains no exact task CID"
+                )
+            if type(local_ready) is not bool:
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator task registry contains no exact ready bit"
+                )
+            canonical_task = canonical_by_cid.get(local_task_cid)
+            if canonical_task is None:
+                # An absent control projection is not authority to mutate a
+                # local row.  claim_next independently excludes it from the
+                # canonical eligible set.
+                continue
+            canonical_status = str(canonical_task.status or "").strip().lower()
+            frontier_present = local_task_cid in canonical_ready_task_cids
+            if (
+                (frontier_present and local_ready)
+                or (
+                    not frontier_present
+                    and (
+                        not local_ready
+                        or canonical_status
+                        not in IMPLEMENTATION_TASK_TERMINAL_STATUSES
+                    )
+                )
+            ):
+                continue
+            self.coordinator.reconcile_task_from_control_ready_frontier(
+                local_task_cid,
+                control_task_inventory_observation=canonical_observation,
+                control_ready_frontier_observation=ready_observation,
+                owner_session_id=self.owner_session_id,
+                now_ms=self._now_ms(),
+            )
+
         ready_tasks = tuple(
             task
             for task in ready.tasks
@@ -74771,7 +74886,6 @@ class DatabaseImplementationDaemon:
                 ).append(str(task.task_cid))
 
         if dependency_evidence:
-            registry_projection = self.coordinator.coordination_registry_projection()
             registered_task_cids = {
                 str(item.get("task_cid") or "")
                 for item in registry_projection.get("tasks", ())

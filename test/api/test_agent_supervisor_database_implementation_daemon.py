@@ -1340,6 +1340,196 @@ def test_fresh_coordination_sidecar_projects_canonical_completed_dependencies(
         daemon.close()
 
 
+def test_sync_demotes_only_registered_stale_ready_terminal_rows(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:ready-frontier-reconciliation",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        before = daemon.coordinator.coordination_registry_projection()
+        assert before["tasks"][0]["ready"] is True
+        assert before["logical_completions"] == []
+
+        canonical = daemon.task_source.get("task:cid:001")
+        assert canonical is not None
+        daemon.task_source._intent.cas_task_status(
+            task_cid=canonical.task_cid,
+            expected_revision=canonical.revision,
+            new_status="completed",
+            receipt={"operation": "authoritative_other_lane_completion"},
+            allow_completion_without_evidence=True,
+        )
+
+        assert daemon.sync_ready_tasks_into_coordination() == []
+        after = daemon.coordinator.coordination_registry_projection()
+        assert after["tasks"] == [
+            {
+                **before["tasks"][0],
+                "ready": False,
+            }
+        ]
+        assert after["logical_completions"] == []
+        reconciliation_events = [
+            event
+            for event in daemon.coordinator.lease_events(limit=20)
+            if event["event_type"] == "control_ready_frontier_reconciled"
+        ]
+        assert len(reconciliation_events) == 1
+        assert reconciliation_events[0]["body"]["task_cid"] == "task:cid:001"
+        assert reconciliation_events[0]["body"]["control_task_status"] == "completed"
+        assert reconciliation_events[0]["body"]["task_history_preserved"] is True
+
+        # A later synchronization sees the already-demoted local row and does
+        # not create another reconciliation fence or mirror terminal rows.
+        assert daemon.sync_ready_tasks_into_coordination() == []
+        assert len(
+            [
+                event
+                for event in daemon.coordinator.lease_events(limit=20)
+                if event["event_type"] == "control_ready_frontier_reconciled"
+            ]
+        ) == 1
+        assert daemon.claim_next() is None
+    finally:
+        daemon.close()
+
+    fresh = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination-terminal-fresh.duckdb",
+        execution_path=tmp_path / "execution-terminal-fresh.duckdb",
+        owner_session_id="session:ready-frontier-fresh",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        assert fresh.sync_ready_tasks_into_coordination() == []
+        assert fresh.coordinator.coordination_registry_projection()["tasks"] == []
+    finally:
+        fresh.close()
+
+
+def test_sync_retries_mixed_revision_reopen_without_demoting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:ready-frontier-mixed-revision",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        canonical = daemon.task_source.get("task:cid:001")
+        assert canonical is not None
+        daemon.task_source._intent.cas_task_status(
+            task_cid=canonical.task_cid,
+            expected_revision=canonical.revision,
+            new_status="completed",
+            receipt={"operation": "other_lane_completion_before_mixed_read"},
+            allow_completion_without_evidence=True,
+        )
+
+        task_source = daemon.task_source
+        original_list_tasks = task_source.list_tasks
+        inventory_reads = {"count": 0}
+
+        def list_tasks_with_one_reopen(*args: object, **kwargs: object) -> object:
+            page = original_list_tasks(*args, **kwargs)
+            inventory_reads["count"] += 1
+            if inventory_reads["count"] == 1:
+                completed = task_source.get("task:cid:001")
+                assert completed is not None
+                assert completed.status == "completed"
+                task_source._intent.cas_task_status(
+                    task_cid=completed.task_cid,
+                    expected_revision=completed.revision,
+                    new_status="retrying",
+                    receipt={"operation": "owner_reopen_between_snapshot_reads"},
+                )
+            return page
+
+        monkeypatch.setattr(task_source, "list_tasks", list_tasks_with_one_reopen)
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:001"]
+        assert inventory_reads["count"] >= 2
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert projection["tasks"][0]["ready"] is True
+        assert all(
+            event["event_type"] != "control_ready_frontier_reconciled"
+            for event in daemon.coordinator.lease_events(limit=100)
+        )
+    finally:
+        daemon.close()
+
+
+def test_next_sync_repairs_reopen_after_equal_terminal_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:ready-frontier-post-snapshot-reopen",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        canonical = daemon.task_source.get("task:cid:001")
+        assert canonical is not None
+        daemon.task_source._intent.cas_task_status(
+            task_cid=canonical.task_cid,
+            expected_revision=canonical.revision,
+            new_status="completed",
+            receipt={"operation": "other_lane_completion_before_snapshot"},
+            allow_completion_without_evidence=True,
+        )
+
+        coordinator = daemon.coordinator
+        original_reconcile = (
+            coordinator.reconcile_task_from_control_ready_frontier
+        )
+        reopened = {"done": False}
+
+        def reconcile_then_reopen(*args: object, **kwargs: object) -> object:
+            result = original_reconcile(*args, **kwargs)
+            if not reopened["done"]:
+                completed = daemon.task_source.get("task:cid:001")
+                assert completed is not None
+                assert completed.status == "completed"
+                daemon.task_source._intent.cas_task_status(
+                    task_cid=completed.task_cid,
+                    expected_revision=completed.revision,
+                    new_status="retrying",
+                    receipt={"operation": "owner_reopen_after_equal_snapshot"},
+                )
+                reopened["done"] = True
+            return result
+
+        monkeypatch.setattr(
+            coordinator,
+            "reconcile_task_from_control_ready_frontier",
+            reconcile_then_reopen,
+        )
+        assert daemon.sync_ready_tasks_into_coordination() == []
+        assert reopened["done"] is True
+        assert coordinator.coordination_registry_projection()["tasks"][0][
+            "ready"
+        ] is False
+
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:001"]
+        assert coordinator.coordination_registry_projection()["tasks"][0][
+            "ready"
+        ] is True
+        directions = [
+            event["body"]["direction"]
+            for event in coordinator.lease_events(limit=100)
+            if event["event_type"] == "control_ready_frontier_reconciled"
+        ]
+        assert sorted(directions) == ["demote", "promote"]
+    finally:
+        daemon.close()
+
+
 def test_claim_next_preserves_canonical_ready_order_for_late_task(
     tmp_path: Path,
 ) -> None:
