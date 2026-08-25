@@ -257,6 +257,44 @@ class _ProjectionIdentityCompletingPortal(_CompletingPortal):
         }
 
 
+def _pending_merge_result(
+    paths: object,
+    task_alias: str,
+    *,
+    request_id: str = "request:merge:001",
+    canonical_task_cid: str = "",
+) -> dict[str, object]:
+    [task] = parse_task_file(paths.task_projection, "## LGSWF-")
+    identity = portal_task_identity(task, todo_path=paths.task_projection)
+    task_cid = canonical_task_cid or identity.canonical_task_cid
+    implementation_commit = "c" * 40
+    return {
+        "implementation_result": {
+            "task_id": task_alias,
+            "task_cid": task_cid,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 0,
+            "implementation_commit": implementation_commit,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "board_completion": {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            },
+            "merge_result": {
+                "queued": True,
+                "merged": False,
+                "reason": "merge_queued",
+                "request_id": request_id,
+                "canonical_task_cid": task_cid,
+                "implementation_commit": implementation_commit,
+            },
+        }
+    }
+
+
 def _consumed_no_progress_result(
     paths: object,
     task_alias: str,
@@ -1934,6 +1972,271 @@ def test_bridge_defers_exact_inflight_process_at_configured_timeout(
     # to the configured deadline.
     assert portals[0].calls == 2
     assert portals[0].closed is True
+    assert clock.sleeps == [15.0, 5.0]
+
+
+def test_bridge_polls_exact_pending_merge_until_portal_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClock:
+        def __init__(self) -> None:
+            self.now = 0.0
+            self.sleeps: list[float] = []
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            self.sleeps.append(seconds)
+            self.now += seconds
+
+    class PendingThenCompletingPortal(_ProjectionIdentityCompletingPortal):
+        def __init__(self, paths: object, task_alias: str) -> None:
+            super().__init__(paths, task_alias)
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            if self.calls == 1:
+                return _pending_merge_result(self.paths, self.task_alias)
+            return super().run_once()
+
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._monotonic_seconds",
+        clock.monotonic,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._sleep_seconds",
+        clock.sleep,
+    )
+    portals: list[PendingThenCompletingPortal] = []
+
+    def factory(paths: object, alias: str) -> PendingThenCompletingPortal:
+        portal = PendingThenCompletingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        # The queued handoff must not consume this ordinary pass budget.
+        max_passes=1,
+        implementation_timeout=16.0,
+    )
+
+    provider = bridge.run_provider(_attempt())
+
+    assert provider["accepted"] is True
+    assert len(portals) == 1
+    assert portals[0].calls == 2
+    assert portals[0].closed is True
+    assert clock.sleeps == [15.0]
+
+
+def test_bridge_rejects_pending_merge_with_forged_projection_identity(
+    tmp_path: Path,
+) -> None:
+    class ForgedPendingPortal:
+        def __init__(self, paths: object, task_alias: str) -> None:
+            self.paths = paths
+            self.task_alias = task_alias
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            return _pending_merge_result(
+                self.paths,
+                self.task_alias,
+                canonical_task_cid="task:cid:forged",
+            )
+
+    portals: list[ForgedPendingPortal] = []
+
+    def factory(paths: object, alias: str) -> ForgedPendingPortal:
+        portal = ForgedPendingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert "does not match the database claim" in str(caught.value)
+    assert len(portals) == 1
+    assert portals[0].calls == 1
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    [
+        ("implementation", "provider_dispatched", False),
+        ("implementation", "attempt_consumed", False),
+        ("implementation", "returncode", 1),
+        ("implementation", "attempt", 2),
+        ("implementation", "implementation_commit", "not-a-commit"),
+        ("board", "reason", "not_integrated"),
+        ("merge", "reason", "queued"),
+        ("merge", "request_id", ""),
+        ("merge", "implementation_commit", "d" * 40),
+    ],
+)
+def test_bridge_rejects_malformed_pending_merge_evidence(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    value: object,
+) -> None:
+    class MalformedPendingPortal:
+        def __init__(self, paths: object, task_alias: str) -> None:
+            self.paths = paths
+            self.task_alias = task_alias
+
+        def run_once(self) -> dict[str, object]:
+            result = _pending_merge_result(self.paths, self.task_alias)
+            implementation = result["implementation_result"]
+            assert isinstance(implementation, dict)
+            target = implementation
+            if section == "board":
+                target = implementation["board_completion"]
+            elif section == "merge":
+                target = implementation["merge_result"]
+            assert isinstance(target, dict)
+            target[field] = value
+            return result
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=(
+            lambda paths, alias: MalformedPendingPortal(paths, alias)
+        ),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert "does not match the database claim" in str(caught.value)
+
+
+def test_bridge_rejects_pending_merge_candidate_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._sleep_seconds",
+        lambda _seconds: None,
+    )
+
+    class SubstitutedPendingPortal:
+        def __init__(self, paths: object, task_alias: str) -> None:
+            self.paths = paths
+            self.task_alias = task_alias
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            return _pending_merge_result(
+                self.paths,
+                self.task_alias,
+                request_id=f"request:merge:{self.calls:03d}",
+            )
+
+    portals: list[SubstitutedPendingPortal] = []
+
+    def factory(paths: object, alias: str) -> SubstitutedPendingPortal:
+        portal = SubstitutedPendingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert "candidate identity changed" in str(caught.value)
+    assert len(portals) == 1
+    assert portals[0].calls == 2
+
+
+def test_bridge_fails_closed_at_pending_merge_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClock:
+        def __init__(self) -> None:
+            self.now = 0.0
+            self.sleeps: list[float] = []
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            self.sleeps.append(seconds)
+            self.now += seconds
+
+    class PendingPortal:
+        def __init__(self, paths: object, task_alias: str) -> None:
+            self.paths = paths
+            self.task_alias = task_alias
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            return _pending_merge_result(self.paths, self.task_alias)
+
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._monotonic_seconds",
+        clock.monotonic,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._sleep_seconds",
+        clock.sleep,
+    )
+    portals: list[PendingPortal] = []
+
+    def factory(paths: object, alias: str) -> PendingPortal:
+        portal = PendingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+        implementation_timeout=20.0,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert str(caught.value) == "pending_merge_timeout"
+    assert len(portals) == 1
+    assert portals[0].calls == 2
     assert clock.sleeps == [15.0, 5.0]
 
 

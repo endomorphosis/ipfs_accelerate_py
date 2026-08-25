@@ -4515,6 +4515,101 @@ class DatabasePortalExecutionBridge:
             return None
         return task_id, portal_attempt, worktree_path
 
+    def _same_claim_pending_merge_identity(
+        self,
+        result: Mapping[str, Any],
+        *,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> tuple[str, str, int, str, str, str] | None:
+        """Bind one queued candidate to this claim-private Portal projection.
+
+        A successful provider pass can finish by handing its validated
+        candidate to the asynchronous merge train. That is neither database
+        completion nor a retryable provider result: the same database callback
+        must remain alive while Portal reconciles the queue. Admit that wait
+        only from the closed, identity-bound pending-merge result emitted by
+        ``PortalImplementationDaemon``.
+        """
+
+        implementation = result.get("implementation_result")
+        if not isinstance(implementation, Mapping):
+            return None
+        board_completion = implementation.get("board_completion")
+        merge_result = implementation.get("merge_result")
+        if not isinstance(board_completion, Mapping) or not isinstance(
+            merge_result, Mapping
+        ):
+            return None
+        projection_text = self._verify_projection(paths, binding)
+        _portal_task_key, portal_task_cid = self._portal_completion_event_identity(
+            paths=paths,
+            projection_text=projection_text,
+            binding=binding,
+        )
+        task_id = implementation.get("task_id")
+        task_cid = implementation.get("task_cid")
+        canonical_task_cid = implementation.get("canonical_task_cid")
+        portal_attempt = implementation.get("attempt")
+        implementation_commit = str(
+            implementation.get("implementation_commit") or ""
+        )
+        request_id = str(merge_result.get("request_id") or "")
+        merge_task_cid = merge_result.get("canonical_task_cid")
+        merge_commit = str(merge_result.get("implementation_commit") or "")
+        if (
+            type(implementation.get("returncode")) is not int
+            or implementation.get("returncode") != 0
+            or implementation.get("attempt_consumed") is not True
+            or implementation.get("provider_dispatched") is not True
+            or task_id != binding.get("task_alias")
+            or task_cid != portal_task_cid
+            or canonical_task_cid != portal_task_cid
+            or type(portal_attempt) is not int
+            or portal_attempt < 1
+            or portal_attempt != binding.get("attempt_number")
+            or board_completion.get("complete") is not False
+            or board_completion.get("pending_merge") is not True
+            or board_completion.get("reason")
+            != "merge_queued_awaiting_integration"
+            or merge_result.get("queued") is not True
+            or merge_result.get("merged") is not False
+            or merge_result.get("reason") != "merge_queued"
+            or merge_task_cid != portal_task_cid
+            or merge_commit != implementation_commit
+            or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", implementation_commit)
+            is None
+            or not request_id
+            or len(request_id.encode("utf-8", errors="surrogatepass")) > 512
+            or any(character in request_id for character in "\x00\r\n")
+        ):
+            return None
+        return (
+            str(task_id),
+            portal_task_cid,
+            portal_attempt,
+            implementation_commit,
+            request_id,
+            str(paths.task_projection),
+        )
+
+    @staticmethod
+    def _claims_pending_merge(result: Mapping[str, Any]) -> bool:
+        """Detect an attempted pending-merge handoff before admitting it."""
+
+        implementation = result.get("implementation_result")
+        if not isinstance(implementation, Mapping):
+            return False
+        board_completion = implementation.get("board_completion")
+        merge_result = implementation.get("merge_result")
+        return bool(
+            isinstance(board_completion, Mapping)
+            and board_completion.get("pending_merge") is True
+        ) or bool(
+            isinstance(merge_result, Mapping)
+            and merge_result.get("queued") is True
+        )
+
     @staticmethod
     def _continues_verified_quota_fallback(
         result: Mapping[str, Any],
@@ -7326,6 +7421,7 @@ class DatabasePortalExecutionBridge:
             quota_fallback_continued = False
             ordinary_passes = 0
             inflight_identity: tuple[str, int, str] | None = None
+            pending_merge_identity: tuple[str, str, int, str, str, str] | None = None
             while ordinary_passes < self.max_passes:
                 projection = self._verify_projection(paths, binding)
                 if _projection_status(projection) in _TERMINAL_STATUSES:
@@ -7359,9 +7455,17 @@ class DatabasePortalExecutionBridge:
                 # which could overshoot the configured timeout and admit more
                 # work after the database callback should have deferred.
                 if (
-                    inflight_identity is not None
+                    (
+                        inflight_identity is not None
+                        or pending_merge_identity is not None
+                    )
                     and _monotonic_seconds() >= inflight_deadline
                 ):
+                    if pending_merge_identity is not None:
+                        # A queued candidate has already consumed and
+                        # dispatched this attempt. Do not misreport it as the
+                        # pre-dispatch typed deferral contract.
+                        raise DatabasePortalBridgeError("pending_merge_timeout")
                     raise DatabasePortalBridgeDeferred(
                         "inflight_process",
                         backoff_seconds=(
@@ -7379,12 +7483,41 @@ class DatabasePortalExecutionBridge:
                 if len(summaries) == _MAX_DATABASE_PORTAL_PASS_PREVIEW:
                     del summaries[0]
                 summaries.append(summary)
-                self._verify_projection(paths, binding)
+                projection = self._verify_projection(paths, binding)
+                if _projection_status(projection) in _TERMINAL_STATUSES:
+                    completion_task_key, completion_task_cid = (
+                        self._portal_completion_event_identity(
+                            paths=paths,
+                            projection_text=projection,
+                            binding=binding,
+                        )
+                    )
+                    if self._has_completion_event(
+                        paths,
+                        str(binding.get("task_alias") or ""),
+                        completion_task_key,
+                        completion_task_cid,
+                    ):
+                        return self._acceptance_receipt(
+                            attempt=attempt,
+                            paths=paths,
+                            binding=binding,
+                            summaries=summaries,
+                            summary_count=summary_count,
+                            summaries_digest=(
+                                "sha256:" + summaries_hasher.copy().hexdigest()
+                            ),
+                        )
                 current_inflight_identity = self._same_claim_inflight_identity(
                     raw_result,
                     binding=binding,
                 )
                 if current_inflight_identity is not None:
+                    if pending_merge_identity is not None:
+                        raise DatabasePortalBridgeError(
+                            "Portal pending-merge lifecycle changed into an "
+                            "inflight provider lifecycle"
+                        )
                     if inflight_identity is None:
                         inflight_identity = current_inflight_identity
                     elif current_inflight_identity != inflight_identity:
@@ -7404,7 +7537,39 @@ class DatabasePortalExecutionBridge:
                         min(DATABASE_PORTAL_INFLIGHT_POLL_SECONDS, remaining)
                     )
                     continue
-                ordinary_passes += 1
+                claims_pending_merge = self._claims_pending_merge(raw_result)
+                current_pending_merge_identity = (
+                    self._same_claim_pending_merge_identity(
+                        raw_result,
+                        paths=paths,
+                        binding=binding,
+                    )
+                    if claims_pending_merge
+                    else None
+                )
+                if claims_pending_merge:
+                    if current_pending_merge_identity is None:
+                        raise DatabasePortalBridgeError(
+                            "Portal pending-merge result does not match the "
+                            "database claim"
+                        )
+                    if pending_merge_identity is None:
+                        pending_merge_identity = current_pending_merge_identity
+                    elif current_pending_merge_identity != pending_merge_identity:
+                        raise DatabasePortalBridgeError(
+                            "Portal pending-merge candidate identity changed "
+                            "while the database claim was waiting"
+                        )
+                elif (
+                    pending_merge_identity is not None
+                    and _projection_status(projection) != "merge-queued"
+                ):
+                    raise DatabasePortalBridgeError(
+                        "Portal pending-merge projection left its queued state "
+                        "without durable completion"
+                    )
+                if pending_merge_identity is None:
+                    ordinary_passes += 1
                 if (
                     not quota_fallback_continued
                     and self._continues_verified_quota_fallback(
@@ -7525,6 +7690,14 @@ class DatabasePortalExecutionBridge:
                                 failure_evidence=consumed_no_progress,
                             )
                     raise DatabasePortalBridgeError(failure)
+                if pending_merge_identity is not None:
+                    remaining = inflight_deadline - _monotonic_seconds()
+                    if remaining <= 0:
+                        raise DatabasePortalBridgeError("pending_merge_timeout")
+                    _sleep_seconds(
+                        min(DATABASE_PORTAL_INFLIGHT_POLL_SECONDS, remaining)
+                    )
+                    continue
             return self._acceptance_receipt(
                 attempt=attempt,
                 paths=paths,
