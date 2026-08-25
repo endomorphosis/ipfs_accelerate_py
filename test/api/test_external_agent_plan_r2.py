@@ -111,10 +111,17 @@ def _signed_approval(
         issued_at_ms=NOW_MS - 500,
         expires_at_ms=NOW_MS + 50_000,
     )
-    approval["signature"] = base64.b64encode(
+    signature = base64.b64encode(
         key.sign(r2._canonical_bytes(approval))
     ).decode("ascii")
-    return approval, identity
+    return (
+        r2.seal_plan_r2_transition_approval(
+            statement,
+            approval,
+            signature=signature,
+        ),
+        identity,
+    )
 
 
 def _authorization():
@@ -141,52 +148,22 @@ def _authorization():
 def _capability(authorization: dict[str, object]):
     key = Ed25519PrivateKey.generate()
     reviewer = ed25519_did_key(key.public_key())
-    value: dict[str, object] = {
-        "schema": r2.PLAN_R2_OPERATIONAL_CAPABILITY_SCHEMA,
-        "allowed": True,
-        "blockers": [],
-        "source_head": authorization["source_head"],
-        "source_tree": authorization["source_tree"],
-        "bootstrap_admission_cid": authorization["bootstrap_admission_cid"],
-        "quack_owner_qualification_cid": authorization[
-            "quack_owner_qualification_cid"
-        ],
-        "quack_command_fabric_qualification_cid": authorization[
-            "quack_command_fabric_qualification_cid"
-        ],
-        "owner_principal_did": authorization["owner_principal_did"],
-        "shard_id": authorization["shard_id"],
-        "owner_generation": authorization["owner_generation"],
-        "epoch": authorization["expected_epoch"],
-        "fence": authorization["fencing_token"],
-        "duckdb_version": "1.5.5",
-        "quack_build": "quack@1.5.5+core",
-        "authorized_state_command_schema": (
-            "ipfs_accelerate_py/agent-supervisor/authorized-state-command@1"
-        ),
-        "ingress_authenticated": True,
-        "ingress_append_only_single_relation": True,
-        "ingress_accepts_signed_envelope_only": True,
-        "bare_state_command_rejected": True,
-        "owner_verifies_authorized_state_command": True,
-        "authority_ref_binds_transition_authorization": True,
-        "local_owner_verifies_transition_authorization": True,
-        "operational_database_private": True,
-        "one_mutable_owner": True,
-        "atomic_plan_population_cas": True,
-        "egress_read_only": True,
-        "egress_append_denied": True,
-        "durable_idempotent_receipts": True,
-        "protected_full_rows_bound": True,
-        "reviewer_identity_did": reviewer,
-        "issued_at_ms": NOW_MS - 500,
-        "expires_at_ms": NOW_MS + 50_000,
-    }
-    value["reviewer_signature"] = base64.b64encode(
+    value = r2.plan_r2_operational_capability_signing_payload(
+        authorization,
+        reviewer_identity_did=reviewer,
+        issued_at_ms=NOW_MS - 500,
+        expires_at_ms=NOW_MS + 50_000,
+    )
+    signature = base64.b64encode(
         key.sign(r2._canonical_bytes(value))
     ).decode("ascii")
-    value["capability_cid"] = r2._cid(value)
-    return value, reviewer
+    return (
+        r2.seal_plan_r2_operational_capability(
+            value,
+            reviewer_signature=signature,
+        ),
+        reviewer,
+    )
 
 
 class _Repository:
@@ -363,6 +340,106 @@ class _Repository:
             value["observation_cid"] = r2._cid(value)
             self.observation = value
         return deepcopy(self.observation)
+
+
+def test_keyless_transition_approval_sealer_is_exact_and_adversarial() -> None:
+    statement = _statement()
+    key = Ed25519PrivateKey.generate()
+    identity = ed25519_did_key(key.public_key())
+    prepared = r2.prepare_plan_r2_transition_approval(
+        statement,
+        role="independent_operator",
+        identity_did=identity,
+        issued_at_ms=NOW_MS - 500,
+        expires_at_ms=NOW_MS + 50_000,
+    )
+    assert "signature" not in prepared
+    signature = base64.b64encode(
+        key.sign(r2._canonical_bytes(prepared))
+    ).decode("ascii")
+    sealed = r2.seal_plan_r2_transition_approval(
+        statement,
+        prepared,
+        signature=signature,
+    )
+    assert sealed == {**prepared, "signature": signature}
+
+    mutated = {**prepared, "one_use_nonce": "another-nonce"}
+    with pytest.raises(r2.ExternalAgentPlanR2Error, match="differs"):
+        r2.seal_plan_r2_transition_approval(
+            statement,
+            mutated,
+            signature=signature,
+        )
+    with pytest.raises(r2.ExternalAgentPlanR2Error, match="signature is absent"):
+        r2.seal_plan_r2_transition_approval(
+            statement,
+            prepared,
+            signature="",
+        )
+
+
+def test_operational_capability_payload_and_sealer_are_keyless_and_self_addressed() -> None:
+    statement = _statement()
+    key = Ed25519PrivateKey.generate()
+    reviewer = ed25519_did_key(key.public_key())
+    arguments = {
+        "reviewer_identity_did": reviewer,
+        "issued_at_ms": NOW_MS - 500,
+        "expires_at_ms": NOW_MS + 50_000,
+    }
+    prepared = r2.plan_r2_operational_capability_signing_payload(
+        statement,
+        **arguments,
+    )
+    assert prepared == r2.plan_r2_operational_capability_signing_payload(
+        statement,
+        **arguments,
+    )
+    assert prepared["source_head"] == statement["source_head"]
+    assert prepared["owner_principal_did"] == statement["owner_principal_did"]
+    assert "reviewer_signature" not in prepared
+    assert "capability_cid" not in prepared
+    signature = base64.b64encode(
+        key.sign(r2._canonical_bytes(prepared))
+    ).decode("ascii")
+    capability = r2.seal_plan_r2_operational_capability(
+        prepared,
+        reviewer_signature=signature,
+    )
+    assert capability["capability_cid"] == r2._cid(
+        {
+            key: value
+            for key, value in capability.items()
+            if key != "capability_cid"
+        }
+    )
+    assert r2.verify_plan_r2_operational_capability(
+        capability,
+        trusted_reviewer_dids=[reviewer],
+        now_ms=NOW_MS,
+    ) == capability
+
+    mutated = {**prepared, "atomic_plan_population_cas": False}
+    with pytest.raises(r2.ExternalAgentPlanR2Error, match="payload is invalid"):
+        r2.seal_plan_r2_operational_capability(
+            mutated,
+            reviewer_signature=signature,
+        )
+    stale_authorization = dict(_authorization()[0])
+    stale_authorization["authorization_cid"] = _sha("0")
+    with pytest.raises(r2.ExternalAgentPlanR2Error, match="self-addressed"):
+        r2.plan_r2_operational_capability_signing_payload(
+            stale_authorization,
+            **arguments,
+        )
+    with pytest.raises(r2.ExternalAgentPlanR2Error, match="reviewer/lifetime"):
+        r2.plan_r2_operational_capability_signing_payload(
+            statement,
+            reviewer_identity_did=str(statement["owner_principal_did"]),
+            issued_at_ms=NOW_MS - 500,
+            expires_at_ms=NOW_MS + 50_000,
+        )
 
 
 def test_authorization_is_separate_from_process_birth_and_binds_full_rows() -> None:
