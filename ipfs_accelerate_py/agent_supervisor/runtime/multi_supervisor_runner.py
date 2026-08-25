@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -1765,6 +1766,139 @@ def _profile_option_values(argv: Sequence[str], option: str) -> tuple[str, ...]:
             values.append(value)
         index += 1
     return tuple(values)
+
+
+def _validated_state_owner_bootstrap_fd(
+    common_args: Sequence[str],
+) -> int | None:
+    """Return one inherited typed-owner listener from a legacy launch profile.
+
+    The descriptor is an ambient process capability, so the non-plan-bound
+    runner admits it only when one exact profile option names an already-open
+    Unix-domain listening socket.  A duplicate descriptor is used for the
+    probe so validation never consumes or closes the caller's capability.
+    """
+
+    values = _profile_option_values(
+        common_args,
+        "--state-owner-bootstrap-fd",
+    )
+    if not values:
+        return None
+    if len(values) != 1:
+        raise ValueError(
+            "--state-owner-bootstrap-fd must appear exactly once"
+        )
+    try:
+        descriptor = int(values[0])
+    except ValueError as exc:
+        raise ValueError(
+            "--state-owner-bootstrap-fd must name an integer descriptor"
+        ) from exc
+    if descriptor < 3:
+        raise ValueError(
+            "--state-owner-bootstrap-fd must be an open descriptor >= 3"
+        )
+    try:
+        probe_descriptor = os.dup(descriptor)
+    except OSError as exc:
+        raise ValueError(
+            "--state-owner-bootstrap-fd is not an open descriptor"
+        ) from exc
+    try:
+        probe = socket.socket(fileno=probe_descriptor)
+    except OSError as exc:
+        os.close(probe_descriptor)
+        raise ValueError(
+            "--state-owner-bootstrap-fd must name an AF_UNIX listening socket"
+        ) from exc
+    with probe:
+        try:
+            listening = probe.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
+        except OSError as exc:
+            raise ValueError(
+                "--state-owner-bootstrap-fd must name an AF_UNIX listening socket"
+            ) from exc
+        if probe.family != socket.AF_UNIX or listening != 1:
+            raise ValueError(
+                "--state-owner-bootstrap-fd must name an AF_UNIX listening socket"
+            )
+    return descriptor
+
+
+def _replace_single_profile_option(
+    argv: Sequence[str],
+    option: str,
+    value: str,
+) -> tuple[str, ...]:
+    """Replace one already-validated profile value without adding authority."""
+
+    tokens = [str(item) for item in argv]
+    for index, token in enumerate(tokens):
+        if token == option:
+            tokens[index + 1] = value
+            return tuple(tokens)
+        if token.startswith(option + "="):
+            tokens[index] = f"{option}={value}"
+            return tuple(tokens)
+    raise AssertionError(f"validated launch profile omitted {option}")
+
+
+def _lane_scoped_state_owner_common_args(
+    common_args: Sequence[str],
+    *,
+    track: SupervisorTrack,
+) -> tuple[str, ...]:
+    """Bind one shared bootstrap owner identity to an expanded shard lane."""
+
+    owner_option = "--database-owner-session-id"
+    owner_values = _profile_option_values(common_args, owner_option)
+    if len(owner_values) != 1:
+        raise ValueError(
+            f"{owner_option} must appear exactly once with the bootstrap descriptor"
+        )
+    base_owner = owner_values[0].strip()
+    if not base_owner or any(
+        character in base_owner for character in ("\x00", "\n", "\r")
+    ):
+        raise ValueError(
+            f"{owner_option} must name one nonempty single-line identity"
+        )
+
+    shard_counts = _profile_option_values(
+        track.extra_args,
+        "--task-shard-count",
+    )
+    shard_indices = _profile_option_values(
+        track.extra_args,
+        "--task-shard-index",
+    )
+    if not shard_counts and not shard_indices:
+        return tuple(str(item) for item in common_args)
+    if len(shard_counts) != 1 or len(shard_indices) != 1:
+        raise ValueError(
+            "bootstrap owner shard metadata must contain one count and one index"
+        )
+    try:
+        shard_count = int(shard_counts[0])
+        shard_index = int(shard_indices[0])
+    except ValueError as exc:
+        raise ValueError("bootstrap owner shard metadata must be integer") from exc
+    if shard_count < 1 or not 0 <= shard_index < shard_count:
+        raise ValueError("bootstrap owner shard metadata is out of range")
+    if shard_count == 1:
+        return tuple(str(item) for item in common_args)
+
+    track_digest = hashlib.sha256(track.name.encode("utf-8")).hexdigest()[:12]
+    lane_owner = (
+        f"{base_owner}:shard:{shard_index}-of-{shard_count}:"
+        f"track:{track_digest}"
+    )
+    return _replace_single_profile_option(
+        common_args,
+        owner_option,
+        lane_owner,
+    )
 
 
 class _StableArtifactReadError(RuntimeError):
@@ -5687,12 +5821,28 @@ def start_track(
     """
 
     resolved = track.resolve(repo_root)
+    plan_bound_dispatch = "--plan-bound-dispatch" in resolved.extra_args
+    effective_common_args = tuple(str(item) for item in common_args)
+    state_owner_bootstrap_fd: int | None = None
+    if not plan_bound_dispatch:
+        state_owner_bootstrap_fd = _validated_state_owner_bootstrap_fd(
+            effective_common_args
+        )
+        if state_owner_bootstrap_fd is not None:
+            effective_common_args = _lane_scoped_state_owner_common_args(
+                effective_common_args,
+                track=resolved,
+            )
     child_command = (
         [python_executable, "-m", resolved.module_name, *resolved.extra_args]
         if resolved.module_name
-        else [python_executable, str(resolved.script_path), *common_args, *resolved.extra_args]
+        else [
+            python_executable,
+            str(resolved.script_path),
+            *effective_common_args,
+            *resolved.extra_args,
+        ]
     )
-    plan_bound_dispatch = "--plan-bound-dispatch" in resolved.extra_args
     live_profile_required = _configured_board_live_seal_required(
         common_args, (track,)
     )
@@ -6185,7 +6335,11 @@ def start_track(
                 pass_fds=(
                     (gate_read_fd, accepted_control_plane_descriptor)
                     if plan_bound_dispatch and gate_read_fd is not None
-                    else ()
+                    else (
+                        (state_owner_bootstrap_fd,)
+                        if state_owner_bootstrap_fd is not None
+                        else ()
+                    )
                 ),
             )
         except BaseException:
