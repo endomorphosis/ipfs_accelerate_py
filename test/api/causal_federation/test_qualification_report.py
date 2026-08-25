@@ -1299,7 +1299,24 @@ def _validate_repository(root: Path = ROOT) -> dict[str, Any]:
         if item["path"] == "ipfs_accelerate_py/agent_supervisor/federation/promotion.py"
     )
     promotion_source = _verify_binding_at(root, INPUT_REVISION, promotion_binding)
-    if any(reason.encode("utf-8") not in promotion_source for reason in PROMOTION_REASON_CODES):
+    required_gate_source = (
+        b'f"missing:{slug}_accepted_producer_provenance"',
+        b'f"missing:{slug}_full_qualification_identity_binding"',
+        b'f"missing:{slug}_state_owner_provenance"',
+        b'f"unavailable:{suffix}_live_not_run"',
+        b'"blocked:casf_034_current_state_owner_capability_unattested"',
+        b'"missing:casf_035_control_parity_report_decoder"',
+        b'"missing:casf_036_formal_report_decoder"',
+        b'"blocked:casf_037_local_qualification_unavailable"',
+        b'"CASF-030"',
+        b'"CASF-032"',
+        b'"CASF-033"',
+        b'"CASF-038"',
+        b'"CASF-039"',
+        b'"CASF-040"',
+        b'"CASF-041"',
+    )
+    if any(fragment not in promotion_source for fragment in required_gate_source):
         raise QualificationReportError(
             "reported residual blockers differ from the bound promotion gate"
         )
@@ -1520,7 +1537,7 @@ def test_two_pass_repository_identity_detects_toctou(monkeypatch: pytest.MonkeyP
         value = original(root, *args)
         if args == ("rev-parse", "--verify", "HEAD^{commit}"):
             head_reads += 1
-            if head_reads >= 4:
+            if head_reads >= 5:
                 return "f" * 40
         return value
 
