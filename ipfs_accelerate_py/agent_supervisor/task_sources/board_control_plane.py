@@ -1814,6 +1814,17 @@ def open_board_control_plane(
 
 VALIDATION_PYTHON_ENV: Final = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV: Final = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
+VALIDATION_BACKEND_ENV: Final = "IPFS_ACCELERATE_AGENT_VALIDATION_BACKEND"
+VALIDATION_CONTAINER_IMAGE_ENV: Final = (
+    "IPFS_ACCELERATE_AGENT_AUTHORITY_VALIDATION_CONTAINER_IMAGE"
+)
+AUTHORITY_VALIDATION_CONTAINER_BACKEND: Final = (
+    "authority_validation_container"
+)
+AUTHORITY_VALIDATION_CONTAINER_RUNTIME_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "authority-validation-container-runtime@1"
+)
 VALIDATION_PYTHON_MODULES_ENV: Final = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_MODULES"
 )
@@ -1899,14 +1910,17 @@ def apply_board_validation_runtime(
     """
 
     target = os.environ if environ is None else environ
-    if str(target.get(VALIDATION_PYTHONPATH_ENV) or "").strip():
-        return {
-            "applied": False,
-            "reason": "already_configured",
-            "pythonpath": str(target.get(VALIDATION_PYTHONPATH_ENV) or ""),
-        }
+    existing_pythonpath = str(
+        target.get(VALIDATION_PYTHONPATH_ENV) or ""
+    ).strip()
     config_path = discover_board_scheduler_config(repo_root, todo_path)
     if config_path is None:
+        if existing_pythonpath:
+            return {
+                "applied": False,
+                "reason": "already_configured",
+                "pythonpath": existing_pythonpath,
+            }
         return {"applied": False, "reason": "scheduler_config_missing"}
     try:
         payload = json.loads(config_path.read_text(encoding="utf-8"))
@@ -1923,6 +1937,59 @@ def apply_board_validation_runtime(
             "applied": False,
             "reason": "validation_runtime_absent",
             "config_path": str(config_path),
+        }
+    backend = str(raw.get("backend") or "").strip()
+    if backend:
+        image = str(raw.get("container_image") or "").strip()
+        raw_modules = raw.get("required_modules")
+        if (
+            set(raw)
+            != {
+                "schema",
+                "backend",
+                "container_image",
+                "required_modules",
+            }
+            or raw.get("schema")
+            != AUTHORITY_VALIDATION_CONTAINER_RUNTIME_SCHEMA
+            or backend != AUTHORITY_VALIDATION_CONTAINER_BACKEND
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None
+            or not isinstance(raw_modules, list)
+            or not raw_modules
+            or not all(
+                type(item) is str
+                and item
+                and item.strip() == item
+                and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", item)
+                for item in raw_modules
+            )
+            or len(raw_modules) != len(set(raw_modules))
+        ):
+            return {
+                "applied": False,
+                "reason": "validation_runtime_invalid",
+                "config_path": str(config_path),
+            }
+        target.pop(VALIDATION_PYTHON_ENV, None)
+        target.pop(VALIDATION_PYTHONPATH_ENV, None)
+        target[VALIDATION_BACKEND_ENV] = backend
+        target[VALIDATION_CONTAINER_IMAGE_ENV] = image
+        target[VALIDATION_PYTHON_MODULES_ENV] = ",".join(raw_modules)
+        target.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+        target.setdefault("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+        return {
+            "applied": True,
+            "reason": "bound_scheduler_validation_runtime",
+            "config_path": str(config_path),
+            "backend": backend,
+            "container_image": image,
+            "required_modules": list(raw_modules),
+        }
+    if existing_pythonpath:
+        return {
+            "applied": False,
+            "reason": "already_configured",
+            "pythonpath": existing_pythonpath,
         }
     executable = str(raw.get("python_executable") or "").strip()
     raw_paths = raw.get("pythonpath_entries")

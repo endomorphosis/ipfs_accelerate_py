@@ -10,6 +10,12 @@
   "goal_prefix": "LGCVF-G",
   "board_namespace": "logic-governed-compositional-verification-fabric-v1",
   "merge_target_branch": "agent/logic-governed-compositional-verification-fabric-v1",
+  "validation_runtime": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/authority-validation-container-runtime@1",
+    "backend": "authority_validation_container",
+    "container_image": "sha256:fbe85c882cbad09dcef78841b5c7cabc1ec0541aca2a8884d018d34c9f1732ae",
+    "required_modules": ["pytest", "z3", "cvc5"]
+  },
   "source_binding": {
     "accelerator_required_ancestor": "12c4e8387de4986d38d69534f3d74864e7bb15c1",
     "accelerator_required_branch": "agent/logic-governed-compositional-verification-fabric-v1",
@@ -241,12 +247,15 @@
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/persistent_task_queue.py",
     "ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py",
     "ipfs_accelerate_py/mcp/tests/test_dependency_contract_and_fastmcp_v2.py",
+    "pyproject.toml",
     "requirements.txt",
+    "setup.py",
     "scripts/benchmark_lgcvf_symbolic_displacement.py",
     "scripts/emit_logic_governed_compositional_verification_fabric_plan.py",
     "scripts/materialize_logic_governed_compositional_verification_fabric_control_plane.py",

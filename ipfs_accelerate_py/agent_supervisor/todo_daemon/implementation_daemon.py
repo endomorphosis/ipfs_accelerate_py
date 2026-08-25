@@ -23,6 +23,7 @@ import sys
 import tempfile
 import threading
 import time
+import zlib
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
@@ -238,10 +239,16 @@ from ..task_sources.taskboard_store import (
     taskboard_revision,
 )
 from ..validation.project_dependency_preflight import (
+    MAX_PROBE_SOURCE_BYTES,
+    PROJECT_DEPENDENCY_PROBE_SCHEMA,
     PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
     PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA,
     PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
     SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+    _PROBE_ARGV_BOOTSTRAP,
+    _active_module_source_bytes,
+    _canonical_json as _canonical_dependency_json,
+    _run_bounded_probe_process,
     compact_project_dependency_preflight_receipt,
     canonical_project_dependency_preflight_receipt_bytes,
     project_dependency_preflight_for_event,
@@ -530,6 +537,12 @@ MANUAL_COMPLETION_AUTHORITY_RENEWAL_BASE_COOLDOWN_SECONDS = 300.0
 MANUAL_COMPLETION_AUTHORITY_RENEWAL_MAX_COOLDOWN_SECONDS = 14400.0
 AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV = (
     "IPFS_ACCELERATE_AGENT_AUTHORITY_VALIDATION_CONTAINER_IMAGE"
+)
+AUTHORITY_VALIDATION_BACKEND_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_BACKEND"
+)
+AUTHORITY_VALIDATION_CONTAINER_BACKEND = (
+    "authority_validation_container"
 )
 AUTHORITY_VALIDATION_DOCKER_PATH = Path("/usr/bin/docker")
 AUTHORITY_VALIDATION_DOCKER_SHA256 = (
@@ -34429,6 +34442,283 @@ class PortalImplementationDaemon:
             prior_fingerprints,
         )
 
+    @staticmethod
+    def _configured_validation_backend() -> str:
+        """Return the exact configured backend or reject ambient drift."""
+
+        backend = str(
+            os.environ.get(AUTHORITY_VALIDATION_BACKEND_ENV) or ""
+        ).strip()
+        if backend not in {"", AUTHORITY_VALIDATION_CONTAINER_BACKEND}:
+            raise ValidationRuntimeError(
+                "configured validation backend is unsupported"
+            )
+        return backend
+
+    @staticmethod
+    def _authority_validation_dependency_probe(
+        payload: Mapping[str, Any],
+        *,
+        workspace_path: Path,
+        environment: Mapping[str, object] | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate dependency metadata in the pinned authority image."""
+
+        del environment
+        source = _active_module_source_bytes()
+        source_sha256 = hashlib.sha256(source).hexdigest()
+        source_delivery = {
+            "mode": "compressed_argv_copy",
+            "sha256": source_sha256,
+            "bytes": len(source),
+        }
+        if len(source) > MAX_PROBE_SOURCE_BYTES:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_source_exceeded_bound",
+                "source_bytes": len(source),
+                "maximum_source_bytes": MAX_PROBE_SOURCE_BYTES,
+                "preflight_source_sha256": source_sha256,
+            }
+        contract = (
+            PortalImplementationDaemon._authority_validation_isolation_contract()
+        )
+        if contract.get("available") is not True:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "authority_validation_isolation_unavailable",
+                "authority_validation_isolation": contract,
+                "preflight_source_delivery": source_delivery,
+            }
+        try:
+            workspace = workspace_path.resolve(strict=True)
+        except OSError as exc:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "authority_validation_workspace_invalid",
+                "error_type": type(exc).__name__,
+                "preflight_source_delivery": source_delivery,
+            }
+        if not workspace.is_dir():
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "authority_validation_workspace_invalid",
+                "preflight_source_delivery": source_delivery,
+            }
+
+        encoded_source = base64.b85encode(
+            zlib.compress(source, level=9)
+        ).decode("ascii")
+        docker_path = str(contract["docker_path"])
+        docker_endpoint = str(contract["docker_endpoint"])
+        image_id = str(contract["image_id"])
+        docker_prefix = [docker_path, "--host", docker_endpoint]
+        container_name = (
+            f"ipfs-accelerate-dependency-probe-{os.getpid()}-"
+            f"{time.time_ns()}"
+        )
+        user_identity = (
+            "0:0"
+            if contract.get("rootless") is True
+            else f"{os.getuid()}:{os.getgid()}"
+        )
+        docker_command = [
+            *docker_prefix,
+            "run",
+            "--rm",
+            "--interactive",
+            "--pull=never",
+            f"--name={container_name}",
+            "--init",
+            "--stop-timeout=1",
+            "--network=none",
+            "--read-only",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges:true",
+            "--log-driver=none",
+            f"--pids-limit={AUTHORITY_VALIDATION_PIDS_LIMIT}",
+            f"--cpus={AUTHORITY_VALIDATION_CPU_LIMIT:g}",
+            f"--memory={AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES}",
+            f"--memory-swap={AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES}",
+            f"--shm-size={AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES}",
+            f"--user={user_identity}",
+            (
+                "--tmpfs=/tmp:rw,nosuid,nodev,exec,"
+                f"size={AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES},mode=1777"
+            ),
+            "--workdir=/tmp",
+            "--env=HOME=/tmp/validation-home",
+            "--env=PYTHONDONTWRITEBYTECODE=1",
+            "--env=PYTHONNOUSERSITE=1",
+            "--env=PYTHONPATH="
+            + AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES,
+            "--entrypoint=/usr/bin/python",
+            image_id,
+            "-c",
+            _PROBE_ARGV_BOOTSTRAP,
+            encoded_source,
+            "--probe",
+        ]
+        docker_environment = {
+            "DOCKER_CONFIG": "/nonexistent/ipfs-accelerate-docker-config",
+            "DOCKER_HOST": docker_endpoint,
+            "HOME": "/nonexistent/ipfs-accelerate-docker-home",
+            "PATH": os.defpath,
+        }
+        try:
+            returncode, output_bytes, process_error = (
+                _run_bounded_probe_process(
+                    docker_command,
+                    input_payload=_canonical_dependency_json(payload).encode(
+                        "utf-8"
+                    ),
+                    environment=docker_environment,
+                )
+            )
+        except OSError as exc:
+            returncode, output_bytes, process_error = None, b"", {
+                "reason": "dependency_probe_process_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        try:
+            subprocess.run(
+                [*docker_prefix, "container", "rm", "--force", container_name],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+                check=False,
+                env=docker_environment,
+            )
+            listed = subprocess.run(
+                [
+                    *docker_prefix,
+                    "container",
+                    "ls",
+                    "--all",
+                    "--filter",
+                    f"name=^/{container_name}$",
+                    "--format",
+                    "{{.ID}}",
+                ],
+                text=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+                check=False,
+                env=docker_environment,
+            )
+            container_removed = (
+                listed.returncode == 0 and not listed.stdout.strip()
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            container_removed = False
+
+        isolation = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-dependency-probe@1"
+            ),
+            "contract_id": str(contract.get("contract_id") or ""),
+            "backend": "docker-local-metadata",
+            "image_id": image_id,
+            "docker_endpoint": docker_endpoint,
+            "rootless": contract.get("rootless") is True,
+            "network_mode": "none",
+            "workspace_mounted": False,
+            "container_root_read_only": True,
+            "capabilities_dropped": "all",
+            "no_new_privileges": True,
+            "container_removed": container_removed,
+        }
+        launcher_identity = hashlib.sha256(
+            (
+                image_id
+                + "|/usr/bin/python|"
+                + AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES
+            ).encode("utf-8")
+        ).hexdigest()
+        launcher = {
+            "content_sha256": launcher_identity,
+            "interpreter_sha256": launcher_identity,
+            "mode": "authority-validation-container",
+            "policy_sha256": hashlib.sha256(
+                _canonical_dependency_json(isolation).encode("utf-8")
+            ).hexdigest(),
+            "sealed": True,
+        }
+        if not container_removed:
+            process_error = {
+                "reason": "authority_validation_container_not_quiesced"
+            }
+        if process_error:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                **process_error,
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        if returncode != 0:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_process_failed",
+                "returncode": int(returncode or 0),
+                "output_sha256": hashlib.sha256(output_bytes).hexdigest(),
+                "output_bytes": len(output_bytes),
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        try:
+            result = json.loads(output_bytes.decode("utf-8"))
+        except (UnicodeError, ValueError) as exc:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_output_invalid",
+                "error_type": type(exc).__name__,
+                "output_sha256": hashlib.sha256(output_bytes).hexdigest(),
+                "output_bytes": len(output_bytes),
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        if (
+            not isinstance(result, dict)
+            or result.get("schema") != PROJECT_DEPENDENCY_PROBE_SCHEMA
+            or not isinstance(result.get("passed"), bool)
+        ):
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_receipt_invalid",
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        if result.get("probe_source_sha256") != source_sha256:
+            return {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "passed": False,
+                "reason": "dependency_probe_source_attestation_mismatch",
+                "preflight_source_delivery": source_delivery,
+                "validation_python_launcher": launcher,
+                "authority_validation_isolation": isolation,
+            }
+        result["preflight_source_delivery"] = source_delivery
+        result["validation_python_launcher"] = launcher
+        result["authority_validation_isolation"] = isolation
+        return result
+
     def _require_validation_project_dependency_preflight(
         self,
         *,
@@ -34454,6 +34744,17 @@ class PortalImplementationDaemon:
             if prior_seed_authority is not None:
                 preflight_kwargs["prior_seed_authority"] = dict(
                     prior_seed_authority
+                )
+            backend = self._configured_validation_backend()
+            if backend == AUTHORITY_VALIDATION_CONTAINER_BACKEND:
+                preflight_kwargs["probe_runner"] = (
+                    lambda payload, **runner_kwargs: (
+                        self._authority_validation_dependency_probe(
+                            payload,
+                            workspace_path=workspace_path,
+                            **runner_kwargs,
+                        )
+                    )
                 )
             raw_receipt = preflight_validation_project_dependencies(
                 workspace_path,
@@ -44706,7 +45007,7 @@ class PortalImplementationDaemon:
         proposal_validation: Any,
         task: PortalTask,
     ) -> list[dict[str, str]]:
-        """Project exact added task outputs without retaining candidate source."""
+        """Project exact added or modified outputs without retaining source."""
 
         proposal = getattr(proposal_validation, "proposal", None)
         entries = tuple(getattr(proposal, "candidate_diff", ()) or ())
@@ -44722,18 +45023,36 @@ class PortalImplementationDaemon:
                 or ""
             )
             path = str(getattr(entry, "new_path", "") or "")
+            old_path = str(getattr(entry, "old_path", "") or "")
             source = getattr(entry, "after_source", None)
+            before_source = getattr(entry, "before_source", None)
             blob_id = str(getattr(entry, "after_blob_id", "") or "")
-            if not (
+            before_blob_id = str(
+                getattr(entry, "before_blob_id", "") or ""
+            )
+            exact_text_add = bool(
                 change_kind == "add"
                 and path in declared_outputs
-                and not str(getattr(entry, "old_path", "") or "")
-                and getattr(entry, "before_source", None) is None
-                and not str(getattr(entry, "before_blob_id", "") or "")
+                and not old_path
+                and before_source is None
+                and not before_blob_id
                 and isinstance(source, str)
                 and not bool(getattr(entry, "binary", False))
                 and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", blob_id)
-            ):
+            )
+            exact_text_modify = bool(
+                change_kind == "modify"
+                and path in declared_outputs
+                and old_path == path
+                and isinstance(before_source, str)
+                and isinstance(source, str)
+                and not bool(getattr(entry, "binary", False))
+                and re.fullmatch(
+                    r"[0-9a-f]{40}|[0-9a-f]{64}", before_blob_id
+                )
+                and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", blob_id)
+            )
+            if not (exact_text_add or exact_text_modify):
                 continue
             attestations.append(
                 {
@@ -50428,14 +50747,23 @@ class PortalImplementationDaemon:
         external_validation_isolation = bool(
             os.environ.get(PROVIDER_EXTERNAL_ISOLATION_ENV, "").strip()
         )
-        if force_uncached or external_validation_isolation:
+        configured_validation_backend = self._configured_validation_backend()
+        authority_container_backend = (
+            configured_validation_backend
+            == AUTHORITY_VALIDATION_CONTAINER_BACKEND
+        )
+        if (
+            force_uncached
+            or external_validation_isolation
+            or authority_container_backend
+        ):
             scheduled_commands = tuple(
                 replace(spec, cacheable=False)
                 for spec in build_validation_commands(commands)
             )
         validation_runner = (
             self._authority_validation_command_runner
-            if authority_revalidation_required
+            if authority_revalidation_required or authority_container_backend
             else self._validation_command_runner
         )
 
@@ -50942,7 +51270,32 @@ class PortalImplementationDaemon:
             "started_at": started_at,
             "authority_validation_isolation": contract,
         }
+        try:
+            explicit_board_backend = (
+                PortalImplementationDaemon._configured_validation_backend()
+                == AUTHORITY_VALIDATION_CONTAINER_BACKEND
+            )
+        except ValidationRuntimeError as exc:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 75,
+                "output": f"{type(exc).__name__}: {exc}\n",
+                "error": "validation_backend_invalid",
+                "reason": "configured_validation_backend_unsupported",
+                "infrastructure_failure": True,
+            }
         if not __class__._unix_stream_socket_permitted():
+            if explicit_board_backend:
+                return {
+                    **base,
+                    "finished_at": utc_now(),
+                    "returncode": 75,
+                    "output": "",
+                    "error": "authority_validation_isolation_unavailable",
+                    "reason": "authority_validation_docker_socket_denied",
+                    "infrastructure_failure": True,
+                }
             try:
                 local_environment = validation_environment_for_runner(
                     environment,
@@ -51078,6 +51431,7 @@ class PortalImplementationDaemon:
                     "/sbin:/bin"
                 ),
                 "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
                 "PYTHONPATH": os.pathsep.join(allowed_python_paths),
                 "TMPDIR": "/tmp",
                 "XDG_CACHE_HOME": "/tmp/validation-home/.cache",

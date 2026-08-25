@@ -130,6 +130,8 @@ from ..rescue.supervisor_watchdog import (
 from .core import ManagedDaemonSpec, terminate_pid_tree
 from .database_portal_bridge import DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
 from .implementation_daemon import (
+    AUTHORITY_VALIDATION_CONTAINER_BACKEND,
+    AUTHORITY_VALIDATION_CONTAINER_OCI_MANIFEST,
     DEFAULT_TRACKS,
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
@@ -1432,6 +1434,26 @@ def _managed_daemon_child_environment(
             secret_handle=database_program.endpoint_secret_handle,
         )
     return env
+
+
+def _require_lgcvf_live_validation_runtime(
+    status: object,
+) -> None:
+    """Reject a live LGCVF lane unless its pinned validator was admitted."""
+
+    if (
+        not isinstance(status, Mapping)
+        or status.get("applied") is not True
+        or status.get("backend")
+        != AUTHORITY_VALIDATION_CONTAINER_BACKEND
+        or status.get("container_image")
+        != AUTHORITY_VALIDATION_CONTAINER_OCI_MANIFEST
+        or status.get("required_modules")
+        != ["pytest", "z3", "cvc5"]
+    ):
+        raise SupervisorSchedulerConfigError(
+            "LGCVF live validation runtime is not admitted"
+        )
 
 
 def database_program_from_cli_namespace(
@@ -6846,6 +6868,14 @@ class PortalImplementationSupervisor:
             ingest_todo=ingest_todo,
         )
         self.board_control_plane_status = isolated
+        if (
+            config.configured_board_live_context is not None
+            and self.board_namespace
+            == LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE
+        ):
+            _require_lgcvf_live_validation_runtime(
+                isolated.get("validation_runtime")
+            )
         resolved_branch = str(isolated.get("implementation_branch") or "").strip()
         branch_reason = str(
             (isolated.get("branch_result") or {}).get("reason") or ""
