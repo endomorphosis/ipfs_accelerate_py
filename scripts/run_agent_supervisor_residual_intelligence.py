@@ -142,6 +142,7 @@ VRIF_RELEASE_REPORT_SCHEMA: Final = (
 OWNER_COMMAND_ENVELOPE_MAX_BYTES: Final = 1_048_576
 TYPED_DEFERRAL_PROVIDER_CANARY_MAX_BYTES: Final = 8 * 1024 * 1024
 TYPED_DEFERRAL_PROVIDER_CANARY_TIMEOUT_SECONDS: Final = 600
+VRIF_RUNTIME_SETTLEMENT_LOCK_TIMEOUT_SECONDS: Final[float] = 1.0
 TYPED_DEFERRAL_RECOVERY_PRODUCTION_PATHS: Final = frozenset(
     {
         "ipfs_accelerate_py/agent_implementation_route.py",
@@ -3490,7 +3491,7 @@ def _reconcile_vrif_goal_completion_under_runtime_guard(
             target_repository_id=target_repository_id,
             target_branch=target_branch,
             owner_generation=owner_generation,
-            lock_timeout_seconds=0.05,
+            lock_timeout_seconds=VRIF_RUNTIME_SETTLEMENT_LOCK_TIMEOUT_SECONDS,
         ) as runtime_receipt:
             runtime_binding: Mapping[str, Any] | None = None
             if runtime_receipt.get("settled") is True:
@@ -5142,7 +5143,9 @@ def status(config_path: Path) -> dict[str, Any]:
                         target_repository_id=target_repository_id,
                         target_branch=target_branch,
                         owner_generation=owner_generation,
-                        lock_timeout_seconds=0.05,
+                        lock_timeout_seconds=(
+                            VRIF_RUNTIME_SETTLEMENT_LOCK_TIMEOUT_SECONDS
+                        ),
                     ) as runtime_receipt:
                         runtime_binding: Mapping[str, Any] | None = None
                         if runtime_receipt.get("settled") is True:

@@ -2747,6 +2747,7 @@ def test_runtime_guard_is_held_through_root_reconciliation(
 
     @contextmanager
     def hold_guard(*_args, **_kwargs):
+        assert _kwargs["lock_timeout_seconds"] == 1.0
         events.append("guard_enter")
         guard_active["value"] = True
         try:
@@ -3113,6 +3114,7 @@ def test_status_settled_binding_is_guarded_through_quack_snapshot(
 
     @contextmanager
     def settled_guard(*_args, **_kwargs):
+        assert _kwargs["lock_timeout_seconds"] == 1.0
         guard_active["value"] = True
         try:
             yield {"settled": True}
