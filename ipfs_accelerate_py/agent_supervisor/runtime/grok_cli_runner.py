@@ -6732,7 +6732,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # Delegate to the full isolation/fallback implementation. Terra is
     # dispatched only after typed preflight auth/quota evidence or terminal
-    # quota correlation plus independent verification.
+    # quota correlation plus independent verification. Lazy runner-owned
+    # imports must not create bytecode inside the content-fenced workspace.
+    previous_dont_write_bytecode = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
     try:
         try:
             return _run(args, receipt_fd)
@@ -6749,6 +6752,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return _run(args, receipt_fd)
     finally:
+        sys.dont_write_bytecode = previous_dont_write_bytecode
         if receipt_fd >= 3:
             try:
                 os.close(receipt_fd)

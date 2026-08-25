@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import importlib
 import io
 import json
 import os
 import re
 import shlex
 import subprocess
+import sys
 import urllib.parse
 import uuid
 from pathlib import Path
@@ -1513,6 +1515,14 @@ def test_legacy_preflight_marker_rejects_external_route_authority(
         ),
         (
             "Grok Build usage balance exhausted",
+            ("clean", "clean", "clean", "mutated"),
+            "spending_limit_exhausted",
+            41,
+            0,
+            1,
+        ),
+        (
+            "Grok Build usage balance exhausted",
             ("clean",),
             "",
             41,
@@ -1623,8 +1633,8 @@ def test_typed_preflight_requires_independent_quota_confirmation(
     )
 
     def fake_fallback(command, **kwargs) -> int:
-        fallback_calls.append(list(command))
         kwargs["pre_effect_validator"]()
+        fallback_calls.append(list(command))
         return 0
 
     monkeypatch.setattr(
@@ -2213,6 +2223,71 @@ def test_codex_auth_defaults_to_account_home_when_runtime_home_is_sealed(
 
     assert environment["HOME"] == str(codex_home.resolve(strict=True))
     assert environment["CODEX_HOME"] == str(codex_home.resolve(strict=True))
+
+
+def test_runner_owned_lazy_import_cannot_drift_workspace_fingerprint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_name = "lgcvf_lazy_provider_dependency"
+    (tmp_path / f"{module_name}.py").write_text(
+        "VALUE = 'loaded'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["git", "init", "-q", str(tmp_path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    (tmp_path / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setattr(grok_cli_runner.sys, "dont_write_bytecode", False)
+    baseline = grok_cli_runner._workspace_content_fingerprint(tmp_path)
+
+    def lazy_import(_args, _receipt_fd: int) -> int:
+        assert grok_cli_runner.sys.dont_write_bytecode is True
+        imported = importlib.import_module(module_name)
+        assert imported.VALUE == "loaded"
+        assert (
+            grok_cli_runner._workspace_content_fingerprint(tmp_path)
+            == baseline
+        )
+        return 0
+
+    monkeypatch.setattr(grok_cli_runner, "_run", lazy_import)
+    try:
+        assert grok_cli_runner.main(["--workspace", str(tmp_path)]) == 0
+    finally:
+        sys.modules.pop(module_name, None)
+
+    assert grok_cli_runner.sys.dont_write_bytecode is False
+    assert not (tmp_path / "__pycache__").exists()
+
+    # The fix suppresses runner-owned cache writes; it must not weaken the
+    # fence by exempting a cache-shaped mutation from the fingerprint.
+    cache = tmp_path / "__pycache__"
+    cache.mkdir()
+    external_cache = cache / "external.cpython-312.pyc"
+    external_cache.write_bytes(b"external mutation")
+    ignored = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "check-ignore",
+            "-q",
+            "--",
+            external_cache,
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert ignored.returncode == 0
+    assert grok_cli_runner._workspace_content_fingerprint(tmp_path) != baseline
 
 
 def test_codex_isolated_home_seals_environment_without_host_toolchain(
