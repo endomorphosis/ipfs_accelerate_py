@@ -45,6 +45,7 @@ ipfs-accelerate-agent-merge-resolver = "ipfs_accelerate_py.agent_supervisor.merg
 ipfs-accelerate-agent-llm-merge-resolver-fallback = "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main"
 ipfs-accelerate-proof-reuse-provision = "ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main"
 ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
+proof-context = "ipfs_accelerate_py.proof_context.cli.__main__:main"
 
 [project.entry-points.pytest11]
 ipfs-proof-reuse = "ipfs_accelerate_py.testing.proof_reuse.plugin"
@@ -64,6 +65,30 @@ agent-supervisor = [
   # The Quack and DuckLake extensions are capability-probed at runtime and
   # are never installed during import or test collection.
   "duckdb>=1.5.0,<1.6.0",
+]
+proof-context = [
+  # PCCE's three cross-repository provider/contract artifacts remain scoped to
+  # the proof-context capability so the repository's established core install
+  # dependency contract is not replaced during composition.
+  "ipfs_datasets_py==0.2.0",
+  "ipfs_kit_py==0.3.0",
+  "mcp-plus-plus-contracts==0.1.0",
+]
+verification = [
+  "jsonschema>=4.22,<5",
+]
+codex = []
+local-model = [
+  # Existing llama.cpp inventory only. This does not add a provider; the
+  # governed runtime continues to use CommandAdapter's frozen argv contract.
+  "llama-cpp-python[server]>=0.3.10,<0.4",
+  "huggingface-hub>=0.24,<1",
+]
+evaluation = [
+  "jsonschema>=4.22,<5",
+  "llama-cpp-python[server]>=0.3.10,<0.4",
+  "huggingface-hub>=0.24,<1",
+  "pytest>=8,<9",
 ]
 proof-reuse = [
   # Keep the install-time extra non-circular and aligned with
@@ -235,6 +260,27 @@ all = [
   "llama-cpp-python[server]>=0.3.10",
   "huggingface_hub>=0.24.0",
 ]
+
+[tool.ipfs-accelerate.proof-context-profiles]
+schema = "ipfs-accelerate.proof-context.v0.1/install-profiles@1"
+core-distributions = [
+  "ipfs_datasets_py==0.2.0",
+  "ipfs_kit_py==0.3.0",
+  "mcp-plus-plus-contracts==0.1.0",
+]
+core-extra = "proof-context"
+verification-extra = "verification"
+codex-extra = "codex"
+codex-command-contract = "codex exec"
+local-model-extra = "local-model"
+local-model-inventory = "ipfs_accelerate_py.utils.llama_cpp"
+local-model-adapter = "ipfs_accelerate_py.proof_context.adapters.command:CommandAdapter"
+local-model-command-contract = "local-agent-json-argv@1"
+evaluation-extra = "evaluation"
+evaluation-surface = "ipfs_accelerate_py.agent_supervisor.self_hosting:SelfHostingQualificationHarness"
+console-script = "proof-context"
+console-target = "ipfs_accelerate_py.proof_context.cli.__main__:main"
+runtime-authority-widened = false
 
 [tool.setuptools.packages.find]
 include = ["ipfs_accelerate_py*", "scripts", "scripts.*"]

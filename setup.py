@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import gzip
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 from setuptools import Command, find_packages, setup
@@ -186,6 +189,24 @@ _SEMANTIC_GOVERNOR_CONSOLE = (
     "semantic-governor="
     "ipfs_accelerate_py.agent_supervisor.semantic_governor.cli:main"
 )
+_PROOF_CONTEXT_CONSOLE = (
+    "proof-context=ipfs_accelerate_py.proof_context.cli.__main__:main"
+)
+
+
+def _normalize_wheel_staging_modes(root: Path) -> None:
+    """Make wheel member modes independent of checkout/build umask."""
+
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            continue
+        if path.is_dir():
+            path.chmod(0o755)
+        elif path.is_file():
+            source_mode = stat.S_IMODE(path.stat().st_mode)
+            path.chmod(0o755 if source_mode & 0o111 else 0o644)
+
+
 _SEMANTIC_STATE_SCHEMA_REL = Path(
     "ipfs_accelerate_py/agent_supervisor/semantic_state/schemas/"
     "semantic-state-harness.interface.json"
@@ -261,6 +282,89 @@ def _get_cmdclass():
                 shutil.copy2(source, target)
 
         cmdclass["build_py"] = build_py
+    except Exception:
+        pass
+
+    try:
+        from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
+        class bdist_wheel(_bdist_wheel):  # type: ignore
+            def write_wheelfile(self, *args, **kwargs):
+                super().write_wheelfile(*args, **kwargs)
+                # WheelFile preserves staging permissions. Normalize after
+                # dist-info exists and immediately before archive emission.
+                _normalize_wheel_staging_modes(Path(self.bdist_dir))
+
+        cmdclass["bdist_wheel"] = bdist_wheel
+    except Exception:
+        pass
+
+    try:
+        from setuptools.command.sdist import sdist as _sdist
+
+        class sdist(_sdist):  # type: ignore
+            """Create a byte-reproducible proof-context source artifact."""
+
+            def make_archive(
+                self,
+                base_name,
+                format,
+                root_dir=None,
+                base_dir=None,
+                owner=None,
+                group=None,
+            ):
+                if format != "gztar" or not base_dir:
+                    return super().make_archive(
+                        base_name,
+                        format,
+                        root_dir,
+                        base_dir,
+                        owner,
+                        group,
+                    )
+                try:
+                    epoch = int(os.environ.get("SOURCE_DATE_EPOCH", "0"))
+                except ValueError:
+                    epoch = 0
+                epoch = max(0, epoch)
+                release_root = Path(root_dir or os.curdir) / base_dir
+                archive_path = Path(f"{os.fspath(base_name)}.tar.gz")
+                archive_path.parent.mkdir(parents=True, exist_ok=True)
+                members = [release_root, *sorted(release_root.rglob("*"))]
+                with archive_path.open("wb") as raw:
+                    with gzip.GzipFile(
+                        filename="", mode="wb", fileobj=raw, mtime=epoch
+                    ) as compressed:
+                        with tarfile.open(
+                            fileobj=compressed,
+                            mode="w",
+                            format=tarfile.PAX_FORMAT,
+                        ) as archive:
+                            for path in members:
+                                relative = path.relative_to(release_root)
+                                archive_name = Path(base_dir) / relative
+                                info = archive.gettarinfo(
+                                    str(path), archive_name.as_posix()
+                                )
+                                info.uid = 0
+                                info.gid = 0
+                                info.uname = ""
+                                info.gname = ""
+                                info.mtime = epoch
+                                info.pax_headers = {}
+                                if info.isdir():
+                                    info.mode = 0o755
+                                elif info.isfile():
+                                    info.mode = 0o755 if info.mode & 0o111 else 0o644
+                                if info.isfile():
+                                    with path.open("rb") as stream:
+                                        archive.addfile(info, stream)
+                                else:
+                                    archive.addfile(info)
+                return str(archive_path)
+
+        cmdclass["sdist"] = sdist
     except Exception:
         pass
 
@@ -393,6 +497,7 @@ setup(
             "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main",
             "ipfs-accelerate-proof-reuse-provision=ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
+            _PROOF_CONTEXT_CONSOLE,
             _SEMANTIC_STATE_CONSOLE,
             _SEMANTIC_GOVERNOR_CONSOLE,
         ],

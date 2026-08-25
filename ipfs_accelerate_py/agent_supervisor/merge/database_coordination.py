@@ -1040,9 +1040,9 @@ CREATE TABLE IF NOT EXISTS fenced_leases (
     body_json VARCHAR NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS fenced_leases_scope_state_idx
-    ON fenced_leases(scope_key, state, expires_at_ms);
+    ON fenced_leases(scope_key);
 CREATE INDEX IF NOT EXISTS fenced_leases_owner_idx
-    ON fenced_leases(owner_session_id, state);
+    ON fenced_leases(owner_session_id);
 CREATE INDEX IF NOT EXISTS fenced_leases_idempotency_idx
     ON fenced_leases(idempotency_key);
 
@@ -1286,6 +1286,55 @@ _COORDINATION_REQUIRED_INDEXES: Final[frozenset[str]] = frozenset(
         "maintenance_leases_scope_idx",
     }
 )
+
+
+_FENCED_LEASE_IMMUTABLE_INDEXES: Final[Mapping[str, str]] = {
+    "fenced_leases_scope_state_idx": "[scope_key]",
+    "fenced_leases_owner_idx": "[owner_session_id]",
+}
+
+
+def _ensure_immutable_fenced_lease_indexes(connection: Any) -> None:
+    """Replace legacy lease indexes that cover mutable lifecycle columns.
+
+    DuckDB 1.5 can invalidate a database while committing an UPDATE to a
+    ``fenced_leases`` row when a secondary ART index covers ``state`` or
+    ``expires_at_ms``.  Lease expiry changes the former and renewal changes
+    the latter.  Scope and owner are immutable for a lease, so retain the
+    lookup indexes under their existing contract names while narrowing them
+    to immutable columns.  Existing authorities are migrated once on open;
+    fresh authorities already have these definitions from the schema above.
+    """
+
+    rows = connection.execute(
+        """
+        SELECT index_name, expressions
+        FROM duckdb_indexes()
+        WHERE schema_name = 'main' AND table_name = 'fenced_leases'
+          AND index_name IN (
+              'fenced_leases_scope_state_idx',
+              'fenced_leases_owner_idx'
+          )
+        ORDER BY index_name
+        """
+    ).fetchall()
+    actual = {
+        str(_coordination_row_value(row, 0, "index_name")): "".join(
+            str(_coordination_row_value(row, 1, "expressions"))
+            .replace('"', "")
+            .lower()
+            .split()
+        )
+        for row in rows
+    }
+    for name, expected in _FENCED_LEASE_IMMUTABLE_INDEXES.items():
+        if actual.get(name) == expected:
+            continue
+        connection.execute(f'DROP INDEX IF EXISTS "{name}"')
+        columns = expected.removeprefix("[").removesuffix("]")
+        connection.execute(
+            f'CREATE INDEX "{name}" ON fenced_leases({columns})'
+        )
 
 
 def _coordination_row_value(row: Any, index: int, name: str) -> Any:
@@ -1721,6 +1770,7 @@ class DatabaseCoordinator:
                 if not self._quack_transport:
                     for statement in _split_sql_statements(_BOOKKEEPING_SQL):
                         connection.execute(statement)
+                    _ensure_immutable_fenced_lease_indexes(connection)
                     for key, value in (
                         ("interface", DATABASE_COORDINATOR_INTERFACE),
                         ("schema", DATABASE_COORDINATION_SCHEMA),
@@ -1798,22 +1848,19 @@ class DatabaseCoordinator:
             pass
 
     def _commit_if_idle(self, connection: Any) -> None:
-        try:
-            if getattr(connection, "in_transaction", False):
-                commit = getattr(connection, "commit", None)
-                if callable(commit):
-                    commit()
-                    return
-            raw = getattr(connection, "_connection", None)
-            raw_commit = getattr(raw, "commit", None) if raw is not None else None
-            if callable(raw_commit):
-                raw_commit()
-                return
+        if getattr(connection, "in_transaction", False):
             commit = getattr(connection, "commit", None)
             if callable(commit):
                 commit()
-        except Exception:
-            pass
+                return
+        raw = getattr(connection, "_connection", None)
+        raw_commit = getattr(raw, "commit", None) if raw is not None else None
+        if callable(raw_commit):
+            raw_commit()
+            return
+        commit = getattr(connection, "commit", None)
+        if callable(commit):
+            commit()
 
     def _now_ms(self) -> int:
         return int(self._clock_ms())
@@ -2599,31 +2646,73 @@ class DatabaseCoordinator:
         body: Mapping[str, Any] | None = None,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
-        """Record successful prerequisite completion for dependency readiness."""
+        """Record successful prerequisite completion for dependency readiness.
+
+        A response-loss replay with the same status and body is a read-only
+        success.  A replay that changes either field fails closed.  In
+        particular, this path must not replace an existing primary-key row:
+        DuckDB 1.5 can invalidate an attached Quack connection while deleting
+        the unique-index entry used by ``INSERT OR REPLACE``.
+        """
 
         cid = _text(task_cid, "task_cid")
         now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
         status_text = _text(status, "status")
+        body_json = _canonical_json(dict(body or {}))
         with self._lock:
             connection = self._require()
             self._begin(connection)
             try:
-                connection.execute(
+                existing = connection.execute(
                     """
-                    INSERT OR REPLACE INTO task_completions(
-                        task_cid, completed_at_ms, status, body_json
-                    ) VALUES (?, ?, ?, ?)
+                    SELECT completed_at_ms, status, body_json
+                    FROM task_completions WHERE task_cid = ?
                     """,
-                    [cid, now, status_text, _canonical_json(dict(body or {}))],
-                )
-                connection.execute(
-                    "UPDATE coordination_tasks SET ready = FALSE WHERE task_cid = ?",
                     [cid],
-                )
+                ).fetchone()
+                completed_at_ms = now
+                if existing is None:
+                    connection.execute(
+                        """
+                        INSERT INTO task_completions(
+                            task_cid, completed_at_ms, status, body_json
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        [cid, now, status_text, body_json],
+                    )
+                    connection.execute(
+                        """
+                        UPDATE coordination_tasks SET ready = FALSE
+                        WHERE task_cid = ?
+                        """,
+                        [cid],
+                    )
+                else:
+                    completed_at_ms = int(
+                        _coordination_row_value(existing, 0, "completed_at_ms")
+                    )
+                    existing_status = str(
+                        _coordination_row_value(existing, 1, "status")
+                    )
+                    existing_body = _decode_coordination_body(
+                        _coordination_row_value(existing, 2, "body_json"),
+                        table="task_completions",
+                        identity=cid,
+                    )
+                    mismatches: list[str] = []
+                    if existing_status != status_text:
+                        mismatches.append("status")
+                    if _canonical_json(existing_body) != body_json:
+                        mismatches.append("body")
+                    if mismatches:
+                        raise DatabaseCoordinationConflictError(
+                            "task completion replay conflicts with existing "
+                            f"{', '.join(mismatches)} for {cid}"
+                        )
                 self._commit_if_idle(connection)
                 return {
                     "task_cid": cid,
-                    "completed_at_ms": now,
+                    "completed_at_ms": completed_at_ms,
                     "status": status_text,
                 }
             except Exception:
