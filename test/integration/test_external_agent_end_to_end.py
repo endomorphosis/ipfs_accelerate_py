@@ -8,6 +8,8 @@ claimed.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -44,6 +46,10 @@ SEMANTIC_ROOT = "sha256:" + "d" * 64
 BOARD_NAMESPACE = "external-agent-autonomous-execution-fabric-v1"
 SHARD_ID = "eaaef-145-disposable-end-to-end-shard"
 STORE_ID = "eaaef-145-control"
+RECEIPT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "docs/architecture/external_agent_autonomous_execution_fabric/receipts/end_to_end.json"
+)
 
 
 def _goal():
@@ -88,6 +94,36 @@ def _server(root: Path) -> QuackStateServer:
         store_id=STORE_ID,
         secret_handle="handle:eaaef-145-test-owner",
     )
+
+
+def _validate_current_receipt(payload: object) -> None:
+    assert isinstance(payload, Mapping)
+    assert payload.get("schema") == "qualification-receipt@1"
+    assert payload.get("task_id") == "EAAEF-145"
+    assert payload.get("evidence_mode") != "contract_fail_closed"
+    assert "in_memory_ExternalQuackOwner" not in json.dumps(payload, sort_keys=True)
+
+    stages = payload.get("stages")
+    assert isinstance(stages, list)
+    observed_stage_names: list[str] = []
+    for stage in stages:
+        assert isinstance(stage, Mapping), (
+            "end-to-end stages must carry observations, not assertion strings"
+        )
+        stage_name = str(stage.get("stage") or "")
+        assert stage_name
+        assert stage.get("observed") is True
+        assert str(stage.get("evidence_cid") or "")
+        observed_stage_names.append(stage_name)
+
+    assert "quack_owner_apply" not in observed_stage_names
+    assert "typed_terminal" not in observed_stage_names
+    assert "quack_owner_dispatch_refused" in observed_stage_names
+    assert "typed_nonterminal" in observed_stage_names
+    assert payload.get("owner_dispatch_admitted") is False
+    assert payload.get("completion_claimed") is False
+    assert payload.get("terminal") == "not_complete"
+    assert EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER in set(payload.get("production_blockers") or ())
 
 
 def test_handoff_plan_frontier_owner_recovery_remains_nonterminal(
@@ -201,32 +237,7 @@ def test_handoff_plan_frontier_owner_recovery_remains_nonterminal(
     )
     assert terminal["terminal"] == "not_complete"
 
-    payload = {
-        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
-        "task_id": "EAAEF-145",
-        "evidence_mode": "contract_fail_closed",
-        "live_runtime_invoked": False,
-        "live_eight_container_qualification": False,
-        "live_cluster_required": False,
-        "owner_dispatch_admitted": False,
-        "stages": [
-            "handoff",
-            "plan_admit",
-            "frontier",
-            "quack_owner_dispatch_refused",
-            "recovery",
-            "typed_nonterminal",
-        ],
-        "run_id": started.run_id,
-        "admitted_plan_id": admitted.admitted_id,
-        "frontier_task_ids": list(frontier["task_ids"]),
-        "terminal": terminal["terminal"],
-        "run_status": approved.run_status,
-        "accepted_stale_write": False,
-    }
-    assert payload["evidence_mode"] == "contract_fail_closed"
-    assert payload["live_runtime_invoked"] is False
-    assert payload["live_eight_container_qualification"] is False
-    assert payload["owner_dispatch_admitted"] is False
-    assert payload["terminal"] == "not_complete"
-    assert payload["stages"][-1] == "typed_nonterminal"
+
+def test_board_declared_qualification_receipt_is_current() -> None:
+    assert RECEIPT_PATH.is_file(), f"EAAEF-145 board-declared receipt is missing: {RECEIPT_PATH}"
+    _validate_current_receipt(json.loads(RECEIPT_PATH.read_text(encoding="utf-8")))

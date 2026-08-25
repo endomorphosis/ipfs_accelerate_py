@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,6 @@ from ipfs_accelerate_py.agent_supervisor.runtime.external_control_recovery impor
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.external_quack_owner import (
     EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER,
-    LIVE_QUACK_PORT,
     ExternalQuackOwner,
     ExternalQuackOwnerNotReady,
     RemoteSqlRefusedError,
@@ -65,6 +65,33 @@ def _owner(server: QuackStateServer) -> ExternalQuackOwner:
     return owner
 
 
+def _validate_current_receipt(payload: object) -> None:
+    assert isinstance(payload, Mapping)
+    assert payload.get("schema") == "qualification-receipt@1"
+    assert payload.get("task_id") == "EAAEF-097"
+
+    encoded = json.dumps(payload, sort_keys=True)
+    assert "in_memory_ExternalQuackOwner" not in encoded
+    assert "sole_owner_applies_envelopes" not in encoded
+    assert "sole_owner_apply" not in encoded
+
+    owner_evidence = payload.get("owner_evidence")
+    assert isinstance(owner_evidence, Mapping)
+    assert owner_evidence.get("interface") == "ExternalQuackOwner@1"
+    assert owner_evidence.get("backing_owner_interface") == "QuackStateServer@1"
+    assert str(owner_evidence.get("server_id") or "").startswith("server:")
+    assert str(owner_evidence.get("lease_cid") or "")
+    assert owner_evidence.get("production_admitted") is False
+    assert EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER in set(
+        owner_evidence.get("production_blockers") or ()
+    )
+
+    assert payload.get("observed_server_id") == owner_evidence["server_id"]
+    assert payload.get("owner_dispatch_admitted") is False
+    assert payload.get("terminal") == "not_complete"
+    assert payload.get("result") == "no_go"
+
+
 def test_sole_ready_owner_issues_fail_closed_facade(tmp_path: Path) -> None:
     server = _server(tmp_path)
     identity = server.start()
@@ -78,14 +105,16 @@ def test_sole_ready_owner_issues_fail_closed_facade(tmp_path: Path) -> None:
         assert owner.bound_port > 0
         assert owner.operational_table_exposed is False
         assert owner.production_admitted is False
-        assert LIVE_QUACK_PORT == 19495
 
         duplicate = _server(tmp_path)
-        with pytest.raises(
-            QuackStateServerOwnershipError,
-            match="second state-owner refused",
-        ):
-            duplicate.start()
+        try:
+            with pytest.raises(
+                QuackStateServerOwnershipError,
+                match="second state-owner refused",
+            ):
+                duplicate.start()
+        finally:
+            duplicate.stop()
         assert owner.assert_current(lease) == lease
 
         with pytest.raises(RemoteSqlRefusedError) as sql:
@@ -103,9 +132,11 @@ def test_sole_ready_owner_issues_fail_closed_facade(tmp_path: Path) -> None:
 def test_stale_fence_epoch_fails(tmp_path: Path) -> None:
     first = _server(tmp_path)
     first_identity = first.start()
-    first_owner = _owner(first)
-    stale = first_owner.lease()
-    first.stop()
+    try:
+        first_owner = _owner(first)
+        stale = first_owner.lease()
+    finally:
+        first.stop()
     with pytest.raises(ExternalQuackOwnerNotReady):
         first_owner.lease()
 
@@ -151,10 +182,9 @@ def test_retired_envelope_retries_cannot_invent_success(tmp_path: Path) -> None:
 def test_ducklake_loss_and_lag_never_change_authority(tmp_path: Path) -> None:
     server = _server(tmp_path)
     server.start()
-    owner = _owner(server)
-    lease = owner.lease()
-
     try:
+        owner = _owner(server)
+        lease = owner.lease()
         recovered = recover(
             current_epoch=lease.epoch,
             backup_epoch=lease.epoch,
@@ -220,11 +250,6 @@ def test_ducklake_loss_and_lag_never_change_authority(tmp_path: Path) -> None:
         server.stop()
 
 
-def test_qualification_receipt_is_contract_fail_closed() -> None:
-    payload = json.loads(RECEIPT_PATH.read_text(encoding="utf-8"))
-    assert payload["schema"] == "qualification-receipt@1"
-    assert payload.get("task_id") == "EAAEF-097" or payload.get("task_alias") == "EAAEF-097"
-    assert payload["evidence_mode"] == "contract_fail_closed"
-    assert payload["live_runtime_invoked"] is False
-    assert payload.get("live_quack_contacted", False) is False
-    assert int(payload.get("live_quack_port", LIVE_QUACK_PORT)) == 19495
+def test_board_declared_qualification_receipt_is_current() -> None:
+    assert RECEIPT_PATH.is_file(), f"EAAEF-097 board-declared receipt is missing: {RECEIPT_PATH}"
+    _validate_current_receipt(json.loads(RECEIPT_PATH.read_text(encoding="utf-8")))
