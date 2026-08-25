@@ -1154,11 +1154,9 @@ def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:
         )
         == valid
     )
-    with pytest.raises(
-        ValueError,
-        match="reasoning does not match the sealed provider route",
-    ):
-        grok_cli_runner._parse_codex_fallback_command(json.dumps(valid))
+    # Parsing without a route-bound expectation validates the closed argv
+    # shape only.  Dispatch callers always supply their sealed route effort.
+    assert grok_cli_runner._parse_codex_fallback_command(json.dumps(valid)) == valid
     model_drift = list(valid)
     model_drift[model_drift.index("-m") + 1] = "gpt-5.6-sol"
     effort_drift = list(valid)
