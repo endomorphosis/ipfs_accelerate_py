@@ -1862,6 +1862,23 @@ def test_real_eaaef_config_loads_as_live_admitted_board() -> None:
     assert board.payload["launch_policy"]["blockers"] == []
     assert board.payload["container_policy"]["live_dispatch_allowed"] is True
     assert board.payload["container_policy"]["bootstrap_image_status"] == "admitted"
+    provider = board.payload["provider"]
+    assert provider["primary_provider_id"] == "grok_cli"
+    assert provider["primary_model_id"] == "grok-4.6"
+    assert provider["fallback_provider_id"] == "codex"
+    assert provider["fallback_model_id"] == "gpt-5.6-terra"
+    assert provider["fallback_trigger"] == "primary_quota_exhausted"
+    assert "route_authorization_path" not in provider
+    route = scheduler_module._resolved_ordered_provider_route(
+        provider,
+        repo_root=REPO_ROOT,
+        board_namespace=board.board_namespace,
+    )
+    assert route.route_id == (
+        "agent-supervisor-grok46-terra56-high-hard-quota-v1"
+    )
+    assert route.authorization is None
+    assert route.permits_authentication_unavailable is False
     cursor_path = scheduler_module._eaaef_generation_cursor_path(REPO_ROOT)
     if cursor_path.is_file():
         cursor = json.loads(cursor_path.read_text(encoding="utf-8"))

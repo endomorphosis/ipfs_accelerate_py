@@ -215,12 +215,11 @@
     "primary_model_id": "grok-4.6",
     "fallback_provider_id": "codex",
     "fallback_model_id": "gpt-5.6-terra",
-    "fallback_trigger": "primary_quota_or_auth_unavailable",
+    "fallback_trigger": "primary_quota_exhausted",
     "fallback_reasoning_effort": "high",
     "max_concurrency": 64,
     "secrets_from_environment_only": true,
-    "secrets_in_argv_prompts_logs_or_receipts": false,
-    "route_authorization_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/provider-route-authorization-117ca803538e4f1063401c8b91fc047fd5419557.json"
+    "secrets_in_argv_prompts_logs_or_receipts": false
   },
   "configured_board_live_seal": {
     "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-configured-board-live-seal@2",
