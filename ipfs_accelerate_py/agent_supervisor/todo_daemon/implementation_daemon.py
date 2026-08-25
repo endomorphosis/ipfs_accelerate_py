@@ -76689,6 +76689,382 @@ def _database_daemon_process_instance_id(value: str | None) -> str:
     return value
 
 
+def _open_or_create_database_lock_parent(path: Path) -> tuple[int, str]:
+    """Open/create a lock parent one no-follow directory component at a time."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError("no-follow writer-lock directory access is unavailable")
+    unresolved = path.expanduser()
+    if any(component == ".." for component in unresolved.parts):
+        raise OSError("writer-lock path contains parent traversal")
+    candidate = unresolved if unresolved.is_absolute() else Path.cwd() / unresolved
+    lexical = Path(os.path.abspath(os.fspath(candidate)))
+    if not lexical.name:
+        raise OSError("writer-lock path has no filename")
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | nofollow
+    )
+    parent_descriptor = os.open(lexical.anchor, directory_flags)
+    try:
+        for component in lexical.parts[1:-1]:
+            try:
+                child_descriptor = os.open(
+                    component,
+                    directory_flags,
+                    dir_fd=parent_descriptor,
+                )
+            except FileNotFoundError:
+                try:
+                    os.mkdir(component, 0o700, dir_fd=parent_descriptor)
+                except FileExistsError:
+                    pass
+                child_descriptor = os.open(
+                    component,
+                    directory_flags,
+                    dir_fd=parent_descriptor,
+                )
+            os.close(parent_descriptor)
+            parent_descriptor = child_descriptor
+    except BaseException:
+        os.close(parent_descriptor)
+        raise
+    return parent_descriptor, lexical.name
+
+
+def _open_database_writer_lock(lock_path: Path) -> Any:
+    """Open and exclusively lock one owned, no-follow writer-lock inode."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise DatabaseImplementationAuthorityError(
+            "embedded writer lock requires no-follow file access"
+        )
+    try:
+        parent_descriptor, filename = _open_or_create_database_lock_parent(
+            lock_path
+        )
+    except OSError as exc:
+        raise DatabaseImplementationAuthorityError(
+            "embedded writer-lock parent cannot be opened safely"
+        ) from exc
+    descriptor = -1
+    locked = False
+    try:
+        parent_info = os.fstat(parent_descriptor)
+        if (
+            not stat_module.S_ISDIR(parent_info.st_mode)
+            or parent_info.st_uid != os.geteuid()
+            or stat_module.S_IMODE(parent_info.st_mode) & 0o022
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer-lock parent must be owned and non-writable by peers"
+            )
+        try:
+            descriptor = os.open(
+                filename,
+                os.O_RDWR
+                | os.O_CREAT
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+                | nofollow,
+                0o600,
+                dir_fd=parent_descriptor,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer lock cannot be opened safely"
+            ) from exc
+        before = os.fstat(descriptor)
+        try:
+            named_before = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer-lock pathname changed before admission"
+            ) from exc
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or stat_module.S_IMODE(before.st_mode) & 0o022
+            or (before.st_dev, before.st_ino)
+            != (named_before.st_dev, named_before.st_ino)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer lock must be an owned single-link regular file"
+            )
+        os.fchmod(descriptor, 0o600)
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        locked = True
+        after = os.fstat(descriptor)
+        try:
+            named_after = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer-lock pathname changed during admission"
+            ) from exc
+        if (
+            not stat_module.S_ISREG(after.st_mode)
+            or after.st_uid != os.geteuid()
+            or after.st_nlink != 1
+            or stat_module.S_IMODE(after.st_mode) != 0o600
+            or (after.st_dev, after.st_ino)
+            != (named_after.st_dev, named_after.st_ino)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded writer-lock identity changed during admission"
+            )
+        handle = os.fdopen(descriptor, "r+b", buffering=0)
+        descriptor = -1
+        return handle
+    except BaseException:
+        if descriptor >= 0:
+            try:
+                if locked:
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+        raise
+    finally:
+        os.close(parent_descriptor)
+
+
+def _inspect_database_sidecar(
+    sidecar_path: Path,
+    *,
+    lock_path: Path,
+    lock_handle: Any,
+    expected_identity: tuple[tuple[int, int], tuple[int, int] | None] | None = None,
+    require_exists: bool = False,
+    allow_existing_peer_write_normalization: bool = False,
+) -> tuple[tuple[int, int], tuple[int, int] | None]:
+    """Validate one sidecar inode through the directory holding its lock."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise DatabaseImplementationAuthorityError(
+            "embedded database sidecar requires no-follow file access"
+        )
+    try:
+        parent_descriptor, filename = _open_or_create_database_lock_parent(
+            sidecar_path
+        )
+    except OSError as exc:
+        raise DatabaseImplementationAuthorityError(
+            "embedded database-sidecar parent cannot be opened safely"
+        ) from exc
+    descriptor = -1
+    try:
+        parent_info = os.fstat(parent_descriptor)
+        parent_identity = (int(parent_info.st_dev), int(parent_info.st_ino))
+        if (
+            not stat_module.S_ISDIR(parent_info.st_mode)
+            or parent_info.st_uid != os.geteuid()
+            or stat_module.S_IMODE(parent_info.st_mode) & 0o022
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded database-sidecar parent must be owned and "
+                "non-writable by peers"
+            )
+        if expected_identity is not None and parent_identity != expected_identity[0]:
+            raise DatabaseImplementationAuthorityError(
+                "embedded database-sidecar parent identity changed during admission"
+            )
+
+        try:
+            named_lock = os.stat(
+                lock_path.name,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded database-sidecar lock pathname changed during admission"
+            ) from exc
+        held_lock = os.fstat(lock_handle.fileno())
+        if (
+            not stat_module.S_ISREG(named_lock.st_mode)
+            or (named_lock.st_dev, named_lock.st_ino)
+            != (held_lock.st_dev, held_lock.st_ino)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded database sidecar is not adjacent to its held writer lock"
+            )
+
+        try:
+            descriptor = os.open(
+                filename,
+                os.O_RDWR
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+                | nofollow,
+                dir_fd=parent_descriptor,
+            )
+        except FileNotFoundError:
+            if require_exists:
+                raise DatabaseImplementationAuthorityError(
+                    "embedded database sidecar disappeared during admission"
+                )
+            return parent_identity, None
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded database sidecar cannot be opened safely"
+            ) from exc
+
+        before = os.fstat(descriptor)
+        try:
+            named_before = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded database-sidecar pathname changed before admission"
+            ) from exc
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or (
+                stat_module.S_IMODE(before.st_mode) & 0o022
+                and not (
+                    expected_identity is not None
+                    and expected_identity[1] is None
+                )
+                and not allow_existing_peer_write_normalization
+            )
+            or (before.st_dev, before.st_ino)
+            != (named_before.st_dev, named_before.st_ino)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded database sidecar must be an owned single-link regular file"
+            )
+        os.fchmod(descriptor, 0o600)
+        hardened = os.fstat(descriptor)
+        try:
+            named_after = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "embedded database-sidecar pathname changed during admission"
+            ) from exc
+        file_identity = (int(hardened.st_dev), int(hardened.st_ino))
+        if (
+            not stat_module.S_ISREG(hardened.st_mode)
+            or hardened.st_uid != os.geteuid()
+            or hardened.st_nlink != 1
+            or stat_module.S_IMODE(hardened.st_mode) != 0o600
+            or file_identity != (named_after.st_dev, named_after.st_ino)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded database-sidecar identity changed during admission"
+            )
+        if (
+            expected_identity is not None
+            and expected_identity[1] is not None
+            and file_identity != expected_identity[1]
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "embedded database-sidecar inode changed during admission"
+            )
+        return parent_identity, file_identity
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        os.close(parent_descriptor)
+
+
+def _database_daemon_quack_sidecar_paths(
+    control_path: Path | str,
+    *,
+    coordination_path: Path | str | None = None,
+    execution_path: Path | str | None = None,
+) -> tuple[Path, Path]:
+    """Derive distinct lane-private sidecars without granting task authority."""
+
+    control = Path(control_path).expanduser().absolute()
+    if coordination_path is not None:
+        coordination = Path(coordination_path).expanduser().absolute()
+    elif control.suffix.lower() in {".duckdb", ".ddb"}:
+        coordination = control.with_name(f"{control.stem}.coordination.duckdb")
+    else:
+        coordination = control.with_name(
+            f"{control.name or 'control'}.coordination.duckdb"
+        )
+    if execution_path is not None:
+        execution = Path(execution_path).expanduser().absolute()
+    elif control.suffix.lower() in {".duckdb", ".ddb"}:
+        execution = control.with_name(f"{control.stem}.execution.duckdb")
+    else:
+        execution = control.with_name(
+            f"{control.name or 'control'}.execution.duckdb"
+        )
+
+    def storage_targets_alias(left: Path, right: Path) -> bool:
+        if left.resolve(strict=False) == right.resolve(strict=False):
+            return True
+        if not left.exists() or not right.exists():
+            return False
+        try:
+            return os.path.samefile(left, right)
+        except OSError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "quack sidecar inode separation could not be verified"
+            ) from exc
+
+    if storage_targets_alias(coordination, control):
+        raise DatabaseImplementationAuthorityError(
+            "quack coordination sidecar must not alias the canonical control database"
+        )
+    if storage_targets_alias(execution, control):
+        raise DatabaseImplementationAuthorityError(
+            "quack execution sidecar must not alias the canonical control database"
+        )
+    if storage_targets_alias(coordination, execution):
+        raise DatabaseImplementationAuthorityError(
+            "quack coordination and execution sidecars must be distinct"
+        )
+    coordination_lock = coordination.with_name(
+        f".{coordination.name}.writer.lock"
+    )
+    execution_lock = execution.with_name(f".{execution.name}.writer.lock")
+    storage_targets = (
+        ("control", control),
+        ("coordination", coordination),
+        ("execution", execution),
+    )
+    lock_targets = (
+        ("coordination writer lock", coordination_lock),
+        ("execution writer lock", execution_lock),
+    )
+    for lock_name, lock_target in lock_targets:
+        for storage_name, storage_target in storage_targets:
+            if storage_targets_alias(lock_target, storage_target):
+                raise DatabaseImplementationAuthorityError(
+                    f"quack {lock_name} must not alias the {storage_name} store"
+                )
+    if storage_targets_alias(coordination_lock, execution_lock):
+        raise DatabaseImplementationAuthorityError(
+            "quack coordination and execution writer locks must be distinct"
+        )
+    return coordination, execution
+
+
 def _database_daemon_logical_owner_id(
     *,
     database_path: Path,
@@ -76860,6 +77236,7 @@ class DatabaseImplementationDaemon:
         task_source: Any = None,
         close_task_source: bool = False,
         coordinator: Any = None,
+        state_owner_bootstrap_credentials: Any = None,
         quack_command_gateway: Any = None,
         install_schema: bool = True,
         repo_root: Path | str | None = None,
@@ -76867,6 +77244,21 @@ class DatabaseImplementationDaemon:
         task_prefix: str = "",
         merge_queue: Any = None,
     ) -> None:
+        typed_quack_authority_binding: Mapping[str, Any] | None = None
+        resolved_process_instance_id = _database_daemon_process_instance_id(
+            process_instance_id
+        )
+        resolved_state_schema_revision = str(
+            (
+                os.environ.get(
+                    "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+                    "",
+                )
+                if state_schema_revision is None
+                else state_schema_revision
+            )
+            or ""
+        ).strip()
         normalized_authority_mode = str(authority_mode or "quack").strip().lower().replace(
             "-", "_"
         )
@@ -76892,34 +77284,103 @@ class DatabaseImplementationDaemon:
                     "quack authority requires a loopback quack: URI "
                     "(--quack-endpoint or IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT); "
                     "refusing direct-file multi-process DuckDB open"
-                )
-            if quack_command_gateway is None:
-                raise DatabaseImplementationAuthorityError(
-                    "quack authority requires an independently injected "
-                    "QuackDaemonCommandGateway@1; refusing legacy local "
-                    "coordination/execution sidecars"
-                )
+            )
             self._quack_uri = resolved_quack_uri
             self._store_target = resolved_quack_uri
-            # The command gateway is the only mutable surface in Quack mode.
-            # This process retains the lexical control path for identity and
-            # diagnostics, but never opens it or derives lane-local sidecars.
-            control_path = Path(str(database_path)).expanduser().absolute()
-            self.database_path = control_path
-            if coordination_path is not None or execution_path is not None:
-                raise DatabaseImplementationAuthorityError(
-                    "EAAEF quack authority forbids local coordination/execution "
-                    "paths; all mutable state must use the admitted command gateway"
+            if quack_command_gateway is not None:
+                # EAAEF profile: the command gateway is the only mutable
+                # surface.  Preserve the signed opaque store identity without
+                # resolving it as a host path; it is never opened and no
+                # lane-local sidecars are derived.
+                control_path = Path(str(database_path))
+                self.database_path = control_path
+                if coordination_path is not None or execution_path is not None:
+                    raise DatabaseImplementationAuthorityError(
+                        "EAAEF quack authority forbids local coordination/execution "
+                        "paths; all mutable state must use the admitted command gateway"
+                    )
+                if task_source is not None or coordinator is not None:
+                    raise DatabaseImplementationAuthorityError(
+                        "EAAEF quack authority forbids independently injected task or "
+                        "coordination adapters; all components must share the exact "
+                        "command-gateway capability binding"
+                    )
+                if state_owner_bootstrap_credentials is not None:
+                    raise DatabaseImplementationAuthorityError(
+                        "EAAEF quack authority forbids typed-owner bootstrap authority"
+                    )
+                self.coordination_path = control_path
+                self.execution_path = control_path
+            else:
+                # Generic/CASF profile: task state remains on one exact typed
+                # Quack owner.  Only lane-private coordination and execution
+                # metadata may use embedded DuckDB sidecars.
+                from ..task_sources.typed_database_task_source import (
+                    TypedDatabaseTaskSource,
                 )
-            if task_source is not None or coordinator is not None:
-                raise DatabaseImplementationAuthorityError(
-                    "EAAEF quack authority forbids independently injected task or "
-                    "coordination adapters; all components must share the exact "
-                    "command-gateway capability binding"
+                from ..task_sources.eaaef_operational_schema import (
+                    EAAEF_OPERATIONAL_PROFILE_ID,
                 )
-            self.coordination_path = control_path
-            self.execution_path = control_path
+                from ..task_sources.state_owner_bootstrap import (
+                    StateOwnerBootstrapCredentials,
+                )
+
+                if type(task_source) is not TypedDatabaseTaskSource:
+                    raise DatabaseImplementationAuthorityError(
+                        "quack authority requires either an independently injected "
+                        "QuackDaemonCommandGateway@1 or an exact attached "
+                        "TypedDatabaseTaskSource; refusing an independently "
+                        "injected task adapter"
+                    )
+                if resolved_state_schema_revision == EAAEF_OPERATIONAL_PROFILE_ID:
+                    raise DatabaseImplementationAuthorityError(
+                        "EAAEF operational profile requires the admitted command "
+                        "gateway and forbids typed-owner sidecars"
+                    )
+                if (
+                    type(state_owner_bootstrap_credentials)
+                    is not StateOwnerBootstrapCredentials
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "typed Quack authority requires exact process-bound "
+                        "state-owner bootstrap credentials"
+                    )
+                if coordinator is not None:
+                    raise DatabaseImplementationAuthorityError(
+                        "typed Quack authority forbids an independently injected "
+                        "coordination adapter"
+                    )
+                try:
+                    typed_quack_authority_binding = (
+                        task_source.require_quack_authority_binding(
+                            expected_endpoint=resolved_quack_uri,
+                            expected_process_instance_id=(
+                                resolved_process_instance_id
+                            ),
+                            bootstrap_credentials=(
+                                state_owner_bootstrap_credentials
+                            ),
+                        )
+                    )
+                except Exception as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        "typed Quack task authority differs from the configured endpoint"
+                    ) from exc
+                control_path = Path(str(database_path)).expanduser().absolute()
+                self.database_path = control_path
+                (
+                    self.coordination_path,
+                    self.execution_path,
+                ) = _database_daemon_quack_sidecar_paths(
+                    control_path,
+                    coordination_path=coordination_path,
+                    execution_path=execution_path,
+                )
         else:
+            if state_owner_bootstrap_credentials is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "state-owner bootstrap credentials require typed Quack authority"
+                )
             self._quack_uri = ""
             self.database_path = Path(database_path).absolute()
             self.coordination_path = Path(
@@ -76990,7 +77451,7 @@ class DatabaseImplementationDaemon:
                 "multi-lane database authority requires exact execution slices "
                 "or strict deterministic sharding"
             )
-        self.process_instance_id = _database_daemon_new_id("process")
+        self.process_instance_id = resolved_process_instance_id
         self.owner_session_id = str(
             owner_session_id
             or _database_daemon_logical_owner_id(
@@ -76999,17 +77460,7 @@ class DatabaseImplementationDaemon:
                 execution_path=self.execution_path,
             )
         ).strip()
-        self.state_schema_revision = str(
-            (
-                os.environ.get(
-                    "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
-                    "",
-                )
-                if state_schema_revision is None
-                else state_schema_revision
-            )
-            or ""
-        ).strip()
+        self.state_schema_revision = resolved_state_schema_revision
         self.markdown_path = Path(markdown_path).absolute() if markdown_path else None
         # Optional projections — never required under database authority.
         self.state_path = Path(state_path).absolute() if state_path else None
@@ -77126,6 +77577,7 @@ class DatabaseImplementationDaemon:
         self._execution_repository: Any = None
         self._eaaef_running_recovery_snapshots: dict[str, dict[str, Any]] = {}
         self._quack_command_gateway = quack_command_gateway
+        self._typed_quack_authority_binding = typed_quack_authority_binding
         self._owns_task_source = task_source is None or bool(close_task_source)
         self._owns_coordinator = coordinator is None
         self._task_source = task_source
@@ -77135,6 +77587,14 @@ class DatabaseImplementationDaemon:
             f".{self.execution_path.name}.writer.lock"
         )
         self._embedded_writer_lock_handle: Any = None
+        self._coordination_writer_lock_path = self.coordination_path.with_name(
+            f".{self.coordination_path.name}.writer.lock"
+        )
+        self._embedded_writer_lock_handles: dict[Path, Any] = {}
+        self._embedded_sidecar_identities: dict[
+            Path,
+            tuple[tuple[int, int], tuple[int, int] | None],
+        ] = {}
         self._control_claim_rejections: dict[str, tuple[int, str]] = {}
         self._markdown_status_writes = 0
         self.repo_root = Path(repo_root).resolve() if repo_root else None
@@ -77205,34 +77665,169 @@ class DatabaseImplementationDaemon:
         self._control_schema_verification = dict(verification)
 
     def _acquire_embedded_writer_lock(self) -> None:
-        if self._embedded_writer_lock_handle is not None:
+        if self._embedded_writer_lock_handles:
             return
-        self._embedded_writer_lock_path.parent.mkdir(parents=True, exist_ok=True)
-        handle = self._embedded_writer_lock_path.open("a+b")
+        lock_paths = tuple(
+            sorted(
+                {
+                    self._coordination_writer_lock_path,
+                    self._embedded_writer_lock_path,
+                },
+                key=lambda path: str(path),
+            )
+        )
+        acquired: dict[Path, Any] = {}
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (BlockingIOError, OSError) as exc:
-            handle.close()
+            for lock_path in lock_paths:
+                handle = _open_database_writer_lock(lock_path)
+                try:
+                    binding = self._typed_quack_authority_binding
+                    expected = b""
+                    if binding is not None:
+                        expected = (
+                            str(binding["stable_binding_id"]) + "\n"
+                        ).encode("utf-8")
+                    handle.seek(0)
+                    observed = handle.read(len(expected) + 1)
+                    if binding is not None:
+                        if not observed:
+                            handle.seek(0)
+                            handle.write(expected)
+                            handle.truncate()
+                            handle.flush()
+                            os.fsync(handle.fileno())
+                        elif observed != expected:
+                            raise DatabaseImplementationAuthorityError(
+                                "typed Quack sidecar belongs to a different "
+                                "stable control authority"
+                            )
+                    elif observed:
+                        raise DatabaseImplementationAuthorityError(
+                            "embedded sidecar is reserved for a typed Quack "
+                            "stable control authority"
+                        )
+                except Exception:
+                    handle.close()
+                    raise
+                acquired[lock_path] = handle
+        except Exception as exc:
+            for handle in reversed(tuple(acquired.values())):
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                finally:
+                    handle.close()
+            if isinstance(exc, (BlockingIOError, OSError)):
+                raise DatabaseImplementationAuthorityError(
+                    "embedded coordination or execution store already has an active "
+                    "database writer"
+                ) from exc
+            raise
+        self._embedded_writer_lock_handles = acquired
+        self._embedded_writer_lock_handle = acquired.get(
+            self._embedded_writer_lock_path
+        )
+
+    def _inspect_embedded_sidecar(
+        self,
+        sidecar_path: Path,
+        *,
+        require_exists: bool,
+    ) -> None:
+        lock_path = (
+            self._coordination_writer_lock_path
+            if sidecar_path == self.coordination_path
+            else self._embedded_writer_lock_path
+        )
+        lock_handle = self._embedded_writer_lock_handles.get(lock_path)
+        if lock_handle is None:
             raise DatabaseImplementationAuthorityError(
-                "embedded execution store already has an active database writer"
-            ) from exc
-        self._embedded_writer_lock_handle = handle
+                "embedded database sidecar requires its held writer lock"
+            )
+        allow_existing_peer_write_normalization = False
+        if (
+            self.authority_mode != "quack"
+            and sidecar_path == self.coordination_path
+            and not self._owns_coordinator
+        ):
+            from ..merge.database_coordination import DatabaseCoordinator
+
+            coordinator = self._coordinator
+            allow_existing_peer_write_normalization = (
+                type(coordinator) is DatabaseCoordinator
+                and coordinator.is_open
+                and coordinator.database_path.expanduser().absolute()
+                == self.coordination_path
+            )
+        self._embedded_sidecar_identities[sidecar_path] = (
+            _inspect_database_sidecar(
+                sidecar_path,
+                lock_path=lock_path,
+                lock_handle=lock_handle,
+                expected_identity=self._embedded_sidecar_identities.get(
+                    sidecar_path
+                ),
+                require_exists=require_exists,
+                allow_existing_peer_write_normalization=(
+                    allow_existing_peer_write_normalization
+                ),
+            )
+        )
+
+    def _inspect_embedded_sidecars(self, *, require_exists: bool) -> None:
+        for sidecar_path in (self.coordination_path, self.execution_path):
+            self._inspect_embedded_sidecar(
+                sidecar_path,
+                require_exists=(
+                    require_exists
+                    and (
+                        sidecar_path != self.coordination_path
+                        or self._owns_coordinator
+                    )
+                ),
+            )
 
     def _release_embedded_writer_lock(self) -> None:
-        handle = self._embedded_writer_lock_handle
+        handles = self._embedded_writer_lock_handles
+        self._embedded_writer_lock_handles = {}
         self._embedded_writer_lock_handle = None
-        if handle is None:
+        self._embedded_sidecar_identities = {}
+        if not handles:
             return
+        for handle in reversed(tuple(handles.values())):
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
+
+    def _require_typed_quack_authority_binding(self) -> None:
+        """Revalidate the exact typed owner pinned during construction."""
+
+        expected = self._typed_quack_authority_binding
+        if expected is None:
+            return
+        source = self._task_source
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        finally:
-            handle.close()
+            observed = source.require_quack_authority_binding(
+                expected_endpoint=self._quack_uri,
+                expected_process_instance_id=self.process_instance_id,
+            )
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack authority binding is no longer live"
+            ) from exc
+        if dict(observed) != dict(expected):
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack authority changed after daemon admission"
+            )
 
     def open(self) -> "DatabaseImplementationDaemon":
         """Open execution store and bind task-source / coordinator adapters."""
 
         with self._lock:
             if self._connection is not None or self._execution_repository is not None:
+                self._require_typed_quack_authority_binding()
+                if self._embedded_writer_lock_handles:
+                    self._inspect_embedded_sidecars(require_exists=True)
                 return self
             if (
                 self.authority_mode == "quack"
@@ -77308,13 +77903,72 @@ class DatabaseImplementationDaemon:
             from ..task_sources.database_task_source import DatabaseTaskSource
             from ..task_sources.duckdb_state import open_duckdb_connection
 
+            self._require_typed_quack_authority_binding()
+            if self._typed_quack_authority_binding is not None:
+                verified_coordination, verified_execution = (
+                    _database_daemon_quack_sidecar_paths(
+                        self.database_path,
+                        coordination_path=self.coordination_path,
+                        execution_path=self.execution_path,
+                    )
+                )
+                if (
+                    verified_coordination != self.coordination_path
+                    or verified_execution != self.execution_path
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "typed Quack sidecar paths changed after admission"
+                    )
             self._verify_control_schema_for_open()
             self._acquire_embedded_writer_lock()
             try:
-                self.execution_path.parent.mkdir(parents=True, exist_ok=True)
+                # Both database paths are inspected only after both adjacent
+                # writer locks are held.  DuckDB never receives a pre-existing
+                # symlink, multi-link inode, non-regular file, or path in a
+                # peer-writable/changed parent.
+                self._inspect_embedded_sidecars(require_exists=False)
                 self._connection = open_duckdb_connection(self.execution_path)
+                self._inspect_embedded_sidecar(
+                    self.execution_path,
+                    require_exists=True,
+                )
                 for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
                     self._connection.execute(statement)
+                typed_binding_metadata: tuple[tuple[str, str], ...] = ()
+                if self._typed_quack_authority_binding is not None:
+                    typed_binding_metadata = (
+                        (
+                            "typed_quack_stable_binding_id",
+                            str(
+                                self._typed_quack_authority_binding[
+                                    "stable_binding_id"
+                                ]
+                            ),
+                        ),
+                        (
+                            "typed_quack_stable_authority",
+                            json.dumps(
+                                dict(
+                                    self._typed_quack_authority_binding[
+                                        "stable_authority"
+                                    ]
+                                ),
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                        ),
+                    )
+                    for key, expected_value in typed_binding_metadata:
+                        row = self._connection.execute(
+                            "SELECT value FROM daemon_execution_metadata "
+                            "WHERE key = ? LIMIT 1",
+                            [key],
+                        ).fetchone()
+                        if row is not None and str(row[0]) != expected_value:
+                            raise DatabaseImplementationAuthorityError(
+                                "execution sidecar belongs to a different stable "
+                                "typed Quack authority"
+                            )
                 for key, value in (
                     ("interface", self.INTERFACE),
                     ("schema", self.SCHEMA),
@@ -77338,6 +77992,7 @@ class DatabaseImplementationDaemon:
                             or ""
                         ),
                     ),
+                    *typed_binding_metadata,
                 ):
                     self._connection.execute(
                         """
@@ -77366,11 +78021,16 @@ class DatabaseImplementationDaemon:
                         clock_ms=self._clock_ms,
                     )
                 if self._coordinator is None:
+                    self._inspect_embedded_sidecar(
+                        self.coordination_path,
+                        require_exists=False,
+                    )
                     self._coordinator = open_database_coordinator(
                         self.coordination_path,
                         clock_ms=self._clock_ms,
                         default_lease_ms=self.lease_ms,
                     )
+                self._inspect_embedded_sidecars(require_exists=True)
                 self._closed = False
                 return self
             except Exception:
@@ -80013,12 +80673,28 @@ class DatabaseImplementationDaemon:
             and self._database_task_is_eligible(task)
             and not self._automatic_claim_forbidden(task)
         }
-        projection = self.coordinator.coordination_registry_projection()
-        local_task_cids = {
-            str(row.get("task_cid") or "")
-            for row in projection.get("tasks", ())
-            if isinstance(row, Mapping) and str(row.get("task_cid") or "")
-        }
+        projection_fn = getattr(
+            self.coordinator,
+            "coordination_registry_projection",
+            None,
+        )
+        local_task_cids: set[str] = set()
+        if callable(projection_fn):
+            projection = projection_fn()
+            if not isinstance(projection, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator returned a malformed task registry projection"
+                )
+            projected_tasks = projection.get("tasks", ())
+            if not isinstance(projected_tasks, (list, tuple)):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator returned no typed task registry projection"
+                )
+            local_task_cids = {
+                str(row.get("task_cid") or "")
+                for row in projected_tasks
+                if isinstance(row, Mapping) and str(row.get("task_cid") or "")
+            }
         successful_task_cids = {
             str(task.task_cid)
             for task in tasks
@@ -80042,28 +80718,6 @@ class DatabaseImplementationDaemon:
             if task_cid not in synchronized_task_cids:
                 continue
             status = str(task.status or "").strip().lower()
-            if (
-                task_cid in successful_task_cids
-                and task_cid not in local_task_cids
-            ):
-                self.coordinator.register_task(
-                    task_cid=task_cid,
-                    task_id=task.task_alias or task_cid,
-                    dependency_task_cids=tuple(
-                        str(dep) for dep in task.dependencies
-                    ),
-                    body={"task_alias": task.task_alias, "status": task.status},
-                )
-                self.coordinator.mark_task_complete(
-                    task_cid,
-                    status="succeeded",
-                    body={
-                        "authority": "database_task_source",
-                        "source_status": status,
-                        "task_alias": task.task_alias,
-                        "task_revision": int(task.revision),
-                    },
-                )
             dependencies_satisfied = all(
                 dependency in by_cid
                 and str(by_cid[dependency].status or "").strip().lower()
@@ -94523,6 +95177,9 @@ class DatabaseImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        self._require_typed_quack_authority_binding()
+        if self._embedded_writer_lock_handles:
+            self._inspect_embedded_sidecars(require_exists=True)
         self._idle_recovery_prefix = None
         try:
             return self._run_once_impl()
@@ -95586,6 +96243,8 @@ def main(argv: list[str] | None = None) -> None:
         )
         quack_command_gateway = None
         dispatcher_factory = None
+        bootstrap_process_instance_id: str | None = None
+        state_owner_bootstrap_credentials: Any = None
         owner_session_id = str(getattr(args, "owner_session_id", "") or "")
         bootstrap_fd = int(getattr(args, "state_owner_bootstrap_fd", -1))
         if (
@@ -95628,6 +96287,8 @@ def main(argv: list[str] | None = None) -> None:
                     getattr(args, "state_owner_bootstrap_store_id", "") or ""
                 ),
             )
+            state_owner_bootstrap_credentials = credentials
+            bootstrap_process_instance_id = credentials.process_birth_id
             expected_endpoint = str(
                 getattr(args, "quack_endpoint", "") or ""
             ).strip()
@@ -95673,6 +96334,7 @@ def main(argv: list[str] | None = None) -> None:
                 coordination_path=db_paths["coordination_path"],
                 execution_path=db_paths["execution_path"],
                 owner_session_id=owner_session_id,
+                process_instance_id=bootstrap_process_instance_id,
                 authority_mode=authority_mode or "quack",
                 task_source_kind=task_source_kind or "duckdb",
                 quack_uri=str(
@@ -95706,6 +96368,9 @@ def main(argv: list[str] | None = None) -> None:
                 task_prefix=str(getattr(args, "task_prefix", "") or ""),
                 task_source=typed_task_source,
                 close_task_source=typed_task_source is not None,
+                state_owner_bootstrap_credentials=(
+                    state_owner_bootstrap_credentials
+                ),
                 quack_command_gateway=quack_command_gateway,
             )
         except BaseException:
