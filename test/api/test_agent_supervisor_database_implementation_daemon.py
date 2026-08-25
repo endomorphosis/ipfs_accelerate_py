@@ -18,7 +18,7 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -91,6 +91,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_DECLARED_OUTPUT_REARM_SCHEMA,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
+    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
     DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
     DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
@@ -858,6 +859,230 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
         assert markdown.read_text(encoding="utf-8") == original_markdown
     finally:
         idle.close()
+
+
+def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:completion-recovery-claim-fence",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        plausible_history_candidate = replace(task, revision=6)
+        original_history_projection = (
+            daemon.task_source.task_revision_history_projection
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="no canonical history projection reader",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                plausible_history_candidate,
+                require_current_blocked=False,
+            )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: {"schema": "malformed"},
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="malformed or stale canonical history",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                plausible_history_candidate,
+                require_current_blocked=False,
+            )
+        semantic_body = {
+            key: value
+            for key, value in dict(task.body).items()
+            if key != "completion_receipt"
+        }
+        malformed_window_receipts = [
+            {"operation": "database_portal_terminal_failure"},
+            {
+                "operation": (
+                    "database_post_merge_declared_outputs_repair_recovery"
+                ),
+                "post_merge_completion_recovery_seed": {
+                    "schema": "malformed"
+                },
+            },
+            {"operation": "database_claim"},
+            {"operation": "database_portal_retry"},
+            {"operation": "database_claim"},
+            {
+                "operation": (
+                    "database_portal_typed_deferral_budget_exhausted"
+                )
+            },
+        ]
+        malformed_window_body = {
+            "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+            "task_cid": task.task_cid,
+            "revisions": [
+                {
+                    "revision": index + 1,
+                    "status": status,
+                    "body": {
+                        **semantic_body,
+                        "completion_receipt": malformed_window_receipts[
+                            index
+                        ],
+                    },
+                }
+                for index, status in enumerate(
+                    (
+                        "blocked",
+                        "retrying",
+                        "in_progress",
+                        "retrying",
+                        "in_progress",
+                        "blocked",
+                    )
+                )
+            ],
+        }
+        malformed_window = {
+            **malformed_window_body,
+            "projection_cid": content_identity(malformed_window_body),
+        }
+        malformed_candidate = replace(
+            task,
+            status="blocked",
+            revision=6,
+            body=malformed_window_body["revisions"][-1]["body"],
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: malformed_window,
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="malformed dedicated recovery seed",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                malformed_candidate,
+                require_current_blocked=False,
+            )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            original_history_projection,
+        )
+        crash_context = {"context_id": "sha256:" + "1" * 64}
+        monkeypatch.setattr(
+            daemon,
+            "_post_merge_completion_crash_recovery_context",
+            lambda _task, *, require_current_blocked: crash_context,
+        )
+
+        assert daemon._automatic_claim_exclusions() == {task.task_cid}
+        assert daemon.claim_next() is None
+
+        observations = 0
+
+        def crash_after_local_claim(
+            _task: object,
+            *,
+            require_current_blocked: bool,
+        ) -> dict[str, object] | None:
+            nonlocal observations
+            assert require_current_blocked is False
+            observations += 1
+            return None if observations == 1 else crash_context
+
+        released: list[tuple[str, str, str]] = []
+        original_release = daemon._release_unadmitted_claim
+
+        def record_release(claim: object, *, reason: str) -> None:
+            released.append(
+                (
+                    str(claim.claim_id),
+                    str(claim.lease_id),
+                    reason,
+                )
+            )
+            original_release(claim, reason=reason)
+
+        monkeypatch.setattr(
+            daemon,
+            "_post_merge_completion_crash_recovery_context",
+            crash_after_local_claim,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_release_unadmitted_claim",
+            record_release,
+        )
+
+        assert daemon.claim_next() is None
+        assert observations == 2
+        assert len(released) == 1
+        claim_id, lease_id, reason = released[0]
+        assert reason == "shared_board_post_merge_completion_recovery_pending"
+        released_claim = daemon.coordinator.get_task_claim(claim_id)
+        released_lease = daemon.coordinator.get_lease(lease_id)
+        assert released_claim is not None
+        assert released_claim.to_dict()["state"] == "released"
+        assert released_lease is not None
+        assert released_lease.to_dict()["state"] == "released"
+        unchanged = daemon.task_source.get(task.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "ready"
+        assert unchanged.revision == task.revision
+
+        authority_observations = 0
+
+        def history_unavailable_after_local_claim(
+            _task: object,
+            *,
+            require_current_blocked: bool,
+        ) -> None:
+            nonlocal authority_observations
+            assert require_current_blocked is False
+            authority_observations += 1
+            if authority_observations == 1:
+                return None
+            raise DatabaseImplementationAuthorityError(
+                "fixture canonical history became unavailable"
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_post_merge_completion_crash_recovery_context",
+            history_unavailable_after_local_claim,
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="canonical history became unavailable",
+        ):
+            daemon.claim_next()
+        assert authority_observations == 2
+        assert len(released) == 2
+        claim_id, lease_id, reason = released[-1]
+        assert reason == (
+            "shared_board_post_merge_completion_history_unavailable"
+        )
+        released_claim = daemon.coordinator.get_task_claim(claim_id)
+        released_lease = daemon.coordinator.get_lease(lease_id)
+        assert released_claim is not None
+        assert released_claim.to_dict()["state"] == "released"
+        assert released_lease is not None
+        assert released_lease.to_dict()["state"] == "released"
+    finally:
+        daemon.close()
 
 
 def test_materialization_projects_completed_prerequisites_into_coordination(
@@ -6214,6 +6439,21 @@ def test_post_merge_completion_seed_is_one_shot_per_target_generation(
         seed_body = dict(seed)
         seed_id = seed_body.pop("seed_id")
         assert seed_id == daemon._database_portal_evidence_digest(seed_body)
+        noncanonical_v2 = {
+            **seed_body,
+            "schema": DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+            "recovery_control_revision": seed["source_task_revision"],
+        }
+        noncanonical_v2["seed_id"] = (
+            daemon._database_portal_evidence_digest(noncanonical_v2)
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="recovery seed is invalid",
+        ):
+            daemon._verified_post_merge_completion_recovery_seed(
+                noncanonical_v2
+            )
 
         consumer = replace(
             source,
@@ -6340,6 +6580,7 @@ def test_post_merge_completion_seed_is_one_shot_per_target_generation(
 
 def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "completion-recovery-repo"
     repo.mkdir()
@@ -6644,20 +6885,105 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             provider_fn=bridge_provider,
             effect_fn=bridge_effect,
             validation_fn=bridge_validation,
+            max_task_attempts=1,
         )
+        consumer_daemon._merge_repo_root = repo
+        consumer_daemon._merge_target_branch = "main"
         consumer_portal_calls: list[str] = []
-        consumer_bridge = DatabasePortalExecutionBridge(
-            task_source=consumer_daemon.task_source,
-            attempt_root=consumer_attempt_root,
-            portal_factory=lambda _paths, alias: (
-                consumer_portal_calls.append(alias)
-                or pytest.fail("completion recovery dispatched a provider")
-            ),
-            repository_root=repo,
-            merge_queue=queue,
-            merge_target_branch="main",
-            task_header_prefix="## VRIF-",
-        )
+        requalification_heads: list[str] = []
+
+        class RecoveryPortal:
+            def __init__(self) -> None:
+                self.merge_queue = queue
+                self.repo_root = repo.absolute()
+                self.resolved_merge_target_branch = "main"
+
+            @staticmethod
+            def _load_tasks() -> list[object]:
+                return [projected_task]
+
+            @staticmethod
+            def _run_checkout_mutation_transaction(
+                *, callback: object, **_kwargs: object
+            ) -> dict[str, object]:
+                return callback()
+
+            @staticmethod
+            def _run_validation_commands(
+                workspace: Path,
+                task: object,
+                log_path: Path,
+                *,
+                force_uncached: bool,
+            ) -> dict[str, object]:
+                assert task.task_id == "VRIF-029"
+                assert force_uncached is True
+                head = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=workspace,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                requalification_heads.append(head)
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                log_path.write_text(
+                    "fresh current-target validation passed\n",
+                    encoding="utf-8",
+                )
+                return {
+                    "attempted": True,
+                    "passed": True,
+                    "returncode": 0,
+                    "results": [
+                        {
+                            "validation_result_digest": (
+                                "sha256:" + "4" * 64
+                            )
+                        }
+                    ],
+                }
+
+            @staticmethod
+            def _cleanup_main_merge_workspace(
+                workspace: Path,
+                *,
+                ephemeral: bool,
+            ) -> dict[str, object]:
+                assert ephemeral is True
+                removed = subprocess.run(
+                    [
+                        "git",
+                        "worktree",
+                        "remove",
+                        "--force",
+                        str(workspace),
+                    ],
+                    cwd=repo,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                return {"cleaned": removed.returncode == 0}
+
+            @staticmethod
+            def close_event_runtime() -> None:
+                return None
+
+        def fresh_consumer_bridge() -> DatabasePortalExecutionBridge:
+            return DatabasePortalExecutionBridge(
+                task_source=consumer_daemon.task_source,
+                attempt_root=consumer_attempt_root,
+                portal_factory=lambda _paths, alias: (
+                    consumer_portal_calls.append(alias) or RecoveryPortal()
+                ),
+                repository_root=repo,
+                merge_queue=queue,
+                merge_target_branch="main",
+                task_header_prefix="## VRIF-",
+            )
+
+        consumer_bridge = fresh_consumer_bridge()
         consumer_bridges.append(consumer_bridge)
 
         successor = consumer_daemon.claim_next()
@@ -6685,6 +7011,447 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             recovery_seed
         )
 
+        # Reproduce the live crash boundary: Portal sealed the exact
+        # zero-provider completion lineage, but the daemon lost the accepted
+        # response before writing its provider/effect ledgers or database_complete.
+        lost_acceptance = consumer_bridge.run_provider(successor)
+        assert lost_acceptance["accepted"] is True
+        assert consumer_daemon.provider_invocation_recorded(
+            successor.attempt_id,
+            idempotency_key=f"provider:{successor.attempt_id}",
+        ) is None
+        assert consumer_daemon.effect_claim_recorded(
+            successor.attempt_id,
+            idempotency_key=f"effect:{successor.attempt_id}",
+        ) is None
+        crashed_events = consumer_bridge._verified_event_chain(
+            consumer_bridge._paths(successor)
+        )
+        assert [event["type"] for event in crashed_events] == [
+            "worktree_reconciliation_candidate_queued",
+            "merge_reconciled",
+            "task_completed",
+        ]
+        assert crashed_events[0]["attempt_consumed"] is False
+        assert crashed_events[0]["provider_dispatched"] is False
+
+        failed_seeded = consumer_daemon.commit_phase(
+            successor,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": "coordination_lease_expired_before_completion",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 0,
+            },
+        )
+        seeded_claim_record = consumer_daemon.coordinator.get_task_claim(
+            failed_seeded.claim_id
+        )
+        assert seeded_claim_record is not None
+        expired_now_ms = int(seeded_claim_record.expires_at_ms) + 1
+        consumer_daemon._clock_ms = lambda: expired_now_ms
+        consumer_daemon.coordinator.expire_task_claim(
+            seeded_claim_record,
+            now_ms=expired_now_ms,
+        )
+        seeded_coordination = (
+            consumer_daemon._reconcile_failed_attempt_coordination(
+                failed_seeded
+            )
+        )
+        generic_retry = consumer_daemon._persist_task_retry_state(
+            failed_seeded,
+            reason="coordination_lease_expired_before_completion",
+            backoff_ms=0,
+            evidence_source="expired_seeded_completion_claim",
+            coordination_evidence=seeded_coordination,
+        )
+        assert generic_retry["status"] == "retrying"
+        ordinary = consumer_daemon.claim_next()
+        assert ordinary is not None
+        assert "post_merge_completion_recovery_seed" not in ordinary.body
+        typed_reason = "portal_execution_deferred"
+        typed_receipt = consumer_daemon._typed_deferral_receipt(
+            ordinary,
+            reason=typed_reason,
+        )
+        exhausted_attempt = consumer_daemon.commit_phase(
+            ordinary,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": typed_reason,
+                "portal_retryable_failure": True,
+                "portal_terminal_failure": False,
+                "deferred": True,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "typed_deferral_slot_consumed": True,
+                "backoff_seconds": 0,
+                "typed_deferral": typed_receipt,
+            },
+        )
+        budget = consumer_daemon._typed_deferral_budget_observation(
+            exhausted_attempt
+        )
+        assert budget is not None
+        assert budget["exhausted"] is True
+        exhausted_coordination = (
+            consumer_daemon._reconcile_failed_attempt_coordination(
+                exhausted_attempt
+            )
+        )
+        blocked_again = (
+            consumer_daemon._persist_typed_deferral_budget_exhausted(
+                exhausted_attempt,
+                budget=budget,
+                coordination_evidence=exhausted_coordination,
+            )
+        )
+        assert blocked_again["status"] == "blocked"
+        history = consumer_daemon.task_source.task_revision_history_projection(
+            successor.task_cid
+        )
+        exact_chain = history["revisions"][-6:]
+        assert [entry["status"] for entry in exact_chain] == [
+            "blocked",
+            "retrying",
+            "in_progress",
+            "retrying",
+            "in_progress",
+            "blocked",
+        ]
+        assert [
+            entry["body"]["completion_receipt"]["operation"]
+            for entry in exact_chain
+        ] == [
+            "database_portal_terminal_failure",
+            "database_post_merge_declared_outputs_repair_recovery",
+            "database_claim",
+            "database_portal_retry",
+            "database_claim",
+            "database_portal_typed_deferral_budget_exhausted",
+        ]
+        assert consumer_daemon.post_merge_completion_recovery_task_cids() == (
+            successor.task_cid,
+        )
+        blocked_record = consumer_daemon.task_source.get(successor.task_cid)
+        assert blocked_record is not None
+        assert (
+            consumer_daemon._post_merge_completion_crash_recovery_context(
+                blocked_record,
+                require_current_blocked=True,
+            )
+            is not None
+        )
+        def mutable_history_value(value: object) -> object:
+            if isinstance(value, Mapping):
+                return {
+                    str(key): mutable_history_value(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, (list, tuple)):
+                return [mutable_history_value(item) for item in value]
+            return value
+
+        target_changed_history = mutable_history_value(history)
+        assert isinstance(target_changed_history, dict)
+        target_changed_chain = target_changed_history["revisions"][-6:]
+        target_changed_chain[0]["body"]["completion_receipt"]["reason"] = (
+            DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON
+        )
+        target_changed_seed = dict(
+            target_changed_chain[1]["body"]["completion_receipt"][
+                "post_merge_completion_recovery_seed"
+            ]
+        )
+        target_changed_seed.pop("seed_id")
+        target_changed_seed["terminal_reason"] = (
+            DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON
+        )
+        target_changed_seed["seed_id"] = (
+            consumer_daemon._database_portal_evidence_digest(
+                target_changed_seed
+            )
+        )
+        target_changed_chain[1]["body"]["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ] = target_changed_seed
+        target_changed_chain[2]["body"]["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ] = target_changed_seed
+        target_changed_body = dict(target_changed_history)
+        target_changed_body.pop("projection_cid")
+        target_changed_history["projection_cid"] = content_identity(
+            target_changed_body
+        )
+        original_history_projection = (
+            consumer_daemon.task_source.task_revision_history_projection
+        )
+        monkeypatch.setattr(
+            consumer_daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: target_changed_history,
+        )
+        target_changed_context = (
+            consumer_daemon._post_merge_completion_crash_recovery_context(
+                blocked_record,
+                require_current_blocked=True,
+            )
+        )
+        assert target_changed_context is not None
+        assert target_changed_context["source_seed"]["terminal_reason"] == (
+            DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON
+        )
+        monkeypatch.setattr(
+            consumer_daemon.task_source,
+            "task_revision_history_projection",
+            original_history_projection,
+        )
+
+        (repo / "target-generation.txt").write_text(
+            "completion recovery generation two\n",
+            encoding="utf-8",
+        )
+        git("add", "target-generation.txt")
+        git("commit", "-q", "-m", "advance completion target")
+        advanced_target = git("rev-parse", "HEAD")
+        assert advanced_target != candidate_commit
+
+        # Claims refresh the daemon's connection-owned task source.  A real
+        # supervisor tick reconstructs its bridge around that current source.
+        consumer_bridge = fresh_consumer_bridge()
+        consumer_bridges[0] = consumer_bridge
+        replay_recovery = consumer_bridge.recover_post_merge_declared_outputs(
+            consumer_daemon
+        )
+        if replay_recovery is None:
+            # The durable priority keyset cursor needs one bounded tick to
+            # wrap after this same task CID enters a new target generation.
+            replay_recovery = (
+                consumer_bridge.recover_post_merge_declared_outputs(
+                    consumer_daemon
+                )
+            )
+        assert replay_recovery is not None
+        assert replay_recovery["recovered"] is True
+        assert replay_recovery["changed"] is True
+        retrying_again = consumer_daemon.task_source.get(successor.task_cid)
+        assert retrying_again is not None
+        assert (
+            consumer_daemon._post_merge_completion_crash_recovery_context(
+                retrying_again,
+                require_current_blocked=False,
+            )
+            is None
+        )
+        assert successor.task_cid not in (
+            consumer_daemon._automatic_claim_exclusions()
+        )
+        replay_seed = retrying_again.body["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ]
+        assert replay_seed["schema"] == (
+            DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+        )
+        assert replay_seed["source_task_revision"] == blocked_revision
+        assert replay_seed["recovery_control_revision"] == (
+            blocked_revision + 5
+        )
+        assert replay_seed["qualified_target_commit"] == advanced_target
+        assert requalification_heads == [advanced_target]
+
+        # The live crash row has no active local claim.  This fixture retained
+        # the synthetic ordinary claim so its accepted coordination could be
+        # sealed in the exhausted control receipt; retire it only after the
+        # recovery CAS has independently reproduced that receipt.
+        exhausted_claim = consumer_daemon.coordinator.get_task_claim(
+            exhausted_attempt.claim_id
+        )
+        assert exhausted_claim is not None
+        exhausted_now_ms = int(exhausted_claim.expires_at_ms) + 1
+        consumer_daemon._clock_ms = lambda: exhausted_now_ms
+        consumer_daemon.coordinator.expire_task_claim(
+            exhausted_claim,
+            now_ms=exhausted_now_ms,
+        )
+        exhausted_reconciliation = (
+            consumer_daemon._reconcile_failed_attempt_coordination(
+                exhausted_attempt
+            )
+        )
+        assert exhausted_reconciliation["claim_state"] == "expired"
+        assert exhausted_reconciliation["coordination_attempt_status"] == (
+            "expired"
+        )
+
+        successor = consumer_daemon.claim_next()
+        assert successor is not None
+        assert successor.body["post_merge_completion_recovery_seed"] == (
+            replay_seed
+        )
+
+        # Lose the v2 zero-provider acceptance at the same boundary.  The
+        # next exact suffix must link back through recovery_control_revision
+        # while preserving the immutable historical terminal revision.
+        second_lost_acceptance = consumer_bridge.run_provider(successor)
+        assert second_lost_acceptance["accepted"] is True
+        assert consumer_daemon.provider_invocation_recorded(
+            successor.attempt_id,
+            idempotency_key=f"provider:{successor.attempt_id}",
+        ) is None
+        second_failed_seeded = consumer_daemon.commit_phase(
+            successor,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": "coordination_lease_expired_before_completion",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 0,
+            },
+        )
+        second_seeded_claim = consumer_daemon.coordinator.get_task_claim(
+            second_failed_seeded.claim_id
+        )
+        assert second_seeded_claim is not None
+        second_seeded_now_ms = int(second_seeded_claim.expires_at_ms) + 1
+        consumer_daemon._clock_ms = lambda: second_seeded_now_ms
+        consumer_daemon.coordinator.expire_task_claim(
+            second_seeded_claim,
+            now_ms=second_seeded_now_ms,
+        )
+        second_seeded_coordination = (
+            consumer_daemon._reconcile_failed_attempt_coordination(
+                second_failed_seeded
+            )
+        )
+        second_generic_retry = consumer_daemon._persist_task_retry_state(
+            second_failed_seeded,
+            reason="coordination_lease_expired_before_completion",
+            backoff_ms=0,
+            evidence_source="expired_v2_seeded_completion_claim",
+            coordination_evidence=second_seeded_coordination,
+        )
+        assert second_generic_retry["status"] == "retrying"
+        second_ordinary = consumer_daemon.claim_next()
+        assert second_ordinary is not None
+        assert "post_merge_completion_recovery_seed" not in (
+            second_ordinary.body
+        )
+        second_typed_receipt = consumer_daemon._typed_deferral_receipt(
+            second_ordinary,
+            reason=typed_reason,
+        )
+        second_exhausted_attempt = consumer_daemon.commit_phase(
+            second_ordinary,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": typed_reason,
+                "portal_retryable_failure": True,
+                "portal_terminal_failure": False,
+                "deferred": True,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "typed_deferral_slot_consumed": True,
+                "backoff_seconds": 0,
+                "typed_deferral": second_typed_receipt,
+            },
+        )
+        second_budget = consumer_daemon._typed_deferral_budget_observation(
+            second_exhausted_attempt
+        )
+        assert second_budget is not None
+        assert second_budget["exhausted"] is True
+        second_exhausted_coordination = (
+            consumer_daemon._reconcile_failed_attempt_coordination(
+                second_exhausted_attempt
+            )
+        )
+        second_blocked = (
+            consumer_daemon._persist_typed_deferral_budget_exhausted(
+                second_exhausted_attempt,
+                budget=second_budget,
+                coordination_evidence=second_exhausted_coordination,
+            )
+        )
+        assert second_blocked["status"] == "blocked"
+        second_blocked_record = consumer_daemon.task_source.get(
+            successor.task_cid
+        )
+        assert second_blocked_record is not None
+        recurrence_context = (
+            consumer_daemon._post_merge_completion_crash_recovery_context(
+                second_blocked_record,
+                require_current_blocked=True,
+            )
+        )
+        assert recurrence_context is not None
+        assert recurrence_context["source_task_revision"] == blocked_revision
+        assert recurrence_context["control_task_revision"] == (
+            blocked_revision + 5
+        )
+        assert recurrence_context["source_seed"] == replay_seed
+        assert consumer_daemon.post_merge_completion_recovery_task_cids() == (
+            successor.task_cid,
+        )
+
+        (repo / "target-generation.txt").write_text(
+            "completion recovery generation three\n",
+            encoding="utf-8",
+        )
+        git("add", "target-generation.txt")
+        git("commit", "-q", "-m", "advance completion target again")
+        final_target = git("rev-parse", "HEAD")
+        assert final_target != advanced_target
+
+        consumer_bridge = fresh_consumer_bridge()
+        consumer_bridges[0] = consumer_bridge
+        final_recovery = consumer_bridge.recover_post_merge_declared_outputs(
+            consumer_daemon
+        )
+        if final_recovery is None:
+            final_recovery = (
+                consumer_bridge.recover_post_merge_declared_outputs(
+                    consumer_daemon
+                )
+            )
+        assert final_recovery is not None
+        assert final_recovery["recovered"] is True
+        final_retrying = consumer_daemon.task_source.get(successor.task_cid)
+        assert final_retrying is not None
+        final_seed = final_retrying.body["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ]
+        assert final_seed["schema"] == (
+            DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+        )
+        assert final_seed["source_task_revision"] == blocked_revision
+        assert final_seed["recovery_control_revision"] == (
+            blocked_revision + 10
+        )
+        assert final_seed["qualified_target_commit"] == final_target
+
+        second_exhausted_claim = consumer_daemon.coordinator.get_task_claim(
+            second_exhausted_attempt.claim_id
+        )
+        assert second_exhausted_claim is not None
+        second_exhausted_now_ms = (
+            int(second_exhausted_claim.expires_at_ms) + 1
+        )
+        consumer_daemon._clock_ms = lambda: second_exhausted_now_ms
+        consumer_daemon.coordinator.expire_task_claim(
+            second_exhausted_claim,
+            now_ms=second_exhausted_now_ms,
+        )
+        second_exhausted_reconciliation = (
+            consumer_daemon._reconcile_failed_attempt_coordination(
+                second_exhausted_attempt
+            )
+        )
+        assert second_exhausted_reconciliation["claim_state"] == "expired"
+        successor = consumer_daemon.claim_next()
+        assert successor is not None
+        assert successor.body["post_merge_completion_recovery_seed"] == (
+            final_seed
+        )
         resumed = consumer_daemon.resume_attempt(successor)
 
         assert resumed["resumed"] is True
@@ -6697,7 +7464,10 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
         assert resumed["provider_result"]["implementation_commit"] == (
             candidate_commit
         )
-        assert consumer_portal_calls == []
+        # Portal was instantiated once for fresh current-target validation;
+        # the resumed zero-provider event projection did not instantiate it.
+        assert consumer_portal_calls == ["VRIF-029", "VRIF-029"]
+        assert requalification_heads == [advanced_target, final_target]
         events = consumer_bridge._verified_event_chain(
             consumer_bridge._paths(successor)
         )
@@ -6719,7 +7489,7 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
         assert completion_control["attempt_id"] == successor.attempt_id
         assert completion_control["claim_id"] == successor.claim_id
         assert completion_control["lease_id"] == successor.lease_id
-        assert completed_task.revision == blocked_revision + 3
+        assert completed_task.revision == blocked_revision + 13
         queue_after_completion = queue.get(request.request_id)
         assert queue_after_completion is not None
         assert queue_after_completion.status == "completed"

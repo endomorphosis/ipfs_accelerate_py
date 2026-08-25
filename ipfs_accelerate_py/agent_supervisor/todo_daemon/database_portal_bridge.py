@@ -94,6 +94,10 @@ DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-completion-recovery-seed@1"
 )
+DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-completion-recovery-seed@2"
+)
 DATABASE_POST_MERGE_COMPLETION_LINEAGE_FAILURE_REASON: Final[str] = (
     "Portal completion lacks one exact implementation commit"
 )
@@ -535,6 +539,11 @@ _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS: Final[frozenset[str]] = frozenset(
         "terminal_reason",
         "seed_id",
     }
+)
+_POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {*_POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS, "recovery_control_revision"}
+    )
 )
 _DATABASE_POST_MERGE_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -8093,12 +8102,31 @@ class DatabasePortalExecutionBridge:
             "terminal_reason",
         )
         record_revision = getattr(record, "revision", None)
+        schema = value.get("schema")
+        expected_fields = (
+            _POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS
+            if schema
+            == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+            else _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS
+        )
+        recovery_control_revision = value.get(
+            "recovery_control_revision",
+            value.get("source_task_revision"),
+        )
+        if schema == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2:
+            integer_fields = (*integer_fields, "recovery_control_revision")
         if (
-            set(seed) != _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS
-            or value.get("schema")
-            != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+            set(seed) != expected_fields
+            or schema
+            not in {
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+            }
             or seed_id != _sha256_bytes(_canonical_json(value))
-            or any(not isinstance(value.get(field), str) or not value[field] for field in string_fields)
+            or any(
+                not isinstance(value.get(field), str) or not value[field]
+                for field in string_fields
+            )
             or any(
                 isinstance(value.get(field), bool)
                 or not isinstance(value.get(field), int)
@@ -8144,7 +8172,15 @@ class DatabasePortalExecutionBridge:
             or value.get("lease_id") == str(attempt.lease_id)
             or isinstance(record_revision, bool)
             or not isinstance(record_revision, int)
-            or int(value["source_task_revision"]) + 2 != record_revision
+            or isinstance(recovery_control_revision, bool)
+            or not isinstance(recovery_control_revision, int)
+            or int(recovery_control_revision) + 2 != record_revision
+            or (
+                schema
+                == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                and int(recovery_control_revision)
+                <= int(value["source_task_revision"])
+            )
         ):
             raise DatabasePortalBridgeError(
                 "post-merge completion recovery seed failed claim verification"
