@@ -2186,6 +2186,35 @@ def test_codex_auth_boundary_rejects_ambient_or_mutable_authority(
         )
 
 
+def test_codex_auth_defaults_to_account_home_when_runtime_home_is_sealed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    account_home = tmp_path / "account-home"
+    runtime_home = tmp_path / "runtime-home"
+    codex_home = account_home / ".codex"
+    workspace.mkdir()
+    runtime_home.mkdir()
+    codex_home.mkdir(parents=True)
+    auth_path = codex_home / "auth.json"
+    auth_path.write_text("{}\n", encoding="utf-8")
+    auth_path.chmod(0o600)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_operating_system_account_home",
+        lambda: account_home.resolve(strict=True),
+    )
+
+    environment = grok_cli_runner._codex_quota_fallback_env(
+        workspace=workspace,
+        base_env={"HOME": str(runtime_home)},
+    )
+
+    assert environment["HOME"] == str(codex_home.resolve(strict=True))
+    assert environment["CODEX_HOME"] == str(codex_home.resolve(strict=True))
+
+
 def test_codex_isolated_home_seals_environment_without_host_toolchain(
     tmp_path: Path,
 ) -> None:

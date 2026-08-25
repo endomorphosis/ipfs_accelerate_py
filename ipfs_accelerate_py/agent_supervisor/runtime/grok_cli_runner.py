@@ -4050,8 +4050,14 @@ def _codex_quota_fallback_env(
     """Build a minimal official-endpoint Codex environment with pinned auth."""
 
     configured_home = str(base_env.get("CODEX_HOME") or "").strip()
-    home = Path(str(base_env.get("HOME") or Path.home())).expanduser()
-    candidate = Path(configured_home).expanduser() if configured_home else home / ".codex"
+    # Live supervisors deliberately retarget HOME to a sealed runtime home.
+    # Resolve the default credential root from the login account instead of
+    # treating that sanitized child-process value as authorization.
+    candidate = (
+        Path(configured_home).expanduser()
+        if configured_home
+        else _operating_system_account_home() / ".codex"
+    )
     try:
         codex_home = candidate.resolve(strict=True)
     except OSError as exc:
