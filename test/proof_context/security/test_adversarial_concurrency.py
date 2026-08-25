@@ -2891,7 +2891,11 @@ def test_real_post_crash_restart_exposes_lost_checkpoint_false_success_no_go(
     repository = worker_root / "repository"
     storage = worker_root / "runtime-state"
     kit_root = storage / "kit"
-    python_path = os.environ.get("PYTHONPATH", "")
+    python_path = os.pathsep.join(
+        str(Path(entry).resolve())
+        for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep)
+        if entry
+    )
     environment = {
         "PATH": os.environ.get("PATH", "/usr/bin"),
         "PYTHONPATH": os.pathsep.join(part for part in (str(PACKAGE_ROOT), python_path) if part),
