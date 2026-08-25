@@ -36,8 +36,8 @@ TASK_ID = "PCCE-081"
 BOARD_NAMESPACE = "proof-carrying-context-engine-v0.1"
 RELEASE_CANDIDATE = "v0.1-rc1"
 RELEASE_RELATIVE_PATH = Path("artifacts/proof_carrying_context_engine/release/v0.1-rc1")
-SOURCE_SNAPSHOT_COMMIT = "43457c396be7a9116152e4414dadc4625eff2c2e"
-SOURCE_SNAPSHOT_TREE = "d2a3e450154cbf0b200d7eaae5db0f9eec8bbd66"
+SOURCE_SNAPSHOT_COMMIT = "c5bdde1482a9afab7c5827a52bdf4f7b1d63f090"
+SOURCE_SNAPSHOT_TREE = "bb7849ac3bc92ad80e0bc7dff9d3b421d08ce872"
 TASK_BOARD_PATH = "artifacts/proof_carrying_context_engine/control/task_board.json"
 ARTIFACT_ROOT = "artifacts/proof_carrying_context_engine"
 RECEIPT_ROOT = f"{ARTIFACT_ROOT}/receipts"
@@ -45,20 +45,12 @@ SCHEMA_PREFIX = "lift_coding.proof-carrying-context-engine"
 
 SOURCE_GITLINK_TREES = {
     "Mcp-Plus-Plus": "3a57e33053d6007cb99cbe265c6608954d9cea7c",
-    "external/ipfs_accelerate": "ef570b0c958bd672bc68da58d17813b223f00c6a",
-    "external/ipfs_datasets": "7b395108ecde75bcbfa7445073a4fd824d92de4e",
+    "external/ipfs_accelerate": "ebd9b42ba48a71ca908e86a9467e581446be5930",
+    "external/ipfs_datasets": "839980ccaba593b146213928bc5e8bf95e7a1fd9",
     "external/ipfs_kit": "b4413c1ad92b85df2e110c0185d2449e56fc6497",
 }
 
-EXPECTED_MISSING_PREDECESSORS = (
-    "PCCE-074",
-    "PCCE-079",
-    "PCCE-075",
-    "PCCE-067",
-    "PCCE-076",
-    "PCCE-068",
-    "PCCE-080",
-)
+EXPECTED_MISSING_PREDECESSORS: tuple[str, ...] = ()
 
 # Paths are outer-repository evidence.  Source files that live behind gitlinks
 # are bound transitively by their producing receipts and source commit/tree.
@@ -175,7 +167,7 @@ FORBIDDEN_BYTE_PATTERNS = (
     re.compile(rb"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     re.compile(rb"AKIA[0-9A-Z]{16}"),
     re.compile(rb"gh[pousr]_[A-Za-z0-9_]{24,}"),
-    re.compile(rb"sk-[A-Za-z0-9_-]{24,}"),
+    re.compile(rb"(?<![A-Za-z0-9_])sk-[A-Za-z0-9_-]{24,}"),
 )
 
 
@@ -426,6 +418,13 @@ def _receipt(task_id: str) -> dict[str, Any]:
     return _snapshot_json(f"{RECEIPT_ROOT}/{task_id}.json")
 
 
+def _snapshot_descriptor(path: str) -> dict[str, Any]:
+    value = _snapshot_bytes(path)
+    if value is None:
+        raise ReleaseEvidenceError(f"required frozen artifact is missing: {path}")
+    return _descriptor(path, value)
+
+
 def _contract_evidence() -> dict[str, Any]:
     schema_receipt = _receipt("PCCE-006")
     vector_receipt = _receipt("PCCE-007")
@@ -493,6 +492,8 @@ def _corpus_evidence() -> dict[str, Any]:
 def _example_and_harness_evidence() -> dict[str, Any]:
     harness = _receipt("PCCE-045")
     example = _receipt("PCCE-055")
+    self_hosting = _snapshot_json(f"{ARTIFACT_ROOT}/benchmark/self_hosting/qualification.json")
+    self_hosting_receipt = _receipt("PCCE-079")
     return {
         "packaged_self_hosting_harness": {
             "task_id": "PCCE-045",
@@ -503,8 +504,16 @@ def _example_and_harness_evidence() -> dict[str, Any]:
         },
         "bounded_self_hosting_disposition": {
             "task_id": "PCCE-079",
-            "status": "unavailable-at-evidence-cut",
+            "status": "present-and-bound-no-go",
+            "decision": self_hosting.get("decision"),
+            "qualification_status": self_hosting.get("status"),
+            "qualification_cap": self_hosting.get("qualification_cap"),
+            "release_qualified": False,
             "qualification_credit": False,
+            "qualification": _snapshot_descriptor(
+                f"{ARTIFACT_ROOT}/benchmark/self_hosting/qualification.json"
+            ),
+            "receipt_artifact_identity": self_hosting_receipt.get("artifact_identity"),
         },
         "example": {
             "task_id": "PCCE-055",
@@ -521,21 +530,21 @@ def _example_and_harness_evidence() -> dict[str, Any]:
 def _blockers(
     *, missing_predecessors: list[str], missing_inputs: list[str], unavailable: list[str]
 ) -> list[dict[str, Any]]:
-    return [
+    benchmark_path = f"{ARTIFACT_ROOT}/benchmark/qualification.json"
+    benchmark = _snapshot_json(benchmark_path)
+    benchmark_decision = benchmark.get("decision", {})
+    security_path = f"{ARTIFACT_ROOT}/security/qualification.json"
+    security = _snapshot_json(security_path)
+    self_hosting_path = f"{ARTIFACT_ROOT}/benchmark/self_hosting/qualification.json"
+    self_hosting = _snapshot_json(self_hosting_path)
+    ci_path = f"{ARTIFACT_ROOT}/ci/required_jobs.json"
+    ci = _snapshot_json(ci_path)
+    ci_qualification = ci.get("qualification", {})
+    blockers: list[dict[str, Any]] = [
         {
             "id": "installability-no-go",
             "source": f"{ARTIFACT_ROOT}/installation/qualification.json",
             "observed_decision": "NO-GO",
-            "waiver": None,
-        },
-        {
-            "id": "predecessor-receipts-incomplete",
-            "missing_task_ids": missing_predecessors,
-            "waiver": None,
-        },
-        {
-            "id": "required-release-inputs-missing",
-            "missing_paths": missing_inputs,
             "waiver": None,
         },
         {
@@ -551,29 +560,67 @@ def _blockers(
             "waiver": None,
         },
         {
-            "id": "bounded-self-hosting-qualification-unavailable",
+            "id": "bounded-self-hosting-qualification-no-go",
             "source_task": "PCCE-079",
+            "source": self_hosting_path,
+            "source_cid_v1_raw": _snapshot_descriptor(self_hosting_path)["cid_v1_raw"],
+            "observed_decision": self_hosting.get("decision"),
+            "qualification_status": self_hosting.get("status"),
             "waiver": None,
         },
         {
-            "id": "benchmark-qualification-unavailable",
+            "id": "benchmark-qualification-no-go",
             "source_tasks": ["PCCE-067", "PCCE-068"],
+            "source": benchmark_path,
+            "source_cid_v1_raw": _snapshot_descriptor(benchmark_path)["cid_v1_raw"],
+            "observed_decision": benchmark_decision.get("status"),
+            "release_qualified": benchmark_decision.get("release_qualified"),
             "provider_or_model_runs_claimed": False,
             "waiver": None,
         },
         {
-            "id": "security-qualification-unavailable",
+            "id": "security-qualification-no-go",
             "source_task": "PCCE-076",
+            "source": security_path,
+            "source_cid_v1_raw": _snapshot_descriptor(security_path)["cid_v1_raw"],
+            "observed_decision": security.get("decision"),
+            "release_qualified": security.get("qualification", {}).get("release_qualified"),
             "security_release_claim": False,
             "waiver": None,
         },
         {
-            "id": "current-head-ci-evidence-unavailable",
+            "id": "current-head-ci-qualification-no-go",
             "source_task": "PCCE-080",
+            "source": ci_path,
+            "source_cid_v1_raw": _snapshot_descriptor(ci_path)["cid_v1_raw"],
+            "observed_decision": ci_qualification.get("decision"),
+            "release_qualified": ci_qualification.get("release_qualified"),
+            "external_ci_authority_available": ci_qualification.get(
+                "external_ci_authority_available"
+            ),
             "ci_run_claimed": False,
             "waiver": None,
         },
     ]
+    if missing_predecessors:
+        blockers.insert(
+            1,
+            {
+                "id": "predecessor-receipts-incomplete",
+                "missing_task_ids": missing_predecessors,
+                "waiver": None,
+            },
+        )
+    if missing_inputs:
+        blockers.insert(
+            1,
+            {
+                "id": "required-release-inputs-missing",
+                "missing_paths": missing_inputs,
+                "waiver": None,
+            },
+        )
+    return blockers
 
 
 def _known_limitations(blockers: list[dict[str, Any]]) -> dict[str, Any]:
@@ -698,7 +745,16 @@ def _manifest(
     blockers: list[dict[str, Any]],
 ) -> dict[str, Any]:
     task = next(item for item in board["tasks"] if item.get("task_id") == TASK_ID)
-    installation = _snapshot_json(f"{ARTIFACT_ROOT}/installation/qualification.json")
+    installation_path = f"{ARTIFACT_ROOT}/installation/qualification.json"
+    installation = _snapshot_json(installation_path)
+    benchmark_path = f"{ARTIFACT_ROOT}/benchmark/qualification.json"
+    benchmark = _snapshot_json(benchmark_path)
+    security_path = f"{ARTIFACT_ROOT}/security/qualification.json"
+    security = _snapshot_json(security_path)
+    ci_path = f"{ARTIFACT_ROOT}/ci/required_jobs.json"
+    ci = _snapshot_json(ci_path)
+    self_hosting_path = f"{ARTIFACT_ROOT}/benchmark/self_hosting/qualification.json"
+    self_hosting = _snapshot_json(self_hosting_path)
     environment = _snapshot_json(f"{ARTIFACT_ROOT}/environment/manifest.json")
     script_bytes = SCRIPT_PATH.read_bytes()
     return {
@@ -767,14 +823,42 @@ def _manifest(
         "harness_and_example": _example_and_harness_evidence(),
         "qualification_inputs": {
             "installation": {
+                "status": "present-and-bound-no-go",
                 "decision": installation.get("decision"),
                 "release_qualified": installation.get("release_qualified"),
                 "waivers": installation.get("waivers"),
+                "binding": _snapshot_descriptor(installation_path),
             },
-            "benchmark": "unavailable-at-evidence-cut",
-            "security": "unavailable-at-evidence-cut",
-            "current_head_ci": "unavailable-at-evidence-cut",
-            "longitudinal_self_hosting": "unavailable-at-evidence-cut",
+            "benchmark": {
+                "status": "present-and-bound-no-go",
+                "decision": benchmark.get("decision", {}).get("status"),
+                "decision_kind": benchmark.get("decision", {}).get("decision_kind"),
+                "release_qualified": benchmark.get("decision", {}).get("release_qualified"),
+                "binding": _snapshot_descriptor(benchmark_path),
+            },
+            "security": {
+                "status": "present-and-bound-no-go",
+                "decision": security.get("decision"),
+                "release_qualified": security.get("qualification", {}).get("release_qualified"),
+                "binding": _snapshot_descriptor(security_path),
+            },
+            "current_head_ci": {
+                "status": "present-and-bound-no-go",
+                "decision": ci.get("qualification", {}).get("decision"),
+                "release_qualified": ci.get("qualification", {}).get("release_qualified"),
+                "external_ci_authority_available": ci.get("qualification", {}).get(
+                    "external_ci_authority_available"
+                ),
+                "binding": _snapshot_descriptor(ci_path),
+            },
+            "longitudinal_self_hosting": {
+                "status": "present-and-bound-no-go",
+                "decision": self_hosting.get("decision"),
+                "qualification_status": self_hosting.get("status"),
+                "qualification_cap": self_hosting.get("qualification_cap"),
+                "release_qualified": False,
+                "binding": _snapshot_descriptor(self_hosting_path),
+            },
         },
         "blockers": blockers,
         "bundle_files": [
