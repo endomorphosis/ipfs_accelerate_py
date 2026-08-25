@@ -86,7 +86,7 @@ OWNER_RESTART_CONFIG_TRANSITION_SCHEMA: Final = (
     "verified-residual-intelligence-foundry-owner-config-transition@1"
 )
 VRIF_RUNTIME_HARDENING_CONFIG_IDENTITY: Final = (
-    "sha256:c4a35cf46a497e7ed11c56e8577a5c116b48aa73dd9d507c9ce443bde433cf4a"
+    "sha256:db657932421d3f40dcde15da782a9d887ad738dde90cb84066773ee2dcc79bde"
 )
 VRIF_RUNTIME_HARDENING_PROTECTED_INSERTIONS: Final = (
     (
