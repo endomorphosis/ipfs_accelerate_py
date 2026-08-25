@@ -263,6 +263,20 @@ def _execution_route_policy_summary(
     )
 
 
+def _execution_route_summary_is_current_casf_population(
+    summary: Mapping[str, Any],
+) -> bool:
+    """Return whether a structurally validated summary has today's CASF split."""
+
+    return bool(
+        int(summary["task_count"]) == len(CASF_TASK_ALIASES)
+        and int(summary["deterministic_task_count"])
+        == len(CASF_DETERMINISTIC_TASK_ALIASES)
+        and int(summary["model_task_count"])
+        == len(CASF_TASK_ALIASES) - len(CASF_DETERMINISTIC_TASK_ALIASES)
+    )
+
+
 def _canonical_bytes(value: Any) -> bytes:
     return json.dumps(
         value,
@@ -4558,10 +4572,13 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
         ),
     )
     execution_route_summary: dict[str, Any] | None = None
+    execution_route_population: str | None = None
     if task_execution_admitted:
+        # A dead generation may predate the current routing split.  Its sealed
+        # summary remains observable only when the executor copy matches and
+        # every process birth that could execute it is conclusively dead.
         execution_route_summary = _validated_execution_route_summary(
             launch.get("execution_route_policy"),
-            require_casf_population=True,
         )
         runtime_route_summary = runtime["executor"].get(
             "execution_route_policy"
@@ -4573,6 +4590,30 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
             raise OperatorError(
                 "live executor route policy differs from the admitted launch"
             )
+        if _execution_route_summary_is_current_casf_population(
+            execution_route_summary
+        ):
+            execution_route_population = "current"
+        else:
+            executor_runtime = runtime["executor"]
+            executor_current = executor_runtime.get("current")
+            current_supervisor = (
+                executor_current.get("supervisor_process_birth")
+                if isinstance(executor_current, Mapping)
+                else None
+            )
+            if not (
+                owner_live == "dead"
+                and master_live == "dead"
+                and isinstance(current_supervisor, Mapping)
+                and dict(current_supervisor) == dict(expected_executor_supervisor)
+                and executor_runtime.get("supervisor_liveness") == "dead"
+                and executor_runtime.get("executor_liveness") == "dead"
+            ):
+                raise OperatorError(
+                    "obsolete executor route belongs to a runtime that is not fully dead"
+                )
+            execution_route_population = "obsolete"
     elif launch.get("execution_route_policy") is not None:
         raise OperatorError("coordinator-only launch unexpectedly carries a route policy")
     outbox_worker = _outbox_worker_health(owner_status)
@@ -4637,6 +4678,8 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
         "high_concurrency_qualified": False,
         "ducklake_authoritative": False,
     }
+    if execution_route_population is not None:
+        payload["execution_route_population"] = execution_route_population
     return _persist_receipt(paths, "status", payload) if persist else payload
 
 
@@ -4989,16 +5032,16 @@ def stop(config_path: Path) -> dict[str, Any]:
     executor_birth: Mapping[str, Any] | None = None
     execution_route_summary: dict[str, Any] | None = None
     if task_execution_admitted:
+        # Retirement is authorized by the tamper-evident launch receipt and
+        # its exact executor-current binding, not by today's admission split.
         execution_route_summary = _validated_execution_route_summary(
             launch_receipt.get("execution_route_policy"),
-            require_casf_population=True,
         )
         executor_current = _json_object(paths["executor_current"])
         current_supervisor = executor_current.get("supervisor_process_birth")
         current_executor = executor_current.get("executor_process_birth")
         current_route_summary = _validated_execution_route_summary(
             executor_current.get("execution_route_policy"),
-            require_casf_population=True,
         )
         if (
             not isinstance(executor_supervisor_birth, Mapping)
@@ -5006,6 +5049,12 @@ def stop(config_path: Path) -> dict[str, Any]:
             or dict(current_supervisor) != dict(executor_supervisor_birth)
             or not isinstance(current_executor, Mapping)
             or current_route_summary != execution_route_summary
+            or executor_current.get("execution_route_policy_id")
+            != current_route_summary["policy_id"]
+            or executor_current.get("execution_route_plan_root_cid")
+            != current_route_summary["plan_root_cid"]
+            or executor_current.get("execution_route_source_revision")
+            != current_route_summary["source_revision"]
         ):
             raise OperatorError("executor runtime is not bound to the admitted launch")
         executor_birth = current_executor

@@ -27,6 +27,96 @@ def _operator() -> ModuleType:
     return module
 
 
+def _execution_route_summary(
+    *,
+    deterministic_task_count: int = 43,
+    model_task_count: int = 1,
+    policy_id: str = "route-policy:test",
+) -> dict:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA,
+    )
+
+    return {
+        "schema": TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA,
+        "policy_id": policy_id,
+        "plan_root_cid": "plan:test",
+        "repository_tree_id": "tree:test",
+        "source_revision": 7,
+        "task_count": 44,
+        "deterministic_task_count": deterministic_task_count,
+        "model_task_count": model_task_count,
+    }
+
+
+def _install_admitted_generation(
+    operator: ModuleType,
+    paths: dict[str, Path],
+    *,
+    launch_route: dict,
+    current_route: dict | None = None,
+) -> dict[str, dict]:
+    births = {
+        "master": {
+            "pid": 777_101,
+            "start_time_ticks": 11,
+            "boot_id": "boot:test",
+            "parent_pid": 1,
+        },
+        "owner": {
+            "pid": 777_102,
+            "start_time_ticks": 12,
+            "boot_id": "boot:test",
+            "parent_pid": 1,
+        },
+        "executor_supervisor": {
+            "pid": 777_103,
+            "start_time_ticks": 13,
+            "boot_id": "boot:test",
+            "parent_pid": 777_102,
+        },
+        "executor": {
+            "pid": 777_104,
+            "start_time_ticks": 14,
+            "boot_id": "boot:test",
+            "parent_pid": 777_103,
+        },
+    }
+    operator._persist_receipt(
+        paths,
+        "launch",
+        {
+            "schema": operator.LAUNCH_SCHEMA,
+            "program_id": operator.PROGRAM_ID,
+            "launched_at_ns": 1,
+            "source_head": "source:test",
+            "repository_tree_id": "tree:test",
+            "master_process_birth": births["master"],
+            "supervisor_process_birth": births["master"],
+            "owner_identity": {"process_birth": births["owner"]},
+            "executor_supervisor_process_birth": births["executor_supervisor"],
+            "executor_process_birth_at_launch": births["executor"],
+            "task_execution_admitted": True,
+            "execution_route_policy": launch_route,
+        },
+    )
+    sealed_current_route = current_route or launch_route
+    operator._atomic_json(
+        paths["executor_current"],
+        {
+            "supervisor_process_birth": births["executor_supervisor"],
+            "executor_process_birth": births["executor"],
+            "execution_route_policy": sealed_current_route,
+            "execution_route_policy_id": sealed_current_route["policy_id"],
+            "execution_route_plan_root_cid": sealed_current_route["plan_root_cid"],
+            "execution_route_source_revision": sealed_current_route[
+                "source_revision"
+            ],
+        },
+    )
+    return births
+
+
 def _authority(**updates):
     value = {
         "available": True,
@@ -250,6 +340,42 @@ def test_native_launch_plan_admits_only_one_event_wait_coordinator(
     assert operator.STATE_TOKEN_ENV not in json.dumps(plan)
     assert "argv" not in plan
     assert "environment" not in plan
+
+
+def test_admitted_launch_route_remains_current_43_to_1_population(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    monkeypatch.setenv(operator.STATE_TOKEN_ENV, "raw-token-material-for-test")
+
+    plan = operator._launch_plan(board, admit_task_execution=True)
+    modes = operator._casf_mixed_execution_modes()
+    current = _execution_route_summary()
+    historical = _execution_route_summary(
+        deterministic_task_count=41,
+        model_task_count=3,
+    )
+
+    assert plan["execution_route_expected_counts"] == {
+        "task_count": 44,
+        "deterministic_task_count": 43,
+        "model_task_count": 1,
+    }
+    assert len(operator.CASF_DETERMINISTIC_TASK_ALIASES) == 43
+    assert sum(
+        mode == "deterministic-only" for mode in modes.values()
+    ) == 43
+    assert sum(mode != "deterministic-only" for mode in modes.values()) == 1
+    assert operator._validated_execution_route_summary(
+        current,
+        require_casf_population=True,
+    ) == current
+    with pytest.raises(operator.OperatorError, match="exact CASF population"):
+        operator._validated_execution_route_summary(
+            historical,
+            require_casf_population=True,
+        )
 
 
 def test_scheduler_schema_revision_must_match_canonical_migration_head() -> None:
@@ -1846,6 +1972,201 @@ def test_stop_ignores_stale_pid_observations_and_signals_only_sealed_births(
     assert receipt["complete"] is True
     assert signaled == [master_birth, owner_birth]
     assert all(item["birth"]["pid"] != stale_pid for item in receipt["process_results"])
+
+
+def test_stop_retires_exact_historical_41_to_3_execution_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    paths = {
+        "operator_evidence": tmp_path / "evidence",
+        "launch_receipt": tmp_path / "launch.json",
+        "stop_receipt": tmp_path / "stop.json",
+        "executor_current": tmp_path / "executor-current.json",
+        "owner_status": tmp_path / "owner-status.json",
+        "owner": tmp_path / "owner",
+    }
+    historical_route = _execution_route_summary(
+        deterministic_task_count=41,
+        model_task_count=3,
+        policy_id="route-policy:historical",
+    )
+    births = _install_admitted_generation(
+        operator,
+        paths,
+        launch_route=historical_route,
+    )
+    retired: list[dict] = []
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, {}))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(operator, "_owner_liveness", lambda _status: "dead")
+    monkeypatch.setattr(operator, "_birth_liveness", lambda _birth: "dead")
+    monkeypatch.setattr(operator, "_port_is_free", lambda _host, _port: True)
+
+    def retire_executor(*, paths, supervisor_birth, fallback_executor_birth, grace_seconds):
+        del paths, grace_seconds
+        retired.extend([dict(supervisor_birth), dict(fallback_executor_birth)])
+        return (
+            [
+                {
+                    "role": "executor_supervisor",
+                    "birth": dict(supervisor_birth),
+                    "result": "already_dead",
+                },
+                {
+                    "role": "executor_daemon",
+                    "birth": dict(fallback_executor_birth),
+                    "result": "already_dead",
+                },
+            ],
+            [],
+        )
+
+    monkeypatch.setattr(operator, "_retire_configured_executor", retire_executor)
+    monkeypatch.setattr(
+        operator,
+        "_terminate_birth",
+        lambda _birth, *, grace_seconds: "already_dead",
+    )
+
+    receipt = operator.stop(CONFIG)
+
+    assert receipt["complete"] is True
+    assert receipt["execution_route_policy"] == historical_route
+    assert retired == [births["executor_supervisor"], births["executor"]]
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ["executor_route_mismatch", "executor_binding_mismatch", "launch_receipt"],
+)
+def test_historical_stop_rejects_mismatched_or_tampered_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    paths = {
+        "operator_evidence": tmp_path / "evidence",
+        "launch_receipt": tmp_path / "launch.json",
+        "stop_receipt": tmp_path / "stop.json",
+        "executor_current": tmp_path / "executor-current.json",
+        "owner_status": tmp_path / "owner-status.json",
+        "owner": tmp_path / "owner",
+    }
+    historical_route = _execution_route_summary(
+        deterministic_task_count=41,
+        model_task_count=3,
+        policy_id="route-policy:historical",
+    )
+    current_route = (
+        {**historical_route, "policy_id": "route-policy:foreign"}
+        if tamper == "executor_route_mismatch"
+        else historical_route
+    )
+    _install_admitted_generation(
+        operator,
+        paths,
+        launch_route=historical_route,
+        current_route=current_route,
+    )
+    if tamper == "executor_binding_mismatch":
+        executor_current = operator._json_object(paths["executor_current"])
+        executor_current["execution_route_policy_id"] = "route-policy:foreign"
+        operator._atomic_json(paths["executor_current"], executor_current)
+    elif tamper == "launch_receipt":
+        launch = operator._json_object(paths["launch_receipt"])
+        launch["execution_route_policy"]["policy_id"] = "route-policy:tampered"
+        operator._atomic_json(paths["launch_receipt"], launch)
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, {}))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(
+        operator,
+        "_retire_configured_executor",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("mismatched route reached executor retirement")
+        ),
+    )
+
+    expected = (
+        "identity is absent or invalid"
+        if tamper == "launch_receipt"
+        else "executor runtime is not bound"
+    )
+    with pytest.raises(operator.OperatorError, match=expected):
+        operator.stop(CONFIG)
+
+
+def test_status_reports_obsolete_route_only_for_fully_dead_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    paths = {
+        "operator_evidence": tmp_path / "evidence",
+        "launch_receipt": tmp_path / "launch.json",
+        "status_receipt": tmp_path / "status.json",
+        "executor_current": tmp_path / "executor-current.json",
+        "owner_status": tmp_path / "owner-status.json",
+    }
+    historical_route = _execution_route_summary(
+        deterministic_task_count=41,
+        model_task_count=3,
+        policy_id="route-policy:historical",
+    )
+    births = _install_admitted_generation(
+        operator,
+        paths,
+        launch_route=historical_route,
+    )
+    executor_current = operator._json_object(paths["executor_current"])
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, {}))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(operator, "_owner_liveness", lambda _status: "dead")
+    monkeypatch.setattr(operator, "_birth_liveness", lambda _birth: "dead")
+    monkeypatch.setattr(
+        operator,
+        "_runtime_projection",
+        lambda _paths, *, launched_at_ns, expected_supervisor_birth: {
+            "supervisor_status": {},
+            "task_state": {},
+        },
+    )
+    monkeypatch.setattr(
+        operator,
+        "_executor_runtime_projection",
+        lambda _paths, *, expected_supervisor_birth: {
+            "current": executor_current,
+            "execution_route_policy": historical_route,
+            "supervisor_liveness": "dead",
+            "executor_liveness": "dead",
+        },
+    )
+
+    snapshot = operator._status_snapshot(CONFIG, persist=False)
+
+    assert snapshot["execution_route_policy"] == historical_route
+    assert snapshot["execution_route_population"] == "obsolete"
+    assert snapshot["classification"] == "unavailable"
+    assert snapshot["healthy"] is False
+    assert snapshot["blocked_or_stuck"] is True
+
+    monkeypatch.setattr(
+        operator,
+        "_birth_liveness",
+        lambda birth: (
+            "alive" if dict(birth) == births["master"] else "dead"
+        ),
+    )
+    with pytest.raises(operator.OperatorError, match="runtime that is not fully dead"):
+        operator._status_snapshot(CONFIG, persist=False)
 
 
 def test_stale_owner_identity_is_rejected_before_any_stop() -> None:
