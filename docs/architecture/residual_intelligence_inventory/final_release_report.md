@@ -8,14 +8,17 @@ goal.
 
 - Start: commit `84a056e41e48a81d4484be43840196578d6c87da`, tree
   `40f0771e77d394ac91d92cc1edb02f7860f6131b`.
-- End: commit `5e9db00a4e9fbbb9cba00eb37e10b270fedcc0c0`, tree
-  `59b11091b143293b028390b8c949b0ee7c21f6f5`.
-- Scope: the end tree is the final merged implementation snapshot immediately
-  before this report; the report cannot recursively qualify itself.
-- The joined surface covers the residual contracts, corpus rights and semantic
-  splits, benchmark, checkpoint adapter, runtime packaging, adversarial
-  adapter, promotion/rollback gate, drift monitor, and the three declared
-  release-report outputs. The machine report lists the exact files and symbols.
+- End: commit `06d4958dc96983f16bdb0cb12ce165b5159c90d9`, tree
+  `4b8d07d8f7f25c28e3aa645e79e23b0ea23290f5`.
+- Scope: the end tree is the actual final merged implementation snapshot
+  inspected before this refreshed report artifact; the report cannot recursively
+  qualify its own replacement.
+- The machine report lists the exact release-surface files and symbols: typed
+  contracts and IR; rights and splits; specifications, baselines, calibration,
+  abstention, OOD, and cascades; corpus, labels, distillation, active and
+  continual learning; checkpointing, packaging, runtime, routing, structured,
+  procedure, proof, patch, local, and privacy adapters; and adversarial,
+  promotion/rollback, drift, CLI, and release-report contracts.
 
 ## Corpus, architecture, and experts
 
@@ -59,7 +62,7 @@ evidence.
 
 There is no promoted expert route to restore. The exact rollback target is
 `no-promoted-expert-route`; revoke the report root and regenerate it from tree
-`59b11091b143293b028390b8c949b0ee7c21f6f5` if evidence is corrected. Never
+`4b8d07d8f7f25c28e3aa645e79e23b0ea23290f5` if evidence is corrected. Never
 rewrite evidence or promote from a report.
 
 Blockers are: `training_unavailable`, no admitted production corpus, no learned
