@@ -1,14 +1,26 @@
-"""Fail-closed qualification gates for CASF promotion, rollback, and quarantine.
+"""Fail-closed CASF promotion, rollback, and quarantine recommendations.
 
-This module is deliberately a pure, non-authoritative boundary.  It turns a
-bounded population of independently-produced receipts into a deterministic
-*recommendation* for the typed state owner.  In particular, it never opens a
-database, starts a process, writes an outbox event, or changes a federation
-state.  A caller must reverify a permitted decision at the authoritative
-state-owner boundary before it can promote, roll back, or quarantine anything.
+The gate consumes the real CASF-030/032--041 wire artifacts. It deliberately
+does not accept a caller-authored ``passed`` bit, origin label, or receipt ID as
+qualification evidence. Each artifact is bounded and canonicalized, then
+decoded by its owning contract (or reconstructed as its exact owning type when
+the legacy owner has no wire decoder).
+
+The current artifact population is non-promoting: CASF-030/032/033 lack an
+accepted-producer, state-owner, and full qualification-identity provenance
+envelope; CASF-035 has no canonical control-parity report; CASF-036 has no
+aggregate formal report; CASF-037 always requires upstream reverification; and
+CASF-038--041 explicitly record non-promotion or unavailable/not-run live
+capability. The truthful current disposition is therefore
+``quarantine_required``.
+
+No function in this module applies promotion, rollback, or quarantine. Only a
+future registered typed state-owner policy operation may do so after independent
+reverification.
 
 Interface: ``FederationPromotionGate@1``
-Evidence: ``casf/promotion-decision@1``
+Evidence: ``casf/promotion-evidence-bundle@1``
+Decision: ``casf/promotion-decision@1``
 """
 
 # Python 3.8 remains supported by the package.
@@ -16,14 +28,21 @@ Evidence: ``casf/promotion-decision@1``
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
+import os
 import re
-from collections.abc import Mapping, Sequence
+import stat
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
 from ..task_sources.control_plane_contracts import content_identity
+from .chaos import CASF_CHAOS_REPORT_SCHEMA, ChaosReport
 from .contracts import (
     FederationAuthorityError,
     FederationBoundsError,
@@ -31,96 +50,193 @@ from .contracts import (
     FederationSecretError,
     UnknownNormativeFieldError,
 )
+from .control_service import (
+    FEDERATION_CONTROL_AUDIT_SCHEMA,
+    FederationControlAuditReceipt,
+)
+from .drift_monitor import DRIFT_REPORT_SCHEMA, DriftReport, validate_current_drift_report
+from .ducklake_projection import ProjectionReceipt, ProjectionRecoveryReceipt
+from .fixed_point import FixedPointReceipt
 
 FEDERATION_PROMOTION_GATE_INTERFACE: Final[str] = "FederationPromotionGate@1"
 QUALIFICATION_IDENTITY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/causal-federation/qualification-identity@1"
 )
-GATE_EVIDENCE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/causal-federation/gate-evidence@1"
-)
+PROMOTION_EVIDENCE_BUNDLE_SCHEMA: Final[str] = "casf/promotion-evidence-bundle@1"
+ARTIFACT_ASSESSMENT_SCHEMA: Final[str] = "casf/promotion-artifact-assessment@1"
 PROMOTION_DECISION_SCHEMA: Final[str] = "casf/promotion-decision@1"
 ROLLBACK_DECISION_SCHEMA: Final[str] = "casf/rollback-decision@1"
 QUARANTINE_DECISION_SCHEMA: Final[str] = "casf/quarantine-decision@1"
+DECISION_VALIDATION_SCHEMA: Final[str] = "casf/promotion-decision-validation@1"
+
+_FIXED_POINT_SCHEMA: Final[str] = FixedPointReceipt.SCHEMA
+_DUCKLAKE_PROJECTION_SCHEMA: Final[str] = ProjectionReceipt.SCHEMA
+_DUCKLAKE_RECOVERY_SCHEMA: Final[str] = ProjectionRecoveryReceipt.SCHEMA
+_IDLE_MANIFEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/causal-event-federation/idle-benchmark-manifest@2"
+)
+_PARALLEL_MANIFEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/causal-event-federation/parallel-benchmark-manifest@1"
+)
+_LOAD_MANIFEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/causal-event-federation/load-benchmark-manifest@1"
+)
+_TOKEN_MANIFEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/causal-event-federation/token-benchmark-manifest@1"
+)
+_BENCHMARK_RESULT_SCHEMAS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "CASF-038": "casf/idle-benchmark@1",
+        "CASF-039": "casf/parallel-benchmark@1",
+        "CASF-040": "casf/load-benchmark@1",
+        "CASF-041": "casf/token-benchmark@1",
+    }
+)
+_BENCHMARK_MANIFEST_SCHEMAS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "CASF-038": _IDLE_MANIFEST_SCHEMA,
+        "CASF-039": _PARALLEL_MANIFEST_SCHEMA,
+        "CASF-040": _LOAD_MANIFEST_SCHEMA,
+        "CASF-041": _TOKEN_MANIFEST_SCHEMA,
+    }
+)
+_BENCHMARK_MANIFEST_FILES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "CASF-038": "idle_manifest.json",
+        "CASF-039": "parallel_manifest.json",
+        "CASF-040": "load_manifest.json",
+        "CASF-041": "token_manifest.json",
+    }
+)
+_BENCHMARK_MANIFEST_SHA256: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "CASF-038": "4a9d80d5905202433b145b1b5b0ff809e7137962f3fccedc725699f0701a3bd0",
+        "CASF-039": "2d2c506f6fb2a68074449b50e09ac0748f373ea357642176d4e27fc7c1c7bae6",
+        "CASF-040": "0585e25bb98036edb1941477db43780d46ebb736a2f826b90d3ce6e12539b357",
+        "CASF-041": "34cbda396f72dc5bdee7eda5ec6639bdfbf7574e9da132bea01536c5d0cd924e",
+    }
+)
 
 _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/+\-=]{0,511}")
 _OID = re.compile(r"[0-9a-f]{40}")
 _CONTENT_REF = re.compile(r"(?:sha256:[0-9a-f]{64}|b[a-z2-7]{20,})")
 _SECRET = re.compile(
-    r"(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}|\bsk-[A-Za-z0-9_-]{12,})",
+    r"(?:-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    r"|\bAKIA[0-9A-Z]{16}\b"
+    r"|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"
+    r"|\b(?:gh[pousr]_|github_pat_|sk-)[A-Za-z0-9_-]{8,}"
+    r"|\b(?:api[_-]?key|access[_-]?token|password|passwd|secret)\s*[:=]\s*\S+)",
     re.IGNORECASE,
 )
-MAX_GATE_EVIDENCE: Final[int] = 128
-MAX_BLOCKERS: Final[int] = 128
+_SECRET_KEY_ATOMS: Final[frozenset[str]] = frozenset(
+    {
+        "authorization",
+        "cookie",
+        "credential",
+        "credentials",
+        "jwt",
+        "passwd",
+        "passphrase",
+        "password",
+        "secret",
+    }
+)
+_SECRET_KEY_COMPOUNDS: Final[frozenset[str]] = frozenset(
+    {
+        "accesskey",
+        "accesskeyid",
+        "accesstoken",
+        "apikey",
+        "apitoken",
+        "authtoken",
+        "bearertoken",
+        "clientsecret",
+        "clienttoken",
+        "connectionstring",
+        "credential",
+        "credentials",
+        "idtoken",
+        "password",
+        "passwd",
+        "passphrase",
+        "privatekey",
+        "proxyauthorization",
+        "refreshtoken",
+        "secretaccesskey",
+        "secretkey",
+        "sessiontoken",
+        "setcookie",
+        "signingkey",
+        "signingsecret",
+        "webhooksecret",
+    }
+)
+_SECRET_KEY_PAIRS: Final[frozenset[tuple[str, str]]] = frozenset(
+    {
+        ("access", "key"),
+        ("access", "token"),
+        ("api", "key"),
+        ("api", "token"),
+        ("auth", "header"),
+        ("auth", "token"),
+        ("authorization", "header"),
+        ("bearer", "token"),
+        ("client", "secret"),
+        ("client", "token"),
+        ("connection", "string"),
+        ("id", "token"),
+        ("private", "key"),
+        ("proxy", "authorization"),
+        ("refresh", "token"),
+        ("secret", "access"),
+        ("secret", "key"),
+        ("session", "token"),
+        ("set", "cookie"),
+        ("signing", "key"),
+        ("signing", "secret"),
+        ("webhook", "secret"),
+    }
+)
+_KNOWN_PUBLIC_HANDLE_KEYS: Final[frozenset[str]] = frozenset({"authorization_id"})
+_PUBLIC_SECRET_REFERENCE_SUFFIXES: Final[tuple[str, ...]] = (
+    "_digest",
+    "_fingerprint",
+    "_ref",
+    "_refs",
+)
+
+MAX_CAPABILITIES: Final[int] = 128
+MAX_ARTIFACT_BYTES: Final[int] = 2 * 1024 * 1024
+MAX_BUNDLE_BYTES: Final[int] = 8 * 1024 * 1024
+MAX_JSON_DEPTH: Final[int] = 32
+MAX_JSON_NODES: Final[int] = 200_000
+MAX_JSON_CONTAINER_ITEMS: Final[int] = 65_536
+MAX_JSON_TEXT_BYTES: Final[int] = 128 * 1024
+MAX_BENCHMARK_MANIFEST_BYTES: Final[int] = 64 * 1024
+
+_REPOSITORY_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
+_BENCHMARK_ROOT: Final[Path] = (
+    _REPOSITORY_ROOT / "benchmarks/agent_supervisor/causal_event_federation"
+)
 
 
 class PromotionGateError(FederationContractError):
-    """Promotion, rollback, or quarantine evidence is malformed or unsafe."""
+    """Promotion evidence is malformed, stale, oversized, or unsafe."""
 
 
 class StaleQualificationEvidenceError(PromotionGateError):
-    """Evidence does not bind the exact current authoritative identity."""
+    """A decision is not bound to the exact current qualification identity."""
 
 
 class MissingQualificationCapabilityError(PromotionGateError):
-    """A capability needed by the selected profile is absent or unqualified."""
+    """A caller required permission from a decision that remains blocked."""
 
 
 class GateProfile(str, Enum):
-    """Independent promotion profiles; DuckLake never gates the core profile."""
+    """DuckLake is an independent profile and never qualifies the core path."""
 
     DUCKDB_QUACK = "duckdb_quack"
     DUCKLAKE = "ducklake"
-
-
-class GateStatus(str, Enum):
-    PASSED = "passed"
-    BLOCKED = "blocked"
-    FAILED = "failed"
-    UNAVAILABLE = "unavailable"
-
-
-class EvidenceOrigin(str, Enum):
-    """Closed independent evidence producers; models cannot certify a gate."""
-
-    STATE_OWNER = "state_owner"
-    VALIDATION_RUNNER = "validation_runner"
-    PROOF_RUNNER = "proof_runner"
-    BENCHMARK_RUNNER = "benchmark_runner"
-    DRIFT_MONITOR = "drift_monitor"
-    CHAOS_SUITE = "chaos_suite"
-    DUCKLAKE_PROJECTION = "ducklake_projection"
-
-
-class PromotionGate(str, Enum):
-    STATE_OWNER = "state_owner"
-    NO_DIRECT_MULTIPROCESS_WRITES = "no_direct_multiprocess_writes"
-    NO_STORE_AMBIGUITY = "no_store_ambiguity"
-    NO_EVENT_LOSS = "no_event_loss"
-    NO_DUPLICATE_EFFECTS = "no_duplicate_effects"
-    NO_STALE_FENCE_COMPLETION = "no_stale_fence_completion"
-    NO_UNAUTHORIZED_CREATION = "no_unauthorized_creation"
-    NO_TENANT_LEAKAGE = "no_tenant_leakage"
-    NO_AGENT_SQL = "no_agent_sql"
-    NO_SECRET_LEAK = "no_secret_leak"
-    EXACT_DESCENDANT_NOTIFICATION = "exact_descendant_notification"
-    NO_NOMINATION_OR_STALE_MAP_AUTHORITY = "no_nomination_or_stale_map_authority"
-    NO_CYCLE_OR_SHARD_CORRUPTION = "no_cycle_or_shard_corruption"
-    IDLE_QUIESCENCE = "idle_quiescence"
-    REPLAY_IDEMPOTENCY = "replay_idempotency"
-    BENCHMARK_CAPACITY = "benchmark_capacity"
-    OWNERSHIP_EFFECT_MERGE_INTEGRITY = "ownership_effect_merge_integrity"
-    TOKEN_EFFICIENCY = "token_efficiency"
-    DRIFT_FREE = "drift_free"
-    FORMAL_PROOFS = "formal_proofs"
-    CHAOS_CONTAINMENT = "chaos_containment"
-    POST_MERGE_VALIDATION = "post_merge_validation"
-    CAPABILITIES = "capabilities"
-    DUCKLAKE_HTTPFS_CURRENT = "ducklake_httpfs_current"
-    DUCKLAKE_TYPED_CATALOG = "ducklake_typed_catalog"
-    DUCKLAKE_RECOVERABLE_PROJECTION = "ducklake_recoverable_projection"
-    DUCKLAKE_EVENT_RANGE_BINDING = "ducklake_event_range_binding"
-    DUCKLAKE_RECEIPT = "ducklake_receipt"
 
 
 class DecisionKind(str, Enum):
@@ -134,56 +250,73 @@ class DecisionStatus(str, Enum):
     BLOCKED = "blocked"
 
 
-def _decision_prefix(kind: DecisionKind) -> str:
-    """Return the content-addressed namespace for one closed decision type."""
-
-    return {
-        DecisionKind.PROMOTION: "promotion-decision",
-        DecisionKind.ROLLBACK: "rollback-decision",
-        DecisionKind.QUARANTINE: "quarantine-decision",
-    }[kind]
+class DecisionDisposition(str, Enum):
+    PROMOTION_RECOMMENDED = "promotion_recommended"
+    ROLLBACK_RECOMMENDED = "rollback_recommended"
+    QUARANTINE_REQUIRED = "quarantine_required"
 
 
-_CORE_GATES: Final[frozenset[PromotionGate]] = frozenset(
+class ArtifactStatus(str, Enum):
+    PASSED = "passed"
+    MISSING = "missing"
+    BLOCKED = "blocked"
+    UNAVAILABLE = "unavailable"
+    INVALID = "invalid"
+    NONAUTHORITATIVE = "nonauthoritative"
+
+
+class EvidenceSlot(str, Enum):
+    FIXED_POINT = "fixed_point_receipt"
+    DUCKLAKE_PROJECTION = "ducklake_projection_receipt"
+    DUCKLAKE_RECOVERY = "ducklake_recovery_receipt"
+    DRIFT = "drift_report"
+    CONTROL_AUDIT = "control_audit_receipt"
+    CONTROL_PARITY = "control_parity_report"
+    FORMAL = "formal_report"
+    ADVERSARIAL = "adversarial_report"
+    IDLE = "idle_benchmark"
+    PARALLEL = "parallel_benchmark"
+    LOAD = "load_benchmark"
+    TOKEN = "token_benchmark"
+
+
+_SLOT_TASK: Final[Mapping[EvidenceSlot, str]] = MappingProxyType(
     {
-        PromotionGate.STATE_OWNER,
-        PromotionGate.NO_DIRECT_MULTIPROCESS_WRITES,
-        PromotionGate.NO_STORE_AMBIGUITY,
-        PromotionGate.NO_EVENT_LOSS,
-        PromotionGate.NO_DUPLICATE_EFFECTS,
-        PromotionGate.NO_STALE_FENCE_COMPLETION,
-        PromotionGate.NO_UNAUTHORIZED_CREATION,
-        PromotionGate.NO_TENANT_LEAKAGE,
-        PromotionGate.NO_AGENT_SQL,
-        PromotionGate.NO_SECRET_LEAK,
-        PromotionGate.EXACT_DESCENDANT_NOTIFICATION,
-        PromotionGate.NO_NOMINATION_OR_STALE_MAP_AUTHORITY,
-        PromotionGate.NO_CYCLE_OR_SHARD_CORRUPTION,
-        PromotionGate.IDLE_QUIESCENCE,
-        PromotionGate.REPLAY_IDEMPOTENCY,
-        PromotionGate.BENCHMARK_CAPACITY,
-        PromotionGate.OWNERSHIP_EFFECT_MERGE_INTEGRITY,
-        PromotionGate.TOKEN_EFFICIENCY,
-        PromotionGate.DRIFT_FREE,
-        PromotionGate.FORMAL_PROOFS,
-        PromotionGate.CHAOS_CONTAINMENT,
-        PromotionGate.POST_MERGE_VALIDATION,
-        PromotionGate.CAPABILITIES,
+        EvidenceSlot.FIXED_POINT: "CASF-030",
+        EvidenceSlot.DUCKLAKE_PROJECTION: "CASF-032",
+        EvidenceSlot.DUCKLAKE_RECOVERY: "CASF-032",
+        EvidenceSlot.DRIFT: "CASF-033",
+        EvidenceSlot.CONTROL_AUDIT: "CASF-034",
+        EvidenceSlot.CONTROL_PARITY: "CASF-035",
+        EvidenceSlot.FORMAL: "CASF-036",
+        EvidenceSlot.ADVERSARIAL: "CASF-037",
+        EvidenceSlot.IDLE: "CASF-038",
+        EvidenceSlot.PARALLEL: "CASF-039",
+        EvidenceSlot.LOAD: "CASF-040",
+        EvidenceSlot.TOKEN: "CASF-041",
     }
 )
-_DUCKLAKE_GATES: Final[frozenset[PromotionGate]] = frozenset(
-    {
-        PromotionGate.DUCKLAKE_HTTPFS_CURRENT,
-        PromotionGate.DUCKLAKE_TYPED_CATALOG,
-        PromotionGate.DUCKLAKE_RECOVERABLE_PROJECTION,
-        PromotionGate.DUCKLAKE_EVENT_RANGE_BINDING,
-        PromotionGate.DUCKLAKE_RECEIPT,
-    }
+
+_CORE_REQUIRED_SLOTS: Final[tuple[EvidenceSlot, ...]] = (
+    EvidenceSlot.FIXED_POINT,
+    EvidenceSlot.DRIFT,
+    EvidenceSlot.CONTROL_AUDIT,
+    EvidenceSlot.CONTROL_PARITY,
+    EvidenceSlot.FORMAL,
+    EvidenceSlot.ADVERSARIAL,
+    EvidenceSlot.IDLE,
+    EvidenceSlot.PARALLEL,
+    EvidenceSlot.LOAD,
+    EvidenceSlot.TOKEN,
+)
+_DUCKLAKE_REQUIRED_SLOTS: Final[tuple[EvidenceSlot, ...]] = (
+    EvidenceSlot.DUCKLAKE_PROJECTION,
+    EvidenceSlot.DUCKLAKE_RECOVERY,
 )
 
 
 def _token(value: Any, name: str) -> str:
-    if not isinstance(value, str) or value != value.strip() or not value:
+    if type(value) is not str or value != value.strip() or not value:
         raise PromotionGateError(f"{name} must be nonempty exact text")
     if _SECRET.search(value):
         raise FederationSecretError(f"{name} contains credential-shaped material")
@@ -199,16 +332,31 @@ def _oid(value: Any, name: str) -> str:
     return value
 
 
-def _content_ref(value: Any, name: str) -> str:
-    value = _token(value, name)
-    if _CONTENT_REF.fullmatch(value) is None:
-        raise PromotionGateError(f"{name} must be a CID or sha256 content reference")
+def _integer(value: Any, name: str, *, minimum: int = 0) -> int:
+    if type(value) is not int or value < minimum:
+        raise PromotionGateError(f"{name} must be an exact integer >= {minimum}")
     return value
 
 
-def _closed_mapping(value: Any, fields: frozenset[str], label: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping):
-        raise PromotionGateError(f"{label} must be an object")
+def _content_ref(value: Any, name: str) -> str:
+    value = _token(value, name)
+    if _CONTENT_REF.fullmatch(value) is None:
+        raise PromotionGateError(f"{name} must be content addressed")
+    return value
+
+
+def _exact_list(value: Any, name: str, *, maximum: int) -> list[Any]:
+    if type(value) is not list:
+        raise PromotionGateError(f"{name} must be an exact JSON array")
+    if len(value) > maximum:
+        raise FederationBoundsError(f"{name} exceeds its array bound")
+    return value
+
+
+def _closed_dict(value: Any, fields: frozenset[str], label: str) -> dict[str, Any]:
+    if type(value) is not dict:
+        raise PromotionGateError(f"{label} must be an exact object")
+    _validate_json_value(value, label, depth=0, ancestors=frozenset(), counter=[0])
     unknown = set(value) - fields
     missing = fields - set(value)
     if unknown:
@@ -223,19 +371,162 @@ def _closed_mapping(value: Any, fields: frozenset[str], label: str) -> Mapping[s
 
 
 def _canonical_tokens(value: Any, name: str, *, maximum: int) -> tuple[str, ...]:
-    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
-        raise PromotionGateError(f"{name} must be an array")
-    result = tuple(_token(item, f"{name}[{index}]") for index, item in enumerate(value))
-    if len(result) > maximum:
+    if type(value) not in (tuple, list):
+        raise PromotionGateError(f"{name} must be an exact array")
+    if len(value) > maximum:
         raise FederationBoundsError(f"{name} exceeds its bound")
-    if result != tuple(sorted(result)) or len(set(result)) != len(result):
+    result = tuple(_token(item, f"{name}[{index}]") for index, item in enumerate(value))
+    if result != tuple(sorted(result)) or len(result) != len(set(result)):
         raise PromotionGateError(f"{name} must be sorted and unique")
     return result
 
 
+def _normalized_json_key(key: str) -> str:
+    separated = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key)
+    return re.sub(r"[^a-z0-9]+", "_", separated.casefold()).strip("_")
+
+
+def _is_public_secret_reference(key: str, value: Any) -> bool:
+    """Allow secret-material *references*, never inline secret-bearing fields."""
+
+    normalized = _normalized_json_key(key)
+    if not normalized.endswith(_PUBLIC_SECRET_REFERENCE_SUFFIXES):
+        return False
+    if type(value) is str:
+        return _CONTENT_REF.fullmatch(value) is not None
+    if type(value) is list and value:
+        return all(type(item) is str and _CONTENT_REF.fullmatch(item) is not None for item in value)
+    return False
+
+
+def _secret_shaped_key(key: str, value: Any) -> bool:
+    normalized = _normalized_json_key(key)
+    if (
+        normalized in _KNOWN_PUBLIC_HANDLE_KEYS
+        and type(value) is str
+        and _TOKEN.fullmatch(value) is not None
+        and _SECRET.search(value) is None
+    ):
+        return False
+    atoms = tuple(item for item in normalized.split("_") if item)
+    compact = "".join(atoms)
+    adjacent_pairs = {(atoms[index], atoms[index + 1]) for index in range(len(atoms) - 1)}
+    secret_shaped = bool(
+        _SECRET_KEY_ATOMS.intersection(atoms)
+        or _SECRET_KEY_PAIRS.intersection(adjacent_pairs)
+        or any(compound in compact for compound in _SECRET_KEY_COMPOUNDS)
+    )
+    if normalized in {"key", "token"}:
+        secret_shaped = True
+    return secret_shaped and not _is_public_secret_reference(key, value)
+
+
+def _validate_json_value(
+    value: Any,
+    name: str,
+    *,
+    depth: int,
+    ancestors: frozenset[int],
+    counter: list[int],
+) -> None:
+    counter[0] += 1
+    if counter[0] > MAX_JSON_NODES:
+        raise FederationBoundsError(f"{name} exceeds the JSON node bound")
+    if depth > MAX_JSON_DEPTH:
+        raise FederationBoundsError(f"{name} exceeds the JSON depth bound")
+    if type(value) is str:
+        if len(value.encode("utf-8")) > MAX_JSON_TEXT_BYTES:
+            raise FederationBoundsError(f"{name} contains oversized text")
+        if _SECRET.search(value):
+            raise FederationSecretError(f"{name} contains credential-shaped material")
+        return
+    if value is None or type(value) in (bool, int):
+        return
+    if type(value) is float:
+        if not math.isfinite(value):
+            raise PromotionGateError(f"{name} contains a non-finite number")
+        return
+    if type(value) not in (dict, list):
+        raise PromotionGateError(f"{name} contains a non-JSON exact type")
+    marker = id(value)
+    if marker in ancestors:
+        raise PromotionGateError(f"{name} contains a cycle")
+    if len(value) > MAX_JSON_CONTAINER_ITEMS:
+        raise FederationBoundsError(f"{name} contains an oversized container")
+    descendants = ancestors | {marker}
+    children = value.items() if type(value) is dict else enumerate(value)
+    for key, child in children:
+        if type(value) is dict:
+            if type(key) is not str:
+                raise PromotionGateError(f"{name} contains a non-text object key")
+            if len(key.encode("utf-8")) > 512:
+                raise FederationBoundsError(f"{name} contains an oversized object key")
+            if _SECRET.search(key) or _secret_shaped_key(key, child):
+                raise FederationSecretError(f"{name} contains an unsafe object key")
+            child_name = f"{name}.{key}"
+        else:
+            child_name = f"{name}[{key}]"
+        _validate_json_value(
+            child,
+            child_name,
+            depth=depth + 1,
+            ancestors=descendants,
+            counter=counter,
+        )
+
+
+def _canonical_artifact(value: Any, name: str) -> str | None:
+    if value is None:
+        return None
+    if type(value) is not dict:
+        raise PromotionGateError(f"{name} must be an exact JSON object or null")
+    _validate_json_value(value, name, depth=0, ancestors=frozenset(), counter=[0])
+    try:
+        encoded = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as exc:
+        raise PromotionGateError(f"{name} is not canonical JSON") from exc
+    if len(encoded.encode("utf-8")) > MAX_ARTIFACT_BYTES:
+        raise FederationBoundsError(f"{name} exceeds its byte bound")
+    return encoded
+
+
+def _json_content_ref(value: Any, name: str, *, maximum: int) -> str:
+    """Hash bounded canonical JSON that may contain finite benchmark floats."""
+
+    _validate_json_value(value, name, depth=0, ancestors=frozenset(), counter=[0])
+    try:
+        encoded = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise PromotionGateError(f"{name} is not canonical JSON") from exc
+    if len(encoded) > maximum:
+        raise FederationBoundsError(f"{name} exceeds its content-addressing bound")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _artifact_dict(value: str | None, name: str) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    decoded = json.loads(value)
+    if type(decoded) is not dict:
+        raise PromotionGateError(f"{name} did not decode to an object")
+    return decoded
+
+
 @dataclass(frozen=True)
 class QualificationIdentity:
-    """All identities which a gate must bind before it can be considered."""
+    """Exact current tree, policy, capability, assignment, lease, and fence."""
 
     tenant_id: str
     federation_id: str
@@ -244,38 +535,67 @@ class QualificationIdentity:
     tree_id: str
     schema_id: str
     generation_id: str
+    control_plane_generation: int
     policy_id: str
-    policy_revision: str
+    policy_revision: int
     capability_ids: tuple[str, ...]
     task_id: str
     attempt_id: str
-    fence_id: str
+    lease_id: str
+    fencing_epoch: int
+    assignment_revision: int
+    worktree_id: str
+    world_snapshot_ref: str
+    event_watermark: int
     schema: str = QUALIFICATION_IDENTITY_SCHEMA
 
     def __post_init__(self) -> None:
-        if self.schema != QUALIFICATION_IDENTITY_SCHEMA:
+        if type(self.schema) is not str or self.schema != QUALIFICATION_IDENTITY_SCHEMA:
             raise PromotionGateError("unsupported qualification identity schema")
         for name in (
-            "tenant_id", "federation_id", "repository_id", "schema_id",
-            "generation_id", "policy_id", "policy_revision", "task_id",
-            "attempt_id", "fence_id",
+            "tenant_id",
+            "federation_id",
+            "repository_id",
+            "schema_id",
+            "generation_id",
+            "policy_id",
+            "task_id",
+            "attempt_id",
+            "lease_id",
+            "worktree_id",
+            "world_snapshot_ref",
         ):
             object.__setattr__(self, name, _token(getattr(self, name), name))
+        if self.task_id != "CASF-042":
+            raise PromotionGateError("task_id must be the exact CASF-042 identity")
         object.__setattr__(self, "revision", _oid(self.revision, "revision"))
         object.__setattr__(self, "tree_id", _oid(self.tree_id, "tree_id"))
-        capabilities = _canonical_tokens(
-            self.capability_ids, "capability_ids", maximum=MAX_GATE_EVIDENCE
+        if type(self.capability_ids) is not tuple:
+            raise PromotionGateError("capability_ids must be an exact tuple")
+        object.__setattr__(
+            self,
+            "capability_ids",
+            _canonical_tokens(self.capability_ids, "capability_ids", maximum=MAX_CAPABILITIES),
         )
-        if not capabilities:
+        if not self.capability_ids:
             raise PromotionGateError("capability_ids must not be empty")
-        object.__setattr__(self, "capability_ids", capabilities)
+        _integer(self.control_plane_generation, "control_plane_generation", minimum=1)
+        _integer(self.policy_revision, "policy_revision", minimum=1)
+        _integer(self.fencing_epoch, "fencing_epoch", minimum=1)
+        _integer(self.assignment_revision, "assignment_revision", minimum=1)
+        _integer(self.event_watermark, "event_watermark")
+        object.__setattr__(
+            self,
+            "world_snapshot_ref",
+            _content_ref(self.world_snapshot_ref, "world_snapshot_ref"),
+        )
 
     @property
     def identity_id(self) -> str:
         return "qualification:" + content_identity(self.to_dict(include_identity=False))
 
     def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
-        value = {
+        value: dict[str, Any] = {
             "schema": self.schema,
             "tenant_id": self.tenant_id,
             "federation_id": self.federation_id,
@@ -284,12 +604,18 @@ class QualificationIdentity:
             "tree_id": self.tree_id,
             "schema_id": self.schema_id,
             "generation_id": self.generation_id,
+            "control_plane_generation": self.control_plane_generation,
             "policy_id": self.policy_id,
             "policy_revision": self.policy_revision,
             "capability_ids": list(self.capability_ids),
             "task_id": self.task_id,
             "attempt_id": self.attempt_id,
-            "fence_id": self.fence_id,
+            "lease_id": self.lease_id,
+            "fencing_epoch": self.fencing_epoch,
+            "assignment_revision": self.assignment_revision,
+            "worktree_id": self.worktree_id,
+            "world_snapshot_ref": self.world_snapshot_ref,
+            "event_watermark": self.event_watermark,
         }
         if include_identity:
             value["identity_id"] = self.identity_id
@@ -299,199 +625,926 @@ class QualificationIdentity:
     def from_dict(cls, value: Mapping[str, Any]) -> QualificationIdentity:
         fields = frozenset(
             {
-                "schema", "tenant_id", "federation_id", "repository_id",
-                "revision", "tree_id", "schema_id", "generation_id", "policy_id",
-                "policy_revision", "capability_ids", "task_id", "attempt_id",
-                "fence_id", "identity_id",
+                "schema",
+                "tenant_id",
+                "federation_id",
+                "repository_id",
+                "revision",
+                "tree_id",
+                "schema_id",
+                "generation_id",
+                "control_plane_generation",
+                "policy_id",
+                "policy_revision",
+                "capability_ids",
+                "task_id",
+                "attempt_id",
+                "lease_id",
+                "fencing_epoch",
+                "assignment_revision",
+                "worktree_id",
+                "world_snapshot_ref",
+                "event_watermark",
+                "identity_id",
             }
         )
-        value = _closed_mapping(value, fields, "qualification identity")
+        data = _closed_dict(value, fields, "identity")
         try:
-            result = cls(
-                tenant_id=value["tenant_id"], federation_id=value["federation_id"],
-                repository_id=value["repository_id"], revision=value["revision"],
-                tree_id=value["tree_id"], schema_id=value["schema_id"],
-                generation_id=value["generation_id"], policy_id=value["policy_id"],
-                policy_revision=value["policy_revision"],
-                capability_ids=tuple(value["capability_ids"]), task_id=value["task_id"],
-                attempt_id=value["attempt_id"], fence_id=value["fence_id"], schema=value["schema"],
+            capability_ids = _exact_list(
+                data["capability_ids"], "identity.capability_ids", maximum=MAX_CAPABILITIES
             )
-        except (KeyError, TypeError, PromotionGateError) as exc:
+            result = cls(
+                tenant_id=data["tenant_id"],
+                federation_id=data["federation_id"],
+                repository_id=data["repository_id"],
+                revision=data["revision"],
+                tree_id=data["tree_id"],
+                schema_id=data["schema_id"],
+                generation_id=data["generation_id"],
+                control_plane_generation=data["control_plane_generation"],
+                policy_id=data["policy_id"],
+                policy_revision=data["policy_revision"],
+                capability_ids=tuple(capability_ids),
+                task_id=data["task_id"],
+                attempt_id=data["attempt_id"],
+                lease_id=data["lease_id"],
+                fencing_epoch=data["fencing_epoch"],
+                assignment_revision=data["assignment_revision"],
+                worktree_id=data["worktree_id"],
+                world_snapshot_ref=data["world_snapshot_ref"],
+                event_watermark=data["event_watermark"],
+                schema=data["schema"],
+            )
+        except PromotionGateError:
+            raise
+        except (KeyError, TypeError) as exc:
             raise PromotionGateError("qualification identity is malformed") from exc
-        if value["identity_id"] != result.identity_id:
-            raise PromotionGateError("qualification identity identity mismatches")
+        if data["identity_id"] != result.identity_id:
+            raise PromotionGateError("qualification identity content identity mismatches")
+        return result
+
+
+@dataclass(frozen=True, init=False)
+class QualificationEvidenceBundle:
+    """Canonical copies of the only artifact slots CASF-042 understands."""
+
+    identity_id: str
+    fixed_point_receipt: str | None
+    ducklake_projection_receipt: str | None
+    ducklake_recovery_receipt: str | None
+    drift_report: str | None
+    control_audit_receipt: str | None
+    control_parity_report: str | None
+    formal_report: str | None
+    adversarial_report: str | None
+    idle_benchmark: str | None
+    parallel_benchmark: str | None
+    load_benchmark: str | None
+    token_benchmark: str | None
+    schema: str
+
+    def __init__(
+        self,
+        *,
+        identity_id: str,
+        fixed_point_receipt: dict[str, Any] | None = None,
+        ducklake_projection_receipt: dict[str, Any] | None = None,
+        ducklake_recovery_receipt: dict[str, Any] | None = None,
+        drift_report: dict[str, Any] | None = None,
+        control_audit_receipt: dict[str, Any] | None = None,
+        control_parity_report: dict[str, Any] | None = None,
+        formal_report: dict[str, Any] | None = None,
+        adversarial_report: dict[str, Any] | None = None,
+        idle_benchmark: dict[str, Any] | None = None,
+        parallel_benchmark: dict[str, Any] | None = None,
+        load_benchmark: dict[str, Any] | None = None,
+        token_benchmark: dict[str, Any] | None = None,
+        schema: str = PROMOTION_EVIDENCE_BUNDLE_SCHEMA,
+    ) -> None:
+        if type(schema) is not str or schema != PROMOTION_EVIDENCE_BUNDLE_SCHEMA:
+            raise PromotionGateError("unsupported promotion evidence bundle schema")
+        object.__setattr__(self, "schema", schema)
+        object.__setattr__(self, "identity_id", _token(identity_id, "bundle.identity_id"))
+        supplied = {
+            EvidenceSlot.FIXED_POINT: fixed_point_receipt,
+            EvidenceSlot.DUCKLAKE_PROJECTION: ducklake_projection_receipt,
+            EvidenceSlot.DUCKLAKE_RECOVERY: ducklake_recovery_receipt,
+            EvidenceSlot.DRIFT: drift_report,
+            EvidenceSlot.CONTROL_AUDIT: control_audit_receipt,
+            EvidenceSlot.CONTROL_PARITY: control_parity_report,
+            EvidenceSlot.FORMAL: formal_report,
+            EvidenceSlot.ADVERSARIAL: adversarial_report,
+            EvidenceSlot.IDLE: idle_benchmark,
+            EvidenceSlot.PARALLEL: parallel_benchmark,
+            EvidenceSlot.LOAD: load_benchmark,
+            EvidenceSlot.TOKEN: token_benchmark,
+        }
+        total = 0
+        for slot, artifact in supplied.items():
+            encoded = _canonical_artifact(artifact, slot.value)
+            if encoded is not None:
+                total += len(encoded.encode("utf-8"))
+            object.__setattr__(self, slot.value, encoded)
+        if total > MAX_BUNDLE_BYTES:
+            raise FederationBoundsError("promotion evidence bundle exceeds its byte bound")
+
+    @property
+    def bundle_id(self) -> str:
+        return "promotion-evidence:" + _json_content_ref(
+            self.to_dict(include_identity=False),
+            "promotion evidence bundle identity",
+            maximum=MAX_BUNDLE_BYTES * 2,
+        )
+
+    def artifact(self, slot: EvidenceSlot) -> dict[str, Any] | None:
+        if type(slot) is not EvidenceSlot:
+            raise PromotionGateError("artifact slot must be a closed exact value")
+        return _artifact_dict(getattr(self, slot.value), slot.value)
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "schema": self.schema,
+            "identity_id": self.identity_id,
+            **{slot.value: self.artifact(slot) for slot in EvidenceSlot},
+        }
+        if include_identity:
+            value["bundle_id"] = self.bundle_id
+        return value
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> QualificationEvidenceBundle:
+        fields = frozenset(
+            {"schema", "identity_id", "bundle_id", *(slot.value for slot in EvidenceSlot)}
+        )
+        data = _closed_dict(value, fields, "bundle")
+        result = cls(
+            identity_id=data["identity_id"],
+            **{slot.value: data[slot.value] for slot in EvidenceSlot},
+            schema=data["schema"],
+        )
+        if data["bundle_id"] != result.bundle_id:
+            raise PromotionGateError("promotion evidence bundle content identity mismatches")
         return result
 
 
 @dataclass(frozen=True)
-class GateEvidence:
-    """One bounded, independently produced pass or blocker for an exact tree."""
+class ArtifactAssessment:
+    """Derived result of one owning-schema decoder; never caller admission."""
 
-    identity_id: str
-    gate: PromotionGate
-    status: GateStatus
-    receipt_id: str
-    origin: EvidenceOrigin
-    observed_effects: bool
-    model_authored: bool = False
-    authority_created: bool = False
-    completion_created: bool = False
-    schema: str = GATE_EVIDENCE_SCHEMA
+    slot: EvidenceSlot
+    task_id: str
+    schema_id: str
+    artifact_id: str
+    status: ArtifactStatus
+    blockers: tuple[str, ...]
+    authoritative: bool = False
+    schema: str = ARTIFACT_ASSESSMENT_SCHEMA
 
     def __post_init__(self) -> None:
-        if self.schema != GATE_EVIDENCE_SCHEMA:
-            raise PromotionGateError("unsupported gate evidence schema")
-        object.__setattr__(self, "identity_id", _token(self.identity_id, "identity_id"))
-        if type(self.gate) is not PromotionGate or type(self.status) is not GateStatus:
-            raise PromotionGateError("gate and status must be closed exact enum values")
-        if type(self.origin) is not EvidenceOrigin:
-            raise PromotionGateError("origin must be a closed exact enum value")
-        object.__setattr__(self, "receipt_id", _content_ref(self.receipt_id, "receipt_id"))
-        if type(self.observed_effects) is not bool:
-            raise PromotionGateError("observed_effects must be boolean")
-        if type(self.model_authored) is not bool:
-            raise PromotionGateError("model_authored must be boolean")
-        if type(self.authority_created) is not bool or type(self.completion_created) is not bool:
-            raise PromotionGateError("authority and completion flags must be boolean")
-        if self.model_authored or self.authority_created or self.completion_created:
-            raise FederationAuthorityError("gate evidence may not manufacture authority")
-        if self.status is GateStatus.PASSED and not self.observed_effects:
-            raise PromotionGateError("passed gate evidence requires effect observation")
+        if type(self.schema) is not str or self.schema != ARTIFACT_ASSESSMENT_SCHEMA:
+            raise PromotionGateError("unsupported artifact assessment schema")
+        if (
+            type(self.slot) is not EvidenceSlot
+            or type(self.task_id) is not str
+            or _SLOT_TASK[self.slot] != self.task_id
+        ):
+            raise PromotionGateError("assessment task does not match its closed slot")
+        if type(self.status) is not ArtifactStatus:
+            raise PromotionGateError("assessment status is not closed")
+        if type(self.schema_id) is not str or type(self.artifact_id) is not str:
+            raise PromotionGateError("assessment identifiers must be exact text")
+        if self.schema_id:
+            _token(self.schema_id, "assessment.schema_id")
+        if self.artifact_id and _CONTENT_REF.fullmatch(self.artifact_id) is None:
+            raise PromotionGateError("assessment artifact_id is not content addressed")
+        if type(self.blockers) is not tuple:
+            raise PromotionGateError("assessment blockers must be an exact tuple")
+        blockers = _canonical_tokens(self.blockers, "assessment.blockers", maximum=32)
+        object.__setattr__(self, "blockers", blockers)
+        if (self.status is ArtifactStatus.PASSED) != (not blockers):
+            raise PromotionGateError("assessment status disagrees with blockers")
+        if self.authoritative is not False:
+            raise FederationAuthorityError("artifact assessment cannot create authority")
 
-    @property
-    def evidence_id(self) -> str:
-        return "gate-evidence:" + content_identity(self.to_dict(include_identity=False))
-
-    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
-        value = {
-            "schema": self.schema, "identity_id": self.identity_id,
-            "gate": self.gate.value, "status": self.status.value,
-            "receipt_id": self.receipt_id, "origin": self.origin.value,
-            "observed_effects": self.observed_effects,
-            "model_authored": False, "authority_created": False,
-            "completion_created": False,
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "slot": self.slot.value,
+            "task_id": self.task_id,
+            "schema_id": self.schema_id,
+            "artifact_id": self.artifact_id,
+            "status": self.status.value,
+            "blockers": list(self.blockers),
+            "authoritative": False,
         }
-        if include_identity:
-            value["evidence_id"] = self.evidence_id
-        return value
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> GateEvidence:
+    def from_dict(cls, value: Mapping[str, Any]) -> ArtifactAssessment:
         fields = frozenset(
             {
-                "schema", "identity_id", "gate", "status", "receipt_id", "origin",
-                "observed_effects", "model_authored", "authority_created",
-                "completion_created", "evidence_id",
+                "schema",
+                "slot",
+                "task_id",
+                "schema_id",
+                "artifact_id",
+                "status",
+                "blockers",
+                "authoritative",
             }
         )
-        value = _closed_mapping(value, fields, "gate evidence")
+        data = _closed_dict(value, fields, "assessment")
+        if data["authoritative"] is not False:
+            raise FederationAuthorityError("assessment has unsafe authority")
         try:
-            result = cls(
-                identity_id=value["identity_id"], gate=PromotionGate(value["gate"]),
-                status=GateStatus(value["status"]), receipt_id=value["receipt_id"],
-                origin=EvidenceOrigin(value["origin"]), observed_effects=value["observed_effects"],
-                model_authored=value["model_authored"], authority_created=value["authority_created"],
-                completion_created=value["completion_created"], schema=value["schema"],
+            blockers = _exact_list(data["blockers"], "assessment.blockers", maximum=32)
+            return cls(
+                slot=EvidenceSlot(data["slot"]),
+                task_id=data["task_id"],
+                schema_id=data["schema_id"],
+                artifact_id=data["artifact_id"],
+                status=ArtifactStatus(data["status"]),
+                blockers=tuple(blockers),
+                schema=data["schema"],
             )
-        except (KeyError, TypeError, ValueError, PromotionGateError) as exc:
-            raise PromotionGateError("gate evidence is malformed") from exc
-        if value["evidence_id"] != result.evidence_id:
-            raise PromotionGateError("gate evidence identity mismatches")
-        return result
+        except PromotionGateError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise PromotionGateError("artifact assessment is malformed") from exc
 
 
-def required_gates(profile: GateProfile) -> frozenset[PromotionGate]:
-    """Return the complete closed conjunction required for one profile."""
+def _artifact_identity(payload: dict[str, Any]) -> str:
+    return _json_content_ref(
+        payload, "promotion evidence artifact identity", maximum=MAX_ARTIFACT_BYTES
+    )
 
+
+def _assessment(
+    slot: EvidenceSlot,
+    payload: dict[str, Any] | None,
+    status: ArtifactStatus,
+    *blockers: str,
+) -> ArtifactAssessment:
+    schema_id = payload.get("schema", "") if payload is not None else ""
+    return ArtifactAssessment(
+        slot=slot,
+        task_id=_SLOT_TASK[slot],
+        schema_id=schema_id if type(schema_id) is str else "",
+        artifact_id=_artifact_identity(payload) if payload is not None else "",
+        status=status,
+        blockers=tuple(sorted(blockers)),
+    )
+
+
+def _missing_provenance(task_id: str) -> tuple[str, ...]:
+    slug = task_id.lower().replace("-", "_")
+    return (
+        f"missing:{slug}_accepted_producer_provenance",
+        f"missing:{slug}_full_qualification_identity_binding",
+        f"missing:{slug}_state_owner_provenance",
+    )
+
+
+def _schema(payload: dict[str, Any], expected: str, label: str) -> None:
+    if payload.get("schema") != expected:
+        raise PromotionGateError(f"{label} schema is unsupported")
+
+
+def _assess_fixed_point(
+    identity: QualificationIdentity, payload: dict[str, Any] | None
+) -> ArtifactAssessment:
+    slot = EvidenceSlot.FIXED_POINT
+    if payload is None:
+        return _assessment(slot, None, ArtifactStatus.MISSING, "missing:casf_030_fixed_point")
+    try:
+        fields = frozenset(
+            {
+                "schema",
+                "world_snapshot_ref",
+                "event_watermark",
+                "outstanding_required_work",
+                "fencing_epoch",
+                "outcome",
+                "evidence_refs",
+                "receipt_id",
+            }
+        )
+        data = _closed_dict(payload, fields, "CASF-030 fixed-point receipt")
+        _schema(data, _FIXED_POINT_SCHEMA, "CASF-030 fixed-point receipt")
+        evidence_refs = _exact_list(
+            data["evidence_refs"], "CASF-030 evidence_refs", maximum=MAX_CAPABILITIES
+        )
+        receipt = FixedPointReceipt(
+            world_snapshot_ref=data["world_snapshot_ref"],
+            event_watermark=data["event_watermark"],
+            outstanding_required_work=data["outstanding_required_work"],
+            fencing_epoch=data["fencing_epoch"],
+            outcome=data["outcome"],
+            evidence_refs=tuple(evidence_refs),
+        )
+        if data["receipt_id"] != receipt.cid:
+            raise PromotionGateError("CASF-030 receipt identity mismatches")
+        if (
+            receipt.world_snapshot_ref != identity.world_snapshot_ref
+            or receipt.event_watermark != identity.event_watermark
+            or receipt.fencing_epoch != identity.fencing_epoch
+        ):
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.BLOCKED,
+                "stale:casf_030_fixed_point_identity",
+            )
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.NONAUTHORITATIVE,
+            *_missing_provenance("CASF-030"),
+        )
+    except (KeyError, TypeError, ValueError, FederationContractError):
+        return _assessment(slot, payload, ArtifactStatus.INVALID, "invalid:casf_030_fixed_point")
+
+
+def _decode_projection(payload: dict[str, Any]) -> ProjectionReceipt:
+    fields = frozenset(
+        {
+            "schema",
+            "status",
+            "source_root",
+            "tree_id",
+            "from_watermark",
+            "to_watermark",
+            "source_checksum",
+            "cursor_watermark",
+            "partition_ids",
+            "authoritative",
+            "receipt_id",
+        }
+    )
+    data = _closed_dict(payload, fields, "CASF-032 projection receipt")
+    _schema(data, _DUCKLAKE_PROJECTION_SCHEMA, "CASF-032 projection receipt")
+    partition_ids = _exact_list(
+        data["partition_ids"], "CASF-032 partition_ids", maximum=MAX_JSON_CONTAINER_ITEMS
+    )
+    receipt = ProjectionReceipt(
+        status=data["status"],
+        source_root=data["source_root"],
+        tree_id=data["tree_id"],
+        from_watermark=data["from_watermark"],
+        to_watermark=data["to_watermark"],
+        source_checksum=data["source_checksum"],
+        cursor_watermark=data["cursor_watermark"],
+        partition_ids=tuple(partition_ids),
+        authoritative=data["authoritative"],
+    )
+    if data["receipt_id"] != receipt.cid:
+        raise PromotionGateError("CASF-032 projection receipt identity mismatches")
+    return receipt
+
+
+def _assess_projection(
+    identity: QualificationIdentity, payload: dict[str, Any] | None
+) -> ArtifactAssessment:
+    slot = EvidenceSlot.DUCKLAKE_PROJECTION
+    if payload is None:
+        return _assessment(
+            slot, None, ArtifactStatus.MISSING, "missing:casf_032_ducklake_projection"
+        )
+    try:
+        receipt = _decode_projection(payload)
+        if receipt.tree_id != identity.tree_id:
+            return _assessment(
+                slot, payload, ArtifactStatus.BLOCKED, "stale:casf_032_projection_tree"
+            )
+        if receipt.status != "current":
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.UNAVAILABLE,
+                f"unavailable:casf_032_projection_{receipt.status}",
+            )
+        if (
+            receipt.cursor_watermark != receipt.to_watermark
+            or not receipt.partition_ids
+            or not receipt.source_checksum
+        ):
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.BLOCKED,
+                "blocked:casf_032_projection_incomplete",
+            )
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.NONAUTHORITATIVE,
+            *_missing_provenance("CASF-032"),
+        )
+    except (KeyError, TypeError, ValueError, FederationContractError):
+        return _assessment(
+            slot, payload, ArtifactStatus.INVALID, "invalid:casf_032_ducklake_projection"
+        )
+
+
+def _assess_recovery(
+    identity: QualificationIdentity, payload: dict[str, Any] | None
+) -> ArtifactAssessment:
+    slot = EvidenceSlot.DUCKLAKE_RECOVERY
+    if payload is None:
+        return _assessment(slot, None, ArtifactStatus.MISSING, "missing:casf_032_ducklake_recovery")
+    try:
+        fields = frozenset(
+            {
+                "schema",
+                "status",
+                "tenant_id",
+                "schema_revision",
+                "recovered_from_watermark",
+                "recovered_to_watermark",
+                "preserved_partition_ids",
+                "recovered_partition_ids",
+                "rewritten",
+                "authoritative",
+                "receipt_id",
+            }
+        )
+        data = _closed_dict(payload, fields, "CASF-032 recovery receipt")
+        _schema(data, _DUCKLAKE_RECOVERY_SCHEMA, "CASF-032 recovery receipt")
+        preserved_partition_ids = _exact_list(
+            data["preserved_partition_ids"],
+            "CASF-032 preserved_partition_ids",
+            maximum=MAX_JSON_CONTAINER_ITEMS,
+        )
+        recovered_partition_ids = _exact_list(
+            data["recovered_partition_ids"],
+            "CASF-032 recovered_partition_ids",
+            maximum=MAX_JSON_CONTAINER_ITEMS,
+        )
+        receipt = ProjectionRecoveryReceipt(
+            status=data["status"],
+            tenant_id=data["tenant_id"],
+            schema_revision=data["schema_revision"],
+            recovered_from_watermark=data["recovered_from_watermark"],
+            recovered_to_watermark=data["recovered_to_watermark"],
+            preserved_partition_ids=tuple(preserved_partition_ids),
+            recovered_partition_ids=tuple(recovered_partition_ids),
+            rewritten=data["rewritten"],
+            authoritative=data["authoritative"],
+        )
+        if data["receipt_id"] != receipt.cid:
+            raise PromotionGateError("CASF-032 recovery receipt identity mismatches")
+        if receipt.tenant_id != identity.tenant_id:
+            return _assessment(
+                slot, payload, ArtifactStatus.BLOCKED, "stale:casf_032_recovery_tenant"
+            )
+        if receipt.status != "current":
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.UNAVAILABLE,
+                f"unavailable:casf_032_recovery_{receipt.status}",
+            )
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.NONAUTHORITATIVE,
+            *_missing_provenance("CASF-032"),
+        )
+    except (KeyError, TypeError, ValueError, FederationContractError):
+        return _assessment(
+            slot, payload, ArtifactStatus.INVALID, "invalid:casf_032_ducklake_recovery"
+        )
+
+
+def _assess_drift(
+    identity: QualificationIdentity, payload: dict[str, Any] | None
+) -> ArtifactAssessment:
+    slot = EvidenceSlot.DRIFT
+    if payload is None:
+        return _assessment(slot, None, ArtifactStatus.MISSING, "missing:casf_033_drift_report")
+    try:
+        _schema(payload, DRIFT_REPORT_SCHEMA, "CASF-033 drift report")
+        report = DriftReport.from_dict(payload)
+        if report.to_dict() != payload:
+            raise PromotionGateError("CASF-033 drift report is not exact canonical wire data")
+        validate_current_drift_report(
+            report,
+            current_repository_tree_id=identity.tree_id,
+            current_control_plane_generation=identity.control_plane_generation,
+            require_drift_free=True,
+        )
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.NONAUTHORITATIVE,
+            *_missing_provenance("CASF-033"),
+        )
+    except (KeyError, TypeError, ValueError, FederationContractError):
+        return _assessment(slot, payload, ArtifactStatus.INVALID, "invalid:casf_033_drift_report")
+
+
+def _assess_control(
+    identity: QualificationIdentity, payload: dict[str, Any] | None
+) -> ArtifactAssessment:
+    slot = EvidenceSlot.CONTROL_AUDIT
+    if payload is None:
+        return _assessment(
+            slot,
+            None,
+            ArtifactStatus.MISSING,
+            "missing:casf_034_typed_state_owner_audit",
+        )
+    try:
+        _schema(payload, FEDERATION_CONTROL_AUDIT_SCHEMA, "CASF-034 control audit")
+        receipt = FederationControlAuditReceipt.from_dict(payload)
+        if receipt.to_dict() != payload:
+            raise PromotionGateError("CASF-034 control audit is not exact canonical wire data")
+        if (
+            receipt.control_plane_generation != identity.control_plane_generation
+            or receipt.fencing_epoch != identity.fencing_epoch
+        ):
+            return _assessment(
+                slot, payload, ArtifactStatus.BLOCKED, "stale:casf_034_control_audit"
+            )
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.NONAUTHORITATIVE,
+            "blocked:casf_034_current_state_owner_capability_unattested",
+        )
+    except (KeyError, TypeError, ValueError, FederationContractError):
+        return _assessment(slot, payload, ArtifactStatus.INVALID, "invalid:casf_034_control_audit")
+
+
+def _assess_missing_decoder(
+    slot: EvidenceSlot,
+    payload: dict[str, Any] | None,
+    blocker: str,
+) -> ArtifactAssessment:
+    # A look-alike mapping must not invent a missing canonical report type.
+    return _assessment(
+        slot,
+        payload,
+        ArtifactStatus.MISSING if payload is None else ArtifactStatus.INVALID,
+        blocker if payload is None else blocker.replace("missing:", "unsupported:"),
+    )
+
+
+def _assess_adversarial(
+    identity: QualificationIdentity, payload: dict[str, Any] | None
+) -> ArtifactAssessment:
+    slot = EvidenceSlot.ADVERSARIAL
+    if payload is None:
+        return _assessment(
+            slot, None, ArtifactStatus.MISSING, "missing:casf_037_adversarial_report"
+        )
+    try:
+        _schema(payload, CASF_CHAOS_REPORT_SCHEMA, "CASF-037 adversarial report")
+        report = ChaosReport.from_dict(payload)
+        if report.to_dict() != payload:
+            raise PromotionGateError("CASF-037 report is not exact canonical wire data")
+        source = report.suite.identity
+        if (
+            source.source_revision != identity.revision
+            or source.source_tree != identity.tree_id
+            or source.state_schema != identity.schema_id
+            or source.generation_id != identity.generation_id
+            or source.federation_id != identity.federation_id
+            or source.policy_id != identity.policy_id
+            or source.policy_revision != identity.policy_revision
+            or source.capability_ids != identity.capability_ids
+        ):
+            return _assessment(
+                slot, payload, ArtifactStatus.BLOCKED, "stale:casf_037_adversarial_identity"
+            )
+        if (
+            report.qualified
+            or report.promotion_eligible
+            or payload.get("local_qualification_available") is not False
+            or payload.get("upstream_reverification_required") is not True
+        ):
+            raise PromotionGateError("CASF-037 report overstates local qualification")
+        return _assessment(
+            slot,
+            payload,
+            ArtifactStatus.BLOCKED,
+            "blocked:casf_037_local_qualification_unavailable",
+        )
+    except (KeyError, TypeError, ValueError, FederationContractError):
+        return _assessment(
+            slot, payload, ArtifactStatus.INVALID, "invalid:casf_037_adversarial_report"
+        )
+
+
+def _load_pinned_benchmark_manifest(task_id: str) -> dict[str, Any]:
+    """Read one fixed data artifact without following links or executing code."""
+
+    filename = _BENCHMARK_MANIFEST_FILES[task_id]
+    if Path(filename).name != filename:
+        raise PromotionGateError(f"{task_id} manifest path escapes its closed root")
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if type(no_follow) is not int or type(directory_flag) is not int:
+        raise PromotionGateError("platform cannot enforce no-follow manifest reads")
+    common_flags = no_follow | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+    root_descriptor = os.open(_BENCHMARK_ROOT, os.O_RDONLY | directory_flag | common_flags)
+    try:
+        descriptor = os.open(filename, os.O_RDONLY | common_flags, dir_fd=root_descriptor)
+    finally:
+        os.close(root_descriptor)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise PromotionGateError(f"{task_id} manifest is not a regular file")
+        if metadata.st_size < 1 or metadata.st_size > MAX_BENCHMARK_MANIFEST_BYTES:
+            raise FederationBoundsError(f"{task_id} manifest exceeds its byte bound")
+        chunks: list[bytes] = []
+        remaining = MAX_BENCHMARK_MANIFEST_BYTES + 1
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 64 * 1024))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+    finally:
+        os.close(descriptor)
+    if len(raw) > MAX_BENCHMARK_MANIFEST_BYTES:
+        raise FederationBoundsError(f"{task_id} manifest exceeds its byte bound")
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != _BENCHMARK_MANIFEST_SHA256[task_id]:
+        raise PromotionGateError(f"{task_id} manifest does not match its pinned hash")
+    try:
+        decoded = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PromotionGateError(f"{task_id} manifest is not exact JSON") from exc
+    if type(decoded) is not dict:
+        raise PromotionGateError(f"{task_id} manifest is not an exact object")
+    _canonical_artifact(decoded, f"{task_id} pinned manifest")
+    return decoded
+
+
+def _validate_pinned_benchmark_manifest(task_id: str, payload: dict[str, Any]) -> None:
+    canonical = _load_pinned_benchmark_manifest(task_id)
+    if payload != canonical:
+        raise PromotionGateError(f"{task_id} manifest differs from its pinned artifact")
+    expected_state = "specification_only" if task_id == "CASF-038" else "capability_unavailable"
+    if (
+        payload.get("schema") != _BENCHMARK_MANIFEST_SCHEMAS[task_id]
+        or payload.get("objective_id") != task_id
+        or payload.get("frozen") is not True
+        or payload.get("state") != expected_state
+        or payload.get("authoritative") is not False
+        or payload.get("promotion_eligible") is not False
+    ):
+        raise PromotionGateError(f"{task_id} manifest overstates its current authority")
+    live_key = "typed_quack_live" if task_id == "CASF-038" else "live_capability"
+    live = payload.get(live_key)
+    if type(live) is not dict or (
+        live.get("availability") != "unavailable"
+        or live.get("execution_status") != "not_run"
+        or live.get("metrics_omitted") is not True
+        or ("ran" in live and live.get("ran") is not False)
+        or ("qualified" in live and live.get("qualified") is not False)
+    ):
+        raise PromotionGateError(f"{task_id} current unavailable outcome changed")
+
+
+def _assess_benchmark(
+    slot: EvidenceSlot,
+    payload: dict[str, Any] | None,
+) -> ArtifactAssessment:
+    task_id = _SLOT_TASK[slot]
+    suffix = task_id.lower().replace("-", "_")
+    if payload is None:
+        return _assessment(slot, None, ArtifactStatus.MISSING, f"missing:{suffix}_benchmark")
+    try:
+        schema = payload.get("schema")
+        if schema == _BENCHMARK_MANIFEST_SCHEMAS[task_id]:
+            _validate_pinned_benchmark_manifest(task_id, payload)
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.UNAVAILABLE,
+                f"unavailable:{suffix}_live_not_run",
+            )
+        if schema == _BENCHMARK_RESULT_SCHEMAS[task_id]:
+            return _assessment(
+                slot,
+                payload,
+                ArtifactStatus.INVALID,
+                f"unsupported:{suffix}_pure_result_decoder_unavailable",
+            )
+        raise PromotionGateError(f"{task_id} artifact schema is unsupported")
+    except (KeyError, TypeError, ValueError, OSError, FederationContractError):
+        return _assessment(slot, payload, ArtifactStatus.INVALID, f"invalid:{suffix}_benchmark")
+
+
+def required_slots(profile: GateProfile) -> tuple[EvidenceSlot, ...]:
     if type(profile) is not GateProfile:
         raise PromotionGateError("profile must be a closed exact enum value")
-    return _CORE_GATES | (_DUCKLAKE_GATES if profile is GateProfile.DUCKLAKE else frozenset())
+    return _CORE_REQUIRED_SLOTS + (
+        _DUCKLAKE_REQUIRED_SLOTS if profile is GateProfile.DUCKLAKE else ()
+    )
 
 
-def _evaluate_evidence(
-    identity: QualificationIdentity, profile: GateProfile, evidence: tuple[GateEvidence, ...]
-) -> tuple[tuple[GateEvidence, ...], tuple[str, ...]]:
-    if not isinstance(evidence, tuple) or any(type(item) is not GateEvidence for item in evidence):
-        raise PromotionGateError("evidence must be an immutable tuple of exact gate records")
-    if len(evidence) > MAX_GATE_EVIDENCE:
-        raise FederationBoundsError("evidence exceeds its bound")
-    if len({item.gate for item in evidence}) != len(evidence):
-        raise PromotionGateError("duplicate evidence for one gate is forbidden")
-    if tuple(item.gate.value for item in evidence) != tuple(sorted(item.gate.value for item in evidence)):
-        raise PromotionGateError("evidence must be sorted by gate")
-    blockers: list[str] = []
-    by_gate = {item.gate: item for item in evidence}
-    for gate in sorted(required_gates(profile), key=lambda item: item.value):
-        item = by_gate.get(gate)
-        if item is None:
-            blockers.append("missing:" + gate.value)
-        elif item.identity_id != identity.identity_id:
-            blockers.append("stale_identity:" + gate.value)
-        elif item.status is not GateStatus.PASSED:
-            blockers.append(item.status.value + ":" + gate.value)
-    # Evidence for a foreign profile is a safe diagnostic but cannot make the
-    # selected profile pass.  Its status is nevertheless retained in receipts.
-    return evidence, tuple(blockers)
+def _assess_bundle(
+    identity: QualificationIdentity,
+    profile: GateProfile,
+    bundle: QualificationEvidenceBundle,
+) -> tuple[ArtifactAssessment, ...]:
+    if type(identity) is not QualificationIdentity:
+        raise PromotionGateError("evaluation requires an exact qualification identity")
+    if type(bundle) is not QualificationEvidenceBundle:
+        raise PromotionGateError("evaluation requires an exact evidence bundle")
+    if bundle.identity_id != identity.identity_id:
+        raise StaleQualificationEvidenceError("evidence bundle binds another identity")
+    if type(profile) is not GateProfile:
+        raise PromotionGateError("profile must be a closed exact enum value")
+
+    payloads = {slot: bundle.artifact(slot) for slot in EvidenceSlot}
+    assessments = {
+        EvidenceSlot.FIXED_POINT: _assess_fixed_point(identity, payloads[EvidenceSlot.FIXED_POINT]),
+        EvidenceSlot.DUCKLAKE_PROJECTION: _assess_projection(
+            identity, payloads[EvidenceSlot.DUCKLAKE_PROJECTION]
+        ),
+        EvidenceSlot.DUCKLAKE_RECOVERY: _assess_recovery(
+            identity, payloads[EvidenceSlot.DUCKLAKE_RECOVERY]
+        ),
+        EvidenceSlot.DRIFT: _assess_drift(identity, payloads[EvidenceSlot.DRIFT]),
+        EvidenceSlot.CONTROL_AUDIT: _assess_control(identity, payloads[EvidenceSlot.CONTROL_AUDIT]),
+        EvidenceSlot.CONTROL_PARITY: _assess_missing_decoder(
+            EvidenceSlot.CONTROL_PARITY,
+            payloads[EvidenceSlot.CONTROL_PARITY],
+            "missing:casf_035_control_parity_report_decoder",
+        ),
+        EvidenceSlot.FORMAL: _assess_missing_decoder(
+            EvidenceSlot.FORMAL,
+            payloads[EvidenceSlot.FORMAL],
+            "missing:casf_036_formal_report_decoder",
+        ),
+        EvidenceSlot.ADVERSARIAL: _assess_adversarial(identity, payloads[EvidenceSlot.ADVERSARIAL]),
+        EvidenceSlot.IDLE: _assess_benchmark(EvidenceSlot.IDLE, payloads[EvidenceSlot.IDLE]),
+        EvidenceSlot.PARALLEL: _assess_benchmark(
+            EvidenceSlot.PARALLEL, payloads[EvidenceSlot.PARALLEL]
+        ),
+        EvidenceSlot.LOAD: _assess_benchmark(EvidenceSlot.LOAD, payloads[EvidenceSlot.LOAD]),
+        EvidenceSlot.TOKEN: _assess_benchmark(EvidenceSlot.TOKEN, payloads[EvidenceSlot.TOKEN]),
+    }
+    return tuple(assessments[slot] for slot in EvidenceSlot)
+
+
+def _blockers_for(
+    profile: GateProfile, assessments: tuple[ArtifactAssessment, ...]
+) -> tuple[str, ...]:
+    required = set(required_slots(profile))
+    return tuple(
+        sorted(
+            {
+                blocker
+                for assessment in assessments
+                if assessment.slot in required
+                for blocker in assessment.blockers
+            }
+        )
+    )
+
+
+def _decision_schema(kind: DecisionKind) -> str:
+    return {
+        DecisionKind.PROMOTION: PROMOTION_DECISION_SCHEMA,
+        DecisionKind.ROLLBACK: ROLLBACK_DECISION_SCHEMA,
+        DecisionKind.QUARANTINE: QUARANTINE_DECISION_SCHEMA,
+    }[kind]
+
+
+def _decision_prefix(kind: DecisionKind) -> str:
+    return {
+        DecisionKind.PROMOTION: "promotion-decision",
+        DecisionKind.ROLLBACK: "rollback-decision",
+        DecisionKind.QUARANTINE: "quarantine-decision",
+    }[kind]
+
+
+def _validate_rollback_target(
+    active: QualificationIdentity, predecessor: QualificationIdentity
+) -> None:
+    if (
+        active.tenant_id != predecessor.tenant_id
+        or active.federation_id != predecessor.federation_id
+        or active.repository_id != predecessor.repository_id
+    ):
+        raise PromotionGateError("rollback target crosses its tenant/federation/repository")
+    if active.revision == predecessor.revision or active.tree_id == predecessor.tree_id:
+        raise PromotionGateError("rollback target must be a distinct predecessor")
+    if active.control_plane_generation == predecessor.control_plane_generation:
+        raise PromotionGateError("rollback target must restore a predecessor generation")
+    if active.fencing_epoch == predecessor.fencing_epoch:
+        raise PromotionGateError("rollback target must use a distinct fenced authority")
+    if active.lease_id == predecessor.lease_id:
+        raise PromotionGateError("rollback target must use a distinct lease")
 
 
 @dataclass(frozen=True)
 class GateDecision:
-    """A non-authoritative result to be reverified by the state owner."""
+    """Deterministic non-authoritative recommendation with its source bundle."""
 
     kind: DecisionKind
     identity: QualificationIdentity
     profile: GateProfile
-    status: DecisionStatus
-    evidence: tuple[GateEvidence, ...]
+    bundle: QualificationEvidenceBundle
+    assessments: tuple[ArtifactAssessment, ...]
     blockers: tuple[str, ...]
+    status: DecisionStatus
+    disposition: DecisionDisposition
     rollback_target: QualificationIdentity | None = None
     schema: str = PROMOTION_DECISION_SCHEMA
 
     def __post_init__(self) -> None:
-        expected_schema = {
-            DecisionKind.PROMOTION: PROMOTION_DECISION_SCHEMA,
-            DecisionKind.ROLLBACK: ROLLBACK_DECISION_SCHEMA,
-            DecisionKind.QUARANTINE: QUARANTINE_DECISION_SCHEMA,
-        }.get(self.kind)
-        if expected_schema is None or self.schema != expected_schema:
-            raise PromotionGateError("decision schema does not match decision kind")
+        if (
+            type(self.kind) is not DecisionKind
+            or type(self.schema) is not str
+            or self.schema != _decision_schema(self.kind)
+        ):
+            raise PromotionGateError("decision kind and schema disagree")
         if type(self.identity) is not QualificationIdentity:
-            raise PromotionGateError("decision requires exact qualification identity")
+            raise PromotionGateError("decision requires an exact identity")
         if type(self.profile) is not GateProfile or type(self.status) is not DecisionStatus:
-            raise PromotionGateError("decision has an invalid closed status or profile")
-        _, expected_blockers = _evaluate_evidence(self.identity, self.profile, self.evidence)
-        blockers = _canonical_tokens(self.blockers, "blockers", maximum=MAX_BLOCKERS)
-        if blockers != expected_blockers:
-            raise PromotionGateError("decision blockers do not match evidence")
-        if (self.status is DecisionStatus.PERMITTED) != (not blockers):
-            raise PromotionGateError("decision status does not match blockers")
-        if self.kind is DecisionKind.PROMOTION and self.rollback_target is not None:
-            raise PromotionGateError("promotion decision cannot include a rollback target")
+            raise PromotionGateError("decision profile/status is not closed")
+        if type(self.disposition) is not DecisionDisposition:
+            raise PromotionGateError("decision disposition is not closed")
+        if type(self.assessments) is not tuple or type(self.blockers) is not tuple:
+            raise PromotionGateError("decision assessments/blockers must be exact tuples")
+        expected_assessments = _assess_bundle(self.identity, self.profile, self.bundle)
+        if self.assessments != expected_assessments:
+            raise PromotionGateError("decision assessments were not derived from artifacts")
+        expected_blockers = _blockers_for(self.profile, expected_assessments)
         if self.kind is DecisionKind.ROLLBACK:
             if type(self.rollback_target) is not QualificationIdentity:
-                raise PromotionGateError("rollback decision requires an exact predecessor target")
+                raise PromotionGateError("rollback decision requires an exact predecessor")
             _validate_rollback_target(self.identity, self.rollback_target)
+            expected_blockers = tuple(
+                sorted((*expected_blockers, "missing:rollback_state_owner_predecessor_receipt"))
+            )
         elif self.rollback_target is not None:
-            raise PromotionGateError("only rollback decisions may include rollback targets")
-
-    @property
-    def decision_id(self) -> str:
-        return _decision_prefix(self.kind) + ":" + content_identity(
-            self.to_dict(include_identity=False)
+            raise PromotionGateError("only rollback may name a predecessor")
+        if self.blockers != expected_blockers:
+            raise PromotionGateError("decision blockers disagree with decoded artifacts")
+        expected_status = (
+            DecisionStatus.PERMITTED if not expected_blockers else DecisionStatus.BLOCKED
         )
+        if self.status is not expected_status:
+            raise PromotionGateError("decision status disagrees with blockers")
+        expected_disposition = (
+            {
+                DecisionKind.PROMOTION: DecisionDisposition.PROMOTION_RECOMMENDED,
+                DecisionKind.ROLLBACK: DecisionDisposition.ROLLBACK_RECOMMENDED,
+                DecisionKind.QUARANTINE: DecisionDisposition.QUARANTINE_REQUIRED,
+            }[self.kind]
+            if not expected_blockers
+            else DecisionDisposition.QUARANTINE_REQUIRED
+        )
+        if self.disposition is not expected_disposition:
+            raise PromotionGateError("decision disposition disagrees with blockers")
 
     @property
     def permitted(self) -> bool:
         return self.status is DecisionStatus.PERMITTED
 
+    @property
+    def decision_id(self) -> str:
+        return (
+            _decision_prefix(self.kind)
+            + ":"
+            + _json_content_ref(
+                self.to_dict(include_identity=False),
+                "promotion gate decision identity",
+                maximum=MAX_BUNDLE_BYTES * 2,
+            )
+        )
+
     def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        promotion_eligible = bool(self.permitted and self.kind is DecisionKind.PROMOTION)
         value: dict[str, Any] = {
-            "schema": self.schema, "kind": self.kind.value,
-            "identity": self.identity.to_dict(), "profile": self.profile.value,
-            "status": self.status.value, "evidence": [item.to_dict() for item in self.evidence],
+            "schema": self.schema,
+            "kind": self.kind.value,
+            "identity": self.identity.to_dict(),
+            "profile": self.profile.value,
+            "bundle": self.bundle.to_dict(),
+            "assessments": [item.to_dict() for item in self.assessments],
             "blockers": list(self.blockers),
-            "authoritative_state_changed": False, "authority_created": False,
-            "completion_created": False, "upstream_reverification_required": True,
+            "status": self.status.value,
+            "disposition": self.disposition.value,
+            "promotion_eligible": promotion_eligible,
+            "release_eligible": promotion_eligible,
+            "promotion_applied": False,
+            "quarantine_required": self.disposition is DecisionDisposition.QUARANTINE_REQUIRED,
+            "quarantine_applied": False,
+            "rollback_applied": False,
+            "production_state_changed": False,
+            "authoritative_state_changed": False,
+            "authority_created": False,
+            "completion_created": False,
+            "upstream_reverification_required": True,
         }
         if self.rollback_target is not None:
             value["rollback_target"] = self.rollback_target.to_dict()
@@ -501,174 +1554,243 @@ class GateDecision:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> GateDecision:
+        if type(value) is not dict:
+            raise PromotionGateError("gate decision must be an exact object")
         base = {
-            "schema", "kind", "identity", "profile", "status", "evidence", "blockers",
-            "authoritative_state_changed", "authority_created", "completion_created",
-            "upstream_reverification_required", "decision_id",
+            "schema",
+            "kind",
+            "identity",
+            "profile",
+            "bundle",
+            "assessments",
+            "blockers",
+            "status",
+            "disposition",
+            "promotion_eligible",
+            "release_eligible",
+            "promotion_applied",
+            "quarantine_required",
+            "quarantine_applied",
+            "rollback_applied",
+            "production_state_changed",
+            "authoritative_state_changed",
+            "authority_created",
+            "completion_created",
+            "upstream_reverification_required",
+            "decision_id",
         }
-        if not isinstance(value, Mapping):
-            raise PromotionGateError("decision must be an object")
         fields = frozenset(base | ({"rollback_target"} if "rollback_target" in value else set()))
-        value = _closed_mapping(value, fields, "gate decision")
-        if (
-            value["authoritative_state_changed"] is not False
-            or value["authority_created"] is not False
-            or value["completion_created"] is not False
-            or value["upstream_reverification_required"] is not True
-        ):
-            raise FederationAuthorityError("decision has unsafe authority flags")
+        data = _closed_dict(value, fields, "gate decision")
         try:
-            kind = DecisionKind(value["kind"])
-            result = cls(
-                kind=kind, identity=QualificationIdentity.from_dict(value["identity"]),
-                profile=GateProfile(value["profile"]), status=DecisionStatus(value["status"]),
-                evidence=tuple(GateEvidence.from_dict(item) for item in value["evidence"]),
-                blockers=tuple(value["blockers"]),
-                rollback_target=(QualificationIdentity.from_dict(value["rollback_target"])
-                                 if "rollback_target" in value else None),
-                schema=value["schema"],
+            assessments = _exact_list(
+                data["assessments"],
+                "gate decision assessments",
+                maximum=len(EvidenceSlot),
             )
-        except (KeyError, TypeError, ValueError, PromotionGateError) as exc:
+            blockers = _exact_list(
+                data["blockers"], "gate decision blockers", maximum=MAX_CAPABILITIES
+            )
+            kind = DecisionKind(data["kind"])
+            result = cls(
+                kind=kind,
+                identity=QualificationIdentity.from_dict(data["identity"]),
+                profile=GateProfile(data["profile"]),
+                bundle=QualificationEvidenceBundle.from_dict(data["bundle"]),
+                assessments=tuple(ArtifactAssessment.from_dict(item) for item in assessments),
+                blockers=tuple(blockers),
+                status=DecisionStatus(data["status"]),
+                disposition=DecisionDisposition(data["disposition"]),
+                rollback_target=(
+                    QualificationIdentity.from_dict(data["rollback_target"])
+                    if "rollback_target" in data
+                    else None
+                ),
+                schema=data["schema"],
+            )
+        except PromotionGateError:
+            raise
+        except (KeyError, TypeError, ValueError) as exc:
             raise PromotionGateError("gate decision is malformed") from exc
-        if value["decision_id"] != result.decision_id:
-            raise PromotionGateError("gate decision identity mismatches")
+        expected = result.to_dict()
+        if data != expected:
+            unsafe = {
+                "promotion_applied",
+                "quarantine_applied",
+                "rollback_applied",
+                "production_state_changed",
+                "authoritative_state_changed",
+                "authority_created",
+                "completion_created",
+            }
+            if any(data.get(name) is not False for name in unsafe):
+                raise FederationAuthorityError("decision claims an applied or authoritative effect")
+            raise PromotionGateError("gate decision fields or content identity mismatch")
         return result
-
-
-def _validate_rollback_target(active: QualificationIdentity, predecessor: QualificationIdentity) -> None:
-    if active.tenant_id != predecessor.tenant_id or active.repository_id != predecessor.repository_id:
-        raise PromotionGateError("rollback target crosses tenant or repository boundary")
-    if active.revision == predecessor.revision or active.tree_id == predecessor.tree_id:
-        raise PromotionGateError("rollback target must be a distinct predecessor")
-    if active.generation_id == predecessor.generation_id:
-        raise PromotionGateError("rollback target must restore a predecessor generation")
-    if active.fence_id == predecessor.fence_id:
-        raise PromotionGateError("rollback target must use a distinct fenced authority")
 
 
 def _decision(
     kind: DecisionKind,
     identity: QualificationIdentity,
     profile: GateProfile,
-    evidence: tuple[GateEvidence, ...],
+    bundle: QualificationEvidenceBundle,
     *,
     rollback_target: QualificationIdentity | None = None,
-    extra_blockers: tuple[str, ...] = (),
 ) -> GateDecision:
-    _, evidence_blockers = _evaluate_evidence(identity, profile, evidence)
-    blockers = tuple(sorted(set(evidence_blockers + extra_blockers)))
+    assessments = _assess_bundle(identity, profile, bundle)
+    blockers = _blockers_for(profile, assessments)
+    if kind is DecisionKind.ROLLBACK:
+        blockers = tuple(sorted((*blockers, "missing:rollback_state_owner_predecessor_receipt")))
+    status = DecisionStatus.PERMITTED if not blockers else DecisionStatus.BLOCKED
+    disposition = (
+        {
+            DecisionKind.PROMOTION: DecisionDisposition.PROMOTION_RECOMMENDED,
+            DecisionKind.ROLLBACK: DecisionDisposition.ROLLBACK_RECOMMENDED,
+            DecisionKind.QUARANTINE: DecisionDisposition.QUARANTINE_REQUIRED,
+        }[kind]
+        if not blockers
+        else DecisionDisposition.QUARANTINE_REQUIRED
+    )
     return GateDecision(
-        kind=kind, identity=identity, profile=profile,
-        status=DecisionStatus.PERMITTED if not blockers else DecisionStatus.BLOCKED,
-        evidence=evidence, blockers=blockers, rollback_target=rollback_target,
-        schema={
-            DecisionKind.PROMOTION: PROMOTION_DECISION_SCHEMA,
-            DecisionKind.ROLLBACK: ROLLBACK_DECISION_SCHEMA,
-            DecisionKind.QUARANTINE: QUARANTINE_DECISION_SCHEMA,
-        }[kind],
+        kind=kind,
+        identity=identity,
+        profile=profile,
+        bundle=bundle,
+        assessments=assessments,
+        blockers=blockers,
+        status=status,
+        disposition=disposition,
+        rollback_target=rollback_target,
+        schema=_decision_schema(kind),
     )
 
 
 class FederationPromotionGate:
-    """Pure evaluator for exact-current promotion, rollback, and quarantine gates."""
+    """Recommendation facade; no method can apply a state transition."""
 
     INTERFACE: ClassVar[str] = FEDERATION_PROMOTION_GATE_INTERFACE
 
     @staticmethod
     def promote(
-        identity: QualificationIdentity, profile: GateProfile, evidence: tuple[GateEvidence, ...]
+        identity: QualificationIdentity,
+        profile: GateProfile,
+        bundle: QualificationEvidenceBundle,
     ) -> GateDecision:
-        if type(identity) is not QualificationIdentity:
-            raise PromotionGateError("promotion requires exact qualification identity")
-        return _decision(DecisionKind.PROMOTION, identity, profile, evidence)
+        return _decision(DecisionKind.PROMOTION, identity, profile, bundle)
 
     @staticmethod
     def rollback(
         active: QualificationIdentity,
         predecessor: QualificationIdentity,
         profile: GateProfile,
-        evidence: tuple[GateEvidence, ...],
+        bundle: QualificationEvidenceBundle,
     ) -> GateDecision:
-        if type(active) is not QualificationIdentity or type(predecessor) is not QualificationIdentity:
+        if (
+            type(active) is not QualificationIdentity
+            or type(predecessor) is not QualificationIdentity
+        ):
             raise PromotionGateError("rollback requires exact active and predecessor identities")
         _validate_rollback_target(active, predecessor)
         return _decision(
-            DecisionKind.ROLLBACK, active, profile, evidence, rollback_target=predecessor
+            DecisionKind.ROLLBACK,
+            active,
+            profile,
+            bundle,
+            rollback_target=predecessor,
         )
 
     @staticmethod
     def quarantine(
-        identity: QualificationIdentity, profile: GateProfile, evidence: tuple[GateEvidence, ...]
+        identity: QualificationIdentity,
+        profile: GateProfile,
+        bundle: QualificationEvidenceBundle,
     ) -> GateDecision:
-        if type(identity) is not QualificationIdentity:
-            raise PromotionGateError("quarantine requires exact qualification identity")
-        # Quarantine is admitted only after an observed blocker.  A clean
-        # population cannot be used to quarantine a healthy target.
-        _, blockers = _evaluate_evidence(identity, profile, evidence)
-        if not blockers:
-            raise PromotionGateError("quarantine requires an observed qualification blocker")
-        return _decision(DecisionKind.QUARANTINE, identity, profile, evidence)
+        decision = _decision(DecisionKind.QUARANTINE, identity, profile, bundle)
+        if not decision.blockers:
+            raise PromotionGateError("quarantine requires a decoded qualification blocker")
+        return decision
+
+
+def evaluate_promotion(
+    identity: QualificationIdentity,
+    profile: GateProfile,
+    bundle: QualificationEvidenceBundle,
+) -> GateDecision:
+    """Evaluate a closed real-artifact bundle; generic passed claims are invalid."""
+
+    return FederationPromotionGate.promote(identity, profile, bundle)
 
 
 def validate_current_decision(
     decision: GateDecision,
     *,
-    current_revision: str,
-    current_tree_id: str,
-    current_generation_id: str,
-    current_fence_id: str,
+    current_identity: QualificationIdentity,
     require_permitted: bool = False,
 ) -> Mapping[str, Any]:
-    """Recheck freshness before a state owner considers the recommendation.
-
-    This check intentionally does not apply the requested transition; it is a
-    compact input validator for the registered typed state-owner operation.
-    """
+    """Re-decode artifacts and bind the recommendation to the current identity."""
 
     if type(decision) is not GateDecision:
         raise StaleQualificationEvidenceError("decision must be an exact gate decision")
-    if decision.identity.revision != _oid(current_revision, "current_revision"):
-        raise StaleQualificationEvidenceError("decision is bound to a stale revision")
-    if decision.identity.tree_id != _oid(current_tree_id, "current_tree_id"):
-        raise StaleQualificationEvidenceError("decision is bound to a stale tree")
-    if decision.identity.generation_id != _token(current_generation_id, "current_generation_id"):
-        raise StaleQualificationEvidenceError("decision is bound to a stale generation")
-    if decision.identity.fence_id != _token(current_fence_id, "current_fence_id"):
-        raise StaleQualificationEvidenceError("decision is bound to a stale fence")
+    if type(current_identity) is not QualificationIdentity or current_identity != decision.identity:
+        raise StaleQualificationEvidenceError("decision is stale for the current exact identity")
+    reconstructed = _decision(
+        decision.kind,
+        decision.identity,
+        decision.profile,
+        decision.bundle,
+        rollback_target=decision.rollback_target,
+    )
+    if reconstructed != decision or reconstructed.decision_id != decision.decision_id:
+        raise StaleQualificationEvidenceError("decision content identity is invalid")
     if require_permitted and not decision.permitted:
         raise MissingQualificationCapabilityError("decision remains blocked")
-    if decision.decision_id != _decision_prefix(decision.kind) + ":" + content_identity(
-        decision.to_dict(include_identity=False)
-    ):
-        raise StaleQualificationEvidenceError("decision identity is invalid")
+    wire = decision.to_dict()
     return MappingProxyType(
         {
-            "schema": "casf/promotion-decision-validation@1",
+            "schema": DECISION_VALIDATION_SCHEMA,
             "decision_id": decision.decision_id,
-            "current_revision_bound": True,
-            "current_tree_bound": True,
-            "current_generation_bound": True,
-            "current_fence_bound": True,
+            "current_identity_bound": True,
             "permitted": decision.permitted,
+            "promotion_eligible": wire["promotion_eligible"],
+            "release_eligible": wire["release_eligible"],
+            "quarantine_required": wire["quarantine_required"],
+            "promotion_applied": False,
+            "quarantine_applied": False,
+            "rollback_applied": False,
+            "production_state_changed": False,
             "authoritative_state_changed": False,
+            "authority_created": False,
+            "completion_created": False,
             "upstream_reverification_required": True,
         }
     )
 
 
-def evaluate_promotion(
-    identity: QualificationIdentity, profile: GateProfile, evidence: tuple[GateEvidence, ...]
-) -> GateDecision:
-    """Functional form of :meth:`FederationPromotionGate.promote`."""
-
-    return FederationPromotionGate.promote(identity, profile, evidence)
-
-
 __all__ = [
-    "DecisionKind", "DecisionStatus", "EvidenceOrigin", "FEDERATION_PROMOTION_GATE_INTERFACE",
-    "FederationPromotionGate", "GATE_EVIDENCE_SCHEMA", "GateDecision", "GateEvidence",
-    "GateProfile", "GateStatus", "MissingQualificationCapabilityError", "PROMOTION_DECISION_SCHEMA",
-    "PromotionGate", "PromotionGateError", "QUALIFICATION_IDENTITY_SCHEMA", "QUARANTINE_DECISION_SCHEMA",
-    "QualificationIdentity", "ROLLBACK_DECISION_SCHEMA", "StaleQualificationEvidenceError",
-    "evaluate_promotion", "required_gates", "validate_current_decision",
+    "ARTIFACT_ASSESSMENT_SCHEMA",
+    "ArtifactAssessment",
+    "ArtifactStatus",
+    "DECISION_VALIDATION_SCHEMA",
+    "DecisionDisposition",
+    "DecisionKind",
+    "DecisionStatus",
+    "EvidenceSlot",
+    "FEDERATION_PROMOTION_GATE_INTERFACE",
+    "FederationPromotionGate",
+    "GateDecision",
+    "GateProfile",
+    "MAX_ARTIFACT_BYTES",
+    "MAX_BUNDLE_BYTES",
+    "MissingQualificationCapabilityError",
+    "PROMOTION_DECISION_SCHEMA",
+    "PROMOTION_EVIDENCE_BUNDLE_SCHEMA",
+    "PromotionGateError",
+    "QUALIFICATION_IDENTITY_SCHEMA",
+    "QUARANTINE_DECISION_SCHEMA",
+    "QualificationEvidenceBundle",
+    "QualificationIdentity",
+    "ROLLBACK_DECISION_SCHEMA",
+    "StaleQualificationEvidenceError",
+    "evaluate_promotion",
+    "required_slots",
+    "validate_current_decision",
 ]

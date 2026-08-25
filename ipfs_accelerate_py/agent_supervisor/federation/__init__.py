@@ -40,6 +40,7 @@ FEDERATION_OWNED_MODULES: Final[tuple[str, ...]] = (
     "outbox_worker",
     "parallel_frontier",
     "policy",
+    "promotion",
     "proof_projection",
     "rebalancing",
     "recovery",
