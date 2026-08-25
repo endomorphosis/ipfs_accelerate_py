@@ -3049,23 +3049,46 @@ def _docker_codex_fallback_command(
         vendor = _host_codex_vendor_binaries()
     except Exception:
         vendor = None
-    if vendor is not None:
-        host_codex, host_companion = vendor
-        command.extend(
-            _docker_mount(
-                host_codex,
-                destination=Path("/usr/local/bin/codex"),
-                read_only=True,
-            )
+    if vendor is None:
+        raise ValueError(
+            "Codex fallback requires a matching native code-mode vendor pair"
         )
-        command.extend(
-            _docker_mount(
-                host_companion,
-                destination=Path("/usr/local/bin/codex-code-mode-host"),
-                read_only=True,
-            )
+    try:
+        host_codex, host_companion = (
+            binary.resolve(strict=True) for binary in vendor
         )
-        inner[0] = "/usr/local/bin/codex"
+        projected_usr = host_usr.resolve(strict=True)
+        for binary, expected_name in (
+            (host_codex, "codex"),
+            (host_companion, "codex-code-mode-host"),
+        ):
+            if (
+                binary.name != expected_name
+                or binary.parent != host_codex.parent
+                or not binary.is_file()
+                or not os.access(binary, os.X_OK)
+            ):
+                raise ValueError("Codex fallback vendor pair is not canonical")
+            binary.relative_to(projected_usr)
+            trust_entry = binary
+            while True:
+                trust_metadata = trust_entry.stat()
+                if trust_metadata.st_uid != 0 or trust_metadata.st_mode & 0o022:
+                    raise ValueError(
+                        "Codex fallback vendor pair is not root-owned"
+                    )
+                if trust_entry == projected_usr:
+                    break
+                trust_entry = trust_entry.parent
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            "Codex fallback vendor pair is not safely projected by pinned host /usr"
+        ) from exc
+    # /usr is already projected read-only, so execute the resolved native
+    # binary in place. Its matching code-mode companion remains adjacent.
+    # Additional file mounts under /usr would require runc to create a
+    # missing target on the read-only parent and fail before Codex starts.
+    inner[0] = str(host_codex)
     host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
     if host_ca_certificates is None:
         raise ValueError("Codex fallback requires pinned host CA certificates")
@@ -3099,6 +3122,42 @@ def _docker_codex_fallback_command(
     ]
     command.extend([image, "-i", *environment_assignments, *inner])
     return command
+
+
+def _codex_provider_argv_receipt(
+    codex_command: Sequence[str],
+    create_command: Sequence[str],
+) -> list[str]:
+    """Bind the authorized provider argv to its actual container executable."""
+
+    provider_argv = [str(item) for item in codex_command]
+    if not provider_argv or len(create_command) < len(provider_argv):
+        raise ValueError("Codex fallback lost its provider argv identity")
+    actual_inner = [
+        str(item) for item in create_command[-len(provider_argv) :]
+    ]
+    expected_inner = list(provider_argv)
+    try:
+        sandbox_index = expected_inner.index("-s")
+    except ValueError as exc:
+        raise ValueError("Codex fallback lost its provider argv identity") from exc
+    if sandbox_index + 1 >= len(expected_inner):
+        raise ValueError("Codex fallback lost its provider argv identity")
+    expected_inner[0] = actual_inner[0]
+    expected_inner[sandbox_index + 1] = "danger-full-access"
+    actual_executable = Path(actual_inner[0])
+    if (
+        actual_inner != expected_inner
+        or not actual_executable.is_absolute()
+        or actual_executable.name != "codex"
+        or ".." in actual_executable.parts
+        or not actual_executable.is_relative_to(Path("/usr"))
+    ):
+        raise ValueError("Codex fallback lost its provider argv identity")
+    # Preserve the authorized workspace-write shape; receipt validation derives
+    # danger-full-access only for the independently confined Docker create argv.
+    provider_argv[0] = actual_inner[0]
+    return provider_argv
 
 
 def _run_codex_quota_fallback_in_docker(
@@ -3159,6 +3218,11 @@ def _run_codex_quota_fallback_in_docker(
             cidfile=docker_lease.cidfile,
             docker_bin=docker_bin,
             isolation_image=isolation_image,
+        )
+        provider_argv_receipt = (
+            _codex_provider_argv_receipt(codex_command, command)
+            if effect_claim is not None
+            else []
         )
         if pre_effect_validator is not None:
             # Validate the route before the final auth check so an auth swap
@@ -3225,7 +3289,7 @@ def _run_codex_quota_fallback_in_docker(
             command_receipt = {
                 "create_argv": list(command),
                 "start_argv": list(start_command),
-                "provider_argv": [str(item) for item in codex_command],
+                "provider_argv": provider_argv_receipt,
             }
             mount_receipt = list(mount_arguments)
             environment_receipt = {

@@ -437,6 +437,7 @@ def _discard_live_cleanup_inputs(paths: dict[str, Path]) -> None:
         "arbitrary_required_mount_source",
         "writable_auth_mount",
         "duplicate_provider_model",
+        "alternate_provider_executable",
         "duplicate_docker_config",
         "alternate_start",
         "alternate_environment",
@@ -493,6 +494,10 @@ def test_protected_docker_receipt_rejects_semantic_argv_tampering(
     elif attack == "duplicate_provider_model":
         provider_argv[-1:-1] = ["-m", "gpt-5.6-terra"]
         create_argv[-1:-1] = ["-m", "gpt-5.6-terra"]
+    elif attack == "alternate_provider_executable":
+        substituted = "/tmp/attacker-controlled/codex"
+        create_argv[-len(provider_argv)] = substituted
+        provider_argv[0] = substituted
     elif attack == "duplicate_docker_config":
         config_path = create_argv[create_argv.index("--config") + 1]
         create_index = create_argv.index("create")

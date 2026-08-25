@@ -1844,8 +1844,12 @@ def _agent_effect_launch_details_valid(
         'model_reasoning_effort="high"',
         "-",
     ]
+    provider_executable = Path(provider_argv[0])
     if (
-        not Path(provider_argv[0]).is_absolute()
+        not provider_executable.is_absolute()
+        or provider_executable.name != "codex"
+        or ".." in provider_executable.parts
+        or not provider_executable.is_relative_to(Path("/usr"))
         or provider_argv[1:] != expected_provider_tail
         or (workspace_path and provider_workspace != workspace_path)
     ):

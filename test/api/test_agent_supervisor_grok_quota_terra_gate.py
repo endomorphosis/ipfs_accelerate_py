@@ -1974,17 +1974,104 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
             _host_codex_vendor_binaries,
         )
-
-        if _host_codex_vendor_binaries() is not None:
-            expected_inner[0] = "/usr/local/bin/codex"
     except Exception:
-        pass
+        vendor = None
+    else:
+        vendor = _host_codex_vendor_binaries()
+    if vendor is not None:
+        host_codex, _host_companion = vendor
+        expected_inner[0] = str(host_codex)
+        assert not any(
+            "dst=/usr/local/bin/codex" in mount for mount in mounts
+        )
     expected_environment = [
         f"{name}={value}" for name, value in sorted(child_env.items())
     ]
     assert inner == ["-i", *expected_environment, *expected_inner]
+    provider_receipt = grok_cli_runner._codex_provider_argv_receipt(
+        fallback,
+        command,
+    )
+    assert provider_receipt[0] == expected_inner[0]
+    assert provider_receipt[1:] == fallback[1:]
     assert not any("/home/barberb" in item for item in command)
     assert "--dangerously-bypass-approvals-and-sandbox" not in inner
+
+
+def test_docker_codex_boundary_rejects_vendor_pair_outside_projected_usr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    provider_bin = tmp_path / "provider-bin"
+    docker_config = tmp_path / "docker-config"
+    workspace.mkdir()
+    provider_bin.mkdir()
+    docker_config.mkdir()
+    codex = provider_bin / "codex"
+    companion = provider_bin / "codex-code-mode-host"
+    for executable in (codex, companion):
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(0o700)
+    source_auth = tmp_path / "auth.json"
+    source_auth.write_text("{}\n", encoding="utf-8")
+    source_auth.chmod(0o600)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_host_codex_vendor_binaries",
+        lambda: (codex.resolve(), companion.resolve()),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="vendor pair is not safely projected by pinned host /usr",
+    ):
+        grok_cli_runner._docker_codex_fallback_command(
+            codex_command=_terra_fallback_command(str(codex), workspace),
+            workspace=workspace,
+            source_auth=source_auth,
+            child_env=grok_cli_runner._codex_task_container_environment(),
+            docker_config=docker_config,
+            container_name="ipfs-accelerate-codex-1-" + "b" * 32,
+            cidfile=tmp_path / "container.cid",
+            docker_bin="/usr/bin/docker",
+            isolation_image=grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID,
+        )
+
+
+def test_docker_codex_boundary_requires_native_code_mode_vendor_pair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    codex = tmp_path / "codex"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o700)
+    source_auth = tmp_path / "auth.json"
+    source_auth.write_text("{}\n", encoding="utf-8")
+    source_auth.chmod(0o600)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_host_codex_vendor_binaries",
+        lambda: None,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="requires a matching native code-mode vendor pair",
+    ):
+        grok_cli_runner._docker_codex_fallback_command(
+            codex_command=_terra_fallback_command(str(codex), workspace),
+            workspace=workspace,
+            source_auth=source_auth,
+            child_env=grok_cli_runner._codex_task_container_environment(),
+            docker_config=tmp_path,
+            container_name="ipfs-accelerate-codex-1-" + "b" * 32,
+            cidfile=tmp_path / "container.cid",
+            docker_bin="/usr/bin/docker",
+            isolation_image=grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID,
+        )
 
 
 def test_docker_grok_create_is_followed_by_attached_exact_container_start(
