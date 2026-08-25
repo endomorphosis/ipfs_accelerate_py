@@ -375,6 +375,16 @@ _DOCKER_CREATE_JOURNAL_SCHEMA = (
 _DOCKER_CLEANUP_BINDING_DIRECTORY = "provider-cleanup-bindings"
 _DOCKER_CREATE_JOURNAL_NAME = "create-journal.json"
 _DOCKER_PRIVATE_CONTROL_MAX_BYTES = 512 * 1024
+_DOCKER_CLEANUP_STABLE_ENTRY_RE = re.compile(
+    r"[0-9a-f]{64}\.(?:json|authority|complete|lock|remove-dispatched)"
+)
+_DOCKER_CLEANUP_ATOMIC_TEMP_RE = re.compile(
+    r"\.(?P<target>[0-9a-f]{64}\."
+    r"(?:json|authority|complete|lock|remove-dispatched))\."
+    r"(?P<nonce>[0-9a-f]{16})"
+)
+_DOCKER_CLEANUP_PUBLICATION_WAIT_SECONDS = 0.5
+_DOCKER_CLEANUP_PUBLICATION_POLL_SECONDS = 0.01
 
 
 @dataclass(frozen=True)
@@ -8270,6 +8280,144 @@ def _read_durable_docker_cleanup_record(
     return value
 
 
+def _stable_durable_docker_cleanup_entry_names(
+    directory: Path,
+    *,
+    expected_metadata: os.stat_result,
+    directory_anchor: _DurableCleanupDirectoryAnchor | None = None,
+) -> tuple[str, ...]:
+    """Return a stable namespace after bounded exact-writer publication.
+
+    Private control records are published through a same-directory temporary
+    name.  Seeing that exact writer state is contention, not a malformed
+    authoritative record: wait for it to finish, but never admit state while
+    it exists.  Every other unexpected name or unsafe temporary fails closed.
+    """
+
+    owns_directory_fd = directory_anchor is None
+    directory_fd = -1
+    try:
+        if directory_anchor is None:
+            directory_fd = os.open(
+                directory,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+        else:
+            _validate_durable_cleanup_directory_anchor(
+                directory_anchor,
+                expected_path=directory,
+            )
+            directory_fd = directory_anchor.descriptor
+        opened = os.fstat(directory_fd)
+        expected_identity = _cleanup_directory_stat_identity(expected_metadata)
+        if _cleanup_directory_stat_identity(opened) != expected_identity:
+            raise ValueError(
+                "durable Docker cleanup directory identity changed"
+            )
+        deadline = (
+            time.monotonic() + _DOCKER_CLEANUP_PUBLICATION_WAIT_SECONDS
+        )
+        while True:
+            if directory_anchor is None:
+                current = os.lstat(directory)
+                if (
+                    _cleanup_directory_stat_identity(os.fstat(directory_fd))
+                    != expected_identity
+                    or _cleanup_directory_stat_identity(current)
+                    != expected_identity
+                ):
+                    raise ValueError(
+                        "durable Docker cleanup directory identity changed"
+                    )
+            else:
+                _validate_durable_cleanup_directory_anchor(
+                    directory_anchor,
+                    expected_path=directory,
+                )
+            entry_names = tuple(sorted(os.listdir(directory_fd)))
+            publication_pending = False
+            retry_enumeration = False
+            for name in entry_names:
+                if _DOCKER_CLEANUP_STABLE_ENTRY_RE.fullmatch(name) is not None:
+                    continue
+                temporary = _DOCKER_CLEANUP_ATOMIC_TEMP_RE.fullmatch(name)
+                if temporary is None:
+                    raise ValueError(
+                        "durable Docker cleanup record set is invalid"
+                    )
+                try:
+                    metadata = os.stat(
+                        name,
+                        dir_fd=directory_fd,
+                        follow_symlinks=False,
+                    )
+                except FileNotFoundError:
+                    retry_enumeration = True
+                    break
+                if (
+                    not stat.S_ISREG(metadata.st_mode)
+                    or metadata.st_uid != os.geteuid()
+                    or stat.S_IMODE(metadata.st_mode) != 0o600
+                    or metadata.st_size > _DOCKER_PRIVATE_CONTROL_MAX_BYTES
+                    or metadata.st_nlink not in {1, 2}
+                ):
+                    raise ValueError(
+                        "durable Docker cleanup atomic publication is unsafe"
+                    )
+                # Create-only publication briefly hard-links the completed
+                # temporary inode to its final name before unlinking the
+                # temporary.  Admit that as a wait state only when both names
+                # are the exact same private regular file.
+                if metadata.st_nlink == 2:
+                    try:
+                        published = os.stat(
+                            temporary.group("target"),
+                            dir_fd=directory_fd,
+                            follow_symlinks=False,
+                        )
+                    except FileNotFoundError:
+                        raise ValueError(
+                            "durable Docker cleanup atomic publication is unsafe"
+                        ) from None
+                    if (
+                        published.st_dev != metadata.st_dev
+                        or published.st_ino != metadata.st_ino
+                        or not stat.S_ISREG(published.st_mode)
+                        or published.st_uid != os.geteuid()
+                        or stat.S_IMODE(published.st_mode) != 0o600
+                        or published.st_size
+                        > _DOCKER_PRIVATE_CONTROL_MAX_BYTES
+                    ):
+                        raise ValueError(
+                            "durable Docker cleanup atomic publication is unsafe"
+                        )
+                publication_pending = True
+            if retry_enumeration:
+                if time.monotonic() >= deadline:
+                    raise ValueError(
+                        "durable Docker cleanup publication is contended"
+                    )
+                time.sleep(_DOCKER_CLEANUP_PUBLICATION_POLL_SECONDS)
+                continue
+            if not publication_pending:
+                return entry_names
+            if time.monotonic() >= deadline:
+                raise ValueError(
+                    "durable Docker cleanup publication is contended"
+                )
+            time.sleep(_DOCKER_CLEANUP_PUBLICATION_POLL_SECONDS)
+    except OSError as exc:
+        raise ValueError(
+            "durable Docker cleanup directory cannot be enumerated"
+        ) from exc
+    finally:
+        if owns_directory_fd and directory_fd >= 0:
+            os.close(directory_fd)
+
+
 def _durable_docker_cleanup_bindings(
     profile: LifecycleProfile,
     *,
@@ -8342,21 +8490,18 @@ def _durable_docker_cleanup_bindings(
         current_boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
             encoding="ascii"
         ).strip()
-        if directory_anchor is None:
-            entry_names = tuple(sorted(path.name for path in directory.iterdir()))
-        else:
-            entry_names = tuple(sorted(os.listdir(directory_anchor.descriptor)))
+        entry_names = _stable_durable_docker_cleanup_entry_names(
+            directory,
+            expected_metadata=directory_metadata,
+            directory_anchor=directory_anchor,
+        )
         entries = tuple(directory / name for name in entry_names)
     except OSError as exc:
         raise ValueError(
             "durable Docker cleanup directory cannot be enumerated"
         ) from exc
     if not current_boot_id or any(
-        re.fullmatch(
-            r"[0-9a-f]{64}\.(?:json|authority|complete|lock|remove-dispatched)",
-            path.name,
-        )
-        is None
+        _DOCKER_CLEANUP_STABLE_ENTRY_RE.fullmatch(path.name) is None
         for path in entries
     ):
         raise ValueError("durable Docker cleanup record set is invalid")

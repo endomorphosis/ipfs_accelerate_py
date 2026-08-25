@@ -26,6 +26,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
@@ -69,6 +70,10 @@ ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r16-production-lifecycle-execution@1"
 )
+ASEH_R17_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r16-production-lifecycle-execution@2"
+)
 ASEH_R16_DOCKER_OBSERVATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r16-exact-docker-observation@1"
@@ -84,8 +89,19 @@ ASEH_R16_PROVIDER_START_ISSUER_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r16-provider-start-issuer@1"
 )
+ASEH_R17_PROVIDER_START_ISSUER_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r16-provider-start-issuer@2"
+)
 ASEH_R16_PROVIDER_START_ISSUER_NAME: Final = (
     "r16-provider-start-issuer.json"
+)
+ASEH_R16_PROVIDER_START_ENVIRONMENT: Final = {
+    "PATH": "/usr/bin:/bin",
+    "HOME": "/nonexistent",
+}
+ASEH_R16_ADMITTED_DOCKER_EXECUTABLES: Final = frozenset(
+    {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
 )
 OPERATOR_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/aseh-program-operator@1"
@@ -1870,6 +1886,93 @@ REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_NON_SUCCESS: Final = (
     "watchdog, descendant, or lease, reduced validation, database mutation, "
     "contention, or validation failure is rejected before owner acquisition."
 )
+REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-provider-execution-identity-transition@1"
+)
+REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD: Final = (
+    "b51a8d7e7cc7cfa6d6d64d64a9d2d63c279fc696"
+)
+REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "multi_supervisor_runner.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        (
+            "aseh_r16_provider_start_launcher or "
+            "aseh_r16_exact_provider_execution or "
+            "aseh_r16_executable_admission or "
+            "aseh_r17_provider_execution_identity or "
+            "repair_provider_execution_identity_transition or "
+            "delegates_r17_before_suffix_admission"
+        ),
+    ),
+    (
+        "/usr/bin/env",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_DOCKER_CLEANUP_VALIDATION=1",
+        "IPFS_ACCELERATE_AGENT_TEST_CODEX_EXECUTABLE=/usr/local/bin/codex",
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "-k",
+        "strict_fence_waits_for_detached_container_cleanup",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue fixing the existing canonical supervisor so its provider-start "
+    "issuer binds the exact unprivileged executable, closed environment, and "
+    "stable process birth before ASEH resumes without a second state writer"
+)
+REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SUCCESS: Final = (
+    "The exact R16 child preserves the immutable R1-R16 chain, launches the "
+    "Docker provider through a retained descriptor after rejecting set-ID or "
+    "file-capability drift, binds two stable exact-birth proc snapshots of "
+    "the executable inode, argv, and closed environment, waits boundedly only "
+    "for the canonical writer's exact private atomic cleanup publication, and "
+    "drains the live fixture without a leaked process, descriptor, container, "
+    "lease, or database writer."
+)
+REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R16 parent, changed sibling, rewritten R16 receipt, path-"
+    "only executable claim, unknown capability state, set-ID executable, "
+    "birth or proc snapshot drift, extra environment entry, leaked effect, "
+    "reduced validation, database mutation, contention, or validation failure "
+    "is rejected before owner acquisition."
+)
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
     REPAIR_FOLLOWUP_TRANSITION_SCHEMA,
@@ -1901,6 +2004,10 @@ ASEH_R15_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R16_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R15_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA,
+)
+ASEH_R17_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R16_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -1995,6 +2102,9 @@ REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_RECEIPT_FIELDS: Final = (
 )
 REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_RECEIPT_FIELDS
+)
+REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -2970,6 +3080,42 @@ def _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
     return receipt_id
 
 
+def _repair_provider_execution_identity_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-17 provider execution receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    if (
+        payload.get("schema")
+        != REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 17
+        or payload.get("terminal_success_criteria")
+        != REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r17_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-execution-identity schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair provider-execution-identity CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -3170,10 +3316,14 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r16 = globals().get(
         "REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS"
     )
+    r17 = globals().get(
+        "REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
         *((r16,) if isinstance(r16, Sequence) else ()),
+        *((r17,) if isinstance(r17, Sequence) else ()),
     )
 
 
@@ -3470,6 +3620,91 @@ def _r16_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+ASEH_R16_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:b7fc70c651908b599886ac4a1b5068b1e50eaf98892db940b6ae4d26162975b7"
+)
+
+
+def _r17_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend immutable R16 with exact provider execution admission."""
+
+    parent = _r16_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if (
+        parent_cid
+        != ASEH_R16_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    ):
+        raise OperatorError("historical R16 validation contract drifted")
+    matrix = REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+        and tuple(command) != _r16_production_lifecycle_live_command()
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r17_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r17-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 17,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "production_lifecycle_validation_intent_argv_digest": _identity(
+                list(_r16_production_lifecycle_live_command())
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "production_lifecycle_live_contract": {
+                **dict(parent["production_lifecycle_live_contract"]),
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "aseh-r16-production-lifecycle-live-contract@2"
+                ),
+                "parent_loss_policy": (
+                    "exact_parent_birth_pdeathsig_sigkill_"
+                    "unprivileged_executable_only"
+                ),
+                "provider_start_launch_policy": (
+                    "fork_free_posix_spawn_to_fresh_isolated_interpreter_"
+                    "arms_parent_loss_then_descriptor_exec_with_exact_proc_"
+                    "executable_environment_admission"
+                ),
+            },
+            "scope": (
+                "r17_authorization_preflight_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
 def _r16_production_lifecycle_live_command() -> tuple[str, ...]:
     """Return the one R16 argv requiring the production lifecycle owner."""
 
@@ -3527,6 +3762,29 @@ def _r16_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r17_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R17 argv without broadening R16's matrix."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R17 validation matrix")
+    if declared == _r16_production_lifecycle_live_command():
+        return ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -3562,10 +3820,15 @@ def _admit_sealed_receipt_validation_executor_contract(
             )
         return r15
     r16 = _r16_sealed_receipt_validation_executor_contract()
-    if supplied != r16:
+    r17 = _r17_sealed_receipt_validation_executor_contract()
+    if supplied not in (r16, r17):
         raise OperatorError("sealed validation executor contract is unknown")
     if (
-        _r16_validation_executor_class(command)
+        (
+            _r17_validation_executor_class(command)
+            if supplied == r17
+            else _r16_validation_executor_class(command)
+        )
         != ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
     ):
         raise OperatorError(
@@ -3574,12 +3837,12 @@ def _admit_sealed_receipt_validation_executor_contract(
         )
     if (
         _identity(list(command))
-        not in r16["admitted_sealed_python_argv_digests"]
+        not in supplied["admitted_sealed_python_argv_digests"]
     ):
         raise OperatorError(
             "Python command is not admitted by the R16 executor contract"
         )
-    return r16
+    return supplied
 
 
 def _admit_r16_production_lifecycle_live_executor_contract(
@@ -3589,10 +3852,11 @@ def _admit_r16_production_lifecycle_live_executor_contract(
 ) -> dict[str, Any]:
     """Admit only R16's one exact live argv to its lifecycle executor."""
 
-    expected = _r16_sealed_receipt_validation_executor_contract()
+    r16 = _r16_sealed_receipt_validation_executor_contract()
+    r17 = _r17_sealed_receipt_validation_executor_contract()
     supplied = dict(executor_contract)
     command = tuple(declared)
-    if supplied != expected:
+    if supplied not in (r16, r17):
         raise OperatorError("R16 production lifecycle contract is unknown")
     if (
         command != _r16_production_lifecycle_live_command()
@@ -3602,7 +3866,7 @@ def _admit_r16_production_lifecycle_live_executor_contract(
         raise OperatorError(
             "command is not admitted by the R16 production lifecycle executor"
         )
-    return expected
+    return supplied
 
 
 def _r16_process_start_time_ticks(pid: int) -> int:
@@ -3691,6 +3955,317 @@ def _r16_exact_process_argv(
     if not argv or any(not item for item in argv):
         raise OperatorError("R16 live process argv is invalid")
     return argv
+
+
+def _r16_exact_process_birth(pid: int) -> dict[str, Any]:
+    """Return one canonical Linux PID birth including its direct parent."""
+
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        closing_parenthesis = raw.rfind(")")
+        fields = raw[closing_parenthesis + 2 :].split()
+        state = fields[0]
+        parent_pid = int(fields[1])
+        start_time_ticks = int(fields[19])
+        boot_id = _r16_boot_id()
+    except (OSError, IndexError, UnicodeError, ValueError) as exc:
+        raise OperatorError("R16 live process birth is unavailable") from exc
+    if (
+        closing_parenthesis < 0
+        or state == "Z"
+        or parent_pid < 0
+        or start_time_ticks <= 0
+    ):
+        raise OperatorError("R16 live process birth is invalid")
+    return {
+        "pid": pid,
+        "start_time_ticks": start_time_ticks,
+        "boot_id": boot_id,
+        "parent_pid": parent_pid,
+    }
+
+
+def _r16_admit_unprivileged_executable_fd(
+    descriptor: int,
+    *,
+    expected_path: Path,
+) -> dict[str, Any]:
+    """Bind a stable root-owned executable which cannot clear PDEATHSIG."""
+
+    if (
+        type(descriptor) is not int
+        or descriptor < 0
+        or not expected_path.is_absolute()
+    ):
+        raise OperatorError("R16 executable descriptor identity is invalid")
+    try:
+        resolved = expected_path.resolve(strict=True)
+        before = os.fstat(descriptor)
+        path_metadata = os.stat(resolved)
+        try:
+            os.getxattr(descriptor, "security.capability")
+        except OSError as exc:
+            if exc.errno != errno.ENODATA:
+                raise OperatorError(
+                    "R16 executable capability absence is unavailable"
+                ) from exc
+        else:
+            raise OperatorError("R16 executable has file capabilities")
+        after = os.fstat(descriptor)
+    except OperatorError:
+        raise
+    except OSError as exc:
+        raise OperatorError(
+            "R16 executable descriptor identity is unavailable"
+        ) from exc
+    before_identity = _validation_stat_identity(before)
+    if (
+        resolved != expected_path
+        or before_identity != _validation_stat_identity(after)
+        or before_identity != _validation_stat_identity(path_metadata)
+        or not stat.S_ISREG(before.st_mode)
+        or before.st_uid != 0
+        or before.st_nlink != 1
+        or before.st_size <= 0
+        or not before.st_mode & 0o111
+        or before.st_mode & 0o022
+        or before.st_mode & (stat.S_ISUID | stat.S_ISGID)
+    ):
+        raise OperatorError("R16 executable descriptor identity is unsafe")
+    return {
+        "path": str(resolved),
+        "device": int(before.st_dev),
+        "inode": int(before.st_ino),
+        "mode": int(before.st_mode),
+        "uid": int(before.st_uid),
+        "gid": int(before.st_gid),
+        "nlink": int(before.st_nlink),
+        "size": int(before.st_size),
+        "mtime_ns": int(before.st_mtime_ns),
+        "ctime_ns": int(before.st_ctime_ns),
+        "security_capability": None,
+    }
+
+
+def _r16_admit_unprivileged_executable_path(path: Path) -> dict[str, Any]:
+    """Open without symlink traversal and admit one executable pathname."""
+
+    descriptor = -1
+    try:
+        resolved = path.resolve(strict=True)
+        if resolved != path:
+            raise OperatorError("R16 executable path identity differs")
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        return _r16_admit_unprivileged_executable_fd(
+            descriptor,
+            expected_path=resolved,
+        )
+    except OperatorError:
+        raise
+    except OSError as exc:
+        raise OperatorError("R16 executable path identity is unavailable") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _r16_read_bounded_proc_member(
+    process_directory_fd: int,
+    name: str,
+    *,
+    maximum_bytes: int = 262_144,
+) -> bytes:
+    """Read a bounded proc member through an already retained PID directory."""
+
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=process_directory_fd,
+        )
+        payload = bytearray()
+        while len(payload) <= maximum_bytes:
+            chunk = os.read(
+                descriptor,
+                min(65_536, maximum_bytes + 1 - len(payload)),
+            )
+            if not chunk:
+                break
+            payload.extend(chunk)
+    except OSError as exc:
+        raise OperatorError("R16 process execution identity is unavailable") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if len(payload) > maximum_bytes:
+        raise OperatorError("R16 process execution identity is oversized")
+    return bytes(payload)
+
+
+def _r16_decode_nul_records(
+    payload: bytes,
+    *,
+    environment: bool,
+) -> list[str] | dict[str, str]:
+    """Decode one exact NUL-terminated argv or duplicate-free environment."""
+
+    if not payload or not payload.endswith(b"\0"):
+        raise OperatorError("R16 process execution identity is invalid")
+    try:
+        records = [
+            item.decode("utf-8", errors="strict")
+            for item in payload[:-1].split(b"\0")
+        ]
+    except UnicodeDecodeError as exc:
+        raise OperatorError("R16 process execution identity is not UTF-8") from exc
+    if not records or any(not item for item in records):
+        raise OperatorError("R16 process execution identity is invalid")
+    if not environment:
+        return records
+    decoded: dict[str, str] = {}
+    for record in records:
+        name, separator, value = record.partition("=")
+        if not separator or not name or name in decoded or "=" in name:
+            raise OperatorError("R16 process environment is invalid")
+        decoded[name] = value
+    return decoded
+
+
+def _r16_exact_process_execution_identity(
+    pid: int,
+    *,
+    expected_birth: Mapping[str, Any],
+    expected_executable_fd: int,
+    expected_executable_path: Path,
+    expected_argv: Sequence[str],
+    expected_environment: Mapping[str, str],
+) -> dict[str, Any]:
+    """Admit exact birth, inode, argv, and closed environment twice."""
+
+    canonical_birth = {
+        "pid": pid,
+        "start_time_ticks": expected_birth.get("start_time_ticks"),
+        "boot_id": expected_birth.get("boot_id"),
+        "parent_pid": expected_birth.get("parent_pid"),
+    }
+    if (
+        set(expected_birth)
+        != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+        or expected_birth != canonical_birth
+        or type(pid) is not int
+        or pid <= 1
+        or type(canonical_birth["start_time_ticks"]) is not int
+        or int(canonical_birth["start_time_ticks"]) <= 0
+        or re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            str(canonical_birth["boot_id"]),
+        )
+        is None
+        or type(canonical_birth["parent_pid"]) is not int
+        or int(canonical_birth["parent_pid"]) <= 1
+        or not expected_argv
+        or any(type(item) is not str or not item for item in expected_argv)
+        or any(
+            type(name) is not str
+            or not name
+            or "=" in name
+            or type(value) is not str
+            for name, value in expected_environment.items()
+        )
+    ):
+        raise OperatorError("R16 expected process execution identity is invalid")
+    expected_executable = _r16_admit_unprivileged_executable_fd(
+        expected_executable_fd,
+        expected_path=expected_executable_path,
+    )
+    expected_environment_dict = dict(sorted(expected_environment.items()))
+    if _r16_exact_process_birth(pid) != canonical_birth:
+        raise OperatorError("R16 process birth changed during execution admission")
+    process_directory_fd = -1
+    try:
+        process_directory_fd = os.open(
+            f"/proc/{pid}",
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+        )
+
+        def capture() -> tuple[dict[str, Any], list[str], dict[str, str]]:
+            executable_fd = -1
+            try:
+                executable_link = Path(
+                    os.readlink("exe", dir_fd=process_directory_fd)
+                ).resolve(strict=True)
+                executable_fd = os.open(
+                    "exe",
+                    os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+                    dir_fd=process_directory_fd,
+                )
+                executable = _r16_admit_unprivileged_executable_fd(
+                    executable_fd,
+                    expected_path=executable_link,
+                )
+                argv = _r16_decode_nul_records(
+                    _r16_read_bounded_proc_member(
+                        process_directory_fd,
+                        "cmdline",
+                    ),
+                    environment=False,
+                )
+                environment_value = _r16_decode_nul_records(
+                    _r16_read_bounded_proc_member(
+                        process_directory_fd,
+                        "environ",
+                    ),
+                    environment=True,
+                )
+            except OSError as exc:
+                raise OperatorError(
+                    "R16 process execution identity is unavailable"
+                ) from exc
+            finally:
+                if executable_fd >= 0:
+                    os.close(executable_fd)
+            if not isinstance(argv, list) or not isinstance(
+                environment_value, dict
+            ):
+                raise OperatorError("R16 process execution identity is invalid")
+            return executable, argv, environment_value
+
+        first = capture()
+        if _r16_exact_process_birth(pid) != canonical_birth:
+            raise OperatorError(
+                "R16 process birth changed during execution admission"
+            )
+        second = capture()
+    finally:
+        if process_directory_fd >= 0:
+            os.close(process_directory_fd)
+    if (
+        _r16_exact_process_birth(pid) != canonical_birth
+        or first != second
+        or first[0] != expected_executable
+        or first[1] != list(expected_argv)
+        or first[2] != expected_environment_dict
+        or _r16_admit_unprivileged_executable_fd(
+            expected_executable_fd,
+            expected_path=expected_executable_path,
+        )
+        != expected_executable
+    ):
+        raise OperatorError("R16 process execution identity differs")
+    return {
+        "executable_identity": expected_executable,
+        "environment": expected_environment_dict,
+        "environment_identity": _identity(expected_environment_dict),
+        "observed_at_ns": time.time_ns(),
+    }
 
 
 def _validate_r16_distinct_terminal_process_birth(
@@ -3803,63 +4378,292 @@ def _r16_provider_start_launcher(
     docker_path = Path(docker_bin)
     config_path = Path(docker_config)
     lease_root = config_path.parent
+    docker_descriptor = -1
     try:
         docker_resolved = docker_path.resolve(strict=True)
-        docker_metadata = os.stat(docker_resolved)
+        docker_descriptor = os.open(
+            docker_resolved,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        docker_identity = _r16_admit_unprivileged_executable_fd(
+            docker_descriptor,
+            expected_path=docker_resolved,
+        )
         config_metadata = os.lstat(config_path)
         lease_metadata = os.lstat(lease_root)
+        if (
+            docker_path != docker_resolved
+            or docker_resolved not in ASEH_R16_ADMITTED_DOCKER_EXECUTABLES
+            or docker_identity.get("path") != str(docker_resolved)
+            or not config_path.is_absolute()
+            or config_path.name != "docker-config"
+            or not lease_root.name.startswith("asref-codex-container-")
+            or config_path.resolve(strict=True) != config_path
+            or lease_root.resolve(strict=True) != lease_root
+            or stat.S_ISLNK(config_metadata.st_mode)
+            or not stat.S_ISDIR(config_metadata.st_mode)
+            or config_metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(config_metadata.st_mode) != 0o700
+            or stat.S_ISLNK(lease_metadata.st_mode)
+            or not stat.S_ISDIR(lease_metadata.st_mode)
+            or lease_metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(lease_metadata.st_mode) != 0o700
+            or re.fullmatch(
+                r"ipfs-accelerate-codex-[0-9]+-[0-9a-f]{32}",
+                container_name,
+            )
+            is None
+        ):
+            raise OperatorError(
+                "R16 provider-start launcher identity is invalid"
+            )
+        _r16_arm_sigkill_parent_loss_fence(
+            expected_parent_pid=expected_parent_pid,
+            expected_parent_start_time_ticks=expected_parent_start_time_ticks,
+            expected_boot_id=expected_parent_boot_id,
+        )
+        command = [
+            str(docker_resolved),
+            "--host=unix:///var/run/docker.sock",
+            "--config",
+            str(config_path),
+            "start",
+            "--attach",
+            "--interactive",
+            container_name,
+        ]
+        os.execve(
+            docker_descriptor,
+            command,
+            dict(ASEH_R16_PROVIDER_START_ENVIRONMENT),
+        )
     except OSError as exc:
         raise OperatorError(
             "R16 provider-start launcher identity is unavailable"
         ) from exc
-    if (
-        docker_path != docker_resolved
-        or docker_resolved
-        not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
-        or not stat.S_ISREG(docker_metadata.st_mode)
-        or docker_metadata.st_uid != 0
-        or docker_metadata.st_mode & 0o022
-        or not config_path.is_absolute()
-        or config_path.name != "docker-config"
-        or not lease_root.name.startswith("asref-codex-container-")
-        or config_path.resolve(strict=True) != config_path
-        or lease_root.resolve(strict=True) != lease_root
-        or stat.S_ISLNK(config_metadata.st_mode)
-        or not stat.S_ISDIR(config_metadata.st_mode)
-        or config_metadata.st_uid != os.geteuid()
-        or stat.S_IMODE(config_metadata.st_mode) != 0o700
-        or stat.S_ISLNK(lease_metadata.st_mode)
-        or not stat.S_ISDIR(lease_metadata.st_mode)
-        or lease_metadata.st_uid != os.geteuid()
-        or stat.S_IMODE(lease_metadata.st_mode) != 0o700
-        or re.fullmatch(
-            r"ipfs-accelerate-codex-[0-9]+-[0-9a-f]{32}",
-            container_name,
-        )
-        is None
-    ):
-        raise OperatorError("R16 provider-start launcher identity is invalid")
-    _r16_arm_sigkill_parent_loss_fence(
-        expected_parent_pid=expected_parent_pid,
-        expected_parent_start_time_ticks=expected_parent_start_time_ticks,
-        expected_boot_id=expected_parent_boot_id,
-    )
-    command = [
-        str(docker_resolved),
-        "--host=unix:///var/run/docker.sock",
-        "--config",
-        str(config_path),
-        "start",
-        "--attach",
-        "--interactive",
-        container_name,
-    ]
-    os.execve(
-        str(docker_resolved),
-        command,
-        {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
-    )
+    finally:
+        if docker_descriptor >= 0:
+            os.close(docker_descriptor)
     raise OperatorError("R16 provider-start exact exec returned")
+
+
+def _r16_drain_owned_provider_start(pid: int) -> None:
+    """Kill and reap one direct unreaped child after failed admission."""
+
+    if type(pid) is not int or pid <= 1:
+        raise OperatorError("R16 provider-start cleanup identity is invalid")
+    try:
+        waited_pid, _status = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        return
+    if waited_pid == pid:
+        return
+    if waited_pid != 0:
+        raise OperatorError("R16 provider-start cleanup identity differs")
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except OSError as exc:
+        raise OperatorError("R16 provider-start cleanup signal failed") from exc
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        try:
+            waited_pid, _status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if waited_pid == pid:
+            return
+        if waited_pid != 0:
+            raise OperatorError("R16 provider-start cleanup identity differs")
+        time.sleep(0.01)
+    raise OperatorError("R16 provider-start cleanup did not reap its child")
+
+
+def _r16_spawn_exact_provider_start(
+    *,
+    provider_stdin: Any,
+    provider_start_argv: Sequence[str],
+    provider_launcher_argv: Sequence[str],
+) -> tuple[int, Any, dict[str, Any]]:
+    """Fork-free spawn and exact admission with bounded descriptor lifetime."""
+
+    if (
+        list(provider_start_argv[:1]) != ["/usr/bin/docker"]
+        or len(provider_start_argv) != 8
+        or not provider_launcher_argv
+    ):
+        provider_stdin.close()
+        raise OperatorError("R16 provider-start command identity is invalid")
+    provider_executable_fd = -1
+    provider_pid: int | None = None
+    provider_admitted = False
+    try:
+        provider_executable_fd = os.open(
+            provider_start_argv[0],
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        provider_executable_identity = (
+            _r16_admit_unprivileged_executable_fd(
+                provider_executable_fd,
+                expected_path=Path(provider_start_argv[0]),
+            )
+        )
+        if Path(provider_executable_identity["path"]) not in (
+            ASEH_R16_ADMITTED_DOCKER_EXECUTABLES
+        ):
+            raise OperatorError(
+                "R16 provider-start executable is not admitted"
+            )
+        provider_stdin_fd = provider_stdin.fileno()
+        inheritable_descriptors: list[int] = []
+        try:
+            for entry in Path("/proc/self/fd").iterdir():
+                descriptor = int(entry.name)
+                if descriptor > 2 and descriptor != provider_stdin_fd:
+                    try:
+                        if os.get_inheritable(descriptor):
+                            inheritable_descriptors.append(descriptor)
+                    except OSError:
+                        continue
+        except (OSError, ValueError) as exc:
+            raise OperatorError(
+                "R16 provider-start descriptor census is unavailable"
+            ) from exc
+        if (
+            inheritable_descriptors
+            or provider_stdin_fd <= 2
+            or os.get_inheritable(provider_stdin_fd)
+        ):
+            raise OperatorError(
+                "R16 provider-start descriptor inheritance is unsafe"
+            )
+        file_actions = [
+            (os.POSIX_SPAWN_DUP2, provider_stdin_fd, 0),
+            (os.POSIX_SPAWN_OPEN, 1, os.devnull, os.O_WRONLY, 0o600),
+            (os.POSIX_SPAWN_OPEN, 2, os.devnull, os.O_WRONLY, 0o600),
+            (os.POSIX_SPAWN_CLOSE, provider_stdin_fd),
+        ]
+        provider_pid = os.posix_spawn(
+            provider_launcher_argv[0],
+            provider_launcher_argv,
+            dict(ASEH_R16_PROVIDER_START_ENVIRONMENT),
+            file_actions=file_actions,
+        )
+        provider_stdin.close()
+
+        provider_returncode: int | None = None
+
+        def poll_provider() -> int | None:
+            nonlocal provider_returncode
+            if provider_returncode is not None:
+                return provider_returncode
+            try:
+                waited_pid, status = os.waitpid(provider_pid, os.WNOHANG)
+            except ChildProcessError:
+                provider_returncode = 255
+                return provider_returncode
+            if waited_pid == 0:
+                return None
+            if waited_pid != provider_pid:
+                raise OperatorError("R16 provider-start wait identity differs")
+            provider_returncode = os.waitstatus_to_exitcode(status)
+            return provider_returncode
+
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            read_process_birth,
+        )
+
+        spawned_provider_birth = None
+        provider_execution_identity = None
+        provider_exec_deadline = time.monotonic() + 5.0
+        while time.monotonic() < provider_exec_deadline:
+            observed_birth = read_process_birth(provider_pid)
+            if observed_birth is None:
+                if poll_provider() is not None:
+                    break
+                time.sleep(0.01)
+                continue
+            if (
+                observed_birth.parent_pid != os.getpid()
+                or observed_birth.boot_id != _r16_boot_id()
+            ):
+                break
+            if spawned_provider_birth is None:
+                spawned_provider_birth = observed_birth
+            elif observed_birth.to_dict() != spawned_provider_birth.to_dict():
+                break
+            try:
+                observed_argv = _r16_exact_process_argv(
+                    provider_pid,
+                    expected_start_time_ticks=(
+                        spawned_provider_birth.start_time_ticks
+                    ),
+                    expected_boot_id=spawned_provider_birth.boot_id,
+                )
+            except OperatorError:
+                if poll_provider() is not None:
+                    break
+                time.sleep(0.01)
+                continue
+            if observed_argv == list(provider_start_argv):
+                try:
+                    provider_execution_identity = (
+                        _r16_exact_process_execution_identity(
+                            provider_pid,
+                            expected_birth=spawned_provider_birth.to_dict(),
+                            expected_executable_fd=provider_executable_fd,
+                            expected_executable_path=Path(
+                                provider_start_argv[0]
+                            ),
+                            expected_argv=provider_start_argv,
+                            expected_environment=(
+                                ASEH_R16_PROVIDER_START_ENVIRONMENT
+                            ),
+                        )
+                    )
+                except OperatorError:
+                    if poll_provider() is not None:
+                        break
+                    time.sleep(0.01)
+                    continue
+                break
+            if observed_argv != list(provider_launcher_argv):
+                break
+            time.sleep(0.01)
+        if (
+            spawned_provider_birth is None
+            or provider_execution_identity is None
+            or provider_execution_identity.get("executable_identity")
+            != provider_executable_identity
+        ):
+            raise OperatorError("R16 provider-start issuer identity differs")
+        provider_stdin.close()
+        executable_to_close = provider_executable_fd
+        provider_executable_fd = -1
+        os.close(executable_to_close)
+        provider_admitted = True
+        return (
+            provider_pid,
+            spawned_provider_birth,
+            provider_execution_identity,
+        )
+    finally:
+        try:
+            provider_stdin.close()
+        finally:
+            try:
+                if provider_executable_fd >= 0:
+                    executable_to_close = provider_executable_fd
+                    provider_executable_fd = -1
+                    os.close(executable_to_close)
+            finally:
+                if provider_pid is not None and not provider_admitted:
+                    _r16_drain_owned_provider_start(provider_pid)
 
 
 def _r16_production_lifecycle_live_fixture(
@@ -3871,6 +4675,7 @@ def _r16_production_lifecycle_live_fixture(
     expected_parent_pid: int,
     expected_parent_start_time_ticks: int,
     expected_parent_boot_id: str,
+    provider_execution_identity_revision: int = 16,
 ) -> int:
     """Materialize one Docker effect as the direct managed lifecycle root.
 
@@ -3896,6 +4701,7 @@ def _r16_production_lifecycle_live_fixture(
         is None
         or logical_argv_sha256
         != _identity(list(_r16_production_lifecycle_live_command()))
+        or provider_execution_identity_revision not in {16, 17}
     ):
         raise OperatorError("R16 live fixture identity is invalid")
     # This direct managed root carries no state credential, so start_track's
@@ -4109,49 +4915,13 @@ def _r16_production_lifecycle_live_fixture(
         "--expected-parent-boot-id",
         provider_parent_boot,
     ]
-    provider_stdin_fd = provider_stdin.fileno()
-    inheritable_descriptors: list[int] = []
-    try:
-        for entry in Path("/proc/self/fd").iterdir():
-            descriptor = int(entry.name)
-            if descriptor > 2 and descriptor != provider_stdin_fd:
-                try:
-                    if os.get_inheritable(descriptor):
-                        inheritable_descriptors.append(descriptor)
-                except OSError:
-                    # The directory iterator owns a transient descriptor that
-                    # may disappear before it is queried.
-                    continue
-    except (OSError, ValueError) as exc:
-        provider_stdin.close()
-        raise OperatorError(
-            "R16 provider-start descriptor census is unavailable"
-        ) from exc
-    if (
-        inheritable_descriptors
-        or provider_stdin_fd <= 2
-        or os.get_inheritable(provider_stdin_fd)
-    ):
-        provider_stdin.close()
-        raise OperatorError(
-            "R16 provider-start descriptor inheritance is unsafe"
+    provider_pid, provider_birth, provider_execution_identity = (
+        _r16_spawn_exact_provider_start(
+            provider_stdin=provider_stdin,
+            provider_start_argv=provider_start_argv,
+            provider_launcher_argv=provider_launcher_argv,
         )
-    file_actions = [
-        (os.POSIX_SPAWN_DUP2, provider_stdin_fd, 0),
-        (os.POSIX_SPAWN_OPEN, 1, os.devnull, os.O_WRONLY, 0o600),
-        (os.POSIX_SPAWN_OPEN, 2, os.devnull, os.O_WRONLY, 0o600),
-        (os.POSIX_SPAWN_CLOSE, provider_stdin_fd),
-    ]
-    try:
-        provider_pid = os.posix_spawn(
-            provider_launcher_argv[0],
-            provider_launcher_argv,
-            {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
-            file_actions=file_actions,
-        )
-    finally:
-        provider_stdin.close()
-
+    )
     provider_returncode: int | None = None
 
     def poll_provider() -> int | None:
@@ -4169,45 +4939,12 @@ def _r16_production_lifecycle_live_fixture(
             raise OperatorError("R16 provider-start wait identity differs")
         provider_returncode = os.waitstatus_to_exitcode(status)
         return provider_returncode
-    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
-        read_process_birth,
-    )
-
-    provider_birth = None
-    provider_exec_deadline = time.monotonic() + 5.0
-    while time.monotonic() < provider_exec_deadline:
-        observed_birth = read_process_birth(provider_pid)
-        if observed_birth is None:
-            if poll_provider() is not None:
-                break
-            time.sleep(0.01)
-            continue
-        if (
-            observed_birth.parent_pid != os.getpid()
-            or observed_birth.boot_id != _r16_boot_id()
-        ):
-            break
-        try:
-            observed_argv = _r16_exact_process_argv(
-                provider_pid,
-                expected_start_time_ticks=observed_birth.start_time_ticks,
-                expected_boot_id=observed_birth.boot_id,
-            )
-        except OperatorError:
-            if poll_provider() is not None:
-                break
-            time.sleep(0.01)
-            continue
-        if observed_argv == provider_start_argv:
-            provider_birth = observed_birth
-            break
-        if observed_argv != provider_launcher_argv:
-            break
-        time.sleep(0.01)
-    if provider_birth is None:
-        raise OperatorError("R16 provider-start issuer identity differs")
     provider_start_issuer = {
-        "schema": ASEH_R16_PROVIDER_START_ISSUER_SCHEMA,
+        "schema": (
+            ASEH_R17_PROVIDER_START_ISSUER_SCHEMA
+            if provider_execution_identity_revision == 17
+            else ASEH_R16_PROVIDER_START_ISSUER_SCHEMA
+        ),
         "nonce": nonce,
         "container_name": lease.container_name,
         "argv": provider_start_argv,
@@ -4219,6 +4956,21 @@ def _r16_production_lifecycle_live_fixture(
         "stderr_digest": None,
         "published_at_ns": time.time_ns(),
     }
+    if provider_execution_identity_revision == 17:
+        provider_start_issuer.update(
+            {
+                "executable_identity": provider_execution_identity[
+                    "executable_identity"
+                ],
+                "environment": provider_execution_identity["environment"],
+                "environment_identity": provider_execution_identity[
+                    "environment_identity"
+                ],
+                "execution_identity_observed_at_ns": (
+                    provider_execution_identity["observed_at_ns"]
+                ),
+            }
+        )
     provider_start_issuer["record_cid"] = _identity(provider_start_issuer)
     _atomic_json_create(
         run_root / ASEH_R16_PROVIDER_START_ISSUER_NAME,
@@ -5477,6 +6229,14 @@ def _run_r16_production_lifecycle_live_validation(
         executor_contract,
         declared=declared,
     )
+    provider_execution_identity_required = (
+        admitted_contract == _r17_sealed_receipt_validation_executor_contract()
+    )
+    expected_evidence_schema = (
+        ASEH_R17_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA
+        if provider_execution_identity_required
+        else ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA
+    )
     if (
         _r16_parent_is_child_subreaper()
         or threading.current_thread() is not threading.main_thread()
@@ -5561,6 +6321,12 @@ def _run_r16_production_lifecycle_live_validation(
         "--expected-parent-boot-id",
         _r16_boot_id(),
     )
+    if provider_execution_identity_required:
+        physical_arguments = (
+            *physical_arguments,
+            "--provider-execution-identity-revision",
+            "17",
+        )
     physical_argv = (
         interpreter_path,
         str(
@@ -5897,24 +6663,45 @@ def _run_r16_production_lifecycle_live_validation(
             "--interactive",
             record.container_name,
         ]
+        expected_provider_environment = dict(
+            sorted(ASEH_R16_PROVIDER_START_ENVIRONMENT.items())
+        )
+        expected_provider_executable = (
+            _r16_admit_unprivileged_executable_path(Path(record.docker_bin))
+            if provider_execution_identity_required
+            else None
+        )
+        expected_provider_fields = {
+            "schema",
+            "nonce",
+            "container_name",
+            "argv",
+            "argv_sha256",
+            "process_birth",
+            "parent_loss_signal",
+            "output_capture",
+            "stdout_digest",
+            "stderr_digest",
+            "published_at_ns",
+            "record_cid",
+        }
+        if provider_execution_identity_required:
+            expected_provider_fields.update(
+                {
+                    "executable_identity",
+                    "environment",
+                    "environment_identity",
+                    "execution_identity_observed_at_ns",
+                }
+            )
         if (
-            set(provider_start_issuer)
-            != {
-                "schema",
-                "nonce",
-                "container_name",
-                "argv",
-                "argv_sha256",
-                "process_birth",
-                "parent_loss_signal",
-                "output_capture",
-                "stdout_digest",
-                "stderr_digest",
-                "published_at_ns",
-                "record_cid",
-            }
+            set(provider_start_issuer) != expected_provider_fields
             or provider_start_issuer.get("schema")
-            != ASEH_R16_PROVIDER_START_ISSUER_SCHEMA
+            != (
+                ASEH_R17_PROVIDER_START_ISSUER_SCHEMA
+                if provider_execution_identity_required
+                else ASEH_R16_PROVIDER_START_ISSUER_SCHEMA
+            )
             or provider_start_issuer.get("nonce") != nonce
             or provider_start_issuer.get("container_name")
             != record.container_name
@@ -5922,6 +6709,23 @@ def _run_r16_production_lifecycle_live_validation(
             != expected_provider_start_argv
             or provider_start_issuer.get("argv_sha256")
             != _identity(expected_provider_start_argv)
+            or (
+                provider_execution_identity_required
+                and (
+                    provider_start_issuer.get("executable_identity")
+                    != expected_provider_executable
+                    or provider_start_issuer.get("environment")
+                    != expected_provider_environment
+                    or provider_start_issuer.get("environment_identity")
+                    != _identity(expected_provider_environment)
+                    or type(
+                        provider_start_issuer.get(
+                            "execution_identity_observed_at_ns"
+                        )
+                    )
+                    is not int
+                )
+            )
             or provider_start_issuer.get("parent_loss_signal") != "SIGKILL"
             or provider_start_issuer.get("output_capture")
             != "unavailable_discarded_to_devnull"
@@ -5930,6 +6734,23 @@ def _run_r16_production_lifecycle_live_validation(
             or type(provider_start_issuer.get("published_at_ns")) is not int
             or int(provider_start_issuer["published_at_ns"])
             <= int(ready["published_at_ns"])
+            or (
+                provider_execution_identity_required
+                and (
+                    int(
+                        provider_start_issuer[
+                            "execution_identity_observed_at_ns"
+                        ]
+                    )
+                    <= int(ready["published_at_ns"])
+                    or int(
+                        provider_start_issuer[
+                            "execution_identity_observed_at_ns"
+                        ]
+                    )
+                    > int(provider_start_issuer["published_at_ns"])
+                )
+            )
             or provider_start_issuer.get("record_cid")
             != _identity(provider_start_body)
             or not isinstance(provider_birth, Mapping)
@@ -5951,7 +6772,41 @@ def _run_r16_production_lifecycle_live_validation(
         if (
             observed_provider_birth is None
             or observed_provider_birth.to_dict() != dict(provider_birth)
-            or _r16_exact_process_argv(
+        ):
+            raise OperatorError("R16 provider-start issuer is not exact-live")
+        if provider_execution_identity_required:
+            provider_executable_fd = os.open(
+                record.docker_bin,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                observed_provider_execution = (
+                    _r16_exact_process_execution_identity(
+                        int(provider_birth["pid"]),
+                        expected_birth=dict(provider_birth),
+                        expected_executable_fd=provider_executable_fd,
+                        expected_executable_path=Path(record.docker_bin),
+                        expected_argv=expected_provider_start_argv,
+                        expected_environment=expected_provider_environment,
+                    )
+                )
+            finally:
+                os.close(provider_executable_fd)
+            if (
+                observed_provider_execution.get("executable_identity")
+                != provider_start_issuer.get("executable_identity")
+                or observed_provider_execution.get("environment")
+                != provider_start_issuer.get("environment")
+                or observed_provider_execution.get("environment_identity")
+                != provider_start_issuer.get("environment_identity")
+            ):
+                raise OperatorError(
+                    "R16 provider-start execution identity is not exact-live"
+                )
+        elif (
+            _r16_exact_process_argv(
                 int(provider_birth["pid"]),
                 expected_start_time_ticks=int(
                     provider_birth["start_time_ticks"]
@@ -6184,8 +7039,15 @@ def _run_r16_production_lifecycle_live_validation(
             "cleanup_verified": bool(cleanup_verified),
             "private_root_preserved": not private_root_retired,
             "failure_class": type(pending_error).__name__,
+            "failure_message": str(pending_error)[:512],
+            "failure_traceback": "".join(
+                traceback.format_exception(pending_error)
+            )[-8192:],
             "cleanup_failure_class": (
                 "" if cleanup_error is None else type(cleanup_error).__name__
+            ),
+            "cleanup_failure_message": (
+                "" if cleanup_error is None else str(cleanup_error)[:512]
             ),
         }
         raise OperatorError(
@@ -6214,7 +7076,7 @@ def _run_r16_production_lifecycle_live_validation(
         raise OperatorError("R16 production lifecycle result is non-admitted")
     combined_output_digest = _identity(fixture_log)
     evidence: dict[str, Any] = {
-        "schema": ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA,
+        "schema": expected_evidence_schema,
         "executor_class": ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS,
         "executor_contract_cid": _identity(admitted_contract),
         "logical_argv": list(declared),
@@ -6303,6 +7165,14 @@ def _validate_r16_production_lifecycle_execution_evidence(
         executor_contract,
         declared=declared,
     )
+    provider_execution_identity_required = (
+        admitted_contract == _r17_sealed_receipt_validation_executor_contract()
+    )
+    expected_evidence_schema = (
+        ASEH_R17_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA
+        if provider_execution_identity_required
+        else ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA
+    )
     expected_fields = {
         "schema",
         "executor_class",
@@ -6345,7 +7215,7 @@ def _validate_r16_production_lifecycle_execution_evidence(
         type(evidence) is not dict
         or set(evidence) != expected_fields
         or evidence.get("schema")
-        != ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA
+        != expected_evidence_schema
         or evidence.get("executor_class")
         != ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
         or evidence.get("executor_contract_cid")
@@ -6378,9 +7248,14 @@ def _validate_r16_production_lifecycle_execution_evidence(
         raise OperatorError("R16 production lifecycle evidence differs")
     physical_argv = evidence.get("physical_argv")
     nonce = str(evidence["nonce"])
+    expected_physical_suffix = (
+        ["--provider-execution-identity-revision", "17"]
+        if provider_execution_identity_required
+        else []
+    )
     if (
         not isinstance(physical_argv, list)
-        or len(physical_argv) != 17
+        or len(physical_argv) != 17 + len(expected_physical_suffix)
         or physical_argv[0] != ASEH_RECEIPT_VALIDATION_PYTHON
         or not str(physical_argv[1]).endswith(
             "/scripts/run_agent_supervisor_efficiency_state_hardening.py"
@@ -6407,6 +7282,7 @@ def _validate_r16_production_lifecycle_execution_evidence(
             str(physical_argv[16]),
         )
         is None
+        or physical_argv[17:] != expected_physical_suffix
         or evidence.get("physical_argv_sha256")
         != _identity(physical_argv)
     ):
@@ -6984,6 +7860,15 @@ def _validate_r16_production_lifecycle_execution_evidence(
         "published_at_ns",
         "record_cid",
     }
+    if provider_execution_identity_required:
+        provider_issuer_fields.update(
+            {
+                "executable_identity",
+                "environment",
+                "environment_identity",
+                "execution_identity_observed_at_ns",
+            }
+        )
     if type(provider_issuer) is not dict:
         raise OperatorError("R16 provider-start issuer evidence is invalid")
     provider_issuer_body = {
@@ -7002,15 +7887,46 @@ def _validate_r16_production_lifecycle_execution_evidence(
         "--interactive",
         container_name,
     ]
+    expected_provider_environment = (
+        dict(sorted(ASEH_R16_PROVIDER_START_ENVIRONMENT.items()))
+        if provider_execution_identity_required
+        else None
+    )
+    expected_provider_executable = (
+        _r16_admit_unprivileged_executable_path(Path(docker_bin))
+        if provider_execution_identity_required
+        else None
+    )
     if (
         set(provider_issuer) != provider_issuer_fields
         or provider_issuer.get("schema")
-        != ASEH_R16_PROVIDER_START_ISSUER_SCHEMA
+        != (
+            ASEH_R17_PROVIDER_START_ISSUER_SCHEMA
+            if provider_execution_identity_required
+            else ASEH_R16_PROVIDER_START_ISSUER_SCHEMA
+        )
         or provider_issuer.get("nonce") != nonce
         or provider_issuer.get("container_name") != container_name
         or provider_issuer.get("argv") != expected_provider_start_argv
         or provider_issuer.get("argv_sha256")
         != _identity(expected_provider_start_argv)
+        or (
+            provider_execution_identity_required
+            and (
+                provider_issuer.get("executable_identity")
+                != expected_provider_executable
+                or provider_issuer.get("environment")
+                != expected_provider_environment
+                or provider_issuer.get("environment_identity")
+                != _identity(expected_provider_environment)
+                or type(
+                    provider_issuer.get(
+                        "execution_identity_observed_at_ns"
+                    )
+                )
+                is not int
+            )
+        )
         or provider_issuer.get("parent_loss_signal") != "SIGKILL"
         or provider_issuer.get("output_capture")
         != "unavailable_discarded_to_devnull"
@@ -7019,6 +7935,17 @@ def _validate_r16_production_lifecycle_execution_evidence(
         or type(provider_issuer.get("published_at_ns")) is not int
         or int(provider_issuer["published_at_ns"])
         <= int(ready["published_at_ns"])
+        or (
+            provider_execution_identity_required
+            and (
+                int(provider_issuer["execution_identity_observed_at_ns"])
+                <= int(ready["published_at_ns"])
+                or int(
+                    provider_issuer["execution_identity_observed_at_ns"]
+                )
+                > int(provider_issuer["published_at_ns"])
+            )
+        )
         or provider_issuer.get("record_cid")
         != _identity(provider_issuer_body)
         or type(provider_birth) is not dict
@@ -7634,6 +8561,39 @@ def _admit_exact_r16_transition_chain(
     return chain
 
 
+def _admit_exact_r17_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit the complete ordered and adjacent-linked R1-R17 chain."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R17_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R17 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R17_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R17 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R17 repair transition chain differs")
+        chain.append(item)
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -7799,6 +8759,33 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R16 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r17_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r16_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r16_admitted.get("repair_head")
+            != REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r16_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r16_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current R17 candidate lacks its exact admitted validation seal"
+            )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -7940,6 +8927,17 @@ def _r16_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS[-2]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r17_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R17 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS[-2]
     ):
         return "candidate_authorization_worktree"
     return "immutable_candidate_checkout"
@@ -9073,17 +10071,33 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     candidate_head: str,
     candidate_tree: str,
     authorization_witness: Mapping[str, str],
+    _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16 repair matrix against exact committed bytes."""
+    """Run the bounded R16/R17 repair matrix against committed bytes."""
 
+    if _revision not in {16, 17}:
+        raise OperatorError("repair validation revision is invalid")
+    revision_label = f"R{_revision}"
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
-        raise OperatorError("R16 sealed validation executor is unavailable")
+        raise OperatorError(
+            f"{revision_label} sealed validation executor is unavailable"
+        )
+    matrix = (
+        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+        if _revision == 17
+        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+    )
+    executor_contract_value = (
+        _r17_sealed_receipt_validation_executor_contract()
+        if _revision == 17
+        else _r16_sealed_receipt_validation_executor_contract()
+    )
     witness = dict(authorization_witness)
     _assert_candidate_authorization_witness(
         witness,
         expected_head=candidate_head,
         expected_tree=candidate_tree,
-        boundary="before R16 immutable validation checkout",
+        boundary=f"before {revision_label} immutable validation checkout",
     )
     results: list[dict[str, Any]] = []
     with _exact_candidate_validation_checkout(
@@ -9091,20 +10105,24 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
         candidate_tree=candidate_tree,
     ) as (checkout, validation_environment):
         for ordinal, command in enumerate(
-            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+            matrix
         ):
             _assert_candidate_authorization_witness(
                 witness,
                 expected_head=candidate_head,
                 expected_tree=candidate_tree,
-                boundary=f"before R16 validation {ordinal}",
+                boundary=f"before {revision_label} validation {ordinal}",
             )
             _assert_r11_validation_checkout_identity(
                 checkout,
                 candidate_head=candidate_head,
                 candidate_tree=candidate_tree,
             )
-            working_tree_scope = _r16_validation_working_tree_scope(command)
+            working_tree_scope = (
+                _r17_validation_working_tree_scope(command)
+                if _revision == 17
+                else _r16_validation_working_tree_scope(command)
+            )
             python_validation = (
                 _parse_receipt_validation_python_command(
                     command,
@@ -9112,9 +10130,13 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
                 )
                 is not None
             )
-            executor_class = _r16_validation_executor_class(command)
+            executor_class = (
+                _r17_validation_executor_class(command)
+                if _revision == 17
+                else _r16_validation_executor_class(command)
+            )
             executor_contract = (
-                _r16_sealed_receipt_validation_executor_contract()
+                executor_contract_value
                 if python_validation
                 else None
             )
@@ -9304,15 +10326,31 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
                 witness,
                 expected_head=candidate_head,
                 expected_tree=candidate_tree,
-                boundary=f"after R16 validation {ordinal}",
+                boundary=f"after {revision_label} validation {ordinal}",
             )
     _assert_candidate_authorization_witness(
         witness,
         expected_head=candidate_head,
         expected_tree=candidate_tree,
-        boundary="after R16 immutable validation checkout",
+        boundary=f"after {revision_label} immutable validation checkout",
     )
     return results
+
+
+def _run_repair_provider_execution_identity_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R17 suffix through the existing typed executors."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=17,
+    )
 
 
 def _observe_repair_provider_cleanup_fence_known_baseline(
@@ -9580,6 +10618,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-docker-create-readiness-vendor-resolver-transition.json"
+    )
+    result["repair_provider_execution_identity_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-provider-execution-identity-transition.json"
     )
     result["repair_transition_authorization_lock"] = (
         result["evidence"]
@@ -11495,6 +12538,24 @@ def _validate_repair_transition(
         "receipt_cid": receipt_id,
     }
     return result
+
+
+def _validate_repair_provider_execution_identity_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 17 chained to the immutable R16 receipt."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=17,
+    )
 
 
 def _repair_followup_witness_from_proof(
@@ -14175,44 +15236,84 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     bootstrap: Mapping[str, Any],
     previous_receipt: Mapping[str, Any],
     rerun_validations: bool,
+    _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit only revision 16 chained to the immutable R15 receipt."""
+    """Admit the immutable R16 transition or its exact R17 child."""
 
+    if _revision not in {16, 17}:
+        raise OperatorError("repair receipt revision is invalid")
+    is_r17 = _revision == 17
+    revision_label = f"R{_revision}"
     receipt_id = (
-        _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
+        _repair_provider_execution_identity_transition_receipt_id(receipt)
+        if is_r17
+        else _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
             receipt
         )
     )
     previous_receipt_id = (
-        _repair_sealed_owner_module_registration_transition_receipt_id(
+        _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
             previous_receipt
         )
+        if is_r17
+        else _repair_sealed_owner_module_registration_transition_receipt_id(
+            previous_receipt
+        )
+    )
+    base_head_value = (
+        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+        if is_r17
+        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+    )
+    changed_paths_value = (
+        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS
+        if is_r17
+        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+    )
+    authority_value = (
+        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_AUTHORITY
+        if is_r17
+        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
+    )
+    commands = (
+        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+        if is_r17
+        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+    )
+    executor_contract_value = (
+        _r17_sealed_receipt_validation_executor_contract()
+        if is_r17
+        else _r16_sealed_receipt_validation_executor_contract()
+    )
+    schema_value = (
+        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
+        if is_r17
+        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
     )
     witness = receipt.get("candidate_authorization_witness")
     if (
         receipt.get("stable_identity")
-        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R16"
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-{revision_label}"
         or receipt.get("previous_receipt_cid") != previous_receipt_id
         or receipt.get("bootstrap_receipt_id")
         != bootstrap.get("bootstrap_receipt_id")
         or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
         or receipt.get("repository_tree_id")
         != bootstrap.get("repository_tree_id")
-        or receipt.get("base_head")
-        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+        or receipt.get("base_head") != base_head_value
         or receipt.get("changed_paths")
         != list(
-            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+            changed_paths_value
         )
         or receipt.get("dependencies")
-        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R15"]
+        != [f"ASEH-BOOTSTRAP-002@ASEH-PLAN-R{_revision - 1}"]
         or receipt.get("owning_repository") != "ipfs_accelerate_py"
         or receipt.get("risk_class")
         != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
         or receipt.get("authority_requirement")
-        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
+        != authority_value
         or receipt.get("sealed_validation_executor_contract")
-        != _r16_sealed_receipt_validation_executor_contract()
+        != executor_contract_value
         or type(receipt.get("authorized_at")) not in {int, float}
         or float(receipt["authorized_at"]) <= 0.0
         or not isinstance(witness, Mapping)
@@ -14223,9 +15324,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         )
     repair = str(receipt.get("repair_head") or "").strip().casefold()
     repair_tree = str(receipt.get("repair_tree") or "").strip().casefold()
-    base_head = (
-        REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
-    )
+    base_head = base_head_value
     if (
         re.fullmatch(r"[0-9a-f]{40}", repair) is None
         or re.fullmatch(r"[0-9a-f]{40}", repair_tree) is None
@@ -14240,7 +15339,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         receipt.get("base_tree") != base_tree
         or _git("rev-parse", f"{repair}^{{tree}}") != repair_tree
         or _git_changed_paths(base_head, repair)
-        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+        != changed_paths_value
         or receipt.get("patch_digest")
         != _git_patch_digest(base_head, repair)
     ):
@@ -14304,9 +15403,6 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 "changed a sibling"
             )
     stored_results = receipt.get("validation_results")
-    commands = (
-        REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
-    )
     if not isinstance(stored_results, list) or len(stored_results) != len(
         commands
     ):
@@ -14337,7 +15433,11 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             }
             or stored.get("declared_argv") != list(command)
             or stored.get("executor_class")
-            != _r16_validation_executor_class(command)
+            != (
+                _r17_validation_executor_class(command)
+                if is_r17
+                else _r16_validation_executor_class(command)
+            )
             or stored.get("candidate_head") != repair
             or stored.get("candidate_tree") != repair_tree
             or stored.get("environment_identity")
@@ -14347,7 +15447,11 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 checkout=Path("/sealed-checkout"),
             )
             or stored.get("working_tree_scope")
-            != _r16_validation_working_tree_scope(command)
+            != (
+                _r17_validation_working_tree_scope(command)
+                if is_r17
+                else _r16_validation_working_tree_scope(command)
+            )
             or type(stored.get("executed_returncode")) is not int
             or not isinstance(stored.get("executed_argv"), list)
             or not all(
@@ -14358,7 +15462,11 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 "bootstrap repair Docker-create-readiness/vendor-resolver "
                 "validation differs"
             )
-        executor_class = _r16_validation_executor_class(command)
+        executor_class = (
+            _r17_validation_executor_class(command)
+            if is_r17
+            else _r16_validation_executor_class(command)
+        )
         if executor_class == ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS:
             if (
                 stored.get("declared_command_executed") is not True
@@ -14391,9 +15499,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 returncode=int(stored["executed_returncode"]),
                 stdout_digest=str(stored["stdout_digest"]),
                 stderr_digest=str(stored["stderr_digest"]),
-                executor_contract=(
-                    _r16_sealed_receipt_validation_executor_contract()
-                ),
+                executor_contract=executor_contract_value,
             )
         elif (
             executor_class
@@ -14441,9 +15547,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 ),
                 stdout_digest=None,
                 stderr_digest=None,
-                executor_contract=(
-                    _r16_sealed_receipt_validation_executor_contract()
-                ),
+                executor_contract=executor_contract_value,
             )
         elif (
             stored["execution_evidence"] is not None
@@ -14464,12 +15568,11 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         ):
             raise OperatorError("deterministic validation result differs")
     if rerun_validations:
-        rerun = (
-            _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
-                candidate_head=repair,
-                candidate_tree=repair_tree,
-                authorization_witness=witness,
-            )
+        rerun = _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+            candidate_head=repair,
+            candidate_tree=repair_tree,
+            authorization_witness=witness,
+            _revision=_revision,
         )
         comparison_fields = (
             "declared_argv",
@@ -14494,17 +15597,15 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 "commands differ"
             )
     return {
-        "schema": (
-            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
-        ),
+        "schema": schema_value,
         "task_id": REPAIR_TRANSITION_TASK_ID,
-        "transition_revision": 16,
+        "transition_revision": _revision,
         "base_head": base_head,
         "base_tree": base_tree,
         "repair_head": repair,
         "repair_tree": repair_tree,
         "changed_paths": list(
-            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+            changed_paths_value
         ),
         "patch_digest": str(receipt.get("patch_digest") or ""),
         "previous_receipt_cid": previous_receipt_id,
@@ -15758,6 +16859,22 @@ def _authorize_repair_docker_create_readiness_vendor_resolver_transition_if_appl
             str(transition["repair_head"]),
             head,
         )
+        r17_result = (
+            _authorize_repair_provider_execution_identity_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=[*prior_chain, receipt],
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r17_result is not None:
+            return r17_result
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = current_admission.get("repair_transition_chain")
@@ -15891,6 +17008,195 @@ def _authorize_repair_docker_create_readiness_vendor_resolver_transition_if_appl
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R16 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_provider_execution_identity_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one bounded R17 child after the admitted R16 chain."""
+
+    r17_path = paths.get(
+        "repair_provider_execution_identity_transition_receipt"
+    )
+    if not isinstance(r17_path, Path):
+        return None
+    prior_chain = list(prior_receipt_chain)
+    if (
+        len(prior_chain) != 16
+        or prior_chain[-1].get("receipt_cid")
+        != previous_transition.get("receipt_cid")
+        or previous_transition.get("repair_head")
+        != REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-execution-identity prior chain differs"
+        )
+    if r17_path.is_file():
+        receipt = _secure_runtime_json(
+            r17_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = _validate_repair_provider_execution_identity_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=receipt.get("repair_head") == head,
+        )
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition["repair_head"]),
+            head,
+        )
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = current_admission.get("repair_transition_chain")
+        admitted_continuity = current_admission.get("canonical_continuity")
+        expected_chain = [*prior_chain, receipt]
+        exact_chain = _admit_exact_r17_transition_chain(admitted_chain)
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head")
+            != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in exact_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or "docker_create_readiness_vendor_resolver_to_provider_execution_identity"
+            not in admitted_continuity
+        ):
+            raise OperatorError(
+                "current admission does not retain the provider-execution-"
+                "identity repair transition"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission[
+                "runtime_source_head"
+            ],
+        }
+    parents = _git("show", "-s", "--format=%P", head).split()
+    base_head = REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+    if parents != [base_head]:
+        return None
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-execution-identity changed-path set "
+            "differs"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    validation_results = (
+        _run_repair_provider_execution_identity_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R17 validation before receipt publication",
+    )
+    receipt = {
+        "schema": REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R17"
+        ),
+        "program_id": PROGRAM,
+        "transition_revision": 17,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": _git("rev-parse", f"{base_head}^{{tree}}"),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R16"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r17_sealed_receipt_validation_executor_contract()
+        ),
+        "terminal_success_criteria": (
+            REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_provider_execution_identity_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R17 receipt publication",
+    )
+    _atomic_json_create(
+        r17_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R17 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -18319,6 +19625,9 @@ def _admit_materialized_launch(
             docker_create_readiness_vendor_resolver_transition: (
                 dict[str, Any] | None
             ) = None
+            provider_execution_identity_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -18326,6 +19635,7 @@ def _admit_materialized_launch(
             r14_receipt: dict[str, Any] | None = None
             r15_receipt: dict[str, Any] | None = None
             r16_receipt: dict[str, Any] | None = None
+            r17_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -18891,6 +20201,55 @@ def _admit_materialized_launch(
                                                                     active_transition = (
                                                                         docker_create_readiness_vendor_resolver_transition
                                                                     )
+                                                                    r17_path = paths.get(
+                                                                        "repair_provider_execution_identity_transition_receipt"
+                                                                    )
+                                                                    if (
+                                                                        isinstance(
+                                                                            r17_path,
+                                                                            Path,
+                                                                        )
+                                                                        and r17_path.is_file()
+                                                                    ):
+                                                                        r17_receipt = (
+                                                                            _secure_runtime_json(
+                                                                                r17_path,
+                                                                                max_bytes=(
+                                                                                    STATUS_RECEIPT_MAX_BYTES
+                                                                                ),
+                                                                            )
+                                                                        )
+                                                                        provider_execution_identity_transition = (
+                                                                            _validate_repair_provider_execution_identity_transition(
+                                                                                r17_receipt,
+                                                                                bootstrap=bootstrap,
+                                                                                previous_receipt=(
+                                                                                    r16_receipt
+                                                                                ),
+                                                                                rerun_validations=(
+                                                                                    r17_receipt.get(
+                                                                                        "repair_head"
+                                                                                    )
+                                                                                    == population[
+                                                                                        "source_head"
+                                                                                    ]
+                                                                                ),
+                                                                            )
+                                                                        )
+                                                                        if (
+                                                                            provider_execution_identity_transition[
+                                                                                "base_head"
+                                                                            ]
+                                                                            != docker_create_readiness_vendor_resolver_transition[
+                                                                                "repair_head"
+                                                                            ]
+                                                                        ):
+                                                                            raise OperatorError(
+                                                                                "provider-execution-identity repair does not extend revision 16"
+                                                                            )
+                                                                        active_transition = (
+                                                                            provider_execution_identity_transition
+                                                                        )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -18954,6 +20313,10 @@ def _admit_materialized_launch(
                 repair_transition_chain.append(
                     docker_create_readiness_vendor_resolver_transition
                 )
+            if provider_execution_identity_transition is not None:
+                repair_transition_chain.append(
+                    provider_execution_identity_transition
+                )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -19015,6 +20378,10 @@ def _admit_materialized_launch(
                 continuity[
                     "sealed_owner_module_registration_to_docker_create_readiness_vendor_resolver"
                 ] = docker_create_readiness_vendor_resolver_transition
+            if provider_execution_identity_transition is not None:
+                continuity[
+                    "docker_create_readiness_vendor_resolver_to_provider_execution_identity"
+                ] = provider_execution_identity_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -22761,6 +24128,11 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
     )
     live_fixture.add_argument("--expected-parent-boot-id", required=True)
+    live_fixture.add_argument(
+        "--provider-execution-identity-revision",
+        type=int,
+        choices=(17,),
+    )
     provider_start_launcher = commands.add_parser(
         ASEH_R16_PROVIDER_START_LAUNCHER_COMMAND,
         help=argparse.SUPPRESS,
@@ -22800,6 +24172,9 @@ def main(argv: list[str] | None = None) -> int:
                     args.expected_parent_start_time_ticks
                 ),
                 expected_parent_boot_id=args.expected_parent_boot_id,
+                provider_execution_identity_revision=(
+                    args.provider_execution_identity_revision or 16
+                ),
             )
         elif args.command == ASEH_R16_PROVIDER_START_LAUNCHER_COMMAND:
             return _r16_provider_start_launcher(

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import fcntl
+import errno
 import hashlib
 import inspect
 import json
 import os
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -6030,6 +6032,10 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_contract_binds_each_ar
     )
     assert bindings == expected
     assert len({item["argv_sha256"] for item in bindings}) == len(matrix)
+    assert aseh_operator._identity(contract) == (
+        aseh_operator
+        .ASEH_R16_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
     live_contract = contract["production_lifecycle_live_contract"]
     assert live_contract == {
         "schema": (
@@ -6079,6 +6085,66 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_contract_binds_each_ar
             "two_successful_empty_exact_docker_snapshots"
         ),
     }
+
+
+def test_aseh_r17_provider_execution_identity_versions_executor_policy(
+) -> None:
+    r16 = aseh_operator._r16_sealed_receipt_validation_executor_contract()
+    r17 = aseh_operator._r17_sealed_receipt_validation_executor_contract()
+    matrix = (
+        aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+    )
+    assert r17["parent_executor_contract_cid"] == aseh_operator._identity(r16)
+    assert r17["policy_revision"] == 17
+    assert r17["admitted_validation_argv_digests"] == sorted(
+        aseh_operator._identity(list(command)) for command in matrix
+    )
+    assert r17["argv_executor_class_bindings"] == sorted(
+        (
+            {
+                "argv_sha256": aseh_operator._identity(list(command)),
+                "executor_class": (
+                    aseh_operator._r17_validation_executor_class(command)
+                ),
+            }
+            for command in matrix
+        ),
+        key=lambda item: item["argv_sha256"],
+    )
+    assert len(
+        {
+            item["argv_sha256"]
+            for item in r17["argv_executor_class_bindings"]
+        }
+    ) == len(matrix)
+    sealed_r17_only = next(
+        command
+        for command in matrix
+        if aseh_operator._r17_validation_executor_class(command)
+        == aseh_operator.ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R16"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r16,
+            declared=sealed_r17_only,
+        )
+    assert (
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r17,
+            declared=sealed_r17_only,
+        )
+        == r17
+    )
+    live = r17["production_lifecycle_live_contract"]
+    assert live["schema"].endswith(
+        "aseh-r16-production-lifecycle-live-contract@2"
+    )
+    assert live["parent_loss_policy"].endswith(
+        "unprivileged_executable_only"
+    )
+    assert live["provider_start_launch_policy"].endswith(
+        "executable_environment_admission"
+    )
 
 
 def test_aseh_r16_docker_create_readiness_vendor_resolver_rejects_malformed_live_evidence(
@@ -6384,6 +6450,11 @@ def test_aseh_r16_provider_start_launcher_arms_before_exact_exec(
     docker_config.mkdir(mode=0o700)
     container_name = "ipfs-accelerate-codex-123-" + ("a" * 32)
     events: list[object] = []
+    expected_docker_identity = (
+        aseh_operator._r16_admit_unprivileged_executable_path(
+            Path("/usr/bin/docker")
+        )
+    )
 
     monkeypatch.setattr(
         aseh_operator,
@@ -6395,11 +6466,21 @@ def test_aseh_r16_provider_start_launcher_arms_before_exact_exec(
         pass
 
     def observe_exec(
-        executable: str,
+        executable: int,
         argv: list[str],
         environment: dict[str, str],
     ) -> None:
-        events.append(("exec", executable, argv, environment))
+        events.append(
+            (
+                "exec",
+                aseh_operator._r16_admit_unprivileged_executable_fd(
+                    executable,
+                    expected_path=Path("/usr/bin/docker"),
+                ),
+                argv,
+                environment,
+            )
+        )
         raise ExactExecObserved
 
     monkeypatch.setattr(aseh_operator.os, "execve", observe_exec)
@@ -6428,7 +6509,7 @@ def test_aseh_r16_provider_start_launcher_arms_before_exact_exec(
         ),
         (
             "exec",
-            "/usr/bin/docker",
+            expected_docker_identity,
             [
                 "/usr/bin/docker",
                 "--host=unix:///var/run/docker.sock",
@@ -6445,9 +6526,391 @@ def test_aseh_r16_provider_start_launcher_arms_before_exact_exec(
     fixture_source = inspect.getsource(
         aseh_operator._r16_production_lifecycle_live_fixture
     )
-    assert "preexec_fn" not in fixture_source
-    assert "subprocess.Popen(" not in fixture_source
-    assert "os.posix_spawn(" in fixture_source
+    spawn_source = inspect.getsource(
+        aseh_operator._r16_spawn_exact_provider_start
+    )
+    assert "preexec_fn" not in fixture_source + spawn_source
+    assert "subprocess.Popen(" not in fixture_source + spawn_source
+    assert "os.posix_spawn(" in spawn_source
+
+
+def test_aseh_r17_provider_execution_identity_closes_launcher_fd_on_path_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lease_root = tmp_path / "asref-codex-container-launcher"
+    docker_config = lease_root / "docker-config"
+    lease_root.mkdir(mode=0o700)
+    docker_config.mkdir(mode=0o700)
+    original_open = os.open
+    original_resolve = Path.resolve
+    admitted_descriptors: list[int] = []
+
+    def capture_open(path: object, *args: object, **kwargs: object) -> int:
+        descriptor = original_open(path, *args, **kwargs)
+        if Path(path) == Path("/usr/bin/docker"):
+            admitted_descriptors.append(descriptor)
+        return descriptor
+
+    def fail_config_resolution(path: Path, strict: bool = False) -> Path:
+        if path == docker_config:
+            raise OSError(errno.EIO, "synthetic path resolution failure")
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(aseh_operator.os, "open", capture_open)
+    monkeypatch.setattr(Path, "resolve", fail_config_resolution)
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="launcher identity is unavailable",
+    ):
+        aseh_operator._r16_provider_start_launcher(
+            docker_bin="/usr/bin/docker",
+            docker_config=str(docker_config),
+            container_name=(
+                "ipfs-accelerate-codex-123-" + ("a" * 32)
+            ),
+            expected_parent_pid=123,
+            expected_parent_start_time_ticks=456,
+            expected_parent_boot_id=(
+                "11111111-2222-3333-4444-555555555555"
+            ),
+        )
+
+    assert len(admitted_descriptors) == 1
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        os.fstat(admitted_descriptors[0])
+
+
+def test_aseh_r17_provider_execution_identity_waits_for_exact_atomic_cleanup_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "provider-cleanup-bindings"
+    directory.mkdir(mode=0o700)
+    target_name = ("a" * 64) + ".json"
+    temporary_name = "." + target_name + "." + ("b" * 16)
+    temporary = directory / temporary_name
+    target = directory / target_name
+    temporary.write_bytes(b"{}\n")
+    temporary.chmod(0o600)
+    os.link(temporary, target)
+    sleeps: list[float] = []
+
+    def finish_publication(delay: float) -> None:
+        sleeps.append(delay)
+        temporary.unlink()
+
+    monkeypatch.setattr(multi_runner.time, "sleep", finish_publication)
+    assert multi_runner._stable_durable_docker_cleanup_entry_names(
+        directory,
+        expected_metadata=os.lstat(directory),
+    ) == (target_name,)
+    assert sleeps == [multi_runner._DOCKER_CLEANUP_PUBLICATION_POLL_SECONDS]
+
+    target.unlink()
+    unsafe = directory / temporary_name
+    unsafe.write_bytes(b"{}\n")
+    unsafe.chmod(0o644)
+    with pytest.raises(ValueError, match="atomic publication is unsafe"):
+        multi_runner._stable_durable_docker_cleanup_entry_names(
+            directory,
+            expected_metadata=os.lstat(directory),
+        )
+    unsafe.unlink()
+
+    unknown = directory / "foreign-writer"
+    unknown.write_bytes(b"{}\n")
+    with pytest.raises(ValueError, match="record set is invalid"):
+        multi_runner._stable_durable_docker_cleanup_entry_names(
+            directory,
+            expected_metadata=os.lstat(directory),
+        )
+
+
+def test_aseh_r17_provider_execution_identity_bounds_atomic_cleanup_churn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "provider-cleanup-bindings"
+    directory.mkdir(mode=0o700)
+    target_name = ("c" * 64) + ".json"
+    temporary_name = "." + target_name + "." + ("d" * 16)
+    temporary = directory / temporary_name
+    temporary.write_bytes(b"{}\n")
+    temporary.chmod(0o600)
+    original_stat = os.stat
+    ticks = iter((0.0, 0.1, 0.6))
+    sleeps: list[float] = []
+
+    def disappear_before_stat(
+        path: object,
+        *args: object,
+        **kwargs: object,
+    ) -> os.stat_result:
+        if path == temporary_name:
+            raise FileNotFoundError(temporary_name)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(multi_runner.os, "stat", disappear_before_stat)
+    monkeypatch.setattr(multi_runner.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(multi_runner.time, "sleep", sleeps.append)
+    with pytest.raises(ValueError, match="publication is contended"):
+        multi_runner._stable_durable_docker_cleanup_entry_names(
+            directory,
+            expected_metadata=os.lstat(directory),
+        )
+    assert sleeps == [multi_runner._DOCKER_CLEANUP_PUBLICATION_POLL_SECONDS]
+
+
+def test_aseh_r17_provider_execution_identity_binds_inode_and_closed_environment(
+) -> None:
+    environment = dict(aseh_operator.ASEH_R16_PROVIDER_START_ENVIRONMENT)
+    argv = ["/usr/bin/sleep", "30"]
+    process = subprocess.Popen(
+        argv,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    executable_fd = os.open(
+        argv[0],
+        os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+    )
+    wrong_executable_fd = os.open(
+        "/usr/bin/env",
+        os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+    )
+    try:
+        birth = aseh_operator._r16_exact_process_birth(process.pid)
+        observed = aseh_operator._r16_exact_process_execution_identity(
+            process.pid,
+            expected_birth=birth,
+            expected_executable_fd=executable_fd,
+            expected_executable_path=Path(argv[0]),
+            expected_argv=argv,
+            expected_environment=environment,
+        )
+        assert observed["executable_identity"]["path"] == argv[0]
+        assert observed["executable_identity"]["device"] > 0
+        assert observed["executable_identity"]["inode"] > 0
+        assert observed["environment"] == dict(sorted(environment.items()))
+        assert observed["environment_identity"] == aseh_operator._identity(
+            dict(sorted(environment.items()))
+        )
+        with pytest.raises(aseh_operator.OperatorError, match="identity differs"):
+            aseh_operator._r16_exact_process_execution_identity(
+                process.pid,
+                expected_birth=birth,
+                expected_executable_fd=executable_fd,
+                expected_executable_path=Path(argv[0]),
+                expected_argv=argv,
+                expected_environment={**environment, "EXTRA": "forbidden"},
+            )
+        with pytest.raises(aseh_operator.OperatorError, match="identity differs"):
+            aseh_operator._r16_exact_process_execution_identity(
+                process.pid,
+                expected_birth=birth,
+                expected_executable_fd=wrong_executable_fd,
+                expected_executable_path=Path("/usr/bin/env"),
+                expected_argv=argv,
+                expected_environment=environment,
+            )
+    finally:
+        os.close(wrong_executable_fd)
+        os.close(executable_fd)
+        process.terminate()
+        process.wait(timeout=5.0)
+
+
+@pytest.mark.parametrize("privilege_bit", [stat.S_ISUID, stat.S_ISGID])
+def test_aseh_r17_provider_execution_identity_rejects_setid(
+    privilege_bit: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    descriptor = os.open(
+        "/usr/bin/docker",
+        os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+    )
+    original_fstat = os.fstat
+    original_stat = os.stat
+    metadata = original_fstat(descriptor)
+    fields = {
+        name: int(getattr(metadata, name))
+        for name in (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+    }
+    fields["st_mode"] |= privilege_bit
+    forged = SimpleNamespace(**fields)
+    monkeypatch.setattr(
+        aseh_operator.os,
+        "fstat",
+        lambda value: forged if value == descriptor else original_fstat(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator.os,
+        "stat",
+        lambda value, *args, **kwargs: (
+            forged
+            if Path(value) == Path("/usr/bin/docker")
+            else original_stat(value, *args, **kwargs)
+        ),
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="identity is unsafe"):
+            aseh_operator._r16_admit_unprivileged_executable_fd(
+                descriptor,
+                expected_path=Path("/usr/bin/docker"),
+            )
+    finally:
+        os.close(descriptor)
+
+
+@pytest.mark.parametrize("unsafe_identity", ["not_executable", "empty"])
+def test_aseh_r17_provider_execution_identity_rejects_non_executable(
+    unsafe_identity: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = Path("/usr/bin/docker")
+    descriptor = os.open(
+        path,
+        os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+    )
+    original_fstat = os.fstat
+    original_stat = os.stat
+    metadata = original_fstat(descriptor)
+    fields = {
+        name: int(getattr(metadata, name))
+        for name in (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+    }
+    if unsafe_identity == "not_executable":
+        fields["st_mode"] &= ~0o111
+    else:
+        fields["st_size"] = 0
+    forged = SimpleNamespace(**fields)
+    monkeypatch.setattr(
+        aseh_operator.os,
+        "fstat",
+        lambda value: forged if value == descriptor else original_fstat(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator.os,
+        "stat",
+        lambda value, *args, **kwargs: (
+            forged
+            if Path(value) == path
+            else original_stat(value, *args, **kwargs)
+        ),
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="identity is unsafe"):
+            aseh_operator._r16_admit_unprivileged_executable_fd(
+                descriptor,
+                expected_path=path,
+            )
+    finally:
+        os.close(descriptor)
+
+
+def test_aseh_r17_provider_execution_identity_failure_reaps_unarmed_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_start_argv = [
+        "/usr/bin/docker",
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        "/tmp/aseh-r17-test-docker-config",
+        "start",
+        "--attach",
+        "--interactive",
+        "ipfs-accelerate-codex-test",
+    ]
+    provider_launcher_argv = ["/usr/bin/sleep", "30"]
+    spawned: list[int] = []
+    original_spawn = os.posix_spawn
+
+    def capture_spawn(*args: object, **kwargs: object) -> int:
+        pid = original_spawn(*args, **kwargs)
+        spawned.append(pid)
+        return pid
+
+    monkeypatch.setattr(aseh_operator.os, "posix_spawn", capture_spawn)
+    monkeypatch.setattr(
+        aseh_operator.os,
+        "get_inheritable",
+        lambda _descriptor: False,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r16_exact_process_argv",
+        lambda *_args, **_kwargs: ["unexpected-provider-argv"],
+    )
+    provider_stdin = open(os.devnull, "rb")
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="provider-start issuer identity differs",
+    ):
+        aseh_operator._r16_spawn_exact_provider_start(
+            provider_stdin=provider_stdin,
+            provider_start_argv=provider_start_argv,
+            provider_launcher_argv=provider_launcher_argv,
+        )
+    assert len(spawned) == 1
+    with pytest.raises(ChildProcessError):
+        os.waitpid(spawned[0], os.WNOHANG)
+
+
+@pytest.mark.parametrize("outcome", [b"capability", errno.EACCES])
+def test_aseh_r17_provider_execution_identity_rejects_capability_or_unknown(
+    outcome: bytes | int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    descriptor = os.open(
+        "/usr/bin/docker",
+        os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+    )
+    original_getxattr = os.getxattr
+
+    def getxattr(target: object, name: str, *args: object, **kwargs: object) -> bytes:
+        if target != descriptor:
+            return original_getxattr(target, name, *args, **kwargs)
+        if isinstance(outcome, int):
+            raise OSError(outcome, os.strerror(outcome))
+        return outcome
+
+    monkeypatch.setattr(aseh_operator.os, "getxattr", getxattr)
+    try:
+        message = (
+            "capability absence is unavailable"
+            if isinstance(outcome, int)
+            else "has file capabilities"
+        )
+        with pytest.raises(aseh_operator.OperatorError, match=message):
+            aseh_operator._r16_admit_unprivileged_executable_fd(
+                descriptor,
+                expected_path=Path("/usr/bin/docker"),
+            )
+    finally:
+        os.close(descriptor)
 
 
 @pytest.mark.skipif(
@@ -7114,6 +7577,49 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_rejects_unsealed_valid
         )
 
 
+def test_aseh_r17_provider_execution_identity_routes_only_board_check_to_launch_tree(
+) -> None:
+    commands = (
+        aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+    )
+    scopes = [
+        aseh_operator._r17_validation_working_tree_scope(command)
+        for command in commands
+    ]
+    assert scopes[-2] == "candidate_authorization_worktree"
+    assert all(
+        scope == "immutable_candidate_checkout"
+        for index, scope in enumerate(scopes)
+        if index != len(scopes) - 2
+    )
+
+
+def test_aseh_r17_provider_execution_identity_rejects_unsealed_validation_before_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unsealed validation command executed"
+        ),
+    )
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="R17 sealed validation executor is unavailable",
+    ):
+        aseh_operator._run_repair_provider_execution_identity_transition_validations(
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={},
+        )
+
+
 def test_aseh_r15_sealed_owner_module_registration_requires_exact_chain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -7239,6 +7745,71 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_requires_exact_chain(
     broken = [dict(item) for item in chain]
     broken[-1]["previous_receipt_cid"] = "sha256:" + ("f" * 64)
     with pytest.raises(aseh_operator.OperatorError, match="R16"):
+        aseh_operator._assert_exact_run_launch_admission(
+            {**admission, "repair_transition_chain": broken},
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+
+
+def test_aseh_repair_provider_execution_identity_transition_requires_exact_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R17_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": "sha256:" + f"{index + 1:064x}",
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+
+    assert aseh_operator._admit_exact_r17_transition_chain(chain) == chain
+    with pytest.raises(aseh_operator.OperatorError, match="R17"):
+        aseh_operator._admit_exact_r17_transition_chain(chain[:-1])
+    swapped = [dict(item) for item in chain]
+    swapped[-2], swapped[-1] = swapped[-1], swapped[-2]
+    with pytest.raises(aseh_operator.OperatorError, match="R17"):
+        aseh_operator._admit_exact_r17_transition_chain(swapped)
+
+    candidate_head = "c" * 40
+    candidate_tree = "d" * 40
+    chain[-2]["repair_head"] = (
+        aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+    )
+    chain[-1].update(
+        {
+            "repair_head": candidate_head,
+            "repair_tree": candidate_tree,
+        }
+    )
+    transition = dict(chain[-1])
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+        ),
+    )
+    admission = {
+        "runtime_source_head": candidate_head,
+        "runtime_repository_tree_id": candidate_tree,
+        "repair_transition": transition,
+        "repair_transition_chain": chain,
+    }
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    broken = [dict(item) for item in chain]
+    broken[-1]["previous_receipt_cid"] = "sha256:" + ("f" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R17"):
         aseh_operator._assert_exact_run_launch_admission(
             {**admission, "repair_transition_chain": broken},
             candidate_head=candidate_head,
@@ -7487,6 +8058,127 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_publicat
     ]
 
 
+def test_aseh_repair_provider_execution_identity_transition_publication_is_fenced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt_path = tmp_path / "repair-r17.json"
+    candidate_head = "a" * 40
+    candidate_tree = "b" * 40
+    previous_cid = "sha256:" + ("c" * 64)
+    previous_transition = {
+        "repair_head": (
+            aseh_operator
+            .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+        ),
+        "receipt_cid": previous_cid,
+    }
+    prior_chain = [
+        {"receipt_cid": "sha256:" + f"{index + 1:064x}"}
+        for index in range(15)
+    ] + [{"receipt_cid": previous_cid}]
+    ordering: list[str] = []
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args: (
+            aseh_operator
+            .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+            if args[:3] == ("show", "-s", "--format=%P")
+            else candidate_tree
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: {"candidate": "exact"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_provider_execution_identity_transition_validations",
+        lambda **_kwargs: ordering.append("validate") or [],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda *_args: "sha256:" + ("d" * 64),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_provider_execution_identity_transition",
+        lambda *_args, **_kwargs: ordering.append("admit_receipt") or {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **kwargs: ordering.append(str(kwargs["boundary"])),
+    )
+
+    def publish(
+        path: Path,
+        _payload: object,
+        *,
+        authority_directory_fd: int,
+    ) -> None:
+        assert path == receipt_path
+        assert authority_directory_fd == 93
+        ordering.append("publish")
+
+    monkeypatch.setattr(aseh_operator, "_atomic_json_create", publish)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "database admission ran before R17 receipt publication"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_provider_execution_identity_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_provider_execution_identity_transition_receipt": (
+                    receipt_path
+                )
+            },
+            bootstrap={
+                "plan_root_cid": "plan:r17",
+                "repository_tree_id": "tree:bootstrap",
+            },
+            bootstrap_id="sha256:" + ("e" * 64),
+            head=candidate_head,
+            previous_receipt={"receipt_cid": previous_cid},
+            previous_transition=previous_transition,
+            prior_receipt_chain=prior_chain,
+            authorization_directory_fd=93,
+        )
+    )
+
+    assert result is not None
+    assert result["idempotent_replay"] is False
+    assert len(result["repair_transition_chain"]) == 17
+    assert result["repair_transition_receipt"]["database_mutated"] is False
+    assert ordering == [
+        "validate",
+        "after R17 validation before receipt publication",
+        "admit_receipt",
+        "immediately before R17 receipt publication",
+        "publish",
+        "after R17 receipt publication",
+    ]
+
+
 def test_aseh_repair_sealed_receipt_validation_delegates_r15_before_suffix_admission(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -7629,6 +8321,83 @@ def test_aseh_repair_sealed_owner_module_registration_delegates_r16_before_suffi
                 "repair_head": (
                     aseh_operator
                     .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
+                ),
+                "receipt_cid": previous_cid,
+            },
+            prior_receipt_chain=prior_chain,
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
+
+
+def test_aseh_repair_docker_create_readiness_vendor_resolver_delegates_r17_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r16_path = tmp_path / "repair-r16.json"
+    r16_path.touch()
+    previous_cid = "sha256:" + ("a" * 64)
+    r16_cid = "sha256:" + ("b" * 64)
+    r16_receipt = {"repair_head": "c" * 40, "receipt_cid": r16_cid}
+    r16_transition = {
+        "repair_head": (
+            aseh_operator
+            .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+        ),
+        "receipt_cid": r16_cid,
+    }
+    prior_chain = [
+        {"receipt_cid": "sha256:" + f"{index + 1:064x}"}
+        for index in range(14)
+    ] + [{"receipt_cid": previous_cid}]
+    sentinel = {"delegated": "r17"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r16_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_docker_create_readiness_vendor_resolver_transition",
+        lambda *_args, **_kwargs: r16_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_provider_execution_identity_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if len(kwargs["prior_receipt_chain"]) == 16
+            else pytest.fail("R16 did not delegate the full chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R16 suffix admission ran before R17 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_docker_create_readiness_vendor_resolver_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_docker_create_readiness_vendor_resolver_transition_receipt": (
+                    r16_path
+                )
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="d" * 40,
+            previous_receipt={"receipt_cid": previous_cid},
+            previous_transition={
+                "repair_head": (
+                    aseh_operator
+                    .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
                 ),
                 "receipt_cid": previous_cid,
             },
@@ -8590,7 +9359,9 @@ def test_aseh_repair_sealed_owner_module_registration_transition_is_closed_and_c
         )
 
 
-def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_closed_and_chained(
+@pytest.mark.parametrize("transition_revision", [16, 17], ids=["r16", "r17"])
+def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chained_with_repair_docker_create_readiness_vendor_resolver_transition(
+    transition_revision: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repair_head = "a" * 40
@@ -8603,21 +9374,26 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_close
     witness = {
         "head": repair_head,
         "tree": repair_tree,
-        "branch_ref": "refs/heads/aseh-r16-fixture",
+        "branch_ref": f"refs/heads/aseh-r{transition_revision}-fixture",
         "index_entries_digest": "sha256:" + ("3" * 64),
         "index_flags_digest": "sha256:" + ("4" * 64),
         "status_digest": aseh_operator._identity(b""),
         "head_reflog_digest": "sha256:" + ("5" * 64),
         "branch_reflog_digest": "sha256:" + ("6" * 64),
     }
+    is_r17 = transition_revision == 17
     executor_contract = (
-        aseh_operator._r16_sealed_receipt_validation_executor_contract()
+        aseh_operator._r17_sealed_receipt_validation_executor_contract()
+        if is_r17
+        else aseh_operator._r16_sealed_receipt_validation_executor_contract()
+    )
+    commands = (
+        aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+        if is_r17
+        else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
     )
     validations = []
-    for command in (
-        aseh_operator
-        .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
-    ):
+    for command in commands:
         environment_identity = (
             aseh_operator._r11_command_environment_identity(
                 aseh_operator._r11_validation_environment(
@@ -8627,7 +9403,11 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_close
                 checkout=Path("/sealed-checkout"),
             )
         )
-        executor_class = aseh_operator._r16_validation_executor_class(command)
+        executor_class = (
+            aseh_operator._r17_validation_executor_class(command)
+            if is_r17
+            else aseh_operator._r16_validation_executor_class(command)
+        )
         declared_command_executed = True
         executed_argv = list(command)
         executed_returncode = 0
@@ -8670,7 +9450,11 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_close
                 "candidate_tree": repair_tree,
                 "environment_identity": environment_identity,
                 "working_tree_scope": (
-                    aseh_operator._r16_validation_working_tree_scope(command)
+                    aseh_operator._r17_validation_working_tree_scope(command)
+                    if is_r17
+                    else aseh_operator._r16_validation_working_tree_scope(
+                        command
+                    )
                 ),
                 "executed_returncode": executed_returncode,
                 "validation_outcome": validation_outcome,
@@ -8691,7 +9475,7 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_close
         )
     bootstrap = {
         "bootstrap_receipt_id": "sha256:" + ("9" * 64),
-        "plan_root_cid": "plan:r16",
+        "plan_root_cid": f"plan:r{transition_revision}",
         "repository_tree_id": "tree:bootstrap",
         "source_forest": {
             "by_owner": {
@@ -8702,62 +9486,70 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_close
     }
     receipt = {
         "schema": (
-            aseh_operator
-            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
+            if is_r17
+            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
         ),
         "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
         "stable_identity": (
             f"{aseh_operator.PROGRAM}/"
-            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R16"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-"
+            f"R{transition_revision}"
         ),
         "program_id": aseh_operator.PROGRAM,
-        "transition_revision": 16,
+        "transition_revision": transition_revision,
         "bootstrap_receipt_id": bootstrap["bootstrap_receipt_id"],
         "previous_receipt_cid": prior_cid,
         "plan_root_cid": bootstrap["plan_root_cid"],
         "repository_tree_id": bootstrap["repository_tree_id"],
         "base_head": (
-            aseh_operator
-            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+            if is_r17
+            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
         ),
         "base_tree": base_tree,
         "repair_head": repair_head,
         "repair_tree": repair_tree,
         "changed_paths": list(
-            aseh_operator
-            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS
+            if is_r17
+            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
         ),
         "patch_digest": patch_digest,
-        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R15"],
+        "dependencies": [
+            f"ASEH-BOOTSTRAP-002@ASEH-PLAN-R{transition_revision - 1}"
+        ],
         "owning_repository": "ipfs_accelerate_py",
         "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
         "authority_requirement": (
-            aseh_operator
-            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
+            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_AUTHORITY
+            if is_r17
+            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
         ),
         "validation_results": validations,
         "candidate_authorization_witness": witness,
         "sealed_validation_executor_contract": executor_contract,
         "terminal_success_criteria": (
-            aseh_operator
-            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SUCCESS
+            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SUCCESS
+            if is_r17
+            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SUCCESS
         ),
         "terminal_non_success_criteria": (
-            aseh_operator
-            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_NON_SUCCESS
+            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_NON_SUCCESS
+            if is_r17
+            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_NON_SUCCESS
         ),
         "semantic_corpus_changed": False,
         "database_mutated": False,
         "authorized_at": 1.0,
     }
     receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    expected_base_head = str(receipt["base_head"])
+    expected_changed_paths = tuple(receipt["changed_paths"])
 
     def fake_git(*arguments: str) -> str:
         if arguments[:3] == ("show", "-s", "--format=%P"):
-            return (
-                aseh_operator
-                .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
-            )
+            return expected_base_head
         if arguments[:1] == ("rev-parse",):
             revision = arguments[1]
             if revision.endswith(":ipfs_datasets_py"):
@@ -8773,19 +9565,21 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_close
     monkeypatch.setattr(
         aseh_operator,
         "_git_changed_paths",
-        lambda *_args: (
-            aseh_operator
-            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
-        ),
+        lambda *_args: expected_changed_paths,
     )
     monkeypatch.setattr(
         aseh_operator,
         "_git_patch_digest",
         lambda *_args: patch_digest,
     )
+    previous_receipt_id_function = (
+        "_repair_docker_create_readiness_vendor_resolver_transition_receipt_id"
+        if is_r17
+        else "_repair_sealed_owner_module_registration_transition_receipt_id"
+    )
     monkeypatch.setattr(
         aseh_operator,
-        "_repair_sealed_owner_module_registration_transition_receipt_id",
+        previous_receipt_id_function,
         lambda _payload: prior_cid,
     )
     monkeypatch.setattr(
@@ -8794,16 +9588,18 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_close
         lambda evidence, **_kwargs: dict(evidence),
     )
 
-    admitted = (
-        aseh_operator
-        ._validate_repair_docker_create_readiness_vendor_resolver_transition(
-            receipt,
-            bootstrap=bootstrap,
-            previous_receipt={"receipt_cid": prior_cid},
-            rerun_validations=False,
-        )
+    validate_transition = (
+        aseh_operator._validate_repair_provider_execution_identity_transition
+        if is_r17
+        else aseh_operator._validate_repair_docker_create_readiness_vendor_resolver_transition
     )
-    assert admitted["transition_revision"] == 16
+    admitted = validate_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt={"receipt_cid": prior_cid},
+        rerun_validations=False,
+    )
+    assert admitted["transition_revision"] == transition_revision
     assert admitted["previous_receipt_cid"] == prior_cid
     assert admitted["candidate_authorization_witness"] == witness
 
@@ -8813,7 +9609,7 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_close
         {key: value for key, value in replayed.items() if key != "receipt_cid"}
     )
     with pytest.raises(aseh_operator.OperatorError, match="witness differs"):
-        aseh_operator._validate_repair_docker_create_readiness_vendor_resolver_transition(
+        validate_transition(
             replayed,
             bootstrap=bootstrap,
             previous_receipt={"receipt_cid": prior_cid},
@@ -11400,11 +12196,15 @@ def test_aseh_sealed_owner_rechecks_candidate_before_owner_start(
     ]
 
 
-@pytest.mark.parametrize("include_r16", [False, True], ids=["r15", "r16"])
-def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_admission_bases(
+@pytest.mark.parametrize(
+    "active_revision",
+    [15, 16, 17],
+    ids=["r15", "r16", "r17"],
+)
+def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execution_identity_are_active_admission_bases(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    include_r16: bool,
+    active_revision: int,
 ) -> None:
     bootstrap_path = tmp_path / "bootstrap.json"
     repair_path = tmp_path / "repair-r1.json"
@@ -11425,6 +12225,7 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_adm
     docker_create_readiness_vendor_resolver_path = (
         tmp_path / "repair-r16.json"
     )
+    provider_execution_identity_path = tmp_path / "repair-r17.json"
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
@@ -11446,8 +12247,10 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_adm
         database_path,
     ):
         path.touch()
-    if include_r16:
+    if active_revision >= 16:
         docker_create_readiness_vendor_resolver_path.touch()
+    if active_revision >= 17:
+        provider_execution_identity_path.touch()
     paths = {
         "bootstrap_receipt": bootstrap_path,
         "repair_transition_receipt": repair_path,
@@ -11489,6 +12292,9 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_adm
         ),
         "repair_docker_create_readiness_vendor_resolver_transition_receipt": (
             docker_create_readiness_vendor_resolver_path
+        ),
+        "repair_provider_execution_identity_transition_receipt": (
+            provider_execution_identity_path
         ),
         "database": database_path,
     }
@@ -11542,8 +12348,14 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_adm
         .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
     )
     r16_head = "e" * 40
+    r17_head = "f" * 40
+    active_head = {
+        15: r15_head,
+        16: r16_head,
+        17: r17_head,
+    }[active_revision]
     population = {
-        "source_head": r16_head if include_r16 else r15_head,
+        "source_head": active_head,
         "repository_tree_id": "tree:runtime",
         "plan_root_cid": "plan:sealed",
         "source_forest": {"forest_cid": "forest:runtime"},
@@ -11662,6 +12474,16 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_adm
         "transition_revision": 16,
         "receipt_cid": "receipt:r16",
     }
+    r17 = {
+        "schema": (
+            aseh_operator
+            .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
+        ),
+        "base_head": r16_head,
+        "repair_head": r17_head,
+        "transition_revision": 17,
+        "receipt_cid": "receipt:r17",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
@@ -11680,10 +12502,12 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_adm
         sealed_receipt_validation_path: {"revision": 14},
         sealed_owner_module_registration_path: {"revision": 15},
     }
-    if include_r16:
+    if active_revision >= 16:
         payloads[docker_create_readiness_vendor_resolver_path] = {
             "revision": 16
         }
+    if active_revision >= 17:
+        payloads[provider_execution_identity_path] = {"revision": 17}
     suffix_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
@@ -11781,6 +12605,11 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_adm
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_validate_repair_provider_execution_identity_transition",
+        lambda *_args, **_kwargs: r17,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_read_continuity_state",
         lambda *_args, **_kwargs: (
             {"projection_cid": "projection:current", "event_cursor": 79},
@@ -11819,14 +12648,13 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_adm
         object(), {}, paths
     )
 
-    expected_active = r16 if include_r16 else r15
+    expected_active = {15: r15, 16: r16, 17: r17}[active_revision]
     assert admission["repair_transition"] == expected_active
     assert [
         item.get("transition_revision", 1)
         for item in admission["repair_transition_chain"]
-    ] == list(range(1, 17 if include_r16 else 16))
-    expected_head = r16_head if include_r16 else r15_head
-    assert suffix_calls[-1] == (expected_head, expected_head)
+    ] == list(range(1, active_revision + 1))
+    assert suffix_calls[-1] == (active_head, active_head)
     assert admission["canonical_continuity"][
         "followup_to_clean_launch"
     ] == r3
@@ -11866,13 +12694,22 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_adm
     assert admission["canonical_continuity"][
         "sealed_receipt_validation_to_sealed_owner_module_registration"
     ] == r15
-    if include_r16:
+    if active_revision >= 16:
         assert admission["canonical_continuity"][
             "sealed_owner_module_registration_to_docker_create_readiness_vendor_resolver"
         ] == r16
     else:
         assert (
             "sealed_owner_module_registration_to_docker_create_readiness_vendor_resolver"
+            not in admission["canonical_continuity"]
+        )
+    if active_revision >= 17:
+        assert admission["canonical_continuity"][
+            "docker_create_readiness_vendor_resolver_to_provider_execution_identity"
+        ] == r17
+    else:
+        assert (
+            "docker_create_readiness_vendor_resolver_to_provider_execution_identity"
             not in admission["canonical_continuity"]
         )
 
