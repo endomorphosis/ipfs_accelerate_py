@@ -1,0 +1,227 @@
+{
+  "artifact_type": "casf_final_qualification_report",
+  "schema": "casf/qualification-report@1",
+  "artifact_version": 1,
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "root_objective_id": "CASF-G000",
+  "task_id": "CASF-043",
+  "authority": {
+    "authoritative": false,
+    "qualification_authority": false,
+    "completion_authority": false,
+    "promotion_authority": false,
+    "scheduling_authority": false,
+    "reason": "This is a current-tree observation. Only independently verified, registered state-owner receipts may support a future qualification or promotion decision."
+  },
+  "baseline": {
+    "revision": "84a056e41e48a81d4484be43840196578d6c87da",
+    "tree_id": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+    "source": "docs/architecture/causal_event_federation_inventory/starting_tree.json"
+  },
+  "observed_component_snapshot": {
+    "revision": "5796d3f78b77b2b6c1c59a2b74c86020a0b141ae",
+    "tree_id": "14b36ca1f21bfd03dd4b88a7866a0c1a40059249",
+    "observation_kind": "committed_source_tree_before_report_artifact",
+    "observed_at_utc": "2026-08-25T01:38:42Z",
+    "report_artifact_in_snapshot": false,
+    "qualification_identity_available": false,
+    "reason": "A Git-committed report cannot contain a self-referential final tree identity. The report therefore records the last complete predecessor component tree and fails closed until a registered producer emits an exact merged-tree qualification identity and independently verifies it."
+  },
+  "control_plane": {
+    "state": "not_observed",
+    "generation_id": null,
+    "schema_fingerprint": null,
+    "reason": "No registered state-owner current-tree qualification receipt supplied a generation and schema fingerprint. This report does not open DuckDB or infer either value from source files."
+  },
+  "capabilities": {
+    "state_owner": {
+      "status": "not_live_qualified",
+      "evidence_ref": null,
+      "reason": "No authenticated typed Quack live state-owner receipt is bound to the observed component snapshot."
+    },
+    "quack_event_wait": {
+      "status": "owner_local_hermetic_only",
+      "evidence_ref": null,
+      "reason": "Owner-local event waiting does not establish a qualified remote multi-supervisor Quack transport."
+    },
+    "ducklake_projection": {
+      "status": "not_currently_qualified",
+      "evidence_ref": null,
+      "reason": "DuckLake remains optional and non-authoritative; no exact-snapshot promotion receipt was supplied."
+    },
+    "live_scale_capacity": {
+      "status": "unavailable",
+      "evidence_ref": null,
+      "reason": "The frozen 12-supervisor, 256-agent, and token manifests declare their admitted live profiles unavailable and not run."
+    }
+  },
+  "population_and_concurrency": {
+    "federation_population": "not_observed",
+    "supervisor_processes": "not_observed",
+    "registered_logical_agents": "not_observed",
+    "maximum_concurrent_subagents": "not_observed",
+    "qualified_live_population": false,
+    "reason": "No current generation, fence-bound, state-owner attestation establishes a live population. Frozen benchmark targets and in-process objects are not population evidence."
+  },
+  "benchmark_evidence": {
+    "suite_path": "benchmarks/agent_supervisor/causal_event_federation/manifest.json",
+    "suite_component_snapshot": {
+      "revision": "75f9487ff051ce5defd6171d7b41dd8127a0d59f",
+      "tree_id": "4e31236de005816686e68a336adb1a7fe679e6fa"
+    },
+    "suite_current_for_observed_component_snapshot": false,
+    "suite_status": "not_run",
+    "authoritative": false,
+    "promotion_eligible": false,
+    "components": [
+      {
+        "task_id": "CASF-038",
+        "schema": "casf/idle-benchmark@1",
+        "availability": "unavailable",
+        "execution_status": "not_run",
+        "qualified": false,
+        "promotion_eligible": false,
+        "reason_code": "typed_quack_live_endpoint_not_supplied"
+      },
+      {
+        "task_id": "CASF-039",
+        "schema": "casf/parallel-benchmark@1",
+        "availability": "unavailable",
+        "execution_status": "not_run",
+        "qualified": false,
+        "promotion_eligible": false,
+        "reason_code": "qualified_twelve_supervisor_live_capacity_not_admitted"
+      },
+      {
+        "task_id": "CASF-040",
+        "schema": "casf/load-benchmark@1",
+        "availability": "unavailable",
+        "execution_status": "not_run",
+        "qualified": false,
+        "promotion_eligible": false,
+        "reason_code": "qualified_256_agent_bounded_load_live_capacity_not_admitted"
+      },
+      {
+        "task_id": "CASF-041",
+        "schema": "casf/token-benchmark@1",
+        "availability": "unavailable",
+        "execution_status": "not_run",
+        "qualified": false,
+        "promotion_eligible": false,
+        "reason_code": "qualified_cross_supervisor_token_live_capacity_not_admitted"
+      }
+    ]
+  },
+  "result_coverage": {
+    "task_and_dedup": "not_currently_qualified",
+    "causal_graph_and_abstraction": "not_currently_qualified",
+    "interventions_and_independence": "not_currently_qualified",
+    "events_outbox_dead_letters_and_wakeups": "not_currently_qualified",
+    "idle_behavior": "not_currently_qualified",
+    "parallel_throughput_and_merge": "not_currently_qualified",
+    "model_context_and_token_efficiency": "not_currently_qualified",
+    "proof_and_validation": "not_currently_qualified",
+    "ducklake_projection": "not_currently_qualified",
+    "recovery_and_failures": "not_currently_qualified"
+  },
+  "execution_evidence": {
+    "executed_current_tree_receipts": [],
+    "unexecuted_or_not_current": [
+      "casf/idle-benchmark@1",
+      "casf/parallel-benchmark@1",
+      "casf/load-benchmark@1",
+      "casf/token-benchmark@1",
+      "casf/promotion-decision@1",
+      "casf/federation-completion-receipt@1"
+    ],
+    "models_executed": [],
+    "reason": "No receipt is inferred from source presence, a task-board state, a test name, a process exit, a quiet queue, or a historical artifact."
+  },
+  "safety_gates": {
+    "direct_multi_process_file_mutation": "unverified",
+    "store_ambiguity": "unverified",
+    "event_loss": "unverified",
+    "duplicate_committed_effects": "unverified",
+    "stale_fence_completion": "unverified",
+    "unauthorized_creation": "unverified",
+    "tenant_leakage": "unverified",
+    "agent_sql": "unverified",
+    "secret_leakage": "unverified",
+    "causal_notification_loss": "unverified",
+    "nomination_or_stale_map_authority": "unverified",
+    "cycle_or_shard_corruption": "unverified",
+    "forbidden_idle_activity": "unverified",
+    "replay_idempotency": "unverified",
+    "ownership_effect_or_merge_corruption": "unverified",
+    "reduced_assurance": "unverified"
+  },
+  "claims": {
+    "event_driven": false,
+    "causally_coordinated": false,
+    "multi_supervisor": false,
+    "parallel": false,
+    "token_efficient": false,
+    "production_ready": false,
+    "ducklake_promotion_qualified": false,
+    "exactly_once_network_delivery": false
+  },
+  "residual_gaps": [
+    {
+      "gap_id": "CASF-043-EXACT-MERGED-TREE-IDENTITY",
+      "status": "blocking",
+      "scope": "all qualification and promotion claims",
+      "required_resolution": "A registered state-owner producer must emit and an independent verifier must validate a qualification identity for the exact merged tree, schema, generation, policy, capabilities, task, attempt, assignment, worktree, and fence."
+    },
+    {
+      "gap_id": "CASF-043-LIVE-TYPED-QUACK",
+      "status": "blocking",
+      "scope": "event-driven, multi-supervisor, parallel, and production claims",
+      "required_resolution": "Admit and independently verify an authenticated typed Quack live event-wait path with no-lost-wakeup evidence; polling and owner-local evidence do not resolve this gap."
+    },
+    {
+      "gap_id": "CASF-043-SCALE-BENCHMARKS-NOT-RUN",
+      "status": "blocking",
+      "scope": "parallel, load, and throughput claims",
+      "required_resolution": "Run the admitted real-process 12-supervisor and 256-agent profiles against the exact current tree, retain raw content-addressed results, and satisfy every zero-tolerance gate."
+    },
+    {
+      "gap_id": "CASF-043-TOKEN-BENCHMARK-NOT-RUN",
+      "status": "blocking",
+      "scope": "token-efficient claim",
+      "required_resolution": "Run the frozen same-population baseline and 12-supervisor token comparison with current receipt-backed identities and meet every threshold without reducing assurance."
+    },
+    {
+      "gap_id": "CASF-043-CONJUNCTIVE-GATE-DECISION",
+      "status": "blocking",
+      "scope": "promotion and release",
+      "required_resolution": "Submit complete exact-identity evidence to the registered promotion gate and independently validate a permitted decision; this report cannot create or apply that decision."
+    }
+  ],
+  "qualification": {
+    "status": "blocked",
+    "promotion_eligible": false,
+    "release_eligible": false,
+    "quarantine_required": true,
+    "promotion_applied": false,
+    "rollback_applied": false,
+    "authoritative_state_changed": false,
+    "completion_created": false,
+    "upstream_reverification_required": true,
+    "reason": "All promotion gates are conjunctive. Missing current-tree identity and live benchmark evidence blocks rather than degrades the required claim."
+  },
+  "rollback": {
+    "status": "not_authorized_by_this_report",
+    "target": {
+      "revision": "84a056e41e48a81d4484be43840196578d6c87da",
+      "tree_id": "40f0771e77d394ac91d92cc1edb02f7860f6131b"
+    },
+    "required_authority": "registered typed state-owner rollback decision bound to a verified predecessor qualification identity",
+    "history_rewrite_permitted": false
+  },
+  "nonclaims": [
+    "This report is not a federation-completion receipt, policy decision, release manifest, or promotion decision.",
+    "No task-board status, source module, test name, process exit, quiet queue, model statement, historical receipt, metric, or DuckLake projection is treated as current-tree qualification evidence.",
+    "No direct DuckDB access, Quack-to-file fallback, DuckLake scheduling authority, model-created authority, model-created policy permission, or model-created completion is authorized by this report.",
+    "A blocked qualification is not evidence that any safety gate failed; it records that the required exact current-tree evidence was not supplied."
+  ]
+}
