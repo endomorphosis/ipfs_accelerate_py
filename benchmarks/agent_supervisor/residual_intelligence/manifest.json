@@ -1,11 +1,63 @@
 {
-  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-benchmark-manifest@1",
-  "program_identifier": "agent-supervisor-verified-residual-intelligence-foundry-v1",
-  "status": "staged_not_qualified",
+  "bindings": {
+    "binding_set_id": "sha256:a4e9e9362b2e4c2069ec70a99706053ee6ee328a01d9409498ea859529d82326",
+    "catalog_identity": "sha256:6df5eb3698e8d24bd42df96480e702134e83b4fed7e6d8b69d7cf2b2edc43205",
+    "cross_repository_identities": [
+      "sha256:a58f212c3d2f515114ca4c7ad1bb7601c94c449e5f5de3ae79eff82991993421"
+    ],
+    "fault_identity": "sha256:aeec5f96acf33dcf176c95143097a98bc7b7b5364954cb154c15ff61e337b501",
+    "model_identity": "sha256:0c856750b316391461583e741dba0513a1a1faac1611cdbdc1a538b840536949",
+    "objective_identity": "sha256:68911e08733fd522b9d46f5486457bd38a899cbd5d76e237b312c67b99c0a405",
+    "provider_identity": "sha256:f531a24cb5877ecaf8efa6798fa33c80bd95026e70844d55a489ed79551eeea8",
+    "repository_identity": "sha256:85df20623ebad70119970bf0988f2de655409ae109ccfbc77fcfe98007053913",
+    "schema": "ipfs_accelerate_py/agent-supervisor/residual-benchmark-bindings@1",
+    "tokenizer_identity": "sha256:e959beecb869e791e53a73aa7422d7bb4e8912d0f90e68d69b7d1ca56b0ca052",
+    "validation_identity": "sha256:aaab070387997a1ddcf0bd1bb785fc362a4ed50435ee72473ca025f7b6e33f6b"
+  },
+  "case_artifact": "cases.jsonl",
+  "case_count": 384,
+  "case_root": "sha256:a69eb02d820bfa2cfb1369b87eb4561196d6a9be889daf93c676df3c083bd63f",
+  "frozen_bindings_required_before_qualification": [
+    "repository_states",
+    "objective_revisions",
+    "operation_catalog",
+    "provider_policy",
+    "tokenizer",
+    "model_versions",
+    "fault_schedule",
+    "validation_policy"
+  ],
+  "frozen_root": "sha256:ad93bf3808169c13da3e2b07947936e727d552a29e51dddfd84a6cc79646ebe9",
+  "hidden_test_commitment": "sha256:edd59faedf975d0b5adbf62022363009a9b4d5fede349516a93703f2931c8547",
+  "large_corpus_committed": false,
   "owner_task": "VRIF-030",
+  "paired_baseline": {
+    "baseline_identity": "sha256:dbc781cff1939a0db4967924940d408228278b96c625b1a9b47a7966281dee66",
+    "candidate_only": true
+  },
+  "partition_access": {
+    "adversarial": "hidden_evaluation_only",
+    "development": "evaluation_metadata",
+    "held_out": "hidden_evaluation_only",
+    "training": "training_only_admitted_metadata"
+  },
+  "partitions": [
+    "training",
+    "development",
+    "held_out",
+    "adversarial"
+  ],
+  "program_identifier": "agent-supervisor-verified-residual-intelligence-foundry-v1",
+  "promotion_evidence": false,
+  "required_case_kinds": [
+    "boundary",
+    "negative",
+    "cross_repository",
+    "unknown_ood"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-benchmark-manifest@1",
   "source_revision": "84a056e41e48a81d4484be43840196578d6c87da",
-  "partitions": ["training", "development", "held_out", "adversarial"],
-  "required_case_kinds": ["boundary", "negative", "cross_repository", "unknown_ood"],
+  "status": "staged_not_qualified",
   "task_families": [
     "TASK_CLASSIFICATION",
     "RISK_CLASSIFICATION",
@@ -32,18 +84,6 @@
     "HUMAN_ESCALATION_CLASSIFICATION",
     "NOVEL_UNBOUNDED_REASONING"
   ],
-  "frozen_bindings_required_before_qualification": [
-    "repository_states",
-    "objective_revisions",
-    "operation_catalog",
-    "provider_policy",
-    "tokenizer",
-    "model_versions",
-    "fault_schedule",
-    "validation_policy"
-  ],
   "training_admission": "training_unavailable",
-  "weights_committed": false,
-  "large_corpus_committed": false,
-  "promotion_evidence": false
+  "weights_committed": false
 }
