@@ -192,6 +192,7 @@ def _write_native_session_home(
     *,
     session_id: str = _NATIVE_SESSION_ID,
     workspace: Path | None = None,
+    model: str = "grok-4.6",
 ) -> Path:
     session_root = grok_home / "sessions"
     summary_info = {"id": session_id}
@@ -209,7 +210,7 @@ def _write_native_session_home(
         json.dumps(
             {
                 "info": summary_info,
-                "current_model_id": "grok-4.6",
+                "current_model_id": model,
                 "grok_home": str(grok_home),
             },
             sort_keys=True,

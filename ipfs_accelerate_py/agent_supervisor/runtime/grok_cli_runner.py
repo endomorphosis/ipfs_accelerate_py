@@ -2577,6 +2577,14 @@ _GROK_POSITIVE_ENVIRONMENT_NAMES = frozenset(
         "XDG_STATE_HOME",
     }
 )
+_GROK_CODEX_COMPATIBILITY_KILL_SWITCH_NAMES = (
+    "GROK_CODEX_AGENTS_ENABLED",
+    "GROK_CODEX_HOOKS_ENABLED",
+    "GROK_CODEX_MCPS_ENABLED",
+    "GROK_CODEX_RULES_ENABLED",
+    "GROK_CODEX_SESSIONS_ENABLED",
+    "GROK_CODEX_SKILLS_ENABLED",
+)
 
 
 def _sanitized_grok_cli_environment(
@@ -2595,11 +2603,22 @@ def _sanitized_grok_cli_environment(
         for name, value in candidate.items()
     ):
         raise ValueError("Grok child environment is invalid")
-    return {
+    environment = {
         name: candidate[name]
         for name in sorted(_GROK_POSITIVE_ENVIRONMENT_NAMES)
         if name in candidate
     }
+    # These compatibility switches are part of the isolation boundary, not
+    # caller-controlled presentation state.  Older router pins do not accept
+    # ``isolate_alternate_providers`` and newer non-isolated calls may omit or
+    # override them, so seal every switch locally after filtering.
+    environment.update(
+        {
+            name: "0"
+            for name in _GROK_CODEX_COMPATIBILITY_KILL_SWITCH_NAMES
+        }
+    )
+    return environment
 
 
 def _effect_receipt_identity(value: object) -> str:
