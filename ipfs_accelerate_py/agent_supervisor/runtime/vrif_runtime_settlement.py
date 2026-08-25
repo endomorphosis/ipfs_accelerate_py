@@ -88,7 +88,10 @@ _JSON_MAX_BYTES = 262_144
 _MERGE_QUEUE_METADATA_MAX_BYTES = 64 * 1_024
 _HISTORY_ROW_BOUND = 8_192
 _RETIRED_STORE_MAX_BYTES = 64 * 1024 * 1024
-_MAX_RETIRED_COORDINATION_SNAPSHOTS = 1
+_RETIRED_COORDINATION_LANE_INDEXES: Final[tuple[int, ...]] = (2, 3)
+_MAX_RETIRED_COORDINATION_SNAPSHOTS = len(
+    _RETIRED_COORDINATION_LANE_INDEXES
+)
 _MAX_ACTIVE_IDS = 1_024
 _MAX_LOCK_TIMEOUT_SECONDS = 1.0
 _PID_MAX_BYTES = 32
@@ -623,6 +626,7 @@ def _parse_retired_coordination_config(
         )
     normalized: list[dict[str, Any]] = []
     seen_attempt_ids: set[str] = set()
+    seen_lane_indexes: set[int] = set()
     for ordinal, item in enumerate(entries):
         if not isinstance(item, Mapping) or set(item) != {
             "schema",
@@ -640,10 +644,18 @@ def _parse_retired_coordination_config(
                 f"retired coordination snapshot {ordinal} has a noncanonical field set"
             )
         lane_index = item.get("lane_index")
-        if type(lane_index) is not int or lane_index != 2:
+        if (
+            type(lane_index) is not int
+            or lane_index not in _RETIRED_COORDINATION_LANE_INDEXES
+        ):
             raise VRIFRuntimeSettlementError(
-                "VRIF retired coordination is admitted only for exact lane 2"
+                "VRIF retired coordination lane is outside the exact admission set"
             )
+        if lane_index in seen_lane_indexes:
+            raise VRIFRuntimeSettlementError(
+                "VRIF retired coordination lane is repeated"
+            )
+        seen_lane_indexes.add(lane_index)
         if item.get("schema") != VRIF_RETIRED_COORDINATION_SNAPSHOT_SCHEMA:
             raise VRIFRuntimeSettlementError(
                 "retired coordination snapshot schema differs"
@@ -673,7 +685,7 @@ def _parse_retired_coordination_config(
         if (
             database_parts[: len(required_prefix)] != required_prefix
             or len(database_parts) < len(required_prefix) + 3
-            or database_parts[-2] != "lane-2"
+            or database_parts[-2] != f"lane-{lane_index}"
             or database_parts[-1]
             != "quack-lane-control.coordination.duckdb"
         ):
@@ -3638,6 +3650,7 @@ def _validate_retired_config_profile(
         )
     normalized: list[Mapping[str, Any]] = []
     seen_ids: set[str] = set()
+    seen_lane_indexes: set[int] = set()
     for ordinal, entry in enumerate(entries):
         item = _require_exact_keys(
             entry,
@@ -3667,10 +3680,11 @@ def _validate_retired_config_profile(
         )
         database_parts = Path(database_relative).parts
         prefix = Path(VRIF_STATE_RELATIVE_PATH, "sidecar-quarantine").parts
+        lane_index = item["lane_index"]
         if (
             item["schema"] != VRIF_RETIRED_COORDINATION_SNAPSHOT_SCHEMA
-            or type(item["lane_index"]) is not int
-            or item["lane_index"] != 2
+            or type(lane_index) is not int
+            or lane_index not in _RETIRED_COORDINATION_LANE_INDEXES
             or Path(database_relative).is_absolute()
             or Path(wal_relative).is_absolute()
             or ".." in database_parts
@@ -3678,13 +3692,18 @@ def _validate_retired_config_profile(
             or wal_relative != database_relative + ".wal"
             or database_parts[: len(prefix)] != prefix
             or len(database_parts) < len(prefix) + 3
-            or database_parts[-2] != "lane-2"
+            or database_parts[-2] != f"lane-{lane_index}"
             or database_parts[-1]
             != "quack-lane-control.coordination.duckdb"
         ):
             raise VRIFRuntimeSettlementError(
                 "runtime retired coordination config path or lane differs"
             )
+        if lane_index in seen_lane_indexes:
+            raise VRIFRuntimeSettlementError(
+                "runtime retired coordination config lane repeats"
+            )
+        seen_lane_indexes.add(lane_index)
         database_path = _absolute_lexical(repository_root / database_relative)
         wal_path = _absolute_lexical(repository_root / wal_relative)
         try:

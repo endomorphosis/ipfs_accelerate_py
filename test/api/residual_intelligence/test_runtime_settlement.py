@@ -84,6 +84,7 @@ class RuntimeFixture:
 
 @dataclass
 class RetiredRolloverFixture:
+    lane_index: int
     attempt_id: str
     database_path: Path
     wal_path: Path
@@ -481,8 +482,11 @@ def _file_cid(path: Path) -> str:
 
 def _configure_retired_rollover(
     runtime: RuntimeFixture,
+    *,
+    lane: int = 2,
 ) -> RetiredRolloverFixture:
-    lane = 2
+    if lane not in {2, 3}:
+        raise ValueError("test retirement lane must be 2 or 3")
     attempt_id = _insert_execution_attempt(
         runtime,
         lane=lane,
@@ -490,7 +494,8 @@ def _configure_retired_rollover(
         phase="complete",
         finished_at_ms=2,
     )
-    ready_task_cid = "task:retired-ready:vrif-013"
+    ready_task_alias = f"VRIF-{lane + 11:03d}"
+    ready_task_cid = f"task:retired-ready:{ready_task_alias.lower()}"
     coordination = runtime.coordination_paths[lane]
     with open_duckdb_connection(coordination) as connection:
         connection.execute("PRAGMA disable_checkpoint_on_shutdown")
@@ -498,9 +503,9 @@ def _configure_retired_rollover(
             """
             INSERT INTO coordination_tasks(
                 task_cid, task_id, registered_at_ms, ready, body_json
-            ) VALUES (?, 'VRIF-013', 3, TRUE, '{}')
+            ) VALUES (?, ?, 3, TRUE, '{}')
             """,
-            [ready_task_cid],
+            [ready_task_cid, ready_task_alias],
         )
     wal = Path(str(coordination) + ".wal")
     assert wal.is_file() and wal.stat().st_size > 0
@@ -524,7 +529,8 @@ def _configure_retired_rollover(
     coordinator.close()
     config = json.loads(runtime.config_path.read_text(encoding="utf-8"))
     attempt_ids = [attempt_id]
-    config["runtime_settlement"]["retired_coordination_snapshots"] = [
+    entries = config["runtime_settlement"]["retired_coordination_snapshots"]
+    entries.append(
         {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/"
@@ -540,9 +546,11 @@ def _configure_retired_rollover(
             "terminal_execution_attempt_ids": attempt_ids,
             "terminal_execution_attempt_ids_cid": _content_id(attempt_ids),
         }
-    ]
+    )
+    entries.sort(key=lambda entry: (entry["lane_index"], entry["database_path"]))
     _write_config(runtime.config_path, config)
     return RetiredRolloverFixture(
+        lane_index=lane,
         attempt_id=attempt_id,
         database_path=archive_database,
         wal_path=archive_wal,
@@ -1260,11 +1268,13 @@ def test_runtime_settlement_rejects_noncanonical_repository_identity(
         _read(runtime, target_repository_id=repository_id)
 
 
+@pytest.mark.parametrize("lane_index", [2, 3])
 def test_retired_coordination_rollover_is_exact_deterministic_and_bound(
     tmp_path: Path,
+    lane_index: int,
 ) -> None:
     runtime = _runtime(tmp_path)
-    retired = _configure_retired_rollover(runtime)
+    retired = _configure_retired_rollover(runtime, lane=lane_index)
     before = _filesystem_snapshot(runtime.root)
 
     first = _read(runtime)
@@ -1273,14 +1283,17 @@ def test_retired_coordination_rollover_is_exact_deterministic_and_bound(
     assert _filesystem_snapshot(runtime.root) == before
     assert first == second
     assert first["settled"] is True
-    lane = first["lanes"][2]
+    lane = first["lanes"][lane_index]
     lineage = lane["retired_coordination_lineage"]
     assert len(lineage) == 1
     assert lineage[0]["admitted_terminal_execution_attempt_ids"] == [
         retired.attempt_id
     ]
     assert lineage[0]["historical_ready_tasks"] == [
-        {"task_cid": retired.ready_task_cid, "task_id": "VRIF-013"}
+        {
+            "task_cid": retired.ready_task_cid,
+            "task_id": f"VRIF-{lane_index + 11:03d}",
+        }
     ]
     assert lane["cross_store_binding"][
         "retired_matched_execution_attempt_ids"
@@ -1306,6 +1319,57 @@ def test_retired_coordination_rollover_is_exact_deterministic_and_bound(
     material = dict(binding)
     binding_id = material.pop("binding_id")
     assert binding_id == _content_id(material)
+
+
+def test_lane_two_and_three_retirements_are_jointly_admitted(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    retired = [
+        _configure_retired_rollover(runtime, lane=lane_index)
+        for lane_index in (2, 3)
+    ]
+
+    receipt = _read(runtime)
+
+    assert receipt["settled"] is True
+    for item in retired:
+        lane = receipt["lanes"][item.lane_index]
+        assert lane["retired_coordination_lineage"][0][
+            "admitted_terminal_execution_attempt_ids"
+        ] == [item.attempt_id]
+        assert lane["cross_store_binding"][
+            "retired_matched_execution_attempt_ids"
+        ] == [item.attempt_id]
+
+
+def test_retired_coordination_rejects_unadmitted_or_repeated_lane(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _configure_retired_rollover(runtime, lane=2)
+    _configure_retired_rollover(runtime, lane=3)
+    config = json.loads(runtime.config_path.read_text(encoding="utf-8"))
+    entries = config["runtime_settlement"]["retired_coordination_snapshots"]
+
+    changed = json.loads(json.dumps(config))
+    changed["runtime_settlement"]["retired_coordination_snapshots"][1][
+        "lane_index"
+    ] = 1
+    _write_config(runtime.config_path, changed)
+    with pytest.raises(VRIFRuntimeSettlementError, match="admission set"):
+        _read(runtime)
+
+    entries[1]["lane_index"] = 2
+    entries[1]["database_path"] = entries[1]["database_path"].replace(
+        "lane-3", "lane-2"
+    )
+    entries[1]["wal_path"] = entries[1]["wal_path"].replace(
+        "lane-3", "lane-2"
+    )
+    _write_config(runtime.config_path, config)
+    with pytest.raises(VRIFRuntimeSettlementError, match="repeated"):
+        _read(runtime)
 
 
 @pytest.mark.parametrize(
