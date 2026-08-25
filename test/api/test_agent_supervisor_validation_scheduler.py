@@ -37,6 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
     VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
     VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+    VALIDATION_PYTHON_PROFILE_ENV,
     VALIDATION_PYTHONPATH_ENV,
     VALIDATION_RUFF_EXECUTABLE_ENV,
     VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
@@ -45,11 +46,13 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     ValidationRuntimeError,
     build_hermetic_validation_runtime,
     build_validation_environment,
+    canonical_validation_environment_contract,
     sealed_validation_python_runner,
     validation_argv_command,
     validation_environment_for_runner,
     validation_python_executable,
     validation_python_launcher_environment,
+    validation_readonly_state_command,
     validation_shell_command,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
@@ -161,15 +164,14 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     } & set(environment)
     shell_command = validation_shell_command("test -f artifact")
     assert shell_command[:4] == ["/bin/bash", "--noprofile", "--norc", "-c"]
-    assert shell_command[4].endswith(
-        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; test -f artifact"
-    )
+    assert "readonly -f _ipfs_accelerate_validation_python" in shell_command[4]
+    assert shell_command[4].endswith("; test -f artifact")
     python_code = validation_shell_command(
         "python3 -c 'import sys; sys.stdin.read()'"
     )
+    assert "readonly -f _ipfs_accelerate_validation_python" in python_code[4]
     assert python_code[4].endswith(
-        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; "
-        "python3 -c 'import sys; sys.stdin.read()'"
+        "; python3 -c 'import sys; sys.stdin.read()'"
     )
     quoted_filter = validation_shell_command(
         "python -m pytest -q test/api/procedure_compiler/test_task_family.py "
@@ -293,6 +295,29 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     # must still be rejected.
     with pytest.raises(ValidationRuntimeError, match="must not be writable"):
         build_validation_environment({VALIDATION_PATH_ENV: str(replaceable_bin)})
+
+
+def test_validation_runtime_rejects_unknown_python_profile() -> None:
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="must be default or raw-no-site",
+    ):
+        build_validation_environment(
+            {VALIDATION_PYTHON_PROFILE_ENV: "unknown-profile"}
+        )
+
+
+def test_raw_no_site_profile_rejects_unsealed_runner() -> None:
+    with pytest.raises(
+        ValidationRuntimeError,
+        match="requires a sealed Python runner",
+    ):
+        validation_environment_for_runner(
+            build_validation_environment(
+                {VALIDATION_PYTHON_PROFILE_ENV: "raw-no-site"}
+            ),
+            lambda **_kwargs: {},
+        )
 
 
 def test_proof_reuse_state_root_capability_is_canonical_isolated_and_bound(
@@ -426,8 +451,9 @@ print(json.dumps({{
     assert historical_receipt.read_text() == "historical-receipt"
     boundary = result["validation_filesystem_boundary"]
     assert boundary["schema"] == VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA
-    assert boundary["mode"] == "landlock-read-only-host-v1"
+    assert boundary["mode"] == "landlock-read-only-host-v2"
     assert boundary["landlock_abi"] >= 3
+    assert boundary["python_site_policy"] == "default"
     assert boundary["applied"] is True
     assert boundary["proof_reuse_control_state_read_only"] is True
     assert boundary["proof_reuse_state_write_exception"] == (
@@ -720,6 +746,279 @@ def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor()
     assert not Path(launcher_path).exists()
     if ruff_path:
         assert not Path(ruff_path).exists()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd launchers are Linux-specific",
+)
+def test_daemon_raw_no_site_profile_preserves_approved_pythonpath(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(VALIDATION_PYTHON_PROFILE_ENV, "raw-no-site")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "ipfs_datasets_py").mkdir()
+    daemon = object.__new__(TodoImplementationDaemon)
+    daemon.worktree_submodule_paths = ("ipfs_datasets_py",)
+    command = (
+        "python -c 'import json,os,sys; "
+        'print(json.dumps({"no_site":sys.flags.no_site,'
+        '"no_user_site":sys.flags.no_user_site,'
+        '"site_loaded":"site" in sys.modules,'
+        '"sitecustomize_loaded":"sitecustomize" in sys.modules,'
+        '"pythonpath":os.environ.get("PYTHONPATH", ""),'
+        '"sys_path":sys.path}))\''
+    )
+    normalized, note = daemon._with_worktree_validation_pythonpath(
+        command,
+        workspace,
+    )
+    assert normalized == command
+    assert note == "preserved raw no-site validation PYTHONPATH"
+
+    environment = validation_environment_for_runner(
+        build_validation_environment(),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+    default_environment = validation_environment_for_runner(
+        build_validation_environment({}),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+    assert environment[VALIDATION_PYTHON_PROFILE_ENV] == "raw-no-site"
+    assert ":site-policy=no-site:" in environment[
+        VALIDATION_PYTHON_LAUNCHER_MODE_ENV
+    ]
+    assert environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV].endswith(
+        ":sealed-memfd"
+    )
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(command=normalized, raw_command=command),
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=environment,
+    )
+
+    assert result["returncode"] == 0, result["output"]
+    observed = json.loads(str(result["output"]))
+    assert observed["no_site"] == 1
+    assert observed["no_user_site"] == 1
+    assert observed["site_loaded"] is False
+    assert observed["sitecustomize_loaded"] is False
+    assert observed["pythonpath"] == environment["PYTHONPATH"]
+    approved_roots = environment["PYTHONPATH"].split(os.pathsep)
+    assert observed["sys_path"][1 : 1 + len(approved_roots)] == approved_roots
+    assert ":site-policy=no-site:" in result[
+        "validation_python_launcher"
+    ]["mode"]
+    assert result["validation_python_launcher"]["mode"].endswith(
+        ":sealed-memfd"
+    )
+    assert build_validation_cache_key(
+        target_commit="candidate",
+        command=command,
+        environment=environment,
+    ).digest != build_validation_cache_key(
+        target_commit="candidate",
+        command=command,
+        environment=default_environment,
+    ).digest
+    assert validation_argv_command(
+        ("python", "-c", "raise SystemExit(0)"),
+        environment={VALIDATION_PYTHON_PROFILE_ENV: "raw-no-site"},
+    )[1] == "-S"
+    contract = canonical_validation_environment_contract(
+        {VALIDATION_PYTHON_PROFILE_ENV: "raw-no-site"}
+    )
+    assert contract["schema"].endswith("@2")
+    assert contract["python_profile"] == "raw-no-site"
+    assert contract["python_site_initialization"] == "disabled"
+    assert contract["python_user_site_disabled"] is True
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd launchers are Linux-specific",
+)
+def test_raw_no_site_profile_rejects_command_pythonpath_and_binds_ruff_broker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(VALIDATION_PYTHON_PROFILE_ENV, "raw-no-site")
+    environment = validation_environment_for_runner(
+        build_validation_environment(),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+    replaced = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(
+            command="PYTHONPATH=. python -c 'raise SystemExit(0)'",
+            raw_command="PYTHONPATH=. python -c 'raise SystemExit(0)'",
+        ),
+        workspace_path=tmp_path,
+        timeout_seconds=30,
+        environment=environment,
+    )
+    assert replaced["returncode"] == 75
+    assert "unapproved-pythonpath" in str(replaced["output"])
+
+    with validation_python_launcher_environment(environment) as (
+        child_environment,
+        _receipt,
+    ):
+        launcher_source = Path(child_environment["PYTHON"]).read_text(
+            encoding="utf-8"
+        )
+    assert 'exec "$executable" -I -S -c "$ruff_broker"' in launcher_source
+
+    boundary_root = tmp_path / "boundary"
+    state_root = boundary_root / "proof-state"
+    boundary_workspace = boundary_root / "workspace"
+    private_home = boundary_root / "private-home"
+    state_root.mkdir(parents=True)
+    boundary_workspace.mkdir()
+    private_home.mkdir()
+    landlock_command, landlock_receipt = validation_readonly_state_command(
+        ("/bin/true",),
+        workspace_path=boundary_workspace,
+        private_home_path=private_home,
+        environment={
+            **environment,
+            PROOF_REUSE_STATE_ROOT_ENV: str(state_root),
+        },
+    )
+    assert landlock_command[1:4] == ["-I", "-S", "-c"]
+    assert landlock_receipt is not None
+    assert landlock_receipt.python_site_policy == "raw-no-site"
+    assert landlock_receipt.to_dict()["schema"].endswith("@2")
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="sealed memfd launchers are Linux-specific",
+)
+def test_raw_no_site_seals_canonical_and_rejects_unsealed_python_spellings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(VALIDATION_PYTHON_PROFILE_ENV, "raw-no-site")
+    environment = validation_environment_for_runner(
+        build_validation_environment(),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+    canonical_name = Path(validation_python_executable(environment)).name
+    assert canonical_name.startswith("python3.")
+    safe_command = (
+        f"{canonical_name} -c 'import json,sys; "
+        'print(json.dumps({"no_site":sys.flags.no_site,'
+        '"site_loaded":"site" in sys.modules,'
+        '"sitecustomize_loaded":"sitecustomize" in sys.modules}))\''
+    )
+    safe_result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(
+            command=safe_command,
+            raw_command=safe_command,
+        ),
+        workspace_path=tmp_path,
+        timeout_seconds=30,
+        environment=environment,
+    )
+    assert safe_result["returncode"] == 0, safe_result["output"]
+    safe_observed = json.loads(str(safe_result["output"]))
+    assert safe_observed == {
+        "no_site": 1,
+        "site_loaded": False,
+        "sitecustomize_loaded": False,
+    }
+    assert safe_result["validation_python_launcher"]["mode"].endswith(
+        ":sealed-memfd"
+    )
+
+    other_version = "python3.11" if canonical_name != "python3.11" else "python3.10"
+    shell_commands = (
+        f"{other_version} -c 'raise SystemExit(0)'",
+        f"/usr/bin/{canonical_name} -c 'raise SystemExit(0)'",
+        f"/usr/bin/env {canonical_name} -c 'raise SystemExit(0)'",
+        f"/usr/bin/env -S '{canonical_name} -c \"raise SystemExit(0)\"'",
+        f"/usr/bin/env -S{canonical_name} -c 'raise SystemExit(0)'",
+        "command pytest --version",
+        "/usr/bin/env pytest --version",
+        "/usr/bin/env --split-string='pytest --version'",
+        "/usr/bin/pytest --version",
+        "py.test --version",
+    )
+    for command in shell_commands:
+        result = TodoImplementationDaemon._validation_command_runner(
+            spec=SimpleNamespace(command=command, raw_command=command),
+            workspace_path=tmp_path,
+            timeout_seconds=30,
+            environment=environment,
+        )
+        assert result["returncode"] == 78
+        assert result["reason"] == "validation_shell_command_policy_violation"
+
+    argv_commands = (
+        (other_version, "-c", "raise SystemExit(0)"),
+        (f"/usr/bin/{canonical_name}", "-c", "raise SystemExit(0)"),
+        ("/usr/bin/env", canonical_name, "-c", "raise SystemExit(0)"),
+        (
+            "/usr/bin/env",
+            "-S",
+            f"{canonical_name} -c 'raise SystemExit(0)'",
+        ),
+        (
+            "/usr/bin/env",
+            f"-S{canonical_name} -c 'raise SystemExit(0)'",
+        ),
+        ("/usr/bin/pytest", "--version"),
+        ("py.test", "--version"),
+        ("/usr/bin/env", "pytest", "--version"),
+        ("/usr/bin/env", "-S", "pytest --version"),
+    )
+    for command in argv_commands:
+        with pytest.raises(
+            ValidationRuntimeError,
+            match=(
+                "direct argv Python|wrapped direct argv Python|"
+                "direct argv pytest|wrapped direct argv pytest"
+            ),
+        ):
+            validation_argv_command(command, environment=environment)
+    assert validation_argv_command(
+        (canonical_name, "-c", "raise SystemExit(0)"),
+        environment=environment,
+    )[1] == "-S"
+    assert validation_argv_command(
+        ("pytest", "--version"),
+        environment=environment,
+    )[1:4] == ["-S", "-m", "pytest"]
+
+
+def test_raw_no_site_authority_validation_rejects_docker_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        TodoImplementationDaemon,
+        "_authority_validation_isolation_contract",
+        staticmethod(lambda: {"available": True, "contract_id": "test"}),
+    )
+    monkeypatch.setattr(
+        TodoImplementationDaemon,
+        "_unix_stream_socket_permitted",
+        staticmethod(lambda: True),
+    )
+    result = TodoImplementationDaemon._authority_validation_command_runner(
+        spec=SimpleNamespace(command="true", raw_command="true"),
+        workspace_path=tmp_path,
+        timeout_seconds=30,
+        environment={VALIDATION_PYTHON_PROFILE_ENV: "raw-no-site"},
+    )
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert result["reason"] == (
+        "raw_no_site_authority_validation_requires_host_sealed_runner"
+    )
 
 
 @pytest.mark.skipif(
@@ -1354,6 +1653,53 @@ def test_legacy_argv_validation_normalizes_login_shell_and_scrubs_bash_env(
     assert not marker.exists()
 
 
+def test_raw_no_site_legacy_shell_argv_uses_immutable_profile_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(VALIDATION_PYTHON_PROFILE_ENV, "raw-no-site")
+    probe = (
+        "import json,sys;print(json.dumps({"
+        "'no_site':sys.flags.no_site,"
+        "'site_loaded':'site' in sys.modules,"
+        "'sitecustomize_loaded':'sitecustomize' in sys.modules}))"
+    )
+    commands = (
+        (
+            "/bin/bash",
+            "-lc",
+            f"{VALIDATION_PYTHON_PROFILE_ENV}=default "
+            f"python -c {shlex.quote(probe)}",
+        ),
+        (
+            "/bin/bash",
+            "-lc",
+            f"unset {VALIDATION_PYTHON_PROFILE_ENV}; "
+            f"python -c {shlex.quote(probe)}",
+        ),
+    )
+
+    results = run_validation_commands(
+        repo_root=tmp_path,
+        commands=commands,
+        timeout_seconds=10,
+    )
+
+    assert [result.returncode for result in results] == [0, 0]
+    assert [json.loads(result.stdout) for result in results] == [
+        {
+            "no_site": 1,
+            "site_loaded": False,
+            "sitecustomize_loaded": False,
+        },
+        {
+            "no_site": 1,
+            "site_loaded": False,
+            "sitecustomize_loaded": False,
+        },
+    ]
+
+
 def test_legacy_adapter_forwards_sanitized_validation_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1562,6 +1908,51 @@ def test_cache_and_result_digests_bind_python_launcher_policy() -> None:
     assert _validation_result_digest(changed_result, cache_key=base_key) != base_result_digest
 
 
+def test_validation_result_digest_binds_filesystem_boundary_receipts() -> None:
+    boundary = {
+        "schema": VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA,
+        "mode": "landlock-read-only-host-v2",
+        "python_site_policy": "raw-no-site",
+        "policy_sha256": "a" * 64,
+        "applied": True,
+    }
+    result = {
+        "command": "true",
+        "returncode": 0,
+        "output": "passed",
+        "validation_filesystem_boundary": boundary,
+        "attempts": [
+            {
+                "diagnostic_signature": "attempt-one",
+                "validation_filesystem_boundary": boundary,
+            }
+        ],
+    }
+    base_digest = _validation_result_digest(result)
+    top_level_tamper = {
+        **result,
+        "validation_filesystem_boundary": {
+            **boundary,
+            "python_site_policy": "default",
+        },
+    }
+    attempt_tamper = {
+        **result,
+        "attempts": [
+            {
+                **result["attempts"][0],
+                "validation_filesystem_boundary": {
+                    **boundary,
+                    "applied": False,
+                },
+            }
+        ],
+    }
+
+    assert _validation_result_digest(top_level_tamper) != base_digest
+    assert _validation_result_digest(attempt_tamper) != base_digest
+
+
 def test_validation_cache_separates_canonical_and_sealed_runners(
     tmp_path: Path,
 ) -> None:
@@ -1634,8 +2025,14 @@ def test_validation_cache_separates_canonical_and_sealed_runners(
     assert calls == ["canonical", "sealed"]
 
 
+@pytest.mark.parametrize(
+    "environment",
+    [None, {VALIDATION_PYTHON_PROFILE_ENV: "raw-no-site"}],
+    ids=("default-site-policy", "raw-no-site-policy"),
+)
 def test_fresh_sealed_runner_requires_exact_launcher_receipt(
     tmp_path: Path,
+    environment: dict[str, str] | None,
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1650,6 +2047,7 @@ def test_fresh_sealed_runner_requires_exact_launcher_receipt(
         changed_files=["pyproject.toml"],
         target_commit="same-commit",
         dependency_state="same-dependencies",
+        environment=environment,
     )
 
     result = report["results"][0]
@@ -1879,6 +2277,42 @@ def test_hermetic_cache_rejects_success_without_exact_runtime_receipts(
     assert _validation_result_digest(tampered) != base_digest
 
 
+def test_raw_no_site_rejects_external_isolation_receipt_substitution(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    @sealed_validation_python_runner
+    def isolated_runner(*, spec, **_kwargs):
+        result = _result(spec)
+        result["external_validation_isolation_receipt"] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "external-validation-isolation@1"
+            ),
+            "image_id": "sha256:" + ("a" * 64),
+            "container_removed": True,
+            "receipt_id": "baguqeera" + ("a" * 56),
+        }
+        return result
+
+    report = ValidationScheduler(runner=isolated_runner).run(
+        ["true"],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="same-commit",
+        dependency_state="same-dependencies",
+        environment={VALIDATION_PYTHON_PROFILE_ENV: "raw-no-site"},
+    )
+    result = report["results"][0]
+    assert result["returncode"] == 75
+    assert result["authoritative"] is False
+    assert result["error"] == (
+        "validation_environment_python_launcher_receipt_mismatch"
+    )
+
+
 def test_hermetic_cache_reuses_exact_runtime_receipts(
     tmp_path: Path,
 ) -> None:
@@ -1959,6 +2393,56 @@ def test_hermetic_scheduler_rejects_dual_sealed_runner_composition(
     assert result["error"] == "hermetic_sealed_runner_composition_unsupported"
     assert result["outcome"] == "infrastructure_failure"
     assert result["authoritative"] is False
+
+
+def test_hermetic_scheduler_rejects_raw_no_site_before_execution_or_cache(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    calls: list[int] = []
+
+    @hermetic_validation_runner
+    def runner(*, spec, runtime_context, attempt_number, **_kwargs):
+        calls.append(attempt_number)
+        result = _result(spec)
+        result.update(
+            {
+                "runtime_id": runtime_context.runtime_id,
+                "cancellation_id": runtime_context.cancellation_id,
+            }
+        )
+        return result
+
+    scheduler = ValidationScheduler(
+        cache_dir=tmp_path / "cache",
+        runner=runner,
+        hermetic_policy=HermeticValidationPolicy(),
+    )
+    options = {
+        "workspace_path": workspace,
+        "changed_files": ["pyproject.toml"],
+        "target_commit": "same-commit",
+        "dependency_state": "same-dependencies",
+        "environment": {VALIDATION_PYTHON_PROFILE_ENV: "raw-no-site"},
+    }
+    first = scheduler.run(["true"], **options)
+    replay = scheduler.run(["true"], **options)
+
+    assert calls == []
+    for report in (first, replay):
+        assert report["passed"] is False
+        result = report["results"][0]
+        assert result["returncode"] == 75
+        assert result["cache_hit"] is False
+        assert result["error"] == (
+            "hermetic_raw_no_site_composition_unsupported"
+        )
+        assert result["reason"] == (
+            "hermetic_runtime_has_no_sealed_no_site_receipt_contract"
+        )
+        assert result["outcome"] == "infrastructure_failure"
+        assert result["authoritative"] is False
 
 
 def test_cache_key_includes_commit_command_relevant_environment_and_dependencies() -> None:

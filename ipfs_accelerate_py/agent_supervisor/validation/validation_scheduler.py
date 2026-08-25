@@ -65,6 +65,7 @@ from .validation_runtime import (
     VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
     VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
     VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+    VALIDATION_PYTHON_PROFILE_ENV,
     VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
     VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
     VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
@@ -76,6 +77,7 @@ from .validation_runtime import (
     runner_requires_sealed_validation_python,
     run_hermetic_validation_process,
     validation_environment_for_runner,
+    validation_python_profile,
     validation_shell_command,
 )
 
@@ -203,6 +205,7 @@ DEFAULT_RELEVANT_ENVIRONMENT = (
     VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
     VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
     VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+    VALIDATION_PYTHON_PROFILE_ENV,
     VALIDATION_RUFF_EXECUTABLE_MODE_ENV,
     VALIDATION_RUFF_EXECUTABLE_SHA256_ENV,
     VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
@@ -323,7 +326,7 @@ def _validation_result_digest(
         return existing
     output = str(result.get("output") or "")
     payload: dict[str, object] = {
-        "schema": "ipfs_accelerate_py/agent-supervisor/validation-result@1",
+        "schema": "ipfs_accelerate_py/agent-supervisor/validation-result@2",
         "cache_key": cache_key.digest if cache_key is not None else "",
         "target_commit": (
             cache_key.target_commit if cache_key is not None else ""
@@ -364,6 +367,18 @@ def _validation_result_digest(
         ),
         "attempt_validation_python_launchers": [
             _json_safe(item.get("validation_python_launcher") or {})
+            for item in result.get("attempts", ())
+            if isinstance(item, Mapping)
+        ],
+        # The Landlock wrapper is part of the execution authority boundary,
+        # including its profile-specific outer-Python flags.  Bind the exact
+        # receipt at both report levels so it cannot be detached or replaced
+        # while preserving the authority-bearing result digest.
+        "validation_filesystem_boundary": _json_safe(
+            result.get("validation_filesystem_boundary") or {}
+        ),
+        "attempt_validation_filesystem_boundaries": [
+            _json_safe(item.get("validation_filesystem_boundary") or {})
             for item in result.get("attempts", ())
             if isinstance(item, Mapping)
         ],
@@ -434,6 +449,10 @@ def _validation_python_launcher_receipt_matches_environment(
     )
     if not mode.endswith(":sealed-memfd"):
         return True
+    allow_isolation_substitute = (
+        str(environment.get(VALIDATION_PYTHON_PROFILE_ENV) or "")
+        != "raw-no-site"
+    )
     expected = {
         "content_sha256": str(
             environment.get(VALIDATION_PYTHON_LAUNCHER_SHA256_ENV) or ""
@@ -455,10 +474,13 @@ def _validation_python_launcher_receipt_matches_environment(
     }
 
     def _attempt_matches(payload: Mapping[str, object]) -> bool:
-        if _external_validation_isolation_receipt_is_complete(
-            payload.get("external_validation_isolation_receipt")
-        ) or _external_validation_isolation_receipt_is_complete(
-            payload.get("authority_validation_isolation_receipt")
+        if allow_isolation_substitute and (
+            _external_validation_isolation_receipt_is_complete(
+                payload.get("external_validation_isolation_receipt")
+            )
+            or _external_validation_isolation_receipt_is_complete(
+                payload.get("authority_validation_isolation_receipt")
+            )
         ):
             return True
         receipt = payload.get("validation_python_launcher")
@@ -5019,6 +5041,16 @@ class ValidationScheduler:
         if hermetic_policy is None:
             hermetic_policy = self.hermetic_policy
         if (
+            hermetic_policy is not None
+            and validation_python_profile(environment) == "raw-no-site"
+        ):
+            capability_error = (
+                "hermetic_raw_no_site_composition_unsupported"
+            )
+            capability_reason = (
+                "hermetic_runtime_has_no_sealed_no_site_receipt_contract"
+            )
+        elif (
             hermetic_policy is not None
             and not _runner_supports_hermetic_validation(runner)
         ):
