@@ -8862,7 +8862,9 @@ def test_database_virgin_transfer_binding_survives_retry_claim(
         assert retry_receipt["virgin_task_transfer"] == origin_binding
         assert retry_receipt["claim_id"] == successor.claim_id
         assert retry_receipt["attempt_id"] == successor.attempt_id
+        assert retry_receipt["attempt_number"] == successor.attempt_number
         assert retry_receipt["fencing_token"] > origin_binding["fencing_token"]
+        assert "virgin_task_transfer_request" not in retry_receipt
         successor_cursor = retry_receipt["virgin_task_transfer_claim_cursor"]
         assert successor_cursor["cursor_id"] != origin_cursor["cursor_id"]
         assert successor_cursor["fencing_token"] == successor.fencing_token

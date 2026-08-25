@@ -6,10 +6,10 @@ generations remain preserved recovery history.  The active operator has two
 explicit stages:
 
 * ``bootstrap`` materializes the exact tracked candidate projection and
-  atomically publishes one no-overwrite run-v37 database with provenance;
+  atomically publishes one no-overwrite run-v38 database with provenance;
 * ``bootstrap-sealed-continuity`` admits a separately preserved run-v17 only
   into the legacy run-v23 boundary through six explicit raw-byte pins;
-* ``launch`` owns run-v37 in-process, starts exactly one foreground
+* ``launch`` owns run-v38 in-process, starts exactly one foreground
   configured-board scheduler child, and services the closed mutation inbox.
 
 The Quack attach credential exists only in the controller's memory and in the
@@ -83,7 +83,7 @@ PROGRAM_ROOT_RELATIVE: Final = Path(
 )
 SOURCE_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v17"
 LEGACY_SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v23"
-SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v37"
+SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v38"
 SOURCE_DATABASE_RELATIVE: Final = SOURCE_RUN_RELATIVE / "control.duckdb"
 SUCCESSOR_DATABASE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "control.duckdb"
 OWNER_STATE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "quack-owner"
@@ -109,12 +109,15 @@ PROVENANCE_SCHEMA: Final = (
 )
 NATIVE_RESUME_ADMISSION_MODE: Final = "tracked_candidate_initial_projection_reset"
 NATIVE_RESUME_SOURCE_GENERATION: Final = "lgcvf-tracked-candidate-projection"
-SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v37"
+SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v38"
 INTERNAL_CLIENT_GRANT_TTL_SECONDS: Final = 86_400.0
 INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS: Final = 43_200.0
 STATE_OWNER_BOOTSTRAP_CLIENT_TIMEOUT_SECONDS: Final = 1.0
 STATE_OWNER_BOOTSTRAP_PROCESS_STOP_GRACE_SECONDS: Final = 35.0
-STATE_OWNER_BOOTSTRAP_READY_TIMEOUT_SECONDS: Final = 90.0
+# Four lanes cold-start serially before the controller can observe the
+# required stable all-ready interval.  Keep that finite boundary comfortably
+# above the measured four-lane cold-start plus stability budget.
+STATE_OWNER_BOOTSTRAP_READY_TIMEOUT_SECONDS: Final = 180.0
 STATE_OWNER_BOOTSTRAP_STABILITY_SECONDS: Final = 12.0
 LGCVF_SCHEDULER_TREE_STOP_GRACE_SECONDS: Final = 300.0
 LGCVF_DATABASE_OWNER_SESSIONS: Final = tuple(
@@ -3615,7 +3618,7 @@ def _require_ignored_successor(
 
 
 def _load_native_resume_config(root: Path) -> tuple[dict[str, Any], bytes]:
-    """Load the exact tracked run-v37 profile with duplicate-key rejection."""
+    """Load the exact tracked run-v38 profile with duplicate-key rejection."""
 
     path = _contained(root, DEFAULT_SUCCESSOR_CONFIG_RELATIVE)
     raw = _read_bounded_regular_file(
@@ -4245,7 +4248,7 @@ def _cleanup_native_resume_stage(stage: Path, *, publish_parent: Path) -> None:
 
 
 def bootstrap_native_resume(root: Path = ROOT) -> dict[str, Any]:
-    """Atomically publish run-v37 from the tracked candidate projection."""
+    """Atomically publish run-v38 from the tracked candidate projection."""
 
     root = root.resolve(strict=True)
     paths = _paths(root)

@@ -83627,11 +83627,18 @@ class DatabaseImplementationDaemon:
             try:
                 # The owner-side status CAS is the shared exclusion point for
                 # daemons whose fenced coordination stores are lane-local.
-                if ready:
+                if ready or fenced_retry:
+                    # A lane-local fenced retry inherits admission from the
+                    # prior shared claim, but it still mints a new exact
+                    # claim/attempt/lease/fence tuple.  Rotate the durable
+                    # receipt through the same shared revision CAS before
+                    # exposing that attempt so downstream typed mutations
+                    # bind to the live fence instead of the expired one.
                     claim_receipt: dict[str, Any] = {
                         "operation": "database_claim",
                         "claim_id": claim.claim_id,
                         "attempt_id": claim.attempt_id,
+                        "attempt_number": int(claim.attempt_number),
                         "owner_session_id": self.owner_session_id,
                         "lease_id": claim.lease_id,
                         "fencing_token": int(claim.fencing_token),
@@ -83644,9 +83651,31 @@ class DatabaseImplementationDaemon:
                             self.idle_lane_work_stealing
                         ),
                         "task_prefix": self.task_prefix,
+                        **(
+                            {
+                                "claim_phase_schema": (
+                                    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                                ),
+                                "claim_process_attestation": dict(
+                                    claim_process_attestation
+                                ),
+                            }
+                            if claim_process_attestation is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "execution_route_binding": dict(
+                                    execution_route_binding
+                                )
+                            }
+                            if execution_route_binding
+                            else {}
+                        ),
                     }
                     if (
-                        self.idle_lane_work_stealing
+                        ready
+                        and self.idle_lane_work_stealing
                         == IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER
                         and self._task_home_shard_index(task_alias)
                         != self.task_shard_index

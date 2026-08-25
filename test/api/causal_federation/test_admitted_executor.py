@@ -32,6 +32,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     FakeQuackTransport,
     build_server,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DATABASE_PROGRAM_JSON_ENV,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     canonical_json_bytes,
     content_identity,
@@ -52,6 +55,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema i
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    DATABASE_CLAIM_POLICY_SCHEMA,
+    DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA,
+    DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
     QuackClientError,
@@ -1848,8 +1856,20 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         assert len(running) == 1
         reservation = adapter.get(running[0].task_cid)
         assert reservation is not None
-        assert reservation.body["completion_receipt"]["operation"] == (
-            "database_claim"
+        reservation_receipt = reservation.body["completion_receipt"]
+        assert reservation_receipt["operation"] == "database_claim"
+        assert reservation_receipt["attempt_number"] == (
+            running[0].attempt_number
+        )
+        assert reservation_receipt["claim_phase_schema"] == (
+            TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        )
+        assert reservation_receipt["claim_process_attestation"] == (
+            adapter.claim_process_attestation()
+        )
+        assert isinstance(
+            reservation_receipt["execution_route_binding"],
+            Mapping,
         )
         assert daemon._shared_claim_binding_for_this_owner(reservation) == {
             "claim_id": running[0].claim_id,
@@ -1917,6 +1937,12 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
         )
         assert rotated_receipt["claim_id"] == retry_attempt.claim_id
+        assert rotated_receipt["attempt_number"] == (
+            retry_attempt.attempt_number
+        )
+        assert rotated_receipt["claim_process_attestation"] == (
+            adapter.claim_process_attestation()
+        )
         assert rotated_receipt["admitted_from_revision"] == (
             rotated_receipt["claimed_from_revision"] + 1
         )
@@ -2086,6 +2112,435 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             daemon.run_once()
     finally:
         if daemon is not None:
+            daemon.close()
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
+def test_real_typed_owner_starts_exact_four_virgin_transfer_lanes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    aliases = ("LGCVF-051", "LGCVF-060", "LGCVF-070", "LGCVF-080")
+    database = tmp_path / "typed-four-lane-claim.duckdb"
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-four-lane-claim",
+            "plan_root_cid": "plan:typed-four-lane-claim",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-four-lane-claim",
+                    "goal_alias": "LGCVF-G-TYPED-FOUR-LANE-CLAIM",
+                    "title": "Typed four-lane claim",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": f"task:typed-four-lane-claim:{alias}",
+                    "task_id": alias,
+                    "goal_cid": "goal:typed-four-lane-claim",
+                    "status": "ready",
+                    "priority": "P0" if index == 0 else "P1",
+                    "ordinal": index + 1,
+                    "title": alias,
+                }
+                for index, alias in enumerate(aliases)
+            ],
+        }
+    )
+    source.close()
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-four-lane-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="lgcvf-typed-four-lane-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    operator = _operator()
+    client_id = "database-implementation-daemon:typed-four-lane"
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS)
+        ),
+        allowed_command_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_COMMAND_OPERATIONS)
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    monkeypatch.setenv(
+        DATABASE_PROGRAM_JSON_ENV,
+        json.dumps(
+            {
+                "claim_policy": {
+                    "schema": DATABASE_CLAIM_POLICY_SCHEMA,
+                    "task_prefix": "LGCVF-",
+                    "task_shard_count": 4,
+                    "strict_task_sharding": True,
+                    "idle_lane_work_stealing": "virgin-transfer",
+                }
+            }
+        ),
+    )
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    clock = {"now_ms": 1_000}
+    adapter: TypedDatabaseTaskSource | None = None
+    daemons: list[DatabaseImplementationDaemon] = []
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        unsealed = TypedDatabaseTaskSource(client, owns_client=False)
+        route_policy = unsealed.seal_execution_route_policy(
+            {
+                alias: DETERMINISTIC_ONLY_EXECUTION_MODE
+                for alias in aliases
+            }
+        )
+        unsealed.close()
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+        )
+        bootstrap_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
+        for lane_index in range(4):
+            daemons.append(
+                DatabaseImplementationDaemon(
+                    database_path=database,
+                    coordination_path=(
+                        tmp_path
+                        / f"typed-four-lane-{lane_index}-coordination.duckdb"
+                    ),
+                    execution_path=(
+                        tmp_path
+                        / f"typed-four-lane-{lane_index}-execution.duckdb"
+                    ),
+                    owner_session_id=(
+                        f"session:typed-four-lane:{lane_index}"
+                    ),
+                    process_instance_id=identity.process_birth_id,
+                    authority_mode="quack",
+                    task_source_kind="duckdb",
+                    quack_uri=identity.listen_uri,
+                    task_source=adapter,
+                    close_task_source=False,
+                    state_owner_bootstrap_credentials=(
+                        bootstrap_credentials
+                    ),
+                    lease_ms=5_000,
+                    clock_ms=lambda: clock["now_ms"],
+                    task_shard_count=4,
+                    task_shard_index=lane_index,
+                    strict_task_sharding=True,
+                    idle_lane_work_stealing="virgin-transfer",
+                    task_prefix="LGCVF-",
+                    provider_fn=lambda _attempt: {
+                        "status": "ok",
+                        "accepted": True,
+                    },
+                    effect_fn=lambda _attempt, _provider: {
+                        "status": "applied"
+                    },
+                    validation_fn=lambda _attempt, _effect: {
+                        "outcome": "passed",
+                        "evidence_digest": "sha256:" + "a" * 64,
+                    },
+                    require_real_execution=True,
+                ).open()
+            )
+
+        compare_and_set_status = adapter.compare_and_set_status
+        reservation_requests: dict[str, dict[str, Any]] = {}
+
+        def capture_reservation_request(
+            task_cid_or_alias: Any,
+            expected_revision: int,
+            status: str,
+            receipt: Mapping[str, Any] | None = None,
+            *,
+            evidence_digests: Any = None,
+        ) -> Any:
+            prior = adapter.get(task_cid_or_alias)
+            if (
+                prior is not None
+                and isinstance(receipt, Mapping)
+                and receipt.get("operation") == "database_claim"
+            ):
+                reservation_requests.setdefault(
+                    prior.task_alias,
+                    {
+                        "task_cid": prior.task_cid,
+                        "task_body": dict(prior.body),
+                        "expected_revision": expected_revision,
+                        "status": status,
+                        "receipt": dict(receipt),
+                        "evidence_digests": list(evidence_digests or ()),
+                    },
+                )
+            return compare_and_set_status(
+                task_cid_or_alias,
+                expected_revision,
+                status,
+                receipt,
+                evidence_digests=evidence_digests,
+            )
+
+        monkeypatch.setattr(
+            adapter,
+            "compare_and_set_status",
+            capture_reservation_request,
+        )
+        attempts = [daemon.claim_next() for daemon in daemons]
+        assert all(attempt is not None for attempt in attempts)
+        claimed = [attempt for attempt in attempts if attempt is not None]
+        assert [attempt.task_alias for attempt in claimed] == [
+            "LGCVF-080",
+            "LGCVF-051",
+            "LGCVF-060",
+            "LGCVF-070",
+        ]
+        assert len({attempt.task_cid for attempt in claimed}) == 4
+
+        initial_receipts: dict[str, dict[str, Any]] = {}
+        transferred: list[tuple[str, int]] = []
+        for lane_index, (daemon, attempt) in enumerate(
+            zip(daemons, claimed)
+        ):
+            task = adapter.get(attempt.task_cid)
+            assert task is not None
+            receipt = task.body["completion_receipt"]
+            initial_receipts[attempt.task_alias] = dict(receipt)
+            assert receipt["operation"] == "database_attempt_admitted"
+            assert receipt["claim_phase_schema"] == (
+                TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            )
+            assert receipt["attempt_number"] == attempt.attempt_number == 1
+            assert receipt["task_shard_count"] == 4
+            assert receipt["task_shard_index"] == lane_index
+            assert receipt["strict_task_sharding"] is True
+            assert receipt["idle_lane_work_stealing"] == "virgin-transfer"
+            assert receipt["task_prefix"] == "LGCVF-"
+            assert receipt["claim_process_attestation"] == (
+                adapter.claim_process_attestation()
+            )
+            route = receipt["execution_route_binding"]
+            assert dict(
+                adapter.validate_execution_route_binding(
+                    route,
+                    task=task,
+                    allow_claim_revision=True,
+                )
+            ) == route
+            assert route["policy_id"] == route_policy.policy_id
+            assert route["task_cid"] == attempt.task_cid
+            assert route["task_alias"] == attempt.task_alias
+            assert receipt["execution_route_policy_id"] == route["policy_id"]
+            assert receipt["execution_route_origin_revision"] == (
+                route["task_revision"]
+            )
+            assert receipt["admitted_from_revision"] == (
+                receipt["claimed_from_revision"] + 1
+            )
+            assert task.revision == receipt["admitted_from_revision"] + 1
+            assert "virgin_task_transfer_request" not in receipt
+
+            home_lane = (
+                int(
+                    hashlib.sha256(
+                        attempt.task_alias.encode("utf-8")
+                    ).hexdigest()[:8],
+                    16,
+                )
+                % 4
+            )
+            if home_lane == lane_index:
+                assert "virgin_task_transfer" not in receipt
+                assert "virgin_task_transfer_claim_cursor" not in receipt
+            else:
+                transferred.append((attempt.task_alias, lane_index))
+                binding = receipt["virgin_task_transfer"]
+                cursor = receipt["virgin_task_transfer_claim_cursor"]
+                assert binding["schema"] == (
+                    DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA
+                )
+                assert binding["home_shard_index"] == home_lane
+                assert binding["recipient_shard_index"] == lane_index
+                assert binding["task_cid"] == attempt.task_cid
+                assert binding["binding_id"] == content_identity(
+                    {
+                        key: value
+                        for key, value in binding.items()
+                        if key != "binding_id"
+                    }
+                )
+                assert cursor["schema"] == (
+                    DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA
+                )
+                assert cursor["binding_id"] == binding["binding_id"]
+                for field in (
+                    "claim_id",
+                    "attempt_id",
+                    "owner_session_id",
+                    "lease_id",
+                    "fencing_token",
+                    "fence_epoch",
+                    "claimed_from_revision",
+                ):
+                    assert cursor[field] == receipt[field]
+                assert cursor["cursor_id"] == content_identity(
+                    {
+                        key: value
+                        for key, value in cursor.items()
+                        if key != "cursor_id"
+                    }
+                )
+            assert daemon._strict_resume_admission_result(attempt) is None
+        assert transferred == [("LGCVF-060", 2)]
+
+        clock["now_ms"] = 7_000
+        for lane_index in (0, 2):
+            daemon = daemons[lane_index]
+            original = claimed[lane_index]
+            original_receipt = initial_receipts[original.task_alias]
+            retry = daemon.claim_next()
+            assert retry is not None
+            assert retry.task_cid == original.task_cid
+            assert retry.task_alias == original.task_alias
+            assert retry.attempt_number == original.attempt_number + 1
+            assert retry.claim_id != original.claim_id
+            assert retry.attempt_id != original.attempt_id
+            assert retry.lease_id != original.lease_id
+            assert retry.fencing_token > original.fencing_token
+
+            rotated = adapter.get(retry.task_cid)
+            assert rotated is not None
+            rotated_receipt = rotated.body["completion_receipt"]
+            assert rotated_receipt["operation"] == "database_attempt_admitted"
+            assert rotated_receipt["claim_phase_schema"] == (
+                TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            )
+            assert rotated_receipt["claim_id"] == retry.claim_id
+            assert rotated_receipt["attempt_id"] == retry.attempt_id
+            assert rotated_receipt["attempt_number"] == retry.attempt_number
+            assert rotated_receipt["lease_id"] == retry.lease_id
+            assert rotated_receipt["fencing_token"] == retry.fencing_token
+            assert rotated_receipt["task_shard_index"] == lane_index
+            assert "virgin_task_transfer_request" not in rotated_receipt
+            assert daemon._strict_resume_admission_result(retry) is None
+
+            if lane_index == 0:
+                assert "virgin_task_transfer" not in rotated_receipt
+                assert "virgin_task_transfer_claim_cursor" not in rotated_receipt
+            else:
+                assert rotated_receipt["virgin_task_transfer"] == (
+                    original_receipt["virgin_task_transfer"]
+                )
+                original_cursor = original_receipt[
+                    "virgin_task_transfer_claim_cursor"
+                ]
+                rotated_cursor = rotated_receipt[
+                    "virgin_task_transfer_claim_cursor"
+                ]
+                assert rotated_cursor["binding_id"] == (
+                    original_cursor["binding_id"]
+                )
+                assert rotated_cursor["cursor_id"] != (
+                    original_cursor["cursor_id"]
+                )
+                for field in (
+                    "claim_id",
+                    "attempt_id",
+                    "owner_session_id",
+                    "lease_id",
+                    "fencing_token",
+                    "fence_epoch",
+                    "claimed_from_revision",
+                ):
+                    assert rotated_cursor[field] == rotated_receipt[field]
+
+        request = reservation_requests["LGCVF-060"]
+        request_receipt = dict(request["receipt"])
+        assert "virgin_task_transfer_request" in request_receipt
+        assert "virgin_task_transfer" not in request_receipt
+        assert "virgin_task_transfer_claim_cursor" not in request_receipt
+        request_material = {
+            "task_cid": request["task_cid"],
+            "expected_revision": request["expected_revision"],
+            "status": request["status"],
+            "receipt": request_receipt,
+            "evidence_digests": request["evidence_digests"],
+        }
+        request_digest = hashlib.sha256(
+            canonical_json_bytes(request_material)
+        ).hexdigest()
+        request_body = dict(request["task_body"])
+        request_body["completion_receipt"] = request_receipt
+        transferred_before_replay = adapter.get(request["task_cid"])
+        assert transferred_before_replay is not None
+        receipt_before_replay = transferred_before_replay.body[
+            "completion_receipt"
+        ]
+        binding_before_replay = dict(
+            receipt_before_replay["virgin_task_transfer"]
+        )
+        cursor_before_replay = dict(
+            receipt_before_replay["virgin_task_transfer_claim_cursor"]
+        )
+        generation_before_replay = client.load_generation()
+        replay = client.cas_task_status(
+            task_cid=request["task_cid"],
+            expected_task_revision=request["expected_revision"],
+            new_status=request["status"],
+            idempotency_key=f"executor-cas:{request_digest}",
+            command_id=f"executor-cas:{request_digest}",
+            body=request_body,
+        )
+        generation_after_replay = client.load_generation()
+        transferred_after_replay = adapter.get(request["task_cid"])
+        assert replay.outcome.value == "idempotent_replay"
+        assert replay.changed is False
+        assert replay.revision == generation_before_replay.revision
+        assert generation_after_replay.content_id == (
+            generation_before_replay.content_id
+        )
+        assert transferred_after_replay is not None
+        assert transferred_after_replay == transferred_before_replay
+        replayed_receipt = transferred_after_replay.body[
+            "completion_receipt"
+        ]
+        assert replayed_receipt["virgin_task_transfer"] == (
+            binding_before_replay
+        )
+        assert replayed_receipt["virgin_task_transfer_claim_cursor"] == (
+            cursor_before_replay
+        )
+    finally:
+        for daemon in reversed(daemons):
             daemon.close()
         if adapter is not None:
             adapter.close()

@@ -3732,6 +3732,42 @@ def test_lgcvf_sealed_bootstrap_diagnostic_is_closed_bounded_and_secret_free() -
     assert "str(sealed_exc)" not in bootstrap
 
 
+def test_lgcvf_sealed_bootstrap_names_transaction_failures_without_details() -> None:
+    bootstrap = multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP
+    sentinel = "must-not-cross-lgcvf-transaction-diagnostic"
+    injection_point = "try:\n    if not sys.flags.isolated"
+    injected = (
+        "try:\n"
+        "    class TransactionError(Exception): pass\n"
+        f"    raise TransactionError({sentinel!r})\n"
+        "    if not sys.flags.isolated"
+    )
+    assert bootstrap.count(injection_point) == 1
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            bootstrap.replace(injection_point, injected, 1),
+        ],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert completed.returncode == 78
+    assert completed.stdout == ""
+    assert completed.stderr == (
+        "lgcvf-sealed-bootstrap@1 phase=birth_env type=TransactionError\n"
+    )
+    assert sentinel not in completed.stderr
+
+
 def test_receipt_coordinator_preidentity_failure_fences_exact_child_handle() -> None:
     class UnidentifiedChild:
         pid = 424242

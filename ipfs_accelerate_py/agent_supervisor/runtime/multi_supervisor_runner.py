@@ -469,7 +469,7 @@ except BaseException as sealed_exc:
     try:
         sealed_phase=_phase if type(_phase) is str and _phase in ('birth_env','capsule_fd','native_fd','module_import','origin_audit','daemon_main','role_main') else 'unknown'
         sealed_type=type(sealed_exc).__name__
-        if type(sealed_type) is not str or sealed_type not in ('ConfiguredBoardError','DatabaseImplementationAuthorityError','DatabaseProgramConfigError','ImportError','ModuleNotFoundError','OSError','PermissionError','QuackClientError','QuackClientIdentityError','QuackClientTransportError','RuntimeError','StateOwnerBootstrapError','SupervisorSchedulerConfigError','TimeoutError','TypedStateOwnerError','ValueError'): sealed_type='BaseException'
+        if type(sealed_type) is not str or sealed_type not in ('ConfiguredBoardError','DatabaseImplementationAuthorityError','DatabaseProgramConfigError','ImportError','ModuleNotFoundError','OSError','PermissionError','QuackClientError','QuackClientIdentityError','QuackClientTransportError','RuntimeError','StateOwnerBootstrapError','SupervisorSchedulerConfigError','TimeoutError','TransactionError','TypedStateOwnerError','ValueError'): sealed_type='BaseException'
         sealed_record=('lgcvf-sealed-bootstrap@1 phase=%s type=%s\n' % (sealed_phase,sealed_type)).encode('ascii')
         if len(sealed_record)>160: sealed_record=b'lgcvf-sealed-bootstrap@1 phase=unknown type=BaseException\n'
         os.write(2,sealed_record)

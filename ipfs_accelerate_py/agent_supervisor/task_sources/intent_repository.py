@@ -1103,25 +1103,39 @@ def _prepare_database_virgin_transfer_receipt_on(
         raise IntentRepositoryTransitionError(
             "database virgin-transfer claim metadata is invalid"
         )
-    tasks, ready_cids = _database_ready_task_projection_on(
-        connection,
-        now_ms=now_ms,
+    # The typed owner can rotate an expired in-progress claim only after it
+    # has independently admitted a newer live fence.  That task is no longer
+    # part of the ready projection, so validate a home-lane retry directly or
+    # retain its already owner-stamped foreign lane instead of trying to
+    # authorize a second transfer.  The binding and cursor checks below still
+    # require the exact lane, owner, and monotone claim/fence tuple.  The
+    # ordinary repository never reaches this branch: its same-status CAS is a
+    # no-op before receipt preparation.
+    bound_in_progress_retry = bool(
+        previous_status == "in_progress" and new_status == "in_progress"
     )
-    by_cid = {str(item["task_cid"]): item for item in tasks}
-    if task_cid not in ready_cids:
-        raise IntentRepositoryConflictError(
-            "virgin-transfer target left the authoritative ready frontier"
+    tasks: list[dict[str, Any]] = []
+    ready_cids: set[str] = set()
+    if not bound_in_progress_retry:
+        tasks, ready_cids = _database_ready_task_projection_on(
+            connection,
+            now_ms=now_ms,
         )
-    routes = database_virgin_transfer_routes(
-        tasks,
-        ready_cids,
-        shard_count=shard_count,
-        task_prefix=task_prefix,
-    )
-    if routes.get(task_cid) != lane_index:
-        raise IntentRepositoryConflictError(
-            "virgin-transfer request disagrees with the authoritative route"
+        by_cid = {str(item["task_cid"]): item for item in tasks}
+        if task_cid not in ready_cids:
+            raise IntentRepositoryConflictError(
+                "virgin-transfer target left the authoritative ready frontier"
+            )
+        routes = database_virgin_transfer_routes(
+            tasks,
+            ready_cids,
+            shard_count=shard_count,
+            task_prefix=task_prefix,
         )
+        if routes.get(task_cid) != lane_index:
+            raise IntentRepositoryConflictError(
+                "virgin-transfer request disagrees with the authoritative route"
+            )
     if prior_binding is not None:
         if (
             int(prior_binding["task_shard_count"]) != shard_count

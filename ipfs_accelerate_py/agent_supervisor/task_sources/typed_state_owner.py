@@ -40,6 +40,11 @@ from ..merge.worktree_lifecycle import (
 )
 from .control_plane_contracts import StateCommand, canonical_json_bytes, content_identity
 from .database_task_source import TaskSourceIntegrityError
+from .intent_repository import (
+    IntentRepositoryError,
+    MAX_BODY_BYTES,
+    _prepare_database_virgin_transfer_receipt_on,
+)
 from .task_execution_route_policy import TaskExecutionRouteBinding
 
 TYPED_STATE_OWNER_INTERFACE: Final = "TypedStateOwnerCommandGateway@1"
@@ -2854,20 +2859,59 @@ class TypedStateOwnerGateway:
                                 raise TypedStateOwnerAuthorizationError(
                                     "mutation transaction has no admitted command"
                                 )
-                            self._authorize_mutation(
-                                command, operation, parameters, grant=grant
-                            )
                             if not semantic_authority_captured:
                                 semantic_authority = self._capture_semantic_authority(
                                     command,
                                     grant=grant,
                                 )
                                 semantic_authority_captured = True
+                            # A typed database claim carries a request, not
+                            # authority to author its virgin-transfer binding.
+                            # The exclusive owner derives that binding from
+                            # the transaction-stable ready frontier.  Rewrite
+                            # only the effective CAS parameters; the admitted
+                            # caller command and its idempotency identity stay
+                            # bound to the original canonical request.
+                            if (
+                                semantic_authority.get("operation")
+                                == "task.database.claim.phase"
+                                and operation.name
+                                == "executor_cas_task_status_receipt"
+                            ):
+                                normalized_body_json = str(
+                                    semantic_authority["body_json"]
+                                )
+                                body_index = operation.parameter_names.index(
+                                    "body_json"
+                                )
+                                if parameters[body_index] != command.parameters.get(
+                                    "body_json"
+                                ):
+                                    raise TypedStateOwnerAuthorizationError(
+                                        "typed claim CAS body differs from its admitted request"
+                                    )
+                                if (
+                                    command.parameters.get("body_json")
+                                    != normalized_body_json
+                                ):
+                                    normalized_parameters = list(parameters)
+                                    normalized_parameters[body_index] = (
+                                        normalized_body_json
+                                    )
+                                    parameters = tuple(normalized_parameters)
+                            self._authorize_mutation(
+                                command,
+                                operation,
+                                parameters,
+                                grant=grant,
+                                semantic_authority=semantic_authority,
+                            )
                             self._record_manifest_mutation(
                                 command,
                                 operation,
                                 parameters,
                                 mutation_manifest,
+                                semantic_authority=semantic_authority,
                             )
                         if transaction_active:
                             result = self._execute(operation, parameters)
@@ -3912,7 +3956,7 @@ class TypedStateOwnerGateway:
                     )
                 task_rows = self._connection.execute(
                     """
-                    SELECT status, revision, body_json FROM tasks
+                    SELECT status, revision, task_alias, body_json FROM tasks
                     WHERE task_cid = ? LIMIT 2
                     """,
                     [task_cid],
@@ -3927,16 +3971,62 @@ class TypedStateOwnerGateway:
                         "typed database claim task revision is stale"
                     )
                 try:
-                    prior_body = json.loads(str(task_row[2] or "{}"))
+                    prior_body = json.loads(str(task_row[3] or "{}"))
                 except (TypeError, ValueError, json.JSONDecodeError) as exc:
                     raise TypedStateOwnerAuthorizationError(
                         "typed database claim prior task body is malformed"
                     ) from exc
+                if not isinstance(prior_body, Mapping):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim prior task body is malformed"
+                    )
                 prior_receipt = (
                     prior_body.get("completion_receipt")
                     if isinstance(prior_body, Mapping)
                     else None
                 )
+                requested_body = dict(prior_body)
+                requested_body["completion_receipt"] = dict(next_receipt)
+                try:
+                    request_body_matches = bool(
+                        isinstance(next_body, Mapping)
+                        and canonical_json_bytes(dict(next_body))
+                        == canonical_json_bytes(requested_body)
+                    )
+                except ValueError as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim task body is not canonical"
+                    ) from exc
+                if not request_body_matches:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim may only replace its completion receipt"
+                    )
+                if phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA:
+                    previous_status = str(task_row[0] or "").strip().lower()
+                    try:
+                        next_receipt = (
+                            _prepare_database_virgin_transfer_receipt_on(
+                                self._connection,
+                                task={
+                                    "task_cid": task_cid,
+                                    "task_alias": str(task_row[2] or ""),
+                                    "status": previous_status,
+                                    "revision": int(task_row[1]),
+                                    "body": prior_body,
+                                },
+                                previous_status=previous_status,
+                                current_revision=expected_revision,
+                                new_status="in_progress",
+                                receipt=next_receipt,
+                                now_ms=int(time.time() * 1_000),
+                            )
+                        )
+                    except IntentRepositoryError as exc:
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database virgin-transfer authority is invalid"
+                        ) from exc
+                    next_body = dict(next_body)
+                    next_body["completion_receipt"] = dict(next_receipt)
                 next_identity = _validated_database_claim_identity(next_receipt)
                 next_attestation = _require_database_claim_process_attestation(
                     next_receipt,
@@ -4011,6 +4101,25 @@ class TypedStateOwnerGateway:
                     prior_attestation = prior_receipt.get(
                         "claim_process_attestation"
                     )
+                    expected_admission_receipt = {
+                        **dict(prior_receipt),
+                        "operation": "database_attempt_admitted",
+                        "claim_phase_schema": (
+                            TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                        ),
+                        "admitted_from_revision": expected_revision,
+                        "attempt_execution_phase": "claimed",
+                        "attempt_execution_revision": 1,
+                    }
+                    try:
+                        admission_receipt_matches = bool(
+                            canonical_json_bytes(dict(next_receipt))
+                            == canonical_json_bytes(expected_admission_receipt)
+                        )
+                    except ValueError as exc:
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database attempt admission is not canonical"
+                        ) from exc
                     if (
                         str(task_row[0] or "").strip().lower()
                         != "in_progress"
@@ -4047,16 +4156,22 @@ class TypedStateOwnerGateway:
                         )
                         or next_receipt.get("attempt_execution_phase")
                         != "claimed"
+                        or not admission_receipt_matches
                     ):
                         raise TypedStateOwnerAuthorizationError(
                             "typed database attempt admission differs from its reservation"
                         )
+                normalized_body_json = canonical_json_bytes(next_body).decode("utf-8")
+                if len(normalized_body_json.encode("utf-8")) > MAX_BODY_BYTES:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim task body exceeds its byte bound"
+                    )
                 return {
                     "operation": "task.database.claim.phase",
                     "task_cid": task_cid,
                     "status": next_status,
                     "expected_revision": expected_revision,
-                    "body_json": str(command.parameters["body_json"]),
+                    "body_json": normalized_body_json,
                     "claim_phase_schema": phase_schema,
                     "claim_identity": next_identity,
                     "claim_process_attestation": next_attestation,
@@ -4706,6 +4821,7 @@ class TypedStateOwnerGateway:
         parameters: Sequence[Any],
         *,
         grant: OwnerClientGrant,
+        semantic_authority: Mapping[str, Any] | None = None,
     ) -> None:
         command_operation = str(command.parameters.get("operation") or "")
         admitted = (
@@ -4729,6 +4845,15 @@ class TypedStateOwnerGateway:
             name: parameters[index]
             for index, name in enumerate(operation.parameter_names)
         }
+        if (
+            operation.name == "executor_cas_task_status_receipt"
+            and semantic_authority
+            and semantic_authority.get("operation") == "task.database.claim.phase"
+            and bound.get("body_json") != semantic_authority.get("body_json")
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "typed claim mutation omits its owner-normalized body"
+            )
         if operation.name in {
             "casf_insert_process_birth_attestation",
             "casf_insert_supervisor_runtime_lease",
@@ -4793,6 +4918,8 @@ class TypedStateOwnerGateway:
         operation: OwnerOperation,
         parameters: Sequence[Any],
         manifest: list[tuple[str, dict[str, Any]]],
+        *,
+        semantic_authority: Mapping[str, Any] | None = None,
     ) -> None:
         """Admit one mutation into the closed owner-side transaction machine."""
 
@@ -4906,6 +5033,13 @@ class TypedStateOwnerGateway:
             expected_task_revision = command.parameters.get(
                 "expected_task_revision"
             )
+            expected_body_json = command.parameters.get("body_json")
+            if (
+                semantic_authority
+                and semantic_authority.get("operation")
+                == "task.database.claim.phase"
+            ):
+                expected_body_json = semantic_authority.get("body_json")
             expected = {
                 "task_cid": command.parameters.get("task_cid"),
                 "expected_task_revision": expected_task_revision,
@@ -4916,7 +5050,7 @@ class TypedStateOwnerGateway:
                     else None
                 ),
                 "status": command.parameters.get("status"),
-                "body_json": command.parameters.get("body_json"),
+                "body_json": expected_body_json,
             }
             if any(bound.get(field) != value for field, value in expected.items()):
                 raise TypedStateOwnerAuthorizationError(
