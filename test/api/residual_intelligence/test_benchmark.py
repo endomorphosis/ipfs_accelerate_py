@@ -40,8 +40,8 @@ CASES = ROOT / "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl"
 SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 # BEGIN VRIF-030 PORTAL BASELINE (materializer-owned)
-VRIF_PORTAL_BASELINE_COMMIT = "04dccbc05d5f2b6806275128fdae356d94f2e48f"
-VRIF_PORTAL_BASELINE_TREE = "1f8d79e4574b007cf738cfc8c7f6579e3e160f32"
+VRIF_PORTAL_BASELINE_COMMIT = "3cf925ca62b583427c2e16843608b688901f6e6e"
+VRIF_PORTAL_BASELINE_TREE = "ccafb2d4bf1dc20dc606eea877c080ed383c54b6"
 # END VRIF-030 PORTAL BASELINE (materializer-owned)
 
 
