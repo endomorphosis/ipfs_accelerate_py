@@ -9048,6 +9048,9 @@ class PortalImplementationSupervisor:
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
         self._checkout_mutation_context = threading.local()
+        self._state_owner_task_source: Any | None = None
+        self._state_owner_task_source_binding: dict[str, Any] = {}
+        self._state_owner_task_source_lock = threading.Lock()
         self._control_plane_update_detected_at = ""
         self._loaded_control_plane_source = dict(
             IMPORTED_CONTROL_PLANE_SOURCE
@@ -9086,6 +9089,149 @@ class PortalImplementationSupervisor:
             and branch_reason in {"created", "already_exists"}
         ):
             self.config.merge_target_branch = resolved_branch
+
+    def _uses_supervisor_state_owner_bootstrap(self) -> bool:
+        """Return whether this non-plan supervisor owns a typed Quack reader."""
+
+        program = self.config.database_program
+        return bool(
+            not self.config.plan_bound_dispatch
+            and self.config.state_owner_bootstrap_fd >= 3
+            and program is not None
+            and program.authority_mode == AUTHORITY_MODE_QUACK
+            and program.task_source_kind == TASK_SOURCE_DUCKDB
+        )
+
+    def _typed_supervisor_task_source(self) -> Any:
+        """Lazily attach this supervisor birth to the closed state-owner API.
+
+        ``request_state_owner_bootstrap`` consumes its inherited listener.  The
+        managed daemon still needs the original listener descriptor, so the
+        supervisor deliberately bootstraps over a duplicate and retains the
+        original for ``pass_fds``.
+        """
+
+        if not self._uses_supervisor_state_owner_bootstrap():
+            raise RuntimeError("typed supervisor state-owner bootstrap is unavailable")
+        with self._state_owner_task_source_lock:
+            if self._state_owner_task_source is not None:
+                return self._state_owner_task_source
+            owner_session_id = str(self.config.database_owner_session_id or "").strip()
+            if not owner_session_id:
+                raise RuntimeError(
+                    "state-owner bootstrap requires an explicit database owner session"
+                )
+            program = self.config.database_program
+            assert program is not None
+            expected_endpoint = str(program.quack_endpoint or "").strip()
+            if not expected_endpoint:
+                raise RuntimeError(
+                    "state-owner bootstrap requires the canonical Quack endpoint"
+                )
+
+            from ..task_sources.state_owner_bootstrap import (
+                request_state_owner_bootstrap,
+            )
+            bootstrap_copy = os.dup(self.config.state_owner_bootstrap_fd)
+            try:
+                credentials = request_state_owner_bootstrap(
+                    bootstrap_copy,
+                    client_id=(
+                        "database-implementation-supervisor:"
+                        f"{owner_session_id}"
+                    ),
+                    store_id=self.config.state_owner_bootstrap_store_id,
+                )
+            finally:
+                # The request normally consumes the duplicate while resolving
+                # the rendezvous listener.  Close only if it failed earlier.
+                try:
+                    os.close(bootstrap_copy)
+                except OSError:
+                    pass
+            if credentials.endpoint != expected_endpoint:
+                raise RuntimeError(
+                    "state-owner bootstrap endpoint differs from the database program"
+                )
+
+            from ..task_sources.quack_state_client import QuackStateClient
+            from ..task_sources.typed_database_task_source import (
+                TypedDatabaseTaskSource,
+            )
+            from ..task_sources.typed_state_owner import (
+                TypedStateOwnerConnection,
+            )
+
+            def connection_factory(_endpoint: Any) -> TypedStateOwnerConnection:
+                return TypedStateOwnerConnection(
+                    socket_path=Path(credentials.socket_path),
+                    token=credentials.token,
+                    client_id=credentials.client_id,
+                    process_birth_id=credentials.process_birth_id,
+                    store_id=credentials.store_id,
+                    timeout_seconds=30.0,
+                )
+
+            client: Any | None = None
+            try:
+                client = QuackStateClient(
+                    owner_id=credentials.client_id,
+                    store_id=credentials.store_id,
+                    process_birth_id=credentials.process_birth_id,
+                    connection_factory=connection_factory,
+                )
+                client.attach(
+                    credentials.endpoint,
+                    server_id=credentials.server_id,
+                )
+                task_source = TypedDatabaseTaskSource(client)
+            except BaseException:
+                if client is not None:
+                    client.close()
+                raise
+            self._state_owner_task_source = task_source
+            self._state_owner_task_source_binding = {
+                "endpoint": credentials.endpoint,
+                "store_id": credentials.store_id,
+                "server_id": credentials.server_id,
+                "client_id": credentials.client_id,
+                "process_birth_id": credentials.process_birth_id,
+                "credential_transport": "private_inherited_socket",
+                "credential_in_argv": False,
+                "credential_in_environment": False,
+            }
+            return task_source
+
+    @contextmanager
+    def _canonical_database_task_source(
+        self,
+        endpoint: str,
+        *,
+        owner_scope: str,
+    ) -> Any:
+        """Yield the typed reader when bootstrapped, or the legacy adapter."""
+
+        if self._uses_supervisor_state_owner_bootstrap():
+            yield self._typed_supervisor_task_source()
+            return
+        from ..task_sources.database_task_source import DatabaseTaskSource
+
+        with DatabaseTaskSource(
+            endpoint,
+            owner_id=owner_scope,
+            install_schema=False,
+        ) as task_source:
+            yield task_source
+
+    def close(self) -> None:
+        """Release the supervisor-owned typed state client, when attached."""
+
+        with self._state_owner_task_source_lock:
+            task_source = self._state_owner_task_source
+            self._state_owner_task_source = None
+            self._state_owner_task_source_binding = {}
+        if task_source is not None:
+            task_source.close()
 
     @staticmethod
     def _control_plane_source_snapshot() -> dict[str, Any]:
@@ -17224,14 +17370,9 @@ class PortalImplementationSupervisor:
                 "task_id": task_id,
             }
         try:
-            from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
-                DatabaseTaskSource,
-            )
-
-            with DatabaseTaskSource(
+            with self._canonical_database_task_source(
                 endpoint,
-                owner_id=f"worktree-reconciliation:{os.getpid()}",
-                install_schema=False,
+                owner_scope=f"worktree-reconciliation:{os.getpid()}",
             ) as task_source:
                 task = task_source.get_task(task_id)
         except Exception as exc:
@@ -19498,14 +19639,12 @@ class PortalImplementationSupervisor:
                 "Quack objective refill budget requires its canonical endpoint"
             )
         from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
-            DatabaseTaskSource,
             MAX_QUERY_LIMIT,
         )
 
-        with DatabaseTaskSource(
+        with self._canonical_database_task_source(
             endpoint,
-            owner_id=f"objective-refill-budget:{os.getpid()}",
-            install_schema=False,
+            owner_scope=f"objective-refill-budget:{os.getpid()}",
         ) as task_source:
             snapshot = task_source.snapshot()
             canonical_task_ids: set[str] = set()
@@ -19538,6 +19677,11 @@ class PortalImplementationSupervisor:
         effective_count = len(canonical_task_ids | projection_task_ids)
         return effective_count, {
             "authority": "quack_duckdb",
+            "task_source_transport": (
+                "pid_bound_typed_state_owner"
+                if self._uses_supervisor_state_owner_bootstrap()
+                else "legacy_database_adapter"
+            ),
             "canonical_task_count": canonical_count,
             "projection_task_count": projection_count,
             "effective_task_count": effective_count,
@@ -24804,6 +24948,7 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    supervisor: PortalImplementationSupervisor | None = None
     try:
         supervisor = PortalImplementationSupervisor(
             supervisor_config_from_args(args, repo_root=REPO_ROOT)
@@ -24832,6 +24977,9 @@ def main(argv: list[str] | None = None) -> int:
         except OSError:
             pass
         return 78
+    finally:
+        if supervisor is not None:
+            supervisor.close()
 
 
 if __name__ == "__main__":
