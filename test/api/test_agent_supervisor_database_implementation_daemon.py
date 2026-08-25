@@ -976,6 +976,80 @@ def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
                 malformed_candidate,
                 require_current_blocked=False,
             )
+        present_none = json.loads(json.dumps(malformed_window))
+        present_none["revisions"][1]["body"]["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ] = None
+        present_none_body = dict(present_none)
+        present_none_body.pop("projection_cid")
+        present_none["projection_cid"] = content_identity(
+            present_none_body
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: present_none,
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="malformed dedicated recovery seed",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                malformed_candidate,
+                require_current_blocked=False,
+            )
+        seeded_claim_marker = json.loads(json.dumps(malformed_window))
+        seeded_claim_revisions = seeded_claim_marker["revisions"]
+        del seeded_claim_revisions[1]["body"]["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ]
+        seeded_claim_revisions[2]["body"]["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ] = None
+        seeded_claim_body = dict(seeded_claim_marker)
+        seeded_claim_body.pop("projection_cid")
+        seeded_claim_marker["projection_cid"] = content_identity(
+            seeded_claim_body
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: seeded_claim_marker,
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="malformed dedicated recovery seed",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                malformed_candidate,
+                require_current_blocked=False,
+            )
+        one_sided_marker = json.loads(json.dumps(malformed_window))
+        one_sided_revisions = one_sided_marker["revisions"]
+        del one_sided_revisions[1]["body"]["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ]
+        one_sided_revisions[2]["body"]["completion_receipt"][
+            "post_merge_completion_recovery_source_attempt_id"
+        ] = "attempt:declared-seeded-claim"
+        one_sided_body = dict(one_sided_marker)
+        one_sided_body.pop("projection_cid")
+        one_sided_marker["projection_cid"] = content_identity(
+            one_sided_body
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: one_sided_marker,
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="malformed dedicated recovery seed",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                malformed_candidate,
+                require_current_blocked=False,
+            )
         monkeypatch.setattr(
             daemon.task_source,
             "task_revision_history_projection",
@@ -7152,6 +7226,127 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             if isinstance(value, (list, tuple)):
                 return [mutable_history_value(item) for item in value]
             return value
+
+        seeded_chain = mutable_history_value(exact_chain)
+        assert isinstance(seeded_chain, list)
+        for offset, entry in enumerate(seeded_chain):
+            entry["revision"] = 6 + offset
+        seeded_chain[0]["body"]["completion_receipt"][
+            "control_expected_revision"
+        ] = 5
+        seeded_recovery_receipt = seeded_chain[1]["body"][
+            "completion_receipt"
+        ]
+        synthetic_seed = dict(
+            seeded_recovery_receipt[
+                "post_merge_completion_recovery_seed"
+            ]
+        )
+        synthetic_seed.pop("seed_id")
+        synthetic_seed["source_task_revision"] = 6
+        synthetic_seed["seed_id"] = (
+            consumer_daemon._database_portal_evidence_digest(
+                synthetic_seed
+            )
+        )
+        seeded_recovery_receipt[
+            "post_merge_completion_recovery_seed"
+        ] = synthetic_seed
+        seeded_recovery_receipt["control_expected_revision"] = 6
+        seeded_chain[2]["body"]["completion_receipt"][
+            "post_merge_completion_recovery_seed"
+        ] = synthetic_seed
+        seeded_chain[3]["body"]["completion_receipt"][
+            "control_expected_revision"
+        ] = 8
+        seeded_chain[5]["body"]["completion_receipt"][
+            "control_expected_revision"
+        ] = 10
+
+        legacy_seedless_recovery = mutable_history_value(
+            seeded_recovery_receipt
+        )
+        assert isinstance(legacy_seedless_recovery, dict)
+        legacy_seedless_recovery.pop(
+            "post_merge_completion_recovery_seed"
+        )
+        legacy_seedless_recovery["control_expected_revision"] = 1
+        legacy_retry = mutable_history_value(
+            seeded_chain[3]["body"]["completion_receipt"]
+        )
+        assert isinstance(legacy_retry, dict)
+        legacy_retry["control_expected_revision"] = 3
+        legacy_chain = [
+            mutable_history_value(seeded_chain[0]),
+            {
+                "revision": 2,
+                "status": "retrying",
+                "body": {
+                    **{
+                        key: mutable_history_value(value)
+                        for key, value in seeded_chain[0]["body"].items()
+                        if key != "completion_receipt"
+                    },
+                    "completion_receipt": legacy_seedless_recovery,
+                },
+            },
+            mutable_history_value(seeded_chain[4]),
+            {
+                "revision": 4,
+                "status": "retrying",
+                "body": {
+                    **{
+                        key: mutable_history_value(value)
+                        for key, value in seeded_chain[0]["body"].items()
+                        if key != "completion_receipt"
+                    },
+                    "completion_receipt": legacy_retry,
+                },
+            },
+            mutable_history_value(seeded_chain[4]),
+            mutable_history_value(seeded_chain[0]),
+        ]
+        for revision, entry in enumerate(legacy_chain, start=1):
+            assert isinstance(entry, dict)
+            entry["revision"] = revision
+        synthetic_revisions = [*legacy_chain, *seeded_chain[1:]]
+        synthetic_history_body = {
+            "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+            "task_cid": successor.task_cid,
+            "revisions": synthetic_revisions,
+        }
+        legacy_then_seeded_history = {
+            **synthetic_history_body,
+            "projection_cid": content_identity(synthetic_history_body),
+        }
+        synthetic_blocked_record = replace(
+            blocked_record,
+            revision=11,
+            body=synthetic_revisions[-1]["body"],
+        )
+        canonical_history_projection = (
+            consumer_daemon.task_source.task_revision_history_projection
+        )
+        monkeypatch.setattr(
+            consumer_daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: legacy_then_seeded_history,
+        )
+        legacy_compatible_context = (
+            consumer_daemon._post_merge_completion_crash_recovery_context(
+                synthetic_blocked_record,
+                require_current_blocked=True,
+            )
+        )
+        assert legacy_compatible_context is not None
+        assert legacy_compatible_context["control_task_revision"] == 6
+        assert legacy_compatible_context["exhausted_task_revision"] == 11
+        assert legacy_compatible_context["source_seed"] == synthetic_seed
+        monkeypatch.setattr(
+            consumer_daemon.task_source,
+            "task_revision_history_projection",
+            canonical_history_projection,
+        )
 
         target_changed_history = mutable_history_value(history)
         assert isinstance(target_changed_history, dict)

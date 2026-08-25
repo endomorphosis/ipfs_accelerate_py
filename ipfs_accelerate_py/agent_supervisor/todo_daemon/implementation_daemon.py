@@ -76449,16 +76449,24 @@ class DatabaseImplementationDaemon:
                 for entry in chain
             ]
             recovery_candidate = receipts[1]
+            seeded_claim_candidate = receipts[2]
             dedicated_recovery_declared = bool(
-                isinstance(recovery_candidate, Mapping)
-                and (
-                    recovery_candidate.get("operation")
-                    in {
-                        "database_post_merge_declared_outputs_repair_recovery",
-                        "database_post_merge_declared_outputs_requalification_recovery",
-                    }
-                    or "post_merge_completion_recovery_seed"
+                (
+                    isinstance(recovery_candidate, Mapping)
+                    and "post_merge_completion_recovery_seed"
                     in recovery_candidate
+                )
+                or (
+                    isinstance(seeded_claim_candidate, Mapping)
+                    and (
+                        "post_merge_completion_recovery_seed"
+                        in seeded_claim_candidate
+                        or (
+                            "post_merge_completion_recovery_"
+                            "source_attempt_id"
+                        )
+                        in seeded_claim_candidate
+                    )
                 )
             )
             if any(receipt is None for receipt in receipts):
