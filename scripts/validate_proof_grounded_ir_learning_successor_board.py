@@ -382,6 +382,23 @@ def validate_controls(report: Report) -> None:
         },
         database_program,
     )
+    provider = config.get("provider")
+    expected_provider = {
+        "primary_provider_id": "grok_cli",
+        "primary_model_id": "grok-4.6",
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_trigger": "primary_quota_exhausted",
+        "fallback_reasoning_effort": "high",
+        "max_concurrency": 2,
+        "secrets_from_environment_only": True,
+        "secrets_in_argv_prompts_logs_or_receipts": False,
+    }
+    report.check(
+        "scheduler_reviewed_provider_route",
+        provider == expected_provider,
+        provider,
+    )
     try:
         corpus = json.loads(
             (DATASETS / "data/ir_learning/corpora/corpus_root.json").read_text(

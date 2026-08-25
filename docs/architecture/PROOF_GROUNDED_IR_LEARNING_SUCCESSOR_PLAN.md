@@ -39,12 +39,13 @@ not completion authority.
 The sealed scheduler config uses the current
 `configured_board_scheduler.py` entry point, an explicit legacy-Markdown
 task-source projection, two fenced implementation lanes, isolated worktrees,
-the initialized `ipfs_datasets_py` submodule, and a direct Codex provider
-route. Markdown is retained only as the admitted source format for this
-eight-task legacy successor; task identity, readiness, leases, validation,
-and merge admission use the current supervisor implementation. Every task
-declares the `proof-grounded-ir-learning-successor-v1` board namespace and an
-explicit goal identity so no runtime identity falls back to the board filename.
+the initialized `ipfs_datasets_py` submodule, and the supervisor's reviewed
+Grok 4.6 to Codex `gpt-5.6-terra` quota-fallback route at high reasoning effort.
+Markdown is retained only as the admitted source format for this eight-task
+legacy successor; task identity, readiness, leases, validation, and merge
+admission use the current supervisor implementation. Every task declares the
+`proof-grounded-ir-learning-successor-v1` board namespace and an explicit goal
+identity so no runtime identity falls back to the board filename.
 
 Launch is fail-closed:
 
