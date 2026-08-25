@@ -19,6 +19,7 @@ from typing import Any, Final, Protocol, runtime_checkable
 
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     LocalProfileTampered,
+    ed25519_public_key_from_did,
     verify_did_key_signature,
 )
 
@@ -182,6 +183,7 @@ _APPROVAL_FIELDS = frozenset(
         "signature",
     }
 )
+_APPROVAL_SIGNING_FIELDS = _APPROVAL_FIELDS - {"signature"}
 _AUTHORIZATION_FIELDS = frozenset(
     {*_STATEMENT_FIELDS, "operator_approval", "security_approval", "authorization_cid"}
 )
@@ -223,6 +225,26 @@ _CAPABILITY_FIELDS = frozenset(
         "reviewer_signature",
         "capability_cid",
     }
+)
+_CAPABILITY_SIGNING_FIELDS = _CAPABILITY_FIELDS - {
+    "reviewer_signature",
+    "capability_cid",
+}
+_CAPABILITY_REQUIRED_TRUE = (
+    "ingress_authenticated",
+    "ingress_append_only_single_relation",
+    "ingress_accepts_signed_envelope_only",
+    "bare_state_command_rejected",
+    "owner_verifies_authorized_state_command",
+    "authority_ref_binds_transition_authorization",
+    "local_owner_verifies_transition_authorization",
+    "operational_database_private",
+    "one_mutable_owner",
+    "atomic_plan_population_cas",
+    "egress_read_only",
+    "egress_append_denied",
+    "durable_idempotent_receipts",
+    "protected_full_rows_bound",
 )
 _PREPARED_FIELDS = frozenset(
     {
@@ -371,6 +393,20 @@ def _require_safe_id(value: object, noun: str) -> str:
     if not _SAFE_ID.fullmatch(text):
         raise ExternalAgentPlanR2Error(f"{noun} is not a bounded identifier")
     return text
+
+
+def _require_ed25519_did(value: object, noun: str) -> str:
+    """Decode one Ed25519 ``did:key`` and keep profile errors inside Plan R2."""
+
+    if not isinstance(value, str):
+        raise ExternalAgentPlanR2Error(f"{noun} is not a valid Ed25519 did:key")
+    try:
+        ed25519_public_key_from_did(value)
+    except LocalProfileTampered as exc:
+        raise ExternalAgentPlanR2Error(
+            f"{noun} is not a valid Ed25519 did:key"
+        ) from exc
+    return value
 
 
 def _closed_mapping(value: object, fields: frozenset[str], noun: str) -> dict[str, Any]:
@@ -774,10 +810,13 @@ def prepare_plan_r2_transition_approval(
     expires_at_ms: int,
 ) -> dict[str, Any]:
     _validate_statement(statement)
+    identity = _require_ed25519_did(
+        identity_did,
+        "Plan R2 transition approval identity",
+    )
     if (
         role not in {"independent_operator", "independent_security_reviewer"}
-        or not identity_did.startswith("did:key:z")
-        or identity_did == statement["owner_principal_did"]
+        or identity == statement["owner_principal_did"]
         or not _positive_int(issued_at_ms)
         or not _positive_int(expires_at_ms)
         or issued_at_ms < int(statement["issued_at_ms"])
@@ -788,12 +827,43 @@ def prepare_plan_r2_transition_approval(
     return {
         "schema": PLAN_R2_TRANSITION_APPROVAL_SCHEMA,
         "role": role,
-        "identity_did": identity_did,
+        "identity_did": identity,
         "statement_cid": statement["statement_cid"],
         "one_use_nonce": statement["one_use_nonce"],
         "issued_at_ms": issued_at_ms,
         "expires_at_ms": expires_at_ms,
     }
+
+
+def seal_plan_r2_transition_approval(
+    statement: Mapping[str, Any],
+    prepared_approval: Mapping[str, Any],
+    *,
+    signature: str,
+) -> dict[str, Any]:
+    """Attach an externally produced approval signature without loading a key."""
+
+    value = _closed_mapping(
+        prepared_approval,
+        _APPROVAL_SIGNING_FIELDS,
+        "Plan R2 transition approval signing payload",
+    )
+    expected = prepare_plan_r2_transition_approval(
+        statement,
+        role=str(value.get("role") or ""),
+        identity_did=str(value.get("identity_did") or ""),
+        issued_at_ms=value.get("issued_at_ms"),
+        expires_at_ms=value.get("expires_at_ms"),
+    )
+    if value != expected:
+        raise ExternalAgentPlanR2Error(
+            "Plan R2 transition approval signing payload differs from its statement"
+        )
+    if not isinstance(signature, str) or not signature:
+        raise ExternalAgentPlanR2Error("Plan R2 transition approval signature is absent")
+    sealed = {**value, "signature": signature}
+    _canonical_bytes(sealed)
+    return sealed
 
 
 def _verify_approval(
@@ -931,6 +1001,164 @@ def verify_plan_r2_transition_authorization(
     return report
 
 
+def _validate_plan_r2_operational_capability_signing_payload(
+    payload: object,
+) -> dict[str, Any]:
+    value = _closed_mapping(
+        payload,
+        _CAPABILITY_SIGNING_FIELDS,
+        "Plan R2 operational capability signing payload",
+    )
+    owner_principal_did = _require_ed25519_did(
+        value.get("owner_principal_did"),
+        "Plan R2 operational capability owner principal",
+    )
+    reviewer_identity_did = _require_ed25519_did(
+        value.get("reviewer_identity_did"),
+        "Plan R2 operational capability reviewer",
+    )
+    if (
+        value.get("schema") != PLAN_R2_OPERATIONAL_CAPABILITY_SCHEMA
+        or value.get("allowed") is not True
+        or value.get("blockers") != []
+        or value.get("duckdb_version") != "1.5.5"
+        or value.get("quack_build") != "quack@1.5.5+core"
+        or value.get("authorized_state_command_schema")
+        != "ipfs_accelerate_py/agent-supervisor/authorized-state-command@1"
+        or any(value.get(field) is not True for field in _CAPABILITY_REQUIRED_TRUE)
+        or not _GIT_OBJECT.fullmatch(str(value.get("source_head") or ""))
+        or not _GIT_OBJECT.fullmatch(str(value.get("source_tree") or ""))
+        or any(
+            not _SHA256.fullmatch(str(value.get(field) or ""))
+            for field in (
+                "bootstrap_admission_cid",
+                "quack_owner_qualification_cid",
+                "quack_command_fabric_qualification_cid",
+            )
+        )
+        or reviewer_identity_did == owner_principal_did
+        or not _SAFE_ID.fullmatch(str(value.get("shard_id") or ""))
+        or not all(
+            _positive_int(value.get(field))
+            for field in (
+                "owner_generation",
+                "epoch",
+                "fence",
+                "issued_at_ms",
+                "expires_at_ms",
+            )
+        )
+        or int(value["issued_at_ms"]) >= int(value["expires_at_ms"])
+    ):
+        raise ExternalAgentPlanR2Error(
+            "Plan R2 operational capability signing payload is invalid"
+        )
+    _canonical_bytes(value)
+    return value
+
+
+def _plan_r2_statement_binding(transition: Mapping[str, Any]) -> dict[str, Any]:
+    if transition.get("schema") == PLAN_R2_TRANSITION_STATEMENT_SCHEMA:
+        statement = dict(transition)
+        _validate_statement(statement)
+        return statement
+    value = _closed_mapping(
+        transition,
+        _AUTHORIZATION_FIELDS,
+        "Plan R2 transition authorization signing source",
+    )
+    if value.get("schema") != PLAN_R2_TRANSITION_AUTHORIZATION_SCHEMA:
+        raise ExternalAgentPlanR2Error(
+            "Plan R2 operational capability has no exact transition binding"
+        )
+    body = dict(value)
+    authorization_cid = str(body.pop("authorization_cid", ""))
+    if authorization_cid != _cid(body):
+        raise ExternalAgentPlanR2Error(
+            "Plan R2 transition authorization signing source is not self-addressed"
+        )
+    statement = {key: value[key] for key in _STATEMENT_FIELDS}
+    statement["schema"] = PLAN_R2_TRANSITION_STATEMENT_SCHEMA
+    _validate_statement(statement)
+    return statement
+
+
+def plan_r2_operational_capability_signing_payload(
+    transition: Mapping[str, Any],
+    *,
+    reviewer_identity_did: str,
+    issued_at_ms: int,
+    expires_at_ms: int,
+) -> dict[str, Any]:
+    """Build public Plan-R2 capability claims for an independent reviewer."""
+
+    statement = _plan_r2_statement_binding(transition)
+    owner_principal_did = _require_ed25519_did(
+        statement.get("owner_principal_did"),
+        "Plan R2 transition owner principal",
+    )
+    reviewer_identity = _require_ed25519_did(
+        reviewer_identity_did,
+        "Plan R2 operational capability reviewer",
+    )
+    if (
+        reviewer_identity == owner_principal_did
+        or not _positive_int(issued_at_ms)
+        or not _positive_int(expires_at_ms)
+        or issued_at_ms < int(statement["issued_at_ms"])
+        or issued_at_ms >= expires_at_ms
+        or expires_at_ms > int(statement["expires_at_ms"])
+    ):
+        raise ExternalAgentPlanR2Error(
+            "Plan R2 operational capability reviewer/lifetime is invalid"
+        )
+    value: dict[str, Any] = {
+        "schema": PLAN_R2_OPERATIONAL_CAPABILITY_SCHEMA,
+        "allowed": True,
+        "blockers": [],
+        "source_head": statement["source_head"],
+        "source_tree": statement["source_tree"],
+        "bootstrap_admission_cid": statement["bootstrap_admission_cid"],
+        "quack_owner_qualification_cid": statement["quack_owner_qualification_cid"],
+        "quack_command_fabric_qualification_cid": statement[
+            "quack_command_fabric_qualification_cid"
+        ],
+        "owner_principal_did": statement["owner_principal_did"],
+        "shard_id": statement["shard_id"],
+        "owner_generation": statement["owner_generation"],
+        "epoch": statement["expected_epoch"],
+        "fence": statement["fencing_token"],
+        "duckdb_version": "1.5.5",
+        "quack_build": "quack@1.5.5+core",
+        "authorized_state_command_schema": (
+            "ipfs_accelerate_py/agent-supervisor/authorized-state-command@1"
+        ),
+        **{field: True for field in _CAPABILITY_REQUIRED_TRUE},
+        "reviewer_identity_did": reviewer_identity,
+        "issued_at_ms": issued_at_ms,
+        "expires_at_ms": expires_at_ms,
+    }
+    return _validate_plan_r2_operational_capability_signing_payload(value)
+
+
+def seal_plan_r2_operational_capability(
+    prepared_payload: Mapping[str, Any],
+    *,
+    reviewer_signature: str,
+) -> dict[str, Any]:
+    """Seal externally produced review evidence into a self-addressed capability."""
+
+    value = _validate_plan_r2_operational_capability_signing_payload(prepared_payload)
+    if not isinstance(reviewer_signature, str) or not reviewer_signature:
+        raise ExternalAgentPlanR2Error(
+            "Plan R2 operational capability reviewer signature is absent"
+        )
+    signed = {**value, "reviewer_signature": reviewer_signature}
+    capability = {**signed, "capability_cid": _cid(signed)}
+    _canonical_bytes(capability)
+    return capability
+
+
 def verify_plan_r2_operational_capability(
     capability: object,
     *,
@@ -944,22 +1172,6 @@ def verify_plan_r2_operational_capability(
     capability_cid = str(body.pop("capability_cid", ""))
     signature = body.pop("reviewer_signature", None)
     reviewer = str(value.get("reviewer_identity_did") or "")
-    required_true = (
-        "ingress_authenticated",
-        "ingress_append_only_single_relation",
-        "ingress_accepts_signed_envelope_only",
-        "bare_state_command_rejected",
-        "owner_verifies_authorized_state_command",
-        "authority_ref_binds_transition_authorization",
-        "local_owner_verifies_transition_authorization",
-        "operational_database_private",
-        "one_mutable_owner",
-        "atomic_plan_population_cas",
-        "egress_read_only",
-        "egress_append_denied",
-        "durable_idempotent_receipts",
-        "protected_full_rows_bound",
-    )
     if (
         value.get("schema") != PLAN_R2_OPERATIONAL_CAPABILITY_SCHEMA
         or capability_cid != _cid({**body, "reviewer_signature": signature})
@@ -969,7 +1181,7 @@ def verify_plan_r2_operational_capability(
         or value.get("quack_build") != "quack@1.5.5+core"
         or value.get("authorized_state_command_schema")
         != "ipfs_accelerate_py/agent-supervisor/authorized-state-command@1"
-        or any(value.get(field) is not True for field in required_true)
+        or any(value.get(field) is not True for field in _CAPABILITY_REQUIRED_TRUE)
         or reviewer not in frozenset(trusted_reviewer_dids)
         or reviewer == value.get("owner_principal_did")
         or not _GIT_OBJECT.fullmatch(str(value.get("source_head") or ""))
@@ -1780,6 +1992,7 @@ __all__ = (
     "assemble_plan_r2_transition_authorization",
     "assess_plan_r2_transition",
     "observe_authorized_plan_r2_transition",
+    "plan_r2_operational_capability_signing_payload",
     "prepare_authorized_plan_r2_transition",
     "plan_r2_state_observation_relative_path",
     "plan_r2_transition_authorization_relative_path",
@@ -1788,6 +2001,8 @@ __all__ = (
     "prepare_plan_r2_transition_authorization",
     "publish_plan_r2_transition_authorization",
     "publish_plan_r2_transition_result",
+    "seal_plan_r2_operational_capability",
+    "seal_plan_r2_transition_approval",
     "validate_plan_r2_launch_transition",
     "verify_plan_r2_operational_capability",
     "verify_plan_r2_transition_authorization",

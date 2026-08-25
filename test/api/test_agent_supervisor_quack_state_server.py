@@ -10,6 +10,8 @@ Acceptance:
 
 from __future__ import annotations
 
+import copy
+import fcntl
 import json
 import os
 import subprocess
@@ -24,6 +26,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     OwnerLiveness,
     ProcessBirthIdentity,
+    current_process_birth,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     RUNTIME_REGISTRY_PATH_ENV,
@@ -41,6 +44,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     QuackStateServerBindError,
     QuackStateServerCapabilityError,
     QuackStateServerConfig,
+    QuackStateServerControlError,
     QuackStateServerOwnershipError,
     QuackStateServerReadyError,
     QuackStateServerTokenError,
@@ -250,6 +254,71 @@ def _server(
         process_birth_factory=lambda: birth or _birth(),
         owner_liveness_probe=probe_liveness,
     )
+
+
+def _offline_lease_for_server(
+    server: QuackStateServer,
+    *,
+    birth: ProcessBirthIdentity,
+    server_id: str = "offline:test-writer",
+) -> ExclusiveOwnerLease:
+    lease = ExclusiveOwnerLease(
+        lock_path=server.owner_lock_path(),
+        marker_path=server.owner_marker_path(),
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+    )
+    lease.acquire(
+        server_id=server_id,
+        process_birth=birth,
+        database_path=server.config.database_path,
+        generation=1,
+    )
+    return lease
+
+
+def _assert_raw_lock_acquirable(lock_path: Path) -> None:
+    """Prove no stale in-process descriptor still owns ``lock_path``."""
+
+    descriptor = os.open(
+        lock_path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
+
+def _handoff_reuse_loser(
+    original: QuackStateServer,
+    state_dir: Path,
+    *,
+    birth: ProcessBirthIdentity,
+) -> tuple[QuackStateServer, list[str]]:
+    calls: list[str] = []
+    loser = build_server(
+        database_path=original.config.database_path,
+        state_dir=state_dir,
+        repository_id="repository:sha256:reuse-loser",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: (
+            calls.append("capability") or _compatible_report()
+        ),
+        migrate=lambda _path: calls.append("migration") or _migration_report(),
+        connection_factory=lambda _path: (
+            calls.append("database_open") or FakeConnection()
+        ),
+        process_birth_factory=lambda: birth,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    loser._admit_isolated_owner = (  # type: ignore[method-assign]  # noqa: SLF001
+        lambda: calls.append("isolation") or None
+    )
+    return loser, calls
 
 
 def _real_database_server(
@@ -1216,6 +1285,211 @@ def test_stale_marker_not_reclaimed_when_owner_alive(tmp_path: Path) -> None:
     assert marker_path.exists()
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("server_id", True),
+        ("database_path", 7),
+        ("started_at", False),
+        ("fence_token", 9),
+        ("generation", True),
+        ("generation", "1"),
+        ("generation", 1.0),
+    ],
+)
+def test_owner_marker_parser_rejects_top_level_type_drift(
+    field: str,
+    value: object,
+) -> None:
+    marker = OwnerMarker(
+        server_id="server:strict-marker",
+        process_birth=_birth(),
+        database_path="/strict/control.duckdb",
+        started_at="2026-08-25T00:00:00Z",
+        fence_token="strict-fence",
+        generation=1,
+    ).to_dict()
+    marker[field] = value
+
+    with pytest.raises(ValueError):
+        OwnerMarker.from_dict(marker)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("pid", True),
+        ("pid", "4242"),
+        ("start_time_ticks", False),
+        ("start_time_ticks", "999"),
+        ("boot_id", 1),
+        ("parent_pid", True),
+        ("parent_pid", "1"),
+    ],
+)
+def test_owner_marker_parser_rejects_nested_process_birth_type_drift(
+    field: str,
+    value: object,
+) -> None:
+    marker = OwnerMarker(
+        server_id="server:strict-marker",
+        process_birth=_birth(),
+        database_path="/strict/control.duckdb",
+        started_at="2026-08-25T00:00:00Z",
+        fence_token="strict-fence",
+        generation=1,
+    ).to_dict()
+    marker["process_birth"][field] = value
+
+    with pytest.raises(ValueError):
+        OwnerMarker.from_dict(marker)
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ["top_missing", "top_extra", "nested_missing", "nested_extra"],
+)
+def test_owner_marker_parser_rejects_missing_or_unexpected_exact_fields(
+    drift: str,
+) -> None:
+    marker = OwnerMarker(
+        server_id="server:strict-marker",
+        process_birth=_birth(),
+        database_path="/strict/control.duckdb",
+        started_at="2026-08-25T00:00:00Z",
+        fence_token="strict-fence",
+        generation=1,
+    ).to_dict()
+    if drift == "top_missing":
+        marker.pop("started_at")
+    elif drift == "top_extra":
+        marker["unexpected"] = "drift"
+    elif drift == "nested_missing":
+        marker["process_birth"].pop("parent_pid")
+    else:
+        marker["process_birth"]["unexpected"] = "drift"
+
+    with pytest.raises(ValueError):
+        OwnerMarker.from_dict(marker)
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        "duplicate_top",
+        "duplicate_nested",
+        "nested_missing",
+        "nested_extra",
+        "nested_bool",
+        "numeric_bool",
+        "string_bool",
+    ],
+)
+def test_malformed_owner_marker_is_rejected_before_handoff_without_effects(
+    tmp_path: Path,
+    drift: str,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    calls: list[str] = []
+    server._admit_isolated_owner = (  # type: ignore[method-assign]  # noqa: SLF001
+        lambda: calls.append("isolation") or None
+    )
+    server.capability_probe = (
+        lambda **_kwargs: calls.append("capability") or _compatible_report()
+    )
+    server.migrate = lambda _path: calls.append("migration") or _migration_report()
+    server.connection_factory = (
+        lambda _path: calls.append("database_open") or FakeConnection()
+    )
+    lease = _offline_lease_for_server(server, birth=birth)
+    marker_path = server.owner_marker_path()
+    valid_raw = marker_path.read_text(encoding="utf-8")
+    payload = json.loads(valid_raw)
+    if drift == "duplicate_top":
+        malformed = valid_raw.replace(
+            '  "server_id": ',
+            '  "server_id": "server:duplicate",\n  "server_id": ',
+            1,
+        )
+    elif drift == "duplicate_nested":
+        malformed = valid_raw.replace(
+            '    "pid": ',
+            '    "pid": 999,\n    "pid": ',
+            1,
+        )
+    else:
+        process_birth = payload["process_birth"]
+        if drift == "nested_missing":
+            process_birth.pop("parent_pid")
+        elif drift == "nested_extra":
+            process_birth["unexpected"] = "drift"
+        elif drift == "nested_bool":
+            process_birth["pid"] = True
+        elif drift == "numeric_bool":
+            payload["generation"] = True
+        else:
+            payload["server_id"] = True
+        malformed = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+    assert malformed != valid_raw
+    marker_path.write_text(malformed, encoding="utf-8")
+    malformed_bytes = marker_path.read_bytes()
+
+    with pytest.raises(QuackStateServerOwnershipError):
+        server.start_with_acquired_lease(lease)
+
+    assert calls == []
+    assert server._owner is None  # noqa: SLF001 - no cleanup assignment
+    assert lease.held is False
+    assert lease._lock_open is True  # noqa: SLF001 - retained original flock
+    assert marker_path.read_bytes() == malformed_bytes
+    with pytest.raises(QuackStateServerControlError, match="mismatch"):
+        lease.release()
+    assert lease._lock_open is False  # noqa: SLF001 - explicit cleanup proof
+    assert marker_path.read_bytes() == malformed_bytes
+    _assert_raw_lock_acquirable(server.owner_lock_path())
+    marker_path.unlink()
+
+
+def test_malformed_owner_marker_is_rejected_before_lease_becomes_held(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "control.duckdb"
+    lock_path = tmp_path / "owner.lock"
+    marker_path = tmp_path / "owner.json"
+    payload = OwnerMarker(
+        server_id="server:malformed-existing",
+        process_birth=_birth(),
+        database_path=str(database_path),
+        started_at="2026-08-25T00:00:00Z",
+        fence_token="malformed-fence",
+        generation=1,
+    ).to_dict()
+    payload["process_birth"]["start_time_ticks"] = True
+    malformed = json.dumps(payload, sort_keys=True).encode("utf-8")
+    marker_path.write_bytes(malformed)
+    lease = ExclusiveOwnerLease(
+        lock_path=lock_path,
+        marker_path=marker_path,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+    )
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="marker is not a regular exact object",
+    ):
+        lease.acquire(
+            server_id="server:new",
+            process_birth=current_process_birth(),
+            database_path=database_path,
+        )
+
+    assert lease.held is False
+    assert lease._lock_open is False  # noqa: SLF001 - failed-acquire cleanup
+    assert marker_path.read_bytes() == malformed
+    _assert_raw_lock_acquirable(lock_path)
+
+
 def test_exclusive_owner_lease_fence_mismatch_on_release(tmp_path: Path) -> None:
     lock_path = tmp_path / "owner.lock"
     marker_path = tmp_path / "owner.json"
@@ -1229,9 +1503,838 @@ def test_exclusive_owner_lease_fence_mismatch_on_release(tmp_path: Path) -> None
         process_birth=_birth(),
         database_path=tmp_path / "control.duckdb",
     )
-    with pytest.raises(Exception, match="fence"):
+    retained_marker = marker_path.read_bytes()
+
+    with pytest.raises(QuackStateServerControlError, match="fence"):
         lease.release(fence_token="wrong-fence")
-    lease.release()
+
+    assert lease.held is False
+    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
+    assert marker_path.read_bytes() == retained_marker
+    _assert_raw_lock_acquirable(lock_path)
+    marker_path.unlink()
+
+
+def test_owner_lease_release_observation_error_still_unlocks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "owner.lock"
+    marker_path = tmp_path / "owner.json"
+    lease = ExclusiveOwnerLease(
+        lock_path=lock_path,
+        marker_path=marker_path,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+    )
+    lease.acquire(
+        server_id="server:release-observation",
+        process_birth=_birth(),
+        database_path=tmp_path / "control.duckdb",
+    )
+    retained_marker = marker_path.read_bytes()
+
+    def failed_observation() -> tuple[str, OwnerMarker | None]:
+        raise OSError("injected marker observation failure")
+
+    monkeypatch.setattr(lease, "_read_marker_locked", failed_observation)
+    with pytest.raises(QuackStateServerControlError, match="observation:OSError"):
+        lease.release()
+
+    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
+    assert marker_path.read_bytes() == retained_marker
+    _assert_raw_lock_acquirable(lock_path)
+    marker_path.unlink()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork semantics")
+@pytest.mark.filterwarnings("ignore:This process.*use of fork.*:DeprecationWarning")
+def test_fork_child_cannot_unlock_parent_owner_lease(tmp_path: Path) -> None:
+    lock_path = tmp_path / "owner.lock"
+    marker_path = tmp_path / "owner.json"
+    database_path = tmp_path / "control.duckdb"
+    lease = ExclusiveOwnerLease(
+        lock_path=lock_path,
+        marker_path=marker_path,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+    )
+    lease.acquire(
+        server_id="server:fork-parent",
+        process_birth=current_process_birth(),
+        database_path=database_path,
+    )
+    read_fd, write_fd = os.pipe()
+    child_pid = os.fork()
+    if child_pid == 0:  # pragma: no cover - assertions execute in the parent
+        os.close(read_fd)
+        try:
+            try:
+                lease.release()
+            except QuackStateServerOwnershipError:
+                os.write(write_fd, b"birth-refused")
+            except BaseException as exc:
+                os.write(write_fd, f"unexpected:{type(exc).__name__}".encode())
+            else:
+                os.write(write_fd, b"unexpected-release")
+        finally:
+            os.close(write_fd)
+            os._exit(0)
+
+    os.close(write_fd)
+    try:
+        child_result = os.read(read_fd, 128)
+        _, child_status = os.waitpid(child_pid, 0)
+        assert os.waitstatus_to_exitcode(child_status) == 0
+        assert child_result == b"birth-refused"
+        assert lease.held is True
+
+        contender = ExclusiveOwnerLease(
+            lock_path=lock_path,
+            marker_path=marker_path,
+            liveness=lambda _birth: OwnerLiveness.DEAD,
+        )
+        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock"):
+            contender.acquire(
+                server_id="server:fork-contender",
+                process_birth=current_process_birth(),
+                database_path=database_path,
+            )
+        assert lease.held is True
+    finally:
+        os.close(read_fd)
+        if lease._lock_open:  # noqa: SLF001 - bounded test cleanup
+            lease.release()
+
+    assert not marker_path.exists()
+
+
+def test_same_process_offline_lease_handoff_preserves_flock_and_fence(
+    tmp_path: Path,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    lease = _offline_lease_for_server(server, birth=birth)
+    retained_fence = lease.fence_token
+
+    identity = server.start_with_acquired_lease(lease)
+    try:
+        marker = OwnerMarker.from_dict(
+            json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+        )
+        adopted_owner = server._owner  # noqa: SLF001 - exact handoff invariant
+        assert adopted_owner is not None
+        assert adopted_owner is not lease
+        assert adopted_owner.held is True
+        assert adopted_owner.fence_token == retained_fence
+        assert lease.held is False
+        assert lease.fence_token == ""
+        assert marker.fence_token == retained_fence
+        assert marker.server_id == identity.server_id
+        assert marker.process_birth == birth
+        assert marker.database_path == str(server.config.database_path)
+        assert marker.generation == identity.generation
+    finally:
+        server.stop()
+
+    assert lease.held is False
+    assert not server.owner_marker_path().exists()
+
+
+def test_offline_lease_handoff_consumes_caller_and_shallow_alias_once(
+    tmp_path: Path,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    lease = _offline_lease_for_server(server, birth=birth)
+    lease_alias = copy.copy(lease)
+
+    identity = server.start_with_acquired_lease(lease)
+    try:
+        assert server.ready()["server_id"] == identity.server_id
+        for consumed in (lease, lease_alias):
+            with pytest.raises(
+                QuackStateServerOwnershipError,
+                match="already transferred",
+            ):
+                consumed.release()
+            assert server.ready()["server_id"] == identity.server_id
+
+        for index, consumed in enumerate((lease, lease_alias, lease), start=1):
+            startup_calls: list[str] = []
+            loser = build_server(
+                database_path=server.config.database_path,
+                state_dir=tmp_path / f"loser-state-{index}",
+                repository_id=f"repository:sha256:loser-{index}",
+                transport=FakeQuackTransport(),
+                capability_probe=lambda _calls=startup_calls, **_kwargs: (
+                    _calls.append("capability") or _compatible_report()
+                ),
+                migrate=lambda _path, _calls=startup_calls: (
+                    _calls.append("migration") or _migration_report()
+                ),
+                connection_factory=lambda _path, _calls=startup_calls: (
+                    _calls.append("database_open") or FakeConnection()
+                ),
+                process_birth_factory=lambda: birth,
+                owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+            )
+            loser.isolation_observer = (
+                lambda *_args, _calls=startup_calls, **_kwargs: (
+                    _calls.append("isolation") or None
+                )
+            )
+
+            with pytest.raises(QuackStateServerOwnershipError):
+                loser.start_with_acquired_lease(consumed)
+
+            assert startup_calls == []
+            assert server.ready()["server_id"] == identity.server_id
+    finally:
+        server.stop()
+
+    assert lease._lock_open is False  # noqa: SLF001 - shared-state cleanup proof
+    assert lease_alias._lock_open is False  # noqa: SLF001
+
+
+def test_adopted_receiver_cannot_be_reused_as_an_offline_handoff(
+    tmp_path: Path,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path / "adopted", birth=birth)
+    lease = _offline_lease_for_server(server, birth=birth)
+    identity = server.start_with_acquired_lease(lease)
+    adopted_receiver = server._owner  # noqa: SLF001 - adversarial reuse proof
+    assert adopted_receiver is not None
+    marker_before = server.owner_marker_path().read_bytes()
+    ready_before = server.ready()
+    fence_before = adopted_receiver.fence_token
+    loser, calls = _handoff_reuse_loser(
+        server,
+        tmp_path / "adopted-reuse-loser",
+        birth=birth,
+    )
+
+    try:
+        with pytest.raises(
+            QuackStateServerOwnershipError,
+            match="already state-owner bound",
+        ):
+            loser.start_with_acquired_lease(adopted_receiver)
+
+        assert calls == []
+        assert loser._owner is None  # noqa: SLF001 - no cleanup assignment
+        assert server.owner_marker_path().read_bytes() == marker_before
+        assert server.ready() == ready_before
+        assert server.ready()["server_id"] == identity.server_id
+        assert adopted_receiver.held is True
+        assert adopted_receiver.fence_token == fence_before
+        marker = adopted_receiver.marker
+        assert marker is not None
+        assert marker.generation == identity.generation
+    finally:
+        server.stop()
+
+
+def test_normal_start_owner_cannot_be_adopted_as_an_offline_handoff(
+    tmp_path: Path,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path / "normal", birth=birth)
+    identity = server.start()
+    normal_owner = server._owner  # noqa: SLF001 - adversarial reuse proof
+    assert normal_owner is not None
+    marker_before = server.owner_marker_path().read_bytes()
+    ready_before = server.ready()
+    fence_before = normal_owner.fence_token
+    loser, calls = _handoff_reuse_loser(
+        server,
+        tmp_path / "normal-reuse-loser",
+        birth=birth,
+    )
+
+    try:
+        with pytest.raises(
+            QuackStateServerOwnershipError,
+            match="already state-owner bound",
+        ):
+            loser.start_with_acquired_lease(normal_owner)
+
+        assert calls == []
+        assert loser._owner is None  # noqa: SLF001 - no cleanup assignment
+        assert server.owner_marker_path().read_bytes() == marker_before
+        assert server.ready() == ready_before
+        assert server.ready()["server_id"] == identity.server_id
+        assert normal_owner.held is True
+        assert normal_owner.fence_token == fence_before
+        marker = normal_owner.marker
+        assert marker is not None
+        assert marker.generation == identity.generation
+    finally:
+        server.stop()
+
+
+def test_normal_start_binding_failure_releases_flock_and_preserves_foreign_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    calls: list[str] = []
+    server.capability_probe = (
+        lambda **_kwargs: calls.append("capability") or _compatible_report()
+    )
+    server.migrate = lambda _path: calls.append("migration") or _migration_report()
+    server.connection_factory = (
+        lambda _path: calls.append("database_open") or FakeConnection()
+    )
+    real_bind = ExclusiveOwnerLease._bind_new_state_owner  # noqa: SLF001
+    acquired: list[ExclusiveOwnerLease] = []
+    foreign_marker: OwnerMarker | None = None
+
+    def tamper_before_binding(owner: ExclusiveOwnerLease) -> None:
+        nonlocal foreign_marker
+        acquired.append(owner)
+        current = owner.marker
+        assert current is not None
+        foreign_marker = OwnerMarker(
+            server_id="server:foreign-during-normal-bind",
+            process_birth=current.process_birth,
+            database_path=current.database_path,
+            started_at=current.started_at,
+            fence_token="foreign-normal-bind-fence",
+            generation=current.generation,
+        )
+        owner.marker_path.write_text(
+            json.dumps(foreign_marker.to_dict()),
+            encoding="utf-8",
+        )
+        real_bind(owner)
+
+    monkeypatch.setattr(
+        ExclusiveOwnerLease,
+        "_bind_new_state_owner",
+        tamper_before_binding,
+    )
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="marker differs before state-owner binding",
+    ):
+        server.start()
+
+    assert calls == []
+    assert foreign_marker is not None
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert server._owner is None  # noqa: SLF001 - emergency cleanup completed
+    assert len(acquired) == 1
+    assert acquired[0].held is False
+    assert acquired[0]._lock_open is False  # noqa: SLF001 - no stranded flock
+    assert OwnerMarker.from_dict(
+        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+    ) == foreign_marker
+    _assert_raw_lock_acquirable(server.owner_lock_path())
+    server.owner_marker_path().unlink()
+
+
+def test_normal_start_lock_retarget_during_binding_releases_original_flock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    calls: list[str] = []
+    server.capability_probe = (
+        lambda **_kwargs: calls.append("capability") or _compatible_report()
+    )
+    server.migrate = lambda _path: calls.append("migration") or _migration_report()
+    server.connection_factory = (
+        lambda _path: calls.append("database_open") or FakeConnection()
+    )
+    real_bind = ExclusiveOwnerLease._bind_new_state_owner  # noqa: SLF001
+    acquired: list[ExclusiveOwnerLease] = []
+    displaced_lock = tmp_path / "displaced-original-owner.lock"
+    foreign_target = tmp_path / "foreign-lock-target"
+    foreign_bytes = b"foreign-lock-target-must-remain-unchanged\n"
+    retained_marker = b""
+
+    def retarget_before_binding(owner: ExclusiveOwnerLease) -> None:
+        nonlocal retained_marker
+        acquired.append(owner)
+        retained_marker = owner.marker_path.read_bytes()
+        foreign_target.write_bytes(foreign_bytes)
+        owner.lock_path.rename(displaced_lock)
+        owner.lock_path.symlink_to(foreign_target)
+        real_bind(owner)
+
+    monkeypatch.setattr(
+        ExclusiveOwnerLease,
+        "_bind_new_state_owner",
+        retarget_before_binding,
+    )
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="cannot enter state-owner binding",
+    ):
+        server.start()
+
+    assert calls == []
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert server._owner is None  # noqa: SLF001 - emergency cleanup completed
+    assert len(acquired) == 1
+    assert acquired[0].held is False
+    assert acquired[0]._lock_open is False  # noqa: SLF001 - no stranded flock
+    assert server.owner_marker_path().read_bytes() == retained_marker
+    assert server.owner_lock_path().is_symlink()
+    assert server.owner_lock_path().resolve() == foreign_target
+    assert foreign_target.read_bytes() == foreign_bytes
+    _assert_raw_lock_acquirable(displaced_lock)
+    _assert_raw_lock_acquirable(foreign_target)
+
+    server.owner_marker_path().unlink()
+    server.owner_lock_path().unlink()
+    displaced_lock.unlink()
+    foreign_target.unlink()
+
+
+def test_offline_lease_handoff_keeps_competitor_before_migration_and_open(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "control.duckdb"
+    state_dir = tmp_path / "state"
+    birth = current_process_birth()
+    migration_entered = threading.Event()
+    release_migration = threading.Event()
+    capability_calls: list[str] = []
+    migration_calls: list[str] = []
+    open_calls: list[str] = []
+    adopted_errors: list[BaseException] = []
+
+    def adopted_migrate(_path: Path) -> MigrationRunReport:
+        migration_calls.append("adopted")
+        migration_entered.set()
+        if not release_migration.wait(timeout=5):
+            raise AssertionError("test did not release adopted-owner migration")
+        return _migration_report()
+
+    def loser_migrate(_path: Path) -> MigrationRunReport:
+        migration_calls.append("loser")
+        return _migration_report()
+
+    common = {
+        "database_path": database,
+        "state_dir": state_dir,
+        "repository_id": "repository:sha256:handoff-test",
+        "process_birth_factory": lambda: birth,
+        "owner_liveness_probe": lambda _birth: OwnerLiveness.DEAD,
+    }
+    adopted = build_server(
+        **common,
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: (
+            capability_calls.append("adopted") or _compatible_report()
+        ),
+        migrate=adopted_migrate,
+        connection_factory=lambda _path: (
+            open_calls.append("adopted") or FakeConnection()
+        ),
+    )
+    loser = build_server(
+        **common,
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: (
+            capability_calls.append("loser") or _compatible_report()
+        ),
+        migrate=loser_migrate,
+        connection_factory=lambda _path: (
+            open_calls.append("loser") or FakeConnection()
+        ),
+    )
+    lease = _offline_lease_for_server(adopted, birth=birth)
+    retained_fence = lease.fence_token
+
+    def start_adopted() -> None:
+        try:
+            adopted.start_with_acquired_lease(lease)
+        except BaseException as exc:  # pragma: no cover - diagnostic capture
+            adopted_errors.append(exc)
+
+    thread = threading.Thread(target=start_adopted, daemon=True)
+    thread.start()
+    assert migration_entered.wait(timeout=5)
+    try:
+        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock"):
+            loser.start()
+        adopted_owner = adopted._owner  # noqa: SLF001 - transfer invariant
+        assert adopted_owner is not None
+        assert adopted_owner.held is True
+        assert adopted_owner.fence_token == retained_fence
+        assert lease.held is False
+        assert lease.fence_token == ""
+        assert capability_calls == ["adopted"]
+        assert migration_calls == ["adopted"]
+        assert open_calls == []
+    finally:
+        release_migration.set()
+        thread.join(timeout=5)
+        if adopted.lifecycle is ServerLifecycle.READY:
+            adopted.stop()
+
+    assert not thread.is_alive()
+    assert adopted_errors == []
+    assert capability_calls == ["adopted"]
+    assert migration_calls == ["adopted"]
+    assert open_calls == ["adopted"]
+
+
+def test_marker_fence_tamper_during_adopted_migration_releases_os_lock(
+    tmp_path: Path,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    lease = _offline_lease_for_server(server, birth=birth)
+    foreign_marker: OwnerMarker | None = None
+
+    def tampering_migration(_path: Path) -> MigrationRunReport:
+        nonlocal foreign_marker
+        current = OwnerMarker.from_dict(
+            json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+        )
+        foreign_marker = OwnerMarker(
+            server_id="server:foreign-marker",
+            process_birth=current.process_birth,
+            database_path=current.database_path,
+            started_at=current.started_at,
+            fence_token="foreign-fence-token",
+            generation=current.generation,
+        )
+        server.owner_marker_path().write_text(
+            json.dumps(foreign_marker.to_dict()),
+            encoding="utf-8",
+        )
+        return _migration_report()
+
+    server.migrate = tampering_migration
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="differs from the held marker",
+    ):
+        server.start_with_acquired_lease(lease)
+
+    assert foreign_marker is not None
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert server._owner is None  # noqa: SLF001 - cleanup-authority proof
+    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
+    with pytest.raises(QuackStateServerOwnershipError, match="already transferred"):
+        lease.release()
+    assert OwnerMarker.from_dict(
+        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+    ) == foreign_marker
+    _assert_raw_lock_acquirable(server.owner_lock_path())
+    server.owner_marker_path().unlink()
+
+
+def test_ready_fails_closed_after_owner_lock_path_replacement(tmp_path: Path) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    lease = _offline_lease_for_server(server, birth=birth)
+    identity = server.start_with_acquired_lease(lease)
+    lock_path = server.owner_lock_path()
+    marker_path = server.owner_marker_path()
+    retained_marker = marker_path.read_bytes()
+
+    lock_path.unlink()
+    lock_path.write_text("replacement inode\n", encoding="utf-8")
+
+    with pytest.raises(
+        QuackStateServerReadyError,
+        match="lease/fence is no longer corroborated",
+    ):
+        server.ready()
+    with pytest.raises(QuackStateServerControlError, match="mismatch"):
+        server.stop()
+
+    assert identity.server_id
+    assert server._owner is None  # noqa: SLF001 - closed-owner cleanup proof
+    assert lease._lock_open is False  # noqa: SLF001 - shared-state proof
+    assert marker_path.read_bytes() == retained_marker
+    _assert_raw_lock_acquirable(lock_path)
+    marker_path.unlink()
+    lock_path.unlink()
+
+
+def test_owner_lease_rejects_symlink_alias_and_lock_retarget(
+    tmp_path: Path,
+) -> None:
+    sealed_dir = tmp_path / "sealed"
+    sealed_dir.mkdir()
+    alias_dir = tmp_path / "alias"
+    alias_dir.symlink_to(sealed_dir, target_is_directory=True)
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="without symlink aliases",
+    ):
+        ExclusiveOwnerLease(
+            lock_path=alias_dir / "owner.lock",
+            marker_path=alias_dir / "owner.json",
+        )
+
+    birth = current_process_birth()
+    server = _server(tmp_path / "retarget", birth=birth)
+    startup_calls: list[str] = []
+    server.isolation_observer = (
+        lambda *_args, **_kwargs: startup_calls.append("isolation") or None
+    )
+    server.capability_probe = (
+        lambda **_kwargs: startup_calls.append("capability") or _compatible_report()
+    )
+    server.migrate = (
+        lambda _path: startup_calls.append("migration") or _migration_report()
+    )
+    server.connection_factory = (
+        lambda _path: startup_calls.append("database_open") or FakeConnection()
+    )
+    lease = _offline_lease_for_server(server, birth=birth)
+    marker_bytes = server.owner_marker_path().read_bytes()
+    target = tmp_path / "foreign-lock-target"
+    target.write_text("foreign\n", encoding="utf-8")
+    server.owner_lock_path().unlink()
+    server.owner_lock_path().symlink_to(target)
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="lock identity differ",
+    ):
+        server.start_with_acquired_lease(lease)
+
+    assert startup_calls == []
+    assert lease.held is False
+    assert lease._lock_open is True  # noqa: SLF001 - original inode still locked
+    with pytest.raises(QuackStateServerControlError, match="mismatch"):
+        lease.release()
+    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
+    assert server.owner_marker_path().read_bytes() == marker_bytes
+    assert server.owner_lock_path().is_symlink()
+    assert target.read_text(encoding="utf-8") == "foreign\n"
+    _assert_raw_lock_acquirable(target)
+    server.owner_marker_path().unlink()
+    server.owner_lock_path().unlink()
+    target.unlink()
+
+
+def test_owner_lease_rejects_marker_symlink_retarget_without_touching_target(
+    tmp_path: Path,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    startup_calls: list[str] = []
+    server.isolation_observer = (
+        lambda *_args, **_kwargs: startup_calls.append("isolation") or None
+    )
+    server.capability_probe = (
+        lambda **_kwargs: startup_calls.append("capability") or _compatible_report()
+    )
+    lease = _offline_lease_for_server(server, birth=birth)
+    retained_marker = server.owner_marker_path().read_bytes()
+    foreign_target = tmp_path / "foreign-marker-target"
+    foreign_target.write_bytes(retained_marker)
+    server.owner_marker_path().unlink()
+    server.owner_marker_path().symlink_to(foreign_target)
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="differs from the held marker",
+    ):
+        server.start_with_acquired_lease(lease)
+
+    assert startup_calls == []
+    assert lease.held is False
+    with pytest.raises(QuackStateServerControlError, match="mismatch"):
+        lease.release()
+    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
+    assert server.owner_marker_path().is_symlink()
+    assert foreign_target.read_bytes() == retained_marker
+    _assert_raw_lock_acquirable(server.owner_lock_path())
+    server.owner_marker_path().unlink()
+    foreign_target.unlink()
+
+
+def test_owner_lease_rejects_mutable_hardlink_alias_before_transfer(
+    tmp_path: Path,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    startup_calls: list[str] = []
+    server.isolation_observer = (
+        lambda *_args, **_kwargs: startup_calls.append("isolation") or None
+    )
+    server.capability_probe = (
+        lambda **_kwargs: startup_calls.append("capability") or _compatible_report()
+    )
+    lease = _offline_lease_for_server(server, birth=birth)
+    retained_marker = server.owner_marker_path().read_bytes()
+    lock_alias = tmp_path / "owner-lock-hardlink-alias"
+    os.link(server.owner_lock_path(), lock_alias)
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="lock identity differ",
+    ):
+        server.start_with_acquired_lease(lease)
+
+    assert startup_calls == []
+    assert lease.held is False
+    assert lease._lock_open is True  # noqa: SLF001 - original inode still locked
+    with pytest.raises(QuackStateServerControlError, match="mismatch"):
+        lease.release()
+    assert lease._lock_open is False  # noqa: SLF001 - descriptor-release proof
+    assert server.owner_marker_path().read_bytes() == retained_marker
+    _assert_raw_lock_acquirable(lock_alias)
+    lock_alias.unlink()
+    server.owner_lock_path().unlink()
+    server.owner_marker_path().unlink()
+
+
+def test_offline_lease_handoff_rejects_birth_drift_before_startup_effects(
+    tmp_path: Path,
+) -> None:
+    lease_birth = current_process_birth()
+    owner_birth = ProcessBirthIdentity(
+        pid=lease_birth.pid,
+        start_time_ticks=lease_birth.start_time_ticks + 1,
+        boot_id=lease_birth.boot_id,
+        parent_pid=lease_birth.parent_pid,
+    )
+    server = _server(tmp_path, birth=owner_birth)
+    calls: list[str] = []
+    server.isolation_observer = (
+        lambda *_args, **_kwargs: calls.append("isolation") or None
+    )
+    server.capability_probe = (
+        lambda **_kwargs: calls.append("capability") or _compatible_report()
+    )
+    server.migrate = lambda _path: calls.append("migration") or _migration_report()
+    server.connection_factory = (
+        lambda _path: calls.append("database_open") or FakeConnection()
+    )
+    lease = _offline_lease_for_server(server, birth=lease_birth)
+
+    try:
+        with pytest.raises(
+            QuackStateServerOwnershipError,
+            match="process birth is not current",
+        ):
+            server.start_with_acquired_lease(lease)
+        assert calls == []
+        assert lease.held is True
+    finally:
+        lease.release()
+
+
+def test_offline_lease_handoff_rejects_wrong_paths_before_startup_effects(
+    tmp_path: Path,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    calls: list[str] = []
+    server.isolation_observer = (
+        lambda *_args, **_kwargs: calls.append("isolation") or None
+    )
+    server.capability_probe = (
+        lambda **_kwargs: calls.append("capability") or _compatible_report()
+    )
+    wrong_database = tmp_path / "wrong" / "control.duckdb"
+    lease = ExclusiveOwnerLease(
+        lock_path=wrong_database.with_name(".control.duckdb.state-owner.lock"),
+        marker_path=wrong_database.with_name(".control.duckdb.state-owner.json"),
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+    )
+    lease.acquire(
+        server_id="offline:wrong-database",
+        process_birth=birth,
+        database_path=wrong_database,
+    )
+
+    try:
+        with pytest.raises(
+            QuackStateServerOwnershipError,
+            match="paths differ",
+        ):
+            server.start_with_acquired_lease(lease)
+        assert calls == []
+        assert lease.held is True
+    finally:
+        lease.release()
+
+
+def test_offline_lease_handoff_rejects_replaced_marker_before_startup_effects(
+    tmp_path: Path,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    calls: list[str] = []
+    server.isolation_observer = (
+        lambda *_args, **_kwargs: calls.append("isolation") or None
+    )
+    server.capability_probe = (
+        lambda **_kwargs: calls.append("capability") or _compatible_report()
+    )
+    lease = _offline_lease_for_server(server, birth=birth)
+    original = lease.marker
+    assert original is not None
+    replaced = OwnerMarker(
+        server_id="offline:replaced-marker",
+        process_birth=original.process_birth,
+        database_path=original.database_path,
+        started_at=original.started_at,
+        fence_token=original.fence_token,
+        generation=original.generation,
+    )
+    server.owner_marker_path().write_text(
+        json.dumps(replaced.to_dict()),
+        encoding="utf-8",
+    )
+
+    try:
+        with pytest.raises(
+            QuackStateServerOwnershipError,
+            match="differs from the held marker",
+        ):
+            server.start_with_acquired_lease(lease)
+        assert calls == []
+        assert lease.held is False
+        assert lease._lock_open is True  # noqa: SLF001 - OS-lock continuity proof
+    finally:
+        with pytest.raises(QuackStateServerControlError, match="mismatch"):
+            lease.release()
+
+    assert lease._lock_open is False  # noqa: SLF001 - cleanup proof
+    assert OwnerMarker.from_dict(
+        json.loads(server.owner_marker_path().read_text(encoding="utf-8"))
+    ) == replaced
+    _assert_raw_lock_acquirable(server.owner_lock_path())
+    server.owner_marker_path().unlink()
+
+
+def test_failed_start_releases_consumed_offline_lease(tmp_path: Path) -> None:
+    birth = current_process_birth()
+    unavailable = _compatible_report(status=QuackCapabilityStatus.UNAVAILABLE)
+    server = _server(tmp_path, birth=birth, capability=unavailable)
+    lease = _offline_lease_for_server(server, birth=birth)
+
+    with pytest.raises(QuackStateServerCapabilityError):
+        server.start_with_acquired_lease(lease)
+
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert lease.held is False
+    assert not server.owner_marker_path().exists()
+
+    replacement = _offline_lease_for_server(
+        server,
+        birth=birth,
+        server_id="offline:replacement-writer",
+    )
+    replacement.release()
 
 
 def test_concurrent_starts_only_lease_winner_migrates_and_opens(
