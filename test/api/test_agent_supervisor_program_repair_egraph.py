@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.planning.program_repair_synthesis impor
     EqualityEGraph,
     EqualityFeatureStatus,
     EqualityRewriteStatus,
+    EqualityRewriteStep,
     EqualityRule,
     ProgramRepairAuthorityError,
     ProgramRepairBounds,
@@ -282,6 +283,14 @@ def test_invalid_sort_mismatch_is_rejected() -> None:
     assert receipt.target_sort == "Int"
 
 
+def test_known_operator_arity_mismatch_is_rejected() -> None:
+    receipt = prove_equality_under_theory(
+        arith_theory(), "(not true false)", "true"
+    )
+    assert receipt.status is EqualityRewriteStatus.INVALID
+    assert receipt.reason_code == ProgramRepairReason.EQUALITY_TYPE_MISMATCH.value
+
+
 def test_invalid_effect_changing_rewrite_is_rejected() -> None:
     theory = DeclaredEqualityTheory(
         theory_id="theory:effects@1",
@@ -303,6 +312,28 @@ def test_invalid_effect_changing_rewrite_is_rejected() -> None:
     assert receipt.reason_code == ProgramRepairReason.EQUALITY_EFFECT_CHANGE.value
     assert "file_write" in receipt.independent_effect
     _assert_available(receipt, "independent_effect_check")
+
+
+def test_independent_effect_check_rejects_allowed_effect_introduction() -> None:
+    theory = DeclaredEqualityTheory(
+        theory_id="theory:allowed-effect@1",
+        review_refs=("review:equality_theory@1", "review:equality_rewrite@1"),
+        rules=(
+            EqualityRule(
+                rule_id="rule:write-intro",
+                lhs="x",
+                rhs="(write x)",
+                review_ref="review:equality_rewrite@1",
+                theory_id="theory:allowed-effect@1",
+            ),
+        ),
+        operator_effects={"write": ("file_write",)},
+        allowed_effects=("file_write",),
+    )
+    receipt = prove_equality_under_theory(theory, "x", "(write x)")
+    assert receipt.status is EqualityRewriteStatus.INVALID
+    assert receipt.reason_code == ProgramRepairReason.EQUALITY_EFFECT_CHANGE.value
+    assert "file_write" in receipt.independent_effect
 
 
 def test_effectful_rule_fails_reviewed_side_condition() -> None:
@@ -484,6 +515,29 @@ def test_unrelated_terms_remain_unproved() -> None:
     receipt = prove_equality_under_theory(theory, "unrelated", "other")
     assert not receipt.proved
     assert receipt.status.value in {"unproved", "budget_exhausted"}
+
+
+def test_fixed_point_at_the_depth_limit_is_unproved_not_exhausted() -> None:
+    receipt = prove_equality_under_theory(
+        arith_theory(), "unrelated", "other", max_depth=1
+    )
+    assert receipt.status is EqualityRewriteStatus.UNPROVED
+
+
+def test_replay_rejects_tampered_review_provenance() -> None:
+    theory = arith_theory()
+    proved = prove_equality_under_theory(theory, "(+ x 0)", "x")
+    assert proved.proved
+    step = proved.replay_steps[0]
+    forged = EqualityRewriteStep(
+        rule_id=step.rule_id,
+        review_ref="review:forged@1",
+        lhs=step.lhs,
+        rhs=step.rhs,
+        substitution=step.substitution,
+    )
+    with pytest.raises(ProgramRepairSynthesisError, match="provenance"):
+        replay_equality_rewrites(proved.source_term, (forged,), theory)
 
 
 def test_duplicate_redexes_replay_after_congruence() -> None:
