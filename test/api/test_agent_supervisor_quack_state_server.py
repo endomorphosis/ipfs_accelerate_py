@@ -1835,6 +1835,67 @@ def test_normal_start_binding_failure_releases_flock_and_preserves_foreign_marke
     server.owner_marker_path().unlink()
 
 
+def test_normal_start_lock_retarget_during_binding_releases_original_flock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    birth = current_process_birth()
+    server = _server(tmp_path, birth=birth)
+    calls: list[str] = []
+    server.capability_probe = (
+        lambda **_kwargs: calls.append("capability") or _compatible_report()
+    )
+    server.migrate = lambda _path: calls.append("migration") or _migration_report()
+    server.connection_factory = (
+        lambda _path: calls.append("database_open") or FakeConnection()
+    )
+    real_bind = ExclusiveOwnerLease._bind_new_state_owner  # noqa: SLF001
+    acquired: list[ExclusiveOwnerLease] = []
+    displaced_lock = tmp_path / "displaced-original-owner.lock"
+    foreign_target = tmp_path / "foreign-lock-target"
+    foreign_bytes = b"foreign-lock-target-must-remain-unchanged\n"
+    retained_marker = b""
+
+    def retarget_before_binding(owner: ExclusiveOwnerLease) -> None:
+        nonlocal retained_marker
+        acquired.append(owner)
+        retained_marker = owner.marker_path.read_bytes()
+        foreign_target.write_bytes(foreign_bytes)
+        owner.lock_path.rename(displaced_lock)
+        owner.lock_path.symlink_to(foreign_target)
+        real_bind(owner)
+
+    monkeypatch.setattr(
+        ExclusiveOwnerLease,
+        "_bind_new_state_owner",
+        retarget_before_binding,
+    )
+
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="cannot enter state-owner binding",
+    ):
+        server.start()
+
+    assert calls == []
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert server._owner is None  # noqa: SLF001 - emergency cleanup completed
+    assert len(acquired) == 1
+    assert acquired[0].held is False
+    assert acquired[0]._lock_open is False  # noqa: SLF001 - no stranded flock
+    assert server.owner_marker_path().read_bytes() == retained_marker
+    assert server.owner_lock_path().is_symlink()
+    assert server.owner_lock_path().resolve() == foreign_target
+    assert foreign_target.read_bytes() == foreign_bytes
+    _assert_raw_lock_acquirable(displaced_lock)
+    _assert_raw_lock_acquirable(foreign_target)
+
+    server.owner_marker_path().unlink()
+    server.owner_lock_path().unlink()
+    displaced_lock.unlink()
+    foreign_target.unlink()
+
+
 def test_offline_lease_handoff_keeps_competitor_before_migration_and_open(
     tmp_path: Path,
 ) -> None:
