@@ -56802,6 +56802,16 @@ class PortalImplementationDaemon:
 
             branch_name = str(entry.get("branch") or "").removeprefix("refs/heads/")
             detail = {"worktree_path": str(worktree_path), "branch": branch_name}
+            # A reboot or interrupted ``git worktree add`` can leave a locked
+            # administrative entry after the checkout directory has vanished.
+            # ``subprocess.run(..., cwd=worktree_path)`` raises before Git can
+            # return a status in that case, which used to crash and recycle the
+            # implementation daemon indefinitely.  Missing registered paths
+            # are not safe to delete or reuse here; leave their Git metadata
+            # for an explicit reconciliation pass and keep dispatch alive.
+            if not worktree_path.is_dir():
+                skipped.append({**detail, "reason": "worktree_missing"})
+                continue
             if active_resolved is not None and worktree_resolved == active_resolved:
                 skipped.append({**detail, "reason": "active_state_worktree"})
                 continue
@@ -56834,13 +56844,19 @@ class PortalImplementationDaemon:
                 skipped.append({**detail, "reason": "branch_not_merged"})
                 continue
 
-            status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=all"],
-                cwd=worktree_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            try:
+                status = subprocess.run(
+                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            except FileNotFoundError:
+                # The directory can disappear after the is_dir() observation.
+                # Treat that race exactly like an already-missing checkout.
+                skipped.append({**detail, "reason": "worktree_missing"})
+                continue
             if status.returncode != 0:
                 skipped.append(
                     {
