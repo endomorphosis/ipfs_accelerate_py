@@ -1,99 +1,38 @@
 {
   "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-release-report@2",
   "start_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
-  "end_tree": "59b11091b143293b028390b8c949b0ee7c21f6f5",
+  "end_tree": "8fb5d6e7f1a747ee0338037afd4a3415d352e0d1",
   "corpus_admission_id": "baguqeera3dp4lnpqc6wgksk5erxj54dt5sxhlp6opf2z5xyz6qvbg45abf2a",
-  "expert_dispositions": {
-    "registered_expert_count": 0,
-    "disposition_counts": {"ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0},
-    "status": "no_registered_or_promoted_expert"
-  },
+  "expert_dispositions": {"registered_expert_count": 0, "disposition_counts": {"ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0}, "status": "no_registered_or_promoted_expert"},
   "before": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0},
   "after": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0},
-  "costs": {
-    "status": "not_run",
-    "denominators": {"frozen_benchmark_cases": 384, "evaluated_cases": 0, "local_attempts": 0, "remote_attempts": 0, "validation_runs": 0, "training_runs": 0, "shadow_runs": 0, "human_reviews": 0, "rollback_events": 0},
-    "break_even": {"status": "not_applicable", "reason": "no_training_or_evaluation_cost_and_no_per_use_saving_observed"}
-  },
+  "costs": {"status": "not_run", "denominators": {"frozen_benchmark_cases": 384, "evaluated_cases": 0, "local_attempts": 0, "remote_attempts": 0, "validation_runs": 0, "training_runs": 0, "shadow_runs": 0, "human_reviews": 0, "rollback_events": 0}, "break_even": {"status": "not_applicable", "reason": "no_training_or_evaluation_cost_and_no_per_use_saving_observed"}},
   "promotion_eligible": false,
   "rollback_target": "no-promoted-expert-route",
-  "gaps": {
-    "blockers": ["training_unavailable", "no_admitted_production_corpus", "no_learned_tokenizer_admitted", "no_candidate_checkpoint", "benchmark_staged_not_qualified", "no_current_tree_promotion_evidence", "gpu_live_qualification_unavailable"],
-    "unsupported_claims": ["learned", "verified", "safe", "autonomous", "token-efficient", "production-ready"],
-    "not_run": ["current_tree_paired_benchmark_execution", "current_tree_proof_receipt", "live_gpu_runtime_qualification", "promotion_cas_execution", "rollback_cas_execution", "amortization_measurement"]
-  },
-  "lineage": {
-    "start": {"commit": "84a056e41e48a81d4484be43840196578d6c87da", "tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b"},
-    "end": {"commit": "5e9db00a4e9fbbb9cba00eb37e10b270fedcc0c0", "tree": "59b11091b143293b028390b8c949b0ee7c21f6f5"},
-    "snapshot_scope": "The end snapshot is the final merged implementation tree immediately before this nonauthoritative report artifact; the report does not recursively qualify itself."
-  },
+  "gaps": {"blockers": ["training_unavailable", "no_admitted_production_corpus", "no_learned_tokenizer_admitted", "no_candidate_checkpoint", "benchmark_staged_not_qualified", "no_current_tree_promotion_evidence", "gpu_live_qualification_unavailable"], "unsupported_claims": ["learned", "verified", "safe", "autonomous", "token-efficient", "production-ready"], "not_run": ["current_tree_paired_benchmark_execution", "current_tree_proof_receipt", "live_gpu_runtime_qualification", "promotion_cas_execution", "rollback_cas_execution", "amortization_measurement"]},
+  "lineage": {"start": {"commit": "84a056e41e48a81d4484be43840196578d6c87da", "tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b"}, "end": {"commit": "3711bb4f5365ba469208891440076422686f5aa6", "tree": "8fb5d6e7f1a747ee0338037afd4a3415d352e0d1"}, "snapshot_scope": "The end snapshot is this VRIF-032 repair attempt's task-start merged tree. The replacement report and its test are excluded from recursive self-qualification."},
+  "producer_receipts": {"status": "bounded_observation_only", "receipts": [
+    {"name": "baseline", "path": "docs/architecture/residual_intelligence_inventory/baseline.json", "sha256": "adceea18943ae51f24672cf2d9f6cf161c6cefa2f9e0c3cf7a240b5ca6546d8e", "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-baseline@1", "disposition": "starting-tree-observation"},
+    {"name": "prerequisite_matrix", "path": "docs/architecture/residual_intelligence_inventory/prerequisite_matrix.json", "sha256": "730ff8f8ccac1dfdee4d4d64e8c14b74d1dd325bf22fb61c1e8cbf1fd1b3b244", "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-prerequisite-matrix@1", "disposition": "bounded-prerequisite-observation"},
+    {"name": "corpus_construction", "path": "docs/architecture/residual_intelligence_inventory/corpus_construction.json", "sha256": "72be1929924bc80d03b8f2e441c829592086308c34b6cbff4c4a20cc89c410a2", "schema": "ipfs_accelerate_py/agent-supervisor/residual-corpus-construction@1", "disposition": "training-unavailable"},
+    {"name": "pgir_training_gate", "path": "docs/architecture/residual_intelligence_inventory/pgir_training_gate.json", "sha256": "f425b7db0a5f8d2880f75339afa343c767afef2702c712b5735f71f1ec06d20a", "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-training-gate@1", "disposition": "no-go"},
+    {"name": "model_call_inventory", "path": "docs/architecture/residual_intelligence_inventory/residual_model_call_inventory.json", "sha256": "8d391f26dd27dff199aa8e58d7b90478477706e3978e61ff0ae28cf2b77cf0ac", "schema": "ipfs_accelerate_py/agent-supervisor/residual-model-call-surface-inventory@1", "disposition": "no-admitted-trajectories"},
+    {"name": "benchmark_manifest", "path": "benchmarks/agent_supervisor/residual_intelligence/manifest.json", "sha256": "3783e13bb2af1abde1110f22ce492d54e48b72a61b0dd4705f886c3ea4460eda", "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-benchmark-manifest@1", "disposition": "staged-not-qualified"},
+    {"name": "synthetic_training_admission", "path": "benchmarks/agent_supervisor/residual_intelligence/synthetic_training_admission.json", "sha256": "a9f5f291615680795a58c14b3da8584d96c454d9720233aa06394f69ed80764d", "schema": "ipfs_accelerate_py/agent-supervisor/training-corpus-admission@1", "disposition": "training-unavailable-fixture"},
+    {"name": "synthetic_split_manifest", "path": "benchmarks/agent_supervisor/residual_intelligence/synthetic_split_manifest.json", "sha256": "98b7fc5034ecfad46f858d741ce9ec072a151d0e9cbd3345a47fbb13c514062d", "schema": "ipfs_accelerate_py/agent-supervisor/residual-semantic-split-manifest@1", "disposition": "fixture-leakage-audit-only"},
+    {"name": "adversarial_campaign", "path": "docs/architecture/residual_intelligence_inventory/adversarial_campaign_report.json", "sha256": "1851994f7db86af0cadae8c914c8d4e7510241b3d6555881426fa64ccc866437", "schema": "ipfs_accelerate_py/agent-supervisor/residual-adversarial-campaign-report@2", "disposition": "fixture-campaign-not-production-authority"}
+  ]},
   "files_and_symbols": {
     "declared_outputs": ["docs/architecture/residual_intelligence_inventory/final_release_report.json", "docs/architecture/residual_intelligence_inventory/final_release_report.md", "test/api/residual_intelligence/test_release_report.py"],
-    "implementation_symbols": ["contracts.py: ResidualIntelligenceError, strict_fields, bounded_json_mapping", "rights.py: TrainingCorpusAdmission, LeakageAudit, source_rights_identity", "splits.py: SemanticSplitPolicy, SemanticSplitManifest, semantic_lineage_split", "benchmark.py: ResidualBenchmarkManifest, validate_frozen_benchmark, PairedBenchmarkRunner", "checkpoint.py: ResidualCheckpointAdapter, validate_residual_resume", "packaging.py: ExpertRuntimeManifest, QuantizationQualification", "adversarial.py: ResidualMutantCampaign, ResidualAdversarialAdapter", "promotion.py: PromotionEvidence, PromotionDecision, ExpertRollbackReceipt", "drift.py: ExpertDriftMonitor, DriftEvent", "release.py: ResidualGapReport, ResidualIntelligenceReleaseReport, validate_release_claims"],
-    "snapshot_changed_files": [
-      "docs/architecture/residual_intelligence_inventory/README.md",
-      "docs/architecture/residual_intelligence_inventory/adversarial_campaign_report.json",
-      "docs/architecture/residual_intelligence_inventory/baseline.json",
-      "docs/architecture/residual_intelligence_inventory/corpus_construction.json",
-      "docs/architecture/residual_intelligence_inventory/pgir_training_gate.json",
-      "docs/architecture/residual_intelligence_inventory/prerequisite_matrix.json",
-      "docs/architecture/residual_intelligence_inventory/residual_model_call_inventory.json",
-      "benchmarks/agent_supervisor/residual_intelligence/README.md",
-      "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
-      "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
-      "benchmarks/agent_supervisor/residual_intelligence/synthetic_split_manifest.json",
-      "benchmarks/agent_supervisor/residual_intelligence/synthetic_training_admission.json",
-      "benchmarks/agent_supervisor/residual_intelligence/tranche1_contract_cases.json",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/contracts.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/rights.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/splits.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/benchmark.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/checkpoint.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/packaging.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/adversarial.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/promotion.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/drift.py",
-      "ipfs_accelerate_py/agent_supervisor/residual_intelligence/release.py",
-      "test/api/residual_intelligence/test_contracts_and_ir.py",
-      "test/api/residual_intelligence/test_corpus_rights_and_splits.py",
-      "test/api/residual_intelligence/test_benchmark.py",
-      "test/api/residual_intelligence/test_checkpoint_lineage.py",
-      "test/api/residual_intelligence/test_packaging.py",
-      "test/api/residual_intelligence/test_adversarial.py",
-      "test/api/residual_intelligence/test_promotion.py",
-      "test/api/residual_intelligence/test_drift.py",
-      "test/api/residual_intelligence/test_release_report.py"
-    ]
+    "implementation_symbols": ["contracts.py: ResidualIntelligenceError, PrerequisiteFinding, TypedBlocker", "corpus.py: ResidualDistillationCorpus, build_first_party_trajectory_corpus", "rights.py: TrainingCorpusAdmission, LeakageAudit, source_rights_identity", "splits.py: SemanticSplitPolicy, SemanticSplitManifest, semantic_lineage_split", "benchmark.py: ResidualBenchmarkManifest, validate_frozen_benchmark, PairedBenchmarkRunner", "checkpoint.py: ExpertCheckpointLineage, ResidualCheckpointAdapter, validate_residual_resume", "local_experts.py: LocalClassificationExpert, LocalRankingExpert, IndependentValidationReceipt", "proof_experts.py: ProofExpertAdapter, ProofCandidateReceipt", "patch_experts.py: PatchExpertAdapter, PatchSketchIR", "packaging.py: ExpertRuntimeManifest, QuantizationQualification", "adversarial.py: ResidualMutantCampaign, ResidualAdversarialAdapter", "promotion.py: PromotionEvidence, PromotionDecision, ExpertRollbackReceipt", "drift.py: ExpertDriftMonitor, DriftEvent", "release.py: ResidualGapReport, ResidualIntelligenceReleaseReport, validate_release_claims"],
+    "snapshot_changed_files": ["benchmarks/agent_supervisor/residual_intelligence/README.md", "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl", "benchmarks/agent_supervisor/residual_intelligence/manifest.json", "benchmarks/agent_supervisor/residual_intelligence/synthetic_split_manifest.json", "benchmarks/agent_supervisor/residual_intelligence/synthetic_training_admission.json", "benchmarks/agent_supervisor/residual_intelligence/tranche1_contract_cases.json", "docs/architecture/residual_intelligence_inventory/README.md", "docs/architecture/residual_intelligence_inventory/adversarial_campaign_report.json", "docs/architecture/residual_intelligence_inventory/baseline.json", "docs/architecture/residual_intelligence_inventory/corpus_construction.json", "docs/architecture/residual_intelligence_inventory/final_release_report.json", "docs/architecture/residual_intelligence_inventory/final_release_report.md", "docs/architecture/residual_intelligence_inventory/pgir_training_gate.json", "docs/architecture/residual_intelligence_inventory/prerequisite_matrix.json", "docs/architecture/residual_intelligence_inventory/residual_model_call_inventory.json", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/__init__.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/abstention.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/active_learning.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/adversarial.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/baselines.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/benchmark.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/calibration.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/cascade.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/checkpoint.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/cli.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/continual_learning.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/contracts.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/corpus.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/distillation.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/drift.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/expert_specs.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/inventory.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/labels.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/local_experts.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/ood.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/packaging.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/patch_experts.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/privacy.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/procedure_experts.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/promotion.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/proof_experts.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/release.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/residual_ir.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/rights.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/router.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/runtime.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/splits.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/structured_decoding.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/structured_specialist.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/task_families.py", "ipfs_accelerate_py/agent_supervisor/residual_intelligence/training_plan.py", "test/api/residual_intelligence/__init__.py", "test/api/residual_intelligence/helpers.py", "test/api/residual_intelligence/test_active_learning.py", "test/api/residual_intelligence/test_adversarial.py", "test/api/residual_intelligence/test_baselines.py", "test/api/residual_intelligence/test_benchmark.py", "test/api/residual_intelligence/test_board.py", "test/api/residual_intelligence/test_calibration_abstention.py", "test/api/residual_intelligence/test_checkpoint_lineage.py", "test/api/residual_intelligence/test_continual_learning.py", "test/api/residual_intelligence/test_contracts_and_ir.py", "test/api/residual_intelligence/test_control_surface.py", "test/api/residual_intelligence/test_corpus_rights_and_splits.py", "test/api/residual_intelligence/test_drift.py", "test/api/residual_intelligence/test_expert_specs.py", "test/api/residual_intelligence/test_goal_authority.py", "test/api/residual_intelligence/test_inventory.py", "test/api/residual_intelligence/test_inventory_artifacts.py", "test/api/residual_intelligence/test_label_production.py", "test/api/residual_intelligence/test_local_experts.py", "test/api/residual_intelligence/test_ood.py", "test/api/residual_intelligence/test_packaging.py", "test/api/residual_intelligence/test_patch_experts.py", "test/api/residual_intelligence/test_privacy.py", "test/api/residual_intelligence/test_procedure_experts.py", "test/api/residual_intelligence/test_promotion.py", "test/api/residual_intelligence/test_proof_experts.py", "test/api/residual_intelligence/test_release_report.py", "test/api/residual_intelligence/test_router.py", "test/api/residual_intelligence/test_runtime_batching.py", "test/api/residual_intelligence/test_runtime_bootstrap.py", "test/api/residual_intelligence/test_runtime_settlement.py", "test/api/residual_intelligence/test_structured_decoding.py", "test/api/residual_intelligence/test_structured_specialist.py", "test/api/residual_intelligence/test_teacher_disagreement.py"]
   },
-  "corpus_rights_splits": {
-    "admission_id": "baguqeera3dp4lnpqc6wgksk5erxj54dt5sxhlp6opf2z5xyz6qvbg45abf2a",
-    "decision": "training_unavailable",
-    "rights_root": "baguqeerappawi4jtwvs3jfkoehdfc2xsh64lszuwjg6xzplgmckpg4ltjxda",
-    "split_root": "baguqeeradbwccksw3vppbhz3xiu2l55isclxhi2xixthngpyeiy422jhmhzq",
-    "leakage_audit": {"audit_id": "baguqeeraesdhp3ttjf3w3neqly4dyctasjp3wdtjeem2zmjeykgzxyjwscbq", "passed": true, "train_groups": 1, "development_groups": 1, "holdout_groups": 1, "adversarial_groups": 1, "cross_partition_groups": 0, "hidden_test_bodies_accessed": false},
-    "public_summary_only": true
-  },
-  "architecture_tokenizer_checkpoint": {
-    "architecture": {"status": "no_packaged_expert", "runtime_contract": "ExpertRuntimeManifest@1", "reason": "no admitted training epoch or expert artifact"},
-    "tokenizer": {"status": "no_learned_tokenizer_admitted", "fixture_identity": "tokenizer:fixture-v1", "fixture_is_not_training_permission": true},
-    "checkpoint": {"created": false, "simulated": false, "identity": null, "lineage_status": "no_candidate_checkpoint"}
-  },
-  "metrics": {
-    "status": "not_run_on_current_tree",
-    "before": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0},
-    "after": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0}
-  },
-  "proof_validation": {
-    "proof_status": "not_run_no_current_proof_receipt",
-    "validation_status": "report_contract_validation_only",
-    "evidence": ["docs/architecture/residual_intelligence_inventory/pgir_training_gate.json", "docs/architecture/residual_intelligence_inventory/adversarial_campaign_report.json", "benchmarks/agent_supervisor/residual_intelligence/manifest.json", "test/api/residual_intelligence/test_release_report.py"]
-  },
+  "corpus_rights_splits": {"admission_id": "baguqeera3dp4lnpqc6wgksk5erxj54dt5sxhlp6opf2z5xyz6qvbg45abf2a", "decision": "training_unavailable", "rights_root": "baguqeerappawi4jtwvs3jfkoehdfc2xsh64lszuwjg6xzplgmckpg4ltjxda", "split_root": "baguqeeradbwccksw3vppbhz3xiu2l55isclxhi2xixthngpyeiy422jhmhzq", "leakage_audit": {"audit_id": "baguqeeraesdhp3ttjf3w3neqly4dyctasjp3wdtjeem2zmjeykgzxyjwscbq", "passed": true, "train_groups": 1, "development_groups": 1, "holdout_groups": 1, "adversarial_groups": 1, "cross_partition_groups": 0, "hidden_test_bodies_accessed": false}, "public_summary_only": true},
+  "architecture_tokenizer_checkpoint": {"architecture": {"status": "no_packaged_expert", "runtime_contract": "ExpertRuntimeManifest@1", "reason": "no admitted training epoch or expert artifact"}, "tokenizer": {"status": "no_learned_tokenizer_admitted", "fixture_identity": "tokenizer:fixture-v1", "fixture_is_not_training_permission": true}, "checkpoint": {"created": false, "simulated": false, "identity": null, "lineage_status": "no_candidate_checkpoint"}},
+  "metrics": {"status": "not_run_on_current_tree", "before": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0}, "after": {"total_denominator": 384, "evaluated": 0, "ACCEPT": 0, "ABSTAIN": 0, "REJECT_INPUT": 0, "OUT_OF_DISTRIBUTION": 0, "CAPABILITY_UNAVAILABLE": 0, "VALIDATION_REQUIRED": 0, "true_accepts": 0, "false_accepts": 0}},
+  "proof_validation": {"proof_status": "not_run_no_current_proof_receipt", "validation_status": "report_contract_validation_only", "evidence": ["docs/architecture/residual_intelligence_inventory/pgir_training_gate.json", "docs/architecture/residual_intelligence_inventory/adversarial_campaign_report.json", "benchmarks/agent_supervisor/residual_intelligence/manifest.json", "test/api/residual_intelligence/test_release_report.py"]},
   "drift": {"status": "not_observed_no_registered_expert", "routable": false, "required_action": "retain_candidate_only_and_requalify_after_admitted_evidence"},
-  "promotion": {
-    "eligible": false,
-    "decision": "not_eligible",
-    "hard_gate_status": {"rights": "not_satisfied", "lineage": "not_satisfied", "leakage": "fixture_only_not_production_evidence", "privacy": "not_satisfied", "safety": "not_satisfied", "quality": "not_satisfied", "efficiency": "not_satisfied", "autonomy": "not_satisfied", "amortization": "not_satisfied"}
-  },
-  "rollback": {"target": "no-promoted-expert-route", "report_rebuild_tree": "59b11091b143293b028390b8c949b0ee7c21f6f5", "policy": "Revoke the report root and regenerate from corrected current-tree evidence; do not rewrite evidence or promote from this report."},
+  "promotion": {"eligible": false, "decision": "not_eligible", "hard_gate_status": {"rights": "not_satisfied", "lineage": "not_satisfied", "leakage": "fixture_only_not_production_evidence", "privacy": "not_satisfied", "safety": "not_satisfied", "quality": "not_satisfied", "efficiency": "not_satisfied", "autonomy": "not_satisfied", "amortization": "not_satisfied"}},
+  "rollback": {"target": "no-promoted-expert-route", "report_rebuild_tree": "8fb5d6e7f1a747ee0338037afd4a3415d352e0d1", "policy": "Revoke the report root and regenerate from corrected task-start tree evidence; do not rewrite evidence or promote from this report."},
   "report_authority": {"completion_authoritative": false, "promotion_authoritative": false, "proof_authoritative": false}
 }
