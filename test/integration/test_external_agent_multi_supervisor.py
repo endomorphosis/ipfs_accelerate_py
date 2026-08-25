@@ -9,11 +9,9 @@ rejection of a stale supervisor fence.
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.containers.contracts import (
     IsolationPolicy,
     ResourceBounds,
@@ -25,20 +23,19 @@ from ipfs_accelerate_py.agent_supervisor.planning.external_frontier import (
     select_frontier,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.external_quack_owner import (
-    DuplicateOwnerError,
+    EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER,
     ExternalQuackOwner,
+    RetiredInMemoryOwnerError,
     StaleOwnerError,
     issue_envelope,
 )
-
-
-RECEIPT = (
-    Path(__file__).resolve().parents[2]
-    / "docs"
-    / "architecture"
-    / "external_agent_autonomous_execution_fabric"
-    / "receipts"
-    / "multi_supervisor.json"
+from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    QuackStateServer,
+    QuackStateServerOwnershipError,
+    build_server,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
+    QuackDaemonGatewayError,
 )
 
 SUPERVISORS = (
@@ -49,6 +46,9 @@ SUPERVISORS = (
 WRITE_OWNER = "owner:exclusive-quack"
 WORKER_COUNT = 8
 ROLES = ("analysis", "implementation", "verification")
+BOARD_NAMESPACE = "external-agent-autonomous-execution-fabric-v1"
+SHARD_ID = "eaaef-141-disposable-multi-supervisor-shard"
+STORE_ID = "eaaef-141-control"
 
 
 def _digest(label: str) -> str:
@@ -97,7 +97,27 @@ def _frontier_tasks() -> tuple[FrontierTask, ...]:
     return tuple(tasks)
 
 
-def _overlay_receipt(**extra: object) -> dict[str, object]:
+def _server(root: Path) -> QuackStateServer:
+    return build_server(
+        database_path=root / "control.duckdb",
+        state_dir=root / "owner",
+        port=0,
+        repository_id="repository:eaaef-141-test",
+        store_id=STORE_ID,
+        secret_handle="handle:eaaef-141-test-owner",
+    )
+
+
+def _owner(server: QuackStateServer) -> ExternalQuackOwner:
+    owner = server.bind_external_quack_owner(
+        board_namespace=BOARD_NAMESPACE,
+        shard_id=SHARD_ID,
+    )
+    assert isinstance(owner, ExternalQuackOwner)
+    return owner
+
+
+def _overlay_contract(**extra: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
         "task_id": "EAAEF-141",
@@ -111,12 +131,12 @@ def _overlay_receipt(**extra: object) -> dict[str, object]:
         "exclusive_write_owner": WRITE_OWNER,
     }
     payload.update(extra)
-    RECEIPT.parent.mkdir(parents=True, exist_ok=True)
-    RECEIPT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload
 
 
-def test_three_supervisors_eight_leases_exclusive_owner_conflict_free_frontier() -> None:
+def test_three_supervisors_eight_leases_exclusive_owner_conflict_free_frontier(
+    tmp_path: Path,
+) -> None:
     assert len(SUPERVISORS) == 3
     assert tuple(ROLES) == ("analysis", "implementation", "verification")
 
@@ -136,26 +156,36 @@ def test_three_supervisors_eight_leases_exclusive_owner_conflict_free_frontier()
         assert lease.fencing_token == 1
         assert lease.worker_id != lease.authority_id
 
-    owner = ExternalQuackOwner(WRITE_OWNER, shard_id="multi-supervisor-shard")
+    server = _server(tmp_path)
+    identity = server.start()
+    owner = _owner(server)
     lease = owner.lease()
-    assert lease.owner_id == WRITE_OWNER
+    assert lease.owner_id == identity.server_id
     assert owner.operational_table_exposed is False
-    with pytest.raises(DuplicateOwnerError, match="second owner"):
-        owner.claim(SUPERVISORS[0], epoch=lease.epoch)
+    assert owner.production_admitted is False
 
-    applied = owner.apply(
+    duplicate = _server(tmp_path)
+    with pytest.raises(
+        QuackStateServerOwnershipError,
+        match="second state-owner refused",
+    ):
+        duplicate.start()
+    assert owner.assert_current(lease) == lease
+
+    with pytest.raises(RetiredInMemoryOwnerError) as retired:
         issue_envelope(
             operation="put",
             key="frontier-claim",
             value={"owner": WRITE_OWNER, "workers": WORKER_COUNT},
             principal_id=WRITE_OWNER,
             idempotency_key="idem:owner-1",
-        ),
-        owner_id=WRITE_OWNER,
-        epoch=lease.epoch,
-    )
-    assert applied["status"] == "applied"
-    assert owner.get("frontier-claim")["owner"] == WRITE_OWNER
+        )
+    assert retired.value.reason_code == "in_memory_owner_retired"
+    with pytest.raises(
+        QuackDaemonGatewayError,
+        match=EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER,
+    ):
+        owner.daemon_gateway()
 
     frontier = select_frontier(_frontier_tasks(), cpu_budget=16_000)
     assert frontier["task_ids"] == [f"task:worker-{index}" for index in range(WORKER_COUNT)]
@@ -175,25 +205,21 @@ def test_three_supervisors_eight_leases_exclusive_owner_conflict_free_frontier()
     assert len(selected_overlap) == 1
 
     stale = owner.lease()
-    takeover = owner.failover(SUPERVISORS[1])
-    assert takeover.epoch == stale.epoch + 1
-    assert takeover.fence == stale.fence + 1
-    with pytest.raises(StaleOwnerError, match="stale owner") as err:
-        owner.apply(
-            issue_envelope(
-                operation="put",
-                key="stale-write",
-                value={"status": "hijack"},
-                principal_id=stale.owner_id,
-                idempotency_key="idem:stale",
-            ),
-            owner_id=stale.owner_id,
-            epoch=stale.epoch,
-        )
-    assert err.value.reason_code == "stale_owner"
-    assert owner.get("stale-write") is None
+    server.stop()
+    successor_server = _server(tmp_path)
+    successor_server.start()
+    try:
+        successor = _owner(successor_server)
+        takeover = successor.assert_successor(stale)
+        assert takeover.epoch > stale.epoch
+        assert takeover.fence > stale.fence
+        with pytest.raises(StaleOwnerError, match="stale owner") as err:
+            successor.assert_current(stale)
+        assert err.value.reason_code == "stale_owner"
+    finally:
+        successor_server.stop()
 
-    payload = _overlay_receipt(
+    payload = _overlay_contract(
         worker_ids=worker_ids,
         worktree_ids=worktrees,
         frontier_task_ids=list(frontier["task_ids"]),
@@ -201,11 +227,12 @@ def test_three_supervisors_eight_leases_exclusive_owner_conflict_free_frontier()
         overlapping_pair_rejected=sorted(overlapping_ids - {selected_overlap[0]})[0],
         stale_supervisor_fence_rejected=True,
         exclusive_write_owner_epoch=takeover.epoch,
+        owner_dispatch_admitted=False,
     )
-    saved = json.loads(RECEIPT.read_text(encoding="utf-8"))
-    assert saved["evidence_mode"] == "contract_fail_closed"
-    assert saved["live_runtime_invoked"] is False
-    assert saved["live_eight_container_qualification"] is False
-    assert saved["docker_workers_started"] == 0
-    assert saved["worker_lease_count"] == 8
+    assert payload["evidence_mode"] == "contract_fail_closed"
+    assert payload["live_runtime_invoked"] is False
+    assert payload["live_eight_container_qualification"] is False
+    assert payload["docker_workers_started"] == 0
+    assert payload["worker_lease_count"] == 8
+    assert payload["owner_dispatch_admitted"] is False
     assert payload["stale_supervisor_fence_rejected"] is True

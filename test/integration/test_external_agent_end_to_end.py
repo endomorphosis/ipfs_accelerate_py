@@ -1,15 +1,16 @@
-"""EAAEF-145: in-process end-to-end fault qualification.
+"""EAAEF-145: fail-closed in-process end-to-end contract qualification.
 
-Composes handoff → plan admit → frontier → quack owner apply → recovery into
-a typed terminal outcome.  A live eight-container cluster is not required and
-is not claimed.
+Composes handoff → plan admit → frontier → typed Quack owner boundary →
+recovery.  Until the canonical owner dispatcher is admitted, the composed run
+must remain nonterminal.  A live eight-container cluster is not invoked or
+claimed.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+import pytest
 from ipfs_accelerate_py.agent_supervisor.api.external_handoff import ExternalHandoffAPI
 from ipfs_accelerate_py.agent_supervisor.planning.external_frontier import (
     FrontierTask,
@@ -23,24 +24,26 @@ from ipfs_accelerate_py.agent_supervisor.planning.plan_admission import admit_pl
 from ipfs_accelerate_py.agent_supervisor.runtime.external_control_recovery import recover
 from ipfs_accelerate_py.agent_supervisor.runtime.external_fixed_point import terminate
 from ipfs_accelerate_py.agent_supervisor.runtime.external_quack_owner import (
+    EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER,
     ExternalQuackOwner,
+    RetiredInMemoryOwnerError,
     issue_envelope,
 )
-
-
-RECEIPT = (
-    Path(__file__).resolve().parents[2]
-    / "docs"
-    / "architecture"
-    / "external_agent_autonomous_execution_fabric"
-    / "receipts"
-    / "end_to_end.json"
+from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    QuackStateServer,
+    build_server,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
+    QuackDaemonGatewayError,
 )
 
 WRITE_A = "ipfs_accelerate_py/agent_supervisor/handoff/adapters/codex.py"
 WRITE_B = "ipfs_accelerate_py/agent_supervisor/handoff/adapters/claude.py"
 SOURCE_ROOT = "sha256:" + "c" * 64
 SEMANTIC_ROOT = "sha256:" + "d" * 64
+BOARD_NAMESPACE = "external-agent-autonomous-execution-fabric-v1"
+SHARD_ID = "eaaef-145-disposable-end-to-end-shard"
+STORE_ID = "eaaef-145-control"
 
 
 def _goal():
@@ -76,13 +79,20 @@ def _task(task_id: str, covers, write_scope, **overrides):
     return payload
 
 
-def _write_receipt(payload: dict[str, object]) -> dict[str, object]:
-    RECEIPT.parent.mkdir(parents=True, exist_ok=True)
-    RECEIPT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return payload
+def _server(root: Path) -> QuackStateServer:
+    return build_server(
+        database_path=root / "control.duckdb",
+        state_dir=root / "owner",
+        port=0,
+        repository_id="repository:eaaef-145-test",
+        store_id=STORE_ID,
+        secret_handle="handle:eaaef-145-test-owner",
+    )
 
 
-def test_handoff_plan_frontier_owner_recovery_typed_terminal() -> None:
+def test_handoff_plan_frontier_owner_recovery_remains_nonterminal(
+    tmp_path: Path,
+) -> None:
     api = ExternalHandoffAPI()
     started = api.handoff(
         {
@@ -130,28 +140,42 @@ def test_handoff_plan_frontier_owner_recovery_typed_terminal() -> None:
     )
     assert set(frontier["task_ids"]) == {"task-a", "task-b"}
 
-    owner = ExternalQuackOwner("owner:e2e", shard_id="e2e-shard")
-    lease = owner.lease()
-    apply_receipt = owner.apply(
-        issue_envelope(
-            operation="put",
-            key="e2e-run",
-            value={"run_id": started.run_id, "plan_id": admitted.admitted_id},
-            principal_id="principal:operator",
-            idempotency_key="idem:e2e-apply",
-        ),
-        owner_id=lease.owner_id,
-        epoch=lease.epoch,
-    )
-    assert apply_receipt["status"] == "applied"
+    server = _server(tmp_path)
+    identity = server.start()
+    try:
+        owner = server.bind_external_quack_owner(
+            board_namespace=BOARD_NAMESPACE,
+            shard_id=SHARD_ID,
+        )
+        assert isinstance(owner, ExternalQuackOwner)
+        lease = owner.lease()
+        assert lease.owner_id == identity.server_id
+        assert owner.assert_current(lease) == lease
+        assert owner.production_admitted is False
+        with pytest.raises(RetiredInMemoryOwnerError) as retired:
+            issue_envelope(
+                operation="put",
+                key="e2e-run",
+                value={"run_id": started.run_id, "plan_id": admitted.admitted_id},
+                principal_id="principal:operator",
+                idempotency_key="idem:e2e-apply",
+            )
+        assert retired.value.reason_code == "in_memory_owner_retired"
+        with pytest.raises(
+            QuackDaemonGatewayError,
+            match=EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER,
+        ):
+            owner.daemon_gateway()
 
-    recovery = recover(
-        current_epoch=lease.epoch,
-        backup_epoch=lease.epoch,
-        duplicate=False,
-        ducklake_available=False,
-    )
-    assert recovery["accepted_stale_write"] is False
+        recovery = recover(
+            current_epoch=lease.epoch,
+            backup_epoch=lease.epoch,
+            duplicate=False,
+            ducklake_available=False,
+        )
+        assert recovery["accepted_stale_write"] is False
+    finally:
+        server.stop()
 
     approved = api.approve(
         {
@@ -166,7 +190,7 @@ def test_handoff_plan_frontier_owner_recovery_typed_terminal() -> None:
     assert approved.run_status == "approved"
 
     terminal = terminate(
-        goals_complete=True,
+        goals_complete=False,
         tests_current=True,
         proofs_current=True,
         invalidations_empty=True,
@@ -175,35 +199,34 @@ def test_handoff_plan_frontier_owner_recovery_typed_terminal() -> None:
         source_root=SOURCE_ROOT,
         semantic_root=SEMANTIC_ROOT,
     )
-    assert terminal["terminal"] == "completed"
+    assert terminal["terminal"] == "not_complete"
 
-    payload = _write_receipt(
-        {
-            "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
-            "task_id": "EAAEF-145",
-            "evidence_mode": "contract_fail_closed",
-            "live_runtime_invoked": False,
-            "live_eight_container_qualification": False,
-            "live_cluster_required": False,
-            "stages": [
-                "handoff",
-                "plan_admit",
-                "frontier",
-                "quack_owner_apply",
-                "recovery",
-                "typed_terminal",
-            ],
-            "run_id": started.run_id,
-            "admitted_plan_id": admitted.admitted_id,
-            "frontier_task_ids": list(frontier["task_ids"]),
-            "terminal": terminal["terminal"],
-            "run_status": approved.run_status,
-            "accepted_stale_write": False,
-        }
-    )
-    saved = json.loads(RECEIPT.read_text(encoding="utf-8"))
-    assert saved["evidence_mode"] == "contract_fail_closed"
-    assert saved["live_runtime_invoked"] is False
-    assert saved["live_eight_container_qualification"] is False
-    assert saved["terminal"] == "completed"
-    assert payload["stages"][-1] == "typed_terminal"
+    payload = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
+        "task_id": "EAAEF-145",
+        "evidence_mode": "contract_fail_closed",
+        "live_runtime_invoked": False,
+        "live_eight_container_qualification": False,
+        "live_cluster_required": False,
+        "owner_dispatch_admitted": False,
+        "stages": [
+            "handoff",
+            "plan_admit",
+            "frontier",
+            "quack_owner_dispatch_refused",
+            "recovery",
+            "typed_nonterminal",
+        ],
+        "run_id": started.run_id,
+        "admitted_plan_id": admitted.admitted_id,
+        "frontier_task_ids": list(frontier["task_ids"]),
+        "terminal": terminal["terminal"],
+        "run_status": approved.run_status,
+        "accepted_stale_write": False,
+    }
+    assert payload["evidence_mode"] == "contract_fail_closed"
+    assert payload["live_runtime_invoked"] is False
+    assert payload["live_eight_container_qualification"] is False
+    assert payload["owner_dispatch_admitted"] is False
+    assert payload["terminal"] == "not_complete"
+    assert payload["stages"][-1] == "typed_nonterminal"
