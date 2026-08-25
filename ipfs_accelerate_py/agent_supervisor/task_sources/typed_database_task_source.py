@@ -11,14 +11,21 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
+import os
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
-from .control_plane_contracts import canonical_json_bytes, content_identity
+from .control_plane_contracts import (
+    ControlPlaneStoreIdentity,
+    StoreGeneration,
+    canonical_json_bytes,
+    content_identity,
+)
 from .database_task_source import (
     DATABASE_TASK_SOURCE_SCHEMA,
     TaskPage,
@@ -35,7 +42,8 @@ from .database_task_source import (
     CASResult as DatabaseCASResult,
 )
 from .intent_repository import IntentReceipt, QueueEntry
-from .quack_state_client import QuackStateClient
+from .quack_state_client import ClientSession, QuackStateClient, TransportMode
+from .state_owner_bootstrap import StateOwnerBootstrapCredentials
 from .task_execution_route_policy import (
     TaskExecutionRouteBinding,
     TaskExecutionRoutePolicy,
@@ -50,6 +58,7 @@ from .typed_state_owner import (
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
     TYPED_TASK_STATUS_VOCABULARY,
+    TypedStateOwnerConnection,
     TypedStateOwnerError,
     _validated_database_strict_resume_rejection_receipt,
     _validated_stored_retry_cooldown,
@@ -74,6 +83,38 @@ _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
         "failed",
         "quarantined",
         "rejected",
+    }
+)
+_DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "whoami_metadata",
+        "load_store_generation",
+        "executor_task_projection_page",
+        "executor_control_snapshot",
+        "executor_task_projection_by_identity",
+        "executor_retry_cooldown_by_task",
+        "executor_retry_cooldown_page",
+        "txn_load_generation",
+        "txn_lookup_idempotency",
+        "txn_advance_store_revision",
+        "txn_record_idempotency",
+        "txn_cas_task_status",
+        "executor_cas_task_status_receipt",
+        "executor_insert_retry_cooldown",
+        "executor_update_retry_cooldown",
+        "executor_insert_validation_run",
+        "executor_insert_validation_result",
+        "executor_insert_validation_evidence",
+    }
+)
+_DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "task.status.cas",
+        "task.status.cas.receipt",
+        "task.retry.cooldown.record",
+        "task.claim.reservation.recover",
+        "task.validation.record.passed",
+        "task.validation.record.nonpassing",
     }
 )
 
@@ -284,6 +325,163 @@ class TypedDatabaseTaskSource:
     def _require_open(self) -> None:
         if self._closed:
             raise TaskSourceIntegrityError("typed database task source is closed")
+
+    def require_quack_authority_binding(
+        self,
+        *,
+        expected_endpoint: str,
+        expected_process_instance_id: str,
+        bootstrap_credentials: StateOwnerBootstrapCredentials | None = None,
+    ) -> Mapping[str, Any]:
+        """Return the exact attached Quack authority bound to this adapter.
+
+        The database implementation daemon uses this closed check before it
+        derives lane-private coordination or execution sidecars.  It proves
+        that task authority remains on one attached typed Quack owner; it does
+        not expose a database path, token, credential, or generic SQL surface.
+        """
+
+        self._require_open()
+        endpoint = str(expected_endpoint or "").strip()
+        process_instance_id = str(expected_process_instance_id or "").strip()
+        client = self._client
+        if (
+            type(self) is not TypedDatabaseTaskSource
+            or type(expected_endpoint) is not str
+            or not endpoint.startswith("quack:")
+            or type(expected_process_instance_id) is not str
+            or not process_instance_id
+            or type(client) is not QuackStateClient
+            or not client.attached
+            or getattr(client, "_connection_factory", None) is not None
+        ):
+            raise TaskSourceIntegrityError(
+                "typed database task source is not bound to the exact Quack authority"
+            )
+        try:
+            live_store_generation = client.load_generation()
+        except Exception as exc:
+            raise TaskSourceIntegrityError(
+                "typed database task source Quack authority is not live"
+            ) from exc
+        session = client.session if type(client) is QuackStateClient else None
+        adapter = (
+            getattr(client, "_adapter", None)
+            if type(client) is QuackStateClient
+            else None
+        )
+        connection = getattr(adapter, "raw", None)
+        grant = (
+            getattr(connection, "grant", None)
+            if type(connection) is TypedStateOwnerConnection
+            else None
+        )
+        owner_identity = (
+            getattr(connection, "identity", None)
+            if type(connection) is TypedStateOwnerConnection
+            else None
+        )
+        store_identity = getattr(session, "store_identity", None)
+        store_generation = live_store_generation
+        route_policy = self._execution_route_policy
+        grant_mapping = grant if isinstance(grant, Mapping) else {}
+        grant_operations = frozenset(
+            str(item) for item in grant_mapping.get("allowed_operations") or ()
+        )
+        grant_command_operations = frozenset(
+            str(item)
+            for item in grant_mapping.get("allowed_command_operations") or ()
+        )
+        grant_entity_scopes = grant_mapping.get("entity_scopes") or {}
+        if (
+            type(connection) is not TypedStateOwnerConnection
+            or not isinstance(owner_identity, Mapping)
+            or type(session) is not ClientSession
+            or session.transport_mode is not TransportMode.QUACK
+            or session.endpoint != endpoint
+            or not session.session_id
+            or not session.server_id
+            or not session.store_id
+            or not session.process_birth_id
+            or session.store_id != client.store_id
+            or session.process_birth_id != client.process_birth_id
+            or session.process_birth_id != process_instance_id
+            or owner_identity.get("server_id") != session.server_id
+            or owner_identity.get("store_id") != session.store_id
+            or owner_identity.get("generation") != session.generation
+            or owner_identity.get("fence_epoch") != session.fence_epoch
+            or type(store_identity) is not ControlPlaneStoreIdentity
+            or type(store_generation) is not StoreGeneration
+            or store_generation.store_id != session.store_id
+            or store_generation.database_uuid != store_identity.database_uuid
+            or int(store_generation.generation) != int(session.generation)
+            or int(store_generation.fence_epoch) != int(session.fence_epoch)
+            or route_policy is None
+            or not route_policy.policy_id
+            or not isinstance(grant, Mapping)
+            or grant.get("client_id") != client.owner_id
+            or grant.get("process_birth_id") != process_instance_id
+            or grant_operations != _DAEMON_REQUIRED_OWNER_OPERATIONS
+            or grant_command_operations
+            != _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS
+            or str(grant.get("tenant_id") or "").strip()
+            or str(grant.get("federation_id") or "").strip()
+            or not isinstance(grant_entity_scopes, Mapping)
+            or bool(grant_entity_scopes)
+            or str(grant.get("authority_profile") or "").strip()
+        ):
+            raise TaskSourceIntegrityError(
+                "typed database task source is not bound to the exact Quack authority"
+            )
+        if bootstrap_credentials is not None and (
+            type(bootstrap_credentials) is not StateOwnerBootstrapCredentials
+            or bootstrap_credentials.endpoint != endpoint
+            or type(bootstrap_credentials.socket_path) is not str
+            or connection.bootstrap_socket_path
+            != os.path.abspath(bootstrap_credentials.socket_path)
+            or bootstrap_credentials.store_id != client.store_id
+            or bootstrap_credentials.server_id != session.server_id
+            or bootstrap_credentials.client_id != client.owner_id
+            or bootstrap_credentials.process_birth_id != process_instance_id
+            or type(bootstrap_credentials.token) is not str
+            or not hmac.compare_digest(
+                connection.bootstrap_token_digest,
+                hashlib.sha256(
+                    bootstrap_credentials.token.encode("utf-8")
+                ).hexdigest(),
+            )
+            or connection.status_bootstrap
+            or bootstrap_credentials.execution_route_policy != route_policy
+        ):
+            raise TaskSourceIntegrityError(
+                "typed task authority differs from its process-bound bootstrap"
+            )
+        stable_body = {
+            "interface": "TypedDatabaseTaskSourceStableQuackAuthority@1",
+            "store_id": store_identity.store_id,
+            "database_uuid": store_identity.database_uuid,
+            "schema_fingerprint": store_identity.schema_fingerprint,
+            "repository_id": store_identity.repository_id,
+            "schema_revision": int(store_identity.schema_revision),
+            "route_policy_id": route_policy.policy_id,
+            "plan_root_cid": route_policy.plan_root_cid,
+            "repository_tree_id": route_policy.repository_tree_id,
+            "source_projection_cid": route_policy.source_projection_cid,
+        }
+        return MappingProxyType(
+            {
+                "interface": "TypedDatabaseTaskSourceQuackAuthorityBinding@1",
+                "stable_binding_id": content_identity(stable_body),
+                "stable_authority": MappingProxyType(stable_body),
+                "endpoint": session.endpoint,
+                "server_id": session.server_id,
+                "session_id": session.session_id,
+                "store_id": session.store_id,
+                "process_birth_id": session.process_birth_id,
+                "generation": int(session.generation),
+                "fence_epoch": int(session.fence_epoch),
+            }
+        )
 
     def _all_records(
         self, *, expected_count: int

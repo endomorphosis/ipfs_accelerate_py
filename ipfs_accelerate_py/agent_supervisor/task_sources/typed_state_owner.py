@@ -5464,11 +5464,17 @@ class TypedStateOwnerConnection:
         timeout_seconds: float = 30.0,
         status_bootstrap: bool = False,
     ) -> None:
-        if not token or len(token) < 16:
+        if type(token) is not str or len(token) < 16:
             raise TypedStateOwnerAuthorizationError("typed owner token is unavailable")
+        socket_identity = os.path.abspath(os.fspath(socket_path))
+        self.bootstrap_socket_path = socket_identity
+        self.bootstrap_token_digest = hashlib.sha256(
+            token.encode("utf-8")
+        ).hexdigest()
+        self.status_bootstrap = bool(status_bootstrap)
         self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._socket.settimeout(float(timeout_seconds))
-        self._socket.connect(str(socket_path))
+        self._socket.connect(socket_identity)
         self._request_lock = threading.RLock()
         self._closed = False
         self._active = False

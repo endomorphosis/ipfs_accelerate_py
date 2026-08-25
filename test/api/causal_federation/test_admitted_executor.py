@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -45,12 +46,18 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
+    EAAEF_OPERATIONAL_PROFILE_ID,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
     QuackClientError,
     QuackStateClient,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+    StateOwnerBootstrapCredentials,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
     DETERMINISTIC_ONLY_EXECUTION_MODE,
@@ -83,6 +90,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
+    _database_daemon_quack_sidecar_paths,
+    _open_database_writer_lock,
 )
 from test.api.causal_federation.test_bootstrap_runtime import (
     _capability,
@@ -153,6 +162,26 @@ def _operator() -> ModuleType:
     return module
 
 
+def _typed_bootstrap_credentials(
+    *,
+    server: Any,
+    identity: Any,
+    client_id: str,
+    token: str,
+    route_policy: TaskExecutionRoutePolicy,
+) -> StateOwnerBootstrapCredentials:
+    return StateOwnerBootstrapCredentials(
+        endpoint=identity.listen_uri,
+        socket_path=str(server.typed_command_socket_path()),
+        store_id=identity.store_id,
+        server_id=identity.server_id,
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        token=token,
+        execution_route_policy=route_policy,
+    )
+
+
 def _eventually(path: Path, process: subprocess.Popen[bytes]) -> dict[str, Any]:
     deadline = time.monotonic() + 20.0
     while time.monotonic() < deadline:
@@ -214,26 +243,29 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
     } == set()
 
 
-def test_quack_daemon_defaults_to_distinct_sidecars_and_rejects_aliases(
+def test_quack_sidecar_profile_requires_typed_owner_and_rejects_aliases(
     tmp_path: Path,
 ) -> None:
     control = tmp_path / "control.duckdb"
-    daemon = DatabaseImplementationDaemon(
-        database_path=control,
-        authority_mode="quack",
-        task_source_kind="duckdb",
-        quack_uri="quack:127.0.0.1:45123",
-    )
-    assert daemon.database_path == control
-    assert daemon.coordination_path == (
-        tmp_path / "control.coordination.duckdb"
-    )
-    assert daemon.execution_path == tmp_path / "control.execution.duckdb"
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="QuackDaemonCommandGateway@1 or an exact attached",
+    ):
+        DatabaseImplementationDaemon(
+            database_path=control,
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri="quack:127.0.0.1:45123",
+        )
+
+    coordination, execution = _database_daemon_quack_sidecar_paths(control)
+    assert coordination == tmp_path / "control.coordination.duckdb"
+    assert execution == tmp_path / "control.execution.duckdb"
     assert len(
         {
-            daemon.database_path.resolve(strict=False),
-            daemon.coordination_path.resolve(strict=False),
-            daemon.execution_path.resolve(strict=False),
+            control.resolve(strict=False),
+            coordination.resolve(strict=False),
+            execution.resolve(strict=False),
         }
     ) == 3
 
@@ -241,36 +273,27 @@ def test_quack_daemon_defaults_to_distinct_sidecars_and_rejects_aliases(
         DatabaseImplementationAuthorityError,
         match="coordination sidecar must not alias",
     ):
-        DatabaseImplementationDaemon(
-            database_path=control,
+        _database_daemon_quack_sidecar_paths(
+            control,
             coordination_path=tmp_path / "." / "control.duckdb",
-            authority_mode="quack",
-            task_source_kind="duckdb",
-            quack_uri="quack:127.0.0.1:45123",
         )
     with pytest.raises(
         DatabaseImplementationAuthorityError,
         match="execution sidecar must not alias",
     ):
-        DatabaseImplementationDaemon(
-            database_path=control,
+        _database_daemon_quack_sidecar_paths(
+            control,
             execution_path=tmp_path / "." / "control.duckdb",
-            authority_mode="quack",
-            task_source_kind="duckdb",
-            quack_uri="quack:127.0.0.1:45123",
         )
     shared_sidecar = tmp_path / "lane-private.duckdb"
     with pytest.raises(
         DatabaseImplementationAuthorityError,
         match="coordination and execution sidecars must be distinct",
     ):
-        DatabaseImplementationDaemon(
-            database_path=control,
+        _database_daemon_quack_sidecar_paths(
+            control,
             coordination_path=shared_sidecar,
             execution_path=shared_sidecar,
-            authority_mode="quack",
-            task_source_kind="duckdb",
-            quack_uri="quack:127.0.0.1:45123",
         )
     control.write_bytes(b"hardlink-alias-probe")
     hardlink_sidecar = tmp_path / "control-hardlink.duckdb"
@@ -283,13 +306,136 @@ def test_quack_daemon_defaults_to_distinct_sidecars_and_rejects_aliases(
             DatabaseImplementationAuthorityError,
             match="coordination sidecar must not alias",
         ):
-            DatabaseImplementationDaemon(
-                database_path=control,
+            _database_daemon_quack_sidecar_paths(
+                control,
                 coordination_path=hardlink_sidecar,
-                authority_mode="quack",
-                task_source_kind="duckdb",
-                quack_uri="quack:127.0.0.1:45123",
             )
+    coordination_target = tmp_path / "coordination-target.duckdb"
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="coordination writer lock must not alias the control store",
+    ):
+        _database_daemon_quack_sidecar_paths(
+            coordination_target.with_name(
+                f".{coordination_target.name}.writer.lock"
+            ),
+            coordination_path=coordination_target,
+            execution_path=tmp_path / "execution-target.duckdb",
+        )
+    execution_target = tmp_path / "execution-collision.duckdb"
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="execution writer lock must not alias the coordination store",
+    ):
+        _database_daemon_quack_sidecar_paths(
+            tmp_path / "control-collision.duckdb",
+            coordination_path=execution_target.with_name(
+                f".{execution_target.name}.writer.lock"
+            ),
+            execution_path=execution_target,
+        )
+
+
+def test_database_writer_lock_rejects_links_and_path_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_root = tmp_path / "writer-lock-probes"
+    lock_root.mkdir(mode=0o700)
+    lock_path = lock_root / ".coordination.duckdb.writer.lock"
+    protected = lock_root / "protected"
+    protected.write_bytes(b"must-not-change")
+
+    real_parent = lock_root / "real-parent"
+    real_parent.mkdir(mode=0o700)
+    linked_parent = lock_root / "linked-parent"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="parent cannot be opened safely",
+    ):
+        _open_database_writer_lock(
+            linked_parent / "must-not-be-created" / ".writer.lock"
+        )
+    assert not (real_parent / "must-not-be-created").exists()
+
+    lock_path.symlink_to(protected)
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="cannot be opened safely",
+    ):
+        _open_database_writer_lock(lock_path)
+    assert protected.read_bytes() == b"must-not-change"
+    lock_path.unlink()
+
+    os.link(protected, lock_path)
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="owned single-link regular file",
+    ):
+        _open_database_writer_lock(lock_path)
+    assert protected.read_bytes() == b"must-not-change"
+    lock_path.unlink()
+
+    original_flock = fcntl.flock
+    replaced = {"value": False}
+
+    def replace_path_after_lock(descriptor: int, operation: int) -> None:
+        original_flock(descriptor, operation)
+        if operation & fcntl.LOCK_EX and not replaced["value"]:
+            replaced["value"] = True
+            lock_path.unlink()
+            lock_path.write_bytes(b"replacement")
+
+    monkeypatch.setattr(fcntl, "flock", replace_path_after_lock)
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="identity changed during admission",
+    ):
+        _open_database_writer_lock(lock_path)
+
+
+@pytest.mark.parametrize("sidecar_role", ("coordination", "execution"))
+@pytest.mark.parametrize(
+    "malicious_kind",
+    ("symlink", "hardlink", "fifo", "peer_writable"),
+)
+def test_database_sidecar_rejects_links_and_nonregular_inodes_before_duckdb(
+    tmp_path: Path,
+    sidecar_role: str,
+    malicious_kind: str,
+) -> None:
+    coordination = tmp_path / "coordination.duckdb"
+    execution = tmp_path / "execution.duckdb"
+    sidecar = coordination if sidecar_role == "coordination" else execution
+    protected = tmp_path / "protected"
+    protected.write_bytes(b"must-not-open-as-duckdb")
+    if malicious_kind == "symlink":
+        sidecar.symlink_to(protected)
+        expected_error = "cannot be opened safely"
+    elif malicious_kind == "hardlink":
+        os.link(protected, sidecar)
+        expected_error = "owned single-link regular file"
+    elif malicious_kind == "fifo":
+        os.mkfifo(sidecar, mode=0o600)
+        expected_error = "owned single-link regular file"
+    else:
+        sidecar.write_bytes(b"untrusted-peer-writable-sidecar")
+        sidecar.chmod(0o660)
+        expected_error = "owned single-link regular file"
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match=expected_error,
+    ):
+        DatabaseImplementationDaemon(
+            database_path=tmp_path / "control.duckdb",
+            coordination_path=coordination,
+            execution_path=execution,
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+        )
+    assert protected.read_bytes() == b"must-not-open-as-duckdb"
 
 
 def test_execution_route_policy_fails_closed_on_population_and_task_drift() -> None:
@@ -1436,6 +1582,151 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             client,
             execution_route_policy=route_policy,
         )
+        bootstrap_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
+        closed_profile = {
+            "database_path": database,
+            "coordination_path": tmp_path / "closed-profile-coordination.duckdb",
+            "execution_path": tmp_path / "closed-profile-execution.duckdb",
+            "owner_session_id": "session:typed-claim-barrier",
+            "process_instance_id": identity.process_birth_id,
+            "authority_mode": "quack",
+            "task_source_kind": "duckdb",
+            "quack_uri": identity.listen_uri,
+            "task_source": adapter,
+            "close_task_source": False,
+            "state_owner_bootstrap_credentials": bootstrap_credentials,
+            "install_schema": False,
+        }
+        for mismatched_credentials in (
+            replace(
+                bootstrap_credentials,
+                socket_path=str(tmp_path / "foreign-owner.sock"),
+            ),
+            replace(
+                bootstrap_credentials,
+                token="f" * 64,
+            ),
+        ):
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="configured endpoint",
+            ):
+                DatabaseImplementationDaemon(
+                    **{
+                        **closed_profile,
+                        "state_owner_bootstrap_credentials": (
+                            mismatched_credentials
+                        ),
+                    }
+                )
+        connection = client._adapter.raw
+        exact_grant = connection.grant
+        overbroad_grant = dict(exact_grant)
+        overbroad_grant["allowed_operations"] = [
+            *exact_grant["allowed_operations"],
+            "event.wait",
+        ]
+        with monkeypatch.context() as overbroad_capability:
+            overbroad_capability.setattr(
+                connection,
+                "grant",
+                overbroad_grant,
+            )
+            with pytest.raises(
+                TaskSourceIntegrityError,
+                match="exact Quack authority",
+            ):
+                adapter.require_quack_authority_binding(
+                    expected_endpoint=identity.listen_uri,
+                    expected_process_instance_id=identity.process_birth_id,
+                    bootstrap_credentials=bootstrap_credentials,
+                )
+        with monkeypatch.context() as closed_transport:
+            closed_transport.setattr(connection, "_closed", True)
+            with pytest.raises(
+                TaskSourceIntegrityError,
+                match="Quack authority is not live",
+            ):
+                adapter.require_quack_authority_binding(
+                    expected_endpoint=identity.listen_uri,
+                    expected_process_instance_id=identity.process_birth_id,
+                    bootstrap_credentials=bootstrap_credentials,
+                )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="EAAEF operational profile requires",
+        ):
+            DatabaseImplementationDaemon(
+                **{
+                    **closed_profile,
+                    "state_schema_revision": EAAEF_OPERATIONAL_PROFILE_ID,
+                }
+            )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="EAAEF operational profile requires",
+        ):
+            DatabaseImplementationDaemon(
+                **{
+                    **closed_profile,
+                    "state_schema_revision": (
+                        f"  {EAAEF_OPERATIONAL_PROFILE_ID}\t"
+                    ),
+                }
+            )
+        with monkeypatch.context() as environment_profile:
+            environment_profile.setenv(
+                "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+                EAAEF_OPERATIONAL_PROFILE_ID,
+            )
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="EAAEF operational profile requires",
+            ):
+                DatabaseImplementationDaemon(
+                    **{
+                        **closed_profile,
+                        "state_schema_revision": None,
+                    }
+                )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="process-bound state-owner bootstrap",
+        ):
+            DatabaseImplementationDaemon(
+                **{
+                    **closed_profile,
+                    "state_owner_bootstrap_credentials": None,
+                }
+            )
+        with monkeypatch.context() as injected_transport:
+            injected_transport.setattr(
+                client,
+                "_connection_factory",
+                lambda _endpoint: object(),
+            )
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="configured endpoint",
+            ):
+                DatabaseImplementationDaemon(**closed_profile)
+
+        stale_session_daemon = DatabaseImplementationDaemon(**closed_profile)
+        client.detach()
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="changed after daemon admission",
+        ):
+            stale_session_daemon.open()
+        stale_session_daemon.close()
+
         def open_lane(
             lane: str,
             *,
@@ -1450,11 +1741,13 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                     tmp_path / f"typed-claim-barrier-{lane}-execution.duckdb"
                 ),
                 owner_session_id="session:typed-claim-barrier",
+                process_instance_id=identity.process_birth_id,
                 authority_mode="quack",
                 task_source_kind="duckdb",
                 quack_uri=identity.listen_uri,
                 task_source=adapter,
                 close_task_source=False,
+                state_owner_bootstrap_credentials=bootstrap_credentials,
                 lease_ms=5_000,
                 max_task_attempts=max_task_attempts,
                 clock_ms=lambda: clock["now_ms"],
@@ -1470,6 +1763,66 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                 strict_task_sharding=True,
                 require_real_execution=True,
             ).open()
+
+        authority_lane = open_lane("authority-binding")
+        authority_lane.close()
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="reserved for a typed Quack stable control authority",
+        ):
+            DatabaseImplementationDaemon(
+                database_path=database,
+                coordination_path=(
+                    tmp_path
+                    / "typed-claim-barrier-authority-binding-coordination.duckdb"
+                ),
+                execution_path=(
+                    tmp_path
+                    / "typed-claim-barrier-authority-binding-execution.duckdb"
+                ),
+                owner_session_id="session:typed-claim-barrier",
+                authority_mode="embedded",
+                task_source_kind="duckdb",
+            )
+        alternate_unsealed = TypedDatabaseTaskSource(client, owns_client=False)
+        alternate_policy = alternate_unsealed.seal_execution_route_policy(
+            {"CASF-TYPED-CLAIM-BARRIER": GROK_CODEX_EXECUTION_MODE}
+        )
+        alternate_unsealed.close()
+        alternate_adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=alternate_policy,
+            owns_client=False,
+        )
+        alternate_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=alternate_policy,
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="different stable control authority",
+        ):
+            DatabaseImplementationDaemon(
+                database_path=database,
+                coordination_path=(
+                    tmp_path / "typed-claim-barrier-authority-binding-coordination.duckdb"
+                ),
+                execution_path=(
+                    tmp_path / "typed-claim-barrier-authority-binding-execution.duckdb"
+                ),
+                owner_session_id="session:typed-claim-barrier",
+                process_instance_id=identity.process_birth_id,
+                authority_mode="quack",
+                task_source_kind="duckdb",
+                quack_uri=identity.listen_uri,
+                task_source=alternate_adapter,
+                close_task_source=False,
+                state_owner_bootstrap_credentials=alternate_credentials,
+            )
+        alternate_adapter.close()
 
         daemon = open_lane("initial")
         promote = daemon._promote_typed_attempt_admission
@@ -1723,6 +2076,12 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         admitted_after_rejection = adapter.get(rotated.task_cid)
         assert admitted_after_rejection == quarantined
         assert adapter._retry_cooldown_row(rotated.task_cid) is None
+        server.revoke_typed_client_grant(grant.grant_id)
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="binding is no longer live",
+        ):
+            daemon.run_once()
     finally:
         if daemon is not None:
             daemon.close()
@@ -1963,16 +2322,25 @@ def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
             execution_route_policy=route_policy,
             clock_ms=lambda: 2_000,
         )
+        bootstrap_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
         daemon = DatabaseImplementationDaemon(
             database_path=database,
             coordination_path=tmp_path / "fresh-coordination.duckdb",
             execution_path=tmp_path / "fresh-execution.duckdb",
             owner_session_id="session:typed-dead-recovery",
+            process_instance_id=identity.process_birth_id,
             authority_mode="quack",
             task_source_kind="duckdb",
             quack_uri=identity.listen_uri,
             task_source=adapter,
             close_task_source=False,
+            state_owner_bootstrap_credentials=bootstrap_credentials,
             lease_ms=5_000,
             clock_ms=lambda: 2_000,
             provider_fn=lambda _attempt: {"status": "ok", "accepted": True},
@@ -2442,6 +2810,13 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
             execution_route_policy=route_policy,
             clock_ms=lambda: replacement_now_ms,
         )
+        bootstrap_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
         validated_cooldown_identities: list[dict[str, Any]] = []
         validate_cooldown = adapter.validate_retrying_task_cooldown
 
@@ -2465,11 +2840,13 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
             coordination_path=coordination_path,
             execution_path=execution_path,
             owner_session_id=owner_session_id,
+            process_instance_id=identity.process_birth_id,
             authority_mode="quack",
             task_source_kind="duckdb",
             quack_uri=identity.listen_uri,
             task_source=adapter,
             close_task_source=False,
+            state_owner_bootstrap_credentials=bootstrap_credentials,
             lease_ms=5_000,
             clock_ms=lambda: replacement_now_ms,
             provider_fn=lambda candidate: provider_calls.append(
