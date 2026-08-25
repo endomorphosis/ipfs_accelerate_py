@@ -1,24 +1,789 @@
 {
-  "frozen_bindings_required_before_qualification": [
-    "repository_states",
-    "objective_revisions",
-    "operation_catalog",
-    "provider_policy",
-    "tokenizer",
-    "model_versions",
-    "fault_schedule",
-    "validation_policy"
-  ],
-  "frozen_roots": {
-    "benchmark": "baguqeera52373goqb4i5h2qwhgqbnxsqsjg76ezxoiue2xr5l77yxauwwwcq",
-    "case_catalog": "baguqeerakwttzuincb37qk3jnyhrydxhkw6qqsuhfxhkoyspiduquo6wlbza",
-    "partitions": {
-      "adversarial": "baguqeera35e2rhliujsqt6bb4zd3etp7ebcpqrfjuq7xau65txvlu5msdnaq",
-      "development": "baguqeerarq3iae76v76jrriydfhh5x2ozp47qbfdjrgvmxmhzd7bypkxva2q",
-      "held_out": "baguqeerayxrey2pudzbo3et3kzj2mmewomy5xhkbdg2pp7jgqf7kilw67njq",
-      "training": "baguqeera2whlag2gdavat67svo7gp2xhr2g252z5cskfiwnbzp2saopvvklq"
+  "benchmark_freeze": {
+    "binding_set_id": "sha256:f8b85bdde66e3fd87c0c493cb6b7e94c1ae8e3dd3284943998e0bd9084b3d439",
+    "bindings": {
+      "fault_schedule": "sha256:9a789e9fe5764e768f20dab527700b744fac16617b903a78b0a24a1ce4d27ab4",
+      "model_versions": "sha256:e81b9ff303425c6e1135c0b58a0500246afd88dfca56cd269427a69e04c8160b",
+      "objective_revisions": "sha256:312599aabdb4b50b80d7a903e9aac18d799e8b9a0405c6dbecebcb24e98c98f0",
+      "operation_catalog": "sha256:140f47378cc3f9947d506b2974cd96b4a3fd376d3f33c39e2324655626606292",
+      "provider_policy": "sha256:e73e74c06dbd356fa07fe6ffe0ec372dce23c13571ec9925214dd8cef524d562",
+      "repository_states": "sha256:378d69c7667023c605b41f87ec803a0f6ee06b0c9a298ae2be96f88230111a5b",
+      "tokenizer": "sha256:051c879d7f52ee587eef00e570de251cd20550e014dfe101b4d499e06c217b9c",
+      "validation_policy": "sha256:1f09a1a34d7276aa8ab8792a9685d859b0838fb10afc743765f664f9b5734a60"
     },
-    "semantic_lineage": "baguqeerafgiavxxnqgo232nonfdo7kj2r33kj52vxhjf6rmxajo4spifxxla"
+    "case_count": 96,
+    "case_payload_disposition": "payload_unavailable_training_unavailable",
+    "case_root": "sha256:82e1f8419d0d897a12e3fcd679a0c6d852a4aca91229403e070f76796f7beb63",
+    "evaluation_disposition": "all_abstain_not_run",
+    "fault_schedule": {
+      "entries": [
+        {
+          "family": "TASK_CLASSIFICATION",
+          "group_id": "sha256:a3a11333b02a73d962905ff62a910649817afb5283677f71f9f3bea2bb7f7879",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "TASK_CLASSIFICATION",
+          "group_id": "sha256:a7a5b8ffac5063dd24beb5846dc961f20bfab3b8fc2c8d0534eadbe33f9d365b",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "TASK_CLASSIFICATION",
+          "group_id": "sha256:bb63a79f60352804b486c59e880e52742e3271af45c524be3391fdd834066eb5",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "TASK_CLASSIFICATION",
+          "group_id": "sha256:82a21b201409be371954ff15535ffb7adaca83c3e6f1df770f289b2a55183d62",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "RISK_CLASSIFICATION",
+          "group_id": "sha256:0c543dd22ac1fe5ea1b985b6d7a0d0752ff453bede8de4ebedd761bcd135fdfe",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "RISK_CLASSIFICATION",
+          "group_id": "sha256:ba398d645dad6f8f7aa11899c30e224cd1a9e738d445c6c0e114f71586996bda",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "RISK_CLASSIFICATION",
+          "group_id": "sha256:f73d512c557f117f388aa456161432be377e30e40635defec531d730289e60eb",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "RISK_CLASSIFICATION",
+          "group_id": "sha256:c5d57e1455d8bb4693d5059fae717498d6aeace39745f80a615ef698dad513f4",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "EFFECT_CLASSIFICATION",
+          "group_id": "sha256:386f52707372524485bf3f93e51580c631fe3dfae3d2939703c5d14aa2ff281c",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "EFFECT_CLASSIFICATION",
+          "group_id": "sha256:a9b93969a0b2a459250ffe96b341439c16c507c13078bfff12e256a61a78885a",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "EFFECT_CLASSIFICATION",
+          "group_id": "sha256:fcb5a63e6e7b979f1819bc1d95be30351462cb5423ab45c8a79d48b36cbc70ff",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "EFFECT_CLASSIFICATION",
+          "group_id": "sha256:16437aa6f34998ad53aadce57f0b4be79762bc52737b1f21d623f7085e4929b4",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "AUTHORITY_REQUIREMENT_CLASSIFICATION",
+          "group_id": "sha256:70a2d233bd218c890249cbd49c8c862be30c3445341c7957daf5b96456788fd2",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "AUTHORITY_REQUIREMENT_CLASSIFICATION",
+          "group_id": "sha256:61e87109ad91d90c64ff29a78c3c0622a97613d26b275c426f595a20561a36f3",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "AUTHORITY_REQUIREMENT_CLASSIFICATION",
+          "group_id": "sha256:65a9945a59007d76e392a7cc7868c7710e1379a187eb3161dd93b93124e0f4f3",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "AUTHORITY_REQUIREMENT_CLASSIFICATION",
+          "group_id": "sha256:87a6307bf748d629a5bbde869c38535228543661c9f97504c1ed90cef4010533",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "CONTEXT_SUFFICIENCY",
+          "group_id": "sha256:19b3a7c77e3076b32d189eeab57b5e5a8fdcdb162cd89890d810beda71a5fe23",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "CONTEXT_SUFFICIENCY",
+          "group_id": "sha256:ed2274df9cff4e19349ca047f48b6df84a27dc46405ba7afc1e0cab15d7b4b37",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "CONTEXT_SUFFICIENCY",
+          "group_id": "sha256:0473357908093dcd7c977e3fba6ead5d7f8b1cd7c87517c750ae47e04590ab47",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "CONTEXT_SUFFICIENCY",
+          "group_id": "sha256:3c1ceeb4096a1d8db7036193ba36934b96e2d0764dbe2e61b9a3548a7243a8d1",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "EVIDENCE_RANKING",
+          "group_id": "sha256:53f23e31c95b064bb346dfd459c41025d08cedeab1dc47d081239046dde55c2d",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "EVIDENCE_RANKING",
+          "group_id": "sha256:f4f7e7b7a1429f88af8f3e869acd658ef56d203c77da6cf8bff6d9273140c853",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "EVIDENCE_RANKING",
+          "group_id": "sha256:4d9814d0d83ba7dd98fa2789d57ef4ad0b9571f8a44929d50112365cebb38de1",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "EVIDENCE_RANKING",
+          "group_id": "sha256:bd25b61c06209ca7161c8e71b76b93fbc7736c41a6d06b30e39cd4edba5b15f5",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "PROCEDURE_MATCHING",
+          "group_id": "sha256:f3867dbbfded73d0579aad284f754d0f895c73311c5e5b65064dc2ee03fb5efc",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "PROCEDURE_MATCHING",
+          "group_id": "sha256:79f7a5d85dcf399666e4e78429da2d4de97507997f8c147c5474a184133296e2",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "PROCEDURE_MATCHING",
+          "group_id": "sha256:c1be29d21d976d1bd061e81337bf0a8ad5cc2dbf65ccd05430c8ca70d1ac33c5",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "PROCEDURE_MATCHING",
+          "group_id": "sha256:2c11f1abb65cda754331ff232dafa820ca20f2a300e819d8ac56ab8300559840",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "PLAN_BRANCH_RANKING",
+          "group_id": "sha256:5738c9dede94b9ba7e2706522d6dad7fba738d169573b62c5f7c03eec38942c9",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "PLAN_BRANCH_RANKING",
+          "group_id": "sha256:d7ac5850fdf9850da16d5d3e267fde8a99dc8cbf904b0f7c4a7ff1fd5af4b552",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "PLAN_BRANCH_RANKING",
+          "group_id": "sha256:c4dcffbf9f2a77848e5174826bc75c07b8d0c58f9520c534bb7bf05af3257bbb",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "PLAN_BRANCH_RANKING",
+          "group_id": "sha256:6f9630f40e3ba3393589fc4296fc22feb12b5571ca37bd3063d00cea94c6ac9f",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "TEST_SELECTION",
+          "group_id": "sha256:e99fb290bd19a381760a811f92ad6e2a4af75f0f2a4ac38de08bfd3bc347f573",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "TEST_SELECTION",
+          "group_id": "sha256:31f54bbe11ca36b10af8214301dd7bb06ea84051388d2041fec4184240bba6c5",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "TEST_SELECTION",
+          "group_id": "sha256:88e2e6ef1b61bfc761ff5568b89d8e845b1f270954b499436638e21f5f391ed3",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "TEST_SELECTION",
+          "group_id": "sha256:d513b3779786ac650f0c526fb8d7f520802217d0d4116725fb13974726f2cae2",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "PROOF_SELECTION",
+          "group_id": "sha256:d4ed9631d21f37323952a75d77eb5adf328eb0dcd3b2f5099275405e2771b2e6",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "PROOF_SELECTION",
+          "group_id": "sha256:5ad6a4421d1cfbf261e5648c11c6ecc4aadea1cf3e0dd2697623433e007ebb0f",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "PROOF_SELECTION",
+          "group_id": "sha256:89e64588f38622a9069a2c27dde837751b9760abc6252dc7549afc7b63a37b96",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "PROOF_SELECTION",
+          "group_id": "sha256:3edc76e2d895a33846ef2dd634dcd2be91efba3550071cf0180b5d1ccae60029",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "FAILURE_ATTRIBUTION",
+          "group_id": "sha256:27824b458ff61d5169648045529c0ce7bd209c3e903cf42e05cd7154ee17f361",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "FAILURE_ATTRIBUTION",
+          "group_id": "sha256:e2dfdbeeed612ca48eb79e229b5d5c35e6b6c4ccbfc826ecbdb0f1b1cbba2fe8",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "FAILURE_ATTRIBUTION",
+          "group_id": "sha256:7525cb7003d40484088ab86fe3423bb7af8798742843dc4603385e09951f9418",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "FAILURE_ATTRIBUTION",
+          "group_id": "sha256:62ff6f5560f04a63f2706847d668bf1dde9afbeb787684cc02473d6265eaae50",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "RETRY_OR_ESCALATE",
+          "group_id": "sha256:dc6366d714ad69f38b82fea93add7d47d953ad2c600d98c8010a929adcf79bc4",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "RETRY_OR_ESCALATE",
+          "group_id": "sha256:0d4995f83c72598b369a53f4f9c900ce45f6beee4bb544e7bd12623201755873",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "RETRY_OR_ESCALATE",
+          "group_id": "sha256:4c8d79bb8d466c6851529d7836b308d129a1e412b5e72e9af8a9afeb69807ae6",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "RETRY_OR_ESCALATE",
+          "group_id": "sha256:0aa9df37a727afd4af991dae2fd58d833ff6434fe1cd3228ddd6c9d89e31daef",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "CACHE_REUSE_CLASSIFICATION",
+          "group_id": "sha256:cd716d8aa9fa0b99a7b98044f577fee04fc019c1bc72122051c3edeba4762ef7",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "CACHE_REUSE_CLASSIFICATION",
+          "group_id": "sha256:bc9fa748f1ecbec23865e2c1b99692815b7f21bc4ed5b18c0d2ef16b0e674f76",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "CACHE_REUSE_CLASSIFICATION",
+          "group_id": "sha256:6188c40020e30a2cc1cfdb45be4b43613f3d8148d531f475a275a4ab21a82748",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "CACHE_REUSE_CLASSIFICATION",
+          "group_id": "sha256:ac79523bc28bf2b6f02ca9a563448f00e0a866e35f72ced4669459d4fbecd32b",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "MERGE_CONFLICT_CLASSIFICATION",
+          "group_id": "sha256:0a3483bd3e2f51e5f8b1be05e3512114e7d7566ac729efb6ed6039c5d6e51983",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "MERGE_CONFLICT_CLASSIFICATION",
+          "group_id": "sha256:3cf356c1ed14c338685f425930bdfa8a829ebe42aaf55aad34100d0880abe440",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "MERGE_CONFLICT_CLASSIFICATION",
+          "group_id": "sha256:59c2e44319bc660ade1f77d9f907fefe0c3914c6b31f824361abbdd62fc1db6e",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "MERGE_CONFLICT_CLASSIFICATION",
+          "group_id": "sha256:e57658b51d4119dbd83445ec1074e9e18517aea26cb544ba529daf1d2a4716f5",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "PATCH_TEMPLATE_SELECTION",
+          "group_id": "sha256:d7037aeaa03bce3fae1f2f53b8ed2afe8cddebcbaade4ca0a6e7ceb005ba441d",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "PATCH_TEMPLATE_SELECTION",
+          "group_id": "sha256:7b8b9a0936326a128b245e5f1d26bc359a7691b12ac3c085a98281b1c0c79b7e",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "PATCH_TEMPLATE_SELECTION",
+          "group_id": "sha256:fda4fb293766d513e80f57889b0e87451d5ea859ae645100a5a7e78cc8cd6ffe",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "PATCH_TEMPLATE_SELECTION",
+          "group_id": "sha256:3333b6b12692293f660e4c5f6ba4c9f677a5a476353c99f259b8d96d46ec8fcf",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "PROCEDURE_HOLE_FILLING",
+          "group_id": "sha256:3dd94a9548d9e2a1abae721c04c42103e0ee9031602c052769e0568fa28b5d4a",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "PROCEDURE_HOLE_FILLING",
+          "group_id": "sha256:0b09082cc820bf2c1dcfa56beaf6facc3b0b5a1e4d6ebaa68039ae7667353aae",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "PROCEDURE_HOLE_FILLING",
+          "group_id": "sha256:93b48d9cd9e6f9832d7a0db7f222e23312e0ab26651925666c7b1b792daff47d",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "PROCEDURE_HOLE_FILLING",
+          "group_id": "sha256:a3978278eadd421bbecee7db3fdcab4015d4769abae3b821a99ff884c86199fd",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "PATCH_SKETCH_GENERATION",
+          "group_id": "sha256:5a26bdc5c4fe07d5939554245c4a6f937fa1e5c893d25feca0a4814c55226a66",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "PATCH_SKETCH_GENERATION",
+          "group_id": "sha256:9a581ee5074315c971966dd21643e0a6f15d8a1c6eac891ecc9b98453b141ff8",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "PATCH_SKETCH_GENERATION",
+          "group_id": "sha256:b54af1741a7c8445f43d7537bc3c6166d7b29d1f138a650fda4f8a7e7335f23e",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "PATCH_SKETCH_GENERATION",
+          "group_id": "sha256:9219c4351ee3764072993511b5aaca5e3102189074abd6baff11bc8f512d379c",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "LEMMA_SUGGESTION",
+          "group_id": "sha256:a75e0350d7f62b846fb851fbf01e5bbfe76f398155bd502f417c59371312873b",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "LEMMA_SUGGESTION",
+          "group_id": "sha256:b525823a0a40db5f3d737c097b839d2c79b2878199a2147be5de316c6fb01038",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "LEMMA_SUGGESTION",
+          "group_id": "sha256:0f56f543a028770a602b5c485e50a8552398a79ec6fc98500953edad78bfd287",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "LEMMA_SUGGESTION",
+          "group_id": "sha256:2a2bc2334127fc3774ec12b40490faf3a1fdbd02541efb662e4b94d41713c6ed",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "TACTIC_SUGGESTION",
+          "group_id": "sha256:08447d967839b4ebc8e5e3f1de99750b205b463157a34c823b4fe6846244de89",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "TACTIC_SUGGESTION",
+          "group_id": "sha256:673528b687a89e00ccb1f51022b4e630f6e3ad1d4dd970723b9fb5412551ea16",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "TACTIC_SUGGESTION",
+          "group_id": "sha256:eefc5799992c440cfb2bead46423be3f8b996e6e4adc65bebf35f082808c203b",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "TACTIC_SUGGESTION",
+          "group_id": "sha256:5bce88cfd97261089bfb785f2e30aa68f07cf76013878913690abe98b2781713",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "COUNTEREXAMPLE_EXPLANATION",
+          "group_id": "sha256:ffe9167a3d9b5d270490fe54760223ef2b9d901d7bf48e273d81abcfde6d175c",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "COUNTEREXAMPLE_EXPLANATION",
+          "group_id": "sha256:0e4b5fea8654b645640f598194a93ff1a447031787de0c74480e161c63e192f6",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "COUNTEREXAMPLE_EXPLANATION",
+          "group_id": "sha256:85ac0603b90c3ef669a7b7b645bc99b5f6751e2d356f221969f899dab6865db8",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "COUNTEREXAMPLE_EXPLANATION",
+          "group_id": "sha256:0a9320b91ce8c33a970d9d26444a83a69bc5e61ad243eb769a0ea385b928058b",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "GOAL_REFINEMENT_CANDIDATE",
+          "group_id": "sha256:b1d59e5904e98d0a49706f1d03f80bfab131ca26f64b2a927771b5d510fddc97",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "GOAL_REFINEMENT_CANDIDATE",
+          "group_id": "sha256:cee3c6ca560431d3d6ed190d901d6df55248d34e681b63c3e5b08cbaccf554a9",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "GOAL_REFINEMENT_CANDIDATE",
+          "group_id": "sha256:b78c8c4e79999ef6609a2ef101c1cd335e9a8d3be4503abdd81c8e88487c3f5b",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "GOAL_REFINEMENT_CANDIDATE",
+          "group_id": "sha256:002b66a0db2b513d833eb26e26778f813c02b934a3309953b3634c4550b6e78c",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "DOCUMENTATION_CLAIM_CLASSIFICATION",
+          "group_id": "sha256:6952ae114d61481974414847cba17f69eb3da0d6d76368f6db618ca87f4663b5",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "DOCUMENTATION_CLAIM_CLASSIFICATION",
+          "group_id": "sha256:e9102c95309a71c1380cd4562fa635f046510189a5ee5941fc3418ce3a9a648d",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "DOCUMENTATION_CLAIM_CLASSIFICATION",
+          "group_id": "sha256:0374a8d2026b95dc2b519a58fc9de392085a4f2b53d12119e1290309c7f89a96",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "DOCUMENTATION_CLAIM_CLASSIFICATION",
+          "group_id": "sha256:9431bd925ab11a8824258beb7548f13a14a45fdbca6e7c18c1a6c36af1b98f0c",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "HUMAN_ESCALATION_CLASSIFICATION",
+          "group_id": "sha256:cf6a9b557629b47c9d9d38669ff12b2c9c94af8bf0607d939dabc2c2cc7d4e2b",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "HUMAN_ESCALATION_CLASSIFICATION",
+          "group_id": "sha256:0dbde9c3e9d13d5b0473e68a67703e586ad78c7530664be5b3b1968aa0848d87",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "HUMAN_ESCALATION_CLASSIFICATION",
+          "group_id": "sha256:76789416c70e9cc0b93b4a6868404f9223541bbcb661d03ad9ef1fbcbb9ff380",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "HUMAN_ESCALATION_CLASSIFICATION",
+          "group_id": "sha256:62d6c694f31720dbe95f13381625b495a2872991e94fcbbb08d0abeb2dc2420c",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        },
+        {
+          "family": "NOVEL_UNBOUNDED_REASONING",
+          "group_id": "sha256:b3c634f988d5d900066c83e99056fbaa7e42d11a9ac0d715ff1b025a2d5bb52c",
+          "hidden_test": false,
+          "kind": "boundary",
+          "partition": "training"
+        },
+        {
+          "family": "NOVEL_UNBOUNDED_REASONING",
+          "group_id": "sha256:44131481b5e867e89f02ffcacaa73c5968e16342ecf2fe4253bae2ad031e10af",
+          "hidden_test": false,
+          "kind": "negative",
+          "partition": "development"
+        },
+        {
+          "family": "NOVEL_UNBOUNDED_REASONING",
+          "group_id": "sha256:41fb6b259b86e29036f4241f9ea2e5c94a3b038748e2a6144a3b18954a51feb9",
+          "hidden_test": true,
+          "kind": "cross_repository",
+          "partition": "held_out"
+        },
+        {
+          "family": "NOVEL_UNBOUNDED_REASONING",
+          "group_id": "sha256:542f85f7c38153504606138aee3777ee111e4c3dfdec8c837a80f3974692df4f",
+          "hidden_test": true,
+          "kind": "unknown_ood",
+          "partition": "adversarial"
+        }
+      ],
+      "schedule_id": "sha256:9a789e9fe5764e768f20dab527700b744fac16617b903a78b0a24a1ce4d27ab4",
+      "schema": "ipfs_accelerate_py/agent-supervisor/residual-benchmark-fault-schedule@1",
+      "source_tree": "1f8d79e4574b007cf738cfc8c7f6579e3e160f32",
+      "split_root": "baguqeeradbwccksw3vppbhz3xiu2l55isclxhi2xixthngpyeiy422jhmhzq"
+    },
+    "freeze_id": "sha256:7bdb979305c19f49b9b6f26535c9900b0f52b772f9352485df1904f508858404",
+    "paired_baseline": {
+      "after": {
+        "abstain": 96,
+        "accept": 0,
+        "denominators_by_family": {
+          "AUTHORITY_REQUIREMENT_CLASSIFICATION": 4,
+          "CACHE_REUSE_CLASSIFICATION": 4,
+          "CONTEXT_SUFFICIENCY": 4,
+          "COUNTEREXAMPLE_EXPLANATION": 4,
+          "DOCUMENTATION_CLAIM_CLASSIFICATION": 4,
+          "EFFECT_CLASSIFICATION": 4,
+          "EVIDENCE_RANKING": 4,
+          "FAILURE_ATTRIBUTION": 4,
+          "GOAL_REFINEMENT_CANDIDATE": 4,
+          "HUMAN_ESCALATION_CLASSIFICATION": 4,
+          "LEMMA_SUGGESTION": 4,
+          "MERGE_CONFLICT_CLASSIFICATION": 4,
+          "NOVEL_UNBOUNDED_REASONING": 4,
+          "PATCH_SKETCH_GENERATION": 4,
+          "PATCH_TEMPLATE_SELECTION": 4,
+          "PLAN_BRANCH_RANKING": 4,
+          "PROCEDURE_HOLE_FILLING": 4,
+          "PROCEDURE_MATCHING": 4,
+          "PROOF_SELECTION": 4,
+          "RETRY_OR_ESCALATE": 4,
+          "RISK_CLASSIFICATION": 4,
+          "TACTIC_SUGGESTION": 4,
+          "TASK_CLASSIFICATION": 4,
+          "TEST_SELECTION": 4
+        },
+        "total": 96
+      },
+      "before": {
+        "abstain": 96,
+        "accept": 0,
+        "denominators_by_family": {
+          "AUTHORITY_REQUIREMENT_CLASSIFICATION": 4,
+          "CACHE_REUSE_CLASSIFICATION": 4,
+          "CONTEXT_SUFFICIENCY": 4,
+          "COUNTEREXAMPLE_EXPLANATION": 4,
+          "DOCUMENTATION_CLAIM_CLASSIFICATION": 4,
+          "EFFECT_CLASSIFICATION": 4,
+          "EVIDENCE_RANKING": 4,
+          "FAILURE_ATTRIBUTION": 4,
+          "GOAL_REFINEMENT_CANDIDATE": 4,
+          "HUMAN_ESCALATION_CLASSIFICATION": 4,
+          "LEMMA_SUGGESTION": 4,
+          "MERGE_CONFLICT_CLASSIFICATION": 4,
+          "NOVEL_UNBOUNDED_REASONING": 4,
+          "PATCH_SKETCH_GENERATION": 4,
+          "PATCH_TEMPLATE_SELECTION": 4,
+          "PLAN_BRANCH_RANKING": 4,
+          "PROCEDURE_HOLE_FILLING": 4,
+          "PROCEDURE_MATCHING": 4,
+          "PROOF_SELECTION": 4,
+          "RETRY_OR_ESCALATE": 4,
+          "RISK_CLASSIFICATION": 4,
+          "TACTIC_SUGGESTION": 4,
+          "TASK_CLASSIFICATION": 4,
+          "TEST_SELECTION": 4
+        },
+        "total": 96
+      },
+      "binding_set_id": "sha256:f8b85bdde66e3fd87c0c493cb6b7e94c1ae8e3dd3284943998e0bd9084b3d439",
+      "candidate_only": true,
+      "case_count": 96,
+      "case_payload_disposition": "payload_unavailable_training_unavailable",
+      "case_root": "sha256:82e1f8419d0d897a12e3fcd679a0c6d852a4aca91229403e070f76796f7beb63",
+      "comparison_disposition": "identical_no_candidate_training_unavailable",
+      "evaluated_source": {
+        "commit": "04dccbc05d5f2b6806275128fdae356d94f2e48f",
+        "tree": "1f8d79e4574b007cf738cfc8c7f6579e3e160f32"
+      },
+      "evaluation_disposition": "all_abstain_not_run",
+      "paired_baseline_id": "sha256:759b80899b2ebc632219937bd97fbd35d90ccb0b81da3c3d3a06fd8bc3405dbd",
+      "prior_source": {
+        "commit": "04dccbc05d5f2b6806275128fdae356d94f2e48f",
+        "tree": "1f8d79e4574b007cf738cfc8c7f6579e3e160f32"
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/residual-paired-benchmark-baseline@2",
+      "training_performed": false
+    },
+    "schema": "ipfs_accelerate_py/agent-supervisor/residual-benchmark-freeze@2",
+    "source": {
+      "commit": "04dccbc05d5f2b6806275128fdae356d94f2e48f",
+      "tree": "1f8d79e4574b007cf738cfc8c7f6579e3e160f32"
+    },
+    "state": "frozen"
   },
   "large_corpus_committed": false,
   "owner_task": "VRIF-030",
@@ -37,8 +802,7 @@
     "unknown_ood"
   ],
   "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-benchmark-manifest@1",
-  "source_revision": "6ccfe5db10f16fc711e0ae78f7d674e527ffbe25",
-  "source_tree": "0c245e4e87807b75459a03f738dcaab7b87807f5",
+  "source_revision": "04dccbc05d5f2b6806275128fdae356d94f2e48f",
   "status": "staged_not_qualified",
   "task_families": [
     "TASK_CLASSIFICATION",
