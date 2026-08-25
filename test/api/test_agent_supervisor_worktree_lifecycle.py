@@ -1110,6 +1110,158 @@ def test_duplicate_attempt_rejected_while_owner_alive(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize("same_workspace", [False, True])
+def test_replace_stale_false_fences_expired_dead_nonterminal_claim(
+    tmp_path: Path,
+    same_workspace: bool,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=60.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    original_workspace = tmp_path / "worktrees" / "original"
+    original = store.begin_preparing(
+        task_id="NO-STALE-REPLACE",
+        canonical_task_cid="cid:no-stale-replace",
+        attempt=1,
+        lane_id="dead-lane",
+        workspace_path=original_workspace,
+        branch="implementation/no-stale-replace-old",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 41,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    record_path = store.workspace_path_for(original_workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=original.canonical_task_cid,
+        task_id=original.task_id,
+        attempt=original.attempt,
+    )
+    record_before = record_path.read_bytes()
+    index_before = index_path.read_bytes()
+    clock.advance(61.0)
+    candidate = (
+        original_workspace
+        if same_workspace
+        else tmp_path / "worktrees" / "replacement"
+    )
+
+    with pytest.raises(
+        DuplicateAttemptError,
+        match="nonterminal claim replacement disabled",
+    ):
+        store.begin_preparing(
+            task_id=original.task_id,
+            canonical_task_cid=original.canonical_task_cid,
+            attempt=original.attempt,
+            lane_id="retry-lane",
+            workspace_path=candidate,
+            branch="implementation/no-stale-replace-new",
+            merge_target="main",
+            allow_replace_stale=False,
+        )
+
+    assert record_path.read_bytes() == record_before
+    assert index_path.read_bytes() == index_before
+    assert store.load_workspace(original_workspace) == original
+    if not same_workspace:
+        assert store.load_workspace(candidate) is None
+
+
+def test_replace_stale_false_allows_terminal_prior_claim(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    original_workspace = tmp_path / "worktrees" / "terminal"
+    original = store.begin_preparing(
+        task_id="TERMINAL-REPLACE",
+        canonical_task_cid="cid:terminal-replace",
+        attempt=1,
+        lane_id="old-lane",
+        workspace_path=original_workspace,
+        branch="implementation/terminal-replace-old",
+        merge_target="main",
+    )
+    terminal = store.mark_terminal(
+        original_workspace,
+        lease_id=original.lease_id,
+        expected_fence=original.fence,
+        reason="finished",
+    )
+    replacement_workspace = tmp_path / "worktrees" / "replacement"
+
+    replacement = store.begin_preparing(
+        task_id=terminal.task_id,
+        canonical_task_cid=terminal.canonical_task_cid,
+        attempt=terminal.attempt,
+        lane_id="new-lane",
+        workspace_path=replacement_workspace,
+        branch="implementation/terminal-replace-new",
+        merge_target="main",
+        allow_replace_stale=False,
+    )
+
+    assert replacement.state is WorkspaceLifecycleState.PREPARING
+    assert store.load_workspace(original_workspace) == terminal
+    assert store.load_task_attempt(
+        canonical_task_cid=replacement.canonical_task_cid,
+        task_id=replacement.task_id,
+        attempt=replacement.attempt,
+    ) == replacement
+
+
+def test_replace_stale_true_preserves_legacy_expired_replacement(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=60.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    original_workspace = tmp_path / "worktrees" / "legacy-original"
+    original = store.begin_preparing(
+        task_id="LEGACY-STALE-REPLACE",
+        canonical_task_cid="cid:legacy-stale-replace",
+        attempt=1,
+        lane_id="old-lane",
+        workspace_path=original_workspace,
+        branch="implementation/legacy-stale-replace-old",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 43,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    clock.advance(61.0)
+    replacement_workspace = tmp_path / "worktrees" / "legacy-replacement"
+
+    replacement = store.begin_preparing(
+        task_id=original.task_id,
+        canonical_task_cid=original.canonical_task_cid,
+        attempt=original.attempt,
+        lane_id="new-lane",
+        workspace_path=replacement_workspace,
+        branch="implementation/legacy-stale-replace-new",
+        merge_target="main",
+        allow_replace_stale=True,
+    )
+
+    assert replacement.state is WorkspaceLifecycleState.PREPARING
+    assert store.load_workspace(original_workspace) == original
+    assert store.load_task_attempt(
+        canonical_task_cid=replacement.canonical_task_cid,
+        task_id=replacement.task_id,
+        attempt=replacement.attempt,
+    ) == replacement
+
+
 def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     tmp_path: Path,
 ) -> None:

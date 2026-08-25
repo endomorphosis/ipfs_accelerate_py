@@ -56,7 +56,6 @@ from .control_plane import (
     validate_control_surface_publication,
 )
 
-
 AGENT_CLI_EXIT_SUCCESS = 0
 AGENT_CLI_EXIT_FAILED = 1
 AGENT_CLI_EXIT_INVALID = 2
@@ -566,6 +565,11 @@ def register_agent_cli(
             action="store_true",
             help="Emit the canonical JSON envelope.",
         )
+    # CASF control remains a nested, separately typed authority surface.  Its
+    # parser is cold and publishes no file/path convenience arguments.
+    from ..federation.cli import register_federation_cli  # noqa: PLC0415
+
+    register_federation_cli(commands)
     return agent
 
 
@@ -1413,6 +1417,8 @@ def run_agent_cli(
     service: SupervisorControlService | None = None,
     service_factory: Callable[[OperationRequest], SupervisorControlService]
     | None = None,
+    federation_control_service: Any = None,
+    federation_gateway: Any = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
     stdin: TextIO | None = None,
@@ -1422,6 +1428,16 @@ def run_agent_cli(
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
     try:
+        if getattr(args, "agent_command", None) == "federation":
+            from ..federation.cli import run_federation_cli  # noqa: PLC0415
+
+            return run_federation_cli(
+                args,
+                service=federation_control_service,
+                gateway=federation_gateway,
+                stdout=stdout,
+                stderr=stderr,
+            )
         if service is not None and service_factory is not None:
             raise AgentCLIError(
                 "service and service_factory are mutually exclusive"

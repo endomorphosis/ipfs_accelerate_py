@@ -1,16 +1,25 @@
 """Agent-supervisor tools for the canonical MCP server."""
 
+from . import native_agent_supervisor_tools as _native
+from .external_handoff import (
+    HANDOFF_MCP_OPERATIONS,
+    HANDOFF_TOOL_NAMES,
+    configure_external_handoff_api,
+    execute_external_handoff_operation,
+    external_handoff_discovery_manifest,
+    register_external_handoff_tools,
+)
 from .native_agent_supervisor_tools import (
-    AGENT_SUPERVISOR_MCP_DISPATCH_MODE,
     AGENT_SUPERVISOR_MCP_CATEGORY,
+    AGENT_SUPERVISOR_MCP_DISPATCH_MODE,
     AGENT_SUPERVISOR_OPERATION_TOOLS,
     AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV,
     AGENT_SUPERVISOR_STATE_ALLOWLIST_ENV,
     AgentSupervisorMCPConfigurationError,
     agent_supervisor_control,
     agent_supervisor_discovery_manifest,
-    agent_supervisor_v2_discovery_manifest,
     agent_supervisor_service_resolution_count,
+    agent_supervisor_v2_discovery_manifest,
     configure_agent_supervisor_control,
     configure_autonomy_control,
     execute_agent_supervisor_operation,
@@ -20,7 +29,6 @@ from .native_agent_supervisor_tools import (
     register_native_agent_supervisor_tools,
     validate_agent_supervisor_mcp_catalog,
 )
-from . import native_agent_supervisor_tools as _native
 from .prompt_entrypoints import (
     PROMPT_LIFECYCLE_TOOLS,
     agent_supervisor_doctor,
@@ -34,25 +42,23 @@ from .prompt_entrypoints import (
     prompt_lifecycle_discovery_manifest,
     register_prompt_lifecycle_tools,
 )
-from .external_handoff import (
-    HANDOFF_MCP_OPERATIONS,
-    HANDOFF_TOOL_NAMES,
-    configure_external_handoff_api,
-    execute_external_handoff_operation,
-    external_handoff_discovery_manifest,
-    register_external_handoff_tools,
-)
 
 for _operation, _tool in AGENT_SUPERVISOR_OPERATION_TOOLS.items():
     globals()[_tool.__name__] = getattr(_native, _tool.__name__)
 
 
 def register_all_agent_supervisor_tools(manager: object) -> None:
-    """Register control-plane, prompt-lifecycle, and external-handoff tools."""
+    """Register control, prompt, external-handoff, and federation tools."""
 
     register_native_agent_supervisor_tools(manager)
     register_prompt_lifecycle_tools(manager)
     register_external_handoff_tools(manager)
+    # Imported only when the canonical manager loads this lazy category.
+    from ipfs_accelerate_py.mcp.tools.agent_supervisor import (  # noqa: PLC0415
+        register_federation_control_tools,
+    )
+
+    register_federation_control_tools(manager)
 
 
 __all__ = [

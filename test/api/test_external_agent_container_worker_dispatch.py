@@ -817,6 +817,7 @@ def test_dead_lane_recovery_normalizes_raw_proxy_lease_mappings() -> None:
 
         daemon = object.__new__(DatabaseImplementationDaemon)
         daemon.authority_mode = "quack"
+        daemon._quack_command_gateway = object()  # noqa: SLF001
         daemon._clock_ms = lambda: 1_900_000_000_000  # noqa: SLF001
         daemon._coordinator = Coordinator()  # noqa: SLF001
         daemon._execution_repository = SimpleNamespace(  # noqa: SLF001

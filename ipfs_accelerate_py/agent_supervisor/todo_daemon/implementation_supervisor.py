@@ -128,6 +128,9 @@ from ..rescue.supervisor_watchdog import (
 )
 from .core import ManagedDaemonSpec, terminate_pid_tree
 from .database_portal_bridge import (
+    DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS,
+    DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+    DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE,
     DatabasePortalBridgeError,
     verify_database_portal_attempt_projection,
 )
@@ -9375,6 +9378,7 @@ class PortalImplementationSupervisor:
         started_at: str,
         error: str = "",
         daemon_pid: int | None = None,
+        daemon_process_birth: ProcessBirthIdentity | None = None,
     ) -> None:
         """Refresh supervisor status while recovery/refill work is running."""
 
@@ -9383,7 +9387,22 @@ class PortalImplementationSupervisor:
         now = utc_now()
         timeout_seconds = self._supervisor_maintenance_timeout_seconds()
         active = status == "running"
-        daemon_alive = bool(daemon_pid and process_is_running(int(daemon_pid)))
+        daemon_birth_payload: dict[str, Any] | None = None
+        if daemon_process_birth is not None:
+            if not isinstance(daemon_process_birth, ProcessBirthIdentity):
+                raise TypeError("maintenance daemon birth must be typed")
+            daemon_birth_payload = daemon_process_birth.to_dict()
+            if (
+                not daemon_pid
+                or int(daemon_pid) != daemon_process_birth.pid
+            ):
+                raise RuntimeError(
+                    "maintenance daemon PID differs from its managed process birth"
+                )
+        daemon_alive = bool(
+            daemon_process_birth is not None
+            and owner_liveness(daemon_process_birth) is OwnerLiveness.ALIVE
+        )
         payload.update(
             {
                 "schema": "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor",
@@ -9393,6 +9412,7 @@ class PortalImplementationSupervisor:
                 "supervisor_pid_alive": True,
                 "daemon_pid": int(daemon_pid) if daemon_pid else None,
                 "daemon_pid_alive": daemon_alive,
+                "daemon_process_birth": daemon_birth_payload,
                 "repo_root": str(self.config.repo_root),
                 "current_status_path": str(self.config.state_path),
                 "progress_path": str(self.config.state_path),
@@ -9460,7 +9480,13 @@ class PortalImplementationSupervisor:
         payload.update(self._control_plane_status_projection())
         write_json_atomic(status_path, payload)
 
-    def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
+    def _begin_supervisor_maintenance_heartbeat(
+        self,
+        phase: str,
+        *,
+        daemon_pid: int | None = None,
+        daemon_process_birth: ProcessBirthIdentity | None = None,
+    ):
         """Return phase-update and finish callbacks for long supervisor recovery passes."""
 
         started_at = utc_now()
@@ -9476,6 +9502,7 @@ class PortalImplementationSupervisor:
                     started_at=started_at,
                     error=error,
                     daemon_pid=daemon_pid,
+                    daemon_process_birth=daemon_process_birth,
                 )
             except Exception:
                 logger.warning("Failed to update supervisor maintenance heartbeat", exc_info=True)
@@ -11021,25 +11048,12 @@ class PortalImplementationSupervisor:
             identity.boot_id,
         )
 
-    def _active_managed_database_pool_lease(
+    def _exact_live_managed_child_birth(
         self,
         child: Any,
-    ) -> dict[str, str] | None:
-        """Prove nested database work from exact pool and lifecycle records.
+    ) -> ProcessBirthIdentity | None:
+        """Return the exact live birth represented by a supervised handle."""
 
-        The outer database daemon deliberately has no Portal active-task
-        projection.  During the provider-to-validation handoff there may also
-        be no provider or validation descendant to discover.  A live pool
-        lease is therefore considered active only when it is owned by this
-        exact supervised child birth and corroborated by the canonical
-        worktree lifecycle plus its database-attempt binding.  Any missing,
-        malformed, idle, peer, stale, or foreign record fails open to the
-        ordinary control-plane reload.
-        """
-
-        worktree_root = self.config.worktree_root
-        if self.config.database_program is None or worktree_root is None:
-            return None
         raw_pid = getattr(child, "pid", 0)
         if isinstance(raw_pid, bool):
             return None
@@ -11065,6 +11079,238 @@ class PortalImplementationSupervisor:
             != self._stable_process_birth_identity(child_birth)
         ):
             return None
+        return child_birth
+
+    def _validated_managed_database_lifecycle_binding(
+        self,
+        record: Any,
+        *,
+        attempt_root: Path,
+    ) -> tuple[Path, dict[str, Any]] | None:
+        """Validate the exact database binding behind one lifecycle claim."""
+
+        try:
+            attempt_dir = Path(record.state_dir).resolve(strict=True)
+        except (OSError, RuntimeError):
+            return None
+        if (
+            attempt_dir.parent != attempt_root
+            or re.fullmatch(r"[0-9a-f]{24}", attempt_dir.name) is None
+        ):
+            return None
+        binding = self._load_single_link_json_object(
+            attempt_dir / "database-attempt-binding.json"
+        )
+        if binding is None:
+            return None
+        attempt_id = binding.get("attempt_id")
+        binding_id = binding.get("binding_id")
+        if (
+            set(binding) != DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS
+            or binding.get("schema") != DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+            or binding.get("interface")
+            != DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
+            or type(attempt_id) is not str
+            or not attempt_id
+            or hashlib.sha256(attempt_id.encode("utf-8")).hexdigest()[:24]
+            != attempt_dir.name
+            or binding.get("task_alias") != record.task_id
+            or binding.get("task_cid") != record.canonical_task_cid
+            or type(binding.get("canonical_task_key")) is not str
+            or not binding.get("canonical_task_key")
+            or type(binding.get("claim_id")) is not str
+            or not binding.get("claim_id")
+            or type(binding.get("lease_id")) is not str
+            or not binding.get("lease_id")
+            or type(binding.get("task_revision")) is not int
+            or type(binding.get("fencing_token")) is not int
+            or type(binding.get("fence_epoch")) is not int
+            or binding.get("projection_authority") is not False
+            or binding.get("authoritative_task_store") != "duckdb"
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(binding.get("task_contract_digest") or ""),
+            )
+            is None
+            or type(binding.get("repository_tree_id")) is not str
+            or not binding.get("repository_tree_id")
+            or type(binding_id) is not str
+        ):
+            return None
+        binding_without_id = dict(binding)
+        binding_without_id.pop("binding_id", None)
+        expected_binding_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                binding_without_id,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        if binding_id != expected_binding_id:
+            return None
+        return attempt_dir, binding
+
+    def _active_managed_database_nonterminal_claim(
+        self,
+        child: Any,
+    ) -> dict[str, str] | None:
+        """Prove callback work missing from the ordinary live projections.
+
+        A task publishes its fenced lifecycle claim before the potentially
+        slow pool checkout, then moves that claim to ACTIVE before publishing
+        nested task state.  During teardown it can likewise clear that state
+        after moving to SETTLING but before terminalizing the claim.  Killing
+        the exact live owner in any of those gaps turns a source refresh into
+        an unknown callback outcome.  Defer only for a current child birth
+        whose exact PREPARING, ACTIVE, or SETTLING claim is bound to the exact
+        database attempt and roots.
+        """
+
+        worktree_root = self.config.worktree_root
+        if self.config.database_program is None or worktree_root is None:
+            return None
+        child_birth = self._exact_live_managed_child_birth(child)
+        if child_birth is None:
+            return None
+        child_pid = child_birth.pid
+        try:
+            root = Path(worktree_root).resolve(strict=True)
+            repo_root = self.config.repo_root.resolve(strict=True)
+            state_root = self.config.state_dir.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return None
+        attempt_root = (
+            state_root
+            / f"{self.config.state_prefix}_database_portal_attempts"
+        )
+        try:
+            lifecycle_store = WorktreeLifecycleStore(repo_root)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        expected_merge_target = str(
+            self.config.merge_target_branch or ""
+        ).removeprefix("refs/heads/")
+
+        for record in lifecycle_store.iter_records():
+            if (
+                record.state.value not in {"preparing", "active", "settling"}
+                or not record.is_nonterminal
+                or self._stable_process_birth_identity(record.owner)
+                != self._stable_process_birth_identity(child_birth)
+                or owner_liveness(record.owner) is not OwnerLiveness.ALIVE
+                or record.record_id != record.compute_record_id()
+                or not record.task_id
+                or not record.canonical_task_cid
+                or record.attempt < 1
+                or not record.branch
+                or (
+                    expected_merge_target
+                    and record.merge_target.removeprefix("refs/heads/")
+                    != expected_merge_target
+                )
+            ):
+                continue
+            try:
+                if Path(record.repo_root).resolve(strict=True) != repo_root:
+                    continue
+                raw_workspace = Path(record.workspace_path)
+                if not raw_workspace.is_absolute():
+                    continue
+                resolved_workspace = raw_workspace.resolve(strict=False)
+                resolved_workspace.relative_to(root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            validated_binding = self._validated_managed_database_lifecycle_binding(
+                record,
+                attempt_root=attempt_root,
+            )
+            if validated_binding is None:
+                continue
+            attempt_dir, binding = validated_binding
+            implementation_lock = self._load_single_link_json_object(
+                attempt_dir / "implementation.lock"
+            )
+            lock_pid = (
+                implementation_lock.get("pid")
+                if implementation_lock is not None
+                else None
+            )
+            if (
+                implementation_lock is None
+                or implementation_lock.get("kind") != "implementation"
+                or isinstance(lock_pid, bool)
+                or type(lock_pid) is not int
+                or lock_pid != child_pid
+                or implementation_lock.get("task_id") != record.task_id
+                or implementation_lock.get("canonical_task_cid")
+                != record.canonical_task_cid
+                or implementation_lock.get("canonical_task_key")
+                != binding.get("canonical_task_key")
+                or type(implementation_lock.get("attempt")) is not int
+                or implementation_lock.get("attempt") != record.attempt
+                or type(implementation_lock.get("lease_id")) is not str
+                or not implementation_lock.get("lease_id")
+                or type(implementation_lock.get("started_at")) is not str
+                or not implementation_lock.get("started_at")
+            ):
+                continue
+            try:
+                if (
+                    Path(str(implementation_lock.get("repo_root") or ""))
+                    .resolve(strict=True)
+                    != repo_root
+                    or Path(str(implementation_lock.get("state_dir") or ""))
+                    .resolve(strict=True)
+                    != attempt_dir
+                ):
+                    continue
+            except (OSError, RuntimeError):
+                continue
+            try:
+                current_birth = read_process_birth(child_pid)
+            except OSError:
+                continue
+            if (
+                self._stable_process_birth_identity(current_birth)
+                != self._stable_process_birth_identity(child_birth)
+            ):
+                continue
+            return {
+                "task_id": record.task_id,
+                "task_cid": record.canonical_task_cid,
+                "attempt": str(record.attempt),
+                "phase": record.state.value,
+                "worktree_path": str(resolved_workspace),
+                "branch": record.branch,
+                "lease_pid": str(child_pid),
+            }
+        return None
+
+    def _active_managed_database_pool_lease(
+        self,
+        child: Any,
+    ) -> dict[str, str] | None:
+        """Prove nested database work from exact pool and lifecycle records.
+
+        The outer database daemon deliberately has no Portal active-task
+        projection.  During the provider-to-validation handoff there may also
+        be no provider or validation descendant to discover.  A live pool
+        lease is therefore considered active only when it is owned by this
+        exact supervised child birth and corroborated by the canonical
+        worktree lifecycle plus its database-attempt binding.  Any missing,
+        malformed, idle, peer, stale, or foreign record fails open to the
+        ordinary control-plane reload.
+        """
+
+        worktree_root = self.config.worktree_root
+        if self.config.database_program is None or worktree_root is None:
+            return None
+        child_birth = self._exact_live_managed_child_birth(child)
+        if child_birth is None:
+            return None
+        child_pid = child_birth.pid
 
         try:
             root = Path(worktree_root).resolve(strict=True)
@@ -11165,17 +11411,25 @@ class PortalImplementationSupervisor:
                     or Path(record.repo_root).resolve(strict=True) != repo_root
                 ):
                     continue
-                attempt_dir = Path(record.state_dir).resolve(strict=True)
             except (OSError, RuntimeError):
                 continue
-            if (
-                attempt_dir.parent != attempt_root
-                or re.fullmatch(r"[0-9a-f]{24}", attempt_dir.name) is None
-            ):
+            # The lifecycle record, pool lease, and nested daemon state expose
+            # the task CID/alias, attempt, branch, workspace, and live process
+            # birth, but they intentionally do not duplicate the database task
+            # key, contract digest, or repository tree.  Those three identities
+            # are therefore proved here at their strongest contention-free
+            # boundary: the bridge's exact canonical schema plus its binding_id
+            # commitment.  The watchdog must not open a competing database
+            # reader merely to decide whether an already-live child may finish.
+            validated_binding = self._validated_managed_database_lifecycle_binding(
+                record,
+                attempt_root=attempt_root,
+            )
+            if validated_binding is None:
                 continue
-
+            attempt_dir, binding = validated_binding
             try:
-                binding = verify_database_portal_attempt_projection(
+                projection_binding = verify_database_portal_attempt_projection(
                     attempt_dir / "task-projection.md",
                     expected_task_alias=record.task_id,
                     expected_task_cid=record.canonical_task_cid,
@@ -11189,7 +11443,12 @@ class PortalImplementationSupervisor:
                 ValueError,
             ):
                 continue
-            if binding.get("attempt_number") != record.attempt:
+            if (
+                projection_binding.get("binding_id") != binding.get("binding_id")
+                or projection_binding.get("canonical_task_key")
+                != binding.get("canonical_task_key")
+                or projection_binding.get("attempt_number") != record.attempt
+            ):
                 continue
 
             nested_state_path = attempt_dir / "portal-task-state.json"
@@ -11269,10 +11528,18 @@ class PortalImplementationSupervisor:
                 if projected_active
                 else self._active_managed_database_pool_lease(_child)
             )
-            active = projected_active or bool(database_pool_activity)
+            database_nonterminal_activity = (
+                None
+                if projected_active or database_pool_activity
+                else self._active_managed_database_nonterminal_claim(_child)
+            )
+            database_activity = (
+                database_pool_activity or database_nonterminal_activity
+            )
+            active = projected_active or bool(database_activity)
             if active:
                 pool_task_id = str(
-                    (database_pool_activity or {}).get("task_id") or ""
+                    (database_activity or {}).get("task_id") or ""
                 )
                 deferred = {
                     **control_plane_status,
@@ -11280,7 +11547,11 @@ class PortalImplementationSupervisor:
                     "control_plane_reload_deferred_reason": (
                         "active_managed_database_worktree_pool_lease"
                         if database_pool_activity
-                        else "active_task_or_phase"
+                        else (
+                            "active_managed_database_nonterminal_lifecycle_claim"
+                            if database_nonterminal_activity
+                            else "active_task_or_phase"
+                        )
                     ),
                     "control_plane_reload_deferred_task_id": (
                         state.active_task_id or pool_task_id
@@ -11330,9 +11601,11 @@ class PortalImplementationSupervisor:
 
         self._last_supervisor_maintenance_at = now_monotonic
         daemon_pid = int(getattr(_child, "pid", 0) or 0) or None
+        daemon_process_birth = getattr(_child, "identity_process_birth", None)
         update_maintenance_phase, finish_maintenance = self._begin_supervisor_maintenance_heartbeat(
             "watchdog",
             daemon_pid=daemon_pid,
+            daemon_process_birth=daemon_process_birth,
         )
         failed = False
         try:

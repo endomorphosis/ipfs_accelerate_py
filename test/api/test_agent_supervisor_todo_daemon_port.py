@@ -15277,6 +15277,10 @@ def test_implementation_supervisor_run_once_refreshes_recovery_status(tmp_path, 
 
 
 def test_implementation_supervisor_watchdog_refreshes_child_maintenance_status(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        read_process_birth,
+    )
+
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
@@ -15291,9 +15295,12 @@ def test_implementation_supervisor_watchdog_refreshes_child_maintenance_status(t
         )
     )
 
+    daemon_process_birth = read_process_birth(os.getpid())
+    assert daemon_process_birth is not None
     update_phase, finish = supervisor._begin_supervisor_maintenance_heartbeat(
         "watchdog",
         daemon_pid=os.getpid(),
+        daemon_process_birth=daemon_process_birth,
     )
     update_phase("objective_refill")
     finish("completed")
@@ -15301,6 +15308,7 @@ def test_implementation_supervisor_watchdog_refreshes_child_maintenance_status(t
     status = json.loads((state_dir / "portal_supervisor_status.json").read_text(encoding="utf-8"))
     assert status["daemon_pid"] == os.getpid()
     assert status["daemon_pid_alive"] is True
+    assert status["daemon_process_birth"] == daemon_process_birth.to_dict()
     assert status["active_agentic_maintenance_has_daemon"] is True
     assert status["last_agentic_maintenance_phase"] == "objective_refill"
     assert status["last_agentic_maintenance_status"] == "completed"

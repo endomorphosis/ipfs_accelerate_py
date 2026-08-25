@@ -3123,6 +3123,44 @@ def _eaaef_provider_effect_capability_blocker(
     return ",".join(blockers)
 
 
+def _grok_cli_trusted_failure_command(
+    *,
+    workspace_path: Path,
+    model: str,
+) -> list[str]:
+    """Build the physical Grok adapter required by the ordered route.
+
+    ``provider_fallback_runner`` accepts quota evidence only through the
+    private descriptor it gives this exact packaged adapter.  The newer
+    module runner owns a different sealed-route protocol, so placing its
+    ``-m`` command inside the outer runner would silently lose the trusted
+    terminal failure receipt and make quota fallback unreachable.
+    """
+
+    grok = _grok_binary()
+    if not grok:
+        raise RuntimeError("grok CLI is not installed")
+    runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
+    if not runner_path.is_file():
+        raise RuntimeError(f"packaged Grok adapter missing at {runner_path}")
+    max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip()
+    return [
+        sys.executable,
+        str(runner_path),
+        "--workspace",
+        str(workspace_path.resolve()),
+        "--model",
+        str(model).strip(),
+        "--max-turns",
+        max_turns if max_turns.isdigit() else "100000",
+        "--mode",
+        "agent",
+        "--require-terminal-quota-frame",
+        "--grok-bin",
+        grok,
+    ]
+
+
 def _copilot_has_auth() -> bool:
     """Return whether the local Copilot CLI has non-interactive auth available."""
 
@@ -25325,6 +25363,7 @@ class PortalImplementationDaemon:
                 branch=branch_name,
                 merge_target=target_branch,
                 state_dir=str(self.state_path.parent.resolve()),
+                allow_replace_stale=False,
             )
             self._active_worktree_lifecycle = lifecycle_record
             baseline_ref = self._create_seeded_worktree(
@@ -35574,6 +35613,10 @@ class PortalImplementationDaemon:
                     branch=branch_name,
                     merge_target=self._main_branch_name(),
                     state_dir=str(self.state_path.parent.resolve()),
+                    # Expiry proves neither provider-effect absence nor child
+                    # quiescence. Portal retries may replace only a terminal
+                    # task-attempt claim, never an ambiguous nonterminal one.
+                    allow_replace_stale=False,
                 )
                 self._active_worktree_lifecycle = lifecycle_record
             except DuplicateAttemptError as exc:
@@ -58597,6 +58640,16 @@ class PortalImplementationDaemon:
 
             branch_name = str(entry.get("branch") or "").removeprefix("refs/heads/")
             detail = {"worktree_path": str(worktree_path), "branch": branch_name}
+            # A reboot or interrupted ``git worktree add`` can leave a locked
+            # administrative entry after the checkout directory has vanished.
+            # ``subprocess.run(..., cwd=worktree_path)`` raises before Git can
+            # return a status in that case, which used to crash and recycle the
+            # implementation daemon indefinitely.  Missing registered paths
+            # are not safe to delete or reuse here; leave their Git metadata
+            # for an explicit reconciliation pass and keep dispatch alive.
+            if not worktree_path.is_dir():
+                skipped.append({**detail, "reason": "worktree_missing"})
+                continue
             if active_resolved is not None and worktree_resolved == active_resolved:
                 skipped.append({**detail, "reason": "active_state_worktree"})
                 continue
@@ -58629,13 +58682,19 @@ class PortalImplementationDaemon:
                 skipped.append({**detail, "reason": "branch_not_merged"})
                 continue
 
-            status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=all"],
-                cwd=worktree_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            try:
+                status = subprocess.run(
+                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            except FileNotFoundError:
+                # The directory can disappear after the is_dir() observation.
+                # Treat that race exactly like an already-missing checkout.
+                skipped.append({**detail, "reason": "worktree_missing"})
+                continue
             if status.returncode != 0:
                 skipped.append(
                     {
@@ -67340,6 +67399,55 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
+        if route_plan and not route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip():
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                if _grok_cli_available() and _grok_binary():
+                    return
+                raise ImplementationRetryDeferred(
+                    "explicit Grok-only task requires authenticated Grok CLI",
+                    backoff_seconds=300,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            codex = shutil.which("codex")
+            if not codex:
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only route requires the Codex CLI fallback",
+                    backoff_seconds=300,
+                )
+            # Quota-only routing must run the primary agent before quota can
+            # authorize fallback.  A ``grok models`` network probe can itself
+            # return quota exhaustion, but that pre-dispatch response is not
+            # terminal-correlated provider evidence.  Admit only from local
+            # binary/auth construction here; the packaged adapter emits the
+            # trusted receipt after the real Grok process terminates.
+            if not (_grok_binary() and _grok_cli_available()):
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only route requires a ready Grok primary",
+                    backoff_seconds=300,
+                )
+            return
         if route_plan and route_plan.permits_authentication_unavailable:
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
@@ -68188,6 +68296,99 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
+        if route_plan and not route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if env_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            configured_policy = os.environ.get(
+                PROVIDER_FALLBACK_POLICY_ENV,
+                "",
+            ).strip().lower().replace("-", "_")
+            if configured_policy not in {
+                "",
+                GROK_QUOTA_ONLY_FALLBACK_POLICY,
+            }:
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only Grok/Codex route rejects fallback "
+                    "policy drift",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=route_plan.primary_model_id,
+                    enable_codex_fallback=False,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            codex = shutil.which("codex")
+            if not codex:
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only route requires the Codex CLI fallback",
+                    backoff_seconds=300,
+                )
+            # Do not turn a pre-dispatch ``grok models`` quota response into
+            # fallback authority.  Only the real primary process, supervised
+            # by the packaged adapter below, may mint trusted terminal quota.
+            if not (_grok_binary() and _grok_cli_available()):
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only route requires a ready Grok primary",
+                    backoff_seconds=300,
+                )
+            codex_context_window = (
+                self._implementation_provider_context_window_for_task(task)[0]
+                if task is not None
+                else None
+            )
+            route_receipt_path: Path | None = None
+            if task is not None and attempt > 0:
+                route_receipt_path = (
+                    self._ensure_provider_route_receipt_dir(task)
+                    / f"provider-route-{attempt}.json"
+                )
+                _prepare_provider_route_receipt(route_receipt_path)
+            return _ordered_provider_fallback_command(
+                workspace_path=workspace_path,
+                primary_provider="grok",
+                primary_command=_grok_cli_trusted_failure_command(
+                    workspace_path=workspace_path,
+                    model=route_plan.primary_model_id,
+                ),
+                fallback_provider="codex",
+                fallback_command=_codex_implementation_command(
+                    codex=str(codex),
+                    workspace_path=workspace_path,
+                    repository_root=self.repo_root,
+                    codex_context_window=codex_context_window,
+                    model_override=route_plan.fallback_model_id,
+                    reasoning_effort_override=(
+                        route_plan.fallback_reasoning_effort
+                    ),
+                ),
+                fallback_policy=GROK_QUOTA_ONLY_FALLBACK_POLICY,
+                route_receipt_path=route_receipt_path,
+                route_task_id=(task.task_id if task is not None else ""),
+                route_attempt=(attempt if attempt > 0 else None),
+                route_stage="implementation",
+            )
         if route_plan and route_plan.permits_authentication_unavailable:
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
@@ -90421,6 +90622,7 @@ class DatabaseImplementationDaemon:
         *,
         reason: str,
         reconciliation: Mapping[str, Any],
+        expected_attempt_identity: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Move an exactly reconciled abandoned control task back to ready."""
 
@@ -90437,6 +90639,66 @@ class DatabaseImplementationDaemon:
                     "task_cid": task_cid,
                     "status": status,
                     "revision": int(task.revision),
+                }
+            )
+        if status == "retrying":
+            # Dead-reservation recovery can establish the owner-issued
+            # cooldown before this lane retires its expired local attempt.
+            # Preserve only that exact attempt-bound state.
+            validate_cooldown = getattr(
+                self.task_source,
+                "validate_retrying_task_cooldown",
+                None,
+            )
+            if not callable(validate_cooldown):
+                raise DatabaseImplementationAuthorityError(
+                    "reconciled retrying task has no exact cooldown validator"
+                )
+            identity_fields = (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+            )
+            attempt_identity = {
+                name: expected_attempt_identity.get(name)
+                for name in identity_fields
+            }
+            if any(
+                type(attempt_identity[name]) is not str
+                or not str(attempt_identity[name]).strip()
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                )
+            ) or any(
+                type(attempt_identity[name]) is not int
+                or int(attempt_identity[name]) < 1
+                for name in (
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "reconciled retrying task has an invalid expected attempt identity"
+                )
+            validate_cooldown(
+                task_cid,
+                expected_attempt_identity=attempt_identity,
+            )
+            return MappingProxyType(
+                {
+                    "changed": False,
+                    "task_cid": task_cid,
+                    "status": status,
+                    "revision": int(task.revision),
+                    "cooldown_preserved": True,
                 }
             )
         if status != "in_progress":
@@ -90654,6 +90916,7 @@ class DatabaseImplementationDaemon:
                         str(prepared["task_cid"]),
                         reason="expired_prepared_completion_aborted",
                         reconciliation=outcome,
+                        expected_attempt_identity=prepared,
                     )
                 )
             outcomes.append(outcome)
@@ -91936,6 +92199,7 @@ class DatabaseImplementationDaemon:
                         attempt.task_cid,
                         reason="coordination_lease_expired_before_completion",
                         reconciliation=outcome,
+                        expected_attempt_identity=identity,
                     )
                 )
             outcomes.append(outcome)
@@ -93725,8 +93989,10 @@ class DatabaseImplementationDaemon:
 
         paths: list[str] = []
         seen: set[str] = set()
+        invalid_path_declared = False
 
         def add(raw: Any) -> None:
+            nonlocal invalid_path_declared
             if isinstance(raw, Mapping):
                 selected = str(
                     raw.get("path")
@@ -93744,6 +94010,7 @@ class DatabaseImplementationDaemon:
                 or posix.startswith("~")
                 or ".." in Path(posix).parts
             ):
+                invalid_path_declared = True
                 return
             seen.add(posix)
             paths.append(posix)
@@ -93765,7 +94032,13 @@ class DatabaseImplementationDaemon:
                 "effects",
             ):
                 raw = body.get(key)
-                if isinstance(raw, (str, Mapping)):
+                if isinstance(raw, str):
+                    if key in {"predicted_files", "predicted_paths", "outputs"}:
+                        for part in raw.split(","):
+                            add(part.strip())
+                    else:
+                        add(raw)
+                elif isinstance(raw, Mapping):
                     add(raw)
                 elif isinstance(raw, Sequence) and not isinstance(
                     raw, (bytes, bytearray, str)
@@ -93790,7 +94063,10 @@ class DatabaseImplementationDaemon:
                     ):
                         for item in raw:
                             add(item)
-        return tuple(paths)
+        # Landed-output recovery is an authority boundary.  A mixed
+        # declaration must not silently discard an unsafe segment and then
+        # certify only the safe subset as complete.
+        return () if invalid_path_declared else tuple(paths)
 
     def _git_tree_contains_path(self, relative: str) -> bool:
         if self.repo_root is None or not relative:

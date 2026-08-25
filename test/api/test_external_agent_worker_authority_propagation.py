@@ -619,6 +619,7 @@ def test_eaaef_capability_blocks_before_invocation_or_latch_and_retries(
     daemon.repo_root = repo
     daemon.state_path = repo / "state/task_state.json"
     daemon.implementation_command = None
+    daemon._launch_task_execution_route_binding = None
     daemon.manual_completion_authority_revalidation_only = False
     monkeypatch.setattr(
         daemon,

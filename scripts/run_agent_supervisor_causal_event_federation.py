@@ -96,6 +96,9 @@ LEGACY_BOARD_UNSTALL_POLICY_ENV: Final = (
 )
 SUPERVISOR_HEALTH_STALE_SECONDS: Final = 45.0
 STATE_OWNER_OUTBOX_CONVERGENCE_GRACE_SECONDS: Final = 30.0
+EXECUTION_ROUTE_QUIESCENCE_TIMEOUT_SECONDS: Final = 30.0
+EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS: Final = 0.05
+INTERNAL_CLIENT_GRANT_TTL_SECONDS: Final = 86_400.0
 UNIX_SOCKET_PATH_CEILING: Final = 100
 EXECUTOR_OWNER_SESSION_ID: Final = "casf-v1-executor"
 EXECUTOR_BOOTSTRAP_SCHEMA: Final = (
@@ -104,11 +107,11 @@ EXECUTOR_BOOTSTRAP_SCHEMA: Final = (
 MAX_EXECUTOR_HISTORY: Final = 128
 CASF_TASK_ALIASES: Final = tuple(f"CASF-{ordinal:03d}" for ordinal in range(44))
 # CASF-000/001 own the already-committed, sealed inventory and run its
-# read-only validator.  CASF-002..032 likewise have committed outputs and
-# declared validators.  CASF-033..043 remain model-routed because their
-# declared outputs are not part of the sealed landed tranche.
+# read-only validator.  CASF-002..042 likewise have committed outputs and
+# declared validators.  CASF-043 remains model-routed because its declared
+# outputs are not part of the sealed landed tranche.
 CASF_DETERMINISTIC_TASK_ALIASES: Final = frozenset(
-    f"CASF-{ordinal:03d}" for ordinal in range(33)
+    f"CASF-{ordinal:03d}" for ordinal in range(43)
 )
 EXECUTOR_OWNER_READ_OPERATIONS: Final = frozenset(
     {
@@ -257,6 +260,20 @@ def _execution_route_policy_summary(
     return _validated_execution_route_summary(
         policy.public_summary(),
         require_casf_population=require_casf_population,
+    )
+
+
+def _execution_route_summary_is_current_casf_population(
+    summary: Mapping[str, Any],
+) -> bool:
+    """Return whether a structurally validated summary has today's CASF split."""
+
+    return bool(
+        int(summary["task_count"]) == len(CASF_TASK_ALIASES)
+        and int(summary["deterministic_task_count"])
+        == len(CASF_DETERMINISTIC_TASK_ALIASES)
+        and int(summary["model_task_count"])
+        == len(CASF_TASK_ALIASES) - len(CASF_DETERMINISTIC_TASK_ALIASES)
     )
 
 
@@ -1004,6 +1021,176 @@ def _state_owner_outbox_health(server: Any) -> dict[str, Any]:
     return _outbox_worker_health(server.status())
 
 
+def _state_owner_outbox_terminal_reason_code(
+    health: Mapping[str, Any],
+) -> str:
+    """Map an unhealthy projection to one closed, non-secret reason code."""
+
+    if str(health.get("last_error_type") or "") == "QuackClientTransportError":
+        return "state_owner_outbox_transport_failure"
+    if str(health.get("last_error_type") or ""):
+        return "state_owner_outbox_worker_failure"
+    if str(health.get("observer_error_type") or ""):
+        return "state_owner_outbox_commit_observer_failure"
+    if health.get("malformed") is True:
+        return "state_owner_outbox_status_malformed"
+    return "state_owner_outbox_unavailable"
+
+
+def _seal_quiescent_execution_route_policy(
+    *,
+    server: Any,
+    owner_client: Any,
+    admission: Any,
+    timeout_seconds: float = EXECUTION_ROUTE_QUIESCENCE_TIMEOUT_SECONDS,
+    monotonic: Any = time.monotonic,
+    sleeper: Any = time.sleep,
+    task_source_factory: Any | None = None,
+) -> Any:
+    """Seal one route only across an idle, generation-stable owner sample."""
+
+    from ipfs_accelerate_py.agent_supervisor.federation.contracts import utc_now
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceConflictError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    timeout = float(timeout_seconds)
+    if not 0.0 < timeout <= EXECUTION_ROUTE_QUIESCENCE_TIMEOUT_SECONDS:
+        raise OperatorError(
+            "execution-route quiescence timeout must be greater than zero and at most 30 seconds"
+        )
+    if not callable(monotonic) or not callable(sleeper):
+        raise OperatorError("execution-route quiescence clock is invalid")
+    factory = task_source_factory or TypedDatabaseTaskSource
+    if not callable(factory):
+        raise OperatorError("execution-route task-source factory is invalid")
+
+    subscription = admission.subscription
+    tenant_id = str(admission.federation_identity.binding.tenant_id or "").strip()
+    federation_id = str(admission.federation_identity.record_id or "").strip()
+    subscription_id = str(subscription.subscription_id or "").strip()
+    if (
+        not tenant_id
+        or not federation_id
+        or not subscription_id
+        or str(subscription.tenant_id or "").strip() != tenant_id
+        or str(subscription.federation_id or "").strip() != federation_id
+    ):
+        raise OperatorError("execution-route quiescence scope differs from admission")
+
+    deadline = float(monotonic()) + timeout
+    retry_reason = "not_sampled"
+    while True:
+        before = owner_client.load_generation()
+        health = _state_owner_outbox_health(server)
+        if health.get("healthy") is not True:
+            retry_reason = "outbox_not_healthy"
+        else:
+            rows = owner_client.execute(
+                "casf_select_subscription_routing_state",
+                {
+                    "tenant_id": tenant_id,
+                    "federation_id": federation_id,
+                    "subscription_id": subscription_id,
+                    "observed_at": utc_now(),
+                },
+            )
+            if len(rows) != 1:
+                raise OperatorError(
+                    "execution-route quiescence requires one active subscription"
+                )
+            else:
+                row = rows[0]
+                fields = {
+                    "subscription_id",
+                    "revision",
+                    "maximum_pending",
+                    "maximum_fanout",
+                    "pending_deliveries",
+                }
+                if not isinstance(row, Mapping) or set(row) != fields:
+                    raise OperatorError(
+                        "execution-route subscription quiescence row is malformed"
+                    )
+                integer_fields = (
+                    "revision",
+                    "maximum_pending",
+                    "maximum_fanout",
+                    "pending_deliveries",
+                )
+                if any(
+                    isinstance(row.get(name), bool)
+                    or not isinstance(row.get(name), int)
+                    or int(row[name]) < (0 if name == "pending_deliveries" else 1)
+                    for name in integer_fields
+                ):
+                    raise OperatorError(
+                        "execution-route subscription quiescence values are invalid"
+                    )
+                if (
+                    str(row["subscription_id"]) != subscription_id
+                    or int(row["revision"]) != int(subscription.revision)
+                    or int(row["maximum_pending"])
+                    != int(subscription.maximum_pending)
+                ):
+                    raise OperatorError(
+                        "execution-route subscription quiescence authority drifted"
+                    )
+                admitted_maximum_fanout = getattr(
+                    subscription,
+                    "maximum_fanout",
+                    None,
+                )
+                if (
+                    admitted_maximum_fanout is not None
+                    and (
+                        isinstance(admitted_maximum_fanout, bool)
+                        or not isinstance(admitted_maximum_fanout, int)
+                        or int(row["maximum_fanout"])
+                        != admitted_maximum_fanout
+                    )
+                ):
+                    raise OperatorError(
+                        "execution-route subscription fanout authority drifted"
+                    )
+                if int(row["pending_deliveries"]) != 0:
+                    retry_reason = "subscription_deliveries_pending"
+                else:
+                    route_projection = factory(owner_client, owns_client=False)
+                    try:
+                        try:
+                            policy = route_projection.seal_execution_route_policy(
+                                _casf_mixed_execution_modes()
+                            )
+                        except TaskSourceConflictError:
+                            retry_reason = "task_snapshot_conflict"
+                        else:
+                            after = owner_client.load_generation()
+                            if (
+                                before.content_id == after.content_id
+                                and float(monotonic()) <= deadline
+                            ):
+                                return policy
+                            retry_reason = (
+                                "generation_changed_during_seal"
+                                if before.content_id != after.content_id
+                                else "deadline_elapsed_during_seal"
+                            )
+                    finally:
+                        # The state owner retains its client; this projection borrowed it.
+                        route_projection.close()
+
+        remaining = deadline - float(monotonic())
+        if remaining <= 0.0:
+            raise OperatorError(
+                "execution-route quiescence timed out: " + retry_reason
+            )
+        sleeper(min(EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS, remaining))
+
+
 class _SteadyStateOutboxHealth:
     """Admit bounded live-worker convergence without weakening fixed points."""
 
@@ -1034,6 +1221,7 @@ class _SteadyStateOutboxHealth:
             return {
                 "continue_running": False,
                 "classification": "state_owner_outbox_unavailable",
+                "reason_code": _state_owner_outbox_terminal_reason_code(health),
                 "structural_healthy": False,
                 "caught_up": caught_up,
                 "lag_seconds": 0.0,
@@ -1044,6 +1232,7 @@ class _SteadyStateOutboxHealth:
             return {
                 "continue_running": True,
                 "classification": "state_owner_outbox_healthy",
+                "reason_code": "",
                 "structural_healthy": True,
                 "caught_up": True,
                 "lag_seconds": 0.0,
@@ -1060,6 +1249,9 @@ class _SteadyStateOutboxHealth:
                 "state_owner_outbox_catching_up"
                 if within_grace
                 else "state_owner_outbox_lag_timeout"
+            ),
+            "reason_code": (
+                "" if within_grace else "state_owner_outbox_lag_timeout"
             ),
             "structural_healthy": True,
             "caught_up": False,
@@ -1367,7 +1559,7 @@ def _spawn_event_supervisor(
             "process_birth_id": birth_id,
             "tenant_id": admission.federation_identity.binding.tenant_id,
             "federation_id": admission.federation_identity.record_id,
-            "ttl_seconds": 86_400.0,
+            "ttl_seconds": INTERNAL_CLIENT_GRANT_TTL_SECONDS,
         }
         runtime_client_id = "casf-supervisor-runtime:" + admission.supervisor.record_id
         event_client_id = "casf-supervisor-events:" + admission.supervisor.record_id
@@ -1750,7 +1942,7 @@ class _ExecutorBootstrapBroker:
                 sorted(EXECUTOR_OWNER_COMMAND_OPERATIONS)
             ),
             peer_pid=pid,
-            ttl_seconds=86_400.0,
+            ttl_seconds=INTERNAL_CLIENT_GRANT_TTL_SECONDS,
         )
         if self.stopping.is_set():
             self.server.revoke_typed_client_grant(grant.grant_id)
@@ -1962,6 +2154,7 @@ def _spawn_configured_executor(
     child_descriptor = os.dup(owner_channel.fileno())
     os.set_inheritable(child_descriptor, True)
     process: subprocess.Popen[Any] | None = None
+    supervisor_birth: dict[str, Any] | None = None
     broker: _ExecutorBootstrapBroker | None = None
     paths["executor_state"].mkdir(parents=True, exist_ok=True)
     log_handle = paths["executor_log"].open("ab")
@@ -2008,10 +2201,14 @@ def _spawn_configured_executor(
             if broker.failure:
                 raise OperatorError("executor credential bootstrap failed closed")
             current = _read_optional_json(
-                paths["executor_current"], transient_retry_attempts=5
+                paths["executor_current"],
+                transient_retry_attempts=5,
+                retry_missing=True,
             )
             status_payload = _read_optional_json(
-                paths["executor_supervisor_status"], transient_retry_attempts=5
+                paths["executor_supervisor_status"],
+                transient_retry_attempts=5,
+                retry_missing=True,
             )
             executor_birth = current.get("executor_process_birth")
             executor_liveness = (
@@ -2095,14 +2292,10 @@ def _spawn_configured_executor(
             except OSError:
                 pass
         if process is not None:
-            try:
-                failed_supervisor_birth = _process_birth(process.pid)
-            except Exception:
-                failed_supervisor_birth = None
-            if isinstance(failed_supervisor_birth, Mapping):
+            if isinstance(supervisor_birth, Mapping):
                 _retire_configured_executor(
                     paths=paths,
-                    supervisor_birth=failed_supervisor_birth,
+                    supervisor_birth=supervisor_birth,
                     broker=broker,
                     fallback_executor_birth=fallback_birth,
                     grace_seconds=5.0,
@@ -2214,6 +2407,7 @@ def state_owner(
             "event.delivery.fail",
             "event.acknowledge",
         ),
+        ttl_seconds=INTERNAL_CLIENT_GRANT_TTL_SECONDS,
     )
     owner_client = QuackStateClient(
         owner_id="casf-state-owner:federation-runtime",
@@ -2258,65 +2452,64 @@ def state_owner(
         authentication_key=secrets.token_bytes(32),
     )
     server.bind_typed_status_scope()
-    # Prove the loopback Quack transport before any owner worker or child can
-    # use the shared DuckDB connection.  ``ready()`` performs a live extension
-    # query on that connection; running it after concurrent admission would
-    # bypass the gateway transaction lock and corrupt an otherwise valid
-    # semantic-command observation.
-    ready = server.ready()
-    outbox_runtime = server.start_federation_outbox_worker()
-    if _state_owner_outbox_health(server)["healthy"] is not True:
-        raise OperatorError("state-owner outbox worker failed startup health")
-    task_projection = {
-        "task_count": int(projection.get("task_count") or 0),
-        "completed_count": len(completed_task_refs),
-        "ready_count": len(ready_task_refs),
-    }
-    supervisor_process, supervisor_birth = _spawn_event_supervisor(
-        server=server,
-        board=board,
-        config_path=config_path,
-        paths=paths,
-        admission=admission,
-        task_projection=task_projection,
-    )
-    final_outbox_health = _state_owner_outbox_health(server)
-    if final_outbox_health["healthy"] is not True:
-        try:
-            _terminate_birth(supervisor_birth, grace_seconds=15.0)
-        finally:
-            owner_client.close()
-            server.stop()
-        raise OperatorError(
-            "state-owner outbox worker failed coordinator-admission health"
-        )
-    executor_process: subprocess.Popen[Any] | None = None
-    executor_supervisor_birth: dict[str, Any] | None = None
-    executor_broker: _ExecutorBootstrapBroker | None = None
+    supervisor_birth: dict[str, Any] | None = None
+    execution_route_policy: Any | None = None
     execution_route_summary: dict[str, Any] | None = None
-    if admit_task_execution:
-        try:
-            from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
-                TypedDatabaseTaskSource,
+    try:
+        # Prove the loopback Quack transport before any owner worker or child can
+        # use the shared DuckDB connection.  ``ready()`` performs a live extension
+        # query on that connection; running it after concurrent admission would
+        # bypass the gateway transaction lock and corrupt an otherwise valid
+        # semantic-command observation.
+        ready = server.ready()
+        outbox_runtime = server.start_federation_outbox_worker()
+        if _state_owner_outbox_health(server)["healthy"] is not True:
+            raise OperatorError("state-owner outbox worker failed startup health")
+        task_projection = {
+            "task_count": int(projection.get("task_count") or 0),
+            "completed_count": len(completed_task_refs),
+            "ready_count": len(ready_task_refs),
+        }
+        supervisor_process, supervisor_birth = _spawn_event_supervisor(
+            server=server,
+            board=board,
+            config_path=config_path,
+            paths=paths,
+            admission=admission,
+            task_projection=task_projection,
+        )
+        final_outbox_health = _state_owner_outbox_health(server)
+        if final_outbox_health["healthy"] is not True:
+            raise OperatorError(
+                "state-owner outbox worker failed coordinator-admission health"
             )
-
-            route_projection = TypedDatabaseTaskSource(
-                owner_client,
-                owns_client=False,
+        if admit_task_execution:
+            execution_route_policy = _seal_quiescent_execution_route_policy(
+                server=server,
+                owner_client=owner_client,
+                admission=admission,
             )
-            try:
-                execution_route_policy = (
-                    route_projection.seal_execution_route_policy(
-                        _casf_mixed_execution_modes()
-                    )
-                )
-            finally:
-                # The state owner retains its client; this projection borrowed it.
-                route_projection.close()
             execution_route_summary = _execution_route_policy_summary(
                 execution_route_policy,
                 require_casf_population=True,
             )
+    except BaseException:
+        try:
+            if supervisor_birth is not None:
+                _terminate_birth(supervisor_birth, grace_seconds=15.0)
+        finally:
+            try:
+                owner_client.close()
+            finally:
+                server.stop()
+        raise
+    executor_process: subprocess.Popen[Any] | None = None
+    executor_supervisor_birth: dict[str, Any] | None = None
+    executor_broker: _ExecutorBootstrapBroker | None = None
+    if admit_task_execution:
+        try:
+            if execution_route_policy is None:
+                raise OperatorError("execution-route policy was not sealed")
             (
                 executor_process,
                 executor_supervisor_birth,
@@ -2333,8 +2526,10 @@ def state_owner(
             try:
                 _terminate_birth(supervisor_birth, grace_seconds=15.0)
             finally:
-                owner_client.close()
-                server.stop()
+                try:
+                    owner_client.close()
+                finally:
+                    server.stop()
             raise
     print(
         json.dumps(
@@ -2372,6 +2567,7 @@ def state_owner(
     signal.signal(signal.SIGTERM, request_stop)
     runtime_exit_code: int | None = None
     failure_role = ""
+    failure_reason_code = ""
     steady_state_outbox = _SteadyStateOutboxHealth()
     if server.lifecycle is ServerLifecycle.READY:
         while not stopping.wait(2.0):
@@ -2381,6 +2577,7 @@ def state_owner(
             if outbox_decision["continue_running"] is not True:
                 runtime_exit_code = 1
                 failure_role = "state_owner_outbox"
+                failure_reason_code = str(outbox_decision["reason_code"])
                 break
             coordinator_returncode = supervisor_process.poll()
             if coordinator_returncode is not None:
@@ -2440,6 +2637,7 @@ def state_owner(
                 **result,
                 "supervisor_exit_code": runtime_exit_code,
                 "failure_role": failure_role,
+                "failure_reason_code": failure_reason_code,
                 "executor_cleanup": executor_cleanup,
             },
             sort_keys=True,
@@ -2454,14 +2652,24 @@ def _read_optional_json(
     *,
     maximum_bytes: int = 4_194_304,
     transient_retry_attempts: int = 1,
+    retry_missing: bool = False,
 ) -> dict[str, Any]:
-    """Read one private runtime projection without following a symlink."""
+    """Read one private runtime projection without following a symlink.
+
+    Missing-file retries are opt-in for bounded pre-receipt startup waits.
+    Malformed content is retried only when the pathname was replaced or
+    changed while it was being read; a stable malformed authority artifact is
+    rejected instead of being treated as temporarily absent.
+    """
 
     attempts = max(1, int(transient_retry_attempts))
     for attempt in range(attempts):
         try:
             metadata = os.lstat(path)
         except FileNotFoundError:
+            if retry_missing and attempt + 1 < attempts:
+                time.sleep(0.01)
+                continue
             return {}
         except OSError as exc:
             raise OperatorError(f"runtime projection is uninspectable: {path}") from exc
@@ -2474,10 +2682,34 @@ def _read_optional_json(
             raise OperatorError(f"runtime projection is not a bounded regular file: {path}")
         try:
             return _json_object(path)
-        except OperatorError:
+        except OperatorError as parse_error:
             if attempt + 1 >= attempts:
                 raise
             time.sleep(0.01)
+            try:
+                current = os.lstat(path)
+            except FileNotFoundError:
+                if retry_missing:
+                    continue
+                raise parse_error from None
+            except OSError as exc:
+                raise OperatorError(
+                    f"runtime projection is uninspectable: {path}"
+                ) from exc
+            prior_identity = (
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mtime_ns,
+                metadata.st_size,
+            )
+            current_identity = (
+                current.st_dev,
+                current.st_ino,
+                current.st_mtime_ns,
+                current.st_size,
+            )
+            if current_identity == prior_identity:
+                raise parse_error
     raise AssertionError("bounded runtime projection read exhausted")
 
 
@@ -3112,8 +3344,16 @@ def _wait_for_owner(
             "supervisor_process_birth": supervisor_birth,
         }
         if require_executor:
-            executor_current = _read_optional_json(paths["executor_current"])
-            executor_status = _read_optional_json(paths["executor_supervisor_status"])
+            executor_current = _read_optional_json(
+                paths["executor_current"],
+                transient_retry_attempts=5,
+                retry_missing=True,
+            )
+            executor_status = _read_optional_json(
+                paths["executor_supervisor_status"],
+                transient_retry_attempts=5,
+                retry_missing=True,
+            )
             executor_supervisor_pid = _read_pid(paths["executor_supervisor_pid"])
             executor_birth = executor_current.get("executor_process_birth")
             if (
@@ -3164,6 +3404,146 @@ def _wait_for_owner(
             )
         return ready
     raise OperatorError("timed out waiting for exact Quack owner readiness")
+
+
+def _started_configured_executor_births(
+    paths: Mapping[str, Path],
+    *,
+    owner_birth: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Recover only an exact configured-executor child for failed-launch cleanup.
+
+    This is cleanup authority, not readiness authority.  A projection may be
+    absent or malformed during startup, so the durable PID markers are
+    corroborated against current procfs births, the exact live owner/child
+    relationship, and the closed configured-supervisor argv.  No unbound PID
+    is ever returned for signalling.
+    """
+
+    if _birth_liveness(owner_birth) != "alive":
+        return None, None
+    try:
+        owner_pid = int(owner_birth.get("pid") or 0)
+        owner_start = int(owner_birth.get("start_time_ticks") or 0)
+    except (TypeError, ValueError):
+        return None, None
+    owner_boot = str(owner_birth.get("boot_id") or "")
+    if owner_pid <= 1 or owner_start <= 0:
+        return None, None
+
+    current: dict[str, Any] = {}
+    try:
+        current = _read_optional_json(
+            paths["executor_current"],
+            transient_retry_attempts=3,
+            retry_missing=True,
+        )
+    except OperatorError:
+        # A malformed readiness projection is never used as signal authority.
+        current = {}
+
+    raw_supervisor = current.get("supervisor_process_birth")
+    supervisor_pid: int | None = None
+    if isinstance(raw_supervisor, Mapping):
+        try:
+            supervisor_pid = int(raw_supervisor.get("pid") or 0)
+        except (TypeError, ValueError):
+            supervisor_pid = None
+    if not supervisor_pid:
+        try:
+            supervisor_pid = _read_pid(paths["executor_supervisor_pid"])
+        except OperatorError:
+            return None, None
+    if supervisor_pid is None or supervisor_pid <= 1:
+        return None, None
+    try:
+        supervisor_birth = _process_birth(supervisor_pid)
+    except OperatorError:
+        return None, None
+    if isinstance(raw_supervisor, Mapping) and dict(raw_supervisor) != supervisor_birth:
+        return None, None
+    try:
+        supervisor_start = int(supervisor_birth.get("start_time_ticks") or 0)
+        supervisor_parent = int(supervisor_birth.get("parent_pid") or 0)
+    except (TypeError, ValueError):
+        return None, None
+    if (
+        supervisor_parent != owner_pid
+        or supervisor_start < owner_start
+        or _birth_liveness(supervisor_birth) != "alive"
+        or (
+            owner_boot
+            and str(supervisor_birth.get("boot_id") or "") != owner_boot
+        )
+    ):
+        return None, None
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        IMPLEMENTATION_ENTRY_PATH,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        read_process_command_argv,
+    )
+
+    argv = read_process_command_argv(supervisor_pid)
+    expected_entry = str((ROOT / IMPLEMENTATION_ENTRY_PATH).resolve())
+    if argv is None or expected_entry not in argv:
+        return None, None
+    required_pairs = {
+        "--state-dir": str(paths["executor_state"]),
+        "--state-prefix": "casf_executor",
+    }
+    for option, expected in required_pairs.items():
+        indexes = [index for index, value in enumerate(argv) if value == option]
+        if (
+            len(indexes) != 1
+            or indexes[0] + 1 >= len(argv)
+            or argv[indexes[0] + 1] != expected
+        ):
+            return None, None
+
+    raw_executor = current.get("executor_process_birth")
+    executor_pid: int | None = None
+    if isinstance(raw_executor, Mapping):
+        try:
+            executor_pid = int(raw_executor.get("pid") or 0)
+        except (TypeError, ValueError):
+            executor_pid = None
+    if not executor_pid:
+        try:
+            executor_pid = _read_pid(paths["executor_daemon_pid"])
+        except OperatorError:
+            executor_pid = None
+    executor_birth: dict[str, Any] | None = None
+    if executor_pid is not None and executor_pid > 1:
+        try:
+            observed_executor = _process_birth(executor_pid)
+        except OperatorError:
+            observed_executor = None
+        if observed_executor is not None:
+            try:
+                executor_start = int(
+                    observed_executor.get("start_time_ticks") or 0
+                )
+                executor_parent = int(observed_executor.get("parent_pid") or 0)
+            except (TypeError, ValueError):
+                executor_start = 0
+                executor_parent = 0
+            if (
+                (
+                    not isinstance(raw_executor, Mapping)
+                    or dict(raw_executor) == observed_executor
+                )
+                and executor_parent == supervisor_pid
+                and executor_start >= supervisor_start
+                and _birth_liveness(observed_executor) == "alive"
+                and (
+                    not owner_boot
+                    or str(observed_executor.get("boot_id") or "") == owner_boot
+                )
+            ):
+                executor_birth = observed_executor
+    return supervisor_birth, executor_birth
 
 
 def _retire_consumed_generation(paths: Mapping[str, Path], *, launch_id: str) -> None:
@@ -3246,6 +3626,8 @@ def _launch_owner(
             command.extend(
                 ["--executor-implementation-command", implementation_command]
             )
+    process: subprocess.Popen[Any]
+    owner_birth: dict[str, Any] | None = None
     try:
         process = subprocess.Popen(
             command,
@@ -3259,6 +3641,7 @@ def _launch_owner(
     finally:
         log_handle.close()
     try:
+        owner_birth = _process_birth(process.pid)
         ready = _wait_for_owner(
             _load_config(config_path)[0],
             paths,
@@ -3268,9 +3651,29 @@ def _launch_owner(
             require_executor=admit_task_execution,
         )
     except BaseException:
+        if owner_birth is None:
+            try:
+                owner_birth = _process_birth(process.pid)
+            except OperatorError:
+                owner_birth = None
+        if isinstance(owner_birth, Mapping):
+            supervisor_birth, executor_birth = _started_configured_executor_births(
+                paths,
+                owner_birth=owner_birth,
+            )
+            if isinstance(supervisor_birth, Mapping):
+                try:
+                    _retire_configured_executor(
+                        paths=paths,
+                        supervisor_birth=supervisor_birth,
+                        fallback_executor_birth=executor_birth,
+                        grace_seconds=5.0,
+                    )
+                except Exception:
+                    pass
         try:
-            birth = _process_birth(process.pid)
-            _terminate_birth(birth, grace_seconds=5.0)
+            if isinstance(owner_birth, Mapping):
+                _terminate_birth(owner_birth, grace_seconds=5.0)
         except Exception:
             pass
         raise
@@ -3526,8 +3929,11 @@ def _executor_runtime_projection(
             and status_payload.get("supervisor_pid_alive") is True
         )
     if isinstance(daemon_birth, Mapping):
+        status_daemon_birth = status_payload.get("daemon_process_birth")
         daemon_bound = bool(
             _birth_liveness(daemon_birth) == "alive"
+            and isinstance(status_daemon_birth, Mapping)
+            and dict(status_daemon_birth) == dict(daemon_birth)
             and int(status_payload.get("daemon_pid") or 0)
             == int(daemon_birth.get("pid") or 0)
             and status_payload.get("daemon_pid_alive") is True
@@ -3551,6 +3957,7 @@ def _executor_runtime_projection(
             "supervisor_pid_alive",
             "daemon_pid",
             "daemon_pid_alive",
+            "daemon_process_birth",
             "current_status_path",
             "progress_path",
             "state_path",
@@ -3561,16 +3968,47 @@ def _executor_runtime_projection(
             "error_class",
             "last_error_class",
             "launch_error",
+            "last_agentic_maintenance_status",
+            "last_agentic_maintenance_error",
         )
         if key in status_payload
     }
     errors = [
         name
-        for name in ("error_class", "last_error_class", "launch_error")
+        for name in (
+            "error_class",
+            "last_error_class",
+            "launch_error",
+            "last_agentic_maintenance_error",
+        )
         if str(status.get(name) or "").strip()
     ]
+    supervisor_status = status.get("status")
+    maintenance_status = status.get("last_agentic_maintenance_status")
+    healthy_statuses = frozenset(
+        {
+            "running",
+            "agentic_maintenance_started",
+            "agentic_maintenance_completed",
+        }
+    )
+    maintenance_status_valid = bool(
+        (
+            supervisor_status == "running"
+            and maintenance_status in {None, "", "completed"}
+        )
+        or (
+            supervisor_status == "agentic_maintenance_started"
+            and maintenance_status == "running"
+        )
+        or (
+            supervisor_status == "agentic_maintenance_completed"
+            and maintenance_status == "completed"
+        )
+    )
     clean = bool(
-        status.get("status") == "running"
+        supervisor_status in healthy_statuses
+        and maintenance_status_valid
         and not errors
         and status.get("stalled_without_active_worker") is not True
     )
@@ -4134,10 +4572,13 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
         ),
     )
     execution_route_summary: dict[str, Any] | None = None
+    execution_route_population: str | None = None
     if task_execution_admitted:
+        # A dead generation may predate the current routing split.  Its sealed
+        # summary remains observable only when the executor copy matches and
+        # every process birth that could execute it is conclusively dead.
         execution_route_summary = _validated_execution_route_summary(
             launch.get("execution_route_policy"),
-            require_casf_population=True,
         )
         runtime_route_summary = runtime["executor"].get(
             "execution_route_policy"
@@ -4149,6 +4590,30 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
             raise OperatorError(
                 "live executor route policy differs from the admitted launch"
             )
+        if _execution_route_summary_is_current_casf_population(
+            execution_route_summary
+        ):
+            execution_route_population = "current"
+        else:
+            executor_runtime = runtime["executor"]
+            executor_current = executor_runtime.get("current")
+            current_supervisor = (
+                executor_current.get("supervisor_process_birth")
+                if isinstance(executor_current, Mapping)
+                else None
+            )
+            if not (
+                owner_live == "dead"
+                and master_live == "dead"
+                and isinstance(current_supervisor, Mapping)
+                and dict(current_supervisor) == dict(expected_executor_supervisor)
+                and executor_runtime.get("supervisor_liveness") == "dead"
+                and executor_runtime.get("executor_liveness") == "dead"
+            ):
+                raise OperatorError(
+                    "obsolete executor route belongs to a runtime that is not fully dead"
+                )
+            execution_route_population = "obsolete"
     elif launch.get("execution_route_policy") is not None:
         raise OperatorError("coordinator-only launch unexpectedly carries a route policy")
     outbox_worker = _outbox_worker_health(owner_status)
@@ -4213,6 +4678,8 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
         "high_concurrency_qualified": False,
         "ducklake_authoritative": False,
     }
+    if execution_route_population is not None:
+        payload["execution_route_population"] = execution_route_population
     return _persist_receipt(paths, "status", payload) if persist else payload
 
 
@@ -4341,6 +4808,23 @@ def launch(
         if not isinstance(identity, Mapping):
             raise OperatorError("owner launch returned no typed identity")
         owner_birth = dict(identity["process_birth"])
+        sealed_supervisor_birth = owner_ready.get("supervisor_process_birth")
+        if not isinstance(sealed_supervisor_birth, Mapping):
+            raise OperatorError("state owner did not attest the supervisor process birth")
+        master_birth = dict(sealed_supervisor_birth)
+        executor_supervisor_birth = owner_ready.get(
+            "executor_supervisor_process_birth"
+        )
+        executor_birth = owner_ready.get("executor_process_birth")
+        if _birth_liveness(master_birth) != "alive":
+            raise OperatorError("state-owner-attested supervisor process is not alive")
+        if admit_task_execution and (
+            not isinstance(executor_supervisor_birth, Mapping)
+            or not isinstance(executor_birth, Mapping)
+            or _birth_liveness(executor_supervisor_birth) != "alive"
+            or _birth_liveness(executor_birth) != "alive"
+        ):
+            raise OperatorError("state owner did not attest a live configured executor")
         task_authority = _query_quack_tasks(board, paths)
         outbox_worker = _outbox_worker_health(
             _read_optional_json(paths["owner_status"])
@@ -4374,23 +4858,6 @@ def launch(
             raise OperatorError(
                 "live coordinator lacks authoritative runtime/event acknowledgement evidence"
             )
-        sealed_supervisor_birth = owner_ready.get("supervisor_process_birth")
-        if not isinstance(sealed_supervisor_birth, Mapping):
-            raise OperatorError("state owner did not attest the supervisor process birth")
-        master_birth = dict(sealed_supervisor_birth)
-        if _birth_liveness(master_birth) != "alive":
-            raise OperatorError("state-owner-attested supervisor process is not alive")
-        executor_supervisor_birth = owner_ready.get(
-            "executor_supervisor_process_birth"
-        )
-        executor_birth = owner_ready.get("executor_process_birth")
-        if admit_task_execution and (
-            not isinstance(executor_supervisor_birth, Mapping)
-            or not isinstance(executor_birth, Mapping)
-            or _birth_liveness(executor_supervisor_birth) != "alive"
-            or _birth_liveness(executor_birth) != "alive"
-        ):
-            raise OperatorError("state owner did not attest a live configured executor")
         execution_route_summary = None
         if admit_task_execution:
             execution_route_summary = _validated_execution_route_summary(
@@ -4565,16 +5032,16 @@ def stop(config_path: Path) -> dict[str, Any]:
     executor_birth: Mapping[str, Any] | None = None
     execution_route_summary: dict[str, Any] | None = None
     if task_execution_admitted:
+        # Retirement is authorized by the tamper-evident launch receipt and
+        # its exact executor-current binding, not by today's admission split.
         execution_route_summary = _validated_execution_route_summary(
             launch_receipt.get("execution_route_policy"),
-            require_casf_population=True,
         )
         executor_current = _json_object(paths["executor_current"])
         current_supervisor = executor_current.get("supervisor_process_birth")
         current_executor = executor_current.get("executor_process_birth")
         current_route_summary = _validated_execution_route_summary(
             executor_current.get("execution_route_policy"),
-            require_casf_population=True,
         )
         if (
             not isinstance(executor_supervisor_birth, Mapping)
@@ -4582,6 +5049,12 @@ def stop(config_path: Path) -> dict[str, Any]:
             or dict(current_supervisor) != dict(executor_supervisor_birth)
             or not isinstance(current_executor, Mapping)
             or current_route_summary != execution_route_summary
+            or executor_current.get("execution_route_policy_id")
+            != current_route_summary["policy_id"]
+            or executor_current.get("execution_route_plan_root_cid")
+            != current_route_summary["plan_root_cid"]
+            or executor_current.get("execution_route_source_revision")
+            != current_route_summary["source_revision"]
         ):
             raise OperatorError("executor runtime is not bound to the admitted launch")
         executor_birth = current_executor

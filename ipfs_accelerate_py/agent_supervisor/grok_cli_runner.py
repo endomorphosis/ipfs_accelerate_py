@@ -9,14 +9,15 @@ flags. Command policy lives next to other CLI peers in :mod:`llm_router`.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 if str(_PACKAGE_ROOT) not in sys.path:
@@ -26,9 +27,222 @@ if str(_PACKAGE_ROOT) not in sys.path:
 DEFAULT_GROK_MODEL = "grok-4.5"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
-TRUSTED_FAILURE_RECEIPT_FD_ENV = (
-    "IPFS_ACCELERATE_AGENT_TRUSTED_FAILURE_RECEIPT_FD"
+TRUSTED_FAILURE_RECEIPT_FD_ENV = "IPFS_ACCELERATE_AGENT_TRUSTED_FAILURE_RECEIPT_FD"
+GROK_STREAM_FRAME_MAX_BYTES = 256 * 1024
+GROK_AVAILABLE_COMMANDS_MAX_FRAMES = 4
+GROK_AVAILABLE_COMMANDS_MAX_ITEMS = 512
+GROK_AVAILABLE_COMMAND_MAX_BYTES = 256
+GROK_ACCOUNT_QUOTA_CODES = frozenset({"usage_limit_reached", "usage_pool_exhausted"})
+_GROK_BUILD_BALANCE_MESSAGE = (
+    "API error (status 402 Payment Required): "
+    "Grok Build usage balance exhausted"
 )
+
+
+def _available_commands_prelude(event: object) -> str:
+    """Return a canonical exact startup frame, or an empty rejection.
+
+    Grok Build 1.0.x emits this protocol metadata before attempting the paid
+    request.  It is not model activity, but accepting arbitrary frames here
+    would let assistant output manufacture a fallback signal.  Keep the
+    shape and every scalar bounded, and require repeated frames to be exactly
+    identical in :class:`_BoundedTerminalFrameParser`.
+    """
+
+    if (
+        not isinstance(event, dict)
+        or set(event) != {"type", "tools", "commands"}
+        or event.get("type") != "available_commands"
+    ):
+        return ""
+    for field in ("tools", "commands"):
+        values = event.get(field)
+        if (
+            not isinstance(values, list)
+            or len(values) > GROK_AVAILABLE_COMMANDS_MAX_ITEMS
+        ):
+            return ""
+        normalized: list[str] = []
+        for value in values:
+            if (
+                not isinstance(value, str)
+                or not value
+                or value != value.strip()
+                or len(value.encode("utf-8")) > GROK_AVAILABLE_COMMAND_MAX_BYTES
+                or any(marker in value for marker in ("\x00", "\n", "\r"))
+            ):
+                return ""
+            normalized.append(value)
+        if len(set(normalized)) != len(normalized):
+            return ""
+    return json.dumps(event, sort_keys=True, separators=(",", ":"))
+
+
+class _BoundedTerminalFrameParser:
+    """Retain one exact terminal frame after bounded inert protocol metadata."""
+
+    def __init__(self, max_frame_bytes: int = GROK_STREAM_FRAME_MAX_BYTES) -> None:
+        self.max_frame_bytes = max_frame_bytes
+        self.pending = bytearray()
+        self.overlong = False
+        self.tainted = False
+        self.frame_count = 0
+        self.prelude_count = 0
+        self.terminal_frame_count = 0
+        self._prelude_canonical = ""
+        self.last_event: dict[str, object] | None = None
+
+    def _append(self, value: bytes) -> None:
+        if self.overlong:
+            return
+        if len(self.pending) + len(value) > self.max_frame_bytes:
+            self.pending.clear()
+            self.overlong = True
+            self.tainted = True
+            return
+        self.pending.extend(value)
+
+    def _finish_line(self) -> None:
+        if self.overlong:
+            self.last_event = None
+        else:
+            raw = bytes(self.pending).strip()
+            if raw:
+                self.frame_count += 1
+                try:
+                    value = json.loads(raw.decode("utf-8", errors="strict"))
+                except (UnicodeDecodeError, ValueError, RecursionError):
+                    self.last_event = None
+                    self.tainted = True
+                else:
+                    if isinstance(value, dict):
+                        prelude = _available_commands_prelude(value)
+                        if prelude:
+                            if (
+                                self.terminal_frame_count
+                                or self.prelude_count
+                                >= GROK_AVAILABLE_COMMANDS_MAX_FRAMES
+                                or (
+                                    self._prelude_canonical
+                                    and prelude != self._prelude_canonical
+                                )
+                            ):
+                                self.tainted = True
+                            else:
+                                self.prelude_count += 1
+                                self._prelude_canonical = prelude
+                        else:
+                            self.terminal_frame_count += 1
+                            if self.terminal_frame_count != 1:
+                                self.tainted = True
+                            self.last_event = value
+                    else:
+                        self.last_event = None
+                        self.tainted = True
+        self.pending.clear()
+        self.overlong = False
+
+    def feed(self, chunk: str, *, final: bool = False) -> None:
+        if "\ufffd" in chunk:
+            self.tainted = True
+        encoded = chunk.encode("utf-8")
+        start = 0
+        while True:
+            newline = encoded.find(b"\n", start)
+            if newline < 0:
+                self._append(encoded[start:])
+                break
+            self._append(encoded[start:newline])
+            self._finish_line()
+            start = newline + 1
+        if final and (self.pending or self.overlong):
+            self._finish_line()
+
+    @property
+    def exact_terminal_candidate(self) -> bool:
+        return (
+            not self.tainted
+            and self.terminal_frame_count == 1
+            and self.frame_count == self.prelude_count + 1
+        )
+
+
+def _embedded_grok_balance_quota_code(event: object) -> str:
+    """Recognize only the exact Grok Build 1.0.x terminal 402 envelope."""
+
+    if (
+        not isinstance(event, dict)
+        or set(event) != {"type", "message"}
+        or event.get("type") != "error"
+    ):
+        return ""
+    message = event.get("message")
+    if not isinstance(message, str) or not message.startswith("Internal error: "):
+        return ""
+    try:
+        payload = json.loads(message.removeprefix("Internal error: ").strip())
+    except (TypeError, ValueError, RecursionError):
+        return ""
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"message", "http_status"}
+        or isinstance(payload.get("http_status"), bool)
+        or payload.get("http_status") != 402
+        or payload.get("message") != _GROK_BUILD_BALANCE_MESSAGE
+    ):
+        return ""
+    return "usage_pool_exhausted"
+
+
+def _terminal_grok_quota_code(
+    event: object,
+    *,
+    allow_embedded_balance: bool = False,
+) -> str:
+    """Return only an exact machine quota code from a top-level error frame."""
+
+    if not isinstance(event, dict) or event.get("type") != "error":
+        return ""
+    records = [event]
+    nested = event.get("error")
+    if isinstance(nested, dict):
+        records.insert(0, nested)
+    explicit_values: list[str] = []
+    for record in records:
+        for field in ("code", "errorCode", "error_code", "reason"):
+            if field not in record:
+                continue
+            raw_value = record[field]
+            if not isinstance(raw_value, str):
+                return ""
+            explicit_values.append(raw_value.strip().casefold())
+    if explicit_values:
+        if any(not value for value in explicit_values):
+            return ""
+        distinct = set(explicit_values)
+        if len(distinct) != 1:
+            return ""
+        [selected] = distinct
+        return selected if selected in GROK_ACCOUNT_QUOTA_CODES else ""
+
+    if allow_embedded_balance:
+        embedded = _embedded_grok_balance_quota_code(event)
+        if embedded:
+            return embedded
+
+    message_codes: set[str] = set()
+    for record in records:
+        if "message" not in record:
+            continue
+        message = record["message"]
+        if not isinstance(message, str):
+            return ""
+        normalized = message.strip().casefold()
+        if normalized not in GROK_ACCOUNT_QUOTA_CODES:
+            return ""
+        message_codes.add(normalized)
+    selected = next(iter(message_codes)) if len(message_codes) == 1 else ""
+    return selected
 
 
 def _resolve_grok_bin(configured: str = "") -> str:
@@ -79,7 +293,7 @@ def build_grok_agent_command(
     return cmd
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Authorized Grok CLI agent entry (llm_router.grok_cli)."
     )
@@ -97,6 +311,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         default="agent",
         choices=("agent", "chat"),
         help="agent enables tool approvals for implementation work",
+    )
+    parser.add_argument(
+        "--require-terminal-quota-frame",
+        action="store_true",
+        help=(
+            "mint quota failure only from one exact terminal streaming-JSON "
+            "error frame (internal ordered-route contract)"
+        ),
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
@@ -246,9 +468,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 close_fds=True,
             )
         except OSError as exc:
-            sanitized = sanitizer.feed(
-                f"Grok provider could not launch: {exc}\n"
-            ) + sanitizer.finish()
+            sanitized = (
+                sanitizer.feed(f"Grok provider could not launch: {exc}\n") + sanitizer.finish()
+            )
             sys.stderr.write(sanitized)
             sys.stderr.flush()
             emit_failure_receipt(
@@ -264,14 +486,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         assert process.stderr is not None
         stderr_tail = ""
         stdout_seen = False
+        terminal_parser = _BoundedTerminalFrameParser()
 
         def replay_stdout() -> None:
             nonlocal stdout_seen
             while True:
                 chunk = process.stdout.read(8192)
                 if not chunk:
+                    terminal_parser.feed("", final=True)
                     return
                 stdout_seen = True
+                terminal_parser.feed(chunk)
                 sys.stdout.write(chunk)
                 sys.stdout.flush()
 
@@ -300,19 +525,43 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         stdout_thread.join()
         stderr_thread.join()
         if returncode != 0:
-            activity = (
-                AgentCLIActivityState.UNKNOWN
-                if stdout_seen
-                else AgentCLIActivityState.NO_ACTIVITY
-            )
-            classification = classify_grok_agent_cli_failure(
-                AgentCLIProviderResult(
-                    returncode,
-                    stderr=stderr_tail,
-                    launched=True,
-                    activity_state=activity,
+            quota_code = ""
+            if (
+                args.require_terminal_quota_frame
+                and terminal_parser.exact_terminal_candidate
+            ):
+                quota_code = _terminal_grok_quota_code(
+                    terminal_parser.last_event,
+                    allow_embedded_balance=terminal_parser.prelude_count > 0,
                 )
-            )
+            if quota_code:
+                activity = AgentCLIActivityState.NO_ACTIVITY
+                classification = AgentCLIFailureClassification(
+                    AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED,
+                    f"grok_provider_{quota_code}",
+                )
+            else:
+                activity = (
+                    AgentCLIActivityState.UNKNOWN
+                    if stdout_seen
+                    else AgentCLIActivityState.NO_ACTIVITY
+                )
+                classification = classify_grok_agent_cli_failure(
+                    AgentCLIProviderResult(
+                        returncode,
+                        stderr=stderr_tail,
+                        launched=True,
+                        activity_state=activity,
+                    )
+                )
+                if (
+                    args.require_terminal_quota_frame
+                    and classification.kind is AgentCLIProviderFailureKind.GROK_QUOTA_EXHAUSTED
+                ):
+                    classification = AgentCLIFailureClassification(
+                        AgentCLIProviderFailureKind.GENERIC_NONZERO_EXIT,
+                        "grok_terminal_quota_unverified",
+                    )
             emit_failure_receipt(
                 classification,
                 returncode=returncode,

@@ -78,7 +78,9 @@ EXPECTED_TITLES = (
     "Produce current-tree qualification and residual-gap report",
 )
 EXPECTED_TASK_IDS = tuple(f"CASF-{index:03d}" for index in range(44))
-EXPECTED_INVENTORY_NO_CHANGE_TASK_IDS = frozenset(("CASF-000", "CASF-001"))
+EXPECTED_LANDED_NO_CHANGE_TASK_IDS = frozenset(
+    f"CASF-{index:03d}" for index in range(43)
+)
 if len(EXPECTED_TASK_IDS) != len(EXPECTED_TITLES):
     raise RuntimeError("sealed CASF task identities and titles differ in length")
 EXPECTED_TASK_TITLES = {
@@ -683,12 +685,12 @@ def validate_program(
         ):
             errors.append(f"{task_id}: task must be automatic and schedulable")
         no_change_completion = metadata.get("No-change completion")
-        if task_id in EXPECTED_INVENTORY_NO_CHANGE_TASK_IDS:
+        if task_id in EXPECTED_LANDED_NO_CHANGE_TASK_IDS:
             if no_change_completion != "allowed":
                 errors.append(
-                    f"{task_id}: sealed inventory must allow exact validated no-change completion"
+                    f"{task_id}: sealed landed task must allow exact validated no-change completion"
                 )
-        elif task_id >= "CASF-033" and no_change_completion is not None:
+        elif no_change_completion is not None:
             errors.append(
                 f"{task_id}: unlanded task must remain outside no-change completion"
             )

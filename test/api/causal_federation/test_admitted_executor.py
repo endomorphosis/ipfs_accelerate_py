@@ -6,7 +6,6 @@ import hashlib
 import importlib.util
 import json
 import os
-import shlex
 import shutil
 import signal
 import socket
@@ -200,8 +199,8 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
     assert operator.STATE_OWNER_SOCKET_ENV not in environment
     assert plan["execution_route_expected_counts"] == {
         "task_count": 44,
-        "deterministic_task_count": 33,
-        "model_task_count": 11,
+        "deterministic_task_count": 43,
+        "model_task_count": 1,
     }
     modes = operator._casf_mixed_execution_modes()
     assert set(modes) == {f"CASF-{index:03d}" for index in range(44)}
@@ -209,10 +208,10 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
         alias
         for alias, mode in modes.items()
         if mode == DETERMINISTIC_ONLY_EXECUTION_MODE
-    } == {f"CASF-{index:03d}" for index in range(33)}
+    } == {f"CASF-{index:03d}" for index in range(43)}
     assert {
         alias for alias, mode in modes.items() if mode == GROK_CODEX_EXECUTION_MODE
-    } == {f"CASF-{index:03d}" for index in range(33, 44)}
+    } == {f"CASF-{index:03d}" for index in range(43, 44)}
 
 
 def test_quack_daemon_defaults_to_distinct_sidecars_and_rejects_aliases(
@@ -517,6 +516,360 @@ def test_admitted_health_requires_exact_live_executor_and_authoritative_progress
     assert unhealthy["healthy"] is False
 
 
+def _project_executor_supervisor_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operator: ModuleType,
+    *,
+    supervisor_status: str,
+    maintenance_status: str | None = None,
+    maintenance_error: str = "",
+) -> dict[str, Any]:
+    supervisor_birth = {"pid": 4401, "start_time_ticks": 101}
+    executor_birth = {"pid": 4402, "start_time_ticks": 102}
+    paths = {
+        "executor_current": tmp_path / "executor-current.json",
+        "executor_history": tmp_path / "executor-history.json",
+        "executor_state": tmp_path,
+        "executor_supervisor_status": tmp_path / "executor-status.json",
+    }
+    paths["executor_current"].write_text(
+        json.dumps(
+            {
+                "supervisor_process_birth": supervisor_birth,
+                "executor_process_birth": executor_birth,
+            }
+        ),
+        encoding="utf-8",
+    )
+    status_payload: dict[str, Any] = {
+        "status": supervisor_status,
+        "supervisor_pid": supervisor_birth["pid"],
+        "supervisor_pid_alive": True,
+        "daemon_pid": executor_birth["pid"],
+        "daemon_pid_alive": True,
+        "daemon_process_birth": executor_birth,
+        "stalled_without_active_worker": False,
+    }
+    if maintenance_status is not None:
+        status_payload["last_agentic_maintenance_status"] = maintenance_status
+    if maintenance_error:
+        status_payload["last_agentic_maintenance_error"] = maintenance_error
+    paths["executor_supervisor_status"].write_text(
+        json.dumps(status_payload),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(operator, "_birth_liveness", lambda _birth: "alive")
+    return operator._executor_runtime_projection(
+        paths,
+        expected_supervisor_birth=supervisor_birth,
+    )
+
+
+def _classify_projected_executor_health(
+    operator: ModuleType,
+    projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    from test.api.causal_federation.test_operator import (
+        _first_tranche_authority,
+        _first_tranche_runtime,
+    )
+
+    runtime = _first_tranche_runtime(
+        runtime_updates={
+            "task_execution_admitted": True,
+            "executor": dict(projection),
+        }
+    )
+    runtime["outbox_worker"]["watermark"] = 23
+    runtime["outbox_worker"]["committed_sequence"] = 23
+    authority = _first_tranche_authority()
+    authority.update({"event_cursor": 22, "active_count": 1})
+    return operator.classify_health(
+        owner_liveness="alive",
+        master_liveness="alive",
+        task_authority=authority,
+        runtime=runtime,
+        baseline={"event_cursor": 20, "completed_count": 12},
+        within_startup_grace=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("supervisor_status", "maintenance_status"),
+    (
+        ("running", None),
+        ("agentic_maintenance_started", "running"),
+        ("agentic_maintenance_completed", "completed"),
+    ),
+)
+def test_executor_runtime_projection_admits_closed_healthy_status_vocabulary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    supervisor_status: str,
+    maintenance_status: str | None,
+) -> None:
+    operator = _operator()
+    projection = _project_executor_supervisor_status(
+        tmp_path,
+        monkeypatch,
+        operator,
+        supervisor_status=supervisor_status,
+        maintenance_status=maintenance_status,
+    )
+
+    assert projection["supervisor_process_bound"] is True
+    assert projection["executor_process_bound"] is True
+    assert projection["status_fresh"] is True
+    assert projection["clean_error_state"] is True
+    assert projection["supervisor_status"]["status"] == supervisor_status
+    if maintenance_status is not None:
+        assert projection["supervisor_status"][
+            "last_agentic_maintenance_status"
+        ] == maintenance_status
+
+    classified = _classify_projected_executor_health(operator, projection)
+    assert classified["classification"] == "progressing"
+    assert classified["healthy"] is True
+
+
+@pytest.mark.parametrize(
+    ("supervisor_status", "maintenance_status", "maintenance_error"),
+    (
+        ("agentic_maintenance_failed", "failed", ""),
+        ("agentic_maintenance_cancelled", "cancelled", ""),
+        ("agentic_maintenance_unknown", "unknown", ""),
+        (
+            "agentic_maintenance_started",
+            "running",
+            "RuntimeError: maintenance failed",
+        ),
+    ),
+)
+def test_executor_runtime_projection_rejects_nonhealthy_maintenance_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    supervisor_status: str,
+    maintenance_status: str,
+    maintenance_error: str,
+) -> None:
+    operator = _operator()
+    projection = _project_executor_supervisor_status(
+        tmp_path,
+        monkeypatch,
+        operator,
+        supervisor_status=supervisor_status,
+        maintenance_status=maintenance_status,
+        maintenance_error=maintenance_error,
+    )
+
+    assert projection["clean_error_state"] is False
+    assert projection["supervisor_status"][
+        "last_agentic_maintenance_status"
+    ] == maintenance_status
+    if maintenance_error:
+        assert projection["supervisor_status"][
+            "last_agentic_maintenance_error"
+        ] == maintenance_error
+        assert "last_agentic_maintenance_error" in projection["error_fields"]
+
+    classified = _classify_projected_executor_health(operator, projection)
+    assert classified["classification"] == "stuck"
+    assert classified["healthy"] is False
+    assert classified["reason_codes"] == [
+        "admitted_executor_process_or_status_unhealthy"
+    ]
+
+
+def test_actual_maintenance_producer_projects_exact_managed_daemon_birth(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        TodoImplementationSupervisor,
+        TodoSupervisorConfig,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        read_process_birth,
+    )
+
+    operator = _operator()
+    repo = tmp_path / "repo"
+    state_dir = repo / "state"
+    repo.mkdir()
+    state_dir.mkdir()
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "casf_executor_task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            state_prefix="casf_executor",
+        )
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+    )
+    try:
+        supervisor_birth = read_process_birth(os.getpid())
+        daemon_birth = read_process_birth(child.pid)
+        assert supervisor_birth is not None
+        assert daemon_birth is not None
+        supervisor._write_supervisor_maintenance_status(
+            "watchdog",
+            status="running",
+            started_at="2026-08-24T00:00:00Z",
+            daemon_pid=child.pid,
+            daemon_process_birth=daemon_birth,
+        )
+        current_path = state_dir / "executor-current.json"
+        history_path = state_dir / "executor-history.json"
+        current_path.write_text(
+            json.dumps(
+                {
+                    "supervisor_process_birth": supervisor_birth.to_dict(),
+                    "executor_process_birth": daemon_birth.to_dict(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        paths = {
+            "executor_current": current_path,
+            "executor_history": history_path,
+            "executor_state": state_dir,
+            "executor_supervisor_status": (
+                state_dir / "casf_executor_supervisor_status.json"
+            ),
+        }
+        projection = operator._executor_runtime_projection(
+            paths,
+            expected_supervisor_birth=supervisor_birth.to_dict(),
+        )
+
+        assert projection["supervisor_process_bound"] is True
+        assert projection["executor_process_bound"] is True
+        assert projection["clean_error_state"] is True
+        assert projection["supervisor_status"]["daemon_process_birth"] == (
+            daemon_birth.to_dict()
+        )
+    finally:
+        os.killpg(child.pid, signal.SIGKILL)
+        child.wait(timeout=5.0)
+
+
+def test_executor_projection_rejects_maintenance_daemon_birth_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    projection = _project_executor_supervisor_status(
+        tmp_path,
+        monkeypatch,
+        operator,
+        supervisor_status="agentic_maintenance_started",
+        maintenance_status="running",
+    )
+    status_path = tmp_path / "executor-status.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    status["daemon_process_birth"]["start_time_ticks"] += 1
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+
+    projection = operator._executor_runtime_projection(
+        {
+            "executor_current": tmp_path / "executor-current.json",
+            "executor_history": tmp_path / "executor-history.json",
+            "executor_state": tmp_path,
+            "executor_supervisor_status": status_path,
+        },
+        expected_supervisor_birth={"pid": 4401, "start_time_ticks": 101},
+    )
+    assert projection["executor_process_bound"] is False
+
+
+def test_normal_supervisor_status_projects_exact_managed_daemon_birth(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        TodoImplementationSupervisor,
+        TodoSupervisorConfig,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+        SupervisorLoop,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        SupervisedChild,
+        read_process_birth,
+    )
+
+    operator = _operator()
+    state_dir = tmp_path / "executor"
+    state_dir.mkdir()
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "casf_executor_task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=ROOT,
+            state_prefix="casf_executor",
+        )
+    )
+    loop = SupervisorLoop(supervisor.build_supervisor_loop_config())
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+    )
+    try:
+        supervisor_birth = read_process_birth(os.getpid())
+        daemon_birth = read_process_birth(process.pid)
+        assert supervisor_birth is not None
+        assert daemon_birth is not None
+        child = SupervisedChild(
+            pid=process.pid,
+            command=(sys.executable, "-c", "import time; time.sleep(30)"),
+            log_path=state_dir / "daemon.log",
+            child_pid_path=state_dir / "casf_executor_managed_daemon.pid",
+            identity_process_birth=daemon_birth,
+        )
+        loop._write_status("running", child=child)
+        current_path = state_dir / "executor-current.json"
+        current_path.write_text(
+            json.dumps(
+                {
+                    "supervisor_process_birth": supervisor_birth.to_dict(),
+                    "executor_process_birth": daemon_birth.to_dict(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        projection = operator._executor_runtime_projection(
+            {
+                "executor_current": current_path,
+                "executor_history": state_dir / "executor-history.json",
+                "executor_state": state_dir,
+                "executor_supervisor_status": (
+                    state_dir / "casf_executor_supervisor_status.json"
+                ),
+            },
+            expected_supervisor_birth=supervisor_birth.to_dict(),
+        )
+
+        assert projection["supervisor_process_bound"] is True
+        assert projection["executor_process_bound"] is True
+        assert projection["clean_error_state"] is True
+        assert projection["supervisor_status"]["daemon_process_birth"] == (
+            daemon_birth.to_dict()
+        )
+    finally:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=5.0)
+
+
 def test_runtime_projection_read_retries_only_a_bounded_parse_race(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -529,7 +882,10 @@ def test_runtime_projection_read_retries_only_a_bounded_parse_race(
     def _flaky_read(_path: Path) -> dict[str, Any]:
         nonlocal attempts
         attempts += 1
-        if attempts < 3:
+        if attempts == 1:
+            replacement = projection.with_suffix(".replacement")
+            replacement.write_text('{"status":"running"}', encoding="utf-8")
+            replacement.replace(projection)
             raise operator.OperatorError("transient partial JSON")
         return {"status": "running"}
 
@@ -538,7 +894,236 @@ def test_runtime_projection_read_retries_only_a_bounded_parse_race(
     assert operator._read_optional_json(
         projection, transient_retry_attempts=3
     ) == {"status": "running"}
-    assert attempts == 3
+    assert attempts == 2
+
+
+def test_runtime_projection_read_rejects_stable_malformed_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    projection = tmp_path / "supervisor-status.json"
+    projection.write_text("{", encoding="utf-8")
+    attempts = 0
+
+    def _malformed(_path: Path) -> dict[str, Any]:
+        nonlocal attempts
+        attempts += 1
+        raise operator.OperatorError("malformed authority")
+
+    monkeypatch.setattr(operator, "_json_object", _malformed)
+
+    with pytest.raises(operator.OperatorError, match="malformed authority"):
+        operator._read_optional_json(
+            projection,
+            transient_retry_attempts=5,
+            retry_missing=True,
+        )
+    assert attempts == 1
+
+
+def test_runtime_projection_read_retries_missing_only_when_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    projection = tmp_path / "executor-status.json"
+    sleeps = 0
+
+    def _publish(_seconds: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        projection.write_text('{"status":"running"}', encoding="utf-8")
+
+    monkeypatch.setattr(operator.time, "sleep", _publish)
+
+    assert operator._read_optional_json(
+        projection,
+        transient_retry_attempts=2,
+        retry_missing=True,
+    ) == {"status": "running"}
+    assert sleeps == 1
+
+
+def test_runtime_projection_disappearing_during_read_preserves_operator_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    projection = tmp_path / "executor-status.json"
+    projection.write_text("{", encoding="utf-8")
+
+    monkeypatch.setattr(
+        operator,
+        "_json_object",
+        lambda _path: (_ for _ in ()).throw(
+            operator.OperatorError("malformed authority")
+        ),
+    )
+    monkeypatch.setattr(operator.time, "sleep", lambda _seconds: projection.unlink())
+
+    with pytest.raises(operator.OperatorError, match="malformed authority"):
+        operator._read_optional_json(
+            projection,
+            transient_retry_attempts=2,
+            retry_missing=False,
+        )
+
+
+def test_failed_executor_readiness_retires_captured_supervisor_birth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    captured_birth = {
+        "pid": 7812,
+        "start_time_ticks": 55,
+        "boot_id": "boot:test",
+        "parent_pid": os.getpid(),
+    }
+    retired: list[dict[str, Any]] = []
+
+    class _Process:
+        pid = captured_birth["pid"]
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+    class _Broker:
+        failure = ""
+        current: dict[str, Any] = {}
+
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        @staticmethod
+        def start() -> None:
+            return None
+
+        @staticmethod
+        def stop() -> None:
+            return None
+
+    paths = {
+        "executor_state": tmp_path / "executor",
+        "executor_log": tmp_path / "executor" / "executor.log",
+        "executor_supervisor_pid": tmp_path / "executor" / "supervisor.pid",
+        "executor_current": tmp_path / "executor" / "current.json",
+        "executor_supervisor_status": tmp_path / "executor" / "status.json",
+        "executor_history": tmp_path / "executor" / "history.json",
+    }
+    monkeypatch.setattr(operator, "_route_preflight", lambda _board: {})
+    monkeypatch.setattr(operator, "_executor_command", lambda *_args, **_kwargs: ["executor"])
+    monkeypatch.setattr(operator, "_executor_environment", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(operator.subprocess, "Popen", lambda *_args, **_kwargs: _Process())
+    monkeypatch.setattr(operator, "_process_birth", lambda _pid: dict(captured_birth))
+    monkeypatch.setattr(operator, "_atomic_text", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(operator, "_ExecutorBootstrapBroker", _Broker)
+    monkeypatch.setattr(
+        operator,
+        "_read_optional_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            operator.OperatorError("transient readiness parse")
+        ),
+    )
+
+    def _retire(**kwargs: Any) -> tuple[list[Any], list[Any]]:
+        retired.append(dict(kwargs["supervisor_birth"]))
+        return [], []
+
+    monkeypatch.setattr(operator, "_retire_configured_executor", _retire)
+
+    with pytest.raises(operator.OperatorError, match="transient readiness parse"):
+        operator._spawn_configured_executor(
+            server=SimpleNamespace(),
+            board=SimpleNamespace(),
+            paths=paths,
+            owner_identity={},
+            execution_route_policy=SimpleNamespace(),
+        )
+    assert retired == [captured_birth]
+
+
+def test_failed_owner_readiness_recovers_exact_executor_from_pid_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        IMPLEMENTATION_ENTRY_PATH,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
+
+    operator = _operator()
+    owner_birth = {
+        "pid": 7100,
+        "start_time_ticks": 10,
+        "boot_id": "boot:test",
+        "parent_pid": 1,
+    }
+    supervisor_birth = {
+        "pid": 7200,
+        "start_time_ticks": 20,
+        "boot_id": "boot:test",
+        "parent_pid": owner_birth["pid"],
+    }
+    executor_birth = {
+        "pid": 7300,
+        "start_time_ticks": 30,
+        "boot_id": "boot:test",
+        "parent_pid": supervisor_birth["pid"],
+    }
+    paths = {
+        "executor_current": tmp_path / "malformed-current.json",
+        "executor_supervisor_pid": tmp_path / "supervisor.pid",
+        "executor_daemon_pid": tmp_path / "daemon.pid",
+        "executor_state": tmp_path / "executor",
+    }
+    monkeypatch.setattr(
+        operator,
+        "_read_optional_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            operator.OperatorError("startup projection race")
+        ),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_read_pid",
+        lambda path: (
+            supervisor_birth["pid"]
+            if path == paths["executor_supervisor_pid"]
+            else executor_birth["pid"]
+        ),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_process_birth",
+        lambda pid: dict(
+            supervisor_birth if pid == supervisor_birth["pid"] else executor_birth
+        ),
+    )
+    monkeypatch.setattr(operator, "_birth_liveness", lambda _birth: "alive")
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "read_process_command_argv",
+        lambda _pid: (
+            sys.executable,
+            str((operator.ROOT / IMPLEMENTATION_ENTRY_PATH).resolve()),
+            "--state-dir",
+            str(paths["executor_state"]),
+            "--state-prefix",
+            "casf_executor",
+        ),
+    )
+
+    observed_supervisor, observed_executor = (
+        operator._started_configured_executor_births(
+            paths,
+            owner_birth=owner_birth,
+        )
+    )
+    assert observed_supervisor == supervisor_birth
+    assert observed_executor == executor_birth
 
 
 def test_typed_database_task_source_reads_claims_and_records_evidence(
@@ -1681,9 +2266,15 @@ def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
         server.stop()
 
 
+@pytest.mark.parametrize(
+    "replacement_now_ms",
+    (2_000, 7_000),
+    ids=("live-lane-lease", "expired-lane-lease"),
+)
 def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    replacement_now_ms: int,
 ) -> None:
     database = tmp_path / "typed-preserved-dead-claim.duckdb"
     coordination_path = tmp_path / "preserved-coordination.duckdb"
@@ -1849,8 +2440,26 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
         adapter = TypedDatabaseTaskSource(
             client,
             execution_route_policy=route_policy,
-            clock_ms=lambda: 2_000,
+            clock_ms=lambda: replacement_now_ms,
         )
+        validated_cooldown_identities: list[dict[str, Any]] = []
+        validate_cooldown = adapter.validate_retrying_task_cooldown
+
+        def observe_cooldown_validation(
+            task_identity: str,
+            **kwargs: Any,
+        ) -> Any:
+            expected_identity = kwargs.get("expected_attempt_identity")
+            if isinstance(expected_identity, Mapping):
+                validated_cooldown_identities.append(dict(expected_identity))
+            return validate_cooldown(task_identity, **kwargs)
+
+        monkeypatch.setattr(
+            adapter,
+            "validate_retrying_task_cooldown",
+            observe_cooldown_validation,
+        )
+        effect_calls: list[str] = []
         daemon = DatabaseImplementationDaemon(
             database_path=database,
             coordination_path=coordination_path,
@@ -1862,12 +2471,15 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
             task_source=adapter,
             close_task_source=False,
             lease_ms=5_000,
-            clock_ms=lambda: 2_000,
+            clock_ms=lambda: replacement_now_ms,
             provider_fn=lambda candidate: provider_calls.append(
                 candidate.attempt_id
             )
             or {"status": "ok", "accepted": True},
-            effect_fn=lambda _attempt, _provider: {"status": "applied"},
+            effect_fn=lambda candidate, _provider: effect_calls.append(
+                candidate.attempt_id
+            )
+            or {"status": "applied"},
             validation_fn=lambda _attempt, _effect: {
                 "outcome": "passed",
                 "evidence_digest": "sha256:" + "c" * 64,
@@ -1885,10 +2497,47 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
         assert fresh_attempt is not None
         assert fresh_attempt.attempt_number == 2
         assert provider_calls == [fresh_attempt.attempt_id]
+        assert effect_calls == [fresh_attempt.attempt_id]
         retired = daemon.get_attempt(stale_attempt.attempt_id)
-        assert retired is not None and retired.status != "running"
+        assert retired is not None and retired.status == "failed"
         cooldown = adapter._retry_cooldown_row(task.task_cid)
         assert cooldown is not None and cooldown["attempt"] == 1
+        assert cooldown["extension"]["attempt_id"] == stale_attempt.attempt_id
+        assert cooldown["extension"]["claim_id"] == stale_attempt.claim_id
+        assert cooldown["extension"]["lease_id"] == stale_attempt.lease_id
+        assert cooldown["extension"]["owner_session_id"] == (
+            stale_attempt.owner_session_id
+        )
+        assert cooldown["extension"]["attempt_number"] == 1
+        assert cooldown["extension"]["fencing_token"] == 1
+        assert cooldown["extension"]["fence_epoch"] == 1
+        assert len(result["expired_attempt_reconciliations"]) == 1
+        expired = result["expired_attempt_reconciliations"][0]
+        assert expired["attempt_id"] == stale_attempt.attempt_id
+        if replacement_now_ms > stale_claim.expires_at_ms:
+            assert {
+                "attempt_id": stale_attempt.attempt_id,
+                "claim_id": stale_attempt.claim_id,
+                "lease_id": stale_attempt.lease_id,
+                "owner_session_id": stale_attempt.owner_session_id,
+                "attempt_number": stale_attempt.attempt_number,
+                "fencing_token": stale_attempt.fencing_token,
+                "fence_epoch": stale_attempt.fence_epoch,
+            } in validated_cooldown_identities
+            assert expired["control_requeue"] == {
+                "changed": False,
+                "task_cid": stale_attempt.task_cid,
+                "status": "retrying",
+                "revision": 3,
+                "cooldown_preserved": True,
+            }
+        else:
+            assert "control_requeue" not in expired
+
+        repeated = daemon.run_once()
+        assert repeated["implementation_result"] is None
+        assert provider_calls == [fresh_attempt.attempt_id]
+        assert effect_calls == [fresh_attempt.attempt_id]
     finally:
         if daemon is not None:
             daemon.close()
@@ -3305,6 +3954,7 @@ def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
                     "supervisor_pid_alive": True,
                     "daemon_pid": second.pid,
                     "daemon_pid_alive": True,
+                    "daemon_process_birth": second_birth,
                     "current_status_path": str(tmp_path / "actual-task-state.json"),
                     "stalled_without_active_worker": False,
                 }
@@ -3529,6 +4179,60 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         database_program=program,
         merge_target_branch=temporary_branch,
     )
+    provider_bin = tmp_path / "provider-bin"
+    provider_bin.mkdir()
+    fake_grok = provider_bin / "grok"
+    fake_grok.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "workspace = Path(args[args.index('--cwd') + 1])\n"
+        "output = workspace / 'data/casf-model-provider-output.txt'\n"
+        "output.parent.mkdir(parents=True, exist_ok=True)\n"
+        "output.write_text('model provider dispatched\\n', encoding='utf-8')\n"
+        "print(json.dumps({'type': 'assistant', 'message': 'completed'}))\n",
+        encoding="utf-8",
+    )
+    fake_grok.chmod(0o700)
+    fallback_marker = tmp_path / "unexpected-codex-fallback"
+    fake_codex = provider_bin / "codex"
+    fake_codex.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        f"Path({str(fallback_marker)!r}).write_text('called\\n', encoding='utf-8')\n"
+        "raise SystemExit(97)\n",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o700)
+    configured_executor_environment = operator._executor_environment
+
+    def _hermetic_executor_environment(
+        selected_board: Any,
+        route: Mapping[str, Any],
+        *,
+        owner_identity: Mapping[str, Any],
+    ) -> dict[str, str]:
+        environment = configured_executor_environment(
+            selected_board,
+            route,
+            owner_identity=owner_identity,
+        )
+        environment["IPFS_ACCELERATE_AGENT_GROK_BIN"] = str(fake_grok)
+        environment["XAI_API_KEY"] = "hermetic-casf-test-credential"
+        environment["PATH"] = (
+            str(provider_bin)
+            + os.pathsep
+            + str(environment.get("PATH") or "")
+        )
+        return environment
+
+    monkeypatch.setattr(
+        operator,
+        "_executor_environment",
+        _hermetic_executor_environment,
+    )
     paths = operator._runtime_paths(managed_board)
     paths["owner_socket"] = server.typed_command_socket_path()
 
@@ -3558,15 +4262,6 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         }
     )
     initial_generation = observer_client.load_generation()
-    provider_command = (
-        f"{shlex.quote(sys.executable)} -c "
-        + shlex.quote(
-            "from pathlib import Path; "
-            "output = Path('data/casf-model-provider-output.txt'); "
-            "output.parent.mkdir(parents=True, exist_ok=True); "
-            "output.write_text('model provider dispatched\\n', encoding='utf-8')"
-        )
-    )
     supervisor: subprocess.Popen[Any] | None = None
     supervisor_birth: Mapping[str, Any] | None = None
     broker: Any = None
@@ -3578,7 +4273,6 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
             paths=paths,
             owner_identity=identity.to_dict(),
             execution_route_policy=managed_route_policy,
-            implementation_command=provider_command,
         )
         deadline = time.monotonic() + 240.0
         deterministic = None
@@ -3774,6 +4468,7 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         _contains_provider_disposition(item, True)
         for item in evidence.get("CASF-MANAGED-MODEL", [])
     ), diagnostic_text
+    assert not fallback_marker.exists(), diagnostic_text
 
 
 def test_launch_modes_are_unambiguous_and_no_change_remains_explicit() -> None:
