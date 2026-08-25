@@ -29,8 +29,8 @@ def _operator() -> ModuleType:
 
 def _execution_route_summary(
     *,
-    deterministic_task_count: int = 43,
-    model_task_count: int = 1,
+    deterministic_task_count: int = 44,
+    model_task_count: int = 0,
     policy_id: str = "route-policy:test",
 ) -> dict:
     from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
@@ -342,7 +342,7 @@ def test_native_launch_plan_admits_only_one_event_wait_coordinator(
     assert "environment" not in plan
 
 
-def test_admitted_launch_route_remains_current_43_to_1_population(
+def test_admitted_launch_route_remains_current_44_to_0_population(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     operator = _operator()
@@ -352,6 +352,10 @@ def test_admitted_launch_route_remains_current_43_to_1_population(
     plan = operator._launch_plan(board, admit_task_execution=True)
     modes = operator._casf_mixed_execution_modes()
     current = _execution_route_summary()
+    preceding = _execution_route_summary(
+        deterministic_task_count=43,
+        model_task_count=1,
+    )
     historical = _execution_route_summary(
         deterministic_task_count=41,
         model_task_count=3,
@@ -359,23 +363,25 @@ def test_admitted_launch_route_remains_current_43_to_1_population(
 
     assert plan["execution_route_expected_counts"] == {
         "task_count": 44,
-        "deterministic_task_count": 43,
-        "model_task_count": 1,
+        "deterministic_task_count": 44,
+        "model_task_count": 0,
     }
-    assert len(operator.CASF_DETERMINISTIC_TASK_ALIASES) == 43
-    assert sum(
-        mode == "deterministic-only" for mode in modes.values()
-    ) == 43
-    assert sum(mode != "deterministic-only" for mode in modes.values()) == 1
-    assert operator._validated_execution_route_summary(
-        current,
-        require_casf_population=True,
-    ) == current
-    with pytest.raises(operator.OperatorError, match="exact CASF population"):
+    assert len(operator.CASF_DETERMINISTIC_TASK_ALIASES) == 44
+    assert sum(mode == "deterministic-only" for mode in modes.values()) == 44
+    assert sum(mode != "deterministic-only" for mode in modes.values()) == 0
+    assert (
         operator._validated_execution_route_summary(
-            historical,
+            current,
             require_casf_population=True,
         )
+        == current
+    )
+    for obsolete in (preceding, historical):
+        with pytest.raises(operator.OperatorError, match="exact CASF population"):
+            operator._validated_execution_route_summary(
+                obsolete,
+                require_casf_population=True,
+            )
 
 
 def test_scheduler_schema_revision_must_match_canonical_migration_head() -> None:
@@ -1974,9 +1980,15 @@ def test_stop_ignores_stale_pid_observations_and_signals_only_sealed_births(
     assert all(item["birth"]["pid"] != stale_pid for item in receipt["process_results"])
 
 
-def test_stop_retires_exact_historical_41_to_3_execution_route(
+@pytest.mark.parametrize(
+    ("deterministic_task_count", "model_task_count"),
+    [(41, 3), (43, 1)],
+)
+def test_stop_retires_exact_historical_execution_route(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    deterministic_task_count: int,
+    model_task_count: int,
 ) -> None:
     operator = _operator()
     board, _config = operator._load_config(CONFIG)
@@ -1989,9 +2001,9 @@ def test_stop_retires_exact_historical_41_to_3_execution_route(
         "owner": tmp_path / "owner",
     }
     historical_route = _execution_route_summary(
-        deterministic_task_count=41,
-        model_task_count=3,
-        policy_id="route-policy:historical",
+        deterministic_task_count=deterministic_task_count,
+        model_task_count=model_task_count,
+        policy_id=f"route-policy:historical-{deterministic_task_count}-{model_task_count}",
     )
     births = _install_admitted_generation(
         operator,

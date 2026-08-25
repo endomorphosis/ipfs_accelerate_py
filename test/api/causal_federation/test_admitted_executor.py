@@ -199,8 +199,8 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
     assert operator.STATE_OWNER_SOCKET_ENV not in environment
     assert plan["execution_route_expected_counts"] == {
         "task_count": 44,
-        "deterministic_task_count": 43,
-        "model_task_count": 1,
+        "deterministic_task_count": 44,
+        "model_task_count": 0,
     }
     modes = operator._casf_mixed_execution_modes()
     assert set(modes) == {f"CASF-{index:03d}" for index in range(44)}
@@ -208,10 +208,10 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
         alias
         for alias, mode in modes.items()
         if mode == DETERMINISTIC_ONLY_EXECUTION_MODE
-    } == {f"CASF-{index:03d}" for index in range(43)}
+    } == {f"CASF-{index:03d}" for index in range(44)}
     assert {
         alias for alias, mode in modes.items() if mode == GROK_CODEX_EXECUTION_MODE
-    } == {f"CASF-{index:03d}" for index in range(43, 44)}
+    } == set()
 
 
 def test_quack_daemon_defaults_to_distinct_sidecars_and_rejects_aliases(
