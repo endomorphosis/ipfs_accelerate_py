@@ -1826,6 +1826,72 @@ def _validated_state_owner_bootstrap_fd(
     return descriptor
 
 
+def _seal_state_owner_bootstrap_lane_directory(path: Path) -> None:
+    """Seal one bootstrap lane before its daemon opens private sidecars.
+
+    A typed Quack owner is authoritative for task state, but the generic
+    database daemon deliberately retains lane-private coordination and
+    execution journals.  Their writer locks require an owner-only parent.
+    ``Path.mkdir`` alone inherits the caller's umask when the lane is first
+    created and does not repair an existing directory, so an ordinary 0002
+    umask otherwise leaves the daemon with a 0775 lock parent.
+
+    Open the final component without following a symlink, normalize it through
+    that descriptor, and confirm that the pathname still names the same owned
+    directory.  This is launch-custody repair, not a second state authority.
+    """
+
+    lane = Path(path)
+    lane.mkdir(parents=True, exist_ok=True, mode=0o700)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise ValueError(
+            "state-owner bootstrap lane requires no-follow directory access"
+        )
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | nofollow
+    )
+    try:
+        descriptor = os.open(lane, flags)
+    except OSError as exc:
+        raise ValueError(
+            "state-owner bootstrap lane is not a no-follow directory"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(before.st_mode)
+            or int(before.st_uid) != os.geteuid()
+        ):
+            raise ValueError(
+                "state-owner bootstrap lane must be an owned directory"
+            )
+        os.fchmod(descriptor, 0o700)
+        after = os.fstat(descriptor)
+        try:
+            named = os.lstat(lane)
+        except OSError as exc:
+            raise ValueError(
+                "state-owner bootstrap lane changed during admission"
+            ) from exc
+        if (
+            not stat.S_ISDIR(after.st_mode)
+            or stat.S_ISLNK(named.st_mode)
+            or int(after.st_uid) != os.geteuid()
+            or stat.S_IMODE(after.st_mode) != 0o700
+            or (int(after.st_dev), int(after.st_ino))
+            != (int(named.st_dev), int(named.st_ino))
+        ):
+            raise ValueError(
+                "state-owner bootstrap lane changed during admission"
+            )
+    finally:
+        os.close(descriptor)
+
+
 def _replace_single_profile_option(
     argv: Sequence[str],
     option: str,
@@ -6209,8 +6275,25 @@ def start_track(
             module_name=PLAN_BOUND_LAUNCH_GATE_MODULE,
             argv=gate_argv,
         )
-    resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
-    resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+    if state_owner_bootstrap_fd is not None:
+        lane_parents = {
+            resolved.log_path.parent,
+            resolved.supervisor_pid_path.parent,
+            resolved.daemon_pid_path.parent,
+            *(
+                (resolved.supervisor_status_path.parent,)
+                if resolved.supervisor_status_path is not None
+                else ()
+            ),
+        }
+        if len(lane_parents) != 1:
+            raise ValueError(
+                "state-owner bootstrap runtime projections must share one lane"
+            )
+        _seal_state_owner_bootstrap_lane_directory(next(iter(lane_parents)))
+    else:
+        resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
+        resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
     pid_reservation_fd: int | None = None
     pid_reservation_identity: tuple[int, int] | None = None
     if plan_bound_dispatch:

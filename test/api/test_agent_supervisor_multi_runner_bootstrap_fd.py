@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import socket
+import stat
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -89,6 +90,39 @@ def test_non_plan_bound_track_inherits_state_owner_unix_listener(
             "listening": 1,
         }
         assert listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
+    finally:
+        listener.close()
+
+
+def test_non_plan_bound_bootstrap_seals_lane_for_embedded_sidecar_lock(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        _open_database_writer_lock,
+    )
+
+    script = tmp_path / "bootstrap-child.py"
+    script.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    track = _track(tmp_path, script)
+    lane = track.log_path.parent
+    lane.mkdir(parents=True)
+    lane.chmod(0o775)
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        listener.bind(str(tmp_path / "state-owner.sock"))
+        listener.listen(1)
+        process = runner.start_track(
+            track,
+            repo_root=tmp_path,
+            common_args=_bootstrap_args(listener.fileno()),
+            python_executable=sys.executable,
+            output=lambda _message: None,
+        )
+
+        assert process.wait(timeout=10.0) == 0
+        assert stat.S_IMODE(os.lstat(lane).st_mode) == 0o700
+        with _open_database_writer_lock(lane / ".sidecar.writer.lock"):
+            pass
     finally:
         listener.close()
 
