@@ -10,6 +10,7 @@ import os
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1189,6 +1190,7 @@ def test_failed_executor_readiness_retires_captured_supervisor_birth(
             execution_route_policy=SimpleNamespace(),
         )
     assert retired == [captured_birth]
+    assert stat.S_IMODE(paths["executor_state"].stat().st_mode) == 0o700
 
 
 def test_failed_owner_readiness_recovers_exact_executor_from_pid_markers(
