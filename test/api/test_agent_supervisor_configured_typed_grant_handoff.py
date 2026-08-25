@@ -4403,6 +4403,24 @@ def test_aseh_stale_bootstrap_is_rejected_before_owner_build(
     monkeypatch.setattr(aseh_operator, "_paths", lambda _board: paths)
     monkeypatch.setattr(
         aseh_operator,
+        "_assert_clean_tree",
+        lambda _board: (
+            str(current_population["source_head"]),
+            str(current_population["repository_tree_id"]),
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: {"stable": "yes"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args: ("a" * 40) + " " + ("b" * 40),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_population",
         lambda _board, _config: current_population,
     )
@@ -5308,6 +5326,597 @@ def test_aseh_repair_provider_cleanup_fence_transition_is_closed_and_chained(
         aseh_operator._repair_provider_cleanup_fence_transition_receipt_id(
             receipt
         )
+
+
+def test_aseh_repair_sealed_owner_identity_transition_is_closed_and_chained(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repair_head = "3" * 40
+    repair_tree = "4" * 40
+    witness = {
+        "head": repair_head,
+        "tree": repair_tree,
+        "branch_ref": "refs/heads/aseh-r12-fixture",
+        "index_entries_digest": "sha256:" + ("8" * 64),
+        "index_flags_digest": "sha256:" + ("9" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("a" * 64),
+        "branch_reflog_digest": "sha256:" + ("b" * 64),
+    }
+    receipt = {
+        "schema": (
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_SCHEMA
+        ),
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R12"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 12,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "previous_receipt_cid": "sha256:" + ("2" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": (
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+        ),
+        "base_tree": "5" * 40,
+        "repair_head": repair_head,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            aseh_operator
+            .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("6" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R11"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_AUTHORITY
+        ),
+        "validation_results": [],
+        "candidate_authorization_witness": witness,
+        "terminal_success_criteria": (
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert (
+        aseh_operator
+        ._repair_sealed_owner_identity_transition_receipt_id(receipt)
+        == receipt["receipt_cid"]
+    )
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_provider_cleanup_fence_transition_receipt_id",
+        lambda _payload: "sha256:" + ("2" * 64),
+    )
+    bootstrap = {
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+    }
+    for field, value in (
+        ("previous_receipt_cid", "sha256:" + ("7" * 64)),
+        ("base_head", "0" * 40),
+        ("changed_paths", ["out/of/scope.py"]),
+    ):
+        malformed = dict(receipt)
+        malformed[field] = value
+        malformed["receipt_cid"] = aseh_operator._identity(
+            {
+                key: item
+                for key, item in malformed.items()
+                if key != "receipt_cid"
+            }
+        )
+        with pytest.raises(aseh_operator.OperatorError, match="authority differs"):
+            aseh_operator._validate_repair_sealed_owner_identity_transition(
+                malformed,
+                bootstrap=bootstrap,
+                previous_receipt={},
+                rerun_validations=False,
+            )
+
+    receipt["transition_revision"] = 11
+    receipt["receipt_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_cid"
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="schema"):
+        aseh_operator._repair_sealed_owner_identity_transition_receipt_id(
+            receipt
+        )
+
+
+def test_aseh_r12_sealed_owner_identity_routes_only_board_check_to_launch_tree(
+) -> None:
+    commands = (
+        aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_VALIDATIONS
+    )
+    assert [
+        aseh_operator._r12_validation_working_tree_scope(command)
+        for command in commands
+    ] == [
+        "immutable_candidate_checkout",
+        "immutable_candidate_checkout",
+        "candidate_authorization_worktree",
+        "immutable_candidate_checkout",
+    ]
+
+
+def test_aseh_r12_sealed_owner_identity_requires_r11_launch_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_head = "3" * 40
+    candidate_tree = "4" * 40
+    admission = {
+        "runtime_source_head": candidate_head,
+        "runtime_repository_tree_id": candidate_tree,
+        "repair_transition": {
+            "schema": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_SCHEMA
+            ),
+            "repair_head": candidate_head,
+            "repair_tree": candidate_tree,
+        },
+        "repair_transition_chain": [],
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args: (
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+        ),
+    )
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="current R12 candidate lacks",
+    ):
+        aseh_operator._assert_exact_run_launch_admission(
+            admission,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+
+    admission["repair_transition_chain"] = [
+        {
+            "schema": (
+                aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SCHEMA
+            ),
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+            ),
+        }
+    ]
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+
+
+def test_aseh_repair_sealed_owner_identity_transition_publication_is_fenced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_head = "3" * 40
+    candidate_tree = "4" * 40
+    previous_cid = "sha256:" + ("2" * 64)
+    witness = {
+        "head": candidate_head,
+        "tree": candidate_tree,
+        "branch_ref": "refs/heads/aseh-r12-fixture",
+        "index_entries_digest": "sha256:" + ("5" * 64),
+        "index_flags_digest": "sha256:" + ("6" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("7" * 64),
+        "branch_reflog_digest": "sha256:" + ("8" * 64),
+    }
+    prior_chain = [
+        {"receipt_cid": f"receipt:r{revision}"}
+        for revision in range(1, 11)
+    ] + [{"receipt_cid": previous_cid}]
+    events: list[tuple[str, object]] = []
+
+    def git(*args: str) -> str:
+        if args[:3] == ("show", "-s", "--format=%P"):
+            return (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+            )
+        if args == ("rev-parse", f"{candidate_head}^{{tree}}"):
+            return candidate_tree
+        if args == (
+            "rev-parse",
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+            + "^{tree}",
+        ):
+            return "9" * 40
+        raise AssertionError(args)
+
+    def assert_witness(
+        _witness: object,
+        *,
+        boundary: str,
+        **_kwargs: object,
+    ) -> None:
+        events.append(("witness", boundary))
+
+    def publish(
+        _path: Path,
+        _receipt: object,
+        *,
+        authority_directory_fd: int | None = None,
+    ) -> None:
+        events.append(("publish", authority_directory_fd))
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda *_args: (
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda *_args: "sha256:" + ("a" * 64),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: witness,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_sealed_owner_identity_transition_validations",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_identity_transition",
+        lambda *_args, **_kwargs: {
+            "repair_head": candidate_head,
+            "repair_tree": candidate_tree,
+            "receipt_cid": "receipt:r12",
+        },
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        assert_witness,
+    )
+    monkeypatch.setattr(aseh_operator, "_atomic_json_create", publish)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "pre-publication admission cannot admit a one-parent R12 repair"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_sealed_owner_identity_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_identity_transition_receipt": (
+                    tmp_path / "repair-r12.json"
+                )
+            },
+            bootstrap={
+                "plan_root_cid": "plan:sealed",
+                "repository_tree_id": "tree:sealed",
+            },
+            bootstrap_id="bootstrap:sealed",
+            head=candidate_head,
+            previous_receipt={"receipt_cid": previous_cid},
+            previous_transition={
+                "repair_head": (
+                    aseh_operator
+                    .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+                ),
+                "receipt_cid": previous_cid,
+            },
+            prior_receipt_chain=prior_chain,
+            authorization_directory_fd=73,
+        )
+    )
+
+    assert result is not None
+    assert len(result["repair_transition_chain"]) == 12
+    assert events[-3:] == [
+        ("witness", "immediately before R12 receipt publication"),
+        ("publish", 73),
+        ("witness", "after R12 receipt publication"),
+    ]
+
+
+def test_aseh_repair_sealed_owner_identity_transition_replay_admits_full_chain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r12_path = tmp_path / "repair-r12.json"
+    r12_path.touch()
+    previous_cid = "receipt:r11"
+    r12_cid = "receipt:r12"
+    repair_head = "3" * 40
+    prior_chain = [
+        {"receipt_cid": f"receipt:r{revision}"}
+        for revision in range(1, 12)
+    ]
+    receipt = {"repair_head": repair_head, "receipt_cid": r12_cid}
+    expected_chain = [*prior_chain, receipt]
+    admitted_chain = [
+        {"receipt_cid": item["receipt_cid"]} for item in expected_chain
+    ]
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_identity_transition",
+        lambda *_args, **_kwargs: {
+            "schema": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_SCHEMA
+            ),
+            "repair_head": repair_head,
+            "repair_tree": "4" * 40,
+            "receipt_cid": r12_cid,
+        },
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: {
+            "admission_cid": "admission:r12",
+            "runtime_source_head": repair_head,
+            "repair_transition": {
+                "schema": (
+                    aseh_operator
+                    .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_SCHEMA
+                ),
+                "repair_head": repair_head,
+                "receipt_cid": r12_cid,
+            },
+            "repair_transition_chain": admitted_chain,
+            "canonical_continuity": {
+                "provider_cleanup_fence_to_sealed_owner_identity": {}
+            },
+        },
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_sealed_owner_identity_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_identity_transition_receipt": r12_path
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap:sealed",
+            head=repair_head,
+            previous_receipt={"receipt_cid": previous_cid},
+            previous_transition={
+                "repair_head": (
+                    aseh_operator
+                    .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+                ),
+                "receipt_cid": previous_cid,
+            },
+            prior_receipt_chain=prior_chain,
+            authorization_directory_fd=73,
+        )
+    )
+
+    assert result == {
+        "schema": aseh_operator.OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": True,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": expected_chain,
+        "current_admission_cid": "admission:r12",
+        "runtime_source_head": repair_head,
+    }
+
+
+def test_aseh_r12_sealed_owner_identity_reuses_r11_native_authorization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = {
+        "bootstrap_receipt": tmp_path / "bootstrap.json",
+        "repair_provider_lease_ownership_transition_receipt": (
+            tmp_path / "repair-r10.json"
+        ),
+        "repair_provider_cleanup_fence_transition_receipt": (
+            tmp_path / "repair-r11.json"
+        ),
+        "repair_sealed_owner_identity_transition_receipt": (
+            tmp_path / "repair-r12.json"
+        ),
+    }
+    payloads = {
+        path: {"name": name} for name, path in paths.items()
+    }
+    r11_witness = {"head": "1" * 40}
+    r12_head = "3" * 40
+    r12_tree = "4" * 40
+    candidate_head = r12_head
+    candidate_tree = r12_tree
+    r12_witness = {"head": r12_head, "tree": r12_tree}
+    authorization_id = "sha256:" + ("5" * 64)
+    authorization = {
+        "candidate_authorization_witness": r11_witness,
+        "native_dependency_pin": dict(
+            aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_PIN
+        ),
+        "authorization_id": authorization_id,
+    }
+    observed_witnesses: list[object] = []
+    sealed: list[tuple[object, object, str]] = []
+    launch = object()
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: payloads[path],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_provider_cleanup_fence_transition",
+        lambda *_args, **_kwargs: {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": "2" * 40,
+            "native_dependency_authorization": authorization,
+            "receipt_cid": "receipt:r11",
+        },
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_identity_transition",
+        lambda *_args, **_kwargs: {
+            "schema": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_SCHEMA
+            ),
+            "repair_head": r12_head,
+            "repair_tree": r12_tree,
+            "candidate_authorization_witness": r12_witness,
+            "receipt_cid": "receipt:r12",
+        },
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda witness, **_kwargs: observed_witnesses.append(witness),
+    )
+    monkeypatch.setattr(
+        aseh_operator.importlib.util,
+        "find_spec",
+        lambda _name: SimpleNamespace(origin="/sealed/_duckdb.so"),
+    )
+    pin = SimpleNamespace(
+        as_dict=lambda: dict(aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_PIN)
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "inspect_agent_supervisor_native_dependency_source",
+        lambda *_args, **_kwargs: pin,
+    )
+
+    def seal_native(
+        source: object,
+        *,
+        expected_pin: object,
+        accepted_authorization_id: str,
+    ) -> object:
+        sealed.append(
+            (source, expected_pin, accepted_authorization_id)
+        )
+        return launch
+
+    monkeypatch.setattr(
+        llm_router,
+        "seal_agent_supervisor_native_dependency",
+        seal_native,
+    )
+
+    assert aseh_operator._seal_r11_native_dependency(
+        paths=paths,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=r12_witness,
+        launch_admission=None,
+    ) is launch
+    assert observed_witnesses == [r12_witness, r12_witness]
+    assert sealed == [
+        (Path("/sealed/_duckdb.so"), pin, authorization_id)
+    ]
+
+    descendant_head = "6" * 40
+    descendant_tree = "7" * 40
+    descendant_witness = {
+        "head": descendant_head,
+        "tree": descendant_tree,
+    }
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args: "")
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="current candidate is not admitted",
+    ):
+        aseh_operator._seal_r11_native_dependency(
+            paths=paths,
+            candidate_head=descendant_head,
+            candidate_tree=descendant_tree,
+            candidate_authorization_witness=descendant_witness,
+            launch_admission=None,
+        )
+
+    descendant_admission = {
+        "runtime_source_head": descendant_head,
+        "runtime_repository_tree_id": descendant_tree,
+        "repair_transition": {
+            "schema": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_SCHEMA
+            ),
+            "repair_head": r12_head,
+            "repair_tree": r12_tree,
+            "receipt_cid": "receipt:r12",
+        },
+        "repair_transition_chain": [
+            {"receipt_cid": "receipt:r11"},
+            {"receipt_cid": "receipt:r12"},
+        ],
+        "canonical_continuity": {
+            "provider_cleanup_fence_to_sealed_owner_identity": {},
+            "repair_to_current": {},
+        },
+    }
+    assert aseh_operator._seal_r11_native_dependency(
+        paths=paths,
+        candidate_head=descendant_head,
+        candidate_tree=descendant_tree,
+        candidate_authorization_witness=descendant_witness,
+        launch_admission=descendant_admission,
+    ) is launch
+    assert observed_witnesses[-2:] == [
+        descendant_witness,
+        descendant_witness,
+    ]
+    assert sealed[-1] == (
+        Path("/sealed/_duckdb.so"),
+        pin,
+        authorization_id,
+    )
 
 
 def test_aseh_repair_provider_cleanup_fence_transition_binds_validation_identity(
@@ -6271,7 +6880,9 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
                 str(config),
                 "1",
                 "1.0",
-                configured_scheduler._identity(exact_environment),
+                aseh_operator._sealed_owner_delegation_environment_identity(
+                    qualification_home
+                ),
                 "92",
                 native_json,
                 "[]",
@@ -6285,6 +6896,18 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
         os.close(interpreter.descriptor)
         os.close(capsule_descriptor)
     assert result == 73
+    assert (
+        aseh_operator._sealed_owner_delegation_environment_identity(
+            qualification_home
+        )
+        == configured_scheduler._identity(exact_environment)
+    )
+    assert (
+        aseh_operator._sealed_owner_delegation_environment_identity(
+            qualification_home
+        )
+        != aseh_operator._identity(exact_environment)
+    )
     assert parent_fences == [
         {
             "expected_parent_pid": 123,
@@ -6359,6 +6982,13 @@ def test_aseh_failed_sealed_delegation_closes_fds_without_owner(
         aseh_operator,
         "_candidate_authorization_witness",
         lambda **_kwargs: {"stable": "yes"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args: (
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+        ),
     )
     monkeypatch.setattr(
         aseh_operator,
@@ -6595,7 +7225,7 @@ def test_aseh_sealed_owner_rechecks_candidate_before_owner_start(
         )
 
 
-def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_base(
+def test_aseh_r12_sealed_owner_identity_transition_is_active_admission_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -6610,6 +7240,8 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
     recovery_replay_path = tmp_path / "repair-r8.json"
     control_receipt_lifecycle_path = tmp_path / "repair-r9.json"
     provider_lease_ownership_path = tmp_path / "repair-r10.json"
+    provider_cleanup_fence_path = tmp_path / "repair-r11.json"
+    sealed_owner_identity_path = tmp_path / "repair-r12.json"
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
@@ -6623,6 +7255,8 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
         recovery_replay_path,
         control_receipt_lifecycle_path,
         provider_lease_ownership_path,
+        provider_cleanup_fence_path,
+        sealed_owner_identity_path,
         database_path,
     ):
         path.touch()
@@ -6650,6 +7284,12 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
         "repair_provider_lease_ownership_transition_receipt": (
             provider_lease_ownership_path
         ),
+        "repair_provider_cleanup_fence_transition_receipt": (
+            provider_cleanup_fence_path
+        ),
+        "repair_sealed_owner_identity_transition_receipt": (
+            sealed_owner_identity_path
+        ),
         "database": database_path,
     }
     bootstrap = {
@@ -6670,6 +7310,8 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
     r8_receipt = {"revision": 8}
     r9_receipt = {"revision": 9}
     r10_receipt = {"revision": 10}
+    r11_receipt = {"revision": 11}
+    r12_receipt = {"revision": 12}
     r3_head = aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
     r4_head = "4" * 40
     r5_head = "5" * 40
@@ -6677,9 +7319,15 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
     r7_head = "7" * 40
     r8_head = "8" * 40
     r9_head = "9" * 40
-    r10_head = "a" * 40
+    r10_head = (
+        aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+    )
+    r11_head = (
+        aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_BASE_HEAD
+    )
+    r12_head = "c" * 40
     population = {
-        "source_head": r10_head,
+        "source_head": r12_head,
         "repository_tree_id": "tree:runtime",
         "plan_root_cid": "plan:sealed",
         "source_forest": {"forest_cid": "forest:runtime"},
@@ -6743,6 +7391,21 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
         "transition_revision": 10,
         "receipt_cid": "receipt:r10",
     }
+    r11 = {
+        "base_head": r10_head,
+        "repair_head": r11_head,
+        "transition_revision": 11,
+        "receipt_cid": "receipt:r11",
+    }
+    r12 = {
+        "schema": (
+            aseh_operator.REPAIR_SEALED_OWNER_IDENTITY_TRANSITION_SCHEMA
+        ),
+        "base_head": r11_head,
+        "repair_head": r12_head,
+        "transition_revision": 12,
+        "receipt_cid": "receipt:r12",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
@@ -6755,6 +7418,8 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
         recovery_replay_path: r8_receipt,
         control_receipt_lifecycle_path: r9_receipt,
         provider_lease_ownership_path: r10_receipt,
+        provider_cleanup_fence_path: r11_receipt,
+        sealed_owner_identity_path: r12_receipt,
     }
     suffix_calls: list[tuple[str, str]] = []
 
@@ -6823,6 +7488,16 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_validate_repair_provider_cleanup_fence_transition",
+        lambda *_args, **_kwargs: r11,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_identity_transition",
+        lambda *_args, **_kwargs: r12,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_read_continuity_state",
         lambda *_args, **_kwargs: (
             {"projection_cid": "projection:current", "event_cursor": 79},
@@ -6861,12 +7536,12 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
         object(), {}, paths
     )
 
-    assert admission["repair_transition"] == r10
+    assert admission["repair_transition"] == r12
     assert [
         item.get("transition_revision", 1)
         for item in admission["repair_transition_chain"]
-    ] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    assert suffix_calls[-1] == (r10_head, r10_head)
+    ] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    assert suffix_calls[-1] == (r12_head, r12_head)
     assert admission["canonical_continuity"][
         "followup_to_clean_launch"
     ] == r3
@@ -6891,6 +7566,12 @@ def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_bas
     assert admission["canonical_continuity"][
         "control_receipt_lifecycle_to_provider_lease_ownership"
     ] == r10
+    assert admission["canonical_continuity"][
+        "provider_lease_ownership_to_provider_cleanup_fence"
+    ] == r11
+    assert admission["canonical_continuity"][
+        "provider_cleanup_fence_to_sealed_owner_identity"
+    ] == r12
 
 
 def test_aseh_repair_authorization_replay_rejects_head_regression(
