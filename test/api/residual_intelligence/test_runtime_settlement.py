@@ -14,6 +14,8 @@ from typing import Any
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     TASK_COMPLETION_PREPARATION_SCHEMA,
+    TASK_COMPLETION_REARM_EVENT,
+    TASK_COMPLETION_REARM_SCHEMA,
     DatabaseCoordinator,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
@@ -1038,6 +1040,75 @@ def test_runtime_settlement_rejects_unknown_execution_state(
     _insert_execution_attempt(runtime, status="paused")
 
     with pytest.raises(VRIFRuntimeSettlementError, match="unknown state"):
+        _read(runtime)
+
+
+def test_runtime_settlement_accepts_completion_rearm_event_and_rejects_unknown(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    attempt_id = _insert_execution_attempt(
+        runtime,
+        status="succeeded",
+        phase="complete",
+        finished_at_ms=2,
+    )
+    rearm_body = {
+        "schema": TASK_COMPLETION_REARM_SCHEMA,
+        "task_cid": "task:0",
+        "claim_id": "claim:0",
+        "attempt_id": attempt_id,
+        "prior_attempt_number": 1,
+        "lease_id": "lease:0",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "previous_control_revision": 3,
+        "previous_control_status": "completed",
+        "control_revision": 4,
+        "control_status": "retrying",
+        "control_cas_receipt_cid": "cid:control-rearm",
+        "control_cas_receipt_digest": "0" * 64,
+        "completion_digest": "1" * 64,
+        "ready": False,
+    }
+    with open_duckdb_connection(runtime.coordination_paths[0]) as connection:
+        connection.execute(
+            """
+            INSERT INTO lease_events(
+                event_id, lease_id, scope_key, event_type, fencing_token,
+                fence_epoch, observed_at_ms, body_json
+            ) VALUES ('lease-event:completion-rearm', 'lease:0', 'task:task:0',
+                      ?, 1, 1, 2, ?)
+            """,
+            [
+                TASK_COMPLETION_REARM_EVENT,
+                json.dumps(rearm_body, sort_keys=True, separators=(",", ":")),
+            ],
+        )
+
+    receipt = _read(runtime)
+
+    assert receipt["settled"] is True
+    assert validate_vrif_runtime_settlement_receipt(
+        receipt,
+        target_repository_id=_TARGET_REPOSITORY_ID,
+        target_branch=_TARGET_BRANCH,
+        owner_generation=7,
+    ) == receipt
+
+    with open_duckdb_connection(runtime.coordination_paths[0]) as connection:
+        connection.execute(
+            """
+            UPDATE lease_events
+            SET event_type = 'arbitrary_unknown_event'
+            WHERE event_id = 'lease-event:completion-rearm'
+            """
+        )
+
+    with pytest.raises(
+        VRIFRuntimeSettlementError,
+        match="lease_events.event_type contains an unknown value",
+    ):
         _read(runtime)
 
 

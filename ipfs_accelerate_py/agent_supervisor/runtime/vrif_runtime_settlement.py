@@ -212,6 +212,7 @@ _LEASE_EVENT_TYPES: Final[tuple[str, ...]] = (
     "task_claimed",
     "task_completion_prepared",
     "task_completion_promoted",
+    _coordination.TASK_COMPLETION_REARM_EVENT,
 )
 _MERGE_QUEUE_STATES: Final[tuple[str, ...]] = (
     "pending",
