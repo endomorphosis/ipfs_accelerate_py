@@ -67323,9 +67323,40 @@ class PortalImplementationDaemon:
             return ""
         if task is None:
             raise RuntimeError("launch execution route requires an exact task")
+
+        # A database-authoritative Portal attempt is deliberately rendered as
+        # a non-authoritative, single-task Markdown projection.  Parsing that
+        # private projection produces a projection-local Portal CID because
+        # its source path and bridge metadata differ from the canonical
+        # DuckDB task.  The bridge verifies the immutable projection and its
+        # exact ``Database task CID`` before binding the owner-admitted route,
+        # so recover that canonical identity only for the closed projection
+        # marker set.  Ordinary Portal boards continue to match their derived
+        # canonical CID directly.
+        projection_authority = self._task_metadata_value(
+            task,
+            "projection authority",
+        ).lower()
+        database_task_cid = self._task_metadata_value(task, "database task cid")
+        if projection_authority or database_task_cid:
+            projected_canonical_cid = self._task_metadata_value(
+                task,
+                "canonical task cid",
+            )
+            if (
+                projection_authority != "false"
+                or not database_task_cid
+                or projected_canonical_cid != database_task_cid
+            ):
+                raise RuntimeError(
+                    "Portal database projection has invalid launch task authority"
+                )
+            route_task_cid = database_task_cid
+        else:
+            route_task_cid = task.canonical_task_cid
         if (
             binding.get("task_alias") != task.task_id
-            or binding.get("task_cid") != task.canonical_task_cid
+            or binding.get("task_cid") != route_task_cid
         ):
             raise RuntimeError(
                 "Portal task differs from its launch execution-route binding"
