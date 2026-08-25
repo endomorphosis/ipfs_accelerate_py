@@ -7,8 +7,8 @@
     "bootstrap_admission_decision": "no_go",
     "items": [
       {
-        "blocker": "ipfs_datasets_py nested checkout differs from its reviewed root",
-        "class": "unclassified",
+        "blocker": "ipfs_accelerate_py nested checkout is dirty",
+        "class": "host_source_commit_required",
         "closing_task_ids": [
           "EAAEF-191"
         ]
@@ -87,12 +87,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:b9a7c9eb784bc398d4518379e1d5992b78c778b90040cd3e1224377277f626c3",
+  "receipt_cid": "sha256:0abd87fb551fcca5caa73881af4f8e9cbf7f70b5186ff2da299ee5062b794ae0",
   "receipt_name": "blocker_inventory.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
-  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
+  "source_head": "3b71940c9a565a0dc4292f295042de6a70789b32",
+  "source_tree": "a3762e2355fbffe8631255d4b921b552b7f69ff6",
   "supervisor_process_started": false,
   "task_id": "EAAEF-180"
 }

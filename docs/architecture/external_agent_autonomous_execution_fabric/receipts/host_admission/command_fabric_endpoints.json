@@ -4,7 +4,7 @@
   "decision": "admitted",
   "evidence": {
     "artifact": "signed_command_fabric_endpoints",
-    "artifact_cid": "sha256:5f718d422343bab7bbfed302e8682e746a79054b39bd176fdaf0001a4e95ec94",
+    "artifact_cid": "sha256:4e56be6ffb1f3a286ed2dada0b13c3e070a4bb3d90939bf4bf80a0d286bfd94f",
     "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/command-fabric-endpoints.json",
     "child_adapter_status": "admitted",
     "command_authorizer_endpoint": "unix:///run/user/1000/eaaef-cf/authorizer.sock",
@@ -23,12 +23,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:448cc3b97f764ce1b3e0f4e027b3f8a1bac01d1adfdc9a45c75e4582b0035174",
+  "receipt_cid": "sha256:3ef82825744e3d1fe01f40f217ad62156264e77ada7b73e55583dc9ec3787091",
   "receipt_name": "command_fabric_endpoints.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
-  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
+  "source_head": "3b71940c9a565a0dc4292f295042de6a70789b32",
+  "source_tree": "a3762e2355fbffe8631255d4b921b552b7f69ff6",
   "supervisor_process_started": false,
   "task_id": "EAAEF-188"
 }

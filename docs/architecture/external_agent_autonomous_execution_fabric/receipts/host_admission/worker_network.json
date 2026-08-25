@@ -4,7 +4,7 @@
   "decision": "admitted",
   "evidence": {
     "artifact": "worker_network_authorizations",
-    "artifact_cid": "sha256:4684f94cff48d254724cc8e9a70617fbd3fcbd16037469b1ce3bfe2b367c04c1",
+    "artifact_cid": "sha256:912ce37050f7b94ba7057c1da04e9b4fcb63c0c7ce9ef3beeb2d0aaf9cfd60fd",
     "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/worker-network-lanes.json",
     "child_propagation_status": "admitted",
     "configured_board_launch": false,
@@ -14,11 +14,11 @@
     "docker_network_internal": true,
     "independent_signature_present": true,
     "lane_ids": [
-      "sha256:279e24493ca10005710ffa33601476df67af30dc6f736cb2ee2d90229b31c28b",
-      "sha256:117f44c64b1ef6e1ad95fce019d451da7a383665f8bfb23385d572d4c0fb68b4",
-      "sha256:5e3ae613f5227fed99e450f6fc555b8e62ccbd2227ff54891c5c44800812e09d",
-      "sha256:3506446cb1b86b45cfa1b4a44c1981b6f7e1ed5e39bff018b26162015e356964",
-      "sha256:cf3ba9f0d49d3a01c785e1df42d655a77ff9a59e09dcd1af463d816356b26068"
+      "sha256:474ec24de9c3a81e5a7b0f30c68548874b468ffcca82c2285530471df0c091bd",
+      "sha256:e554e0c532cf1ec3aa1c52d4e6652b5c4347e854a8930286a36e0bd2bd49b5a3",
+      "sha256:7a06cf19668addf6d92a4fc45dcc49b10a7a7b7f6246abcefce65f4074ddf0ee",
+      "sha256:5ab7f64c49dc2972ef71bd35ed361fd2d94b38ff9ae0b1b9b5b72b1aed29f525",
+      "sha256:8b86d880198f59dcfe08defb68ed89e8b3bb3d98b764c9bbbd1a03e41831f888"
     ],
     "live_dispatch_claimed": false,
     "provider_did": "did:key:z6Mkt4Zfw3xDeBrN7rRuAM1DbEMuRBowWrRdzz7Guooz6yor",
@@ -31,12 +31,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:1e1afb713f9d3b4ceecca2b85ffebac20d58d2afd08d1fd361724a2efb1180eb",
+  "receipt_cid": "sha256:5f7ef6ea233e6b0d928cbd6a2d26cef065d764da504f3370fa6e6b6e4b558422",
   "receipt_name": "worker_network.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
-  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
+  "source_head": "3b71940c9a565a0dc4292f295042de6a70789b32",
+  "source_tree": "a3762e2355fbffe8631255d4b921b552b7f69ff6",
   "supervisor_process_started": false,
   "task_id": "EAAEF-187"
 }
