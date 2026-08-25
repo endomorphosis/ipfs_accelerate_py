@@ -8640,31 +8640,37 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         if not codex_fallback_command:
             bounded_command = cmd
             if docker_lease is not None:
-                bounded_command = _create_grok_container_and_build_start_command(
-                    cmd,
-                    workspace=workspace,
-                    sanitized_environment=grok_launch_env,
-                    docker_lease=docker_lease,
-                    network_profile=worker_network_profile,
-                    invocation_binding=route_plan.invocation_binding,
-                    qualified_worker_launch_authority=(
-                        worker_network_launch_authority
-                        if is_eaaef_route
-                        else None
-                    ),
-                    qualified_worker_execution_profile=(
-                        worker_container_execution_profile
-                        if is_eaaef_route
-                        else None
-                    ),
-                )
-                if is_eaaef_route:
-                    _reverify_qualified_grok_mount_boundary(
-                        launch_authority=worker_network_launch_authority,
-                        execution_profile=worker_container_execution_profile,
-                        create_command=cmd,
-                        workspace=workspace,
+                try:
+                    bounded_command = (
+                        _create_grok_container_and_build_start_command(
+                            cmd,
+                            workspace=workspace,
+                            sanitized_environment=grok_launch_env,
+                            docker_lease=docker_lease,
+                            network_profile=worker_network_profile,
+                            invocation_binding=route_plan.invocation_binding,
+                            qualified_worker_launch_authority=(
+                                worker_network_launch_authority
+                                if is_eaaef_route
+                                else None
+                            ),
+                            qualified_worker_execution_profile=(
+                                worker_container_execution_profile
+                                if is_eaaef_route
+                                else None
+                            ),
+                        )
                     )
+                    if is_eaaef_route:
+                        _reverify_qualified_grok_mount_boundary(
+                            launch_authority=worker_network_launch_authority,
+                            execution_profile=worker_container_execution_profile,
+                            create_command=cmd,
+                            workspace=workspace,
+                        )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 2
             child_returncode, error_bytes, error_size, error_overflow = (
                 _run_grok_with_bounded_stderr(
                     bounded_command,
@@ -8715,12 +8721,36 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             )
 
         try:
-            primary_returncode = _run_grok_with_typed_failure_capture(
-                cmd,
-                env=grok_launch_env,
-            )
+            if docker_lease is not None:
+                primary_returncode = (
+                    _run_created_grok_container_with_typed_failure_capture(
+                        cmd,
+                        docker_bin=docker_lease.docker_bin,
+                        docker_config=docker_lease.docker_config,
+                        cidfile=docker_lease.cidfile,
+                        workspace=workspace,
+                        env=grok_launch_env,
+                        network_profile=worker_network_profile,
+                        invocation_binding=route_plan.invocation_binding,
+                        qualified_worker_launch_authority=(
+                            worker_network_launch_authority
+                            if is_eaaef_route
+                            else None
+                        ),
+                        qualified_worker_execution_profile=(
+                            worker_container_execution_profile
+                            if is_eaaef_route
+                            else None
+                        ),
+                    )
+                )
+            else:
+                primary_returncode = _run_grok_with_typed_failure_capture(
+                    cmd,
+                    env=grok_launch_env,
+                )
             docker_run_finished = True
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)
             return 127
         if primary_returncode == 0:
