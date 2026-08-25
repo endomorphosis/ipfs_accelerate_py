@@ -651,6 +651,47 @@ def test_materialize_with_recovery_advances_failed_partial_namespace(
     assert cursor["process_started"] is False
 
 
+def test_materialize_with_recovery_advances_bare_generation_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = _config("state/run-v1")
+    monkeypatch.setattr(materializer, "ROOT", tmp_path)
+    generation = materializer._paths(config)["control"].parent
+    generation.parent.mkdir(parents=True)
+    generation.mkdir(mode=0o700)
+
+    assert materializer._namespace_state(config) == "failed_partial"
+    calls: list[str] = []
+
+    def fake_materialize(working):
+        calls.append(str(working["bootstrap_database_program"]["store_generation"]))
+        return {
+            "receipt_cid": "sha256:" + "a" * 64,
+            "process_started": False,
+            "source_head": "1" * 40,
+        }
+
+    receipt = materializer.materialize_with_recovery(
+        config,
+        materialize_fn=fake_materialize,
+    )
+
+    assert calls == ["eaaef-test-run-v2"]
+    assert generation.is_dir()
+    assert receipt["generation_recoveries"] == [
+        {
+            "from_generation": "eaaef-test-run-v1",
+            "to_generation": "eaaef-test-run-v2",
+            "namespace_state": "failed_partial",
+        }
+    ]
+    cursor = materializer._read_generation_cursor()
+    assert cursor is not None
+    assert cursor["active_generation"] == "eaaef-test-run-v2"
+    assert cursor["superseded_generation"] == "eaaef-test-run-v1"
+
+
 def test_launch_plan_attaches_unsigned_no_go_admission_statement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

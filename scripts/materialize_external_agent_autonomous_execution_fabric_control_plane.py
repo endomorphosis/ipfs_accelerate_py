@@ -17,6 +17,7 @@ import json
 import os
 import re
 import secrets
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1153,7 +1154,7 @@ def _namespace_state(config: Mapping[str, Any]) -> str:
             return "materialized"
         return "stale_materialized"
     if claim_path.is_file() or any(
-        path.exists() for path in _namespace_artifacts(config) if path != _paths(config)["control"].parent
+        path.exists() for path in _namespace_artifacts(config)
     ):
         return "failed_partial"
     return "fresh"
@@ -2750,13 +2751,14 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
     database_parent = paths["control"].parent
     try:
         database_parent.mkdir(parents=True, mode=0o700, exist_ok=False)
+        database_parent_info = database_parent.lstat()
     except OSError as exc:
         raise MaterializationError(
             "unable to create the private bootstrap database namespace"
         ) from exc
-    database_parent_info = database_parent.stat()
     if (
-        database_parent_info.st_uid != os.geteuid()
+        not stat.S_ISDIR(database_parent_info.st_mode)
+        or database_parent_info.st_uid != os.geteuid()
         or database_parent_info.st_mode & 0o077
     ):
         raise MaterializationError(
