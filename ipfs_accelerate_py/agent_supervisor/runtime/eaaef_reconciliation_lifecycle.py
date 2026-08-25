@@ -35,8 +35,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, Protocol, runtime_checkable
 
+from ..entrypoints.local_profile import (
+    LocalProfileTampered,
+    ed25519_public_key_from_did,
+)
 from ..planning.external_agent_plan_r2 import (
     ExternalAgentPlanR2Error,
+    plan_r2_operational_capability_signing_payload,
+    prepare_plan_r2_transition_approval,
     prepare_plan_r2_transition_authorization,
 )
 from ..task_sources.external_agent_state_repository import (
@@ -139,6 +145,9 @@ EAAEF_BOOTSTRAP_SNAPSHOT_SCHEMA: Final = (
 )
 EAAEF_UNSIGNED_AUTHORITY_REQUEST_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-unsigned-authority-request@1"
+)
+EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-plan-r2-signing-request@1"
 )
 EAAEF_STATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-reconciliation-generation-state@1"
@@ -464,6 +473,22 @@ def _canonical_bytes(value: Any) -> bytes:
 def _cid(value: Any) -> str:
     raw = value if isinstance(value, bytes) else _canonical_bytes(value)
     return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _require_ed25519_did(value: object, noun: str) -> str:
+    """Decode one Ed25519 DID while preserving the EAAEF typed error surface."""
+
+    if not isinstance(value, str):
+        raise EAAEFReconciliationIdentityError(
+            f"{noun} is not a valid Ed25519 did:key"
+        )
+    try:
+        ed25519_public_key_from_did(value)
+    except LocalProfileTampered as exc:
+        raise EAAEFReconciliationIdentityError(
+            f"{noun} is not a valid Ed25519 did:key"
+        ) from exc
+    return value
 
 
 def _eaaef_source_cid(value: Any) -> str:
@@ -2695,6 +2720,116 @@ def build_unsigned_fresh_plan_r2_statement(
     return statement
 
 
+def build_fresh_plan_r2_signing_request_projection(
+    *,
+    population: CompiledEAAEFPopulation,
+    bootstrap_snapshot: Mapping[str, Any],
+    operator_identity_did: str,
+    security_reviewer_identity_did: str,
+    capability_reviewer_identity_did: str,
+    issued_at_ms: int,
+    expires_at_ms: int,
+) -> dict[str, Any]:
+    """Project exact public signing payloads without authority effects.
+
+    This pure request boundary does not resolve an owner, keys, or trust roots;
+    sign, persist an artifact or state, run preflight or launch; or permit a
+    provider/supervisor birth.  The public CLI may perform only the preceding
+    sealed-source qualification: captured read-only Git children, the exact
+    isolated structural-validator child, and transient validator storage that
+    is removed before this function is entered.
+    """
+
+    stage_identities = tuple(
+        _require_ed25519_did(identity, noun)
+        for identity, noun in (
+            (operator_identity_did, "fresh Plan-R2 operator identity"),
+            (
+                security_reviewer_identity_did,
+                "fresh Plan-R2 security reviewer identity",
+            ),
+            (
+                capability_reviewer_identity_did,
+                "fresh Plan-R2 capability reviewer identity",
+            ),
+        )
+    )
+
+    statement = build_unsigned_fresh_plan_r2_statement(
+        population=population,
+        bootstrap_snapshot=bootstrap_snapshot,
+    )
+    owner_principal_did = _require_ed25519_did(
+        statement.get("owner_principal_did"),
+        "fresh Plan-R2 owner principal",
+    )
+    if (
+        len(set(stage_identities)) != len(stage_identities)
+        or owner_principal_did in stage_identities
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 signing identities are not independent exact did:key values"
+        )
+    try:
+        signing_payloads = {
+            "independent_operator": prepare_plan_r2_transition_approval(
+                statement,
+                role="independent_operator",
+                identity_did=operator_identity_did,
+                issued_at_ms=issued_at_ms,
+                expires_at_ms=expires_at_ms,
+            ),
+            "independent_security_reviewer": prepare_plan_r2_transition_approval(
+                statement,
+                role="independent_security_reviewer",
+                identity_did=security_reviewer_identity_did,
+                issued_at_ms=issued_at_ms,
+                expires_at_ms=expires_at_ms,
+            ),
+            "independent_plan_r2_capability_reviewer": (
+                plan_r2_operational_capability_signing_payload(
+                    statement,
+                    reviewer_identity_did=capability_reviewer_identity_did,
+                    issued_at_ms=issued_at_ms,
+                    expires_at_ms=expires_at_ms,
+                )
+            ),
+        }
+    except ExternalAgentPlanR2Error as exc:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 signing request cannot reuse the exact authority schemas"
+        ) from exc
+    value = {
+        "schema": EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA,
+        "stage": "transition_approvals_and_operational_capability",
+        "board_namespace": EAAEF_BOARD_NAMESPACE,
+        "source_head": population.source_head,
+        "source_tree": population.source_tree,
+        "source_forest_root": population.source_forest_root,
+        "statement_cid": statement["statement_cid"],
+        "unsigned_plan_r2_statement": statement,
+        "signing_payloads": signing_payloads,
+        "required_signature_fields": {
+            "independent_operator": "signature",
+            "independent_security_reviewer": "signature",
+            "independent_plan_r2_capability_reviewer": "reviewer_signature",
+        },
+        "deferred_external_signature": (
+            "independent_plan_r2_remote_transport_reviewer_after_signed_"
+            "authorization_and_operational_capability"
+        ),
+        "authority_valid": False,
+        "launch_allowed": False,
+        "trust_roots_read": False,
+        "signing_key_read": False,
+        "signature_created": False,
+        "authority_mutated": False,
+        "provider_process_started": False,
+    }
+    value["request_cid"] = _cid(value)
+    return value
+
+
 def build_unsigned_fresh_authority_request(
     *,
     population: CompiledEAAEFPopulation,
@@ -4215,6 +4350,27 @@ def _argument_parser() -> argparse.ArgumentParser:
         default="",
         help="Typed fresh-owner snapshot used to emit the actual unsigned Plan-R2 statement.",
     )
+    signing_request = commands.add_parser(
+        "signing-request",
+        help="Print exact public stage-one Plan-R2 signing payloads.",
+        description=(
+            "Print exact public stage-one Plan-R2 signing payloads after read-only "
+            "sealed-source qualification. Qualification may use captured Git children, "
+            "one exact isolated structural-validator child, and cleaned transient "
+            "storage; this command never resolves owners/keys/trust, signs, writes "
+            "durable artifacts/state, runs preflight/launch, or births providers/"
+            "supervisors."
+        ),
+    )
+    signing_request.add_argument("--bootstrap-snapshot", required=True)
+    signing_request.add_argument("--operator-identity-did", required=True)
+    signing_request.add_argument("--security-reviewer-identity-did", required=True)
+    signing_request.add_argument(
+        "--plan-r2-capability-reviewer-identity-did",
+        required=True,
+    )
+    signing_request.add_argument("--issued-at-ms", required=True, type=int)
+    signing_request.add_argument("--expires-at-ms", required=True, type=int)
     materialize = commands.add_parser(
         "materialize",
         help=(
@@ -4238,7 +4394,7 @@ def _argument_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the public ``preflight|materialize|launch|status|stop`` commands."""
+    """Run the public preflight, signing, materialization, and owner commands."""
 
     args = _argument_parser().parse_args(argv)
     try:
@@ -4266,6 +4422,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             _print_json(result)
             return 0 if result["valid"] else 2
+        if args.command == "signing-request":
+            selected_forest = inspect_current_repository_forest(repo_root)
+            sealed_forest = _require_sealed_forest(selected_forest)
+            _require_production_source_policy(repo_root, forest=selected_forest)
+            board = _json_object(repo_root / EAAEF_BOARD_PATH, noun="EAAEF task board")
+            population = compile_fresh_eaaef_population(
+                board,
+                forest=sealed_forest,
+                repo_root=repo_root,
+            )
+            result = build_fresh_plan_r2_signing_request_projection(
+                population=population,
+                bootstrap_snapshot=load_fresh_bootstrap_snapshot(
+                    args.bootstrap_snapshot
+                ),
+                operator_identity_did=args.operator_identity_did,
+                security_reviewer_identity_did=args.security_reviewer_identity_did,
+                capability_reviewer_identity_did=(
+                    args.plan_r2_capability_reviewer_identity_did
+                ),
+                issued_at_ms=args.issued_at_ms,
+                expires_at_ms=args.expires_at_ms,
+            )
+            _print_json(result)
+            return 0
         owner = resolve_production_reconciliation_owner(repo_root)
         if args.command == "status":
             _print_json(reconciliation_status(state_root=state_root, owner=owner))
@@ -4342,6 +4523,7 @@ __all__ = [
     "EAAEF_FOREST_SCHEMA",
     "EAAEF_GOAL_EDGE_COUNT",
     "EAAEF_GOAL_COUNT",
+    "EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA",
     "EAAEF_PLAN_R2_TASK_COUNT",
     "EAAEF_RECONCILIATION_OWNER_INTERFACE",
     "EAAEF_TASK_COUNT",
@@ -4350,6 +4532,7 @@ __all__ = [
     "VerifiedFreshEAAEFAuthority",
     "apply_plan_r2_through_existing_repository",
     "assemble_fresh_authority_bundle",
+    "build_fresh_plan_r2_signing_request_projection",
     "build_unsigned_fresh_authority_request",
     "build_unsigned_fresh_plan_r2_statement",
     "build_typed_owner_materialization_request",

@@ -22,6 +22,7 @@ Security invariants enforced here:
 from __future__ import annotations
 
 import base64
+import errno
 import fcntl
 import hashlib
 import hmac
@@ -550,13 +551,13 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     except OSError:
         return None
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
+        payload = json.loads(raw, object_pairs_hook=_json_duplicate_guard)
+    except (json.JSONDecodeError, ValueError):
         return None
     return payload if isinstance(payload, dict) else None
 
 
-def _mutation_duplicate_guard(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+def _json_duplicate_guard(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     value: dict[str, Any] = {}
     for key, item in pairs:
         if key in value:
@@ -581,7 +582,7 @@ def _read_bounded_canonical_json(path: Path) -> dict[str, Any]:
     if len(raw) > QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES:
         raise QuackStateServerMutationError("request_too_large")
     try:
-        payload = json.loads(raw, object_pairs_hook=_mutation_duplicate_guard)
+        payload = json.loads(raw, object_pairs_hook=_json_duplicate_guard)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise QuackStateServerMutationError("request_not_canonical_json") from exc
     if not isinstance(payload, dict):
@@ -616,7 +617,7 @@ def _canonical_object(text: object, *, code: str) -> dict[str, Any]:
     if not isinstance(text, str) or len(text.encode("utf-8")) > QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES:
         raise QuackStateServerMutationError(code)
     try:
-        value = json.loads(text, object_pairs_hook=_mutation_duplicate_guard)
+        value = json.loads(text, object_pairs_hook=_json_duplicate_guard)
     except (json.JSONDecodeError, ValueError) as exc:
         raise QuackStateServerMutationError(code) from exc
     if not isinstance(value, dict) or canonical_json_bytes(value) != text.encode("utf-8"):
@@ -1313,15 +1314,106 @@ class OwnerMarker:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> OwnerMarker:
-        birth = ProcessBirthIdentity.from_dict(payload.get("process_birth"))
-        return cls(
-            server_id=str(payload.get("server_id") or ""),
-            process_birth=birth,
-            database_path=str(payload.get("database_path") or ""),
-            started_at=str(payload.get("started_at") or ""),
-            fence_token=str(payload.get("fence_token") or ""),
-            generation=int(payload.get("generation") or 1),
+        if not isinstance(payload, Mapping) or set(payload) != _OWNER_MARKER_FIELDS:
+            raise ValueError("owner marker fields are not exact")
+        if payload.get("schema") != cls.SCHEMA:
+            raise ValueError("owner marker schema is not current")
+        for name in (
+            "server_id",
+            "database_path",
+            "started_at",
+            "fence_token",
+        ):
+            if type(payload.get(name)) is not str or not payload[name]:
+                raise ValueError(f"owner marker {name} must be a non-empty string")
+        generation = payload.get("generation")
+        if type(generation) is not int or generation < 1:
+            raise ValueError("owner marker generation must be a positive integer")
+        birth_payload = payload.get("process_birth")
+        if (
+            not isinstance(birth_payload, Mapping)
+            or set(birth_payload) != _OWNER_MARKER_PROCESS_BIRTH_FIELDS
+        ):
+            raise ValueError("owner marker process_birth fields are not exact")
+        for name in ("pid", "start_time_ticks", "parent_pid"):
+            if type(birth_payload.get(name)) is not int:
+                raise ValueError(
+                    f"owner marker process_birth.{name} must be an integer"
+                )
+        if birth_payload["pid"] <= 0:
+            raise ValueError("owner marker process_birth.pid must be positive")
+        if birth_payload["start_time_ticks"] < 0:
+            raise ValueError(
+                "owner marker process_birth.start_time_ticks must be non-negative"
+            )
+        if birth_payload["parent_pid"] < 0:
+            raise ValueError(
+                "owner marker process_birth.parent_pid must be non-negative"
+            )
+        if type(birth_payload.get("boot_id")) is not str:
+            raise ValueError("owner marker process_birth.boot_id must be a string")
+        birth = ProcessBirthIdentity(
+            pid=birth_payload["pid"],
+            start_time_ticks=birth_payload["start_time_ticks"],
+            boot_id=birth_payload["boot_id"],
+            parent_pid=birth_payload["parent_pid"],
         )
+        return cls(
+            server_id=payload["server_id"],
+            process_birth=birth,
+            database_path=payload["database_path"],
+            started_at=payload["started_at"],
+            fence_token=payload["fence_token"],
+            generation=generation,
+        )
+
+
+_OWNER_MARKER_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "server_id",
+        "process_birth",
+        "database_path",
+        "started_at",
+        "fence_token",
+        "generation",
+    }
+)
+_OWNER_MARKER_PROCESS_BIRTH_FIELDS: Final = frozenset(
+    {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+)
+_OWNER_MARKER_MAX_BYTES: Final[int] = 64 * 1024
+
+
+def _seal_owner_lease_path(value: Path, *, noun: str) -> Path:
+    """Return one absolute canonical path and reject every symlink alias."""
+
+    lexical = Path(os.path.abspath(os.fspath(Path(value).expanduser())))
+    resolved = lexical.resolve(strict=False)
+    if resolved != lexical:
+        raise QuackStateServerOwnershipError(
+            f"{noun} must be an exact sealed path without symlink aliases"
+        )
+    return resolved
+
+
+class _ExclusiveOwnerLeaseState:
+    """Mutable lease state shared by every shallow alias of one authority."""
+
+    def __init__(self) -> None:
+        self.gate = threading.RLock()
+        self.authority_token = object()
+        self.phase = "new"
+        self.parent_fd: int | None = None
+        self.lock_fd: int | None = None
+        self.marker: OwnerMarker | None = None
+        self.fence_token = ""
+        self.owner_process_birth: ProcessBirthIdentity | None = None
+        # Separate cleanup/rebind authority from the globally one-shot
+        # offline-writer -> state-owner binding gate.  A fresh receiver must
+        # retain cleanup authority, but it must never become transfer-eligible
+        # again merely because its authority token is current.
+        self.state_owner_bound = False
 
 
 class ExclusiveOwnerLease:
@@ -1334,39 +1426,471 @@ class ExclusiveOwnerLease:
         marker_path: Path,
         liveness: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
     ) -> None:
-        self.lock_path = Path(lock_path)
-        self.marker_path = Path(marker_path)
+        self.lock_path = _seal_owner_lease_path(lock_path, noun="owner lock path")
+        self.marker_path = _seal_owner_lease_path(
+            marker_path, noun="owner marker path"
+        )
+        if self.lock_path == self.marker_path:
+            raise QuackStateServerOwnershipError(
+                "owner lock and marker require distinct sealed paths"
+            )
+        if self.lock_path.parent != self.marker_path.parent:
+            raise QuackStateServerOwnershipError(
+                "owner lock and marker must share one sealed directory"
+            )
         self._liveness = liveness or (lambda birth: owner_liveness(birth))
-        self._handle: Any | None = None
-        self._marker: OwnerMarker | None = None
-        self._fence_token: str = ""
+        self._state = _ExclusiveOwnerLeaseState()
+        self._authority_token = self._state.authority_token
+
+    @classmethod
+    def _receive_transfer(
+        cls,
+        source: ExclusiveOwnerLease,
+        *,
+        authority_token: object,
+    ) -> ExclusiveOwnerLease:
+        receiver = object.__new__(cls)
+        receiver.lock_path = source.lock_path
+        receiver.marker_path = source.marker_path
+        receiver._liveness = source._liveness
+        receiver._state = source._state
+        receiver._authority_token = authority_token
+        return receiver
+
+    def _has_authority_locked(self) -> bool:
+        return self._authority_token is self._state.authority_token
+
+    def _require_authority_locked(self) -> None:
+        if not self._has_authority_locked():
+            raise QuackStateServerOwnershipError(
+                "owner lease authority was already transferred"
+            )
+
+    def _owning_process_matches_locked(self) -> bool:
+        expected = self._state.owner_process_birth
+        if expected is None:
+            return False
+        try:
+            current = current_process_birth()
+        except (OSError, RuntimeError, ValueError):
+            return False
+        return bool(
+            current.pid == expected.pid
+            and (
+                not expected.start_time_ticks
+                or current.start_time_ticks == expected.start_time_ticks
+            )
+            and (
+                not expected.boot_id
+                or not current.boot_id
+                or current.boot_id == expected.boot_id
+            )
+        )
+
+    def _require_owning_process_locked(self) -> None:
+        self._require_authority_locked()
+        if not self._owning_process_matches_locked():
+            raise QuackStateServerOwnershipError(
+                "owner lease authority belongs to a different process birth"
+            )
+
+    def _parent_path_matches_locked(self) -> bool:
+        parent_fd = self._state.parent_fd
+        if parent_fd is None:
+            return False
+        try:
+            if (
+                _seal_owner_lease_path(
+                    self.lock_path.parent,
+                    noun="owner lease directory",
+                )
+                != self.lock_path.parent
+            ):
+                return False
+            held = os.fstat(parent_fd)
+            current = os.stat(self.lock_path.parent, follow_symlinks=False)
+        except (OSError, QuackStateServerOwnershipError):
+            return False
+        return (
+            stat.S_ISDIR(held.st_mode)
+            and stat.S_ISDIR(current.st_mode)
+            and (held.st_dev, held.st_ino) == (current.st_dev, current.st_ino)
+        )
+
+    def _lock_path_matches_locked(self) -> bool:
+        parent_fd = self._state.parent_fd
+        lock_fd = self._state.lock_fd
+        if parent_fd is None or lock_fd is None or not self._parent_path_matches_locked():
+            return False
+        try:
+            held = os.fstat(lock_fd)
+            current = os.stat(
+                self.lock_path.name,
+                dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+        except OSError:
+            return False
+        return (
+            stat.S_ISREG(held.st_mode)
+            and stat.S_ISREG(current.st_mode)
+            and held.st_nlink == 1
+            and current.st_nlink == 1
+            and (held.st_dev, held.st_ino) == (current.st_dev, current.st_ino)
+        )
+
+    def _read_marker_locked(self) -> tuple[str, OwnerMarker | None]:
+        parent_fd = self._state.parent_fd
+        if parent_fd is None:
+            return "invalid", None
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+            os, "O_NOFOLLOW", 0
+        )
+        try:
+            descriptor = os.open(self.marker_path.name, flags, dir_fd=parent_fd)
+        except FileNotFoundError:
+            return "missing", None
+        except OSError:
+            return "invalid", None
+        raw: bytearray | None = None
+        try:
+            info = os.fstat(descriptor)
+            current = os.stat(
+                self.marker_path.name,
+                dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+            if (
+                stat.S_ISREG(info.st_mode)
+                and stat.S_ISREG(current.st_mode)
+                and info.st_nlink == 1
+                and current.st_nlink == 1
+                and (info.st_dev, info.st_ino)
+                == (current.st_dev, current.st_ino)
+                and 0 < info.st_size <= _OWNER_MARKER_MAX_BYTES
+            ):
+                initial_signature = (
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_size,
+                    info.st_mtime_ns,
+                    info.st_ctime_ns,
+                )
+                candidate = bytearray()
+                while len(candidate) <= _OWNER_MARKER_MAX_BYTES:
+                    chunk = os.read(
+                        descriptor,
+                        min(
+                            8192,
+                            _OWNER_MARKER_MAX_BYTES + 1 - len(candidate),
+                        ),
+                    )
+                    if not chunk:
+                        break
+                    candidate.extend(chunk)
+                final_info = os.fstat(descriptor)
+                final_current = os.stat(
+                    self.marker_path.name,
+                    dir_fd=parent_fd,
+                    follow_symlinks=False,
+                )
+                final_signature = (
+                    final_info.st_dev,
+                    final_info.st_ino,
+                    final_info.st_size,
+                    final_info.st_mtime_ns,
+                    final_info.st_ctime_ns,
+                )
+                if (
+                    len(candidate) <= _OWNER_MARKER_MAX_BYTES
+                    and len(candidate) == final_info.st_size
+                    and initial_signature == final_signature
+                    and stat.S_ISREG(final_current.st_mode)
+                    and final_info.st_nlink == 1
+                    and final_current.st_nlink == 1
+                    and (final_info.st_dev, final_info.st_ino)
+                    == (final_current.st_dev, final_current.st_ino)
+                ):
+                    raw = candidate
+        except OSError:
+            raw = None
+        finally:
+            try:
+                os.close(descriptor)
+            except OSError:
+                raw = None
+        if raw is None:
+            return "invalid", None
+        try:
+            payload = json.loads(
+                bytes(raw).decode("utf-8"),
+                object_pairs_hook=_json_duplicate_guard,
+            )
+            if (
+                not isinstance(payload, dict)
+                or set(payload) != _OWNER_MARKER_FIELDS
+                or payload.get("schema") != OWNER_MARKER_SCHEMA
+            ):
+                return "invalid", None
+            marker = OwnerMarker.from_dict(payload)
+        except (KeyError, TypeError, UnicodeError, ValueError, json.JSONDecodeError):
+            return "invalid", None
+        if (
+            not marker.server_id
+            or type(marker.process_birth) is not ProcessBirthIdentity
+            or marker.process_birth.pid <= 0
+            or not marker.database_path
+            or not marker.started_at
+            or not marker.fence_token
+            or marker.generation < 1
+        ):
+            return "invalid", None
+        return "ok", marker
+
+    def _write_marker_locked(
+        self,
+        marker: OwnerMarker,
+        *,
+        expected: OwnerMarker | None,
+    ) -> None:
+        parent_fd = self._state.parent_fd
+        if parent_fd is None or not self._lock_path_matches_locked():
+            raise QuackStateServerOwnershipError(
+                "owner lease lock path changed before marker publication"
+            )
+        status, current = self._read_marker_locked()
+        if (expected is None and status != "missing") or (
+            expected is not None and (status != "ok" or current != expected)
+        ):
+            raise QuackStateServerOwnershipError(
+                "owner lease marker changed before publication"
+            )
+
+        raw = (
+            json.dumps(
+                marker.to_dict(),
+                sort_keys=True,
+                indent=2,
+                separators=(",", ": "),
+            )
+            + "\n"
+        ).encode("utf-8")
+        temporary = (
+            f".{self.marker_path.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}"
+        )
+        descriptor: int | None = None
+        try:
+            flags = (
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            descriptor = os.open(temporary, flags, 0o600, dir_fd=parent_fd)
+            temporary_info = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(temporary_info.st_mode)
+                or temporary_info.st_nlink != 1
+            ):
+                raise QuackStateServerOwnershipError(
+                    "owner marker temporary is not one exact regular file"
+                )
+            view = memoryview(raw)
+            written = 0
+            while written < len(view):
+                count = os.write(descriptor, view[written:])
+                if count <= 0:
+                    raise OSError("owner marker write made no progress")
+                written += count
+            os.fsync(descriptor)
+            os.close(descriptor)
+            descriptor = None
+
+            # Refuse a marker/path substitution that raced the temporary write.
+            status, current = self._read_marker_locked()
+            if (expected is None and status != "missing") or (
+                expected is not None and (status != "ok" or current != expected)
+            ):
+                raise QuackStateServerOwnershipError(
+                    "owner lease marker changed during publication"
+                )
+            if not self._lock_path_matches_locked():
+                raise QuackStateServerOwnershipError(
+                    "owner lease lock path changed during marker publication"
+                )
+            os.replace(
+                temporary,
+                self.marker_path.name,
+                src_dir_fd=parent_fd,
+                dst_dir_fd=parent_fd,
+            )
+            os.fsync(parent_fd)
+            status, observed = self._read_marker_locked()
+            if (
+                status != "ok"
+                or observed != marker
+                or not self._lock_path_matches_locked()
+            ):
+                raise QuackStateServerOwnershipError(
+                    "owner lease marker publication was not corroborated"
+                )
+        finally:
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+            try:
+                os.unlink(temporary, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+
+    def _unlink_exact_marker_locked(self, expected: OwnerMarker) -> None:
+        parent_fd = self._state.parent_fd
+        if parent_fd is None:
+            raise QuackStateServerControlError(
+                "owner marker directory is unavailable during release"
+            )
+        status, current = self._read_marker_locked()
+        if status != "ok" or current != expected:
+            raise QuackStateServerControlError(
+                "owner marker changed before fenced release"
+            )
+        os.unlink(self.marker_path.name, dir_fd=parent_fd)
+        os.fsync(parent_fd)
+
+    def _close_descriptors_locked(self) -> list[str]:
+        failures: list[str] = []
+        lock_fd = self._state.lock_fd
+        if lock_fd is not None:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            except OSError as exc:
+                failures.append(f"unlock:{exc.errno}")
+            try:
+                os.close(lock_fd)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    failures.append(f"lock_close:{exc.errno}")
+                else:
+                    self._state.lock_fd = None
+            else:
+                self._state.lock_fd = None
+        parent_fd = self._state.parent_fd
+        if self._state.lock_fd is None and parent_fd is not None:
+            try:
+                os.close(parent_fd)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    failures.append(f"directory_close:{exc.errno}")
+                else:
+                    self._state.parent_fd = None
+            else:
+                self._state.parent_fd = None
+        if self._state.lock_fd is None:
+            self._state.phase = "released"
+            self._state.owner_process_birth = None
+        return failures
+
+    def _discard_inherited_descriptors_locked(self) -> list[str]:
+        """Close fork-inherited descriptors without unlocking the parent flock."""
+
+        failures: list[str] = []
+        lock_fd = self._state.lock_fd
+        if lock_fd is not None:
+            try:
+                # An explicit LOCK_UN on a fork-duplicated open-file
+                # description would unlock the parent's lease too.  Closing
+                # only this process's descriptor leaves the parent authority
+                # intact until its own final release.
+                os.close(lock_fd)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    failures.append(f"inherited_lock_close:{exc.errno}")
+                else:
+                    self._state.lock_fd = None
+            else:
+                self._state.lock_fd = None
+        parent_fd = self._state.parent_fd
+        if self._state.lock_fd is None and parent_fd is not None:
+            try:
+                os.close(parent_fd)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    failures.append(f"inherited_directory_close:{exc.errno}")
+                else:
+                    self._state.parent_fd = None
+            else:
+                self._state.parent_fd = None
+        if self._state.lock_fd is None:
+            self._state.phase = "fork-invalid"
+            self._state.owner_process_birth = None
+            self._state.authority_token = object()
+        return failures
 
     @property
     def fence_token(self) -> str:
-        return self._fence_token
+        with self._state.gate:
+            if not self._has_authority_locked() or self._state.phase != "held":
+                return ""
+            if not self._owning_process_matches_locked():
+                return ""
+            return self._state.fence_token
 
     @property
     def marker(self) -> OwnerMarker | None:
-        return self._marker
+        with self._state.gate:
+            if not self._has_authority_locked() or self._state.phase != "held":
+                return None
+            if not self._owning_process_matches_locked():
+                return None
+            return self._state.marker
 
     @property
     def held(self) -> bool:
         """Whether this object still owns the live OS lease and fence."""
 
-        return (
-            self._handle is not None
-            and self._marker is not None
-            and bool(self._fence_token)
-        )
+        with self._state.gate:
+            if (
+                not self._has_authority_locked()
+                or self._state.phase != "held"
+                or not self._owning_process_matches_locked()
+                or self._state.marker is None
+                or not self._state.fence_token
+                or not self._lock_path_matches_locked()
+            ):
+                return False
+            status, current = self._read_marker_locked()
+            return status == "ok" and current == self._state.marker
 
-    def _read_marker(self) -> OwnerMarker | None:
-        payload = _read_json(self.marker_path)
-        if payload is None:
-            return None
-        try:
-            return OwnerMarker.from_dict(payload)
-        except (TypeError, ValueError, KeyError):
-            return None
+    def _corroborated_marker(self) -> OwnerMarker | None:
+        with self._state.gate:
+            if (
+                not self._has_authority_locked()
+                or self._state.phase != "held"
+                or not self._owning_process_matches_locked()
+                or self._state.marker is None
+                or not self._lock_path_matches_locked()
+            ):
+                return None
+            status, current = self._read_marker_locked()
+            if status != "ok" or current != self._state.marker:
+                return None
+            return current
+
+    @property
+    def _lock_open(self) -> bool:
+        with self._state.gate:
+            if self._state.lock_fd is None:
+                return False
+            try:
+                os.fstat(self._state.lock_fd)
+            except OSError:
+                return False
+            return True
 
     def acquire(
         self,
@@ -1376,86 +1900,345 @@ class ExclusiveOwnerLease:
         database_path: Path,
         generation: int = 1,
     ) -> OwnerMarker:
-        if self._handle is not None:
-            raise QuackStateServerOwnershipError("owner lease already held in-process")
+        with self._state.gate:
+            self._require_authority_locked()
+            if self._state.phase != "new":
+                raise QuackStateServerOwnershipError(
+                    "owner lease is one-shot and was already used"
+                )
+            if (
+                not server_id
+                or type(process_birth) is not ProcessBirthIdentity
+                or isinstance(generation, bool)
+                or int(generation) < 1
+            ):
+                raise QuackStateServerOwnershipError(
+                    "owner lease acquisition identity is invalid"
+                )
+            sealed_database = _seal_owner_lease_path(
+                database_path, noun="owner database path"
+            )
+            if sealed_database.parent != self.lock_path.parent:
+                raise QuackStateServerOwnershipError(
+                    "owner database and lease paths must share one sealed directory"
+                )
 
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        handle = self.lock_path.open("a+b")
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            handle.close()
-            existing = self._read_marker()
-            holder = existing.server_id if existing else "unknown"
+            _seal_owner_lease_path(
+                self.lock_path.parent,
+                noun="owner lease directory",
+            )
+            self._state.owner_process_birth = current_process_birth()
+            self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+            _seal_owner_lease_path(
+                self.lock_path.parent,
+                noun="owner lease directory",
+            )
+            parent_flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            try:
+                self._state.parent_fd = os.open(
+                    self.lock_path.parent, parent_flags
+                )
+                if not self._parent_path_matches_locked():
+                    raise QuackStateServerOwnershipError(
+                        "owner lease directory identity changed during open"
+                    )
+                lock_flags = (
+                    os.O_RDWR
+                    | os.O_CREAT
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                )
+                self._state.lock_fd = os.open(
+                    self.lock_path.name,
+                    lock_flags,
+                    0o600,
+                    dir_fd=self._state.parent_fd,
+                )
+                if not self._lock_path_matches_locked():
+                    raise QuackStateServerOwnershipError(
+                        "owner lock pathname differs from its open inode"
+                    )
+                try:
+                    fcntl.flock(
+                        self._state.lock_fd,
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+                except BlockingIOError as exc:
+                    status, existing = self._read_marker_locked()
+                    holder = (
+                        existing.server_id
+                        if status == "ok" and existing is not None
+                        else "unknown"
+                    )
+                    raise QuackStateServerOwnershipError(
+                        "second state-owner refused; exclusive lock held by "
+                        + holder
+                    ) from exc
+
+                if not self._lock_path_matches_locked():
+                    raise QuackStateServerOwnershipError(
+                        "owner lock pathname changed after flock"
+                    )
+                status, existing = self._read_marker_locked()
+                if status == "invalid":
+                    raise QuackStateServerOwnershipError(
+                        "state-owner marker is not a regular exact object"
+                    )
+                if existing is not None and existing.process_birth.pid > 0:
+                    liveness = self._liveness(existing.process_birth)
+                    if liveness is OwnerLiveness.ALIVE:
+                        raise QuackStateServerOwnershipError(
+                            "second state-owner refused; live owner "
+                            f"{existing.server_id} pid={existing.process_birth.pid}"
+                        )
+                    if liveness is OwnerLiveness.UNKNOWN:
+                        raise QuackStateServerOwnershipError(
+                            "state-owner marker liveness is unknown; refuse reclaim"
+                        )
+
+                fence = secrets.token_hex(16)
+                marker = OwnerMarker(
+                    server_id=server_id,
+                    process_birth=process_birth,
+                    database_path=str(sealed_database),
+                    started_at=_utc_iso(),
+                    fence_token=fence,
+                    generation=int(generation),
+                )
+                self._write_marker_locked(marker, expected=existing)
+                self._state.marker = marker
+                self._state.fence_token = fence
+                self._state.phase = "held"
+                return marker
+            except Exception:
+                self._close_descriptors_locked()
+                if self._state.phase == "released":
+                    # An acquisition failure before authority publication may
+                    # be retried with this exact still-untransferred wrapper.
+                    self._state.phase = "new"
+                    self._state.owner_process_birth = None
+                raise
+
+    def _transfer_to_state_owner(
+        self,
+        *,
+        lock_path: Path,
+        marker_path: Path,
+        expected_server_id: str,
+        server_id: str,
+        process_birth: ProcessBirthIdentity,
+        database_path: Path,
+        generation: int,
+    ) -> ExclusiveOwnerLease:
+        """Consume caller authority and return one server-only lease wrapper."""
+
+        with self._state.gate:
+            self._require_owning_process_locked()
+            if (
+                self._state.phase != "held"
+                or self._state.state_owner_bound
+                or self.lock_path != Path(lock_path)
+                or self.marker_path != Path(marker_path)
+                or not self._lock_path_matches_locked()
+            ):
+                raise QuackStateServerOwnershipError(
+                    "owner lease is already state-owner bound or its handoff "
+                    "paths/lock identity differ"
+                )
+            # Allocate the receiver and its token before the marker CAS.  Once
+            # the marker changes, only non-raising shared-state assignments
+            # remain, so eligibility and authority cannot diverge after a
+            # successfully published server binding.
+            new_authority = object()
+            receiver = self._receive_transfer(
+                self,
+                authority_token=new_authority,
+            )
+            rebound = self._rebind_held_marker_locked(
+                expected_server_id=expected_server_id,
+                server_id=server_id,
+                process_birth=process_birth,
+                database_path=database_path,
+                generation=generation,
+            )
+            # This transition is protected by the shared gate and is never
+            # reversed by release, generation rebind, wrapper transfer, or
+            # cleanup.  Every existing/future wrapper observes the same bit.
+            self._state.state_owner_bound = True
+            self._state.authority_token = new_authority
+            self._state.marker = rebound
+            return receiver
+
+    def _bind_new_state_owner(self) -> None:
+        """Irreversibly close transfer eligibility for a normal server start."""
+
+        with self._state.gate:
+            self._require_owning_process_locked()
+            if (
+                self._state.phase != "held"
+                or self._state.state_owner_bound
+                or self._state.marker is None
+                or not self._lock_path_matches_locked()
+            ):
+                raise QuackStateServerOwnershipError(
+                    "owner lease cannot enter state-owner binding"
+                )
+            status, current = self._read_marker_locked()
+            if status != "ok" or current != self._state.marker:
+                raise QuackStateServerOwnershipError(
+                    "owner lease marker differs before state-owner binding"
+                )
+            self._state.state_owner_bound = True
+
+    def _rebind_held_marker(
+        self,
+        *,
+        expected_server_id: str,
+        server_id: str,
+        process_birth: ProcessBirthIdentity,
+        database_path: Path,
+        generation: int,
+    ) -> OwnerMarker:
+        """Rebind one held marker without releasing its OS lease or fence.
+
+        This is the narrow same-process handoff used when a bounded offline
+        writer has closed its database connection and the long-lived state
+        owner takes over.  Exact object state and the on-disk marker must still
+        agree; a forked child, copied marker, wrong database, or replaced fence
+        fails closed before owner startup can reach capability admission,
+        migration, or a database open.
+        """
+
+        with self._state.gate:
+            self._require_owning_process_locked()
+            if not self._state.state_owner_bound:
+                raise QuackStateServerOwnershipError(
+                    "owner generation rebind requires a bound state owner"
+                )
+            return self._rebind_held_marker_locked(
+                expected_server_id=expected_server_id,
+                server_id=server_id,
+                process_birth=process_birth,
+                database_path=database_path,
+                generation=generation,
+            )
+
+    def _rebind_held_marker_locked(
+        self,
+        *,
+        expected_server_id: str,
+        server_id: str,
+        process_birth: ProcessBirthIdentity,
+        database_path: Path,
+        generation: int,
+    ) -> OwnerMarker:
+        retained = self._state.marker
+        if (
+            self._state.phase != "held"
+            or retained is None
+            or not self._state.fence_token
+            or not expected_server_id
+            or not server_id
+            or type(process_birth) is not ProcessBirthIdentity
+            or isinstance(generation, bool)
+            or int(generation) < 1
+        ):
             raise QuackStateServerOwnershipError(
-                f"second state-owner refused; exclusive lock held by {holder}"
-            ) from exc
+                "owner lease handoff identity is invalid"
+            )
 
-        # Lock held: evaluate marker for live vs stale owner.
-        existing = self._read_marker()
-        if existing is not None and existing.process_birth.pid > 0:
-            liveness = self._liveness(existing.process_birth)
-            if liveness is OwnerLiveness.ALIVE:
-                # Another process holds the semantic owner even if we raced the lock.
-                # Release and fail closed.
-                try:
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-                finally:
-                    handle.close()
-                raise QuackStateServerOwnershipError(
-                    f"second state-owner refused; live owner "
-                    f"{existing.server_id} pid={existing.process_birth.pid}"
-                )
-            if liveness is OwnerLiveness.UNKNOWN:
-                try:
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-                finally:
-                    handle.close()
-                raise QuackStateServerOwnershipError(
-                    "state-owner marker liveness is unknown; refuse reclaim"
-                )
-            # DEAD: stale marker recovery continues under our exclusive lock.
+        status, current = self._read_marker_locked()
+        if (
+            not self._lock_path_matches_locked()
+            or status != "ok"
+            or current is None
+            or current != retained
+            or retained.server_id != expected_server_id
+            or retained.fence_token != self._state.fence_token
+            or retained.process_birth != process_birth
+            or retained.database_path != str(Path(database_path))
+        ):
+            raise QuackStateServerOwnershipError(
+                "owner lease handoff differs from the held marker"
+            )
 
-        fence = secrets.token_hex(16)
-        marker = OwnerMarker(
+        rebound = OwnerMarker(
             server_id=server_id,
             process_birth=process_birth,
-            database_path=str(database_path),
-            started_at=_utc_iso(),
-            fence_token=fence,
+            database_path=retained.database_path,
+            # Preserve the lease birth time and fence: their continuity is the
+            # evidence that no unlock/relock window occurred during handoff.
+            started_at=retained.started_at,
+            fence_token=retained.fence_token,
             generation=int(generation),
         )
-        _atomic_write_json(self.marker_path, marker.to_dict(), mode=0o600)
-        self._handle = handle
-        self._marker = marker
-        self._fence_token = fence
-        return marker
+        self._write_marker_locked(rebound, expected=retained)
+        self._state.marker = rebound
+        return rebound
 
     def release(self, *, fence_token: str | None = None) -> None:
-        if self._handle is None:
-            return
-        expected = fence_token if fence_token is not None else self._fence_token
-        current = self._read_marker()
-        if current is not None and expected and current.fence_token != expected:
-            raise QuackStateServerControlError(
-                "stop fence token does not match owner marker"
+        with self._state.gate:
+            self._require_authority_locked()
+            if self._state.lock_fd is None:
+                return
+            if not self._owning_process_matches_locked():
+                failures = self._discard_inherited_descriptors_locked()
+                detail = "" if not failures else ":" + ",".join(failures)
+                raise QuackStateServerOwnershipError(
+                    "owner lease release refused a different process birth"
+                    + detail
+                )
+            expected = (
+                fence_token
+                if fence_token is not None
+                else self._state.fence_token
             )
-        try:
-            if current is not None and (
-                not expected or current.fence_token == expected
-            ):
-                try:
-                    self.marker_path.unlink()
-                except FileNotFoundError:
-                    pass
-        finally:
+            retained = self._state.marker
+            mismatch = False
+            observation_error: Exception | None = None
             try:
-                fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+                status, current = self._read_marker_locked()
+                mismatch = (
+                    not expected
+                    or expected != self._state.fence_token
+                    or retained is None
+                    or status != "ok"
+                    or current != retained
+                    or current.fence_token != expected
+                    or not self._lock_path_matches_locked()
+                )
+                if not mismatch and retained is not None:
+                    self._unlink_exact_marker_locked(retained)
+            except Exception as exc:
+                mismatch = True
+                observation_error = exc
             finally:
-                self._handle.close()
-                self._handle = None
-                self._marker = None
-                self._fence_token = ""
+                # Once the current authority elects to release, no marker,
+                # path, fence, or filesystem-observation failure may strand
+                # the OS lock.  A non-owned/foreign marker is preserved and
+                # the mismatch is reported after descriptor teardown.
+                failures = self._close_descriptors_locked()
+            if mismatch or failures:
+                details = []
+                if mismatch:
+                    details.append("marker_or_fence_mismatch")
+                if observation_error is not None:
+                    details.append(
+                        f"observation:{type(observation_error).__name__}"
+                    )
+                details.extend(failures)
+                error = QuackStateServerControlError(
+                    "owner lease release preserved a foreign marker: "
+                    + ",".join(details)
+                )
+                if observation_error is not None:
+                    raise error from observation_error
+                raise error
 
 
 # ---------------------------------------------------------------------------
@@ -2687,7 +3470,11 @@ class QuackStateServer:
         identity = self._identity
         owner = self._owner
         gateway = self._command_gateway
-        marker = None if owner is None else owner.marker
+        marker = (
+            None
+            if owner is None
+            else owner._corroborated_marker()  # noqa: SLF001 - exact fence proof
+        )
         if (
             self._lifecycle is not ServerLifecycle.READY
             or identity is None
@@ -2698,7 +3485,9 @@ class QuackStateServer:
             or not owner.fence_token
             or marker.fence_token != owner.fence_token
             or marker.server_id != identity.server_id
+            or marker.process_birth != identity.process_birth
             or marker.database_path != str(self.config.database_path)
+            or marker.generation != identity.generation
             or gateway is None
             or gateway._connection is not self._connection  # noqa: SLF001
             or dict(gateway.identity) != identity.to_dict()
@@ -3186,7 +3975,7 @@ class QuackStateServer:
             )
         try:
             raw = path.read_bytes()
-            payload = json.loads(raw, object_pairs_hook=_mutation_duplicate_guard)
+            payload = json.loads(raw, object_pairs_hook=_json_duplicate_guard)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise QuackStateServerIsolationError(
                 "isolation receipt is not canonical JSON"
@@ -5316,14 +6105,49 @@ class QuackStateServer:
     def start(self) -> StateServerIdentity:
         """Acquire exclusive ownership, migrate, serve, and publish identity."""
 
-        with self._owner_transaction_lock:
-            return self._start_transaction_serialized()
+        with self._lifecycle_gate:
+            with self._owner_transaction_lock:
+                return self._start_under_lifecycle_gate(
+                    acquired_owner_lease=None
+                )
 
-    def _start_transaction_serialized(self) -> StateServerIdentity:
-        """Start while owning the connection-wide transaction boundary."""
+    def start_with_acquired_lease(
+        self,
+        owner_lease: ExclusiveOwnerLease,
+    ) -> StateServerIdentity:
+        """Start by adopting a same-process offline-writer lease.
 
+        The caller must close every offline DuckDB handle before invoking this
+        method.  The exact held ``ExclusiveOwnerLease`` is consumed once its
+        marker is rebound; subsequent startup failure releases it through the
+        normal emergency-cleanup path.  Process-birth equality intentionally
+        refuses inherited-FD or unrelated-process handoff.
+
+        This is only a contention primitive.  It does not qualify CASF, EAAEF,
+        Quack, a provider launch, or any signed production authority.
+        """
+
+        if type(owner_lease) is not ExclusiveOwnerLease:
+            raise QuackStateServerOwnershipError(
+                "owner lease handoff requires exact ExclusiveOwnerLease"
+            )
+        with self._lifecycle_gate:
+            with self._owner_transaction_lock:
+                return self._start_under_lifecycle_gate(
+                    acquired_owner_lease=owner_lease
+                )
+
+    def _start_under_lifecycle_gate(
+        self,
+        *,
+        acquired_owner_lease: ExclusiveOwnerLease | None = None,
+    ) -> StateServerIdentity:
         with self._lock:
             if self._lifecycle in {ServerLifecycle.READY, ServerLifecycle.STARTING}:
+                if acquired_owner_lease is not None:
+                    raise QuackStateServerOwnershipError(
+                        "ready state owner cannot consume another owner lease"
+                    )
                 if self._identity is not None:
                     return self._identity
                 raise QuackStateServerError("server is starting without identity")
@@ -5337,6 +6161,41 @@ class QuackStateServer:
                     self.config.host,
                     remote_policy=self.config.remote_bind_policy,
                 )
+                owner = acquired_owner_lease
+                if owner is not None:
+                    birth = (
+                        self.process_birth_factory()
+                        if self.process_birth_factory is not None
+                        else current_process_birth()
+                    )
+                    if birth != current_process_birth():
+                        raise QuackStateServerOwnershipError(
+                            "owner lease handoff process birth is not current"
+                    )
+                    server_id = f"server:{uuid.uuid4()}"
+                    marker = owner.marker
+                    if (
+                        owner.lock_path != self.owner_lock_path()
+                        or owner.marker_path != self.owner_marker_path()
+                        or marker is None
+                    ):
+                        raise QuackStateServerOwnershipError(
+                            "owner lease handoff paths differ from the state owner"
+                        )
+                    owner = owner._transfer_to_state_owner(  # noqa: SLF001
+                        lock_path=self.owner_lock_path(),
+                        marker_path=self.owner_marker_path(),
+                        expected_server_id=marker.server_id,
+                        server_id=server_id,
+                        process_birth=birth,
+                        database_path=self.config.database_path,
+                        generation=1,
+                    )
+                    # The caller and every shallow alias now hold an invalid
+                    # one-shot authority token.  Only this fresh receiver can
+                    # release or rebind the continuously held flock/fence.
+                    self._owner = owner
+
                 # Container isolation is an independently observed authority
                 # gate.  It must precede every database mutation, including
                 # schema installation, and is carried into connection birth so
@@ -5347,25 +6206,35 @@ class QuackStateServer:
                     if isolation_admission is None
                     else dict(isolation_admission)
                 )
-                birth = (
-                    self.process_birth_factory()
-                    if self.process_birth_factory is not None
-                    else current_process_birth()
-                )
-                server_id = f"server:{uuid.uuid4()}"
-                owner = ExclusiveOwnerLease(
-                    lock_path=self.owner_lock_path(),
-                    marker_path=self.owner_marker_path(),
-                    liveness=self.owner_liveness_probe,
-                )
-                # Generation is finalized after opening the DB; provisional 1.
-                owner.acquire(
-                    server_id=server_id,
-                    process_birth=birth,
-                    database_path=self.config.database_path,
-                    generation=1,
-                )
-                self._owner = owner
+
+                if owner is None:
+                    birth = (
+                        self.process_birth_factory()
+                        if self.process_birth_factory is not None
+                        else current_process_birth()
+                    )
+                    server_id = f"server:{uuid.uuid4()}"
+                    owner = ExclusiveOwnerLease(
+                        lock_path=self.owner_lock_path(),
+                        marker_path=self.owner_marker_path(),
+                        liveness=self.owner_liveness_probe,
+                    )
+                    # Generation is finalized after opening the DB; provisional 1.
+                    owner.acquire(
+                        server_id=server_id,
+                        process_birth=birth,
+                        database_path=self.config.database_path,
+                        generation=1,
+                    )
+                    # Acquisition has published the marker and retained the
+                    # flock.  Install cleanup authority before any subsequent
+                    # corroboration can fail, so emergency cleanup can always
+                    # close the descriptor while preserving a foreign marker.
+                    self._owner = owner
+                    # A lease created by the long-lived server is not an
+                    # offline-writer handoff capability.  Close the same
+                    # shared one-shot gate before any startup effects proceed.
+                    owner._bind_new_state_owner()  # noqa: SLF001
                 # A previous generation's ready projection must never survive
                 # as a launch signal while this generation is qualifying.
                 self.status_path().unlink(missing_ok=True)
@@ -5406,6 +6275,18 @@ class QuackStateServer:
                     )
 
                 generation = self._next_generation(connection)
+                marker = owner.marker
+                if marker is None:
+                    raise QuackStateServerOwnershipError(
+                        "state-owner marker disappeared before generation bind"
+                    )
+                owner._rebind_held_marker(  # noqa: SLF001 - owner-local fence bind
+                    expected_server_id=marker.server_id,
+                    server_id=server_id,
+                    process_birth=birth,
+                    database_path=self.config.database_path,
+                    generation=generation,
+                )
                 port = int(self.config.port) or _allocate_loopback_port(
                     self.config.host
                     if _is_loopback_host(self.config.host)
@@ -5547,12 +6428,20 @@ class QuackStateServer:
                 self._vault.destroy()
         except Exception:
             pass
-        try:
-            if self._owner is not None:
-                self._owner.release()
-        except Exception:
-            pass
-        self._owner = None
+        owner = self._owner
+        if owner is not None:
+            try:
+                owner.release()
+            except Exception as exc:
+                self._log(
+                    "state-owner emergency release warning: "
+                    f"{type(exc).__name__}"
+                )
+            # Never discard the only cleanup authority while its descriptor is
+            # still open.  Marker/fence mismatch still closes the descriptor,
+            # reports the mismatch, and permits this reference to be cleared.
+            if not owner._lock_open:  # noqa: SLF001 - cleanup proof
+                self._owner = None
 
     def ready(self) -> dict[str, Any]:
         """Return readiness observation or raise if not ready.
@@ -5573,6 +6462,25 @@ class QuackStateServer:
             if self._lifecycle is not ServerLifecycle.READY or self._identity is None:
                 raise QuackStateServerReadyError(
                     f"state-owner is not ready (lifecycle={self._lifecycle.value})"
+                )
+            identity = self._identity
+            owner = self._owner
+            marker = (
+                None
+                if owner is None
+                else owner._corroborated_marker()  # noqa: SLF001 - readiness fence
+            )
+            if (
+                owner is None
+                or marker is None
+                or marker.server_id != identity.server_id
+                or marker.process_birth != identity.process_birth
+                or marker.database_path != str(self.config.database_path)
+                or marker.generation != identity.generation
+                or marker.fence_token != owner.fence_token
+            ):
+                raise QuackStateServerReadyError(
+                    "state-owner lease/fence is no longer corroborated"
                 )
             if (
                 self._connection is None
@@ -5615,7 +6523,6 @@ class QuackStateServer:
                         "state-owner outbox worker is unavailable"
                     )
 
-            identity = self._identity
             token = self._vault.resolve(identity.secret_handle)
             observed = self.transport.live_query(
                 self._transport_connection,
@@ -5842,9 +6749,16 @@ class QuackStateServer:
             if self._vault is not None:
                 self._vault.destroy()
 
+            release_error: Exception | None = None
             if owner is not None:
-                owner.release(fence_token=expected_fence)
-            self._owner = None
+                try:
+                    owner.release(fence_token=expected_fence)
+                except Exception as exc:
+                    release_error = exc
+                if not owner._lock_open:  # noqa: SLF001 - release proof
+                    self._owner = None
+            if release_error is not None:
+                raise release_error
 
             if identity is not None:
                 self._identity = identity.with_status("stopped")
