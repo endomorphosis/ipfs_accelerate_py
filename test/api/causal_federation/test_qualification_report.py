@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -126,19 +127,14 @@ BENCHMARK_REASONS = (
 )
 PROMOTION_REASON_CODES = frozenset(
     {
-        "missing:casf_030_accepted_producer_provenance",
-        "missing:casf_030_full_qualification_identity_binding",
-        "missing:casf_030_state_owner_provenance",
-        "missing:casf_032_accepted_producer_provenance",
-        "missing:casf_032_full_qualification_identity_binding",
-        "missing:casf_032_state_owner_provenance",
-        "missing:casf_033_accepted_producer_provenance",
-        "missing:casf_033_full_qualification_identity_binding",
-        "missing:casf_033_state_owner_provenance",
-        "blocked:casf_034_current_state_owner_capability_unattested",
+        "missing:casf_030_fixed_point",
+        "missing:casf_032_ducklake_projection",
+        "missing:casf_032_ducklake_recovery",
+        "missing:casf_033_drift_report",
+        "missing:casf_034_typed_state_owner_audit",
         "missing:casf_035_control_parity_report_decoder",
         "missing:casf_036_formal_report_decoder",
-        "blocked:casf_037_local_qualification_unavailable",
+        "missing:casf_037_adversarial_report",
         "unavailable:casf_038_live_not_run",
         "unavailable:casf_039_live_not_run",
         "unavailable:casf_040_live_not_run",
@@ -152,16 +148,12 @@ CORE_REASON_CODES = (
     "accepted_single_owner_typed_quack_receipt_unavailable",
     "remote_no_lost_wakeup_qualification_unavailable",
     "current_generation_fence_bound_population_attestation_unavailable",
-    "missing:casf_030_accepted_producer_provenance",
-    "missing:casf_030_full_qualification_identity_binding",
-    "missing:casf_030_state_owner_provenance",
-    "missing:casf_033_accepted_producer_provenance",
-    "missing:casf_033_full_qualification_identity_binding",
-    "missing:casf_033_state_owner_provenance",
-    "blocked:casf_034_current_state_owner_capability_unattested",
+    "missing:casf_030_fixed_point",
+    "missing:casf_033_drift_report",
+    "missing:casf_034_typed_state_owner_audit",
     "missing:casf_035_control_parity_report_decoder",
     "missing:casf_036_formal_report_decoder",
-    "blocked:casf_037_local_qualification_unavailable",
+    "missing:casf_037_adversarial_report",
     "unavailable:casf_038_live_not_run",
     "unavailable:casf_039_live_not_run",
     "unavailable:casf_040_live_not_run",
@@ -195,6 +187,14 @@ ROLLBACK_AUTHORITY = (
     "registered typed state-owner rollback decision bound to a verified predecessor "
     "qualification identity and current fence"
 )
+ABSENT_SLOT_CONTRACTS = (
+    ("_assess_fixed_point", "missing:casf_030_fixed_point"),
+    ("_assess_projection", "missing:casf_032_ducklake_projection"),
+    ("_assess_recovery", "missing:casf_032_ducklake_recovery"),
+    ("_assess_drift", "missing:casf_033_drift_report"),
+    ("_assess_control", "missing:casf_034_typed_state_owner_audit"),
+    ("_assess_adversarial", "missing:casf_037_adversarial_report"),
+)
 GAP_CONTRACTS = (
     (
         "CASF-043-FINAL-TREE-ACCEPTANCE",
@@ -219,11 +219,7 @@ GAP_CONTRACTS = (
         "CASF-043-CASF-030-PROVENANCE",
         "blocking_core",
         "fixed-point evidence",
-        (
-            "missing:casf_030_accepted_producer_provenance",
-            "missing:casf_030_full_qualification_identity_binding",
-            "missing:casf_030_state_owner_provenance",
-        ),
+        ("missing:casf_030_fixed_point",),
         "Produce a current-tree fixed-point receipt through an accepted producer with the full qualification identity and state-owner provenance.",
     ),
     (
@@ -241,9 +237,8 @@ GAP_CONTRACTS = (
         "blocking_ducklake_profile",
         "DuckLake plus Quack promotion only; it does not block the core profile",
         (
-            "missing:casf_032_accepted_producer_provenance",
-            "missing:casf_032_full_qualification_identity_binding",
-            "missing:casf_032_state_owner_provenance",
+            "missing:casf_032_ducklake_projection",
+            "missing:casf_032_ducklake_recovery",
         ),
         "Produce current projection and recovery receipts through accepted producers with full qualification identity and state-owner provenance while retaining DuckLake non-authority.",
     ),
@@ -251,18 +246,14 @@ GAP_CONTRACTS = (
         "CASF-043-CASF-033-PROVENANCE",
         "blocking_core",
         "architecture and event drift evidence",
-        (
-            "missing:casf_033_accepted_producer_provenance",
-            "missing:casf_033_full_qualification_identity_binding",
-            "missing:casf_033_state_owner_provenance",
-        ),
+        ("missing:casf_033_drift_report",),
         "Produce a current-tree drift report through an accepted producer with the full qualification identity and state-owner provenance.",
     ),
     (
         "CASF-043-CASF-034-STATE-OWNER-CAPABILITY",
         "blocking_core",
         "typed control audit",
-        ("blocked:casf_034_current_state_owner_capability_unattested",),
+        ("missing:casf_034_typed_state_owner_audit",),
         "Attest the current typed state-owner capability and bind the accepted control audit to the exact qualification identity.",
     ),
     (
@@ -283,7 +274,7 @@ GAP_CONTRACTS = (
         "CASF-043-CASF-037-LOCAL-QUALIFICATION",
         "blocking_core",
         "adversarial and chaos evidence",
-        ("blocked:casf_037_local_qualification_unavailable",),
+        ("missing:casf_037_adversarial_report",),
         "Run and admit the upstream-reverified current-tree adversarial qualification; the repository-only unavailable report cannot substitute for it.",
     ),
     (
@@ -999,10 +990,14 @@ def _validate_report(value: Any) -> dict[str, Any]:
         "casf/promotion-decision@1",
         "casf/promotion-decision-validation@1",
         "casf/federation-completion-receipt@1",
-        "casf/fixed-point@1 accepted-producer provenance",
-        "casf/drift-report@1 accepted-producer provenance",
+        "CASF-030 fixed-point receipt",
+        "CASF-032 DuckLake projection and recovery receipts",
+        "casf/drift-report@1",
+        "CASF-034 typed state-owner control audit",
         "casf/control-parity@1 decoder",
         "casf/formal-model-report@1 decoder",
+        "casf/adversarial-report@1",
+        "rollback state-owner predecessor receipt",
     ]
     if (
         disposition["verified"] != expected_verified
@@ -1289,8 +1284,9 @@ qualification, completion, promotion, release, or DuckLake authority.
 - Skipped: live runtime/database observation and the optional DuckLake live profile.
 - Not run: idle, parallel, load, and token benchmark result schemas.
 - Missing or unaccepted: current qualification identity, evidence bundle,
-  promotion decision and validation, completion receipt, accepted CASF-030 and
-  CASF-033 producer provenance, and CASF-035/CASF-036 decoders.
+  promotion decision and validation, completion receipt, CASF-030 fixed-point,
+  CASF-032 projection/recovery, CASF-033 drift, CASF-034 control-audit,
+  CASF-035/CASF-036 decoders, CASF-037 adversarial, and rollback receipts.
 
 Every product result area is `not_qualified`, and every non-compensable safety
 gate is `unverified` for the qualification input and pending final-tree
@@ -1467,6 +1463,59 @@ def _suite_bindings(suite: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     return tuple(result)
 
 
+def _bound_absent_slot_reasons(source: bytes) -> dict[str, str]:
+    try:
+        tree = ast.parse(source.decode("utf-8", errors="strict"))
+    except (SyntaxError, UnicodeError) as exc:
+        raise QualificationReportError("bound promotion gate is not strict Python source") from exc
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    result: dict[str, str] = {}
+    for function_name, expected_reason in ABSENT_SLOT_CONTRACTS:
+        function = functions.get(function_name)
+        if function is None:
+            raise QualificationReportError("bound promotion gate slot assessor is absent")
+        none_branches = [
+            statement
+            for statement in function.body
+            if isinstance(statement, ast.If)
+            and isinstance(statement.test, ast.Compare)
+            and isinstance(statement.test.left, ast.Name)
+            and statement.test.left.id == "payload"
+            and len(statement.test.ops) == 1
+            and isinstance(statement.test.ops[0], ast.Is)
+            and len(statement.test.comparators) == 1
+            and isinstance(statement.test.comparators[0], ast.Constant)
+            and statement.test.comparators[0].value is None
+        ]
+        if len(none_branches) != 1:
+            raise QualificationReportError("bound promotion gate absent-slot branch changed")
+        returns = [
+            statement for statement in none_branches[0].body if isinstance(statement, ast.Return)
+        ]
+        if (
+            len(returns) != 1
+            or not isinstance(returns[0].value, ast.Call)
+            or not isinstance(returns[0].value.func, ast.Name)
+            or returns[0].value.func.id != "_assessment"
+        ):
+            raise QualificationReportError("bound promotion gate absent-slot return changed")
+        reasons = [
+            argument.value
+            for argument in returns[0].value.args
+            if isinstance(argument, ast.Constant)
+            and type(argument.value) is str
+            and argument.value.startswith("missing:")
+        ]
+        if reasons != [expected_reason]:
+            raise QualificationReportError("bound promotion gate absent-slot reason changed")
+        result[function_name] = reasons[0]
+    return result
+
+
 def _validate_repository(root: Path = ROOT) -> dict[str, Any]:
     top = Path(_git_text(root, "rev-parse", "--show-toplevel")).resolve(strict=True)
     if top != root.resolve(strict=True):
@@ -1536,6 +1585,8 @@ def _validate_repository(root: Path = ROOT) -> dict[str, Any]:
         if item["path"] == "ipfs_accelerate_py/agent_supervisor/federation/promotion.py"
     )
     promotion_source = _verify_binding_at(root, INPUT_REVISION, promotion_binding)
+    if _bound_absent_slot_reasons(promotion_source) != dict(ABSENT_SLOT_CONTRACTS):
+        raise QualificationReportError("reported missing artifacts differ from the bound gate")
     required_gate_source = (
         b'f"missing:{slug}_accepted_producer_provenance"',
         b'f"missing:{slug}_full_qualification_identity_binding"',
@@ -1584,6 +1635,24 @@ def test_source_bindings_are_historical_and_final_currency_is_withheld() -> None
     assert all(
         value is None for key, value in report["final_tree_binding"].items() if key != "status"
     )
+
+
+def test_bound_gate_absent_slot_mapping_is_exact_and_relabel_proof() -> None:
+    report, _payload = _read_report()
+    binding = next(
+        item
+        for item in report["source_bindings"]
+        if item["path"] == "ipfs_accelerate_py/agent_supervisor/federation/promotion.py"
+    )
+    source = _verify_binding_at(ROOT, INPUT_REVISION, binding)
+    assert _bound_absent_slot_reasons(source) == dict(ABSENT_SLOT_CONTRACTS)
+    relabeled = source.replace(
+        b'"missing:casf_030_fixed_point"',
+        b'"missing:casf_030_accepted_producer_provenance"',
+        1,
+    )
+    with pytest.raises(QualificationReportError, match="absent-slot reason changed"):
+        _bound_absent_slot_reasons(relabeled)
 
 
 def test_exact_repository_suite_and_markdown_bindings() -> None:

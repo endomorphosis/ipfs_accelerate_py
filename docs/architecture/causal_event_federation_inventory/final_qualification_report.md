@@ -2,8 +2,8 @@
 
 Machine report: `final_qualification_report.json`
 Schema: `casf/qualification-report@1`
-Report ID: `sha256:d1525586b485407f0642d9155b97fa0eed8ac40f9e007cc1133798632642ad9e`
-Machine-report raw SHA-256: `4a0519e991263c09f08f51a9a07be04043ee7fba8a96c05eedb141e7a1332dff`
+Report ID: `sha256:5dc88bec61ac3e8bc3e19a47e01614896f1ad5c212ec4447b4a8ea941605528c`
+Machine-report raw SHA-256: `d0cc7aaba5df53cb16812e3c4f2a07f2342350cb206823401b54042604d568e4`
 
 ## Disposition
 
@@ -83,8 +83,9 @@ qualification, completion, promotion, release, or DuckLake authority.
 - Skipped: live runtime/database observation and the optional DuckLake live profile.
 - Not run: idle, parallel, load, and token benchmark result schemas.
 - Missing or unaccepted: current qualification identity, evidence bundle,
-  promotion decision and validation, completion receipt, accepted CASF-030 and
-  CASF-033 producer provenance, and CASF-035/CASF-036 decoders.
+  promotion decision and validation, completion receipt, CASF-030 fixed-point,
+  CASF-032 projection/recovery, CASF-033 drift, CASF-034 control-audit,
+  CASF-035/CASF-036 decoders, CASF-037 adversarial, and rollback receipts.
 
 Every product result area is `not_qualified`, and every non-compensable safety
 gate is `unverified` for the qualification input and pending final-tree
@@ -94,14 +95,14 @@ identity. This is evidence absence, not evidence that a gate failed.
 
 1. **CASF-043-FINAL-TREE-ACCEPTANCE** (blocking_release): A registered state-owner producer and independent verifier must bind the actual merged revision and tree, schema, generation, policy, capability, task, attempt, assignment, worktree, lease, and fence to accepted validation and result identities. Reason codes: `accepted_current_generation_qualification_identity_unavailable`.
 2. **CASF-043-LIVE-TYPED-QUACK-STATE-OWNER** (blocking_core): Admit and independently verify one authenticated typed Quack state owner, a current generation and schema fingerprint, fence-bound population, and a remote no-lost-wakeup event-wait path without direct DuckDB or file fallback. Reason codes: `accepted_current_tree_state_owner_attestation_unavailable, accepted_single_owner_typed_quack_receipt_unavailable, remote_no_lost_wakeup_qualification_unavailable, current_generation_fence_bound_population_attestation_unavailable`.
-3. **CASF-043-CASF-030-PROVENANCE** (blocking_core): Produce a current-tree fixed-point receipt through an accepted producer with the full qualification identity and state-owner provenance. Reason codes: `missing:casf_030_accepted_producer_provenance, missing:casf_030_full_qualification_identity_binding, missing:casf_030_state_owner_provenance`.
+3. **CASF-043-CASF-030-PROVENANCE** (blocking_core): Produce a current-tree fixed-point receipt through an accepted producer with the full qualification identity and state-owner provenance. Reason codes: `missing:casf_030_fixed_point`.
 4. **CASF-043-CASF-031-DUCKLAKE-PROJECTION-ACCEPTANCE** (blocking_ducklake_profile): Accept the CASF-031 current-tree projection implementation and its non-authoritative typed projection evidence before DuckLake promotion. Reason codes: `missing:casf_031_current_tree_projection_acceptance, accepted_non_authoritative_projection_receipts_unavailable`.
-5. **CASF-043-CASF-032-DUCKLAKE-PROVENANCE** (blocking_ducklake_profile): Produce current projection and recovery receipts through accepted producers with full qualification identity and state-owner provenance while retaining DuckLake non-authority. Reason codes: `missing:casf_032_accepted_producer_provenance, missing:casf_032_full_qualification_identity_binding, missing:casf_032_state_owner_provenance`.
-6. **CASF-043-CASF-033-PROVENANCE** (blocking_core): Produce a current-tree drift report through an accepted producer with the full qualification identity and state-owner provenance. Reason codes: `missing:casf_033_accepted_producer_provenance, missing:casf_033_full_qualification_identity_binding, missing:casf_033_state_owner_provenance`.
-7. **CASF-043-CASF-034-STATE-OWNER-CAPABILITY** (blocking_core): Attest the current typed state-owner capability and bind the accepted control audit to the exact qualification identity. Reason codes: `blocked:casf_034_current_state_owner_capability_unattested`.
+5. **CASF-043-CASF-032-DUCKLAKE-PROVENANCE** (blocking_ducklake_profile): Produce current projection and recovery receipts through accepted producers with full qualification identity and state-owner provenance while retaining DuckLake non-authority. Reason codes: `missing:casf_032_ducklake_projection, missing:casf_032_ducklake_recovery`.
+6. **CASF-043-CASF-033-PROVENANCE** (blocking_core): Produce a current-tree drift report through an accepted producer with the full qualification identity and state-owner provenance. Reason codes: `missing:casf_033_drift_report`.
+7. **CASF-043-CASF-034-STATE-OWNER-CAPABILITY** (blocking_core): Attest the current typed state-owner capability and bind the accepted control audit to the exact qualification identity. Reason codes: `missing:casf_034_typed_state_owner_audit`.
 8. **CASF-043-CASF-035-CONTROL-PARITY-DECODER** (blocking_core): Implement and independently validate the canonical control-parity report decoder before admitting CASF-035 evidence. Reason codes: `missing:casf_035_control_parity_report_decoder`.
 9. **CASF-043-CASF-036-FORMAL-DECODER** (blocking_core): Implement and independently validate the canonical formal-model report decoder before admitting CASF-036 evidence. Reason codes: `missing:casf_036_formal_report_decoder`.
-10. **CASF-043-CASF-037-LOCAL-QUALIFICATION** (blocking_core): Run and admit the upstream-reverified current-tree adversarial qualification; the repository-only unavailable report cannot substitute for it. Reason codes: `blocked:casf_037_local_qualification_unavailable`.
+10. **CASF-043-CASF-037-LOCAL-QUALIFICATION** (blocking_core): Run and admit the upstream-reverified current-tree adversarial qualification; the repository-only unavailable report cannot substitute for it. Reason codes: `missing:casf_037_adversarial_report`.
 11. **CASF-043-CASF-038-IDLE-NOT-RUN** (blocking_core): Run the frozen idle profile through the admitted typed Quack live path and retain a current-tree content-addressed result. Reason codes: `unavailable:casf_038_live_not_run`.
 12. **CASF-043-CASF-039-PARALLEL-NOT-RUN** (blocking_core): Run the frozen real-process twelve-supervisor profile and retain a current-tree content-addressed result satisfying every zero-tolerance gate. Reason codes: `unavailable:casf_039_live_not_run`.
 13. **CASF-043-CASF-040-LOAD-NOT-RUN** (blocking_core): Run the frozen bounded 256-agent profile and retain a current-tree content-addressed result satisfying every zero-tolerance gate. Reason codes: `unavailable:casf_040_live_not_run`.

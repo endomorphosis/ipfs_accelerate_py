@@ -1,6 +1,6 @@
 {
   "schema": "casf/qualification-report@1",
-  "report_id": "sha256:d1525586b485407f0642d9155b97fa0eed8ac40f9e007cc1133798632642ad9e",
+  "report_id": "sha256:5dc88bec61ac3e8bc3e19a47e01614896f1ad5c212ec4447b4a8ea941605528c",
   "artifact_type": "casf_final_qualification_report",
   "artifact_version": 1,
   "program_id": "agent-supervisor-causal-event-federation-v1",
@@ -343,10 +343,14 @@
       "casf/promotion-decision@1",
       "casf/promotion-decision-validation@1",
       "casf/federation-completion-receipt@1",
-      "casf/fixed-point@1 accepted-producer provenance",
-      "casf/drift-report@1 accepted-producer provenance",
+      "CASF-030 fixed-point receipt",
+      "CASF-032 DuckLake projection and recovery receipts",
+      "casf/drift-report@1",
+      "CASF-034 typed state-owner control audit",
       "casf/control-parity@1 decoder",
-      "casf/formal-model-report@1 decoder"
+      "casf/formal-model-report@1 decoder",
+      "casf/adversarial-report@1",
+      "rollback state-owner predecessor receipt"
     ]
   },
   "result_coverage": {
@@ -406,16 +410,12 @@
           "accepted_single_owner_typed_quack_receipt_unavailable",
           "remote_no_lost_wakeup_qualification_unavailable",
           "current_generation_fence_bound_population_attestation_unavailable",
-          "missing:casf_030_accepted_producer_provenance",
-          "missing:casf_030_full_qualification_identity_binding",
-          "missing:casf_030_state_owner_provenance",
-          "missing:casf_033_accepted_producer_provenance",
-          "missing:casf_033_full_qualification_identity_binding",
-          "missing:casf_033_state_owner_provenance",
-          "blocked:casf_034_current_state_owner_capability_unattested",
+          "missing:casf_030_fixed_point",
+          "missing:casf_033_drift_report",
+          "missing:casf_034_typed_state_owner_audit",
           "missing:casf_035_control_parity_report_decoder",
           "missing:casf_036_formal_report_decoder",
-          "blocked:casf_037_local_qualification_unavailable",
+          "missing:casf_037_adversarial_report",
           "unavailable:casf_038_live_not_run",
           "unavailable:casf_039_live_not_run",
           "unavailable:casf_040_live_not_run",
@@ -436,9 +436,8 @@
         "additional_reason_codes": [
           "missing:casf_031_current_tree_projection_acceptance",
           "accepted_non_authoritative_projection_receipts_unavailable",
-          "missing:casf_032_accepted_producer_provenance",
-          "missing:casf_032_full_qualification_identity_binding",
-          "missing:casf_032_state_owner_provenance"
+          "missing:casf_032_ducklake_projection",
+          "missing:casf_032_ducklake_recovery"
         ]
       }
     },
@@ -460,16 +459,12 @@
       "accepted_single_owner_typed_quack_receipt_unavailable",
       "remote_no_lost_wakeup_qualification_unavailable",
       "current_generation_fence_bound_population_attestation_unavailable",
-      "missing:casf_030_accepted_producer_provenance",
-      "missing:casf_030_full_qualification_identity_binding",
-      "missing:casf_030_state_owner_provenance",
-      "missing:casf_033_accepted_producer_provenance",
-      "missing:casf_033_full_qualification_identity_binding",
-      "missing:casf_033_state_owner_provenance",
-      "blocked:casf_034_current_state_owner_capability_unattested",
+      "missing:casf_030_fixed_point",
+      "missing:casf_033_drift_report",
+      "missing:casf_034_typed_state_owner_audit",
       "missing:casf_035_control_parity_report_decoder",
       "missing:casf_036_formal_report_decoder",
-      "blocked:casf_037_local_qualification_unavailable",
+      "missing:casf_037_adversarial_report",
       "unavailable:casf_038_live_not_run",
       "unavailable:casf_039_live_not_run",
       "unavailable:casf_040_live_not_run",
@@ -508,9 +503,7 @@
       "status": "blocking_core",
       "scope": "fixed-point evidence",
       "reason_codes": [
-        "missing:casf_030_accepted_producer_provenance",
-        "missing:casf_030_full_qualification_identity_binding",
-        "missing:casf_030_state_owner_provenance"
+        "missing:casf_030_fixed_point"
       ],
       "required_resolution": "Produce a current-tree fixed-point receipt through an accepted producer with the full qualification identity and state-owner provenance."
     },
@@ -529,9 +522,8 @@
       "status": "blocking_ducklake_profile",
       "scope": "DuckLake plus Quack promotion only; it does not block the core profile",
       "reason_codes": [
-        "missing:casf_032_accepted_producer_provenance",
-        "missing:casf_032_full_qualification_identity_binding",
-        "missing:casf_032_state_owner_provenance"
+        "missing:casf_032_ducklake_projection",
+        "missing:casf_032_ducklake_recovery"
       ],
       "required_resolution": "Produce current projection and recovery receipts through accepted producers with full qualification identity and state-owner provenance while retaining DuckLake non-authority."
     },
@@ -540,9 +532,7 @@
       "status": "blocking_core",
       "scope": "architecture and event drift evidence",
       "reason_codes": [
-        "missing:casf_033_accepted_producer_provenance",
-        "missing:casf_033_full_qualification_identity_binding",
-        "missing:casf_033_state_owner_provenance"
+        "missing:casf_033_drift_report"
       ],
       "required_resolution": "Produce a current-tree drift report through an accepted producer with the full qualification identity and state-owner provenance."
     },
@@ -551,7 +541,7 @@
       "status": "blocking_core",
       "scope": "typed control audit",
       "reason_codes": [
-        "blocked:casf_034_current_state_owner_capability_unattested"
+        "missing:casf_034_typed_state_owner_audit"
       ],
       "required_resolution": "Attest the current typed state-owner capability and bind the accepted control audit to the exact qualification identity."
     },
@@ -578,7 +568,7 @@
       "status": "blocking_core",
       "scope": "adversarial and chaos evidence",
       "reason_codes": [
-        "blocked:casf_037_local_qualification_unavailable"
+        "missing:casf_037_adversarial_report"
       ],
       "required_resolution": "Run and admit the upstream-reverified current-tree adversarial qualification; the repository-only unavailable report cannot substitute for it."
     },
