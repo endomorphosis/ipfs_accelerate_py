@@ -4342,6 +4342,158 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
 
 
+def test_bridge_projects_exact_vrif_benchmark_contract_without_expanding_scope(
+    tmp_path: Path,
+) -> None:
+    outputs = (
+        {
+            "path": (
+                "benchmarks/agent_supervisor/residual_intelligence/manifest.json"
+            )
+        },
+        {
+            "path": (
+                "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl"
+            )
+        },
+        {"path": "test/api/residual_intelligence/test_benchmark.py"},
+    )
+    attempt = SimpleNamespace(
+        task_cid="task:vrif:030",
+        task_alias="VRIF-030",
+        attempt_id="attempt:vrif:030",
+        claim_id="claim:vrif:030",
+    )
+    record = SimpleNamespace(
+        task_cid=attempt.task_cid,
+        task_alias=attempt.task_alias,
+        goal_cid="goal:vrif:release",
+        plan_cid="plan:vrif:1",
+        revision=31,
+        priority="P0",
+        dependencies=(),
+        outputs=outputs,
+        validations=(
+            {
+                "argv": [
+                    "python",
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "test/api/residual_intelligence/test_benchmark.py",
+                ]
+            },
+        ),
+        acceptance=({"criterion": "The frozen benchmark is exact"},),
+        body={
+            "objective": "Publish the owner-exact frozen benchmark",
+            "completion": "auto",
+            "track": "benchmark",
+        },
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+
+    projection = bridge._render_projection(attempt, record)
+
+    assert projection.count("Scope expansion policy: exact") == 1
+    assert "Root benchmark contract: owner-exact no-training freeze" in projection
+    assert "_vrif_frozen_benchmark_contract" in projection
+    assert "benchmark.build_frozen_benchmark_contract" in projection
+    assert "base_frozen_bindings" in projection
+    assert "test/api/residual_intelligence/test_goal_authority.py" in projection
+    assert "benchmark_freeze" in projection
+    assert "group_id, input_identity, input_disposition" in projection
+    assert "exactly 96 cases" in projection
+    assert "legacy Cartesian 384-case population" in projection
+    projected_outputs = next(
+        line.removeprefix("- Outputs: ").split(", ")
+        for line in projection.splitlines()
+        if line.startswith("- Outputs: ")
+    )
+    assert projected_outputs == [item["path"] for item in outputs]
+
+
+def test_bridge_projects_exact_vrif_root_report_contract_without_expanding_scope(
+    tmp_path: Path,
+) -> None:
+    outputs = (
+        {
+            "path": (
+                "docs/architecture/residual_intelligence_inventory/"
+                "final_release_report.json"
+            )
+        },
+        {
+            "path": (
+                "docs/architecture/residual_intelligence_inventory/"
+                "final_release_report.md"
+            )
+        },
+        {"path": "test/api/residual_intelligence/test_release_report.py"},
+    )
+    attempt = SimpleNamespace(
+        task_cid="task:vrif:032",
+        task_alias="VRIF-032",
+        attempt_id="attempt:vrif:032",
+        claim_id="claim:vrif:032",
+    )
+    record = SimpleNamespace(
+        task_cid=attempt.task_cid,
+        task_alias=attempt.task_alias,
+        goal_cid="goal:vrif:root",
+        plan_cid="plan:vrif:1",
+        revision=15,
+        priority="P0",
+        dependencies=(),
+        outputs=outputs,
+        validations=(
+            {
+                "argv": [
+                    "python",
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "test/api/residual_intelligence/test_release_report.py",
+                ]
+            },
+        ),
+        acceptance=({"criterion": "The root completion gate is satisfied"},),
+        body={
+            "objective": "Publish the final root-gated release report",
+            "completion": "auto",
+            "track": "release",
+        },
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+
+    projection = bridge._render_projection(attempt, record)
+
+    assert projection.count("Scope expansion policy: exact") == 1
+    assert "Root completion contract: owner-exact VRIF terminal report" in projection
+    assert (
+        "producer_artifacts, files_symbols, corpus_rights_splits, "
+        "architecture_tokenizer_checkpoint, proof_validation, drift, "
+        "rollback_blocker_eligibility"
+    ) in projection
+    assert "_vrif_terminal_report_evidence" in projection
+    assert "_vrif_release_report_markdown" in projection
+    assert "test/api/residual_intelligence/test_goal_authority.py" in projection
+    projected_outputs = next(
+        line.removeprefix("- Outputs: ").split(", ")
+        for line in projection.splitlines()
+        if line.startswith("- Outputs: ")
+    )
+    assert projected_outputs == [item["path"] for item in outputs]
+
+
 @pytest.mark.parametrize(
     "tamper",
     [

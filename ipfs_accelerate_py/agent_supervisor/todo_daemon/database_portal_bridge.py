@@ -48,6 +48,75 @@ DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA: Final[str] = (
 DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-attempt-binding@1"
 )
+_VRIF_BENCHMARK_TASK_ALIAS: Final[str] = "VRIF-030"
+_VRIF_BENCHMARK_OUTPUT_PATHS: Final[frozenset[str]] = frozenset(
+    {
+        "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
+        "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
+        "test/api/residual_intelligence/test_benchmark.py",
+    }
+)
+_VRIF_BENCHMARK_MANIFEST_FIELDS: Final[tuple[str, ...]] = (
+    "schema",
+    "program_identifier",
+    "status",
+    "owner_task",
+    "source_revision",
+    "partitions",
+    "required_case_kinds",
+    "task_families",
+    "training_admission",
+    "weights_committed",
+    "large_corpus_committed",
+    "promotion_evidence",
+    "benchmark_freeze",
+)
+_VRIF_BENCHMARK_CASE_FIELDS: Final[tuple[str, ...]] = (
+    "schema",
+    "family",
+    "partition",
+    "kind",
+    "hidden_test",
+    "group_id",
+    "input_identity",
+    "input_disposition",
+    "expected_outcome",
+    "case_id",
+)
+_VRIF_TERMINAL_TASK_ALIAS: Final[str] = "VRIF-032"
+_VRIF_TERMINAL_OUTPUT_PATHS: Final[frozenset[str]] = frozenset(
+    {
+        (
+            "docs/architecture/residual_intelligence_inventory/"
+            "final_release_report.json"
+        ),
+        (
+            "docs/architecture/residual_intelligence_inventory/"
+            "final_release_report.md"
+        ),
+        "test/api/residual_intelligence/test_release_report.py",
+    }
+)
+_VRIF_TERMINAL_REPORT_FIELDS: Final[tuple[str, ...]] = (
+    "schema",
+    "start_tree",
+    "end_tree",
+    "corpus_admission_id",
+    "expert_dispositions",
+    "before",
+    "after",
+    "costs",
+    "promotion_eligible",
+    "rollback_target",
+    "gaps",
+    "producer_artifacts",
+    "files_symbols",
+    "corpus_rights_splits",
+    "architecture_tokenizer_checkpoint",
+    "proof_validation",
+    "drift",
+    "rollback_blocker_eligibility",
+)
 _DATABASE_PORTAL_COMPLETION_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "schema",
@@ -3278,6 +3347,112 @@ class DatabasePortalExecutionBridge:
             "- Scope expansion policy: exact",
             "- Projection authority: false",
         ]
+        if alias == _VRIF_BENCHMARK_TASK_ALIAS and set(outputs) == set(
+            _VRIF_BENCHMARK_OUTPUT_PATHS
+        ):
+            lines.extend(
+                (
+                    "- Root benchmark contract: owner-exact no-training freeze",
+                    (
+                        "- Root benchmark authority: "
+                        "scripts/run_agent_supervisor_residual_intelligence.py::"
+                        "_vrif_frozen_benchmark_contract"
+                    ),
+                    (
+                        "- Producer construction API: "
+                        "ipfs_accelerate_py.agent_supervisor.residual_intelligence."
+                        "benchmark.build_frozen_benchmark_contract; its returned "
+                        "cases and benchmark_freeze match the independent owner"
+                    ),
+                    (
+                        "- Benchmark binding authority: reconstruct "
+                        "base_frozen_bindings exactly as "
+                        "_vrif_terminal_report_evidence does; the executable "
+                        "fixture is test/api/residual_intelligence/"
+                        "test_goal_authority.py"
+                    ),
+                    "- Required benchmark manifest keys: "
+                    + ", ".join(_VRIF_BENCHMARK_MANIFEST_FIELDS),
+                    "- Required benchmark case keys: "
+                    + ", ".join(_VRIF_BENCHMARK_CASE_FIELDS),
+                    (
+                        "- Benchmark population contract: exactly 96 cases, "
+                        "one paired partition/kind entry for each of 24 task "
+                        "families; do not construct the legacy Cartesian "
+                        "384-case population"
+                    ),
+                    (
+                        "- Benchmark lineage contract: source_revision and "
+                        "benchmark_freeze source bind the Portal baseline "
+                        "commit and tree before these three outputs change"
+                    ),
+                    (
+                        "- Benchmark disposition: payload unavailable because "
+                        "training is unavailable; every expected outcome is "
+                        "CAPABILITY_UNAVAILABLE and the paired evaluation is "
+                        "all-abstain/not-run"
+                    ),
+                    (
+                        "- Validation-policy binding: freeze the final tracked "
+                        "blob identity of test/api/residual_intelligence/"
+                        "test_benchmark.py"
+                    ),
+                    (
+                        "- Dynamic identity rule: recompute every schedule, "
+                        "binding, case, baseline, and freeze identity for this "
+                        "Portal baseline/candidate; never copy an earlier "
+                        "freeze identifier"
+                    ),
+                )
+            )
+        if alias == _VRIF_TERMINAL_TASK_ALIAS and set(outputs) == set(
+            _VRIF_TERMINAL_OUTPUT_PATHS
+        ):
+            # VRIF's root owner consumes a stricter terminal artifact than the
+            # historical release-model test used to describe.  Put that
+            # already-reviewed contract in the immutable provider projection
+            # so a retry cannot silently reproduce the obsolete report shape.
+            # This grants no additional edit path: the bridge-owned exact
+            # scope above remains the mutation authority.
+            lines.extend(
+                (
+                    "- Root completion contract: owner-exact VRIF terminal report",
+                    "- Required machine report keys: "
+                    + ", ".join(_VRIF_TERMINAL_REPORT_FIELDS),
+                    (
+                        "- Root contract authority: "
+                        "scripts/run_agent_supervisor_residual_intelligence.py::"
+                        "_vrif_terminal_report_evidence"
+                    ),
+                    (
+                        "- Root contract fixture: "
+                        "test/api/residual_intelligence/test_goal_authority.py"
+                    ),
+                    (
+                        "- Human report contract: render byte-for-byte with "
+                        "scripts/run_agent_supervisor_residual_intelligence.py::"
+                        "_vrif_release_report_markdown"
+                    ),
+                    (
+                        "- Producer artifact contract: bind the declared "
+                        "VRIF-028 through VRIF-031 current tracked blobs into "
+                        "the exact producer_artifacts bundle"
+                    ),
+                    (
+                        "- Unavailable release disposition: every expert is "
+                        "CAPABILITY_UNAVAILABLE; costs are exactly tokens=0 "
+                        "and break_even=0; promotion_eligible is false"
+                    ),
+                    (
+                        "- Forbidden release claims: learned, verified, safe, "
+                        "autonomous, token-efficient, production-ready"
+                    ),
+                    (
+                        "- Required not-run set: gpu_live_qualification, "
+                        "promotion, training"
+                    ),
+                )
+            )
         for key in sorted(body):
             normalized = str(key).strip().lower().replace("_", " ")
             if not normalized or normalized in reserved:
