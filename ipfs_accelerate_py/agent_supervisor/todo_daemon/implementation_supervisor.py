@@ -17,6 +17,7 @@ import sys
 import time
 import threading
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
@@ -99,6 +100,7 @@ from .implementation_supervisor_runner import (
 )
 from ..runtime.multi_supervisor_runner import (
     AUTHORITY_MODE_LEGACY_MARKDOWN,
+    AUTHORITY_MODE_QUACK,
     DATABASE_PROGRAM_JSON_ENV,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
@@ -106,6 +108,7 @@ from ..runtime.multi_supervisor_runner import (
     STATE_LIVE_SCHEMA_REVISION_ENV,
     STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
+    TASK_SOURCE_DUCKDB,
     TRUSTED_DUCKDB_HOME_ENV,
     _eaaef_host_receipt_admitted,
     _trusted_duckdb_runtime_environment,
@@ -8544,6 +8547,10 @@ class ObjectiveRefillTimeoutError(TimeoutError):
     """Raised when supervisor-owned objective refill exceeds its local budget."""
 
 
+class ObjectiveRefillBudgetLockTimeoutError(TimeoutError):
+    """Raised when another lane retains the board-shared refill transaction."""
+
+
 class CodebaseRefillTimeoutError(TimeoutError):
     """Raised when supervisor-owned codebase refill exceeds its local budget."""
 
@@ -8554,6 +8561,12 @@ class ObjectiveCompletionArtifactRefreshError(RuntimeError):
 
 OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
 CODEBASE_REFILL_ANALYZER_VERSION = "codebase-scan-v1"
+OBJECTIVE_REFILL_BUDGET_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/objective-refill-budget@1"
+)
+OBJECTIVE_REFILL_EXHAUSTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/objective-refill-budget-exhaustion@1"
+)
 
 # Fields derived exclusively from a validated ``ProofRolloutStatus``.  Keeping
 # the set explicit lets a long-running supervisor replace the whole projection
@@ -8830,6 +8843,8 @@ class PortalSupervisorConfig:
     objective_scan_cooldown_seconds: int = 21600
     objective_scan_exclude_paths: tuple[str, ...] = field(default_factory=tuple)
     objective_refill_timeout_seconds: float = 0.0
+    objective_refill_max_epochs: int | None = None
+    objective_refill_max_total_tasks: int | None = None
     objective_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
     objective_max_refinement_children: int = 3
     objective_max_refinement_depth: int = 4
@@ -8843,6 +8858,17 @@ class PortalSupervisorConfig:
     supervisor_script_path: Path | None = None
 
     def __post_init__(self) -> None:
+        for field_name in (
+            "objective_refill_max_epochs",
+            "objective_refill_max_total_tasks",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+            ):
+                raise ValueError(f"{field_name} must be a positive integer")
         if (
             isinstance(self.state_owner_bootstrap_fd, bool)
             or not isinstance(self.state_owner_bootstrap_fd, int)
@@ -19308,6 +19334,353 @@ class PortalImplementationSupervisor:
             events_path=self.config.events_path,
         )
 
+    def _objective_refill_budget_path(self) -> Path:
+        """Return one board-shared budget artifact for all configured lanes."""
+
+        state_root = self.config.state_dir
+        if re.fullmatch(r"lane-\d+", state_root.name):
+            state_root = state_root.parent
+        namespace = re.sub(
+            r"[^a-zA-Z0-9_.-]+",
+            "-",
+            str(self.board_namespace or "objective-refill").strip(),
+        ).strip("-.") or "objective-refill"
+        return state_root / f"{namespace}_objective_refill_budget.json"
+
+    def _load_objective_refill_budget(self) -> dict[str, Any]:
+        """Load the durable epoch counter, rejecting malformed budget state."""
+
+        path = self._objective_refill_budget_path()
+        if not path.exists():
+            return {
+                "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                "board_namespace": self.board_namespace,
+                "epochs_started": 0,
+            }
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"objective refill budget is unreadable: {type(exc).__name__}: {exc}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise ValueError("objective refill budget must be an object")
+        if payload.get("schema") != OBJECTIVE_REFILL_BUDGET_SCHEMA:
+            raise ValueError("objective refill budget schema is unsupported")
+        if str(payload.get("board_namespace") or "") != self.board_namespace:
+            raise ValueError("objective refill budget board namespace mismatches")
+        status = str(payload.get("status") or "active")
+        if status == "quarantined":
+            raise ValueError("objective refill budget is quarantined")
+        if status not in {"active", "exhausted"}:
+            raise ValueError("objective refill budget status is unsupported")
+        epochs_started = payload.get("epochs_started")
+        if (
+            isinstance(epochs_started, bool)
+            or not isinstance(epochs_started, int)
+            or epochs_started < 0
+        ):
+            raise ValueError(
+                "objective refill budget epochs_started must be a nonnegative integer"
+            )
+        return payload
+
+    def _write_objective_refill_budget(
+        self,
+        budget: Mapping[str, Any],
+    ) -> None:
+        write_json_atomic(self._objective_refill_budget_path(), dict(budget))
+
+    @contextmanager
+    def _objective_refill_budget_transaction(self):
+        """Serialize cap admission, reservation, generation, and verification."""
+
+        lock_path = self._objective_refill_budget_path().with_suffix(".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_CREAT | os.O_RDWR
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(lock_path, flags, 0o600)
+        locked = False
+        try:
+            lock_stat = os.fstat(descriptor)
+            if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+                raise RuntimeError(
+                    "objective refill budget lock must be one regular file"
+                )
+            deadline = time.monotonic() + min(
+                30.0,
+                max(1.0, float(self.config.check_interval)),
+            )
+            while True:
+                try:
+                    fcntl.flock(
+                        descriptor,
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+                    locked = True
+                    break
+                except BlockingIOError as exc:
+                    if time.monotonic() >= deadline:
+                        raise ObjectiveRefillBudgetLockTimeoutError(
+                            "objective refill budget lock remained busy"
+                        ) from exc
+                    time.sleep(0.05)
+            yield
+        finally:
+            if locked:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
+
+    def _objective_refill_budget_summary(
+        self,
+        budget: Mapping[str, Any],
+        *,
+        task_count: int,
+    ) -> dict[str, Any]:
+        max_total_tasks = self.config.objective_refill_max_total_tasks
+        summary = {
+            "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+            "board_namespace": self.board_namespace,
+            "epochs_started": int(budget.get("epochs_started") or 0),
+            "max_epochs": self.config.objective_refill_max_epochs,
+            "max_total_tasks": max_total_tasks,
+            "task_count": int(task_count),
+            "remaining_task_capacity": (
+                None
+                if max_total_tasks is None
+                else max(0, max_total_tasks - int(task_count))
+            ),
+            "budget_path": str(self._objective_refill_budget_path()),
+        }
+        task_count_authority = budget.get("task_count_authority")
+        if isinstance(task_count_authority, Mapping):
+            summary["task_count_authority"] = dict(task_count_authority)
+        return summary
+
+    def _objective_refill_authoritative_task_count(
+        self,
+        todo_text: str,
+        *,
+        task_prefix: str,
+    ) -> tuple[int, dict[str, Any]]:
+        """Count canonical DB tasks plus any not-yet-ingested projection rows."""
+
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+            task_ids_from_todo_text,
+        )
+
+        projection_task_records = task_ids_from_todo_text(
+            todo_text,
+            task_prefix=task_prefix,
+        )
+        projection_task_ids = set(projection_task_records)
+        if len(projection_task_records) != len(projection_task_ids):
+            raise ValueError(
+                "objective refill projection contains duplicate task aliases"
+            )
+        projection_count = len(projection_task_ids)
+        program = self.config.database_program
+        if not (
+            program is not None
+            and program.authority_mode == AUTHORITY_MODE_QUACK
+            and program.task_source_kind == TASK_SOURCE_DUCKDB
+        ):
+            return projection_count, {
+                "authority": "markdown",
+                "canonical_task_count": projection_count,
+                "projection_task_count": projection_count,
+                "effective_task_count": projection_count,
+            }
+        endpoint = str(program.quack_endpoint or "").strip()
+        if not endpoint:
+            raise ValueError(
+                "Quack objective refill budget requires its canonical endpoint"
+            )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+            DatabaseTaskSource,
+            MAX_QUERY_LIMIT,
+        )
+
+        with DatabaseTaskSource(
+            endpoint,
+            owner_id=f"objective-refill-budget:{os.getpid()}",
+            install_schema=False,
+        ) as task_source:
+            snapshot = task_source.snapshot()
+            canonical_task_ids: set[str] = set()
+            cursor = ""
+            while True:
+                page = task_source.list_tasks(
+                    cursor=cursor,
+                    limit=MAX_QUERY_LIMIT,
+                )
+                canonical_task_ids.update(
+                    str(task.task_alias or task.task_cid)
+                    for task in page.tasks
+                )
+                cursor = str(page.next_cursor or "")
+                if not cursor:
+                    break
+            canonical_count = int(snapshot.task_count)
+        if canonical_count != len(canonical_task_ids):
+            raise ValueError(
+                "Quack objective refill task snapshot changed during counting"
+            )
+        canonical_only = canonical_task_ids - projection_task_ids
+        if canonical_only:
+            raise ValueError(
+                "Quack objective refill projection omits canonical task aliases: "
+                + ", ".join(sorted(canonical_only)[:10])
+            )
+        overlap_count = len(canonical_task_ids & projection_task_ids)
+        projection_only_count = len(projection_task_ids - canonical_task_ids)
+        effective_count = len(canonical_task_ids | projection_task_ids)
+        return effective_count, {
+            "authority": "quack_duckdb",
+            "canonical_task_count": canonical_count,
+            "projection_task_count": projection_count,
+            "effective_task_count": effective_count,
+            "overlap_task_count": overlap_count,
+            "canonical_only_task_count": 0,
+            "projection_only_task_count": projection_only_count,
+            "store_id": program.store_id,
+            "store_generation": program.store_generation,
+            "schema_revision": program.schema_revision,
+        }
+
+    def _objective_refill_budget_exhausted(
+        self,
+        *,
+        reason: str,
+        budget: dict[str, Any],
+        strategy: dict[str, Any],
+        task_count: int,
+        started_at: datetime,
+    ) -> RefillScanResult:
+        """Persist and emit typed non-completion evidence for a closed cap."""
+
+        summary = self._objective_refill_budget_summary(
+            budget,
+            task_count=task_count,
+        )
+        evidence_fields = {
+            **summary,
+            "schema": OBJECTIVE_REFILL_EXHAUSTION_SCHEMA,
+            "status": "exhausted",
+            "reason": reason,
+        }
+        previous = budget.get("last_exhaustion")
+        previous = previous if isinstance(previous, Mapping) else {}
+        unchanged = all(
+            previous.get(field) == value
+            for field, value in evidence_fields.items()
+        )
+        evidence = (
+            dict(previous)
+            if unchanged
+            else {**evidence_fields, "observed_at": utc_now()}
+        )
+        budget.update(
+            {
+                "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                "board_namespace": self.board_namespace,
+                "configured_max_epochs": self.config.objective_refill_max_epochs,
+                "configured_max_total_tasks": (
+                    self.config.objective_refill_max_total_tasks
+                ),
+                "status": "exhausted",
+                "last_exhaustion": evidence,
+            }
+        )
+        self._write_objective_refill_budget(budget)
+        strategy["objective_refill_budget"] = summary
+        strategy["last_objective_refill_budget_exhaustion"] = evidence
+        write_json_atomic(self.config.strategy_path, strategy)
+        if not unchanged:
+            self._record_event("objective_refill_budget_exhausted", evidence)
+        return self._terminal_refill_result(
+            # A campaign budget closing is not analyzer search-space
+            # exhaustion and must never become successful/completion evidence.
+            ScanTerminalReason.PARTIAL,
+            scan_mode="budget_exhausted",
+            analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+            started_at=started_at,
+            metadata={
+                "generated_count": 0,
+                "task_ids": [],
+                "objective_refill_budget": summary,
+                "objective_refill_budget_exhaustion": evidence,
+            },
+        )
+
+    def _quarantine_objective_refill_budget(
+        self,
+        *,
+        reason: str,
+        budget: dict[str, Any],
+        original_todo_text: str,
+        task_prefix: str,
+        starting_task_count: int,
+        effective_max_findings: int,
+        started_at: datetime,
+        observed_task_count: int | None = None,
+        failure: BaseException | None = None,
+    ) -> RefillScanResult:
+        """Restore the board projection and permanently close an unsafe budget."""
+
+        restoration_error = ""
+        restored_task_count: int | None = None
+        restored_task_count_authority: dict[str, Any] | None = None
+        try:
+            write_text_atomic(self.config.todo_path, original_todo_text)
+            restored_task_count, restored_task_count_authority = (
+                self._objective_refill_authoritative_task_count(
+                    self.config.todo_path.read_text(encoding="utf-8"),
+                    task_prefix=task_prefix,
+                )
+            )
+        except Exception as exc:
+            restoration_error = f"{type(exc).__name__}: {exc}"
+        evidence: dict[str, Any] = {
+            "schema": OBJECTIVE_REFILL_EXHAUSTION_SCHEMA,
+            "status": "quarantined",
+            "reason": reason,
+            "max_total_tasks": self.config.objective_refill_max_total_tasks,
+            "starting_task_count": starting_task_count,
+            "restored_task_count": restored_task_count,
+            "restored_task_count_authority": restored_task_count_authority,
+            "restoration_verified": not restoration_error,
+            "effective_max_findings": effective_max_findings,
+            "observed_at": utc_now(),
+        }
+        if observed_task_count is not None:
+            evidence["observed_task_count"] = observed_task_count
+        if failure is not None:
+            evidence["failure_type"] = type(failure).__name__
+            evidence["failure"] = str(failure)
+        if restoration_error:
+            evidence["restoration_error"] = restoration_error
+        budget.update(
+            {
+                "status": "quarantined",
+                "last_violation": evidence,
+            }
+        )
+        self._write_objective_refill_budget(budget)
+        strategy = self._load_strategy()
+        strategy["objective_refill_budget_quarantine"] = evidence
+        write_json_atomic(self.config.strategy_path, strategy)
+        self._record_event("objective_refill_budget_quarantined", evidence)
+        return self._terminal_refill_result(
+            ScanTerminalReason.FAILED,
+            scan_mode="budget_postcondition_quarantined",
+            analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+            started_at=started_at,
+            error=f"objective refill budget postcondition failed: {reason}",
+            metadata={"objective_refill_budget_quarantine": evidence},
+        )
+
     def _adapt_legacy_objective_result(
         self,
         value: Any,
@@ -20164,6 +20537,42 @@ class PortalImplementationSupervisor:
                 analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
                 started_at=started_at,
             )
+        if (
+            self.config.objective_refill_max_epochs is not None
+            or self.config.objective_refill_max_total_tasks is not None
+        ):
+            try:
+                with self._objective_refill_budget_transaction():
+                    return self._refill_objective_backlog_transaction(
+                        started_at=started_at,
+                    )
+            except ObjectiveRefillBudgetLockTimeoutError as exc:
+                evidence = {
+                    "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                    "status": "deferred",
+                    "reason": "budget_lock_busy",
+                    "board_namespace": self.board_namespace,
+                    "budget_path": str(self._objective_refill_budget_path()),
+                    "error": str(exc),
+                }
+                self._record_event("objective_refill_budget_lock_deferred", evidence)
+                return self._terminal_refill_result(
+                    ScanTerminalReason.PARTIAL,
+                    scan_mode="budget_lock_deferred",
+                    analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                    started_at=started_at,
+                    metadata={"objective_refill_budget_deferred": evidence},
+                )
+        return self._refill_objective_backlog_transaction(
+            started_at=started_at,
+        )
+
+    def _refill_objective_backlog_transaction(
+        self,
+        *,
+        started_at: datetime,
+    ) -> RefillScanResult:
+        """Run one refill while any configured campaign budget is locked."""
 
         from argparse import Namespace
 
@@ -20238,6 +20647,36 @@ class PortalImplementationSupervisor:
             cooldown_seconds=self.config.objective_scan_cooldown_seconds,
             force=bool(force_goal_ids),
         )
+        budget_enabled = (
+            self.config.objective_refill_max_epochs is not None
+            or self.config.objective_refill_max_total_tasks is not None
+        )
+        budget: dict[str, Any] = {
+            "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+            "board_namespace": self.board_namespace,
+            "epochs_started": 0,
+        }
+        if budget_enabled:
+            try:
+                budget = self._load_objective_refill_budget()
+            except ValueError as exc:
+                evidence = {
+                    "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                    "status": "invalid",
+                    "reason": "budget_state_invalid",
+                    "board_namespace": self.board_namespace,
+                    "budget_path": str(self._objective_refill_budget_path()),
+                    "error": str(exc),
+                }
+                self._record_event("objective_refill_budget_invalid", evidence)
+                return self._terminal_refill_result(
+                    ScanTerminalReason.FAILED,
+                    scan_mode="budget_state_invalid",
+                    analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                    started_at=started_at,
+                    error=str(exc),
+                    metadata={"objective_refill_budget_failure": evidence},
+                )
         if not should_scan:
             try:
                 artifact_refresh = (
@@ -20297,6 +20736,94 @@ class PortalImplementationSupervisor:
                 },
             )
 
+        if budget_enabled:
+            try:
+                task_count, task_count_authority = (
+                    self._objective_refill_authoritative_task_count(
+                        todo_text,
+                        task_prefix=task_prefix,
+                    )
+                )
+            except Exception as exc:
+                evidence = {
+                    "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                    "status": "invalid",
+                    "reason": "canonical_task_count_unavailable",
+                    "board_namespace": self.board_namespace,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+                self._record_event(
+                    "objective_refill_task_count_unavailable",
+                    evidence,
+                )
+                return self._terminal_refill_result(
+                    ScanTerminalReason.FAILED,
+                    scan_mode="budget_task_count_unavailable",
+                    analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                    started_at=started_at,
+                    error=str(exc),
+                    metadata={
+                        "objective_refill_budget_failure": evidence,
+                    },
+                )
+            budget["task_count_authority"] = task_count_authority
+            max_total_tasks = self.config.objective_refill_max_total_tasks
+            if max_total_tasks is not None and task_count >= max_total_tasks:
+                return self._objective_refill_budget_exhausted(
+                    reason="max_total_tasks",
+                    budget=budget,
+                    strategy=strategy,
+                    task_count=task_count,
+                    started_at=started_at,
+                )
+            max_epochs = self.config.objective_refill_max_epochs
+            if (
+                max_epochs is not None
+                and int(budget.get("epochs_started") or 0) >= max_epochs
+            ):
+                return self._objective_refill_budget_exhausted(
+                    reason="max_epochs",
+                    budget=budget,
+                    strategy=strategy,
+                    task_count=task_count,
+                    started_at=started_at,
+                )
+
+        effective_max_findings = self.config.objective_scan_max_findings
+        if self.config.objective_refill_max_total_tasks is not None:
+            effective_max_findings = min(
+                effective_max_findings,
+                self.config.objective_refill_max_total_tasks - task_count,
+            )
+        if budget_enabled:
+            budget.update(
+                {
+                    "schema": OBJECTIVE_REFILL_BUDGET_SCHEMA,
+                    "board_namespace": self.board_namespace,
+                    "epochs_started": int(budget.get("epochs_started") or 0)
+                    + 1,
+                    "configured_max_epochs": (
+                        self.config.objective_refill_max_epochs
+                    ),
+                    "configured_max_total_tasks": (
+                        self.config.objective_refill_max_total_tasks
+                    ),
+                    "status": "active",
+                    "last_epoch_started_at": utc_now(),
+                    "last_epoch_starting_task_count": task_count,
+                    "last_epoch_max_findings": effective_max_findings,
+                }
+            )
+            self._write_objective_refill_budget(budget)
+            strategy["objective_refill_budget"] = (
+                self._objective_refill_budget_summary(
+                    budget,
+                    task_count=task_count,
+                )
+            )
+            write_json_atomic(self.config.strategy_path, strategy)
+
         state_root = self.config.state_dir.parent
         discovery_dir = self.config.objective_discovery_dir or state_root / "discovery"
         bundle_dir = self.config.objective_bundle_dir or state_root / "objective_bundles"
@@ -20336,9 +20863,9 @@ class PortalImplementationSupervisor:
             seen_fingerprint=sorted(seen_fingerprints),
             force_goal_id=sorted(set(force_goal_ids)),
             repeat_existing=False,
-            max_findings=self.config.objective_scan_max_findings,
+            max_findings=effective_max_findings,
             objective_generation_max_new_work=(
-                self.config.objective_scan_max_findings
+                effective_max_findings
             ),
             ensure_tracking_document=self.config.objective_ensure_tracking_document,
             ultimate_goal=self.config.objective_ultimate_goal or DEFAULT_ULTIMATE_GOAL,
@@ -20413,9 +20940,57 @@ class PortalImplementationSupervisor:
                     }
                 },
             )
+        refill_error: BaseException | None = None
+        refill_traceback = None
         try:
-            payload = self._run_objective_refill_with_timeout(run_objective_daemon, objective_args)
-        except ObjectiveRefillTimeoutError as exc:
+            payload = self._run_objective_refill_with_timeout(
+                run_objective_daemon,
+                objective_args,
+            )
+        except BaseException as exc:
+            # Validate and, if necessary, restore the capped board before an
+            # objective-daemon exception or timeout can escape this transaction.
+            refill_error = exc
+            refill_traceback = exc.__traceback__
+            payload = {}
+
+        final_task_count = task_count
+        if budget_enabled:
+            try:
+                final_task_count, final_task_count_authority = (
+                    self._objective_refill_authoritative_task_count(
+                        self.config.todo_path.read_text(encoding="utf-8"),
+                        task_prefix=task_prefix,
+                    )
+                )
+            except Exception as exc:
+                return self._quarantine_objective_refill_budget(
+                    reason="task_count_postcondition_unavailable",
+                    budget=budget,
+                    original_todo_text=todo_text,
+                    task_prefix=task_prefix,
+                    starting_task_count=task_count,
+                    effective_max_findings=effective_max_findings,
+                    started_at=started_at,
+                    failure=exc,
+                )
+            budget["task_count_authority"] = final_task_count_authority
+            max_total_tasks = self.config.objective_refill_max_total_tasks
+            if max_total_tasks is not None and final_task_count > max_total_tasks:
+                return self._quarantine_objective_refill_budget(
+                    reason="max_total_tasks_postcondition",
+                    budget=budget,
+                    original_todo_text=todo_text,
+                    task_prefix=task_prefix,
+                    starting_task_count=task_count,
+                    effective_max_findings=effective_max_findings,
+                    started_at=started_at,
+                    observed_task_count=final_task_count,
+                    failure=refill_error,
+                )
+
+        if isinstance(refill_error, ObjectiveRefillTimeoutError):
+            exc = refill_error
             strategy = load_strategy(self.config.strategy_path)
             strategy["last_objective_goal_scan_at"] = utc_now()
             strategy["last_objective_goal_scan_mode"] = f"{mode}_timeout"
@@ -20454,8 +21029,16 @@ class PortalImplementationSupervisor:
                 error=str(exc),
                 metadata=payload,
             )
-
+        if refill_error is not None:
+            raise refill_error.with_traceback(refill_traceback)
         payload["completion_artifact_refresh"] = artifact_refresh
+        if budget_enabled:
+            payload["objective_refill_budget"] = (
+                self._objective_refill_budget_summary(
+                    budget,
+                    task_count=final_task_count,
+                )
+            )
         result = self._adapt_legacy_objective_result(
             payload,
             scan_mode=mode,
@@ -23804,6 +24387,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--objective-refill-max-epochs",
+        type=int,
+        default=None,
+        help=(
+            "Maximum supervisor-owned objective refill epochs for this board. "
+            "Absent preserves the legacy unbounded epoch policy."
+        ),
+    )
+    parser.add_argument(
+        "--objective-refill-max-total-tasks",
+        type=int,
+        default=None,
+        help=(
+            "Maximum total task records the objective refill may leave on the "
+            "board. Absent preserves the legacy unbounded total-task policy."
+        ),
+    )
+    parser.add_argument(
         "--objective-scan-depends-on",
         action="append",
         default=[],
@@ -24102,6 +24703,10 @@ def supervisor_config_from_args(
             args.objective_scan_exclude_path
         ),
         objective_refill_timeout_seconds=args.objective_refill_timeout_seconds,
+        objective_refill_max_epochs=args.objective_refill_max_epochs,
+        objective_refill_max_total_tasks=(
+            args.objective_refill_max_total_tasks
+        ),
         objective_scan_depends_on=split_csv_values(args.objective_scan_depends_on),
         objective_max_refinement_children=args.objective_max_refinement_children,
         objective_max_refinement_depth=args.objective_max_refinement_depth,
