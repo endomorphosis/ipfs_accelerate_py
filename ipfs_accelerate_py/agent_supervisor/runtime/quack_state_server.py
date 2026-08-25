@@ -136,6 +136,7 @@ from ..task_sources.quack_capabilities import (
 from ..task_sources.quack_owner_mutation import (
     MAX_MUTATION_REQUEST_BYTES,
     MAX_MUTATION_RESULT_ROWS,
+    QUACK_OWNER_MUTATION_REQUEST_SCHEMA as LEGACY_QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
     QuackOwnerMutationEnvelopeError,
     build_mutation_result,
     mutation_envelope_exists_at,
@@ -5210,6 +5211,22 @@ class QuackStateServer:
                         request_path.name
                     )
                     if command_match is not None:
+                        try:
+                            candidate = _read_bounded_canonical_json(
+                                request_path
+                            )
+                        except (OSError, ValueError):
+                            candidate = None
+                        if (
+                            isinstance(candidate, Mapping)
+                            and candidate.get("schema")
+                            == LEGACY_QUACK_OWNER_MUTATION_REQUEST_SCHEMA
+                        ):
+                            # Legacy owner-DML envelopes also use UUID-shaped
+                            # filenames. Leave that reviewed protocol for
+                            # _process_mutation_inbox_locked instead of
+                            # consuming it as an invalid command request.
+                            continue
                         if self._service_owner_command_request(
                             request_path=request_path,
                             request_id=command_match.group("request_id"),
@@ -5429,20 +5446,6 @@ class QuackStateServer:
                 # entire lifetime.
                 self._publish_identity_rows(connection, identity, capability)
                 self._unstall_stale_board_gates(connection)
-                public_obs = self.transport.start(
-                    connection,
-                    host=self.config.host,
-                    port=port,
-                    token=token,
-                    identity=identity,
-                )
-                # Track the bootstrap listener so the first replica refresh
-                # can stop it before replacing the served database.  Leaving
-                # this unset strands the writer-backed listener on the port
-                # and makes every later refresh fail its endpoint-close gate.
-                self._transport_connection = connection
-                # Ensure transport observation never echoed the token.
-                self._vault.assert_absent_from(public_obs, surface_name="transport.start")
                 # A supervisor must never be able to reuse the HTTP Quack
                 # credential to obtain a generic SQL surface.  Only the owner
                 # retains it after identity mint; the replica transport later
@@ -5469,6 +5472,7 @@ class QuackStateServer:
                     socket_path=self.typed_command_socket_path(),
                     store_id=identity.store_id,
                     identity=identity.to_dict(),
+                    owner_liveness_probe=self.owner_liveness_probe,
                     transaction_lock=self._owner_transaction_lock,
                 )
                 status_bootstrap_token = gateway.configure_status_bootstrap()

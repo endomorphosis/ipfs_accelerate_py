@@ -60,6 +60,7 @@ from .merge_queue import (
 )
 
 MergeCallback = Callable[[MergeRequest], Mapping[str, Any]]
+MergeRequestFilter = Callable[[MergeRequest], bool]
 PreflightCallback = Callable[..., Mapping[str, Any] | bool]
 PostMergeValidationCallback = Callable[..., Mapping[str, Any] | bool]
 PostMergeEvidenceCallback = Callable[..., Any]
@@ -1038,6 +1039,10 @@ class MergeTrain:
             exact repository lease is reverified on every pass and never
             consumes the candidate's failure budget merely because another
             admitted owner remains active.
+        request_filter: Optional non-mutating admission predicate used before
+            a queue claim.  Shared-lane consumers can use this to leave work
+            pending for a compatible consumer without spending its retry
+            budget.  Rejected requests are not completed or quarantined.
         merge_callback: Optional specialised merger.  It receives the claimed
             request and returns a merge-result mapping.
         state_dir: Train receipts/lease/worktrees directory.  Defaults beneath
@@ -1063,6 +1068,7 @@ class MergeTrain:
         max_attempts: int = 3,
         merge_lock_deferral_seconds: float = DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS,
         max_merge_lock_deferrals: int = DEFAULT_MAX_MERGE_LOCK_DEFERRALS,
+        request_filter: MergeRequestFilter | None = None,
         merge_callback: MergeCallback | None = None,
         state_dir: Path | str | None = None,
         git_timeout_seconds: float = 600.0,
@@ -1135,6 +1141,9 @@ class MergeTrain:
             raise ValueError(
                 "max merge lock deferrals must fit the durable deferral history"
             )
+        if request_filter is not None and not callable(request_filter):
+            raise TypeError("request_filter must be callable or None")
+        self.request_filter = request_filter
         self.merge_callback = merge_callback
         self._allow_post_merge_declared_output_callback = False
         self.decision_runtime = decision_runtime
@@ -1588,6 +1597,14 @@ class MergeTrain:
     run_parallel = drain_parallel
 
     def _dequeue_batch(self, limit: int) -> tuple[MergeRequest, ...]:
+        if self.request_filter is not None:
+            claimed: list[MergeRequest] = []
+            for _ in range(max(0, int(limit))):
+                request = self._dequeue()
+                if request is None:
+                    break
+                claimed.append(request)
+            return tuple(claimed)
         dequeue_many = getattr(self.queue, "dequeue_many", None)
         if callable(dequeue_many):
             return tuple(
@@ -6097,6 +6114,29 @@ class MergeTrain:
     def _dequeue(self) -> MergeRequest | None:
         """Claim with a consumer id when supported by the queue implementation."""
 
+        if self.request_filter is not None:
+            pending_requests = getattr(self.queue, "pending_requests", None)
+            exact_claim = getattr(self.queue, "claim_pending_request", None)
+            if not callable(pending_requests) or not callable(exact_claim):
+                raise TypeError(
+                    "request_filter requires pending_requests and "
+                    "claim_pending_request queue operations"
+                )
+            scan_limit = min(
+                256,
+                max(1, int(getattr(self.queue, "max_queue_size", 256))),
+            )
+            for pending in pending_requests(limit=scan_limit):
+                if not self.request_filter(pending):
+                    continue
+                claimed = exact_claim(
+                    pending.request_id,
+                    consumer_id=self.owner_id,
+                )
+                if isinstance(claimed, MergeRequest):
+                    return claimed
+            return None
+
         try:
             signature = inspect.signature(self.queue.dequeue)
             if "consumer_id" in signature.parameters:
@@ -6201,6 +6241,7 @@ class MergeTrain:
 
 __all__ = [
     "MergeCallback",
+    "MergeRequestFilter",
     "MergeTrain",
     "PARALLEL_ACCEPTANCE_EVIDENCE_ID",
     "PARALLEL_ACCEPTANCE_RECEIPT_SCHEMA",

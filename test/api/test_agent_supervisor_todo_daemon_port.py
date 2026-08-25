@@ -9238,7 +9238,7 @@ def test_merge_rejects_submodule_target_ref_ahead_of_authoritative_gitlink(
     assert _git(submodule, "rev-parse", integration_ref) == ahead_commit
 
 
-def test_merge_rejects_divergent_submodule_target_ref(tmp_path):
+def test_merge_rotates_divergent_legacy_submodule_target_ref(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     common_base = _git(submodule, "rev-parse", "HEAD")
     (submodule / "target-owned.txt").write_text(
@@ -9284,7 +9284,97 @@ def test_merge_rejects_divergent_submodule_target_ref(tmp_path):
         target_scope="main",
         task=PortalTask(
             task_id="AUTO-TARGET-DIVERGED",
-            title="Reject a divergent target cursor",
+            title="Rotate a divergent legacy target cursor",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    scoped_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+        target_base_commit=target_base,
+    )
+    assert result["merged"] is True
+    assert result["superseded_integration_ref"] == integration_ref
+    assert result["superseded_integration_ref_commit"] == divergent_commit
+    assert result["superseded_integration_ref_drift_kind"] == "diverged"
+    assert result["base_scoped_integration_ref"] == scoped_ref
+    assert _git(submodule, "rev-parse", integration_ref) == divergent_commit
+    integrated_commit = _git(submodule, "rev-parse", scoped_ref)
+    assert result["commit"] == integrated_commit
+    assert _git(
+        submodule,
+        "merge-base",
+        "--is-ancestor",
+        target_base,
+        integrated_commit,
+    ) == ""
+    assert _git(
+        submodule,
+        "merge-base",
+        "--is-ancestor",
+        divergent_commit,
+        integrated_commit,
+    ) == ""
+
+
+def test_merge_rejects_divergent_base_scoped_submodule_target_ref(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    common_base = _git(submodule, "rev-parse", "HEAD")
+    (submodule / "target-owned.txt").write_text(
+        "authoritative target branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target-owned.txt")
+    _git(submodule, "commit", "-m", "advance authoritative target")
+    target_base = _git(submodule, "rev-parse", "HEAD")
+
+    submodule_branch = "implementation/auto-target-scoped-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, common_base)
+    (submodule / "task-owned.txt").write_text(
+        "divergent task branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "create divergent task cursor")
+    divergent_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    legacy_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    scoped_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+        target_base_commit=target_base,
+    )
+    _git(submodule, "update-ref", legacy_ref, divergent_commit)
+    _git(submodule, "update-ref", scoped_ref, divergent_commit)
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-SCOPED-DIVERGED",
+            title="Reject a divergent base-scoped target cursor",
             status="todo",
             completion="manual",
             priority="P0",
@@ -9296,7 +9386,10 @@ def test_merge_rejects_divergent_submodule_target_ref(tmp_path):
     assert result["merged"] is False
     assert result["reason"] == "submodule_target_ref_drift"
     assert result["drift_kind"] == "diverged"
-    assert _git(submodule, "rev-parse", integration_ref) == divergent_commit
+    assert result["superseded_integration_ref"] == legacy_ref
+    assert result["base_scoped_integration_ref"] == scoped_ref
+    assert _git(submodule, "rev-parse", legacy_ref) == divergent_commit
+    assert _git(submodule, "rev-parse", scoped_ref) == divergent_commit
 
 
 def test_merge_rejects_stale_submodule_target_ref_compare_and_swap_race(

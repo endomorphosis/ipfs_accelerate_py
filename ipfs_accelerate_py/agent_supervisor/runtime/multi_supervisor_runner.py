@@ -6332,6 +6332,13 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
         parts.append(f"supervisor_startup_age_seconds={startup_age}")
     if fields.get("supervisor_within_startup_grace"):
         parts.append("supervisor_within_startup_grace=true")
+    transient_misses = fields.get("supervisor_status_transient_miss_count")
+    if transient_misses:
+        parts.append(
+            f"supervisor_status_transient_miss_count={transient_misses}"
+        )
+    if fields.get("supervisor_status_restart_deferred"):
+        parts.append("supervisor_status_restart_deferred=true")
     if fields.get("restart_supervisor"):
         parts.append("restart_supervisor=true")
     return " ".join(parts)
@@ -6996,6 +7003,13 @@ def start_track(
         common_args,
         (track,),
     )
+    # EAAEF's configured-board profile contributes these fields to the shared
+    # lifecycle identity.  LGCVF carries a separately verified live context,
+    # while legacy tracks carry neither; keep the shared serialization total
+    # across all three paths.
+    live_seal_verification: dict[str, Any] | None = None
+    configured_board_live_seal_config = ""
+    worker_network_launch_authority_json = ""
     if live_profile_required and configured_board_live_context is None:
         raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
     if configured_board_live_context is not None:
@@ -10106,6 +10120,8 @@ def run_supervisor_tracks(
     run_started_at = time.time()
     track_generation_started_at: dict[str, float] = {}
     track_startup_grace_seconds: dict[str, float] = {}
+    track_generation_observed_live: set[str] = set()
+    track_transient_status_misses: dict[str, int] = {}
 
     def start_generation(track: SupervisorTrack) -> subprocess.Popen[bytes]:
         """Start one track and retain the lower bound for its status generation."""
@@ -10130,7 +10146,36 @@ def run_supervisor_tracks(
         )
         track_generation_started_at[track.name] = generation_started_at
         track_startup_grace_seconds[track.name] = startup_grace
+        track_generation_observed_live.discard(track.name)
+        track_transient_status_misses.pop(track.name, None)
         return process
+
+    def retire_fenced_generation_projection(
+        track: SupervisorTrack,
+        process: subprocess.Popen[bytes],
+    ) -> None:
+        """Retire one exact strict PID projection before same-track rebirth.
+
+        Authority-bearing launches reserve their supervisor PID path with
+        ``O_EXCL``.  Fencing a stale or exited generation proves that its
+        process tree is gone, but does not itself remove that projection.
+        Remove only the marker that still names the fenced root, then require
+        absence so a substituted owner remains fail-closed.
+        """
+
+        if (
+            configured_board_live_context is None
+            and "--plan-bound-dispatch" not in track.extra_args
+        ):
+            return
+        pid_path = track.resolve(resolved_repo_root).supervisor_pid_path
+        try:
+            _remove_owned_pid_projection(pid_path, int(process.pid))
+            _require_absent_pid_projection(pid_path)
+        except (OSError, ValueError) as exc:
+            raise SupervisorRunInterrupted(
+                f"could not retire fenced {track.name} supervisor PID projection"
+            ) from exc
 
     def recovery_recipient(
         donor: PlanBoundSupervisorChild,
@@ -10274,6 +10319,41 @@ def run_supervisor_tracks(
                         0.0,
                     ),
                 )
+                supervisor_status = str(
+                    supervisor_fields.get("supervisor_status") or ""
+                )
+                generation_reason = str(
+                    supervisor_fields.get(
+                        "supervisor_status_generation_reason"
+                    )
+                    or ""
+                )
+                if supervisor_status == "live":
+                    track_generation_observed_live.add(track.name)
+                    track_transient_status_misses.pop(track.name, None)
+                elif (
+                    supervisor_fields.get("restart_supervisor")
+                    and track.name in track_generation_observed_live
+                    and generation_reason
+                    in {
+                        "status_missing",
+                        "status_timestamp_missing_or_invalid",
+                    }
+                ):
+                    miss_count = (
+                        track_transient_status_misses.get(track.name, 0) + 1
+                    )
+                    track_transient_status_misses[track.name] = miss_count
+                    supervisor_fields[
+                        "supervisor_status_transient_miss_count"
+                    ] = miss_count
+                    if miss_count < 2:
+                        supervisor_fields["restart_supervisor"] = False
+                        supervisor_fields[
+                            "supervisor_status_restart_deferred"
+                        ] = True
+                else:
+                    track_transient_status_misses.pop(track.name, None)
                 if process is not None and process.poll() is None and pid_alive(process.pid):
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)
                     heartbeat_parts = [
@@ -10309,6 +10389,7 @@ def run_supervisor_tracks(
                             process.wait(timeout=max(0.1, stop_grace_seconds))
                         except subprocess.TimeoutExpired:
                             pass
+                        retire_fenced_generation_projection(track, process)
                         processes[track.name] = start_generation(track)
                     elif exit_when_all_tracks_terminal:
                         task_fields = terminal_task_state_fields(
@@ -10506,6 +10587,8 @@ def run_supervisor_tracks(
                                 blocked = blocker
                     if recover_execution and not blocked:
                         try:
+                            assert process is not None
+                            retire_fenced_generation_projection(track, process)
                             processes[track.name] = start_generation(track)
                         except Exception as exc:  # noqa: BLE001
                             blocker = (
@@ -10547,6 +10630,7 @@ def run_supervisor_tracks(
                         raise SupervisorRunInterrupted(
                             f"could not fence exited {track.name} descendants"
                         )
+                    retire_fenced_generation_projection(track, process)
                 processes[track.name] = start_generation(track)
             dispatch_pending_reassignments()
             if replan_required:

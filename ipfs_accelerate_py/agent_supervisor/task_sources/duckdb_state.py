@@ -817,25 +817,24 @@ class DuckDBConnection:
             and normalized.startswith(("SELECT ", "WITH ", "SHOW ", "DESCRIBE "))
         )
         failed_connection: Any | None = None
-        with self._session_lock:
-            try:
-                return self._execute_once(sql, parameters)
-            except BaseException as exc:
-                if not read_only_retry or not _is_quack_session_dead(exc):
-                    raise
-                uri = str(self._quack_uri or "").strip()
-                if not uri:
-                    raise
-                failed_connection = self._connection
-        # Reattachment takes the cache lock before the session lock.  Leaving
-        # the session critical section first keeps the same lock order as the
-        # cache probe and prevents a refresh/open deadlock.
+        try:
+            return self._execute_once(sql, parameters)
+        except BaseException as exc:
+            if not read_only_retry or not _is_quack_session_dead(exc):
+                raise
+            uri = str(self._quack_uri or "").strip()
+            if not uri:
+                raise
+            failed_connection = self._connection
+        # ``_execute_once`` already serializes native access and transaction
+        # ownership.  The session lock belongs only to the transplant below;
+        # retaining it while waiting for a peer-owned transaction deadlocks the
+        # rightful owner when it tries to commit or roll back.
         self._restore_quack_attach_session(
             uri,
             failed_connection=failed_connection,
         )
-        with self._session_lock:
-            return self._execute_once(sql, parameters)
+        return self._execute_once(sql, parameters)
 
     def _execute_once(
         self,
@@ -3633,14 +3632,16 @@ def reset_quack_transport_cache() -> None:
 
 
 def _probe_quack_connection(connection: Any) -> None:
-    lock = getattr(connection, "_session_lock", None)
-    context = lock if lock is not None else nullcontext()
-    with context:
-        catalog = str(getattr(connection, "_default_catalog", "") or "")
-        raw = getattr(connection, "_connection", connection)
-        statement = f"SELECT count(*) FROM {catalog}.tasks" if catalog else "SELECT 1"
-        probed = raw.execute(statement)
-        _consume_duckdb_result(probed)
+    # A cached wrapper's execution gate serializes native access and waits for
+    # a peer-owned transaction without retaining the global attach lock.  Skip
+    # the reconnecting ``execute`` facade here: its session lock must not let a
+    # waiting peer exclude the rightful transaction owner from re-probing.
+    execute_once = getattr(connection, "_execute_once", None)
+    if callable(execute_once):
+        probed = execute_once("SELECT 1")
+    else:
+        probed = connection.execute("SELECT 1")
+    _consume_duckdb_result(probed)
 
 
 def _attach_quack_once(uri: str, secret: str) -> Any:
@@ -3749,6 +3750,7 @@ def _attach_quack_once(uri: str, secret: str) -> Any:
         except Exception:
             pass
         raise
+    return connection
 
 
 def _attach_quack_serialized(uri: str, secret: str) -> Any:
@@ -3805,13 +3807,10 @@ def _open_quack_transport_connection_once(
         ) from exc
     del duckdb
 
-    with _QUACK_ATTACH_LOCK:
-        cached = _QUACK_TRANSPORT_CACHE.get(text)
-        if cached is not None and not getattr(cached, "_closed", False):
-            try:
-                _probe_quack_connection(cached)
-                return cached
-            except Exception:
+    while True:
+        with _QUACK_ATTACH_LOCK:
+            cached = _QUACK_TRANSPORT_CACHE.get(text)
+            if cached is not None and getattr(cached, "_closed", False):
                 _QUACK_TRANSPORT_CACHE.pop(text, None)
                 cached = None
         if cached is not None:
@@ -3833,40 +3832,6 @@ def _open_quack_transport_connection_once(
                     ):
                         return cached
                 continue
-            wrapped = DuckDBConnection.wrap(raw)
-            wrapped._default_catalog = _QUACK_CONTROL_CATALOG
-            wrapped._quack_uri = text
-            wrapped._pooled = True
-            binding = getattr(raw, "_quack_live_binding", None)
-            wrapped._quack_mutation_binding = (
-                dict(binding) if isinstance(binding, Mapping) else None
-            )
-            wrapped._quack_mutation_token = secret
-            if admitted_handle_binding:
-                live = wrapped._quack_mutation_binding or {}
-                exact_handle_binding = {
-                    "server_id": live.get("server_id"),
-                    "store_id": live.get("store_id"),
-                    "database_uuid": live.get("database_uuid"),
-                    "schema_revision": live.get("schema_revision"),
-                    "schema_fingerprint": live.get("schema_fingerprint"),
-                    "generation": live.get("generation"),
-                    "process_birth_id": live.get("process_birth_id"),
-                    "listen_uri": live.get("listen_uri"),
-                    "extension_fingerprint": live.get("extension_fingerprint"),
-                }
-                mismatched = [
-                    name
-                    for name, value in exact_handle_binding.items()
-                    if admitted_handle_binding.get(name) != value
-                ]
-                if mismatched:
-                    raise DuckDBConnectionPolicyError(
-                        "quack live binding differs from the admitted owner status: "
-                        + ", ".join(mismatched)
-                    )
-            _QUACK_TRANSPORT_CACHE[text] = wrapped
-            return wrapped
 
         with _QUACK_ATTACH_LOCK:
             cached = _QUACK_TRANSPORT_CACHE.get(text)

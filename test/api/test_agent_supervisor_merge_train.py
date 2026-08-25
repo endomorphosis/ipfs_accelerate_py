@@ -63,13 +63,18 @@ class _DatabaseProjectionTaskSource:
 
 
 def _database_projection_record(
-    *, task_cid: str = "task:cid:ref-040", revision: int = 1
+    *,
+    task_cid: str = "task:cid:ref-040",
+    task_alias: str = "REF-040",
+    goal_cid: str = "goal:ref-040",
+    plan_cid: str = "plan:merge-continuation",
+    revision: int = 1,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         task_cid=task_cid,
-        task_alias="REF-040",
-        goal_cid="goal:ref-040",
-        plan_cid="plan:merge-continuation",
+        task_alias=task_alias,
+        goal_cid=goal_cid,
+        plan_cid=plan_cid,
         revision=revision,
         priority="P0",
         dependencies=(),
@@ -85,13 +90,18 @@ def _database_projection_record(
 
 
 def _database_projection_attempt(
-    *, attempt_id: str, claim_id: str, task_cid: str, attempt_number: int
+    *,
+    attempt_id: str,
+    claim_id: str,
+    task_cid: str,
+    attempt_number: int,
+    task_alias: str = "REF-040",
 ) -> DatabaseTaskAttempt:
     return DatabaseTaskAttempt(
         attempt_id=attempt_id,
         claim_id=claim_id,
         task_cid=task_cid,
-        task_alias="REF-040",
+        task_alias=task_alias,
         attempt_number=attempt_number,
         owner_session_id="session:merge-continuation",
         fencing_token=attempt_number,
@@ -193,6 +203,48 @@ def test_queue_deduplicates_canonical_task_and_commit_across_lanes(tmp_path: Pat
     claimed = queue.dequeue(consumer_id="train")
     assert isinstance(claimed, MergeRequest)
     assert claimed.request_id == first.request_id
+
+
+def test_merge_train_filter_leaves_incompatible_request_pending(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    incompatible = queue.enqueue(
+        branch_name="implementation/ref-foreign",
+        task_id="REF-FOREIGN",
+        canonical_task_id="task:cid:foreign",
+        commit_sha=candidate,
+    )
+    compatible = queue.enqueue(
+        branch_name="implementation/ref-active",
+        task_id="REF-ACTIVE",
+        canonical_task_id="task:cid:active",
+        commit_sha=candidate,
+    )
+    train = MergeTrain(
+        repo,
+        queue,
+        request_filter=lambda request: request.task_id == "REF-ACTIVE",
+        merge_callback=lambda _request: {
+            "already_merged": True,
+            "reason": "test_candidate_already_integrated",
+        },
+    )
+
+    result = train.run_once()
+
+    assert result is not None
+    assert result["task_id"] == "REF-ACTIVE"
+    untouched = queue.get(incompatible.request_id)
+    assert untouched is not None
+    assert untouched.status == "pending"
+    assert untouched.attempt == 1
+    assert untouched.failure_count == 0
+    completed = queue.get(compatible.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
 
 
 def test_queue_projects_active_and_completed_canonical_task_ids(tmp_path: Path) -> None:
@@ -569,9 +621,11 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
 
     lane_a = daemon("lane-a")
     lane_b = daemon("lane-b")
+    isolated_target = "implementation/tasks"
     assert lane_a.merge_queue.database_path == lane_b.merge_queue.database_path
     assert lane_a.merge_queue_dir.parent == repo / ".git" / "agent-merge-trains"
-    assert lane_a.merge_queue.target_branch == "main"
+    assert lane_a.resolved_merge_target_branch == isolated_target
+    assert lane_a.merge_queue.target_branch == isolated_target
 
     task = PortalTask(
         task_id="REF-038",
@@ -595,7 +649,7 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
     assert result["queued"] is True
     assert request.commit_sha == commit
     assert request.target_repository_id == lane_a.merge_target_repository_id
-    assert request.target_branch == "main"
+    assert request.target_branch == isolated_target
     assert request.has_target_binding is True
     assert lane_b.merge_queue.has_pending_for_task(identity.canonical_task_cid, commit_sha=commit)
 
@@ -630,7 +684,7 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
     rejected = lane_a._merge_train_callback(foreign_request)
 
     assert rejected["reason"] == "merge_target_binding_mismatch"
-    assert rejected["expected_target_branch"] == "main"
+    assert rejected["expected_target_branch"] == isolated_target
     assert rejected["actual_target_branch"] == "benchmark/semantic-roundtrip"
     assert lane_a.merge_queue.pending_count() == 1
     assert benchmark_lane.merge_queue.pending_count() == 1
@@ -688,6 +742,7 @@ def test_cross_lane_completion_without_authority_policy_fails_closed(
         },
     )
 
+    assert consumer._merge_request_matches_active_lane(request) is True
     result = consumer._merge_train_callback(request)
 
     assert result["merged"] is False
@@ -698,6 +753,92 @@ def test_cross_lane_completion_without_authority_policy_fails_closed(
     assert result["consumer_todo_path"] == str(consumer_todo)
     assert "- Status: todo" in producer_todo.read_text(encoding="utf-8")
     assert consumer.merge_queue.target_branch == "benchmark/semantic-roundtrip"
+
+
+def test_database_portal_wrong_lane_leaves_request_for_compatible_consumer(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    shared_goal = "goal:shared-board"
+    shared_plan = "plan:shared-board"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:ref-040",
+        claim_id="claim:ref-040",
+        task_cid="task:cid:ref-040",
+        task_alias="REF-040",
+        attempt_number=1,
+    )
+    wrong_lane_attempt = _database_projection_attempt(
+        attempt_id="attempt:ref-041",
+        claim_id="claim:ref-041",
+        task_cid="task:cid:ref-041",
+        task_alias="REF-041",
+        attempt_number=1,
+    )
+    producer, _producer_paths, _producer_binding = (
+        _database_projection_daemon(
+            repo=repo,
+            attempt_root=repo / "attempts",
+            merge_queue_dir=merge_queue_dir,
+            attempt=producer_attempt,
+            record=_database_projection_record(
+                task_cid="task:cid:ref-040",
+                task_alias="REF-040",
+                goal_cid=shared_goal,
+                plan_cid=shared_plan,
+                revision=2,
+            ),
+        )
+    )
+    wrong_lane, _wrong_paths, _wrong_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=wrong_lane_attempt,
+        record=_database_projection_record(
+            task_cid="task:cid:ref-041",
+            task_alias="REF-041",
+            goal_cid=shared_goal,
+            plan_cid=shared_plan,
+            revision=3,
+        ),
+    )
+    _git(repo, "branch", "implementation/ref-040")
+    task = producer._load_tasks()[0]
+    commit = _git(repo, "rev-parse", "HEAD")
+    request, queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    assert queued["queued"] is True
+
+    assert wrong_lane._merge_request_matches_active_lane(request) is False
+    assert wrong_lane._consume_one_merge_candidate() is None
+    deferred = wrong_lane.merge_queue.get(request.request_id)
+    assert deferred is not None
+    assert deferred.status == "pending"
+    assert deferred.attempt == 1
+    assert deferred.failure_count == 0
+
+    result = producer._consume_one_merge_candidate()
+
+    assert result is not None
+    assert result["status"] in {"merged", "already_merged"}
+    completed = producer.merge_queue.get(request.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
 
 
 def test_database_portal_retry_continues_merge_into_current_projection(
@@ -931,6 +1072,8 @@ def test_merge_cleanup_failure_keeps_merged_and_completes_board(
         task_header_prefix="## REF-",
         worktree_pool_enabled=False,
     )
+    isolated_target = daemon.resolved_merge_target_branch
+    assert isolated_target == "implementation/tasks"
     task = daemon._load_tasks()[0]
     request, queued = daemon._enqueue_merge_candidate(
         branch_name=branch,
@@ -950,11 +1093,11 @@ def test_merge_cleanup_failure_keeps_merged_and_completes_board(
     assert queued.get("queued") is True
 
     def integrate(*_args, **_kwargs):
-        _git(repo, "merge", "--ff-only", branch)
+        _git(repo, "branch", "-f", isolated_target, branch)
         return {
             "merged": True,
             "returncode": 0,
-            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+            "merge_commit": _git(repo, "rev-parse", isolated_target),
         }
 
     monkeypatch.setattr(daemon, "_merge_branch_to_main", integrate)
@@ -973,7 +1116,20 @@ def test_merge_cleanup_failure_keeps_merged_and_completes_board(
     assert result.get("cleanup_failed") is True
     assert result.get("reason") != "merge_cleanup_failed"
     assert "- Status: completed" in todo.read_text(encoding="utf-8")
-    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert (
+        _git(repo, "merge-base", "--is-ancestor", candidate, isolated_target)
+        == ""
+    )
+    assert (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", candidate, "main"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 1
+    )
 
 
 def test_merge_train_rejects_a_mismatched_bound_queue_target(

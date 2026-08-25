@@ -30205,6 +30205,146 @@ class PortalImplementationDaemon:
             ),
         }
 
+    def _database_portal_merge_lane_affinity_mismatch(
+        self,
+        request: Any,
+        metadata: Mapping[str, Any],
+        request_todo_path: Path,
+    ) -> dict[str, Any] | None:
+        """Identify a valid same-plan request owned by another active lane.
+
+        This classifier grants no merge or completion authority.  It is used
+        only before a shared-queue claim so a lane projecting task B leaves a
+        valid task-A request pending for an A-compatible consumer.  Every
+        malformed, foreign-plan, or otherwise unproved request remains
+        consumable and therefore reaches the existing cross-board authority
+        rejection in :meth:`_merge_train_callback`.
+        """
+
+        if (
+            request_todo_path == self.todo_path
+            or request_todo_path.name != "task-projection.md"
+            or self.todo_path.name != "task-projection.md"
+            or str(metadata.get("schema") or "")
+            != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            or metadata.get("bundle_work_order") is not None
+            or str(metadata.get("target_binding_schema") or "")
+            != MERGE_TARGET_BINDING_SCHEMA
+            or str(
+                getattr(request, "target_repository_id", "")
+                or metadata.get("target_repository_id")
+                or ""
+            ).strip()
+            != self.merge_target_repository_id
+            or str(
+                getattr(request, "target_branch", "")
+                or metadata.get("target_branch")
+                or ""
+            ).strip()
+            != self.resolved_merge_target_branch
+        ):
+            return None
+
+        task_id = str(getattr(request, "task_id", "") or "").strip()
+        task_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        ).strip()
+        task_key = str(
+            getattr(request, "canonical_task_key", "") or ""
+        ).strip()
+        completion_task_cids = metadata.get("completion_task_cids")
+        if (
+            not task_id
+            or not task_cid
+            or not task_key
+            or not isinstance(completion_task_cids, Mapping)
+            or {
+                str(alias): str(cid)
+                for alias, cid in completion_task_cids.items()
+            }
+            != {task_id: task_cid}
+        ):
+            return None
+
+        try:
+            from .database_portal_bridge import (
+                verify_database_portal_attempt_projection,
+            )
+
+            producer = verify_database_portal_attempt_projection(
+                request_todo_path,
+                expected_task_alias=task_id,
+                expected_task_cid=task_cid,
+                allowed_root=self.repo_root,
+            )
+            queued_task = self._portal_task_from_merge_request(request)
+            queued_identity = self._identity_for_task(queued_task)
+            current_tasks = self._load_tasks()
+            if len(current_tasks) != 1:
+                return None
+            current_task = current_tasks[0]
+            current_identity = self._identity_for_task(current_task)
+            consumer = verify_database_portal_attempt_projection(
+                self.todo_path,
+                expected_task_alias=current_task.task_id,
+                expected_task_cid=current_identity.canonical_task_cid,
+                allowed_root=self.repo_root,
+            )
+        except Exception:
+            # Failure to prove exact producer and consumer projections must not
+            # suppress the ordinary authority checks after dequeue.
+            return None
+
+        if (
+            producer.get("task_alias") != task_id
+            or producer.get("task_cid") != task_cid
+            or producer.get("canonical_task_key") != task_key
+            or queued_identity.canonical_task_cid != task_cid
+            or queued_identity.canonical_task_key != task_key
+            or consumer.get("task_alias") != current_task.task_id
+            or consumer.get("task_cid")
+            != current_identity.canonical_task_cid
+            or consumer.get("canonical_task_key")
+            != current_identity.canonical_task_key
+            or current_task.task_id == task_id
+            or current_identity.canonical_task_cid == task_cid
+            or current_identity.canonical_task_key == task_key
+            or consumer.get("goal_cid") != producer.get("goal_cid")
+            or consumer.get("plan_cid") != producer.get("plan_cid")
+            or consumer.get("binding_id") == producer.get("binding_id")
+        ):
+            return None
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-merge-lane-affinity@1"
+            ),
+            "verified": True,
+            "authority_created": False,
+            "reason": "merge_request_active_lane_task_mismatch",
+            "request_task_id": task_id,
+            "request_task_cid": task_cid,
+            "active_task_id": current_task.task_id,
+            "active_task_cid": current_identity.canonical_task_cid,
+            "goal_cid": str(producer["goal_cid"]),
+            "plan_cid": str(producer["plan_cid"]),
+            "producer_binding_id": str(producer["binding_id"]),
+            "consumer_binding_id": str(consumer["binding_id"]),
+        }
+
+    def _merge_request_matches_active_lane(self, request: Any) -> bool:
+        """Return false only for a proved different-task lane projection."""
+
+        metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        request_todo_path = Path(
+            str(metadata.get("todo_path") or self.todo_path)
+        )
+        return self._database_portal_merge_lane_affinity_mismatch(
+            request,
+            metadata,
+            request_todo_path,
+        ) is None
+
     def _declared_outputs_present_on_head(self, task: PortalTask) -> bool:
         """Return whether every declared output blob exists on HEAD."""
 
@@ -34074,6 +34214,7 @@ class PortalImplementationDaemon:
             queue=self.merge_queue,
             target_branch=target_branch,
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
+            request_filter=self._merge_request_matches_active_lane,
             merge_callback=self._merge_train_callback,
             formal_verification_policy=self.formal_verification_policy,
             proof_gate=self.proof_gate,
@@ -56842,8 +56983,9 @@ class PortalImplementationDaemon:
         *,
         target_scope: str,
         full_relative: str,
+        target_base_commit: str = "",
     ) -> str:
-        """Return a ref isolated by superproject repository, target, and path."""
+        """Return a target cursor, optionally isolated to one gitlink base."""
 
         target_identity = hashlib.sha256(
             (
@@ -56856,9 +56998,19 @@ class PortalImplementationDaemon:
             .strip("/.-")
             or "submodule"
         )
+        base_suffix = (
+            "/bases/"
+            + hashlib.sha256(
+                target_base_commit.encode(
+                    "utf-8", errors="surrogateescape"
+                )
+            ).hexdigest()[:24]
+            if target_base_commit
+            else ""
+        )
         return (
             "refs/agent-supervisor/submodule-targets/"
-            f"{target_identity[:24]}/{safe_path[:120]}"
+            f"{target_identity[:24]}{base_suffix}/{safe_path[:120]}"
         )
 
     @staticmethod
@@ -56911,7 +57063,11 @@ class PortalImplementationDaemon:
         The integration ref is a compare-and-swap cursor for exactly one
         superproject target and child path.  A cursor behind the authoritative
         target gitlink may advance monotonically with a compare-and-swap.
-        Target-behind, divergent, and raced cursors fail closed.
+        Target-behind, divergent, and raced cursors fail closed.  A legacy
+        cursor that diverged from the authoritative gitlink is preserved and
+        superseded by a cursor scoped to that exact target base.  This keeps
+        abandoned, unpublished integrations as evidence without letting them
+        permanently block a later authoritative board generation.
         """
 
         integration_ref = self._submodule_target_integration_ref(
@@ -56948,18 +57104,50 @@ class PortalImplementationDaemon:
         target_base_commit = base_result.stdout.strip()
         branch_commit = branch_result.stdout.strip()
 
-        current_ref_result = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", integration_ref],
-            cwd=source,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        current_ref = (
-            current_ref_result.stdout.strip()
-            if current_ref_result.returncode == 0
-            else ""
-        )
+        def read_integration_ref(ref: str) -> str:
+            observed = subprocess.run(
+                ["git", "rev-parse", "--verify", "--quiet", ref],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            return (
+                observed.stdout.strip()
+                if observed.returncode == 0
+                else ""
+            )
+
+        current_ref = read_integration_ref(integration_ref)
+        integration_ref_recovery: dict[str, Any] = {}
+        if (
+            current_ref
+            and current_ref != target_base_commit
+            and not self._git_ref_is_ancestor_in_repo(
+                source,
+                current_ref,
+                target_base_commit,
+            )
+            and not self._git_ref_is_ancestor_in_repo(
+                source,
+                target_base_commit,
+                current_ref,
+            )
+        ):
+            superseded_ref = integration_ref
+            superseded_commit = current_ref
+            integration_ref = self._submodule_target_integration_ref(
+                target_scope=target_scope,
+                full_relative=full_relative,
+                target_base_commit=target_base_commit,
+            )
+            current_ref = read_integration_ref(integration_ref)
+            integration_ref_recovery = {
+                "superseded_integration_ref": superseded_ref,
+                "superseded_integration_ref_commit": superseded_commit,
+                "superseded_integration_ref_drift_kind": "diverged",
+                "base_scoped_integration_ref": integration_ref,
+            }
         if not current_ref:
             initialize = subprocess.run(
                 [
@@ -56975,18 +57163,7 @@ class PortalImplementationDaemon:
                 check=False,
             )
             if initialize.returncode != 0:
-                current_ref_result = subprocess.run(
-                    ["git", "rev-parse", "--verify", "--quiet", integration_ref],
-                    cwd=source,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                current_ref = (
-                    current_ref_result.stdout.strip()
-                    if current_ref_result.returncode == 0
-                    else ""
-                )
+                current_ref = read_integration_ref(integration_ref)
             else:
                 current_ref = target_base_commit
         integration_ref_fast_forward: dict[str, Any] = {}
@@ -57051,6 +57228,7 @@ class PortalImplementationDaemon:
                             fast_forward.stderr[-4000:]
                         ),
                         "retryable": True,
+                        **integration_ref_recovery,
                     }
                 integration_ref_fast_forward = {
                     "integration_ref_fast_forwarded_from": current_ref,
@@ -57079,6 +57257,7 @@ class PortalImplementationDaemon:
                         else "diverged"
                     ),
                     "retryable": True,
+                    **integration_ref_recovery,
                 }
 
         worktree_root = self._submodule_target_worktree_root()
@@ -57270,6 +57449,7 @@ class PortalImplementationDaemon:
             "cleanup_returncode": remove.returncode,
             "cleanup_stderr": remove.stderr[-4000:],
             **integration_ref_fast_forward,
+            **integration_ref_recovery,
         }
         if not merged:
             result["reason"] = (

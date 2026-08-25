@@ -140,7 +140,8 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
             "source_forest_root": "sha256:" + ("a" * 64),
         },
     )
-    stage = tmp_path / "run-v32.stage-test"
+    stage = tmp_path / "run-v33.stage-test"
+    stage.mkdir(mode=0o700)
     staged_config = operator._native_resume_stage_config(
         config,
         root=tmp_path,
@@ -159,9 +160,9 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
         receipt,
         config=config,
         database_paths={
-            "control": "run-v32.stage-test/control.duckdb",
-            "coordination": "run-v32.stage-test/control.coordination.duckdb",
-            "execution": "run-v32.stage-test/control.execution.duckdb",
+            "control": "run-v33.stage-test/control.duckdb",
+            "coordination": "run-v33.stage-test/control.coordination.duckdb",
+            "execution": "run-v33.stage-test/control.execution.duckdb",
         },
         source_head=str(population["source_head"]),
         repository_tree_id=str(population["repository_tree_id"]),
@@ -219,11 +220,11 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
                 tampered,
                 config=config,
                 database_paths={
-                    "control": "run-v32.stage-test/control.duckdb",
+                    "control": "run-v33.stage-test/control.duckdb",
                     "coordination": (
-                        "run-v32.stage-test/control.coordination.duckdb"
+                        "run-v33.stage-test/control.coordination.duckdb"
                     ),
-                    "execution": "run-v32.stage-test/control.execution.duckdb",
+                    "execution": "run-v33.stage-test/control.execution.duckdb",
                 },
                 source_head=str(population["source_head"]),
                 repository_tree_id=str(population["repository_tree_id"]),
@@ -1506,10 +1507,13 @@ try:
         coordination_path=sidecars["coordination_path"],
         execution_path=sidecars["execution_path"],
         owner_session_id=f"lgcvf-quack-test:lane:{lane}",
-        authority_mode="quack",
+        # Provision only the lane-private embedded sidecars here. The shared
+        # task CAS below still uses the independently authenticated Quack
+        # source; current runtime policy correctly refuses to inject that
+        # untyped adapter into DatabaseImplementationDaemon.
+        authority_mode="embedded_exclusive",
+        state_schema_revision="",
         task_source_kind="duckdb",
-        quack_uri=endpoint,
-        task_source=source,
         task_shard_count=4,
         task_shard_index=lane,
         strict_task_sharding=True,
@@ -1750,7 +1754,7 @@ def test_real_four_process_quack_cas_has_one_winner_and_private_sidecars(
         ready_paths = [tmp_path / f"lane-{index}.ready" for index in range(4)]
         result_paths = [tmp_path / f"lane-{index}.result.json" for index in range(4)]
         for lane_root in lane_roots:
-            lane_root.mkdir(parents=True)
+            lane_root.mkdir(parents=True, mode=0o700)
         environment = dict(owner_environment)
         environment.update(
             {

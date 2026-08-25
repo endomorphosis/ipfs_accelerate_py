@@ -4430,53 +4430,77 @@ def _docker_codex_fallback_command(
                 _host_codex_vendor_binaries,
             )
 
-        vendor = _host_codex_vendor_binaries()
-    except Exception:
-        vendor = None
-    if vendor is None:
-        raise ValueError(
-            "Codex fallback requires a matching native code-mode vendor pair"
-        )
-    try:
-        host_codex, host_companion = (
-            binary.resolve(strict=True) for binary in vendor
-        )
-        projected_usr = host_usr.resolve(strict=True)
-        for binary, expected_name in (
-            (host_codex, "codex"),
-            (host_companion, "codex-code-mode-host"),
-        ):
-            if (
-                binary.name != expected_name
-                or binary.parent != host_codex.parent
-                or not binary.is_file()
-                or not os.access(binary, os.X_OK)
+            vendor = _host_codex_vendor_binaries()
+        except Exception:
+            vendor = None
+        if vendor is None:
+            raise ValueError(
+                "Codex fallback requires a matching native code-mode vendor pair"
+            )
+        try:
+            host_codex, host_companion = (
+                binary.resolve(strict=True) for binary in vendor
+            )
+            projected_usr = host_usr.resolve(strict=True)
+            for binary, expected_name in (
+                (host_codex, "codex"),
+                (host_companion, "codex-code-mode-host"),
             ):
-                raise ValueError("Codex fallback vendor pair is not canonical")
-            binary.relative_to(projected_usr)
-            trust_entry = binary
-            while True:
-                trust_metadata = trust_entry.stat()
-                if trust_metadata.st_uid != 0 or trust_metadata.st_mode & 0o022:
+                if (
+                    binary.name != expected_name
+                    or binary.parent != host_codex.parent
+                    or not binary.is_file()
+                    or not os.access(binary, os.X_OK)
+                ):
                     raise ValueError(
-                        "Codex fallback vendor pair is not root-owned"
+                        "Codex fallback vendor pair is not canonical"
                     )
-                if trust_entry == projected_usr:
-                    break
-                trust_entry = trust_entry.parent
-    except (OSError, ValueError) as exc:
-        raise ValueError(
-            "Codex fallback vendor pair is not safely projected by pinned host /usr"
-        ) from exc
-    # /usr is already projected read-only, so execute the resolved native
-    # binary in place. Its matching code-mode companion remains adjacent.
-    # Additional file mounts under /usr would require runc to create a
-    # missing target on the read-only parent and fail before Codex starts.
-    inner[0] = str(host_codex)
-    host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
-    if host_ca_certificates is None:
-        raise ValueError("Codex fallback requires pinned host CA certificates")
-    command.extend(_docker_mount(host_ca_certificates, read_only=True))
+                binary.relative_to(projected_usr)
+                trust_entry = binary
+                while True:
+                    trust_metadata = trust_entry.stat()
+                    if trust_metadata.st_uid != 0 or trust_metadata.st_mode & 0o022:
+                        raise ValueError(
+                            "Codex fallback vendor pair is not root-owned"
+                        )
+                    if trust_entry == projected_usr:
+                        break
+                    trust_entry = trust_entry.parent
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                "Codex fallback vendor pair is not safely projected by pinned host /usr"
+            ) from exc
+        # /usr is already projected read-only, so execute the resolved native
+        # binary in place. Its matching code-mode companion remains adjacent.
+        inner[0] = str(host_codex)
+        host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
+        if host_ca_certificates is None:
+            raise ValueError("Codex fallback requires pinned host CA certificates")
+        command.extend(_docker_mount(host_ca_certificates, read_only=True))
+        if host_python is None:  # pragma: no cover - guarded by ``qualified``
+            raise ValueError("Codex fallback host Python identity is unavailable")
+        command.extend(
+            _docker_mount(
+                host_python,
+                destination=_CODEX_TASK_TOOLCHAIN_PYTHON,
+                read_only=True,
+            )
+        )
+        for git_root in _git_metadata_roots(workspace):
+            command.extend(_docker_mount(git_root, read_only=True))
+        command.extend(_docker_mount(workspace, read_only=False))
+        git_control_path = _existing_path(workspace / ".git")
+        if git_control_path is not None:
+            command.extend(_docker_mount(git_control_path, read_only=True))
+    else:
+        assert worktree_mount is not None
+        command.extend(
+            _docker_mount(
+                workspace,
+                destination=Path(worktree_mount.target),
+                read_only=worktree_mount.read_only,
+            )
+        )
     command.extend(
         _docker_mount(
             source_auth if qualified else isolated_auth,
@@ -6943,9 +6967,26 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             file=sys.stderr,
         )
         return 2
+    supplied_preflight_nonce = str(
+        args.grok_failure_receipt_nonce or ""
+    ).strip()
+    supplied_route_binding = str(
+        args.agent_implementation_route_json or ""
+    ).strip()
+    if internal_legacy_preflight and supplied_preflight_nonce:
+        print(
+            "canonical legacy preflight cannot be combined with an external nonce",
+            file=sys.stderr,
+        )
+        return 2
+    if internal_legacy_preflight and supplied_route_binding:
+        print(
+            "legacy quota route forbids an auth/high route binding",
+            file=sys.stderr,
+        )
+        return 2
     if (
-        str(args.grok_failure_receipt_nonce or "").strip()
-        or str(args.agent_implementation_route_json or "").strip()
+        supplied_preflight_nonce or supplied_route_binding
     ) and not codex_fallback_command:
         print(
             "typed Grok route requires a Codex fallback command",

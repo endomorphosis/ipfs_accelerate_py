@@ -1906,6 +1906,7 @@ class TypedStateOwnerGateway:
         store_id: str,
         identity: Mapping[str, Any],
         catalog: Mapping[str, OwnerOperation] | None = None,
+        owner_liveness_probe: Any | None = None,
         transaction_lock: Any | None = None,
     ) -> None:
         self._connection = connection

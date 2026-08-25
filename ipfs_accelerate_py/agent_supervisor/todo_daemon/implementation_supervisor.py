@@ -110,9 +110,11 @@ from ..runtime.multi_supervisor_runner import (
     STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
     TRUSTED_DUCKDB_HOME_ENV,
+    _eaaef_host_receipt_admitted,
     _lgcvf_configured_board_live_positive_child_environment,
     _trusted_duckdb_runtime_environment,
     build_lgcvf_configured_board_live_module_command,
+    parse_accepted_control_plane_pin,
     provider_subprocess_environment,
     verify_lgcvf_configured_board_live_context,
 )
@@ -8803,6 +8805,7 @@ class PortalSupervisorConfig:
     plan_bound_accepted_tree_root: Path | None = None
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None
     accepted_control_plane_descriptor: int = -1
+    worker_network_launch_authority_json: str = ""
     configured_board_live_context: (
         LgcvfConfiguredBoardLiveContext | None
     ) = None
@@ -11122,6 +11125,8 @@ class PortalImplementationSupervisor:
             and int(self.config.accepted_control_plane_descriptor) >= 3
         ):
             sealed_fds = (int(self.config.accepted_control_plane_descriptor),)
+        live_fds = () if live_context is None else live_context.pass_fds
+        pass_fds = tuple(dict.fromkeys((*live_fds, *sealed_fds)))
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
@@ -11133,9 +11138,7 @@ class PortalImplementationSupervisor:
             # bindings instead of falling back to an ambient installation.
             child_env=child_environment,
             child_inherit_environment=live_context is None,
-            pass_fds=(
-                () if live_context is None else live_context.pass_fds
-            ),
+            pass_fds=pass_fds,
             pre_popen_verify=(
                 None
                 if live_context is None
@@ -11156,7 +11159,6 @@ class PortalImplementationSupervisor:
             watchdog_accept_fresh_child_log=True,
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
-            pass_fds=sealed_fds,
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
                 "state_path": str(self.config.state_path),
@@ -24885,7 +24887,6 @@ def supervisor_config_from_args(
         objective_todo_vector_index_path=args.objective_todo_vector_index_path,
         objective_surplus_findings_per_goal=args.objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=args.objective_surplus_min_terms_per_todo,
-        scheduler_config_path=getattr(args, "scheduler_config", None),
         repo_root=effective_repo_root,
         configured_board_live_context=getattr(
             args,
