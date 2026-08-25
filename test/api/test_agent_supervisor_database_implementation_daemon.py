@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -49,6 +50,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import 
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources import (
     database_task_source as database_task_source_module,
 )
@@ -75,6 +79,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeError,
     DatabasePortalCapacityRetry,
     DatabasePortalConsumedAttemptTerminal,
+    DatabasePortalExecutionBridge,
     DatabasePortalProtectedPathPreserved,
     DatabasePortalValidationRetry,
 )
@@ -85,10 +90,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ATTEMPT_PHASE_PROVIDER,
     DATABASE_DECLARED_OUTPUT_REARM_SCHEMA,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
+    DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
     DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
     DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA,
     DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS,
+    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
     DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
@@ -100,6 +108,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     is_database_authority_mode,
     open_database_implementation_daemon,
     parse_args,
+    parse_task_text,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_database_implementation_daemon_from_args,
@@ -239,6 +248,14 @@ def _open_daemon(
     effect_calls: list[str] | None = None,
     markdown_path: Path | None = None,
     provider_fn: Callable[[DatabaseTaskAttempt], dict[str, object]] | None = None,
+    effect_fn: Callable[
+        [DatabaseTaskAttempt, dict[str, object]], dict[str, object]
+    ]
+    | None = None,
+    validation_fn: Callable[
+        [DatabaseTaskAttempt, dict[str, object]], dict[str, object]
+    ]
+    | None = None,
     lease_ms: int = 60_000,
     max_task_attempts: int = 0,
     clock_ms: Callable[[], int] | None = None,
@@ -296,8 +313,8 @@ def _open_daemon(
         lease_ms=lease_ms,
         max_task_attempts=max_task_attempts,
         provider_fn=provider_fn or default_provider,
-        effect_fn=effect,
-        validation_fn=validation,
+        effect_fn=effect_fn or effect,
+        validation_fn=validation_fn or validation,
         require_real_execution=True,
         clock_ms=clock_ms,
     )
@@ -6129,6 +6146,590 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
         assert repeated["write_count"] == 0
     finally:
         daemon.close()
+
+
+def test_post_merge_completion_seed_is_one_shot_per_target_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "completion-seed-repo"
+    repo.mkdir()
+
+    def git(*argv: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo), *argv],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.name", "Completion Seed Test")
+    git("config", "user.email", "completion-seed@example.invalid")
+    (repo / "generation.txt").write_text("one\n", encoding="utf-8")
+    git("add", "generation.txt")
+    git("commit", "-q", "-m", "generation one")
+    first_target = git("rev-parse", "HEAD")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:completion-seed-generation",
+        lane="completion-seed",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        source = daemon.claim_next()
+        assert source is not None
+        task = daemon.task_source.get(source.task_cid)
+        assert task is not None
+        daemon._merge_repo_root = repo
+        daemon._merge_target_branch = "main"
+        evidence = {
+            "request_id": "merge-request:completion-seed",
+            "candidate_commit": "a" * 40,
+            "source_attempt_id": "attempt:old-queue-source",
+            "source_claim_id": "claim:old-queue-source",
+            "source_lease_id": "lease:old-queue-source",
+            "source_fencing_token": 7,
+            "source_fence_epoch": 3,
+            "source_binding_id": "sha256:" + "b" * 64,
+            "source_projection_immutable_digest": "sha256:" + "c" * 64,
+        }
+        seed = daemon._build_post_merge_completion_recovery_seed(
+            attempt=source,
+            task_revision=int(task.revision),
+            evidence=evidence,
+            qualified_target_commit=first_target,
+            qualification_kind="repair",
+            qualification_receipt_id="repair-receipt:completion-seed",
+            recovery_evidence_id="sha256:" + "d" * 64,
+            terminal_reason=(
+                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+            ),
+        )
+        assert seed["schema"] == (
+            DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+        )
+        seed_body = dict(seed)
+        seed_id = seed_body.pop("seed_id")
+        assert seed_id == daemon._database_portal_evidence_digest(seed_body)
+
+        consumer = replace(
+            source,
+            attempt_id="attempt:completion-seed-consumer",
+            claim_id="claim:completion-seed-consumer",
+            lease_id="lease:completion-seed-consumer",
+            body={
+                "post_merge_completion_recovery_source_attempt_id": (
+                    source.attempt_id
+                ),
+                "post_merge_completion_recovery_seed": seed,
+            },
+        )
+        assert daemon._post_merge_completion_recovery_was_consumed(consumer)
+
+        malformed = replace(
+            consumer,
+            body={
+                "post_merge_completion_recovery_source_attempt_id": (
+                    source.attempt_id
+                ),
+                "post_merge_completion_recovery_seed": {
+                    **seed,
+                    "seed_id": "sha256:" + "0" * 64,
+                },
+            },
+        )
+        assert daemon._post_merge_completion_recovery_was_consumed(malformed)
+
+        (repo / "generation.txt").write_text("two\n", encoding="utf-8")
+        git("add", "generation.txt")
+        git("commit", "-q", "-m", "generation two")
+        assert daemon._post_merge_completion_target_advanced(seed)
+        assert not daemon._post_merge_completion_recovery_was_consumed(consumer)
+
+        target_changed_task = SimpleNamespace(
+            body={
+                "completion_receipt": {
+                    "operation": "database_portal_terminal_failure",
+                    "attempt_id": consumer.attempt_id,
+                    "reason": (
+                        DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON
+                    ),
+                }
+            }
+        )
+        assert daemon._is_post_merge_completion_target_generation_changed_terminal(
+            consumer,
+            target_changed_task,
+        )
+
+        historical_source = replace(
+            source,
+            committed_phase=ATTEMPT_PHASE_FAILED,
+            status="failed",
+            finished_at_ms=source.started_at_ms + 1,
+        )
+        terminal_receipt = {
+            "operation": "database_portal_terminal_failure",
+            "attempt_id": source.attempt_id,
+            "attempt_number": source.attempt_number,
+            "claim_id": source.claim_id,
+            "lease_id": source.lease_id,
+            "owner_session_id": source.owner_session_id,
+            "fencing_token": source.fencing_token,
+            "fence_epoch": source.fence_epoch,
+            "execution_phase": ATTEMPT_PHASE_FAILED,
+            "execution_revision": source.revision,
+            "execution_finished_at_ms": historical_source.finished_at_ms,
+            "reason": (
+                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+            ),
+            "retryable": False,
+            "coordination": {},
+            "control_expected_status": "in_progress",
+            "control_expected_revision": seed["source_task_revision"] - 1,
+        }
+        history_body = {
+            "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+            "task_cid": source.task_cid,
+            "revisions": [
+                {
+                    "revision": seed["source_task_revision"],
+                    "status": "blocked",
+                    "body": {"completion_receipt": terminal_receipt},
+                }
+            ],
+        }
+        history = {**history_body, "projection_cid": content_identity(history_body)}
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: history,
+        )
+        assert daemon._post_merge_completion_terminal_receipt_from_history(
+            attempt=historical_source,
+            seed=seed,
+        ) == terminal_receipt
+
+        swapped = {
+            **seed,
+            "terminal_reason": (
+                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON
+            ),
+        }
+        swapped_body = dict(swapped)
+        swapped_body.pop("seed_id")
+        swapped["seed_id"] = daemon._database_portal_evidence_digest(
+            swapped_body
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="terminal history does not reproduce",
+        ):
+            daemon._post_merge_completion_terminal_receipt_from_history(
+                attempt=historical_source,
+                seed=daemon._verified_post_merge_completion_recovery_seed(
+                    swapped
+                ),
+            )
+    finally:
+        daemon.close()
+
+
+def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "completion-recovery-repo"
+    repo.mkdir()
+
+    def git(*argv: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo), *argv],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.name", "Cross Lane Completion Test")
+    git("config", "user.email", "cross-lane-completion@example.invalid")
+    artifact = repo / "recovered.txt"
+    artifact.write_text("baseline\n", encoding="utf-8")
+    git("add", "recovered.txt")
+    git("commit", "-q", "-m", "completion baseline")
+    baseline_commit = git("rev-parse", "HEAD")
+    git("switch", "-q", "-c", "implementation/completion-recovery")
+    artifact.write_text("candidate\n", encoding="utf-8")
+    git("add", "recovered.txt")
+    git("commit", "-q", "-m", "completion candidate")
+    candidate_commit = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    candidate_blob = git("rev-parse", "HEAD:recovered.txt")
+    git("switch", "-q", "main")
+    assert git("rev-list", "--parents", "-n", "1", candidate_commit).split() == [
+        candidate_commit,
+        baseline_commit,
+    ]
+
+    portal_state = tmp_path / "portal-state"
+    source_attempt_root = (
+        portal_state / "lane-0" / "vrif_lane_0_database_portal_attempts"
+    )
+    consumer_attempt_root = (
+        portal_state / "lane-3" / "vrif_lane_3_database_portal_attempts"
+    )
+    queue = MergeQueue(
+        tmp_path / "merge-queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    source_portal_calls: list[str] = []
+    source_daemon = _open_daemon(
+        tmp_path,
+        session="session:completion-recovery-source",
+        lane="0",
+    )
+    consumer_daemon: DatabaseImplementationDaemon | None = None
+    try:
+        population = _population(1)
+        [task_population] = population["tasks"]
+        assert isinstance(task_population, dict)
+        task_population.update(
+            {
+                "task_id": "VRIF-029",
+                "title": "Recover exact post-merge completion",
+                "outputs": [{"path": "recovered.txt"}],
+                "validations": [{"argv": ["focused-recovery-validation"]}],
+                "acceptance": [{"criterion": "Recovery is complete"}],
+            }
+        )
+        source_daemon.materialize_population(population)
+        source_attempt = source_daemon.claim_next()
+        assert source_attempt is not None
+        source_record = source_daemon.task_source.get_task(
+            source_attempt.task_cid
+        )
+        assert source_record is not None
+
+        source_bridge = DatabasePortalExecutionBridge(
+            task_source=source_daemon.task_source,
+            attempt_root=source_attempt_root,
+            portal_factory=lambda _paths, alias: (
+                source_portal_calls.append(alias)
+                or pytest.fail("exact repair unexpectedly dispatched Portal")
+            ),
+            repository_root=repo,
+            merge_queue=queue,
+            merge_target_branch="main",
+            task_header_prefix="## VRIF-",
+        )
+        source_paths, _source_binding = (
+            source_bridge._ensure_attempt_projection(
+                source_attempt,
+                source_record,
+            )
+        )
+        [projected_task] = parse_task_text(
+            source_paths.task_projection.read_text(encoding="utf-8"),
+            path=source_paths.task_projection,
+            task_header_prefix="## VRIF-",
+        )
+        request = queue.enqueue(
+            branch_name="implementation/completion-recovery",
+            task_id=source_attempt.task_alias,
+            canonical_task_id=source_attempt.task_cid,
+            canonical_task_key=str(projected_task.canonical_task_key),
+            commit_sha=candidate_commit,
+            metadata={
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+                ),
+                "target_binding_schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "merge-target-binding@1"
+                ),
+                "target_repository_id": checkout_repository_id(repo),
+                "target_branch": "main",
+                "implementation_commit": candidate_commit,
+                "todo_path": str(source_paths.task_projection),
+                "state_path": str(source_paths.state),
+                "strategy_path": str(source_paths.strategy),
+                "events_path": str(source_paths.events),
+                "repo_root": str(repo.absolute()),
+                "task_header_prefix": "## VRIF-",
+                "task": asdict(projected_task),
+                "completion_task_cids": {
+                    source_attempt.task_alias: source_attempt.task_cid
+                },
+                "changed_submodule_paths": [],
+            },
+        )
+        false_claim = queue.claim_pending_request(
+            request.request_id,
+            consumer_id="merge-train:false-completion-fixture",
+        )
+        assert false_claim is not None
+        queue.complete(false_claim)
+        false_completion = queue.get(request.request_id)
+        assert false_completion is not None
+        assert false_completion.status == "completed"
+        reopened = queue.reopen_false_positive_completion(
+            false_completion,
+            completion_receipt={
+                "already_merged": True,
+                "canonical_task_id": false_completion.canonical_identity,
+                "commit_sha": candidate_commit,
+                "distributed_publication_admission": {
+                    "admitted": True,
+                    "distributed": False,
+                    "request_id": request.request_id,
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "distributed-lane-admission@1"
+                    ),
+                    "status": "local",
+                },
+                "finished_at": 2.0,
+                "integrated": True,
+                "merge_commit": baseline_commit,
+                "merged": False,
+                "mutation_short_circuited": True,
+                "reason": "declared_outputs_already_on_target",
+                "request_id": request.request_id,
+                "started_at": 1.0,
+                "status": "already_merged",
+                "target_branch": "main",
+                "target_commit": baseline_commit,
+                "task_id": source_attempt.task_alias,
+            },
+        )
+        assert reopened is not None
+        assert reopened.status == "pending"
+        git("merge", "-q", "--ff-only", candidate_commit)
+        queue_claim = queue.claim_pending_request(
+            request.request_id,
+            consumer_id="merge-train:completion-recovery-fixture",
+        )
+        assert queue_claim is not None
+        repair_receipt: dict[str, object] = {
+            "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+            "task_ids": [source_attempt.task_alias],
+            "candidate_commit": candidate_commit,
+            "candidate_tree": candidate_tree,
+            "baseline_commit": baseline_commit,
+            "failed_integration_commit": candidate_commit,
+            "repair_parent_commit": baseline_commit,
+            "repair_commit": candidate_commit,
+            "repair_tree": candidate_tree,
+            "entries": [
+                {
+                    "path": "recovered.txt",
+                    "mode": "100644",
+                    "object_type": "blob",
+                    "object_id": candidate_blob,
+                }
+            ],
+            "validation": [
+                {
+                    "task_id": source_attempt.task_alias,
+                    "passed": True,
+                    "returncode": 0,
+                    "validation_result_digests": ["sha256:" + "2" * 64],
+                    "command_count": 1,
+                    "log_sha256": "3" * 64,
+                }
+            ],
+            "rollback_target": baseline_commit,
+        }
+        repair_receipt["receipt_id"] = content_identity(repair_receipt)
+        queue.complete(
+            queue_claim,
+            metadata={
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "post-merge-declared-output-completion@1"
+                ),
+                "status": "already_merged",
+                "reason": "post_merge_declared_outputs_repaired",
+                "candidate_commit": candidate_commit,
+                "target_commit": candidate_commit,
+                "repair_receipt": repair_receipt,
+            },
+        )
+        completed_request = queue.get(request.request_id)
+        assert completed_request is not None
+        assert completed_request.status == "completed"
+
+        source_attempt = source_daemon.commit_phase(source_attempt, "context")
+        source_attempt = source_daemon.commit_phase(
+            source_attempt,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": (
+                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        coordination = source_daemon._reconcile_failed_attempt_coordination(
+            source_attempt
+        )
+        terminal = source_daemon._persist_terminal_portal_failure(
+            source_attempt,
+            reason=(
+                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+            ),
+            coordination_evidence=coordination,
+        )
+        assert terminal["status"] == "blocked"
+        blocked_record = source_daemon.task_source.get(source_attempt.task_cid)
+        assert blocked_record is not None
+        assert blocked_record.status == "blocked"
+        blocked_revision = blocked_record.revision
+
+        recovery = source_bridge.recover_post_merge_declared_outputs(
+            source_daemon
+        )
+        assert recovery is not None
+        assert recovery["recovered"] is True
+        assert recovery["changed"] is True
+        assert recovery["status"] == "retrying"
+        assert source_portal_calls == []
+        retrying_record = source_daemon.task_source.get(
+            source_attempt.task_cid
+        )
+        assert retrying_record is not None
+        recovery_control = retrying_record.body["completion_receipt"]
+        recovery_seed = recovery_control[
+            "post_merge_completion_recovery_seed"
+        ]
+        assert recovery_seed["schema"] == (
+            DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+        )
+        assert recovery_seed["source_task_revision"] == blocked_revision
+        assert recovery_seed["attempt_id"] == source_attempt.attempt_id
+        assert recovery_seed["qualified_target_commit"] == candidate_commit
+
+        source_daemon.close()
+        consumer_bridges: list[DatabasePortalExecutionBridge] = []
+
+        def bridge_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+            return dict(consumer_bridges[0].run_provider(attempt))
+
+        def bridge_effect(
+            attempt: DatabaseTaskAttempt,
+            provider_result: dict[str, object],
+        ) -> dict[str, object]:
+            return dict(
+                consumer_bridges[0].apply_effect(attempt, provider_result)
+            )
+
+        def bridge_validation(
+            attempt: DatabaseTaskAttempt,
+            effect_result: dict[str, object],
+        ) -> dict[str, object]:
+            return dict(
+                consumer_bridges[0].validate_effect(attempt, effect_result)
+            )
+
+        consumer_daemon = _open_daemon(
+            tmp_path,
+            session="session:completion-recovery-consumer",
+            lane="3",
+            provider_fn=bridge_provider,
+            effect_fn=bridge_effect,
+            validation_fn=bridge_validation,
+        )
+        consumer_portal_calls: list[str] = []
+        consumer_bridge = DatabasePortalExecutionBridge(
+            task_source=consumer_daemon.task_source,
+            attempt_root=consumer_attempt_root,
+            portal_factory=lambda _paths, alias: (
+                consumer_portal_calls.append(alias)
+                or pytest.fail("completion recovery dispatched a provider")
+            ),
+            repository_root=repo,
+            merge_queue=queue,
+            merge_target_branch="main",
+            task_header_prefix="## VRIF-",
+        )
+        consumer_bridges.append(consumer_bridge)
+
+        successor = consumer_daemon.claim_next()
+        assert successor is not None
+        assert successor.owner_session_id == (
+            "session:completion-recovery-consumer"
+        )
+        assert successor.owner_session_id != source_attempt.owner_session_id
+        assert successor.attempt_id != source_attempt.attempt_id
+        assert successor.claim_id != source_attempt.claim_id
+        assert successor.lease_id != source_attempt.lease_id
+        assert successor.body[
+            "post_merge_completion_recovery_source_attempt_id"
+        ] == source_attempt.attempt_id
+        assert successor.body["post_merge_completion_recovery_seed"] == (
+            recovery_seed
+        )
+        claimed_record = consumer_daemon.task_source.get(successor.task_cid)
+        assert claimed_record is not None
+        assert claimed_record.status == "in_progress"
+        assert claimed_record.revision == blocked_revision + 2
+        claimed_control = claimed_record.body["completion_receipt"]
+        assert claimed_control["operation"] == "database_claim"
+        assert claimed_control["post_merge_completion_recovery_seed"] == (
+            recovery_seed
+        )
+
+        resumed = consumer_daemon.resume_attempt(successor)
+
+        assert resumed["resumed"] is True
+        assert resumed["status"] == "succeeded"
+        assert resumed["committed_phase"] == ATTEMPT_PHASE_COMPLETE
+        assert resumed["provider_result"]["accepted"] is True
+        assert resumed["provider_result"]["baseline_commit"] == (
+            baseline_commit
+        )
+        assert resumed["provider_result"]["implementation_commit"] == (
+            candidate_commit
+        )
+        assert consumer_portal_calls == []
+        events = consumer_bridge._verified_event_chain(
+            consumer_bridge._paths(successor)
+        )
+        assert [event["type"] for event in events] == [
+            "worktree_reconciliation_candidate_queued",
+            "merge_reconciled",
+            "task_completed",
+        ]
+        assert events[0]["attempt_consumed"] is False
+        assert events[0]["provider_dispatched"] is False
+        assert events[0]["implementation_commit"] == candidate_commit
+        assert events[1]["merge_result"]["merged"] is True
+
+        completed_task = consumer_daemon.task_source.get(successor.task_cid)
+        assert completed_task is not None
+        assert completed_task.status == "completed"
+        completion_control = completed_task.body["completion_receipt"]
+        assert completion_control["operation"] == "database_complete"
+        assert completion_control["attempt_id"] == successor.attempt_id
+        assert completion_control["claim_id"] == successor.claim_id
+        assert completion_control["lease_id"] == successor.lease_id
+        assert completed_task.revision == blocked_revision + 3
+        queue_after_completion = queue.get(request.request_id)
+        assert queue_after_completion is not None
+        assert queue_after_completion.status == "completed"
+        assert queue_after_completion.metadata["completion"] == (
+            completed_request.metadata["completion"]
+        )
+    finally:
+        if consumer_daemon is not None:
+            consumer_daemon.close()
+        source_daemon.close()
 
 
 def test_terminal_portal_failure_reason_ignores_later_non_portal_failure(

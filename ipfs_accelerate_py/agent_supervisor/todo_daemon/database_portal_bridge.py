@@ -90,6 +90,24 @@ DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-protected-reconciliation-self-lock@1"
 )
+DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-completion-recovery-seed@1"
+)
+DATABASE_POST_MERGE_COMPLETION_LINEAGE_FAILURE_REASON: Final[str] = (
+    "Portal completion lacks one exact implementation commit"
+)
+DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON: Final[str] = (
+    "post-merge completion recovery seed target generation changed"
+)
+_DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        DATABASE_POST_MERGE_COMPLETION_LINEAGE_FAILURE_REASON,
+        DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+    }
+)
 _DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_FIELDS: Final[
     frozenset[str]
 ] = frozenset(
@@ -488,6 +506,36 @@ _POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_FIELDS: Final[frozenset[str]] = (
         }
     )
 )
+_POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "source_task_revision",
+        "request_id",
+        "candidate_commit",
+        "qualified_target_commit",
+        "qualification_kind",
+        "qualification_receipt_id",
+        "queue_source_attempt_id",
+        "queue_source_claim_id",
+        "queue_source_lease_id",
+        "queue_source_fencing_token",
+        "queue_source_fence_epoch",
+        "queue_source_binding_id",
+        "queue_source_projection_immutable_digest",
+        "recovery_evidence_id",
+        "terminal_reason",
+        "seed_id",
+    }
+)
 _DATABASE_POST_MERGE_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-recovery@1"
@@ -505,11 +553,14 @@ _POST_MERGE_RECOVERY_CURSOR_SCHEMA: Final[str] = (
     "post-merge-declared-output-recovery-cursor@1"
 )
 _POST_MERGE_RECOVERY_CURSOR_STAGES: Final[tuple[str, ...]] = (
+    "priority_task_cids",
     "completed_requests",
     "pending_requests",
     "quarantined_requests",
     "processing_requests",
 )
+_POST_MERGE_COMPLETION_RECOVERY_TASK_PAGE_SIZE: Final[int] = 32
+_MAX_POST_MERGE_COMPLETION_RECOVERY_TASK_CIDS: Final[int] = 1_000
 _MAX_POST_MERGE_RECOVERY_CURSOR_BYTES: Final[int] = 64 * 1024
 _POST_MERGE_COMPLETION_STATUSES: Final[frozenset[str]] = frozenset(
     {"merged", "already_merged", "deduplicated", "completed"}
@@ -1605,6 +1656,79 @@ class DatabasePortalExecutionBridge:
         cursors[stage] = next_cursor
         self._save_post_merge_recovery_cursors(cursors)
 
+    def _priority_repaired_completion_requests(
+        self,
+        task_cids: Sequence[str],
+    ) -> tuple[Any, ...]:
+        """Resolve exact blocked-task repair rows outside the fair cursor.
+
+        The database owner supplies the bounded latest-terminal task
+        identities.  Each identity is queried directly in the target-bound
+        durable queue with exact completion and reopen predicates.  Zero or
+        multiple rows fail closed for that task.
+        """
+
+        if self.merge_queue is None:
+            return ()
+        completed = getattr(self.merge_queue, "completed_requests", None)
+        normalized = tuple(dict.fromkeys(str(item or "") for item in task_cids))
+        if (
+            not callable(completed)
+            or not normalized
+            or len(normalized) > 32
+            or any(not item for item in normalized)
+        ):
+            return ()
+        selected: list[Any] = []
+        for task_cid in normalized:
+            matches = tuple(
+                completed(
+                    limit=2,
+                    completion_schema=(
+                        _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA
+                    ),
+                    completion_reason="post_merge_declared_outputs_repaired",
+                    canonical_task_id=task_cid,
+                    reopen_schema=FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
+                    reopen_reason="declared_outputs_not_on_target",
+                )
+                or ()
+            )
+            if (
+                len(matches) == 1
+                and str(
+                    getattr(matches[0], "canonical_task_id", "") or ""
+                )
+                == task_cid
+            ):
+                selected.append(matches[0])
+        return tuple(selected)
+
+    @staticmethod
+    def _priority_recovery_task_cid_page(
+        task_cids: Sequence[str],
+        *,
+        after_task_cid: str,
+    ) -> tuple[tuple[str, ...], str]:
+        """Select one fair bounded keyset page from owner-proved task CIDs."""
+
+        normalized = tuple(str(item or "") for item in task_cids)
+        if (
+            len(normalized)
+            > _MAX_POST_MERGE_COMPLETION_RECOVERY_TASK_CIDS
+            or any(type(item) is not str for item in task_cids)
+            or normalized != tuple(sorted(set(normalized)))
+            or any(not item for item in normalized)
+        ):
+            raise DatabasePortalBridgeError(
+                "database completion-recovery task identities are malformed"
+            )
+        cursor = str(after_task_cid or "")
+        page = tuple(
+            item for item in normalized if not cursor or item > cursor
+        )[:_POST_MERGE_COMPLETION_RECOVERY_TASK_PAGE_SIZE]
+        return page, (page[-1] if page else "")
+
     def _validation_repository_scope(self, body: Mapping[str, Any]) -> str:
         """Return the checked nested repository namespace for this task.
 
@@ -1826,6 +1950,7 @@ class DatabasePortalExecutionBridge:
         *,
         task_cid: str,
         task_alias: str,
+        allowed_statuses: frozenset[str] = frozenset({"blocked", "retrying"}),
     ) -> str:
         """Return an eligible canonical database status or an empty value."""
 
@@ -1864,13 +1989,20 @@ class DatabasePortalExecutionBridge:
         ):
             return ""
         status = str(getattr(record, "status", "") or "").strip().lower()
-        # Once a fresh claim advances to in_progress (or completion lands), an
-        # old completed queue row is historical evidence, not work to replay.
-        return status if status in {"blocked", "retrying"} else ""
+        # Ordinary recovery stops once a fresh claim advances.  The dedicated
+        # completion-recovery seed passes ``in_progress`` explicitly so the
+        # successor can reproduce its queue evidence without widening the
+        # maintenance scanner's authority.
+        return status if status in allowed_statuses else ""
 
     def _owned_post_merge_recovery_projection(
         self,
         request: Any,
+        *,
+        allowed_task_statuses: frozenset[str] = frozenset(
+            {"blocked", "retrying"}
+        ),
+        allow_shared_lane_source: bool = False,
     ) -> _DatabasePortalRecoveryProjection | None:
         """Prove that one eligible request came from this lane's sealed attempt."""
 
@@ -1930,9 +2062,79 @@ class DatabasePortalExecutionBridge:
         if (
             not projection.is_absolute()
             or str(projection) != raw_projection
-            or projection.parent.parent != self.attempt_root
+            or any(part in {"", ".", ".."} for part in projection.parts[1:])
         ):
             return None
+        source_attempt_root = projection.parent.parent
+        verification_root = self.attempt_root
+        if source_attempt_root != self.attempt_root:
+            if not allow_shared_lane_source:
+                return None
+            try:
+                raw_shared_state_root = self.attempt_root.parent.parent
+                if (
+                    raw_shared_state_root.is_symlink()
+                    or source_attempt_root.parent.parent
+                    != raw_shared_state_root
+                ):
+                    return None
+                shared_state_root = raw_shared_state_root.resolve(strict=True)
+                current_attempt_root = self.attempt_root.resolve(strict=True)
+                source_attempt_root_resolved = source_attempt_root.resolve(
+                    strict=True
+                )
+                current_relative = current_attempt_root.relative_to(
+                    shared_state_root
+                )
+                source_relative = source_attempt_root_resolved.relative_to(
+                    shared_state_root
+                )
+            except (OSError, RuntimeError, ValueError):
+                return None
+            current_lane_match = re.fullmatch(
+                r"lane-([0-9]+)",
+                current_relative.parts[0] if current_relative.parts else "",
+            )
+            source_lane_match = re.fullmatch(
+                r"lane-([0-9]+)",
+                source_relative.parts[0] if source_relative.parts else "",
+            )
+            current_attempt_match = re.fullmatch(
+                r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
+                current_relative.parts[1] if len(current_relative.parts) > 1 else "",
+            )
+            source_attempt_match = re.fullmatch(
+                r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
+                source_relative.parts[1] if len(source_relative.parts) > 1 else "",
+            )
+            if (
+                len(current_relative.parts) != 2
+                or len(source_relative.parts) != 2
+                or current_lane_match is None
+                or source_lane_match is None
+                or current_attempt_match is None
+                or source_attempt_match is None
+                or current_lane_match.group(1)
+                != current_attempt_match.group(2)
+                or source_lane_match.group(1) != source_attempt_match.group(2)
+                or current_attempt_match.group(1)
+                != source_attempt_match.group(1)
+                or any(
+                    path.is_symlink()
+                    for path in (
+                        self.attempt_root.parent,
+                        self.attempt_root,
+                        source_attempt_root.parent,
+                        source_attempt_root,
+                        projection.parent,
+                        projection,
+                    )
+                )
+                or re.fullmatch(r"[0-9a-f]{24}", projection.parent.name)
+                is None
+            ):
+                return None
+            verification_root = source_attempt_root_resolved
         root = projection.parent
         paths = DatabasePortalAttemptPaths(
             root=root,
@@ -1957,7 +2159,7 @@ class DatabasePortalExecutionBridge:
                 projection,
                 expected_task_alias=task_alias,
                 expected_task_cid=task_cid,
-                allowed_root=self.attempt_root,
+                allowed_root=verification_root,
             )
         except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
             return None
@@ -1972,6 +2174,7 @@ class DatabasePortalExecutionBridge:
         task_status = self._current_recovery_task_status(
             task_cid=task_cid,
             task_alias=task_alias,
+            allowed_statuses=allowed_task_statuses,
         )
         if not task_status:
             return None
@@ -7829,6 +8032,557 @@ class DatabasePortalExecutionBridge:
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
+    def _post_merge_completion_recovery_seed_from_record(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+    ) -> dict[str, Any] | None:
+        """Reproduce one owner-carried repaired-completion seed.
+
+        The seed is proposal evidence, never completion authority.  It is
+        admitted only from the exact successor ``database_claim`` and is then
+        independently reproduced from the target-bound queue row, its sealed
+        source projection, the content-addressed repair/requalification
+        receipt, and the unchanged current target generation.
+        """
+
+        body = getattr(record, "body", None)
+        status_receipt = (
+            body.get("completion_receipt") if isinstance(body, Mapping) else None
+        )
+        seed = (
+            status_receipt.get("post_merge_completion_recovery_seed")
+            if isinstance(status_receipt, Mapping)
+            else None
+        )
+        if seed is None:
+            return None
+        if not isinstance(seed, Mapping):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed is malformed"
+            )
+        value = dict(seed)
+        seed_id = str(value.pop("seed_id", "") or "")
+        integer_fields = (
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "source_task_revision",
+            "queue_source_fencing_token",
+            "queue_source_fence_epoch",
+        )
+        string_fields = (
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "request_id",
+            "candidate_commit",
+            "qualified_target_commit",
+            "qualification_kind",
+            "qualification_receipt_id",
+            "queue_source_attempt_id",
+            "queue_source_claim_id",
+            "queue_source_lease_id",
+            "queue_source_binding_id",
+            "queue_source_projection_immutable_digest",
+            "recovery_evidence_id",
+            "terminal_reason",
+        )
+        record_revision = getattr(record, "revision", None)
+        if (
+            set(seed) != _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS
+            or value.get("schema")
+            != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+            or seed_id != _sha256_bytes(_canonical_json(value))
+            or any(not isinstance(value.get(field), str) or not value[field] for field in string_fields)
+            or any(
+                isinstance(value.get(field), bool)
+                or not isinstance(value.get(field), int)
+                or int(value[field]) < 1
+                for field in integer_fields
+            )
+            or value.get("terminal_reason")
+            not in _DATABASE_POST_MERGE_COMPLETION_RECOVERY_TERMINAL_REASONS
+            or value.get("qualification_kind") not in {"repair", "requalification"}
+            or any(
+                re.fullmatch(r"[0-9a-f]{40}", str(value.get(field) or ""))
+                is None
+                for field in ("candidate_commit", "qualified_target_commit")
+            )
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(value.get(field) or ""))
+                is None
+                for field in (
+                    "queue_source_binding_id",
+                    "queue_source_projection_immutable_digest",
+                    "recovery_evidence_id",
+                )
+            )
+            or not seed_id
+            or not isinstance(status_receipt, Mapping)
+            or status_receipt.get("operation") != "database_claim"
+            or status_receipt.get("post_merge_completion_recovery_source_attempt_id")
+            != value.get("attempt_id")
+            or status_receipt.get("post_merge_completion_recovery_seed")
+            != dict(seed)
+            or status_receipt.get("attempt_id") != str(attempt.attempt_id)
+            or status_receipt.get("claim_id") != str(attempt.claim_id)
+            or status_receipt.get("lease_id") != str(attempt.lease_id)
+            or status_receipt.get("owner_session_id")
+            != str(attempt.owner_session_id)
+            or status_receipt.get("fencing_token")
+            != int(attempt.fencing_token)
+            or status_receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or value.get("task_cid") != str(attempt.task_cid)
+            or value.get("task_alias") != str(attempt.task_alias)
+            or value.get("attempt_id") == str(attempt.attempt_id)
+            or value.get("claim_id") == str(attempt.claim_id)
+            or value.get("lease_id") == str(attempt.lease_id)
+            or isinstance(record_revision, bool)
+            or not isinstance(record_revision, int)
+            or int(value["source_task_revision"]) + 2 != record_revision
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed failed claim verification"
+            )
+        if self.merge_queue is None:
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed has no merge queue"
+            )
+        request = self.merge_queue.get(str(value["request_id"]))
+        projection = (
+            self._owned_post_merge_recovery_projection(
+                request,
+                allowed_task_statuses=frozenset({"in_progress"}),
+                allow_shared_lane_source=True,
+            )
+            if request is not None
+            else None
+        )
+        if projection is None:
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed lost its owned queue row"
+            )
+        binding = projection.binding
+        if (
+            str(getattr(request, "canonical_task_id", "") or "")
+            != value["task_cid"]
+            or str(getattr(request, "task_id", "") or "")
+            != value["task_alias"]
+            or str(getattr(request, "commit_sha", "") or "")
+            != value["candidate_commit"]
+            or value["queue_source_attempt_id"]
+            != str(binding.get("attempt_id") or "")
+            or value["queue_source_claim_id"]
+            != str(binding.get("claim_id") or "")
+            or value["queue_source_lease_id"]
+            != str(binding.get("lease_id") or "")
+            or value["queue_source_fencing_token"]
+            != binding.get("fencing_token")
+            or value["queue_source_fence_epoch"] != binding.get("fence_epoch")
+            or value["queue_source_binding_id"]
+            != str(binding.get("binding_id") or "")
+            or value["queue_source_projection_immutable_digest"]
+            != str(binding.get("projection_immutable_digest") or "")
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed changed queue source"
+            )
+        metadata = getattr(request, "metadata", None)
+        completion = metadata.get("completion") if isinstance(metadata, Mapping) else None
+        repair_receipt = (
+            completion.get("repair_receipt")
+            if isinstance(completion, Mapping)
+            else None
+        )
+        if not isinstance(repair_receipt, Mapping):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed has no repair receipt"
+            )
+        target_identity = self._repair_receipt_current_target_identity(
+            repair_receipt
+        )
+        if (
+            target_identity is None
+            or target_identity[0] != value["qualified_target_commit"]
+            or (
+                value["qualification_kind"] == "repair"
+                and target_identity[2] is not True
+            )
+            or (
+                value["qualification_kind"] == "requalification"
+                and target_identity[2] is not False
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed target generation changed"
+            )
+        if value["qualification_kind"] == "requalification":
+            receipt_path = self._post_merge_requalification_receipt_path(
+                projection,
+                source_receipt_id=str(repair_receipt.get("receipt_id") or ""),
+                current_head=target_identity[0],
+                current_tree=target_identity[1],
+            )
+            if not receipt_path.is_file():
+                raise DatabasePortalBridgeError(
+                    "post-merge completion recovery seed lacks durable requalification"
+                )
+        evidence = self._post_merge_recovery_evidence(
+            request,
+            projection,
+            evidence_digest=lambda item: _sha256_bytes(_canonical_json(item)),
+        )
+        qualification_field = (
+            "repair_receipt"
+            if value["qualification_kind"] == "repair"
+            else "requalification_receipt"
+        )
+        qualification = (
+            evidence.get(qualification_field)
+            if isinstance(evidence, Mapping)
+            else None
+        )
+        expected_schema = (
+            _DATABASE_POST_MERGE_RECOVERY_SCHEMA
+            if value["qualification_kind"] == "repair"
+            else _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA
+        )
+        expected_target_field = (
+            "repair_commit"
+            if value["qualification_kind"] == "repair"
+            else "qualified_target_commit"
+        )
+        expected_receipt_field = (
+            "repair_receipt_id"
+            if value["qualification_kind"] == "repair"
+            else "requalification_receipt_id"
+        )
+        if (
+            not isinstance(evidence, Mapping)
+            or evidence.get("schema") != expected_schema
+            or evidence.get("evidence_id") != value["recovery_evidence_id"]
+            or evidence.get("request_id") != value["request_id"]
+            or evidence.get("candidate_commit") != value["candidate_commit"]
+            or evidence.get(expected_target_field)
+            != value["qualified_target_commit"]
+            or evidence.get(expected_receipt_field)
+            != value["qualification_receipt_id"]
+            or not isinstance(qualification, Mapping)
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed evidence changed"
+            )
+        source_repair = (
+            qualification
+            if value["qualification_kind"] == "repair"
+            else qualification.get("source_repair_receipt")
+        )
+        validations = qualification.get("validation")
+        baseline_commit = (
+            str(source_repair.get("baseline_commit") or "")
+            if isinstance(source_repair, Mapping)
+            else ""
+        )
+        validation = validations[0] if isinstance(validations, list) and len(validations) == 1 else None
+        if (
+            not isinstance(source_repair, Mapping)
+            or not isinstance(validation, Mapping)
+            or validation.get("task_id") != value["task_alias"]
+            or validation.get("passed") is not True
+            or validation.get("returncode") != 0
+            or re.fullmatch(r"[0-9a-f]{40}", baseline_commit) is None
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed has no exact evaluation"
+            )
+        if self.repository_root is None:
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery seed has no repository"
+            )
+        try:
+            parents = subprocess.run(
+                ["git", "rev-list", "--parents", "-n", "1", value["candidate_commit"]],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery candidate lineage is unavailable"
+            ) from exc
+        if (
+            parents.returncode != 0
+            or parents.stdout.split() != [value["candidate_commit"], baseline_commit]
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery candidate is not one exact commit"
+            )
+        return {
+            **dict(seed),
+            "baseline_commit": baseline_commit,
+            "request": request,
+            "recovery_evidence": dict(evidence),
+            "qualification_receipt": dict(qualification),
+        }
+
+    @classmethod
+    def _ensure_post_merge_completion_recovery_events(
+        cls,
+        paths: DatabasePortalAttemptPaths,
+        *,
+        alias: str,
+        task_cid: str,
+        request_id: str,
+        baseline_commit: str,
+        implementation_commit: str,
+        seed_id: str,
+        recovery_evidence_id: str,
+    ) -> Mapping[str, Any]:
+        """Append one crash-idempotent zero-provider evaluated lineage."""
+
+        reason = "post_merge_completion_recovery_seed"
+        source_payload: dict[str, Any] = {
+            "task_id": alias,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "returncode": 0,
+            "baseline_ref": baseline_commit,
+            "implementation_commit": implementation_commit,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+                "reason": reason,
+                "recovery_evidence_id": recovery_evidence_id,
+            },
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "queued": True,
+                "request_id": request_id,
+                "reason": reason,
+            },
+            "reason": reason,
+            "post_merge_completion_recovery_seed_id": seed_id,
+        }
+        merge_payload: dict[str, Any] = {
+            "task_id": alias,
+            "canonical_task_cid": task_cid,
+            "attempt": 1,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "baseline_ref": baseline_commit,
+            "implementation_commit": implementation_commit,
+            "resolved": True,
+            "reason": reason,
+            "merge_result": {
+                "attempted": True,
+                "merged": True,
+                "queued": False,
+                "request_id": request_id,
+                "reason": reason,
+            },
+            "post_merge_completion_recovery_seed_id": seed_id,
+        }
+        completion_payload: dict[str, Any] = {
+            "task_id": alias,
+            "canonical_task_cid": task_cid,
+            "implementation_commit": implementation_commit,
+            "baseline_commit": baseline_commit,
+            "attempt": 1,
+            "reason": reason,
+            "post_merge_completion_recovery_seed_id": seed_id,
+        }
+
+        def exact_events(event_type: str, payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+            return [
+                event
+                for event in cls._verified_event_chain(paths)
+                if event.get("type") == event_type
+                and event.get("post_merge_completion_recovery_seed_id") == seed_id
+                and all(event.get(key) == value for key, value in payload.items())
+                and set(event) == set(payload) | _PORTAL_EVENT_ENVELOPE_FIELDS
+            ]
+
+        try:
+            existing = cls._verified_event_chain(paths)
+        except DatabasePortalBridgeError:
+            if paths.events.exists():
+                raise
+            existing = []
+        foreign_completion = [
+            event
+            for event in existing
+            if event.get("type") == "task_completed"
+            and str(event.get("task_id") or "") == alias
+            and str(event.get("canonical_task_cid") or "") == task_cid
+            and event.get("post_merge_completion_recovery_seed_id") != seed_id
+        ]
+        if foreign_completion:
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery cannot repair a bare completion"
+            )
+        same_seed = [
+            event
+            for event in existing
+            if event.get("post_merge_completion_recovery_seed_id") == seed_id
+        ]
+        same_seed_sources = [
+            event
+            for event in same_seed
+            if event.get("type")
+            == "worktree_reconciliation_candidate_queued"
+        ]
+        sources = exact_events(
+            "worktree_reconciliation_candidate_queued", source_payload
+        ) if existing else []
+        if len(sources) > 1 or len(sources) != len(same_seed_sources):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery source is conflicting"
+            )
+        if not sources:
+            if any(
+                event.get("type") in {"merge_reconciled", "task_completed"}
+                for event in same_seed
+            ):
+                raise DatabasePortalBridgeError(
+                    "post-merge completion recovery stages are out of order"
+                )
+            append_jsonl_event(
+                paths.events,
+                "worktree_reconciliation_candidate_queued",
+                source_payload,
+            )
+            sources = exact_events(
+                "worktree_reconciliation_candidate_queued",
+                source_payload,
+            )
+        if len(sources) != 1 or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(sources[0].get("event_id") or ""),
+        ) is None:
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery source identity is malformed"
+            )
+        source_event_id = str(sources[0]["event_id"])
+        merge_payload["completion_source_event_id"] = source_event_id
+        completion_payload["completion_source_event_id"] = source_event_id
+        merges = exact_events("merge_reconciled", merge_payload)
+        same_seed_merges = [
+            event for event in same_seed if event.get("type") == "merge_reconciled"
+        ]
+        if len(merges) > 1 or len(merges) != len(same_seed_merges):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery reconciliation is conflicting"
+            )
+        if not merges:
+            if any(
+                event.get("type") == "task_completed" for event in same_seed
+            ):
+                raise DatabasePortalBridgeError(
+                    "post-merge completion recovery stages are out of order"
+                )
+            append_jsonl_event(paths.events, "merge_reconciled", merge_payload)
+        completions = exact_events("task_completed", completion_payload)
+        same_seed_completions = [
+            event for event in same_seed if event.get("type") == "task_completed"
+        ]
+        if (
+            len(completions) > 1
+            or len(completions) != len(same_seed_completions)
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery completion is conflicting"
+            )
+        if not completions:
+            append_jsonl_event(paths.events, "task_completed", completion_payload)
+        completion = cls._completion_event_evidence(
+            paths,
+            alias=alias,
+            task_cid=task_cid,
+        )
+        if (
+            completion is None
+            or completion.get("implementation_commit") != implementation_commit
+            or completion.get("baseline_commit") != baseline_commit
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery did not establish exact lineage"
+            )
+        return completion
+
+    def _accept_post_merge_completion_recovery_seed(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        seed: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Close a fresh successor projection without provider dispatch."""
+
+        alias = str(binding.get("task_alias") or "")
+        source = self._ensure_post_merge_completion_recovery_events(
+            paths,
+            alias=alias,
+            task_cid=str(attempt.task_cid),
+            request_id=str(seed["request_id"]),
+            baseline_commit=str(seed["baseline_commit"]),
+            implementation_commit=str(seed["candidate_commit"]),
+            seed_id=str(seed["seed_id"]),
+            recovery_evidence_id=str(seed["recovery_evidence_id"]),
+        )
+        projection = self._verify_projection(paths, binding)
+        updated, count = _MUTABLE_PROJECTION_LINE.subn(
+            "- Status: completed",
+            projection,
+        )
+        if count != 1:
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery projection status is malformed"
+            )
+        if updated != projection:
+            _atomic_write(paths.task_projection, updated.encode("utf-8"))
+        if (
+            _projection_status(self._verify_projection(paths, binding))
+            not in _TERMINAL_STATUSES
+        ):
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery did not close its projection"
+            )
+        # Reproduce target identity after every local append.  An advancing
+        # target invalidates this seed; it never triggers a provider or a
+        # generic retry under the old generation.
+        reproduced = self._post_merge_completion_recovery_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+        if (
+            reproduced is None
+            or reproduced.get("seed_id") != seed.get("seed_id")
+            or reproduced.get("baseline_commit")
+            != source.get("baseline_commit")
+        ):
+            raise DatabasePortalBridgeError(
+                DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON
+            )
+        return self._acceptance_receipt(
+            attempt=attempt,
+            paths=paths,
+            binding=binding,
+            summaries=(),
+        )
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
@@ -7841,6 +8595,7 @@ class DatabasePortalExecutionBridge:
             "capacity_retry_seed",
             "protected_preservation_seed",
             "consumed_attempt_retry_seed",
+            "post_merge_completion_recovery_seed",
         )
         if isinstance(status_receipt, Mapping) and sum(
             status_receipt.get(field) is not None
@@ -7854,6 +8609,20 @@ class DatabasePortalExecutionBridge:
             record=record,
         )
         paths, binding = self._ensure_attempt_projection(attempt, record)
+        post_merge_completion_seed = (
+            self._post_merge_completion_recovery_seed_from_record(
+                attempt=attempt,
+                record=record,
+            )
+        )
+        if post_merge_completion_seed is not None:
+            return self._accept_post_merge_completion_recovery_seed(
+                attempt=attempt,
+                record=record,
+                paths=paths,
+                binding=binding,
+                seed=post_merge_completion_seed,
+            )
         projection = self._verify_projection(paths, binding)
         if protected_seed is not None:
             return self._reconcile_protected_preservation_seed(
@@ -8318,10 +9087,17 @@ class DatabasePortalExecutionBridge:
                 return result
             return None
 
-        def replay_completed_page() -> Mapping[str, Any] | None:
-            for snapshot in completion_page:
+        def replay_completed_page(
+            page: Sequence[Any],
+            *,
+            allow_shared_lane_source: bool = False,
+        ) -> Mapping[str, Any] | None:
+            for snapshot in page:
                 snapshot_projection = (
-                    self._owned_post_merge_recovery_projection(snapshot)
+                    self._owned_post_merge_recovery_projection(
+                        snapshot,
+                        allow_shared_lane_source=allow_shared_lane_source,
+                    )
                 )
                 if snapshot_projection is None:
                     continue
@@ -8329,7 +9105,10 @@ class DatabasePortalExecutionBridge:
                     str(getattr(snapshot, "request_id", "") or "")
                 )
                 projection = (
-                    self._owned_post_merge_recovery_projection(completed)
+                    self._owned_post_merge_recovery_projection(
+                        completed,
+                        allow_shared_lane_source=allow_shared_lane_source,
+                    )
                     if completed is not None
                     else None
                 )
@@ -8371,9 +9150,55 @@ class DatabasePortalExecutionBridge:
                     return reopened
             return None
 
+        priority_task_cids_fn = getattr(
+            database_daemon,
+            "post_merge_completion_recovery_task_cids",
+            None,
+        )
+        raw_priority_task_cids = (
+            priority_task_cids_fn()
+            if callable(priority_task_cids_fn)
+            else ()
+        )
+        if (
+            not isinstance(raw_priority_task_cids, Sequence)
+            or isinstance(
+                raw_priority_task_cids,
+                (str, bytes, bytearray, memoryview),
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "database completion-recovery task identities are malformed"
+            )
+        priority_task_cids, priority_next_cursor = (
+            self._priority_recovery_task_cid_page(
+                raw_priority_task_cids,
+                after_task_cid=cursors["priority_task_cids"],
+            )
+        )
+        priority_completed_page = self._priority_repaired_completion_requests(
+            priority_task_cids
+        )
+        if priority_completed_page:
+            acquired, priority_result = train.run_under_consumer_lease(
+                lambda: replay_completed_page(
+                    priority_completed_page,
+                    allow_shared_lane_source=True,
+                )
+            )
+            if not acquired:
+                return None
+        else:
+            priority_result = None
+        if cursors["priority_task_cids"] != priority_next_cursor:
+            cursors["priority_task_cids"] = priority_next_cursor
+            self._save_post_merge_recovery_cursors(cursors)
+        if priority_result is not None:
+            return dict(priority_result)
+
         if completion_page:
             acquired, replay_result = train.run_under_consumer_lease(
-                replay_completed_page
+                lambda: replay_completed_page(completion_page)
             )
             if not acquired:
                 return None

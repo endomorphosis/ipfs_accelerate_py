@@ -2803,6 +2803,9 @@ class MergeQueue:
         limit: int = 32,
         completion_schema: str = "",
         completion_reason: str = "",
+        canonical_task_id: str = "",
+        reopen_schema: str = "",
+        reopen_reason: str = "",
         before_request_id: str = "",
     ) -> tuple[MergeRequest, ...]:
         """Return a bounded target-bound completion snapshot.
@@ -2819,6 +2822,9 @@ class MergeQueue:
         target_sql, target_parameters = self._target_binding_sql()
         schema = str(completion_schema or "")
         reason = str(completion_reason or "")
+        task_cid = str(canonical_task_id or "")
+        false_reopen_schema = str(reopen_schema or "")
+        false_reopen_reason = str(reopen_reason or "")
         cursor = str(before_request_id or "")
         completion_sql = ""
         completion_parameters: tuple[str, ...] = ()
@@ -2834,6 +2840,21 @@ class MergeQueue:
                 "'$.completion.reason') = ?"
             )
             completion_parameters += (reason,)
+        if task_cid:
+            completion_sql += " AND canonical_task_id = ?"
+            completion_parameters += (task_cid,)
+        if false_reopen_schema:
+            completion_sql += (
+                " AND json_extract_string(metadata_json, "
+                "'$.false_positive_completion_reopen.schema') = ?"
+            )
+            completion_parameters += (false_reopen_schema,)
+        if false_reopen_reason:
+            completion_sql += (
+                " AND json_extract_string(metadata_json, "
+                "'$.false_positive_completion_reopen.reason') = ?"
+            )
+            completion_parameters += (false_reopen_reason,)
         cursor_sql = " AND request_id < ?" if cursor else ""
         cursor_parameters = (cursor,) if cursor else ()
         with self._connect() as connection:

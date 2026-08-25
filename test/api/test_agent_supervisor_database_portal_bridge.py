@@ -4379,6 +4379,480 @@ def test_bridge_completion_lineage_accepts_only_later_exact_queue_reconciliation
     assert evidence["baseline_commit"] == "b" * 40
 
 
+def test_post_merge_completion_recovery_events_are_exact_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "completion recovery dispatched a provider"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+
+    first = bridge._ensure_post_merge_completion_recovery_events(
+        paths,
+        alias="LGSWF-004",
+        task_cid="task:cid:004",
+        request_id="request:repaired",
+        baseline_commit="b" * 40,
+        implementation_commit="a" * 40,
+        seed_id="sha256:" + "c" * 64,
+        recovery_evidence_id="sha256:" + "d" * 64,
+    )
+    before = paths.events.read_bytes()
+    replay = bridge._ensure_post_merge_completion_recovery_events(
+        paths,
+        alias="LGSWF-004",
+        task_cid="task:cid:004",
+        request_id="request:repaired",
+        baseline_commit="b" * 40,
+        implementation_commit="a" * 40,
+        seed_id="sha256:" + "c" * 64,
+        recovery_evidence_id="sha256:" + "d" * 64,
+    )
+
+    assert paths.events.read_bytes() == before
+    events = bridge._verified_event_chain(paths)
+    assert [event["type"] for event in events] == [
+        "worktree_reconciliation_candidate_queued",
+        "merge_reconciled",
+        "task_completed",
+    ]
+    assert events[0]["attempt_consumed"] is False
+    assert events[0]["provider_dispatched"] is False
+    assert events[0]["validation_result"]["passed"] is True
+    assert events[0]["merge_result"]["request_id"] == "request:repaired"
+    assert events[1]["merge_result"]["merged"] is True
+    assert first == replay
+    assert replay["implementation_commit"] == "a" * 40
+    assert replay["baseline_commit"] == "b" * 40
+
+
+def test_post_merge_completion_recovery_seed_closes_without_portal_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = _record()
+    record.status = "in_progress"
+    portal_calls: list[str] = []
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, alias: portal_calls.append(alias),
+    )
+    seed = {
+        "request_id": "request:repaired",
+        "baseline_commit": "b" * 40,
+        "candidate_commit": "a" * 40,
+        "seed_id": "sha256:" + "c" * 64,
+        "recovery_evidence_id": "sha256:" + "d" * 64,
+    }
+    monkeypatch.setattr(
+        bridge,
+        "_post_merge_completion_recovery_seed_from_record",
+        lambda **_kwargs: dict(seed),
+    )
+
+    receipt = bridge.run_provider(_attempt())
+
+    assert portal_calls == []
+    assert receipt["accepted"] is True
+    assert receipt["completion_authority"] == "DatabaseImplementationDaemon"
+    assert receipt["baseline_commit"] == "b" * 40
+    assert receipt["implementation_commit"] == "a" * 40
+    assert [
+        event["type"]
+        for event in bridge._verified_event_chain(bridge._paths(_attempt()))
+    ] == [
+        "worktree_reconciliation_candidate_queued",
+        "merge_reconciled",
+        "task_completed",
+    ]
+
+
+def test_post_merge_completion_recovery_never_repairs_bare_completion(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    append_jsonl_event(
+        paths.events,
+        "task_completed",
+        {
+            "task_id": "LGSWF-004",
+            "canonical_task_cid": "task:cid:004",
+        },
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="cannot repair a bare completion",
+    ):
+        bridge._ensure_post_merge_completion_recovery_events(
+            paths,
+            alias="LGSWF-004",
+            task_cid="task:cid:004",
+            request_id="request:repaired",
+            baseline_commit="b" * 40,
+            implementation_commit="a" * 40,
+            seed_id="sha256:" + "c" * 64,
+            recovery_evidence_id="sha256:" + "d" * 64,
+        )
+
+
+@pytest.mark.parametrize("tamper", ["source-payload", "stage-order"])
+def test_post_merge_completion_recovery_rejects_conflicting_partial_seed(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    seed_id = "sha256:" + "c" * 64
+    if tamper == "source-payload":
+        append_jsonl_event(
+            paths.events,
+            "worktree_reconciliation_candidate_queued",
+            {
+                "task_id": "LGSWF-004",
+                "canonical_task_cid": "task:cid:004",
+                "attempt": 1,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "returncode": 0,
+                "baseline_ref": "b" * 40,
+                "implementation_commit": "a" * 40,
+                "validation_result": {
+                    "attempted": True,
+                    "passed": True,
+                    "returncode": 0,
+                },
+                "merge_result": {
+                    "attempted": True,
+                    "merged": False,
+                    "queued": True,
+                    "request_id": "request:forged",
+                },
+                "reason": "post_merge_completion_recovery_seed",
+                "post_merge_completion_recovery_seed_id": seed_id,
+            },
+        )
+    else:
+        append_jsonl_event(
+            paths.events,
+            "merge_reconciled",
+            {
+                "task_id": "LGSWF-004",
+                "canonical_task_cid": "task:cid:004",
+                "attempt": 1,
+                "implementation_commit": "a" * 40,
+                "resolved": True,
+                "post_merge_completion_recovery_seed_id": seed_id,
+                "merge_result": {"merged": True},
+            },
+        )
+
+    with pytest.raises(DatabasePortalBridgeError):
+        bridge._ensure_post_merge_completion_recovery_events(
+            paths,
+            alias="LGSWF-004",
+            task_cid="task:cid:004",
+            request_id="request:repaired",
+            baseline_commit="b" * 40,
+            implementation_commit="a" * 40,
+            seed_id=seed_id,
+            recovery_evidence_id="sha256:" + "d" * 64,
+        )
+    assert len(bridge._verified_event_chain(paths)) == 1
+
+
+def test_post_merge_completion_seed_admits_only_exact_shared_lane_source(
+    tmp_path: Path,
+) -> None:
+    shared = tmp_path / "state"
+    source_attempt_root = (
+        shared / "lane-0" / "vrif_lane_0_database_portal_attempts"
+    )
+    consumer_attempt_root = (
+        shared / "lane-3" / "vrif_lane_3_database_portal_attempts"
+    )
+    source_record = _record()
+    source_record.status = "in_progress"
+    source_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(source_record),
+        attempt_root=source_attempt_root,
+        portal_factory=lambda _paths, _alias: None,
+    )
+    paths, binding = source_bridge._ensure_attempt_projection(
+        _attempt(), source_record
+    )
+    [projected_task] = parse_task_text(
+        paths.task_projection.read_text(encoding="utf-8"),
+        path=paths.task_projection,
+        task_header_prefix="## LGSWF-",
+    )
+    completion = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "post-merge-declared-output-completion@1"
+        ),
+        "status": "already_merged",
+        "reason": "post_merge_declared_outputs_repaired",
+        "candidate_commit": "a" * 40,
+        "target_commit": "b" * 40,
+        "repair_receipt": {},
+    }
+    metadata = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+        "target_binding_schema": (
+            "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+        ),
+        "target_repository_id": "repository:test",
+        "target_branch": "main",
+        "implementation_commit": "a" * 40,
+        "todo_path": str(paths.task_projection),
+        "state_path": str(paths.state),
+        "strategy_path": str(paths.strategy),
+        "events_path": str(paths.events),
+        "repo_root": str((tmp_path / "repo").absolute()),
+        "task_header_prefix": "## LGSWF-",
+        "task": asdict(projected_task),
+        "completion_task_cids": {"LGSWF-004": "task:cid:004"},
+        "false_positive_completion_reopen": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "merge-queue-false-positive-completion-reopen@1"
+            ),
+            "reason": "declared_outputs_not_on_target",
+            "train_receipt_id": "sha256:" + "c" * 64,
+        },
+        "completion": completion,
+    }
+    request = SimpleNamespace(
+        request_id="request:shared-lane",
+        task_id="LGSWF-004",
+        canonical_task_id="task:cid:004",
+        canonical_task_key=projected_task.canonical_task_key,
+        commit_sha="a" * 40,
+        status="completed",
+        failure_reason="",
+        metadata=metadata,
+    )
+    consumer = object.__new__(DatabasePortalExecutionBridge)
+    consumer.task_source = _TaskSource(source_record)
+    consumer.attempt_root = consumer_attempt_root.absolute()
+    consumer.attempt_root.mkdir(parents=True)
+    consumer.repository_root = (tmp_path / "repo").absolute()
+    consumer.merge_target_branch = "main"
+    consumer.task_header_prefix = "## LGSWF-"
+    consumer.merge_queue = SimpleNamespace(
+        target_repository_id="repository:test"
+    )
+
+    assert consumer._owned_post_merge_recovery_projection(request) is None
+    admitted = consumer._owned_post_merge_recovery_projection(
+        request,
+        allowed_task_statuses=frozenset({"in_progress"}),
+        allow_shared_lane_source=True,
+    )
+    assert admitted is not None
+    assert admitted.binding["attempt_id"] == binding["attempt_id"]
+    assert admitted.binding["binding_id"] == binding["binding_id"]
+
+    mismatched_root = shared / "lane-1" / "vrif_lane_2_database_portal_attempts"
+    mismatched_paths = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(source_record),
+        attempt_root=mismatched_root,
+        portal_factory=lambda _paths, _alias: None,
+    )._ensure_attempt_projection(_attempt(), source_record)[0]
+    malformed = SimpleNamespace(
+        **{
+            **request.__dict__,
+            "metadata": {
+                **metadata,
+                "todo_path": str(mismatched_paths.task_projection),
+                "state_path": str(mismatched_paths.state),
+                "strategy_path": str(mismatched_paths.strategy),
+                "events_path": str(mismatched_paths.events),
+            },
+        }
+    )
+    assert (
+        consumer._owned_post_merge_recovery_projection(
+            malformed,
+            allowed_task_statuses=frozenset({"in_progress"}),
+            allow_shared_lane_source=True,
+        )
+        is None
+    )
+
+    foreign_prefix_root = (
+        shared / "lane-0" / "foreign_board_lane_0_database_portal_attempts"
+    )
+    foreign_prefix_paths = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(source_record),
+        attempt_root=foreign_prefix_root,
+        portal_factory=lambda _paths, _alias: None,
+    )._ensure_attempt_projection(_attempt(), source_record)[0]
+    foreign_prefix = SimpleNamespace(
+        **{
+            **request.__dict__,
+            "metadata": {
+                **metadata,
+                "todo_path": str(foreign_prefix_paths.task_projection),
+                "state_path": str(foreign_prefix_paths.state),
+                "strategy_path": str(foreign_prefix_paths.strategy),
+                "events_path": str(foreign_prefix_paths.events),
+            },
+        }
+    )
+    assert (
+        consumer._owned_post_merge_recovery_projection(
+            foreign_prefix,
+            allowed_task_statuses=frozenset({"in_progress"}),
+            allow_shared_lane_source=True,
+        )
+        is None
+    )
+
+    traversal_projection = (
+        paths.root / ".." / paths.root.name / paths.task_projection.name
+    )
+    traversal = SimpleNamespace(
+        **{
+            **request.__dict__,
+            "metadata": {
+                **metadata,
+                "todo_path": str(traversal_projection),
+            },
+        }
+    )
+    assert (
+        consumer._owned_post_merge_recovery_projection(
+            traversal,
+            allowed_task_statuses=frozenset({"in_progress"}),
+            allow_shared_lane_source=True,
+        )
+        is None
+    )
+
+    symlink_root = shared / "lane-2" / "vrif_lane_2_database_portal_attempts"
+    symlink_root.parent.mkdir(parents=True)
+    symlink_root.symlink_to(source_attempt_root, target_is_directory=True)
+    linked_attempt = symlink_root / paths.root.name
+    linked = SimpleNamespace(
+        **{
+            **request.__dict__,
+            "metadata": {
+                **metadata,
+                "todo_path": str(linked_attempt / paths.task_projection.name),
+                "state_path": str(linked_attempt / paths.state.name),
+                "strategy_path": str(linked_attempt / paths.strategy.name),
+                "events_path": str(linked_attempt / paths.events.name),
+            },
+        }
+    )
+    assert (
+        consumer._owned_post_merge_recovery_projection(
+            linked,
+            allowed_task_statuses=frozenset({"in_progress"}),
+            allow_shared_lane_source=True,
+        )
+        is None
+    )
+
+
+def test_post_merge_completion_recovery_priority_snapshot_is_exact(
+    tmp_path: Path,
+) -> None:
+    del tmp_path
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    exact = SimpleNamespace(
+        request_id="request-exact",
+        canonical_task_id="task:cid:004",
+    )
+    calls: list[dict[str, object]] = []
+
+    def completed_requests(**kwargs: object) -> tuple[object, ...]:
+        calls.append(dict(kwargs))
+        return (exact,)
+
+    bridge.merge_queue = SimpleNamespace(completed_requests=completed_requests)
+
+    assert bridge._priority_repaired_completion_requests(
+        ("task:cid:004",)
+    ) == (exact,)
+    assert calls == [
+        {
+            "limit": 2,
+            "completion_schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "post-merge-declared-output-completion@1"
+            ),
+            "completion_reason": "post_merge_declared_outputs_repaired",
+            "canonical_task_id": "task:cid:004",
+            "reopen_schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "merge-queue-false-positive-completion-reopen@1"
+            ),
+            "reopen_reason": "declared_outputs_not_on_target",
+        }
+    ]
+
+    bridge.merge_queue.completed_requests = lambda **_kwargs: (exact, exact)
+    assert bridge._priority_repaired_completion_requests(
+        ("task:cid:004",)
+    ) == ()
+
+
+def test_post_merge_completion_recovery_priority_pages_cannot_pin_after_32(
+) -> None:
+    task_cids = tuple(f"task:cid:{index:03d}" for index in range(35))
+
+    first, first_cursor = (
+        DatabasePortalExecutionBridge._priority_recovery_task_cid_page(
+            task_cids,
+            after_task_cid="",
+        )
+    )
+    second, second_cursor = (
+        DatabasePortalExecutionBridge._priority_recovery_task_cid_page(
+            task_cids,
+            after_task_cid=first_cursor,
+        )
+    )
+    wrapped, wrapped_cursor = (
+        DatabasePortalExecutionBridge._priority_recovery_task_cid_page(
+            task_cids,
+            after_task_cid=second_cursor,
+        )
+    )
+
+    assert first == task_cids[:32]
+    assert second == task_cids[32:]
+    assert wrapped == ()
+    assert wrapped_cursor == ""
+    restarted, _ = (
+        DatabasePortalExecutionBridge._priority_recovery_task_cid_page(
+            task_cids,
+            after_task_cid=wrapped_cursor,
+        )
+    )
+    assert restarted == first
+
+
 def test_bridge_apply_effect_rejects_resealed_nonancestor_baseline(
     tmp_path: Path,
 ) -> None:

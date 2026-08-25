@@ -1180,6 +1180,66 @@ def test_completed_requests_uses_one_keyset_order_across_all_pages(
     assert observed == sorted(request_ids, reverse=True)
 
 
+def test_completed_requests_filters_exact_recovery_task_before_limit(
+    tmp_path: Path,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    reopen_schema = FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA
+    completion_schema = "example/post-merge-completion@1"
+    for ordinal in range(3):
+        pending = queue.enqueue(
+            branch_name=f"candidate/{ordinal}",
+            task_id=f"TASK-{ordinal}",
+            canonical_task_id=f"canonical-task-{ordinal}",
+            commit_sha=f"{ordinal + 1:040x}",
+        )
+        original_claim = queue.claim_pending_request(
+            pending.request_id,
+            consumer_id="merge-train:exact-recovery-query",
+        )
+        assert original_claim is not None
+        queue.complete(original_claim)
+        original_completion = queue.get(pending.request_id)
+        assert original_completion is not None
+        reopened = queue.reopen_false_positive_completion(
+            original_completion,
+            completion_receipt=_false_positive_completion_receipt(
+                original_completion
+            ),
+        )
+        assert reopened is not None
+        claimed = queue.claim_pending_request(
+            reopened.request_id,
+            consumer_id="merge-train:exact-recovery-query",
+        )
+        assert claimed is not None
+        queue.complete(
+            claimed,
+            metadata={
+                "schema": completion_schema,
+                "reason": "post_merge_declared_outputs_repaired",
+            },
+        )
+
+    [selected] = queue.completed_requests(
+        limit=1,
+        completion_schema=completion_schema,
+        completion_reason="post_merge_declared_outputs_repaired",
+        canonical_task_id="canonical-task-0",
+        reopen_schema=reopen_schema,
+        reopen_reason="declared_outputs_not_on_target",
+    )
+    assert selected.canonical_task_id == "canonical-task-0"
+    assert queue.completed_requests(
+        limit=1,
+        completion_schema=completion_schema,
+        completion_reason="post_merge_declared_outputs_repaired",
+        canonical_task_id="canonical-task-missing",
+        reopen_schema=reopen_schema,
+        reopen_reason="declared_outputs_not_on_target",
+    ) == ()
+
+
 def test_recovered_claim_increments_generation_and_fences_crashed_worker(
     tmp_path: Path,
 ) -> None:
