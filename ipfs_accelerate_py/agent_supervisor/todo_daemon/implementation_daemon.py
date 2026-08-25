@@ -80324,6 +80324,154 @@ class DatabaseImplementationDaemon:
             "control_operation": str(receipt["operation"]),
         }
 
+    def _foreign_generic_retry_reconciliation_observation(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        supersession: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Observe only a fully sealed foreign generic retry projection.
+
+        Startup reconciliation can scan a failed row copied from a retired
+        execution sidecar whose coordination sidecar was discarded.  A later
+        lane's canonical generic retry is sufficient observation authority,
+        but only when its complete receipt and queue projection reproduce.
+        The looser exception-race classifier remains separate because it
+        closes a checked-CAS race after this lane already held authority.
+        """
+
+        if (
+            not isinstance(supersession, Mapping)
+            or supersession.get("control_status") != "retrying"
+            or supersession.get("control_operation")
+            != "database_portal_retry"
+        ):
+            return None
+        receipt = self._control_attempt_receipt(task)
+        coordination = (
+            receipt.get("coordination")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        task_revision = getattr(task, "revision", None)
+        attempt_number = (
+            receipt.get("attempt_number")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        execution_revision = (
+            receipt.get("execution_revision")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        execution_finished_at_ms = (
+            receipt.get("execution_finished_at_ms")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        backoff_seconds = (
+            receipt.get("backoff_seconds")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        backoff_ms = (
+            receipt.get("backoff_ms")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        retry_not_before_ms = (
+            receipt.get("retry_not_before_ms")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        control_expected_revision = (
+            receipt.get("control_expected_revision")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        if (
+            receipt is None
+            or set(receipt) != _DATABASE_GENERIC_PORTAL_RETRY_FIELDS
+            or isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+            or task_revision < 2
+            or supersession.get("control_revision") != task_revision
+            or any(
+                supersession.get(outcome_field) != receipt.get(receipt_field)
+                for outcome_field, receipt_field in (
+                    ("successor_attempt_id", "attempt_id"),
+                    ("successor_claim_id", "claim_id"),
+                    ("successor_lease_id", "lease_id"),
+                    ("successor_owner_session_id", "owner_session_id"),
+                    ("successor_fencing_token", "fencing_token"),
+                    ("successor_fence_epoch", "fence_epoch"),
+                )
+            )
+            or isinstance(attempt_number, bool)
+            or not isinstance(attempt_number, int)
+            or attempt_number < 1
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or isinstance(execution_revision, bool)
+            or not isinstance(execution_revision, int)
+            or execution_revision < 1
+            or isinstance(execution_finished_at_ms, bool)
+            or not isinstance(execution_finished_at_ms, int)
+            or execution_finished_at_ms < 1
+            or not isinstance(receipt.get("reason"), str)
+            or not str(receipt.get("reason") or "").strip()
+            or isinstance(backoff_seconds, bool)
+            or not isinstance(backoff_seconds, int)
+            or backoff_seconds < 0
+            or isinstance(backoff_ms, bool)
+            or not isinstance(backoff_ms, int)
+            or backoff_ms < 0
+            or backoff_seconds != (backoff_ms + 999) // 1000
+            or isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+            or not isinstance(receipt.get("evidence_source"), str)
+            or not str(receipt.get("evidence_source") or "").strip()
+            or not isinstance(receipt.get("queue_reason"), str)
+            or not str(receipt.get("queue_reason") or "").startswith(
+                f"database_portal_retry:{receipt.get('attempt_id')}:"
+            )
+            or type(receipt.get("queue_reused")) is not bool
+            or not isinstance(receipt.get("queue_receipt"), Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != receipt.get("attempt_id")
+            or coordination.get("claim_id") != receipt.get("claim_id")
+            or isinstance(coordination.get("attempt_number"), bool)
+            or not isinstance(coordination.get("attempt_number"), int)
+            or coordination.get("attempt_number") != attempt_number
+            or isinstance(control_expected_revision, bool)
+            or not isinstance(control_expected_revision, int)
+            or control_expected_revision != task_revision - 1
+            or receipt.get("control_expected_status")
+            not in {"blocked", "in_progress", "retrying"}
+        ):
+            return None
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            return None
+        queue_entry = get_queue_entry(attempt.task_cid)
+        queue_retry_not_before_ms = getattr(
+            queue_entry,
+            "retry_not_before_ms",
+            None,
+        )
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "task_cid", "") or "")
+            != attempt.task_cid
+            or str(getattr(queue_entry, "reason", "") or "")
+            != receipt.get("queue_reason")
+            or isinstance(queue_retry_not_before_ms, bool)
+            or not isinstance(queue_retry_not_before_ms, int)
+            or queue_retry_not_before_ms != retry_not_before_ms
+        ):
+            return None
+        return dict(supersession)
+
     def _failed_attempt_control_replay_or_supersession(
         self,
         attempt: DatabaseTaskAttempt,
@@ -85699,6 +85847,16 @@ class DatabaseImplementationDaemon:
                 == "database_claim"
             ):
                 outcomes.append(control_supersession)
+                continue
+            foreign_generic_retry = (
+                self._foreign_generic_retry_reconciliation_observation(
+                    attempt,
+                    task,
+                    control_supersession,
+                )
+            )
+            if foreign_generic_retry is not None:
+                outcomes.append(foreign_generic_retry)
                 continue
             budget = evidence.get("typed_deferral_budget")
             if isinstance(budget, Mapping) and budget.get("exhausted") is True:

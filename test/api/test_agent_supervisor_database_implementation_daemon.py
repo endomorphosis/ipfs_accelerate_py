@@ -86,6 +86,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
+    ATTEMPT_PHASE_CONTEXT,
     ATTEMPT_PHASE_EFFECT,
     ATTEMPT_PHASE_FAILED,
     ATTEMPT_PHASE_PROVIDER,
@@ -5132,6 +5133,176 @@ def test_foreign_control_injected_before_atomic_retry_leaves_no_queue(
         )
     finally:
         daemon.close()
+
+
+def test_retired_lane_observes_complete_foreign_generic_retry_without_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign generic retry supersedes a retired lane's local failure."""
+
+    source = _open_daemon(
+        tmp_path,
+        session="session:retired-retry-source",
+        lane="retired-retry-source",
+    )
+    try:
+        source.materialize_population(_population(1))
+        local = source.claim_next()
+        assert local is not None
+        local = source.commit_phase(local, ATTEMPT_PHASE_CONTEXT)
+        local = source.commit_phase(
+            local,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": "transient_provider_failure",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 0,
+            },
+        )
+        source_retry = source.reconcile_terminal_retry_states()
+        assert len(source_retry) == 1
+        assert source_retry[0]["status"] == "retrying"
+    finally:
+        source.close()
+
+    shutil.copy2(
+        tmp_path / "execution-retired-retry-source.duckdb",
+        tmp_path / "execution-retired-retry-observer.duckdb",
+    )
+
+    foreign = _open_daemon(
+        tmp_path,
+        session="session:foreign-retry-owner",
+        lane="foreign-retry-owner",
+    )
+    try:
+        successor = foreign.claim_next()
+        assert successor is not None
+        assert successor.attempt_id != local.attempt_id
+        successor = foreign.commit_phase(successor, ATTEMPT_PHASE_CONTEXT)
+        successor = foreign.commit_phase(
+            successor,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": "second_transient_provider_failure",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 0,
+            },
+        )
+        foreign_retry = foreign.reconcile_terminal_retry_states()
+        assert len(foreign_retry) == 1
+        assert foreign_retry[0]["status"] == "retrying"
+    finally:
+        foreign.close()
+
+    observer = _open_daemon(
+        tmp_path,
+        session="session:retired-retry-observer",
+        lane="retired-retry-observer",
+    )
+    try:
+        observed_local = observer.get_attempt(local.attempt_id)
+        assert observed_local is not None
+        assert observer.coordinator.get_task_claim(local.claim_id) is None
+        before = observer.task_source.get(local.task_cid)
+        assert before is not None
+        assert before.status == "retrying"
+        receipt = dict(before.body["completion_receipt"])
+        assert receipt["operation"] == "database_portal_retry"
+        assert receipt["attempt_id"] == successor.attempt_id
+        queue = observer.task_source.get_queue_entry(local.task_cid)
+        assert queue is not None
+        queue_before = queue.to_dict()
+
+        original_get = observer.task_source.get
+        projected_receipt = {"value": dict(receipt)}
+
+        def get_with_projected_receipt(task_cid: str) -> object:
+            task = original_get(task_cid)
+            if task_cid != local.task_cid or task is None:
+                return task
+            return SimpleNamespace(
+                task_alias=task.task_alias,
+                status=task.status,
+                revision=task.revision,
+                body={
+                    **dict(task.body),
+                    "completion_receipt": projected_receipt["value"],
+                },
+            )
+
+        monkeypatch.setattr(
+            observer.task_source,
+            "get",
+            get_with_projected_receipt,
+        )
+        minimal_receipt = {
+            key: receipt[key]
+            for key in (
+                "operation",
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "fencing_token",
+                "fence_epoch",
+            )
+        }
+        missing_execution = dict(receipt)
+        missing_execution.pop("execution_revision")
+        malformed_receipts = [
+            minimal_receipt,
+            missing_execution,
+            {**receipt, "claim_id": local.claim_id},
+            {**receipt, "attempt_number": True},
+            {**receipt, "execution_finished_at_ms": 0},
+            {
+                **receipt,
+                "coordination": {
+                    **dict(receipt["coordination"]),
+                    "claim_id": "claim:forged-coordination",
+                },
+            },
+            {
+                **receipt,
+                "control_expected_revision": int(before.revision),
+            },
+            {**receipt, "control_expected_status": "completed"},
+            {**receipt, "queue_reason": "database_portal_retry:forged"},
+            {
+                **receipt,
+                "retry_not_before_ms": int(receipt["retry_not_before_ms"])
+                + 1,
+            },
+        ]
+        for malformed in malformed_receipts:
+            projected_receipt["value"] = malformed
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="has no coordination claim",
+            ):
+                observer.reconcile_terminal_retry_states()
+        monkeypatch.setattr(observer.task_source, "get", original_get)
+
+        reconciled = observer.reconcile_terminal_retry_states()
+        assert len(reconciled) == 1
+        assert reconciled[0]["changed"] is False
+        assert reconciled[0]["reason"] == "failed_attempt_control_superseded"
+        assert reconciled[0]["attempt_id"] == local.attempt_id
+        assert reconciled[0]["successor_attempt_id"] == successor.attempt_id
+        assert reconciled[0]["successor_claim_id"] == successor.claim_id
+        assert reconciled[0]["control_status"] == "retrying"
+        assert reconciled[0]["control_operation"] == "database_portal_retry"
+
+        after = observer.task_source.get(local.task_cid)
+        assert after is not None
+        assert after.to_dict() == before.to_dict()
+        queue_after = observer.task_source.get_queue_entry(local.task_cid)
+        assert queue_after is not None
+        assert queue_after.to_dict() == queue_before
+    finally:
+        observer.close()
 
 
 def test_completion_owner_cas_rejects_foreign_shared_claim(
