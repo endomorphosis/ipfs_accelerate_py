@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 import py_compile
@@ -99,6 +100,12 @@ V3_WITNESS_PATH = Path(
 )
 _TEST_SEALED_DESCRIPTORS: list[int] = []
 _TEST_PROCESSES: list[subprocess.Popen[Any]] = []
+REQUIRE_LIVE_NATIVE_ENV = (
+    "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION"
+)
+LIVE_NATIVE_SOURCE_ENV = (
+    "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -273,6 +280,85 @@ def _test_sealed_control_plane(
     sealed = llm_router.seal_agent_implementation_control_plane_capsule(pin)
     _TEST_SEALED_DESCRIPTORS.append(sealed.descriptor)
     return pin, sealed
+
+
+def _reviewed_live_native_source() -> tuple[Path, Any]:
+    """Resolve the exact reviewed native source, with a non-skipping live gate."""
+
+    required = os.environ.get(REQUIRE_LIVE_NATIVE_ENV) == "1"
+    explicit_source = str(os.environ.get(LIVE_NATIVE_SOURCE_ENV) or "")
+    if required:
+        if not explicit_source:
+            pytest.fail(
+                f"{LIVE_NATIVE_SOURCE_ENV} is required by the live native gate"
+            )
+        source = Path(explicit_source)
+    else:
+        specification = importlib.util.find_spec("_duckdb")
+        if specification is None or specification.origin is None:
+            pytest.skip("reviewed native DuckDB dependency is unavailable")
+        source = Path(specification.origin)
+    try:
+        lexical = os.lstat(source)
+        canonical = source.resolve(strict=True)
+        expected = llm_router.current_agent_supervisor_native_dependency_pin()
+        observed = llm_router.inspect_agent_supervisor_native_dependency_source(
+            source,
+            distribution_version=expected.distribution_version,
+            engine_version=expected.engine_version,
+        )
+    except (OSError, ValueError):
+        if required:
+            pytest.fail("required reviewed native DuckDB source is unavailable")
+        pytest.skip("reviewed native DuckDB dependency is unavailable")
+    valid = bool(
+        source == source.absolute()
+        and canonical == source
+        and stat.S_ISREG(lexical.st_mode)
+        and lexical.st_nlink == 1
+        and observed == expected
+    )
+    if not valid:
+        if required:
+            pytest.fail("required reviewed native DuckDB source identity differs")
+        pytest.skip("reviewed native DuckDB dependency identity differs")
+    return source, expected
+
+
+def _test_sealed_native_dependency(
+    control_plane_pin: llm_router.AgentImplementationControlPlanePin,
+) -> Any:
+    source, expected = _reviewed_live_native_source()
+    authorization_id = "sha256:" + hashlib.sha256(
+        json.dumps(
+            {
+            "schema": "test.accepted-control-plane-native-dependency@1",
+            "capsule_id": control_plane_pin.capsule_id,
+            "source_head": control_plane_pin.source_head,
+            "source_tree": control_plane_pin.source_tree,
+            "native_dependency_id": expected.dependency_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    launch = llm_router.seal_agent_supervisor_native_dependency(
+        source,
+        expected_pin=expected,
+        accepted_authorization_id=authorization_id,
+    )
+    _TEST_SEALED_DESCRIPTORS.append(launch.descriptor.descriptor)
+    return launch
+
+
+def _closed_sealed_child_environment() -> dict[str, str]:
+    return {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/nonexistent",
+        "LC_ALL": "C.UTF-8",
+        "LANG": "C.UTF-8",
+        "TZ": "UTC",
+    }
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -1011,6 +1097,57 @@ def _common_args(plan: dict[str, object]) -> list[str]:
     ]
 
 
+def _start_test_plan_child_birth(
+    *,
+    tmp_path: Path,
+    repo: Path,
+    child: multi_runner_module.PlanBoundSupervisorChild,
+    label: str,
+) -> subprocess.Popen[bytes]:
+    """Persist one real synthetic birth for a plan-bound child."""
+
+    track = child.track(stamp="20260808T040404Z").resolve(repo)
+    command = [
+        sys.executable,
+        "-c",
+        "import time; time.sleep(60)",
+        *track.extra_args,
+    ]
+    state_root = track.supervisor_pid_path.parent.resolve()
+    lifecycle_token = _test_lifecycle_token(tmp_path, label)
+    profile = multi_runner_module.LifecycleProfile(
+        target_id=f"supervisor-track:{child.name}",
+        run_id=f"test-{label}-{lifecycle_token}",
+        configuration_root=f"test-{label}-config-{lifecycle_token}",
+        repository_root=str(repo.resolve()),
+        state_root=str(state_root),
+        run_root=str(
+            state_root / "lifecycle-runs" / f"{child.name}-{lifecycle_token}"
+        ),
+        argv=tuple(command),
+        cwd=str(repo.resolve()),
+    )
+    process = _spawn_test_process(
+        command,
+        cwd=repo,
+        env=profile.launch_environment(0),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    process_identity = _capture_test_process_identity(process, profile)
+    setattr(process, "_agent_supervisor_lifecycle_profile", profile)
+    setattr(process, "_agent_supervisor_process_identity", process_identity)
+    birth_cid = multi_runner_module._persist_plan_bound_process_birth(
+        profile=profile,
+        process_identity=process_identity,
+        repo_root=repo,
+    )
+    setattr(process, "_agent_supervisor_process_birth_cid", birth_cid)
+    return process
+
+
 def _fenced_plan_children(
     tmp_path: Path,
 ) -> tuple[
@@ -1277,6 +1414,131 @@ def _publish_test_no_change_disposition(
     return proposal_cid, proposal_ready
 
 
+def test_two_lane_wave_barrier_rejects_raw_partial_release_before_enqueue(
+    tmp_path: Path,
+) -> None:
+    """Only the canonical complete two-member release admits merge enqueue."""
+
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"), _task_block("TEST-B")),
+    )
+    receipt = materialize_configured_board_execution_plan(
+        board,
+        now_ms=PLAN_NOW,
+        host_capacity_snapshot=_host_capacity(),
+        provider_capacity_snapshots=_provider_capacity(),
+        task_state_snapshots=(),
+    )
+    assert receipt is not None
+    launch = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        stamp="20260808T-two-lane-barrier",
+        parallelism_receipt=receipt,
+    )
+    children = tuple(
+        multi_runner_module.PlanBoundSupervisorChild.from_cli_record(
+            launch["argv"][index + 1]
+        )
+        for index, token in enumerate(launch["argv"][:-1])
+        if token == "--implementation-plan-bound-track"
+    )
+    assert len(children) == 2
+    donor, recipient = children
+    for child in children:
+        _start_test_plan_child_birth(
+            tmp_path=tmp_path,
+            repo=repo,
+            child=child,
+            label=f"two-lane-barrier-{child.lane_id}",
+        )
+    _publish_test_no_change_disposition(repo=repo, child=donor)
+    store = PlanRevisionStore(repo / donor.plan_revision_store_path)
+    adapter = ProductionParallelPlanAdapter(store)
+    timeout_ms = 60_000
+    now_ms = int(time.time() * 1000)
+    with store._thread_lock:
+        with store._guard():
+            assert adapter._evaluate_wave_diff_barrier_locked(
+                revision_cid=donor.revision_cid,
+                slice_manifest_cid=donor.slice_manifest_cid,
+                timeout_ms=timeout_ms,
+                now_ms=now_ms,
+            ) is None
+    assert adapter.load_wave_diff_barrier(
+        revision_cid=donor.revision_cid,
+        slice_manifest_cid=donor.slice_manifest_cid,
+    ) is None
+
+    raw_partial_cid = store.put_cas(
+        {
+            "revision_cid": donor.revision_cid,
+            "slice_manifest_cid": donor.slice_manifest_cid,
+            "decision": "released",
+            "dispositions": [{"slice_id": donor.slice_id}],
+        }
+    )
+    donor_execution = adapter.load_execution_lease(
+        revision_cid=donor.revision_cid,
+        slice_id=donor.slice_id,
+        lane_id=donor.lane_id,
+    )
+    assert donor_execution is not None
+
+    def authoritative_bytes() -> tuple[dict[str, bytes], dict[str, bytes]]:
+        return (
+            {
+                path.name: path.read_bytes()
+                for path in store.cas_dir.iterdir()
+                if path.is_file()
+            },
+            {
+                path.name: path.read_bytes()
+                for path in store.continuations_dir.iterdir()
+                if path.is_file()
+            },
+        )
+
+    before_rejection = authoritative_bytes()
+    with store._thread_lock:
+        with store._guard():
+            with pytest.raises(
+                supervisor_module.PlanBoundDispatchError,
+                match="canonical released wave barrier",
+            ):
+                supervisor_module._require_current_released_wave_diff_barrier_locked(
+                    store,
+                    execution_lease=donor_execution[1],
+                    barrier_cid=raw_partial_cid,
+                )
+    assert authoritative_bytes() == before_rejection
+
+    _publish_test_no_change_disposition(repo=repo, child=recipient)
+    with store._thread_lock:
+        with store._guard():
+            released = adapter._evaluate_wave_diff_barrier_locked(
+                revision_cid=donor.revision_cid,
+                slice_manifest_cid=donor.slice_manifest_cid,
+                timeout_ms=timeout_ms,
+                now_ms=now_ms + 1,
+            )
+            assert released is not None
+            barrier_cid, barrier = released
+            assert barrier.decision == "released"
+            assert len(barrier.expected_members) == 2
+            assert len(barrier.dispositions) == 2
+            admitted = (
+                supervisor_module._require_current_released_wave_diff_barrier_locked(
+                    store,
+                    execution_lease=donor_execution[1],
+                    barrier_cid=barrier_cid,
+                )
+            )
+    assert admitted == released
+
+
 def test_plan_bound_identity_capture_failure_fences_before_child_exec(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1287,6 +1549,20 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
         tmp_path,
         source_head=source_head,
         source_tree=source_tree,
+    )
+    native_dependency = _test_sealed_native_dependency(control_plane_pin)
+    system_directories = (
+        multi_runner_module.trusted_system_dependency_directories_json()
+    )
+    for name, value in multi_runner_module.sealed_native_dependency_environment(
+        native_dependency,
+        system_dependency_directories_json=system_directories,
+    ).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "active_agent_supervisor_native_dependency_launch",
+        lambda: native_dependency,
     )
     runtime_relative = Path("data/agent_supervisor") / (
         "plan-bound-gate-test-"
@@ -1433,6 +1709,12 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
         route_environment = set(
             multi_runner_module._PLAN_BOUND_PROFILE_ENV_NAMES
         )
+        native_environment = set(
+            multi_runner_module.sealed_native_dependency_environment(
+                native_dependency,
+                system_dependency_directories_json=system_directories,
+            )
+        )
         assert observed_environment["IPFS_ACCELERATE_AGENT_GROK_BIN"] == (
             configured_grok
         )
@@ -1457,7 +1739,10 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
         ] == "9"
         assert lifecycle_environment.issubset(observed_environment)
         assert set(observed_environment).issubset(
-            lifecycle_environment | ambient_environment | route_environment
+            lifecycle_environment
+            | ambient_environment
+            | route_environment
+            | native_environment
         )
         monkeypatch.setattr(
             multi_runner_module.LinuxProcessAdapter,
@@ -1491,6 +1776,59 @@ def test_plan_bound_coordinator_strips_unpaired_python_user_base(
         multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV not in environment
     )
     assert not set(multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES) & set(environment)
+
+
+def test_actual_implementation_provider_and_rescue_environment_scrubs_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import process_security
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    trusted_home = tmp_path / "qualified-home"
+    hostile = {
+        multi_runner_module.TRUSTED_DUCKDB_HOME_ENV: str(trusted_home),
+        "HOME": str(trusted_home),
+        multi_runner_module.TRUSTED_PYTHON_USER_BASE_ENV: str(
+            trusted_home / "python"
+        ),
+        multi_runner_module.SEALED_NATIVE_DEPENDENCY_FD_ENV: "191",
+        multi_runner_module.SEALED_NATIVE_DEPENDENCY_LAUNCH_ENV: "sealed-native",
+        multi_runner_module.SEALED_SYSTEM_DEPENDENCY_DIRS_ENV: "[]",
+        process_security.STATE_AUTHORITY_DESCRIPTOR_SOCKET_ENV: "authority.sock",
+    }
+    hostile.update(
+        {
+            name: "authority"
+            for name in process_security.STATE_AUTHORITY_CREDENTIAL_NAMES
+        }
+    )
+    hostile.update(
+        {
+            name: "handoff"
+            for name in process_security.STATE_AUTHORITY_HANDOFF_ENV_NAMES
+        }
+    )
+    hostile.update(
+        {
+            name: str(trusted_home / name.lower())
+            for name in multi_runner_module.TRUSTED_RUNTIME_CACHE_ENV_NAMES
+        }
+    )
+    for name, value in hostile.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv(
+        multi_runner_module.DATABASE_PROGRAM_JSON_ENV,
+        raising=False,
+    )
+
+    provider_environment = (
+        PortalImplementationDaemon._implementation_untrusted_process_environment()
+    )
+
+    assert not set(hostile).intersection(provider_environment)
 
 
 def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
@@ -1576,6 +1914,14 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
         source_head=source_head,
         source_tree=source_tree,
     )
+    native_dependency = _test_sealed_native_dependency(control_plane_pin)
+    retained_interpreter = multi_runner_module.retain_control_plane_interpreter(
+        sys.executable
+    )
+    _TEST_SEALED_DESCRIPTORS.append(retained_interpreter.descriptor)
+    system_directories = (
+        multi_runner_module.trusted_system_dependency_directories_json()
+    )
     sealed_modules = (
         multi_runner_module.PLAN_BOUND_LAUNCH_GATE_MODULE,
         (
@@ -1595,13 +1941,41 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
                 descriptor=control_plane_launch.descriptor,
                 module_name=sealed_module,
                 argv=("--help",),
+                retained_interpreter=retained_interpreter,
+                native_dependency_launch=native_dependency,
+                accepted_native_authorization_id=(
+                    native_dependency.accepted_authorization_id
+                ),
+                system_dependency_directories_json=system_directories,
             )
         )
-        sealed_result = subprocess.run(
+        denied_result = subprocess.run(
             sealed_command,
+            executable=retained_interpreter.executable_path,
             cwd=shadow_root,
             env=hostile_environment,
-            pass_fds=(control_plane_launch.descriptor,),
+            pass_fds=(
+                control_plane_launch.descriptor,
+                retained_interpreter.descriptor,
+                native_dependency.descriptor.descriptor,
+            ),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        assert denied_result.returncode == 78
+        assert not sentinel.exists()
+        sealed_result = subprocess.run(
+            sealed_command,
+            executable=retained_interpreter.executable_path,
+            cwd=shadow_root,
+            env=_closed_sealed_child_environment(),
+            pass_fds=(
+                control_plane_launch.descriptor,
+                retained_interpreter.descriptor,
+                native_dependency.descriptor.descriptor,
+            ),
             capture_output=True,
             text=True,
             check=False,
@@ -1631,13 +2005,6 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
         assert not sentinel.exists()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "ASE3-031 must require an independently accepted sealed native "
-        "DuckDB launch before importing the implementation supervisor"
-    ),
-)
 def test_sealed_bootstrap_denies_missing_native_dependency_pin(
     tmp_path: Path,
 ) -> None:
@@ -1650,29 +2017,17 @@ def test_sealed_bootstrap_denies_missing_native_dependency_pin(
         source_head=source_head,
         source_tree=source_tree,
     )
-    command = multi_runner_module.build_sealed_control_plane_module_command(
-        python_executable=sys.executable,
-        pin=control_plane_pin,
-        descriptor=control_plane_launch.descriptor,
-        module_name=(
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_supervisor"
-        ),
-        argv=("--help",),
-    )
-    result = subprocess.run(
-        command,
-        cwd=tmp_path,
-        env={"PATH": os.environ.get("PATH", "")},
-        pass_fds=(control_plane_launch.descriptor,),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-        timeout=30,
-    )
-    assert result.returncode == 78
+    with pytest.raises(ValueError, match="native dependency is required"):
+        multi_runner_module.build_sealed_control_plane_module_command(
+            python_executable=sys.executable,
+            pin=control_plane_pin,
+            descriptor=control_plane_launch.descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_supervisor"
+            ),
+            argv=("--help",),
+        )
 
 
 def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
@@ -1780,6 +2135,20 @@ def test_plan_bound_wave_and_supervisor_pid_projections_reject_links(
         tmp_path,
         source_head=receipt.slice_manifest.source_head,
         source_tree=receipt.slice_manifest.repository_tree_id,
+    )
+    native_dependency = _test_sealed_native_dependency(control_plane_pin)
+    native_system_directories = (
+        multi_runner_module.trusted_system_dependency_directories_json()
+    )
+    for name, value in multi_runner_module.sealed_native_dependency_environment(
+        native_dependency,
+        system_dependency_directories_json=native_system_directories,
+    ).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "active_agent_supervisor_native_dependency_launch",
+        lambda: native_dependency,
     )
     launch_plan = configured_board_launch_plan(
         board,
@@ -4323,29 +4692,47 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         accepted_control_plane_descriptor=control_plane_launch.descriptor,
     )
     supervisor = supervisor_module.PortalImplementationSupervisor(config)
+    native_dependency = _test_sealed_native_dependency(control_plane_pin)
+    retained_interpreter = (
+        multi_runner_module.retain_control_plane_interpreter(sys.executable)
+    )
+    _TEST_SEALED_DESCRIPTORS.append(retained_interpreter.descriptor)
+    system_directories = (
+        multi_runner_module.trusted_system_dependency_directories_json()
+    )
     with monkeypatch.context() as build_context:
         build_context.setattr(
             supervisor_module.PortalImplementationSupervisor,
             "_validated_plan_bound_slice",
             lambda _self: None,
         )
-        command = supervisor._build_daemon_command()
+        command = supervisor._build_daemon_command(
+            retained_interpreter=retained_interpreter,
+            native_dependency=native_dependency,
+            system_dependency_directories_json=system_directories,
+        )
     marker = supervisor_module.PLAN_BOUND_DAEMON_CHILD_MARKER
     assert Path(command[0]).samefile(sys.executable)
-    assert command[1:4] == [
+    assert command[1:5] == [
         "-I",
+        "-S",
         "-c",
         multi_runner_module.SEALED_CONTROL_PLANE_BOOTSTRAP,
     ]
-    assert command[4] == str(control_plane_launch.descriptor)
-    assert json.loads(command[5]) == control_plane_pin.as_dict()
-    assert command[6] == (
+    assert command[5] == str(control_plane_launch.descriptor)
+    assert json.loads(command[6]) == control_plane_pin.as_dict()
+    assert command[7] == native_dependency.accepted_authorization_id
+    assert command[8] == str(native_dependency.descriptor.descriptor)
+    assert json.loads(command[9]) == native_dependency.as_dict()
+    assert command[10] == system_directories
+    assert command[11] == (
         "ipfs_accelerate_py.agent_supervisor.todo_daemon."
         "implementation_supervisor"
     )
-    assert command[7] == (
+    assert command[12] == (
         multi_runner_module.SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256
     )
+    assert command[13] == retained_interpreter.sha256
     assert marker in command
     assert supervisor_module.PLAN_BOUND_DAEMON_ENTRYPOINT in command
     assert command.count("--execution-slice-task-id") == 0
@@ -4825,6 +5212,16 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         repo_root=repo,
     )
     helper_argv = command[command.index(marker) + 1 :]
+    if os.environ.get(
+        "IPFS_ACCELERATE_AGENT_TEST_PRELOAD_PLAN_BOUND_NATIVE"
+    ) == "1":
+        if sys.modules.get("duckdb") is None:
+            from ipfs_accelerate_py.agent_implementation_route import (
+                preload_agent_supervisor_native_dependency,
+            )
+
+            preload_agent_supervisor_native_dependency(native_dependency)
+        assert sys.modules.get("duckdb") is sys.modules.get("_duckdb")
     try:
         if bridge_scenario == "scope_drift":
             assert supervisor_module._run_plan_bound_daemon_child(
@@ -5200,6 +5597,15 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         source_head=receipt.slice_manifest.source_head,
         source_tree=receipt.slice_manifest.repository_tree_id,
     )
+    native_dependency = _test_sealed_native_dependency(control_plane_pin)
+    native_system_directories = (
+        multi_runner_module.trusted_system_dependency_directories_json()
+    )
+    for name, value in multi_runner_module.sealed_native_dependency_environment(
+        native_dependency,
+        system_dependency_directories_json=native_system_directories,
+    ).items():
+        monkeypatch.setenv(name, value)
     launch_plan = configured_board_launch_plan(
         board,
         implement=True,
@@ -6033,6 +6439,14 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
 
                 def denied_gate_returncode(recovery_token: str) -> int:
                     gate_read_fd, gate_write_fd = os.pipe()
+                    gate_interpreter = (
+                        multi_runner_module.retain_control_plane_interpreter(
+                            sys.executable
+                        )
+                    )
+                    _TEST_SEALED_DESCRIPTORS.append(
+                        gate_interpreter.descriptor
+                    )
                     gate_argv = (
                         multi_runner_module.PLAN_BOUND_LAUNCH_GATE_MARKER,
                         str(gate_read_fd),
@@ -6042,27 +6456,50 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                         ),
                         str(control_plane_launch.descriptor),
                         recovery_token,
+                        str(gate_interpreter.descriptor),
+                        gate_interpreter.argv0,
+                        gate_interpreter.sha256,
                         "--",
                         *sealed_child_command,
                     )
                     gate_command = (
                         multi_runner_module.build_sealed_control_plane_module_command(
-                            python_executable=sys.executable,
+                            python_executable=gate_interpreter.argv0,
                             pin=control_plane_pin,
                             descriptor=control_plane_launch.descriptor,
                             module_name=(
                                 multi_runner_module.PLAN_BOUND_LAUNCH_GATE_MODULE
                             ),
                             argv=gate_argv,
+                            retained_interpreter=gate_interpreter,
+                            native_dependency_launch=native_dependency,
+                            accepted_native_authorization_id=(
+                                native_dependency.accepted_authorization_id
+                            ),
+                            system_dependency_directories_json=(
+                                native_system_directories
+                            ),
+                        )
+                    )
+                    gate_environment = _closed_sealed_child_environment()
+                    gate_environment.update(
+                        multi_runner_module.sealed_native_dependency_environment(
+                            native_dependency,
+                            system_dependency_directories_json=(
+                                native_system_directories
+                            ),
                         )
                     )
                     gate_process = _spawn_test_process(
                         gate_command,
+                        executable=gate_interpreter.executable_path,
                         cwd=repo,
-                        env={"PATH": "/usr/bin:/bin"},
+                        env=gate_environment,
                         pass_fds=(
                             gate_read_fd,
                             control_plane_launch.descriptor,
+                            gate_interpreter.descriptor,
+                            native_dependency.descriptor.descriptor,
                         ),
                         stdin=subprocess.DEVNULL,
                         stdout=subprocess.PIPE,

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
+import inspect
 import json
 import os
 import signal
@@ -11,10 +13,13 @@ import subprocess
 import sys
 import threading
 import time
+import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     current_process_birth,
     read_process_birth,
@@ -24,6 +29,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime import (
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     multi_supervisor_runner as multi_runner,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    process_security as process_security_module,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
@@ -77,6 +85,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     supervisor_loop as supervisor_loop_module,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    supervisor_runtime as supervisor_runtime_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoop,
@@ -92,7 +103,667 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
 
 from scripts import run_agent_supervisor_efficiency_state_hardening as aseh_operator
 
+
+def _assert_process_not_executable(pid: int) -> None:
+    deadline = time.monotonic() + 2.0
+    while True:
+        try:
+            raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        except OSError:
+            return
+        if raw.rsplit(")", 1)[1].split()[0] == "Z":
+            return
+        if time.monotonic() >= deadline:
+            pytest.fail(f"process {pid} remained executable")
+        time.sleep(0.01)
+
+
+def test_aseh_scheduler_group_fence_survives_leader_exit(
+    tmp_path: Path,
+) -> None:
+    child_marker = tmp_path / "scheduler-child.pid"
+    release = tmp_path / "release-leader"
+    process = subprocess.Popen(
+        (
+            sys.executable,
+            "-c",
+            (
+                "import os,signal,time,pathlib; child=os.fork(); "
+                f"marker=pathlib.Path({str(child_marker)!r}); "
+                f"release=pathlib.Path({str(release)!r}); "
+                "(marker.write_text(str(os.getpid())) if child==0 else None); "
+                "signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                "(time.sleep(60) if child==0 else "
+                "exec('while not release.exists():\\n time.sleep(.01)'))"
+            ),
+        ),
+        start_new_session=True,
+    )
+    try:
+        start_time_ticks = aseh_operator._dedicated_process_group_birth(process)
+        deadline = time.monotonic() + 5.0
+        while not child_marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert child_marker.exists()
+        release.write_text("release\n", encoding="utf-8")
+        process.wait(timeout=5.0)
+        child_pid = int(child_marker.read_text(encoding="utf-8"))
+
+        aseh_operator._terminate_scheduler(process, start_time_ticks)
+
+        _assert_process_not_executable(child_pid)
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5.0)
+
+
+def test_aseh_forced_owner_group_escalation_reaps_term_ignoring_tree(
+    tmp_path: Path,
+) -> None:
+    child_marker = tmp_path / "owner-child.pid"
+    process = subprocess.Popen(
+        (
+            sys.executable,
+            "-c",
+            (
+                "import os,signal,time,pathlib; child=os.fork(); "
+                f"marker=pathlib.Path({str(child_marker)!r}); "
+                "(marker.write_text(str(os.getpid())) if child==0 else None); "
+                "signal.signal(signal.SIGTERM,signal.SIG_IGN); time.sleep(60)"
+            ),
+        ),
+        start_new_session=True,
+    )
+    try:
+        start_time_ticks = aseh_operator._dedicated_process_group_birth(process)
+        deadline = time.monotonic() + 5.0
+        while not child_marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert child_marker.exists()
+        child_pid = int(child_marker.read_text(encoding="utf-8"))
+        started = time.monotonic()
+
+        aseh_operator._terminate_dedicated_process_group(
+            process,
+            start_time_ticks=start_time_ticks,
+            grace_seconds=0.05,
+        )
+
+        assert time.monotonic() - started < 3.0
+        assert process.poll() is not None
+        _assert_process_not_executable(child_pid)
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5.0)
+
 _CWD_OWNER_DIR = Path("/proc/self/cwd/quack-owner")
+
+
+def test_state_authority_handoff_rejects_unqualified_ptrace_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        process_security_module,
+        "_read_bounded_proc_text",
+        lambda *_args, **_kwargs: "0\n",
+    )
+    monkeypatch.setattr(
+        process_security_module,
+        "_same_user_namespace_ptrace_capability_pids",
+        lambda: (),
+    )
+    with pytest.raises(
+        process_security_module.StateAuthorityProcessIsolationError,
+        match="ptrace_scope >= 1",
+    ):
+        process_security_module.require_state_authority_handoff_ptrace_protection()
+
+
+def test_state_authority_handoff_rejects_cap_sys_ptrace_peer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        process_security_module,
+        "_read_bounded_proc_text",
+        lambda *_args, **_kwargs: "1\n",
+    )
+    monkeypatch.setattr(
+        process_security_module,
+        "_same_user_namespace_ptrace_capability_pids",
+        lambda: (4321,),
+    )
+    with pytest.raises(
+        process_security_module.StateAuthorityProcessIsolationError,
+        match="CAP_SYS_PTRACE",
+    ):
+        process_security_module.require_state_authority_handoff_ptrace_protection()
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "memfd_create"),
+    reason="sealed Linux memfd handoff is required",
+)
+def test_state_authority_handoff_redeems_sealed_fd_after_actual_exec() -> None:
+    """Exercise the post-exec SCM_RIGHTS path without changing pytest's dumpability."""
+
+    repository_root = Path.cwd().resolve()
+    child_code = "\n".join(
+        (
+            "import json, os",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+                "import receive_state_authority_child_handoff, state_authority_pass_fds"
+            ),
+            "assert receive_state_authority_child_handoff(os.environ) is True",
+            "descriptors = state_authority_pass_fds(os.environ)",
+            "assert len(descriptors) == 1",
+            "descriptor = descriptors[0]",
+            "os.lseek(descriptor, 0, os.SEEK_SET)",
+            "payload = os.read(descriptor, 256).decode('ascii')",
+            "inheritable = os.get_inheritable(descriptor)",
+            "os.close(descriptor)",
+            "print(json.dumps({'payload': payload, 'inheritable': inheritable}))",
+        )
+    )
+    parent_code = "\n".join(
+        (
+            "import fcntl, json, os, subprocess, sys",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+                "import STATE_AUTHORITY_PARENT_LOSS_TERMINATE, "
+                "prepare_state_authority_child_handoff"
+            ),
+            "flags = int(getattr(os, 'MFD_CLOEXEC', 1)) | int(getattr(os, 'MFD_ALLOW_SEALING', 2))",
+            "descriptor = os.memfd_create('aseh-exec-handoff', flags=flags)",
+            "os.write(descriptor, b'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')",
+            (
+                "seals = int(getattr(fcntl, 'F_SEAL_SEAL', 1)) | "
+                "int(getattr(fcntl, 'F_SEAL_SHRINK', 2)) | "
+                "int(getattr(fcntl, 'F_SEAL_GROW', 4)) | "
+                "int(getattr(fcntl, 'F_SEAL_WRITE', 8))"
+            ),
+            "fcntl.fcntl(descriptor, int(getattr(fcntl, 'F_ADD_SEALS', 1033)), seals)",
+            "environment = {'PATH': '/usr/bin:/bin', 'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET': '/tmp/aseh-exec-handoff.sock', 'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD': str(descriptor)}",
+            (
+                "handoff = prepare_state_authority_child_handoff("
+                "environment, parent_loss_policy="
+                "STATE_AUTHORITY_PARENT_LOSS_TERMINATE)"
+            ),
+            "assert 'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD' not in environment",
+            f"child_code = {child_code!r}",
+            "process = None",
+            "try:",
+            f"    process = subprocess.Popen([sys.executable, '-c', child_code], cwd={str(repository_root)!r}, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)",
+            "    handoff.deliver(process)",
+            "    stdout, stderr = process.communicate(timeout=5.0)",
+            "    if process.returncode != 0: raise RuntimeError(stderr.decode(errors='replace'))",
+            "    print(stdout.decode('utf-8').strip())",
+            "finally:",
+            "    handoff.close()",
+            "    if process is not None and process.poll() is None:",
+            "        process.kill()",
+            "        process.wait(timeout=2.0)",
+            "    os.close(descriptor)",
+        )
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", parent_code],
+        cwd=repository_root,
+        env={"PATH": "/usr/bin:/bin"},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=15.0,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+    assert json.loads(completed.stdout) == {
+        "payload": "x" * 64,
+        "inheritable": False,
+    }
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "memfd_create"),
+    reason="sealed Linux memfd handoff is required",
+)
+def test_state_authority_handoff_parent_loss_signals_redeemed_child(
+    tmp_path: Path,
+) -> None:
+    repository_root = Path.cwd().resolve()
+    child_pid_path = tmp_path / "child.pid"
+    child_ready_path = tmp_path / "child.ready"
+    child_term_path = tmp_path / "child.term"
+    child_code = "\n".join(
+        (
+            "import os, pathlib, signal, time",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+                "import receive_state_authority_child_handoff"
+            ),
+            f"pid_path = pathlib.Path({str(child_pid_path)!r})",
+            f"ready_path = pathlib.Path({str(child_ready_path)!r})",
+            f"term_path = pathlib.Path({str(child_term_path)!r})",
+            "pid_path.write_text(str(os.getpid()))",
+            (
+                "signal.signal(signal.SIGTERM, lambda *_args: "
+                "(term_path.write_text('term\\n'), raise_exit()))"
+            ),
+            "assert receive_state_authority_child_handoff(os.environ) is True",
+            "ready_path.write_text('ready\\n')",
+            "while True: time.sleep(.05)",
+        )
+    ).replace(
+        "import os, pathlib, signal, time",
+        (
+            "import os, pathlib, signal, time\n"
+            "def raise_exit(): raise SystemExit(0)"
+        ),
+    )
+    parent_code = "\n".join(
+        (
+            "import fcntl, os, pathlib, subprocess, sys, time",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+                "import STATE_AUTHORITY_PARENT_LOSS_TERMINATE, "
+                "prepare_state_authority_child_handoff"
+            ),
+            "flags = int(getattr(os, 'MFD_CLOEXEC', 1)) | int(getattr(os, 'MFD_ALLOW_SEALING', 2))",
+            "descriptor = os.memfd_create('aseh-parent-loss', flags=flags)",
+            "os.write(descriptor, b'x' * 64)",
+            (
+                "seals = int(getattr(fcntl, 'F_SEAL_SEAL', 1)) | "
+                "int(getattr(fcntl, 'F_SEAL_SHRINK', 2)) | "
+                "int(getattr(fcntl, 'F_SEAL_GROW', 4)) | "
+                "int(getattr(fcntl, 'F_SEAL_WRITE', 8))"
+            ),
+            "fcntl.fcntl(descriptor, int(getattr(fcntl, 'F_ADD_SEALS', 1033)), seals)",
+            "environment = {'PATH': '/usr/bin:/bin', 'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET': '/tmp/aseh-parent-loss.sock', 'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD': str(descriptor)}",
+            (
+                "handoff = prepare_state_authority_child_handoff("
+                "environment, parent_loss_policy="
+                "STATE_AUTHORITY_PARENT_LOSS_TERMINATE)"
+            ),
+            f"child_code = {child_code!r}",
+            f"process = subprocess.Popen([sys.executable, '-c', child_code], cwd={str(repository_root)!r}, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)",
+            "handoff.deliver(process)",
+            f"ready = pathlib.Path({str(child_ready_path)!r})",
+            "deadline = time.monotonic() + 5.0",
+            "while not ready.exists() and time.monotonic() < deadline: time.sleep(.01)",
+            "if not ready.exists(): raise SystemExit(79)",
+            "os._exit(0)",
+        )
+    )
+    parent = subprocess.Popen(
+        (sys.executable, "-c", parent_code),
+        cwd=repository_root,
+        env={"PATH": "/usr/bin:/bin"},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    stderr = b""
+    try:
+        _stdout, stderr = parent.communicate(timeout=10.0)
+        assert parent.returncode == 0, stderr.decode(errors="replace")
+        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+        deadline = time.monotonic() + 5.0
+        observed_term = ""
+        while time.monotonic() < deadline:
+            try:
+                observed_term = child_term_path.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                observed_term = ""
+            if observed_term == "term\n":
+                break
+            time.sleep(0.01)
+        assert observed_term == "term\n"
+        _assert_process_not_executable(child_pid)
+    finally:
+        if parent.poll() is None:
+            parent.kill()
+            parent.wait(timeout=2.0)
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "memfd_create"),
+    reason="sealed Linux memfd handoff is required",
+)
+def test_state_authority_handoff_detached_policy_survives_launcher_exit(
+    tmp_path: Path,
+) -> None:
+    repository_root = Path.cwd().resolve()
+    child_pid_path = tmp_path / "detached-child.pid"
+    child_ready_path = tmp_path / "detached-child.ready"
+    child_stop_path = tmp_path / "detached-child.stop"
+    child_code = "\n".join(
+        (
+            "import os, pathlib, time",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+                "import receive_state_authority_child_handoff"
+            ),
+            f"pid_path = pathlib.Path({str(child_pid_path)!r})",
+            f"ready_path = pathlib.Path({str(child_ready_path)!r})",
+            f"stop_path = pathlib.Path({str(child_stop_path)!r})",
+            "pid_path.write_text(str(os.getpid()))",
+            "assert receive_state_authority_child_handoff(os.environ) is True",
+            "ready_path.write_text('ready\\n')",
+            "while not stop_path.exists(): time.sleep(.02)",
+        )
+    )
+    parent_code = "\n".join(
+        (
+            "import fcntl, os, pathlib, subprocess, sys, time",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+                "import STATE_AUTHORITY_PARENT_LOSS_DETACHED, "
+                "prepare_state_authority_child_handoff"
+            ),
+            "flags = int(getattr(os, 'MFD_CLOEXEC', 1)) | int(getattr(os, 'MFD_ALLOW_SEALING', 2))",
+            "descriptor = os.memfd_create('aseh-detached-handoff', flags=flags)",
+            "os.write(descriptor, b'x' * 64)",
+            (
+                "seals = int(getattr(fcntl, 'F_SEAL_SEAL', 1)) | "
+                "int(getattr(fcntl, 'F_SEAL_SHRINK', 2)) | "
+                "int(getattr(fcntl, 'F_SEAL_GROW', 4)) | "
+                "int(getattr(fcntl, 'F_SEAL_WRITE', 8))"
+            ),
+            "fcntl.fcntl(descriptor, int(getattr(fcntl, 'F_ADD_SEALS', 1033)), seals)",
+            "environment = {'PATH': '/usr/bin:/bin', 'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET': '/tmp/aseh-detached-handoff.sock', 'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD': str(descriptor)}",
+            (
+                "handoff = prepare_state_authority_child_handoff("
+                "environment, parent_loss_policy="
+                "STATE_AUTHORITY_PARENT_LOSS_DETACHED)"
+            ),
+            f"child_code = {child_code!r}",
+            f"process = subprocess.Popen([sys.executable, '-c', child_code], cwd={str(repository_root)!r}, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)",
+            "handoff.deliver(process)",
+            f"ready = pathlib.Path({str(child_ready_path)!r})",
+            "deadline = time.monotonic() + 5.0",
+            "while not ready.exists() and time.monotonic() < deadline: time.sleep(.01)",
+            "if not ready.exists(): raise SystemExit(79)",
+            "os._exit(0)",
+        )
+    )
+    parent = subprocess.Popen(
+        (sys.executable, "-c", parent_code),
+        cwd=repository_root,
+        env={"PATH": "/usr/bin:/bin"},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    child_pid = 0
+    child_start_ticks = 0
+    try:
+        _stdout, stderr = parent.communicate(timeout=10.0)
+        assert parent.returncode == 0, stderr.decode(errors="replace")
+        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+        child_stat = Path(f"/proc/{child_pid}/stat").read_text(
+            encoding="utf-8"
+        )
+        child_start_ticks = int(
+            child_stat[child_stat.rfind(")") + 2 :].split()[19]
+        )
+        assert child_ready_path.read_text(encoding="utf-8") == "ready\n"
+        assert Path(f"/proc/{child_pid}").exists()
+        child_stop_path.write_text("stop\n", encoding="utf-8")
+        _assert_process_not_executable(child_pid)
+    finally:
+        if parent.poll() is None:
+            parent.kill()
+            parent.wait(timeout=2.0)
+        if child_pid > 1 and Path(f"/proc/{child_pid}").exists():
+            try:
+                current = Path(f"/proc/{child_pid}/stat").read_text(
+                    encoding="utf-8"
+                )
+                current_start = int(
+                    current[current.rfind(")") + 2 :].split()[19]
+                )
+                if current_start == child_start_ticks:
+                    os.kill(child_pid, signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+
+
+def test_state_authority_handoff_requires_exact_parent_loss_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        process_security_module,
+        "state_authority_pass_fds",
+        lambda _environment: (9,),
+    )
+    environment = {
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD": "9",
+    }
+    with pytest.raises(
+        process_security_module.StateAuthorityProcessIsolationError,
+        match="parent-loss policy is required",
+    ):
+        process_security_module.prepare_state_authority_child_handoff(
+            dict(environment)
+        )
+    with pytest.raises(
+        process_security_module.StateAuthorityProcessIsolationError,
+        match="parent-loss policy is required",
+    ):
+        process_security_module.prepare_state_authority_child_handoff(
+            dict(environment),
+            parent_loss_policy="ambient_override",
+        )
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "memfd_create"),
+    reason="sealed Linux memfd handoff is required",
+)
+def test_state_authority_handoff_policy_mismatch_denies_descriptor() -> None:
+    """The child cannot weaken the exact parent-authenticated lifecycle mode."""
+
+    repository_root = Path.cwd().resolve()
+    child_code = "\n".join(
+        (
+            "import json, os",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+                "import receive_state_authority_child_handoff"
+            ),
+            "denied = False",
+            "try:",
+            "    receive_state_authority_child_handoff(os.environ)",
+            "except BaseException:",
+            "    denied = True",
+            (
+                "print(json.dumps({'denied': denied, 'descriptor_present': "
+                "bool(os.environ.get('IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD'))}))"
+            ),
+            "raise SystemExit(0 if denied else 79)",
+        )
+    )
+    parent_code = "\n".join(
+        (
+            "import fcntl, json, os, subprocess, sys",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime.process_security "
+                "import STATE_AUTHORITY_HANDOFF_PARENT_LOSS_POLICY_ENV, "
+                "STATE_AUTHORITY_PARENT_LOSS_DETACHED, "
+                "STATE_AUTHORITY_PARENT_LOSS_TERMINATE, "
+                "StateAuthorityProcessIsolationError, "
+                "prepare_state_authority_child_handoff"
+            ),
+            (
+                "flags = int(getattr(os, 'MFD_CLOEXEC', 1)) | "
+                "int(getattr(os, 'MFD_ALLOW_SEALING', 2))"
+            ),
+            "descriptor = os.memfd_create('aseh-policy-mismatch', flags=flags)",
+            "os.write(descriptor, b'x' * 64)",
+            (
+                "seals = int(getattr(fcntl, 'F_SEAL_SEAL', 1)) | "
+                "int(getattr(fcntl, 'F_SEAL_SHRINK', 2)) | "
+                "int(getattr(fcntl, 'F_SEAL_GROW', 4)) | "
+                "int(getattr(fcntl, 'F_SEAL_WRITE', 8))"
+            ),
+            (
+                "fcntl.fcntl(descriptor, "
+                "int(getattr(fcntl, 'F_ADD_SEALS', 1033)), seals)"
+            ),
+            (
+                "environment = {'PATH': '/usr/bin:/bin', "
+                "'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET': "
+                "'/tmp/aseh-policy-mismatch.sock', "
+                "'IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD': "
+                "str(descriptor)}"
+            ),
+            (
+                "handoff = prepare_state_authority_child_handoff("
+                "environment, parent_loss_policy="
+                "STATE_AUTHORITY_PARENT_LOSS_TERMINATE)"
+            ),
+            (
+                "environment[STATE_AUTHORITY_HANDOFF_PARENT_LOSS_POLICY_ENV] = "
+                "STATE_AUTHORITY_PARENT_LOSS_DETACHED"
+            ),
+            f"child_code = {child_code!r}",
+            "process = None",
+            "try:",
+            (
+                f"    process = subprocess.Popen([sys.executable, '-c', child_code], cwd={str(repository_root)!r}, "
+                "env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)"
+            ),
+            "    denied = False",
+            "    try:",
+            "        handoff.deliver(process, timeout_seconds=.5)",
+            "    except StateAuthorityProcessIsolationError:",
+            "        denied = True",
+            "    stdout, stderr = process.communicate(timeout=5.0)",
+            "    if process.returncode != 0: raise RuntimeError(stderr.decode(errors='replace'))",
+            "    child = json.loads(stdout)",
+            "    print(json.dumps({'parent_denied': denied, 'child': child}))",
+            "finally:",
+            "    handoff.close()",
+            "    if process is not None and process.poll() is None:",
+            "        process.kill()",
+            "        process.wait(timeout=2.0)",
+            "    os.close(descriptor)",
+        )
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", parent_code],
+        cwd=repository_root,
+        env={"PATH": "/usr/bin:/bin"},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=15.0,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+    assert json.loads(completed.stdout) == {
+        "parent_denied": True,
+        "child": {"denied": True, "descriptor_present": False},
+    }
+
+
+def test_state_authority_parent_loss_policy_is_explicit_at_all_launchers() -> None:
+    """Every authority-bearing production edge declares its lifecycle owner."""
+
+    terminate = "parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_TERMINATE"
+    detached = "parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_DETACHED"
+
+    terminate_sources = (
+        inspect.getsource(
+            configured_scheduler._launch_foreground_plan_bound_coordinator
+        ),
+        inspect.getsource(multi_runner.start_track),
+        inspect.getsource(aseh_operator._run_supervisor_owner),
+        inspect.getsource(supervisor_runtime_module.launch_supervised_child),
+    )
+    detached_sources = (
+        inspect.getsource(
+            configured_scheduler._launch_detached_plan_bound_coordinator
+        ),
+        inspect.getsource(
+            configured_scheduler._launch_detached_receipt_coordinator
+        ),
+        inspect.getsource(multi_runner.launch_detached),
+    )
+    for source in terminate_sources:
+        assert terminate in "".join(source.split())
+    for source in detached_sources:
+        assert detached in "".join(source.split())
+    generic_source = "".join(
+        inspect.getsource(supervisor_runtime_module.launch_process_child).split()
+    )
+    assert "parent_loss_policy=parent_loss_policy" in generic_source
+
+
+def test_supervisor_runtime_fences_child_when_authority_delivery_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    class FailingHandoff:
+        pass_fds: tuple[int, ...] = ()
+
+        def deliver(self, _process: object) -> None:
+            events.append("deliver")
+            raise process_security_module.StateAuthorityProcessIsolationError(
+                "injected delivery failure"
+            )
+
+        def close(self) -> None:
+            events.append("close")
+
+    class Child:
+        returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def terminate(self) -> None:
+            events.append("terminate")
+            self.returncode = -signal.SIGTERM
+
+        def kill(self) -> None:
+            events.append("kill")
+            self.returncode = -signal.SIGKILL
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout == 1.0
+            events.append("wait")
+            assert self.returncode is not None
+            return self.returncode
+
+    monkeypatch.setattr(
+        process_security_module,
+        "prepare_state_authority_child_handoff",
+        lambda _environment, **_kwargs: FailingHandoff(),
+    )
+    monkeypatch.setattr(
+        supervisor_runtime_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: Child(),
+    )
+
+    with pytest.raises(
+        process_security_module.StateAuthorityProcessIsolationError,
+        match="injected delivery failure",
+    ):
+        supervisor_runtime_module.launch_process_child(
+            [sys.executable, "-c", "pass"],
+            cwd=Path.cwd(),
+            inherit_environment=False,
+            start_new_session=False,
+        )
+
+    assert events == ["deliver", "close", "terminate", "wait"]
 
 
 def test_foreground_master_pid_recovers_only_a_proven_dead_owner(
@@ -478,9 +1149,83 @@ def test_grant_broker_reclaims_only_a_proved_stale_socket(
 def test_real_configured_supervisor_handoff_reads_and_mutates_via_owner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
+    preload_native = (
+        os.environ.get("IPFS_ACCELERATE_AGENT_TEST_PRELOAD_QUACK_NATIVE")
+        == "1"
+    )
+    if preload_native:
+        assert (
+            os.environ.get(
+                "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION"
+            )
+            == "1"
+        )
+        source_text = str(
+            os.environ.get(
+                "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE"
+            )
+            or ""
+        )
+        assert source_text
+        source = Path(source_text)
+        assert (
+            source.is_absolute()
+            and not source.is_symlink()
+            and source.resolve(strict=True) == source
+            and source.name == "_duckdb.cpython-312-aarch64-linux-gnu.so"
+            and os.lstat(source).st_nlink == 1
+        )
+        pin = llm_router.inspect_agent_supervisor_native_dependency_source(
+            source,
+            distribution_version="1.5.5",
+            engine_version="v1.5.5",
+        )
+        assert pin.as_dict() == aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_PIN
+        native_launch = llm_router.seal_agent_supervisor_native_dependency(
+            source,
+            expected_pin=pin,
+            accepted_authorization_id=aseh_operator._identity(
+                b"aseh-r11-real-configured-supervisor-handoff-fixture"
+            ),
+        )
+
+        def close_native_descriptor() -> None:
+            try:
+                os.close(native_launch.descriptor.descriptor)
+            except OSError:
+                pass
+
+        request.addfinalizer(close_native_descriptor)
+        qualification_home = aseh_operator._build_aseh_qualification_home(
+            {"runtime": tmp_path / "runtime"}
+        )
+        assert (
+            aseh_operator._validate_aseh_qualification_home(
+                qualification_home
+            )
+            == qualification_home
+        )
+        for name, value in (
+            aseh_operator._sealed_owner_delegation_environment(
+                qualification_home
+            ).items()
+        ):
+            monkeypatch.setenv(name, value)
+        native_module = llm_router.preload_agent_supervisor_native_dependency(
+            native_launch
+        )
+        assert native_module is sys.modules["_duckdb"]
+        assert native_module is sys.modules["duckdb"]
+
     capability = probe_quack_capabilities(allow_network_install=False)
     if capability.status is not QuackCapabilityStatus.COMPATIBLE:
+        if preload_native:
+            pytest.fail(
+                "required reviewed DuckDB/Quack capability is not compatible: "
+                f"{capability.status.value}"
+            )
         pytest.skip(f"reviewed preinstalled Quack unavailable: {capability.status.value}")
 
     database = tmp_path / "control.duckdb"
@@ -4444,6 +5189,285 @@ def test_aseh_repair_provider_lease_ownership_transition_is_closed_and_chained(
         )
 
 
+def test_aseh_repair_provider_cleanup_fence_transition_is_closed_and_chained(
+) -> None:
+    repair_head = "3" * 40
+    repair_tree = "4" * 40
+    candidate_witness = {
+        "head": repair_head,
+        "tree": repair_tree,
+        "branch_ref": "refs/heads/aseh-r11-fixture",
+        "index_entries_digest": "sha256:" + ("8" * 64),
+        "index_flags_digest": "sha256:" + ("9" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("a" * 64),
+        "branch_reflog_digest": "sha256:" + ("b" * 64),
+    }
+    known_baseline = {
+        "schema": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_SCHEMA
+        ),
+        "source_head": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+        ),
+        "source_tree": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_TREE
+        ),
+        "command": list(
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_COMMAND
+        ),
+        "expected_returncode": 1,
+        "observed_returncode": 1,
+        "first_failing_node": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_NODE
+        ),
+        "normalized_failure_class": (
+            "prompt_v3_branch_specific_convergence_failure"
+        ),
+        "environment_identity": (
+            aseh_operator._r11_validation_environment_identity(
+                aseh_operator._r11_validation_environment(
+                    Path("/sealed-checkout")
+                ),
+                checkout=Path("/sealed-checkout"),
+            )
+        ),
+        "stdout_digest": "sha256:" + ("6" * 64),
+        "stderr_digest": "sha256:" + ("7" * 64),
+        "authoritative_for_r11": False,
+        "blocks_broad_quality_or_promotion_claim": True,
+        "corpus_changed": False,
+        "observed_at": 1.0,
+    }
+    known_baseline["receipt_cid"] = aseh_operator._identity(known_baseline)
+    receipt = {
+        "schema": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SCHEMA
+        ),
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R11"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 11,
+        "bootstrap_receipt_id": "sha256:" + ("a" * 64),
+        "previous_receipt_cid": "sha256:" + ("b" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": "1" * 40,
+        "base_tree": "2" * 40,
+        "repair_head": repair_head,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("5" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R10"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_AUTHORITY
+        ),
+        "validation_results": [],
+        "known_baseline_failures": [known_baseline],
+        "native_dependency_authorization": (
+            aseh_operator._r11_native_dependency_authorization(
+                candidate_head=repair_head,
+                candidate_tree=repair_tree,
+                candidate_authorization_witness=candidate_witness,
+            )
+        ),
+        "terminal_success_criteria": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert (
+        aseh_operator._repair_provider_cleanup_fence_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    receipt["transition_revision"] = 10
+    receipt["receipt_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_cid"
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="schema"):
+        aseh_operator._repair_provider_cleanup_fence_transition_receipt_id(
+            receipt
+        )
+
+
+def test_aseh_repair_provider_cleanup_fence_transition_binds_validation_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repair_head = "3" * 40
+    repair_tree = "4" * 40
+    base_tree = "2" * 40
+    sibling_commits = {
+        "ipfs_datasets_py": "6" * 40,
+        "ipfs_kit_py": "7" * 40,
+    }
+    bootstrap = {
+        "bootstrap_receipt_id": "bootstrap:sealed",
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "source_forest": {
+            "by_owner": {
+                owner: {"commit": commit}
+                for owner, commit in sibling_commits.items()
+            }
+        },
+    }
+    candidate_witness = {
+        "head": repair_head,
+        "tree": repair_tree,
+        "branch_ref": "refs/heads/aseh-r11-fixture",
+        "index_entries_digest": "sha256:" + ("a" * 64),
+        "index_flags_digest": "sha256:" + ("b" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("c" * 64),
+        "branch_reflog_digest": "sha256:" + ("d" * 64),
+    }
+    validation_results = [
+        {
+            "argv": list(command),
+            "candidate_head": repair_head,
+            "candidate_tree": repair_tree,
+            "environment_identity": (
+                aseh_operator._r11_command_environment_identity(
+                    aseh_operator._r11_validation_environment(
+                        Path("/sealed-checkout")
+                    ),
+                    command,
+                    checkout=Path("/sealed-checkout"),
+                )
+            ),
+            "working_tree_scope": (
+                aseh_operator._r11_validation_working_tree_scope(command)
+            ),
+            "returncode": 0,
+            "stdout_digest": "sha256:" + ("8" * 64),
+            "stderr_digest": "sha256:" + ("9" * 64),
+        }
+        for command in (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS
+        )
+    ]
+    receipt = {
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R11"
+        ),
+        "previous_receipt_cid": "previous:sealed",
+        "bootstrap_receipt_id": "bootstrap:sealed",
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+        ),
+        "base_tree": base_tree,
+        "repair_head": repair_head,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("5" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R10"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "known_baseline_failures": [{}],
+        "native_dependency_authorization": (
+            aseh_operator._r11_native_dependency_authorization(
+                candidate_head=repair_head,
+                candidate_tree=repair_tree,
+                candidate_authorization_witness=candidate_witness,
+            )
+        ),
+        "authorized_at": 1.0,
+    }
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_provider_cleanup_fence_transition_receipt_id",
+        lambda _receipt: "receipt:sealed",
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_provider_cleanup_fence_known_baseline_receipt_id",
+        lambda _receipt: "baseline:sealed",
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_provider_lease_ownership_transition_receipt_id",
+        lambda _receipt: "previous:sealed",
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda _base, _repair: (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda _base, _repair: "sha256:" + ("5" * 64),
+    )
+
+    def fake_git(*arguments: str, **_kwargs: object) -> str:
+        if arguments[:3] == ("show", "-s", "--format=%P"):
+            return aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+        if arguments == (
+            "rev-parse",
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+            + "^{tree}",
+        ):
+            return base_tree
+        if arguments == ("rev-parse", repair_head + "^{tree}"):
+            return repair_tree
+        for owner, commit in sibling_commits.items():
+            if arguments == ("rev-parse", f"{repair_head}:{owner}"):
+                return commit
+        raise AssertionError(f"unexpected git arguments: {arguments!r}")
+
+    monkeypatch.setattr(aseh_operator, "_git", fake_git)
+
+    admitted = aseh_operator._validate_repair_provider_cleanup_fence_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt={},
+        rerun_validations=False,
+    )
+    assert admitted["repair_head"] == repair_head
+    assert admitted["repair_tree"] == repair_tree
+
+    validation_results[0]["candidate_tree"] = "a" * 40
+    with pytest.raises(aseh_operator.OperatorError, match="validation differs"):
+        aseh_operator._validate_repair_provider_cleanup_fence_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt={},
+            rerun_validations=False,
+        )
+
+
 def test_aseh_repair_runtime_hardening_transition_rejects_wrong_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4584,6 +5608,991 @@ def test_aseh_repair_clean_launch_transition_publication_is_create_only(
     assert aseh_operator._secure_runtime_json(
         receipt_path, max_bytes=4096
     ) == first
+
+
+def test_aseh_repair_provider_cleanup_fence_transition_publication_race_is_create_only(
+    tmp_path: Path,
+) -> None:
+    receipt_path = tmp_path / "repair-r11.json"
+    payloads = [
+        {"revision": 11, "receipt_cid": "sha256:" + (token * 64)}
+        for token in ("1", "2")
+    ]
+    barrier = threading.Barrier(2)
+    admitted: list[dict[str, object]] = []
+    rejected: list[BaseException] = []
+    result_lock = threading.Lock()
+
+    def publish(payload: dict[str, object]) -> None:
+        try:
+            barrier.wait(timeout=2.0)
+            aseh_operator._atomic_json_create(receipt_path, payload)
+            with result_lock:
+                admitted.append(payload)
+        except BaseException as exc:
+            with result_lock:
+                rejected.append(exc)
+
+    threads = [
+        threading.Thread(target=publish, args=(payload,))
+        for payload in payloads
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5.0)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(admitted) == 1
+    assert len(rejected) == 1
+    assert isinstance(rejected[0], aseh_operator.OperatorError)
+    assert aseh_operator._secure_runtime_json(
+        receipt_path,
+        max_bytes=4096,
+    ) == admitted[0]
+
+
+def test_aseh_repair_provider_cleanup_fence_transition_public_name_cannot_remint(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "unrelated.json"
+    target.write_text("unchanged", encoding="utf-8")
+    receipt_path = tmp_path / "repair-r11.json"
+    receipt_path.symlink_to(target)
+
+    with pytest.raises(aseh_operator.OperatorError, match="already exists"):
+        aseh_operator._atomic_json_create(
+            receipt_path,
+            {"revision": 11},
+        )
+
+    assert target.read_text(encoding="utf-8") == "unchanged"
+    assert receipt_path.is_symlink()
+
+
+def test_aseh_repair_provider_cleanup_fence_transition_parent_swap_cannot_remint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority_directory = tmp_path / "bootstrap"
+    authority_directory.mkdir()
+    displaced_directory = tmp_path / "bootstrap.displaced"
+    receipt_path = authority_directory / "repair-r11.json"
+    original_rename = aseh_operator._rename_noreplace
+    swapped = False
+
+    def swap_parent_then_publish(
+        directory_fd: int,
+        source_name: str,
+        target_name: str,
+    ) -> None:
+        nonlocal swapped
+        assert swapped is False
+        os.replace(authority_directory, displaced_directory)
+        authority_directory.mkdir()
+        swapped = True
+        original_rename(directory_fd, source_name, target_name)
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_rename_noreplace",
+        swap_parent_then_publish,
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="directory changed"):
+        with aseh_operator._anchored_directory_descriptor(
+            authority_directory
+        ) as authority_directory_fd:
+            aseh_operator._atomic_json_create(
+                receipt_path,
+                {"revision": 11},
+                authority_directory_fd=authority_directory_fd,
+            )
+
+    assert swapped is True
+    assert receipt_path.exists() is False
+    assert aseh_operator._secure_runtime_json(
+        displaced_directory / receipt_path.name,
+        max_bytes=4096,
+    ) == {"revision": 11}
+
+
+@pytest.mark.parametrize(
+    ("sealed_transition", "move_after_validation", "expected_error"),
+    (
+        (False, False, "lacks its exact admitted validation seal"),
+        (True, True, "candidate moved after validation"),
+    ),
+)
+def test_aseh_repair_provider_cleanup_fence_transition_preflight_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    sealed_transition: bool,
+    move_after_validation: bool,
+    expected_error: str,
+) -> None:
+    bootstrap_path = tmp_path / "bootstrap.json"
+    database_path = tmp_path / "state.duckdb"
+    bootstrap_path.write_bytes(b"{}")
+    database_path.write_bytes(b"database")
+    board = object()
+    candidate_head = "3" * 40
+    candidate_tree = "4" * 40
+    transition = {
+        "schema": (
+            aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SCHEMA
+            if sealed_transition
+            else "unsealed"
+        ),
+        "repair_head": candidate_head,
+        "repair_tree": candidate_tree,
+        "receipt_cid": "receipt:sealed",
+    }
+    admission = {
+        "admission_cid": "admission:sealed",
+        "runtime_source_head": candidate_head,
+        "runtime_repository_tree_id": candidate_tree,
+        "repair_transition": transition,
+    }
+    monkeypatch.setattr(
+        configured_scheduler,
+        "preflight_configured_board",
+        lambda _board: {"valid": True, "errors": []},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_load",
+        lambda _path: (board, {}),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_paths",
+        lambda _board: {
+            "bootstrap_receipt": bootstrap_path,
+            "database": database_path,
+        },
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: {"epoch": "stable"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: admission,
+    )
+
+    def fake_git(*arguments: str, **_kwargs: object) -> str:
+        if arguments == ("rev-parse", "HEAD"):
+            return candidate_head
+        if arguments == ("rev-parse", "HEAD^{tree}"):
+            return candidate_tree
+        if arguments == ("show", "-s", "--format=%P", candidate_head):
+            return aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+        raise AssertionError(f"unexpected git arguments: {arguments!r}")
+
+    monkeypatch.setattr(aseh_operator, "_git", fake_git)
+
+    def assert_witness(*_args: object, **_kwargs: object) -> None:
+        if move_after_validation:
+            raise aseh_operator.OperatorError("candidate moved after validation")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        assert_witness,
+    )
+
+    returncode, report = aseh_operator.preflight(tmp_path / "config.json")
+
+    assert returncode == 1
+    assert report["valid"] is False
+    assert report["sealed_launch_admission"]["admitted"] is False
+    assert expected_error in report["errors"][-1]
+
+
+def test_aseh_repair_provider_cleanup_fence_transition_lock_replacement_contends(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock_path = tmp_path / "bootstrap" / ".authorize-repair-transition.lock"
+    paths = {"repair_transition_authorization_lock": lock_path}
+    monkeypatch.setattr(
+        aseh_operator,
+        "AUTHORIZATION_TRANSITION_LOCK_TIMEOUT_SECONDS",
+        0.05,
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="lock name changed"):
+        with aseh_operator._repair_transition_authorization_guard(paths):
+            displaced = lock_path.with_name(lock_path.name + ".displaced")
+            os.replace(lock_path, displaced)
+            lock_path.write_bytes(b"")
+            lock_path.chmod(0o600)
+            with pytest.raises(
+                aseh_operator.OperatorError,
+                match="authorization_contended",
+            ):
+                with aseh_operator._repair_transition_authorization_guard(paths):
+                    pytest.fail("replacement name acquired a second authority")
+
+
+def test_aseh_repair_provider_cleanup_fence_transition_witness_rejects_movement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("one\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "one")
+    first_head = git("rev-parse", "HEAD")
+    first_tree = git("rev-parse", "HEAD^{tree}")
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    witness = aseh_operator._candidate_authorization_witness(
+        expected_head=first_head,
+        expected_tree=first_tree,
+    )
+
+    tracked.write_text("dirty\n", encoding="utf-8")
+    with pytest.raises(aseh_operator.OperatorError, match="dirty or moving"):
+        aseh_operator._assert_candidate_authorization_witness(
+            witness,
+            expected_head=first_head,
+            expected_tree=first_tree,
+            boundary="post-validation dirtiness",
+        )
+    tracked.write_text("two\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "two")
+    git("reset", "--hard", "--quiet", first_head)
+    assert git("status", "--porcelain=v1", "--untracked-files=all") == ""
+    assert git("rev-parse", "HEAD") == first_head
+    assert git("rev-parse", "HEAD^{tree}") == first_tree
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="authorization boundary",
+    ):
+        aseh_operator._assert_candidate_authorization_witness(
+            witness,
+            expected_head=first_head,
+            expected_tree=first_tree,
+            boundary="clean HEAD moved away and back",
+        )
+
+
+@pytest.mark.parametrize(
+    "index_flag",
+    ("--assume-unchanged", "--skip-worktree"),
+)
+def test_aseh_repair_provider_cleanup_fence_transition_witness_rejects_hidden_index_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    index_flag: str,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "operator.py"
+    tracked.write_text("sealed = True\n", encoding="utf-8")
+    git("add", "operator.py")
+    git("commit", "--quiet", "-m", "sealed candidate")
+    candidate_head = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    git("update-index", index_flag, "operator.py")
+    tracked.write_text("sealed = False\n", encoding="utf-8")
+    assert git("status", "--porcelain=v1", "--untracked-files=all") == ""
+
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="exceptional tracked entry",
+    ):
+        aseh_operator._candidate_authorization_witness(
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+        )
+
+
+@pytest.mark.parametrize(
+    "index_flag",
+    ("--assume-unchanged", "--skip-worktree"),
+)
+def test_aseh_direct_run_clean_gate_rejects_hidden_mutated_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    index_flag: str,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    runtime = repository / "runtime.py"
+    runtime.write_text("SEALED = True\n", encoding="utf-8")
+    git("add", "runtime.py")
+    git("commit", "--quiet", "-m", "sealed runtime")
+    git("update-index", index_flag, "runtime.py")
+    runtime.write_text("SEALED = False\n", encoding="utf-8")
+    assert git("status", "--porcelain=v1", "--untracked-files=all") == ""
+
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    with pytest.raises(aseh_operator.OperatorError, match="exceptional tracked entry"):
+        aseh_operator._assert_clean_tree(
+            SimpleNamespace(merge_target_branch="aseh")
+        )
+
+
+def test_aseh_preseal_git_ignores_forged_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(
+        ("/usr/bin/git", "init", "--quiet", "--initial-branch=aseh"),
+        cwd=repository,
+        check=True,
+    )
+    hostile = tmp_path / "hostile"
+    hostile.mkdir()
+    sentinel = tmp_path / "forged-git-executed"
+    forged = hostile / "git"
+    forged.write_text(
+        "#!/bin/sh\ntouch " + str(sentinel) + "\nexit 99\n",
+        encoding="utf-8",
+    )
+    forged.chmod(0o755)
+    monkeypatch.setenv("PATH", str(hostile))
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+
+    assert aseh_operator._git("rev-parse", "--show-toplevel") == str(repository)
+    assert not sentinel.exists()
+
+
+def test_aseh_preseal_git_rejects_identity_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(aseh_operator, "_TRUSTED_GIT_IDENTITY", (0,))
+    with pytest.raises(aseh_operator.OperatorError, match="identity drifted"):
+        aseh_operator._trusted_git_executable()
+
+
+def test_aseh_r11_validation_environment_rejects_ambient_startup_and_plugins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hostile = {
+        "PYTEST_ADDOPTS": "--collect-only",
+        "PYTEST_PLUGINS": "hostile_plugin",
+        "PYTHONPATH": str(tmp_path / "hostile-python"),
+        "PYTHONHOME": str(tmp_path / "hostile-home"),
+        "PYTHONSTARTUP": str(tmp_path / "startup.py"),
+        "PYTHONINSPECT": "1",
+        "PYTHONWARNINGS": "ignore",
+        "LD_PRELOAD": str(tmp_path / "hostile.so"),
+        "LD_LIBRARY_PATH": str(tmp_path / "hostile-lib"),
+        "DYLD_INSERT_LIBRARIES": str(tmp_path / "hostile.dylib"),
+    }
+    for name, value in hostile.items():
+        monkeypatch.setenv(name, value)
+    checkout = tmp_path / "exact-checkout"
+    checkout.mkdir()
+
+    environment = aseh_operator._r11_validation_environment(checkout)
+
+    assert environment["PYTHONPATH"] == str(checkout)
+    assert environment["PYTHONNOUSERSITE"] == "1"
+    assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+    assert not (set(hostile) - {"PYTHONPATH"}).intersection(environment)
+    assert aseh_operator._r11_validation_environment_identity(
+        environment,
+        checkout=checkout,
+    ).startswith("sha256:")
+
+
+def test_aseh_r11_validation_environment_routes_only_board_check_to_launch_tree(
+) -> None:
+    commands = (
+        aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS
+    )
+    assert [
+        aseh_operator._r11_validation_working_tree_scope(command)
+        for command in commands
+    ].count("candidate_authorization_worktree") == 1
+    assert (
+        aseh_operator._r11_validation_working_tree_scope(commands[-2])
+        == "candidate_authorization_worktree"
+    )
+    assert all(
+        aseh_operator._r11_validation_working_tree_scope(command)
+        == "immutable_candidate_checkout"
+        for index, command in enumerate(commands)
+        if index != len(commands) - 2
+    )
+
+
+def test_aseh_r11_validation_environment_executes_board_check_in_launch_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    immutable_checkout = tmp_path / "immutable-candidate"
+    authorization_worktree = tmp_path / "authorization-worktree"
+    immutable_checkout.mkdir()
+    authorization_worktree.mkdir()
+    environment = aseh_operator._r11_validation_environment(
+        immutable_checkout
+    )
+    calls: list[tuple[tuple[str, ...], Path]] = []
+
+    monkeypatch.setattr(aseh_operator, "ROOT", authorization_worktree)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_exact_candidate_validation_checkout",
+        lambda **_kwargs: nullcontext((immutable_checkout, environment)),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_r11_validation_checkout_identity",
+        lambda *_args, **_kwargs: None,
+    )
+
+    def fake_run(
+        command: tuple[str, ...],
+        **kwargs: object,
+    ) -> SimpleNamespace:
+        calls.append((tuple(command), Path(str(kwargs["cwd"]))))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(aseh_operator, "_run", fake_run)
+    results = (
+        aseh_operator
+        ._run_repair_provider_cleanup_fence_transition_validations(
+            candidate_head="1" * 40,
+            candidate_tree="2" * 40,
+            authorization_witness={"sealed": "witness"},
+        )
+    )
+
+    assert len(calls) == len(
+        aseh_operator.REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS
+    )
+    assert calls[-2][1] == authorization_worktree
+    assert all(
+        cwd == immutable_checkout
+        for index, (_command, cwd) in enumerate(calls)
+        if index != len(calls) - 2
+    )
+    assert results[-2]["working_tree_scope"] == (
+        "candidate_authorization_worktree"
+    )
+    assert all(
+        result["working_tree_scope"] == "immutable_candidate_checkout"
+        for index, result in enumerate(results)
+        if index != len(results) - 2
+    )
+
+
+def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    operator_path = repository / configured_scheduler.ASEH_SEALED_OWNER_OPERATOR
+    operator_path.parent.mkdir(parents=True)
+    sentinel = tmp_path / "live-operator-executed"
+    operator_path.write_text(
+        f"from pathlib import Path\nPath({str(sentinel)!r}).touch()\n",
+        encoding="utf-8",
+    )
+    config = repository / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    qualification_home = tmp_path / "qualification-homes" / "fixture"
+    qualification_home.mkdir(parents=True)
+    sealed_source = (
+        "def _run_supervisor_owner(config_path, **kwargs):\n"
+        "    assert kwargs['sealed_control_plane_descriptor'] >= 3\n"
+        "    assert kwargs['retained_interpreter']['descriptor'] >= 3\n"
+        "    assert kwargs['native_dependency_launch']['accepted'] is True\n"
+        "    assert kwargs['system_dependency_directories_json'] == '[]'\n"
+        f"    assert kwargs['sealed_owner_environment']['HOME'] == {str(qualification_home)!r}\n"
+        "    return 73\n"
+    ).encode("utf-8")
+    manifest = {
+        "capsule_id": "sha256:" + ("1" * 64),
+        "source_head": "2" * 40,
+        "source_tree": "3" * 40,
+        "files": {
+            configured_scheduler.ASEH_SEALED_OWNER_OPERATOR: (
+                "sha256:" + hashlib.sha256(sealed_source).hexdigest()
+            )
+        },
+    }
+    archive_path = tmp_path / "capsule.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            ".agent-control-plane-manifest.json",
+            json.dumps(manifest, sort_keys=True),
+        )
+        archive.writestr(
+            configured_scheduler.ASEH_SEALED_OWNER_OPERATOR,
+            sealed_source,
+        )
+    capsule_descriptor = os.open(archive_path, os.O_RDONLY)
+    interpreter = multi_runner.retain_control_plane_interpreter(sys.executable)
+    pin = SimpleNamespace(
+        capsule_id=manifest["capsule_id"],
+        source_head=manifest["source_head"],
+        source_tree=manifest["source_tree"],
+        as_dict=lambda: {"sealed": True},
+    )
+    monkeypatch.setattr(
+        configured_scheduler,
+        "parse_accepted_control_plane_pin",
+        lambda _value: pin,
+    )
+    monkeypatch.setattr(
+        configured_scheduler,
+        "verify_agent_implementation_sealed_control_plane",
+        lambda _pin, descriptor: f"/proc/self/fd/{descriptor}",
+    )
+    native_json = '{"accepted":true}'
+    native_dependency = SimpleNamespace(
+        descriptor=SimpleNamespace(descriptor=92),
+        to_json=lambda: native_json,
+        as_dict=lambda: {"accepted": True},
+    )
+    monkeypatch.setattr(
+        configured_scheduler,
+        "parse_agent_supervisor_native_dependency_launch",
+        lambda _value: native_dependency,
+    )
+    monkeypatch.setattr(
+        configured_scheduler,
+        "verify_agent_supervisor_native_dependency_sealed_fd",
+        lambda _launch: "/proc/self/fd/92",
+    )
+    monkeypatch.setattr(
+        configured_scheduler,
+        "admit_trusted_system_dependency_directories",
+        lambda _value: (),
+    )
+    for name in (
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "IPFS_ACCELERATE_AGENT_OWNER_STATE_TOKEN",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET",
+        "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_ADDRESS",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_PID",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_START",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_BOOT_ID",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_LOSS_POLICY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    exact_environment = aseh_operator._sealed_owner_delegation_environment(
+        qualification_home
+    )
+    for name in tuple(os.environ):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in exact_environment.items():
+        monkeypatch.setenv(name, value)
+    native_alias = SimpleNamespace()
+    monkeypatch.setitem(sys.modules, "_duckdb", native_alias)
+    monkeypatch.setitem(sys.modules, "duckdb", native_alias)
+    parent_fences: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        process_security_module,
+        "arm_state_authority_parent_death_signal",
+        lambda **kwargs: parent_fences.append(dict(kwargs)),
+    )
+    try:
+        result = configured_scheduler._run_aseh_sealed_owner(
+            [
+                configured_scheduler.ASEH_SEALED_OWNER_MARKER,
+                "sealed-pin",
+                str(capsule_descriptor),
+                str(interpreter.descriptor),
+                interpreter.argv0,
+                interpreter.sha256,
+                str(repository),
+                str(config),
+                "1",
+                "1.0",
+                configured_scheduler._identity(exact_environment),
+                "92",
+                native_json,
+                "[]",
+                str(qualification_home),
+                "123",
+                "456",
+                "fixture-boot",
+            ]
+        )
+    finally:
+        os.close(interpreter.descriptor)
+        os.close(capsule_descriptor)
+    assert result == 73
+    assert parent_fences == [
+        {
+            "expected_parent_pid": 123,
+            "expected_parent_start_time_ticks": 456,
+            "expected_boot_id": "fixture-boot",
+        }
+    ]
+    assert not sentinel.exists()
+
+
+def test_aseh_failed_sealed_delegation_closes_fds_without_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py import llm_router
+
+    config = tmp_path / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    board = SimpleNamespace(config_path=config)
+    candidate_head = "1" * 40
+    candidate_tree = "2" * 40
+    qualification_home = tmp_path / "qualification-homes" / "fixture"
+    qualification_home.mkdir(parents=True)
+    opened: list[int] = []
+    capsule_parents: list[Path] = []
+    pin = SimpleNamespace(
+        source_head=candidate_head,
+        source_tree=candidate_tree,
+        capsule_root=str(tmp_path / "unused-capsule"),
+    )
+
+    def materialize(**kwargs: object) -> object:
+        capsule_parents.append(Path(str(kwargs["capsule_parent"])))
+        pin.capsule_root = str(capsule_parents[-1] / "capsule")
+        return pin
+
+    def seal(_pin: object) -> object:
+        path = tmp_path / "sealed.zip"
+        path.write_bytes(b"sealed")
+        descriptor = os.open(path, os.O_RDONLY)
+        opened.append(descriptor)
+        return SimpleNamespace(descriptor=descriptor)
+
+    def retain(_python: str) -> object:
+        descriptor = os.open(sys.executable, os.O_RDONLY)
+        opened.append(descriptor)
+        return SimpleNamespace(
+            descriptor=descriptor,
+            argv0=str(Path(sys.executable).resolve()),
+            sha256="sha256:" + ("3" * 64),
+            executable_path=f"/proc/self/fd/{descriptor}",
+        )
+
+    def seal_native(**_kwargs: object) -> object:
+        path = tmp_path / "sealed-native.so"
+        path.write_bytes(b"sealed-native")
+        descriptor = os.open(path, os.O_RDONLY)
+        opened.append(descriptor)
+        return SimpleNamespace(
+            descriptor=SimpleNamespace(descriptor=descriptor),
+            accepted_authorization_id="sha256:" + ("4" * 64),
+            to_json=lambda: '{"native":"sealed"}',
+        )
+
+    monkeypatch.setattr(aseh_operator, "_load", lambda _path: (board, {}))
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_clean_tree",
+        lambda _board: (candidate_head, candidate_tree),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: {"stable": "yes"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_build_server",
+        lambda *_args, **_kwargs: pytest.fail("delegate acquired an owner"),
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "materialize_agent_implementation_control_plane_capsule",
+        materialize,
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "seal_agent_implementation_control_plane_capsule",
+        seal,
+    )
+    monkeypatch.setattr(multi_runner, "retain_control_plane_interpreter", retain)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_seal_r11_native_dependency",
+        seal_native,
+    )
+    monkeypatch.setattr(aseh_operator, "_paths", lambda _board: {})
+    monkeypatch.setattr(
+        aseh_operator,
+        "_build_aseh_qualification_home",
+        lambda _paths: qualification_home,
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "trusted_system_dependency_directories_json",
+        lambda: "[]",
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "accepted_control_plane_pin_json",
+        lambda _pin: "{}",
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "build_sealed_control_plane_module_command",
+        lambda **_kwargs: [sys.executable, "-c", "pass"],
+    )
+    monkeypatch.setattr(
+        configured_scheduler,
+        "_cleanup_plan_bound_control_plane",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError("injected delegation failure")
+        ),
+    )
+    for name in (
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "IPFS_ACCELERATE_AGENT_OWNER_STATE_TOKEN",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET",
+        "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_ADDRESS",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_PID",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_START",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_BOOT_ID",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_LOSS_POLICY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(OSError, match="delegation failure"):
+        aseh_operator.run_supervisor(config, implement=True, duration=1.0)
+
+    assert len(opened) == 3
+    for descriptor in opened:
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
+    assert capsule_parents and not capsule_parents[0].exists()
+
+
+def test_aseh_sealed_owner_rechecks_candidate_before_owner_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = tmp_path / "config.json"
+    bootstrap = tmp_path / "bootstrap.json"
+    database = tmp_path / "control.duckdb"
+    for path in (config, bootstrap, database):
+        path.write_text("{}", encoding="utf-8")
+    candidate_head = "4" * 40
+    candidate_tree = "5" * 40
+    board = SimpleNamespace(config_path=config)
+    pin = SimpleNamespace(
+        source_head=candidate_head,
+        source_tree=candidate_tree,
+        capsule_root=str(tmp_path / "capsule"),
+    )
+    interpreter = SimpleNamespace(
+        descriptor=91,
+        argv0="/usr/bin/python3.12",
+        sha256="sha256:" + ("6" * 64),
+        executable_path="/proc/self/fd/91",
+    )
+    server = SimpleNamespace(
+        start=lambda: pytest.fail("moving candidate acquired owner authority"),
+        stop=lambda: {"stopped": True},
+    )
+    native_dependency = SimpleNamespace(
+        descriptor=SimpleNamespace(descriptor=92),
+        accepted_authorization_id="sha256:" + ("8" * 64),
+        pin=SimpleNamespace(
+            as_dict=lambda: dict(aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_PIN)
+        ),
+    )
+    monkeypatch.setattr(aseh_operator, "_load", lambda _path: (board, {}))
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_clean_tree",
+        lambda _board: (candidate_head, candidate_tree),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: {"stable": "yes"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_paths",
+        lambda _board: {
+            "bootstrap_receipt": bootstrap,
+            "database": database,
+        },
+    )
+    monkeypatch.setattr(
+        configured_scheduler,
+        "preflight_configured_board",
+        lambda _board: {"valid": True, "errors": []},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args: {
+            "runtime_source_head": candidate_head,
+            "runtime_repository_tree_id": candidate_tree,
+        },
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(aseh_operator, "_build_server", lambda *_args: server)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_stop_signal_handlers",
+        lambda *_args: nullcontext(),
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "parse_accepted_control_plane_pin",
+        lambda _value: pin,
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "verify_agent_implementation_sealed_control_plane",
+        lambda _pin, descriptor: f"/proc/self/fd/{descriptor}",
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "admit_retained_control_plane_interpreter",
+        lambda **_kwargs: interpreter,
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "parse_agent_supervisor_native_dependency_launch",
+        lambda _value: native_dependency,
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "verify_agent_supervisor_native_dependency_sealed_fd",
+        lambda _launch: "/proc/self/fd/92",
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "admit_trusted_system_dependency_directories",
+        lambda _value: (),
+    )
+    native_alias = SimpleNamespace()
+    monkeypatch.setitem(sys.modules, "_duckdb", native_alias)
+    monkeypatch.setitem(sys.modules, "duckdb", native_alias)
+    sealed_environment = dict(os.environ)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_sealed_owner_delegation_environment",
+        lambda _qualification_home: dict(sealed_environment),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_aseh_qualification_home",
+        lambda qualification_home: qualification_home,
+    )
+    monkeypatch.setattr(
+        process_security_module,
+        "make_state_authority_process_nondumpable",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            aseh_operator.OperatorError("candidate moved before owner start")
+        ),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="moved before owner"):
+        aseh_operator._run_supervisor_owner(
+            config,
+            implement=True,
+            duration=1.0,
+            sealed_control_plane_pin={"pin": "sealed"},
+            sealed_control_plane_descriptor=90,
+            retained_interpreter={
+                "descriptor": 91,
+                "argv0": interpreter.argv0,
+                "sha256": interpreter.sha256,
+            },
+            native_dependency_launch={"native": "sealed"},
+            system_dependency_directories_json="[]",
+            sealed_owner_environment=sealed_environment,
+        )
 
 
 def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_base(
@@ -4897,6 +6906,7 @@ def test_aseh_repair_authorization_replay_rejects_head_regression(
     paths = {
         "bootstrap_receipt": bootstrap_path,
         "repair_transition_receipt": repair_path,
+        "repair_transition_authorization_lock": tmp_path / "repair.lock",
     }
     bootstrap = {"bootstrap_receipt_id": "bootstrap:sealed"}
     prior = {"repair_head": "a" * 40}

@@ -10,8 +10,11 @@ existing configured-board implementation supervisor in the foreground.
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -42,6 +45,8 @@ DEFAULT_CONFIG: Final = Path(
     "config/agent_supervisor_efficiency_state_hardening_scheduler.json"
 )
 PROGRAM: Final = "agent-supervisor-efficiency-and-state-hardening-v1"
+TRUSTED_GIT: Final = Path("/usr/bin/git")
+_TRUSTED_GIT_IDENTITY: tuple[int, ...] | None = None
 OPERATOR_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/aseh-program-operator@1"
 )
@@ -554,6 +559,392 @@ REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_AUTHORITY: Final = (
     "scoped invocations retain their existing CAS, adoption, reconciliation, "
     "lease, fence, and terminalization gates"
 )
+REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-runtime-authority-and-provider-cleanup-transition@1"
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD: Final = (
+    "71dfb0c81c1b54f702abcacdbfe0c409a898db7c"
+)
+ASEH_R11_NATIVE_DEPENDENCY_PIN: Final = {
+    "schema": "ipfs_accelerate_py.agent_supervisor.native-dependency-pin@1",
+    "dependency_id": "sha256:d188aa384c68b59420bace9dfe1f8e06254865f73b4f6739f5254bcbc94c71a9",
+    "module_name": "_duckdb",
+    "public_alias": "duckdb",
+    "distribution_name": "duckdb",
+    "distribution_version": "1.5.5",
+    "engine_version": "v1.5.5",
+    "extension_filename": "_duckdb.cpython-312-aarch64-linux-gnu.so",
+    "python_cache_tag": "cpython-312",
+    "python_soabi": "cpython-312-aarch64-linux-gnu",
+    "platform_name": "linux",
+    "platform_machine": "aarch64",
+    "python_executable_sha256": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+    "payload_sha256": "sha256:60ba180312ca4d6fcf14ebded76efcc1775485e69dcf89ec8f45653a5892a5ef",
+    "size_bytes": 54_541_064,
+    "elf_class_bits": 64,
+    "elf_endianness": "little",
+    "elf_ident_version": 1,
+    "elf_osabi": 3,
+    "elf_abi_version": 0,
+    "elf_object_type": 3,
+    "elf_machine": 183,
+    "elf_object_version": 1,
+    "elf_flags": 0,
+    "elf_dt_needed": [
+        "libdl.so.2", "libpthread.so.0", "libstdc++.so.6", "libm.so.6",
+        "libgcc_s.so.1", "libc.so.6",
+    ],
+}
+ASEH_R11_DUCKDB_EXTENSION_SOURCE: Final = Path(
+    "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64"
+)
+ASEH_R11_DUCKDB_EXTENSION_HASHES: Final = {
+    "httpfs.duckdb_extension": (
+        "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+    ),
+    "httpfs.duckdb_extension.info": (
+        "69f35648f184abd1ffe5a455e1b378eaa287dfe24f0fa04deb475826128c93bd"
+    ),
+    "quack.duckdb_extension": (
+        "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    ),
+    "quack.duckdb_extension.info": (
+        "14ee8ddb246c590db9f8b1d090566ef159cf8a9175b3b0b7069d54435815bd89"
+    ),
+}
+ASEH_R11_QUALIFICATION_HOME_ID: Final = hashlib.sha256(
+    json.dumps(
+        ASEH_R11_DUCKDB_EXTENSION_HASHES,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+).hexdigest()
+REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_implementation_route.py",
+    "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+    "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+    "test/api/test_agent_supervisor_managed_daemon_identity.py",
+    "test/api/test_agent_supervisor_managed_daemon_kernel_fence.py",
+    "test/api/test_agent_supervisor_native_dependency_pin.py",
+    "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+    "test/api/test_agent_supervisor_quack_state_server.py",
+    "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS: Final = (
+    (
+        sys.executable, "-m", "py_compile",
+        "ipfs_accelerate_py/agent_implementation_route.py",
+        "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+        "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "test/api/test_agent_supervisor_managed_daemon_identity.py",
+        "test/api/test_agent_supervisor_managed_daemon_kernel_fence.py",
+        "test/api/test_agent_supervisor_native_dependency_pin.py",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+        "test/api/test_agent_supervisor_quack_state_server.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+    ),
+    (
+        "/usr/bin/env",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION=1",
+        (
+            "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE="
+            "/home/barberb/.local/lib/python3.12/site-packages/"
+            "_duckdb.cpython-312-aarch64-linux-gnu.so"
+        ),
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_native_dependency_pin.py",
+    ),
+    (
+        "/usr/bin/env",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_DOCKER_CLEANUP_VALIDATION=1",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION=1",
+        (
+            "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE="
+            "/home/barberb/.local/lib/python3.12/site-packages/"
+            "_duckdb.cpython-312-aarch64-linux-gnu.so"
+        ),
+        "IPFS_ACCELERATE_AGENT_TEST_PRELOAD_GROK_NATIVE=1",
+        "IPFS_ACCELERATE_AGENT_TEST_CODEX_EXECUTABLE=/usr/local/bin/codex",
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k", (
+            "state_authority_handoff "
+            "or supervisor_runtime_fences_child_when_authority_delivery_fails "
+            "or aseh_direct_run "
+            "or aseh_preseal_git "
+            "or aseh_r11_validation_environment "
+            "or aseh_sealed_owner "
+            "or aseh_failed_sealed_delegation "
+            "or aseh_scheduler_group_fence_survives_leader_exit "
+            "or aseh_forced_owner_group_escalation_reaps_term_ignoring_tree "
+            "or repair_provider_cleanup_fence_transition"
+        ),
+    ),
+    (
+        "/usr/bin/env",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION=1",
+        (
+            "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE="
+            "/home/barberb/.local/lib/python3.12/site-packages/"
+            "_duckdb.cpython-312-aarch64-linux-gnu.so"
+        ),
+        "IPFS_ACCELERATE_AGENT_TEST_PRELOAD_QUACK_NATIVE=1",
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k", "real_configured_supervisor_handoff",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_managed_daemon_identity.py",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_managed_daemon_kernel_fence.py",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_prompt_v3_authority_hardening.py",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_quack_state_server.py",
+        "-k", (
+            "exclusive_owner_lock_refuses_symlink_and_hardlink_paths "
+            "or exclusive_owner_lock_refuses_second_helper_contender "
+            "or exclusive_owner_lock_directory_anchor_fences_replaced_name "
+            "or exclusive_owner_lock_keeps_distinct_database_paths_parallel "
+            "or exclusive_owner_lock_kernel_fence_blocks_replaced_parent "
+            "or exclusive_owner_lease_acquire_failure_releases_every_fence "
+            "or locked_owner_marker_refuses_symlink_and_name_swap "
+            "or offline_database_guard_refuses_marker_symlink_and_parent_replacement "
+            "or stale_marker_reclaim_refuses_symlink_and_releases_lock "
+            "or exclusive_owner_lease_and_helper_contend_bidirectionally "
+            "or exclusive_owner_lock_close_allows_safe_reacquire "
+            "or exclusive_owner_lease_release_error_has_post_shutdown_escape "
+            "or server_stop_closes_database_before_release_error_escape "
+            "or server_stop_error_with_live_listener_retains_owner_until_closed "
+            "or server_stop_error_with_closed_endpoint_releases_after_observation "
+            "or database_namespace_swap_between_migration_and_writer_open_retains_owner "
+            "or database_namespace_swap_after_checkpoint_prevents_source_open "
+            "or wrong_stop_fence_is_rejected_before_any_ready_component_changes "
+            "or stale_or_malformed_stop_control_is_pre_effect_and_recoverable"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+        "-k", (
+            "recorded_effect_cleanup or terminal_cleanup_progress "
+            "or terminal_watchdog_signal "
+            "or attempt_cas_lock_name_replacement_cannot_split_exclusion "
+            "or attempt_cas_rejects_canonical_directory_replacement_while_locked"
+        ),
+    ),
+    (
+        "/usr/bin/env",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION=1",
+        (
+            "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE="
+            "/home/barberb/.local/lib/python3.12/site-packages/"
+            "_duckdb.cpython-312-aarch64-linux-gnu.so"
+        ),
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        "-k", (
+            "plan_bound_coordinator or receipt_coordinator "
+            "or multi_runner_stop_tracks or non_dumpable_root "
+            "or opaque_detached_child "
+            "or plan_bound_identity_capture_failure_fences_before_child_exec "
+            "or accepted_tree_entries_ignore_hostile_python_import_authority "
+            "or sealed_bootstrap_denies_missing_native_dependency_pin "
+            "or plan_bound_wave_and_supervisor_pid_projections_reject_links "
+            "or actual_implementation_provider_and_rescue_environment_scrubs_authority "
+            "or two_lane_wave_barrier_rejects_raw_partial_release_before_enqueue"
+        ),
+    ),
+    (
+        "/usr/bin/env",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION=1",
+        (
+            "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE="
+            "/home/barberb/.local/lib/python3.12/site-packages/"
+            "_duckdb.cpython-312-aarch64-linux-gnu.so"
+        ),
+        "IPFS_ACCELERATE_AGENT_TEST_PRELOAD_PLAN_BOUND_NATIVE=1",
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        "-k", "plan_bound_child_bootstraps_existing_daemon_preclaim_gate",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_todo_daemon_port.py",
+        "-k", (
+            "supervisor_runtime_launch_process_child "
+            "or supervisor_runtime_launch_supervised_child "
+            "or supervisor_runtime_adopts_matching_child_pid_marker "
+            "or supervisor_loop_adopts_existing_child_before_launch "
+            "or implementation_supervisor_signal_cleans_managed_daemon"
+        ),
+    ),
+    (
+        sys.executable,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git", "diff", "--check",
+        REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD, "HEAD", "--",
+    ),
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/known-baseline-failure@1"
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_TREE: Final = (
+    "dafa8cf1850abe437ee4cfc89c02d946d8163cc4"
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_NODE: Final = (
+    "test/api/test_agent_supervisor_prompt_v3_convergence.py::"
+    "test_checked_in_convergence_packet_is_valid_on_integration_checkout"
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_COMMAND: Final = (
+    sys.executable,
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_NODE,
+    "--color=no",
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "source_head",
+        "source_tree",
+        "command",
+        "expected_returncode",
+        "observed_returncode",
+        "first_failing_node",
+        "normalized_failure_class",
+        "environment_identity",
+        "stdout_digest",
+        "stderr_digest",
+        "authoritative_for_r11",
+        "blocks_broad_quality_or_promotion_claim",
+        "corpus_changed",
+        "observed_at",
+        "receipt_cid",
+    }
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to fix "
+    "the existing canonical supervisor runtime: transfer state authority only "
+    "after an exact child exec establishes its kernel boundary; fence failed "
+    "handoffs and managed daemons by exact durable birth and kernel-session "
+    "identity; authenticate an explicit parent-loss policy on every "
+    "authority-bearing launch, binding parent-owned children to their exact "
+    "parent-loss fence while admitting only intentional detached children as "
+    "independent; require complete dedicated-process-group "
+    "quiescence, including surviving descendants, before Quack ownership or "
+    "lane capacity is released; admit Docker effects only from prebound immutable images, a "
+    "positive command grammar, and non-reopenable private capabilities; and "
+    "reap only an immutable container identity whose captured init birth, "
+    "PID namespace, and exact cgroup are quiescent before releasing capacity; "
+    "reject hidden Git index state during candidate sealing and release Quack "
+    "ownership only after endpoint and writer closure are both observed; "
+    "launch the DuckDB owner and scheduler only from a retained sealed "
+    "control-plane capsule through an exact retained interpreter and the "
+    "R11-accepted DuckDB native pin, sealed memfd, closed system-directory "
+    "identity, default-loader ABI boundary, and content-addressed private "
+    "Quack/httpfs qualification HOME under a loader-clean environment; "
+    "admit merge enqueue only from the exact current typed whole-wave barrier, "
+    "never a raw or partial released CAS; "
+    "record the branch-specific Prompt-v3 failure as non-authoritative R10 "
+    "baseline evidence that continues to block broad promotion claims; "
+    "without weakening CAS unknown-outcome recovery, Quack single-writer "
+    "authority, validation, promotion, or terminalization gates"
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SUCCESS: Final = (
+    "The exact R10 child uses the canonical reviewer-profile resolver and "
+    "read-only provider-attempt observation; raw state credentials never cross "
+    "exec and are transferred only to the exact post-hardening child; failed "
+    "delivery fences that child; managed-daemon adoption and shutdown require "
+    "durable birth plus kernel session/group identity; every authority-bearing "
+    "birth authenticates an explicit lifecycle policy, parent-owned owner and "
+    "scheduler births are parent-loss bound, intentional detached births "
+    "remain independent after authenticated handoff, and complete dedicated groups, "
+    "including descendants surviving a leader exit, are proven quiescent "
+    "before Quack or capacity release. Docker create requires "
+    "a prebound immutable image, positive command grammar, and non-reopenable "
+    "private sockets; and shutdown or same-boot recovery removes the freshly "
+    "attested immutable container identity and repeatedly verifies exact ID, "
+    "exact name, init birth, PID namespace, and cgroup quiescence before "
+    "cleanup authority or lane capacity is released. Candidate sealing binds "
+    "an ordinary Git index with no hidden tracked state, and Quack owner release "
+    "requires observed endpoint refusal plus successful writer close. The "
+    "unprivileged adapter never acquires DuckDB, Quack, broker, or token "
+    "authority; sealed owner and scheduler births bind exact archive and "
+    "interpreter descriptors across exec. The "
+    "native extension is exact-pin, ELF/ABI, accepted-authorization, and "
+    "sealed-descriptor checked before any authority redemption, with a real "
+    "in-memory engine probe and no ambient LD/Python startup path. The "
+    "private v1.5.5/linux_arm64 qualification HOME exact-loads the pinned "
+    "Quack and httpfs bytes before the owner becomes ready. Merge enqueue "
+    "requires the exact current typed whole-wave barrier with every expected "
+    "disposition; raw or partial release records are pre-effect denials. The "
+    "unrelated Prompt-v3 "
+    "failure remains an explicit non-authoritative known baseline and blocks "
+    "any broad quality or promotion claim."
+)
+REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_NON_SUCCESS: Final = (
+    "Any inherited raw state credential, unqualified ptrace peer, failed "
+    "handoff with a live child, missing or mismatched parent-loss policy, "
+    "owner or scheduler parent-birth drift, any "
+    "surviving dedicated-group member or descendant, daemon birth/session/group drift, direct "
+    "provider-attempt mutation, unbound image, noncanonical Docker command, "
+    "reopenable control channel, journal/config/container identity swap, "
+    "name-only cleanup observation, surviving init/namespace/cgroup effect, "
+    "legacy name-only completion receipt, untracked cleanup root, changed sibling, "
+    "hidden Git index state, unobserved endpoint or writer shutdown, authoritative "
+    "live-path owner or scheduler execution, unretained interpreter, forged Git, "
+    "unaccepted native pin, mutable or substituted native descriptor, ambient "
+    "loader or Python startup/import injection, system dependency-directory "
+    "drift, mutable or unpinned Quack/httpfs qualification HOME, skipped live DuckDB "
+    "probe, raw or partial wave-barrier release, "
+    "database mutation, validation reduction, or validation failure is rejected."
+)
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
         "schema", "source_head", "repository_tree_id", "plan_root_cid",
@@ -624,6 +1015,13 @@ REPAIR_CONTROL_RECEIPT_LIFECYCLE_TRANSITION_RECEIPT_FIELDS: Final = (
 REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
 )
+REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
+    | frozenset({
+        "known_baseline_failures",
+        "native_dependency_authorization",
+    })
+)
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
         "schema", "base_head", "base_tree", "target_head", "target_tree",
@@ -661,6 +1059,7 @@ OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 STATUS_SAMPLE_INTERVAL_SECONDS: Final = 0.5
 STATUS_REPLICA_STABILITY_ATTEMPTS: Final = 8
 STATUS_REPLICA_RETRY_DELAY_SECONDS: Final = 0.05
+AUTHORIZATION_TRANSITION_LOCK_TIMEOUT_SECONDS: Final = 5.0
 STATUS_RECEIPT_MAX_BYTES: Final = 1_048_576
 LIVE_REPLAY_MAX_BYTES: Final = 1_073_741_824
 LIVE_REPLAY_IO_TIMEOUT_SECONDS: Final = 60.0
@@ -745,16 +1144,149 @@ def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
         raise
 
 
-def _atomic_json_create(path: Path, payload: Mapping[str, Any]) -> None:
-    """Publish one immutable JSON object without replacing an existing path."""
+def _same_namespace_identity(
+    left: os.stat_result,
+    right: os.stat_result,
+) -> bool:
+    return bool(
+        left.st_dev == right.st_dev
+        and left.st_ino == right.st_ino
+        and left.st_mode == right.st_mode
+        and left.st_uid == right.st_uid
+        and left.st_nlink == right.st_nlink
+    )
+
+
+@contextmanager
+def _anchored_directory_descriptor(directory: Path) -> Any:
+    """Retain and revalidate every directory inode from ``/`` to a target."""
+
+    absolute = Path(os.path.abspath(directory))
+    if not absolute.is_absolute():
+        raise OperatorError("runtime authority directory is not absolute")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptors: list[int] = []
+    edges: list[tuple[int, str, int]] = []
+    verification_error: BaseException | None = None
+    try:
+        root_fd = os.open(os.sep, flags)
+        descriptors.append(root_fd)
+        root_named = os.stat(os.sep, follow_symlinks=False)
+        root_opened = os.fstat(root_fd)
+        if (
+            not stat.S_ISDIR(root_opened.st_mode)
+            or not _same_namespace_identity(root_named, root_opened)
+        ):
+            raise OperatorError("filesystem root directory identity is unsafe")
+        parent_fd = root_fd
+        for component in absolute.parts[1:]:
+            if not component or component in {".", ".."} or "/" in component:
+                raise OperatorError("runtime authority directory component is unsafe")
+            child_fd = os.open(component, flags, dir_fd=parent_fd)
+            descriptors.append(child_fd)
+            named = os.stat(
+                component,
+                dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+            opened = os.fstat(child_fd)
+            if (
+                not stat.S_ISDIR(opened.st_mode)
+                or not _same_namespace_identity(named, opened)
+            ):
+                raise OperatorError("runtime authority directory identity is unsafe")
+            edges.append((parent_fd, component, child_fd))
+            parent_fd = child_fd
+        final = os.fstat(parent_fd)
+        if final.st_uid != os.geteuid():
+            raise OperatorError("runtime authority directory owner differs")
+        yield parent_fd
+    finally:
+        try:
+            if descriptors:
+                root_named = os.stat(os.sep, follow_symlinks=False)
+                if not _same_namespace_identity(
+                    root_named,
+                    os.fstat(descriptors[0]),
+                ):
+                    raise OperatorError(
+                        "filesystem root directory changed during authority use"
+                    )
+                for parent_fd, component, child_fd in edges:
+                    named = os.stat(
+                        component,
+                        dir_fd=parent_fd,
+                        follow_symlinks=False,
+                    )
+                    if not _same_namespace_identity(named, os.fstat(child_fd)):
+                        raise OperatorError(
+                            "runtime authority directory changed during use"
+                        )
+        except BaseException as exc:
+            verification_error = exc
+        finally:
+            for descriptor in reversed(descriptors):
+                os.close(descriptor)
+        if verification_error is not None:
+            raise verification_error
+
+
+def _rename_noreplace(
+    directory_fd: int,
+    source_name: str,
+    target_name: str,
+) -> None:
+    """Atomically publish one name without an overwrite-capable fallback."""
+
+    renameat2 = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
+    if renameat2 is None:
+        raise OperatorError("immutable receipt publication requires renameat2")
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    result = renameat2(
+        directory_fd,
+        os.fsencode(source_name),
+        directory_fd,
+        os.fsencode(target_name),
+        1,  # RENAME_NOREPLACE
+    )
+    if result == 0:
+        return
+    error = ctypes.get_errno()
+    if error == errno.EEXIST:
+        raise OperatorError(
+            "immutable runtime receipt already exists; reload and validate it"
+        )
+    raise OSError(error, os.strerror(error), target_name)
+
+
+def _atomic_json_create(
+    path: Path,
+    payload: Mapping[str, Any],
+    *,
+    authority_directory_fd: int | None = None,
+) -> None:
+    """Descriptor-relatively publish and verify one create-only JSON object."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    directory = os.open(
-        path.parent,
-        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0),
+    if path.name in {"", ".", ".."} or "/" in path.name:
+        raise OperatorError("immutable runtime receipt name is unsafe")
+    encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode(
+        "utf-8"
     )
-    temporary = path.with_name(
-        f".{path.name}.create.{os.getpid()}.{threading.get_ident()}.{time.time_ns()}"
+    temporary_name = (
+        f".{path.name}.create.{os.getpid()}.{os.urandom(16).hex()}"
     )
     flags = (
         os.O_WRONLY
@@ -763,39 +1295,159 @@ def _atomic_json_create(path: Path, payload: Mapping[str, Any]) -> None:
         | getattr(os, "O_CLOEXEC", 0)
         | getattr(os, "O_NOFOLLOW", 0)
     )
-    try:
-        fcntl.flock(directory, fcntl.LOCK_EX)
-        try:
-            os.lstat(path)
-        except FileNotFoundError:
-            pass
-        else:
-            raise OperatorError(
-                "immutable runtime receipt already exists; reload and validate it"
-            )
-        descriptor = os.open(temporary, flags, 0o600)
-        try:
-            os.fchmod(descriptor, 0o600)
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.write(
-                    json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    with _anchored_directory_descriptor(path.parent) as observed_directory_fd:
+        directory_fd = observed_directory_fd
+        if authority_directory_fd is not None:
+            if not _same_namespace_identity(
+                os.fstat(observed_directory_fd),
+                os.fstat(authority_directory_fd),
+            ):
+                raise OperatorError(
+                    "immutable runtime receipt authority directory changed"
                 )
+            directory_fd = authority_directory_fd
+        descriptor = -1
+        published = False
+        try:
+            descriptor = os.open(
+                temporary_name,
+                flags,
+                0o600,
+                dir_fd=directory_fd,
+            )
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "wb") as handle:
+                descriptor = -1
+                handle.write(encoded)
                 handle.flush()
                 os.fsync(handle.fileno())
-            # Every cooperating authorizer holds the directory inode lock and
-            # rechecks absence before this rename.  The final path therefore
-            # becomes visible only after complete bytes are durable, without
-            # the two-link crash window of a hard-link publication.
-            os.replace(temporary, path)
-            os.chmod(path, 0o600)
-            os.fsync(directory)
+            _rename_noreplace(directory_fd, temporary_name, path.name)
+            published = True
+            os.fsync(directory_fd)
+            read_fd = os.open(
+                path.name,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=directory_fd,
+            )
+            try:
+                opened = os.fstat(read_fd)
+                observed = bytearray()
+                while len(observed) <= len(encoded):
+                    chunk = os.read(read_fd, len(encoded) + 1 - len(observed))
+                    if not chunk:
+                        break
+                    observed.extend(chunk)
+                after = os.fstat(read_fd)
+                named = os.stat(
+                    path.name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    not stat.S_ISREG(opened.st_mode)
+                    or opened.st_uid != os.geteuid()
+                    or opened.st_nlink != 1
+                    or stat.S_IMODE(opened.st_mode) != 0o600
+                    or bytes(observed) != encoded
+                    or not _same_namespace_identity(opened, after)
+                    or not _same_namespace_identity(opened, named)
+                ):
+                    raise OperatorError(
+                        "immutable runtime receipt publication did not verify"
+                    )
+            finally:
+                os.close(read_fd)
         finally:
-            temporary.unlink(missing_ok=True)
-    finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            try:
+                os.unlink(temporary_name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
+            if not published:
+                os.fsync(directory_fd)
+        if authority_directory_fd is not None and not _same_namespace_identity(
+            os.fstat(observed_directory_fd),
+            os.fstat(authority_directory_fd),
+        ):
+            raise OperatorError(
+                "immutable runtime receipt authority directory changed"
+            )
+
+
+@contextmanager
+def _repair_transition_authorization_guard(
+    paths: Mapping[str, Path],
+) -> Any:
+    """Boundedly exclude duplicate validators for the immutable repair chain.
+
+    The stable lock covers validation through receipt publication.  A caller
+    that acquires it after a prior publisher has completed re-reads the exact
+    immutable receipt through the existing idempotent authorization path; it
+    never starts a competing validation or state mutation.
+    """
+
+    lock_path = paths.get("repair_transition_authorization_lock")
+    if not isinstance(lock_path, Path):
+        raise OperatorError("repair-transition authorization lock is absent")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        acquire_exclusive_owner_lock,
+    )
+
+    deadline = time.monotonic() + AUTHORIZATION_TRANSITION_LOCK_TIMEOUT_SECONDS
+    handle: Any | None = None
+    with _anchored_directory_descriptor(lock_path.parent) as anchored_directory:
+        while handle is None:
+            try:
+                handle = acquire_exclusive_owner_lock(lock_path)
+            except BlockingIOError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise OperatorError(
+                        "repair_transition_authorization_contended"
+                    ) from None
+                time.sleep(min(0.05, remaining))
+
+        def verify_authority() -> None:
+            assert handle is not None
+            handle.assert_canonical_parent()
+            opened_directory = os.fstat(handle.directory_fileno())
+            if not _same_namespace_identity(
+                opened_directory,
+                os.fstat(anchored_directory),
+            ):
+                raise OperatorError(
+                    "repair-transition authorization directory changed"
+                )
+            try:
+                named_lock = os.stat(
+                    lock_path.name,
+                    dir_fd=handle.directory_fileno(),
+                    follow_symlinks=False,
+                )
+            except OSError as exc:
+                raise OperatorError(
+                    "repair-transition authorization lock name changed"
+                ) from exc
+            if not _same_namespace_identity(
+                named_lock,
+                os.fstat(handle.fileno()),
+            ):
+                raise OperatorError(
+                    "repair-transition authorization lock name changed"
+                )
+
         try:
-            fcntl.flock(directory, fcntl.LOCK_UN)
+            verify_authority()
+            try:
+                yield anchored_directory
+            finally:
+                verify_authority()
         finally:
-            os.close(directory)
+            handle.close()
 
 
 def _secure_runtime_json(path: Path, *, max_bytes: int) -> dict[str, Any]:
@@ -1122,23 +1774,185 @@ def _repair_provider_lease_ownership_transition_receipt_id(
     return receipt_id
 
 
+def _repair_provider_cleanup_fence_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-11 runtime-authority repair receipt."""
+
+    baseline_failures = payload.get("known_baseline_failures")
+    if (
+        payload.get("schema")
+        != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 11
+        or payload.get("terminal_success_criteria")
+        != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or not isinstance(baseline_failures, list)
+        or len(baseline_failures) != 1
+    ):
+        raise OperatorError(
+            "bootstrap repair runtime-authority schema is invalid"
+        )
+    _repair_provider_cleanup_fence_known_baseline_receipt_id(
+        baseline_failures[0]
+    )
+    _validate_r11_native_dependency_authorization(
+        payload.get("native_dependency_authorization"),
+        candidate_head=str(payload.get("repair_head") or ""),
+        candidate_tree=str(payload.get("repair_tree") or ""),
+    )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair runtime-authority CID is invalid"
+        )
+    return receipt_id
+
+
+def _repair_provider_cleanup_fence_known_baseline_receipt_id(
+    payload: object,
+) -> str:
+    """Validate the explicit non-authoritative Prompt-v3 baseline failure."""
+
+    if not isinstance(payload, Mapping):
+        raise OperatorError("bootstrap repair known baseline is invalid")
+    if (
+        set(payload)
+        != REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_FIELDS
+        or payload.get("schema")
+        != REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_SCHEMA
+        or payload.get("source_head")
+        != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+        or payload.get("source_tree")
+        != REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_TREE
+        or payload.get("command")
+        != list(REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_COMMAND)
+        or payload.get("expected_returncode") != 1
+        or payload.get("observed_returncode") != 1
+        or payload.get("first_failing_node")
+        != REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_NODE
+        or payload.get("normalized_failure_class")
+        != "prompt_v3_branch_specific_convergence_failure"
+        or payload.get("environment_identity")
+        != _r11_validation_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            checkout=Path("/sealed-checkout"),
+        )
+        or payload.get("authoritative_for_r11") is not False
+        or payload.get("blocks_broad_quality_or_promotion_claim") is not True
+        or payload.get("corpus_changed") is not False
+        or type(payload.get("observed_at")) not in {int, float}
+        or float(payload["observed_at"]) <= 0.0
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(payload.get("stdout_digest") or ""),
+        )
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(payload.get("stderr_digest") or ""),
+        )
+        is None
+    ):
+        raise OperatorError("bootstrap repair known baseline is invalid")
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError("bootstrap repair known baseline CID is invalid")
+    return receipt_id
+
+
 def _run(
     argv: Sequence[str],
     *,
     timeout: float = 600.0,
     env: Mapping[str, str] | None = None,
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        tuple(argv), cwd=ROOT, env=None if env is None else dict(env),
+        tuple(argv), cwd=ROOT if cwd is None else cwd,
+        env=None if env is None else dict(env),
         text=True, capture_output=True, check=False, timeout=timeout,
     )
 
 
+def _trusted_git_environment() -> dict[str, str]:
+    """Return the closed environment for every pre-seal Git observation."""
+
+    return {
+        "PATH": "/usr/bin:/bin",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "LC_ALL": "C",
+        "LANG": "C",
+    }
+
+
+def _trusted_git_executable() -> str:
+    """Bind the root-owned Git executable and reject name/identity drift."""
+
+    global _TRUSTED_GIT_IDENTITY
+    try:
+        lexical = os.lstat(TRUSTED_GIT)
+        descriptor = os.open(
+            TRUSTED_GIT,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            opened = os.fstat(descriptor)
+            digest = hashlib.sha256()
+            while True:
+                block = os.read(descriptor, 1024 * 1024)
+                if not block:
+                    break
+                digest.update(block)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        current = os.lstat(TRUSTED_GIT)
+    except OSError as exc:
+        raise OperatorError("trusted Git executable is unavailable") from exc
+    fields = (
+        "st_dev", "st_ino", "st_mode", "st_uid", "st_nlink", "st_size",
+        "st_mtime_ns", "st_ctime_ns",
+    )
+    identity = tuple(int(getattr(opened, field)) for field in fields) + (
+        int.from_bytes(digest.digest(), "big"),
+    )
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or opened.st_uid != 0
+        or opened.st_nlink != 1
+        or opened.st_size <= 0
+        or stat.S_IMODE(opened.st_mode) & 0o022
+        or any(getattr(lexical, field) != getattr(opened, field) for field in fields)
+        or any(getattr(after, field) != getattr(opened, field) for field in fields)
+        or any(getattr(current, field) != getattr(opened, field) for field in fields)
+        or (_TRUSTED_GIT_IDENTITY is not None and _TRUSTED_GIT_IDENTITY != identity)
+    ):
+        raise OperatorError("trusted Git executable identity drifted")
+    _TRUSTED_GIT_IDENTITY = identity
+    return str(TRUSTED_GIT)
+
+
 def _git(*args: str, cwd: Path | None = None) -> str:
     repository = ROOT if cwd is None else cwd
+    git = _trusted_git_executable()
     completed = subprocess.run(
-        ("git", *args), cwd=repository, text=True, capture_output=True,
-        check=False, timeout=60,
+        (git, *args), cwd=repository, env=_trusted_git_environment(),
+        text=True, capture_output=True, check=False, timeout=60,
     )
     if completed.returncode != 0:
         raise OperatorError(
@@ -1149,9 +1963,10 @@ def _git(*args: str, cwd: Path | None = None) -> str:
 
 def _git_bytes(*args: str, cwd: Path | None = None) -> bytes:
     repository = ROOT if cwd is None else cwd
+    git = _trusted_git_executable()
     completed = subprocess.run(
-        ("git", *args), cwd=repository, capture_output=True, check=False,
-        timeout=60,
+        (git, *args), cwd=repository, env=_trusted_git_environment(),
+        capture_output=True, check=False, timeout=60,
     )
     if completed.returncode != 0:
         stderr = completed.stderr.decode("utf-8", errors="replace")
@@ -1191,6 +2006,535 @@ def _git_patch_digest(base: str, target: str) -> str:
             base, target, "--",
         )
     )
+
+
+def _git_control_file_digest(specification: str) -> str:
+    raw_path = _git("rev-parse", "--git-path", specification)
+    candidate = Path(raw_path)
+    path = candidate if candidate.is_absolute() else ROOT / candidate
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except FileNotFoundError:
+        return "absent"
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_uid != os.geteuid()
+            or opened.st_nlink != 1
+            or opened.st_size < 0
+            or opened.st_size > 64 * 1024 * 1024
+        ):
+            raise OperatorError("Git control file identity is unsafe")
+        chunks: list[bytes] = []
+        remaining = int(opened.st_size)
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 65_536))
+            if not chunk:
+                raise OperatorError("Git control file was truncated")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise OperatorError("Git control file grew while read")
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    named = os.lstat(path)
+    if not _same_namespace_identity(opened, after) or not _same_namespace_identity(
+        opened,
+        named,
+    ):
+        raise OperatorError("Git control file changed while read")
+    return _identity(b"".join(chunks))
+
+
+def _ordinary_git_index_flags_digest(*, cwd: Path | None = None) -> str:
+    """Bind the exact index flags and reject hidden tracked worktree state."""
+
+    payload = _git_bytes("ls-files", "-v", "-z", cwd=cwd)
+    if payload and not payload.endswith(b"\0"):
+        raise OperatorError("R11 candidate Git index flags are malformed")
+    records = payload.split(b"\0")
+    if records and records[-1] == b"":
+        records.pop()
+    if any(
+        len(record) < 3 or record[:2] != b"H " or not record[2:]
+        for record in records
+    ):
+        # ``git status`` deliberately trusts assume-unchanged and skip-worktree
+        # bits.  Such an index can therefore look clean while the Python file
+        # executing this authorization differs from the committed candidate.
+        raise OperatorError(
+            "R11 candidate Git index contains an exceptional tracked entry"
+        )
+    return _identity(payload)
+
+
+def _candidate_authorization_witness(
+    *,
+    expected_head: str,
+    expected_tree: str,
+) -> dict[str, str]:
+    """Capture one stable clean HEAD/index/ref epoch for R11 authorization."""
+
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", expected_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", expected_tree) is None
+    ):
+        raise OperatorError("R11 candidate identity is malformed")
+
+    def observe() -> dict[str, str]:
+        branch_ref = _git("symbolic-ref", "-q", "HEAD")
+        if not branch_ref.startswith("refs/heads/"):
+            raise OperatorError("R11 authorization requires an attached branch")
+        status = _git("status", "--porcelain=v1", "--untracked-files=all")
+        return {
+            "head": _git("rev-parse", "HEAD"),
+            "tree": _git("rev-parse", "HEAD^{tree}"),
+            "branch_ref": branch_ref,
+            "index_entries_digest": _identity(
+                _git_bytes("ls-files", "--stage", "-z")
+            ),
+            "index_flags_digest": _ordinary_git_index_flags_digest(),
+            "status_digest": _identity(status.encode("utf-8")),
+            "head_reflog_digest": _git_control_file_digest("logs/HEAD"),
+            "branch_reflog_digest": _git_control_file_digest(
+                f"logs/{branch_ref}"
+            ),
+        }
+
+    first = observe()
+    second = observe()
+    empty_status = _identity(b"")
+    if (
+        first != second
+        or first["head"] != expected_head
+        or first["tree"] != expected_tree
+        or first["status_digest"] != empty_status
+        or first["head_reflog_digest"] == "absent"
+        or first["branch_reflog_digest"] == "absent"
+    ):
+        raise OperatorError("R11 candidate checkout is dirty or moving")
+    return first
+
+
+def _assert_candidate_authorization_witness(
+    witness: Mapping[str, str],
+    *,
+    expected_head: str,
+    expected_tree: str,
+    boundary: str,
+) -> None:
+    observed = _candidate_authorization_witness(
+        expected_head=expected_head,
+        expected_tree=expected_tree,
+    )
+    if observed != dict(witness):
+        raise OperatorError(
+            f"R11 candidate changed across authorization boundary: {boundary}"
+        )
+
+
+def _assert_exact_run_launch_admission(
+    admission: Mapping[str, Any],
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+) -> None:
+    """Require materialized state and the exact R11 seal for this candidate."""
+
+    if (
+        admission.get("runtime_source_head") != candidate_head
+        or admission.get("runtime_repository_tree_id") != candidate_tree
+    ):
+        raise OperatorError("sealed launch admission candidate identity differs")
+    parents = _git("show", "-s", "--format=%P", candidate_head).split()
+    if parents == [REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD]:
+        transition = admission.get("repair_transition")
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+        ):
+            raise OperatorError(
+                "current R11 candidate lacks its exact admitted validation seal"
+            )
+
+
+def _r11_validation_environment(checkout: Path) -> dict[str, str]:
+    """Build the closed, reproducible environment admitted for R11 tests."""
+
+    environment = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/nonexistent",
+        "PYTHONPATH": str(checkout),
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONHASHSEED": "0",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "LC_ALL": "C.UTF-8",
+        "LANG": "C.UTF-8",
+        "TZ": "UTC",
+    }
+    # A command may opt into the separately reviewed live Docker gate via its
+    # own `/usr/bin/env NAME=1 ...` argv.  No ambient provider, loader, pytest,
+    # Python startup, plugin, or home/config authority crosses this boundary.
+    return environment
+
+
+def _r11_validation_environment_identity(
+    environment: Mapping[str, str],
+    *,
+    checkout: Path,
+) -> str:
+    expected = _r11_validation_environment(checkout)
+    if dict(environment) != expected:
+        raise OperatorError("R11 validation environment is not closed")
+    normalized = dict(expected)
+    normalized["PYTHONPATH"] = "<exact-r11-candidate-checkout>"
+    return _identity(normalized)
+
+
+def _r11_command_environment_identity(
+    environment: Mapping[str, str],
+    command: Sequence[str],
+    *,
+    checkout: Path,
+) -> str:
+    """Bind the closed base plus explicit `/usr/bin/env NAME=value` opt-ins."""
+
+    effective = dict(environment)
+    values = list(command)
+    if values[:1] == ["/usr/bin/env"]:
+        for item in values[1:]:
+            if "=" not in item:
+                break
+            name, value = item.split("=", 1)
+            if name not in {
+                "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_DOCKER_CLEANUP_VALIDATION",
+                "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION",
+                "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE",
+                "IPFS_ACCELERATE_AGENT_TEST_CODEX_EXECUTABLE",
+                "IPFS_ACCELERATE_AGENT_TEST_PRELOAD_GROK_NATIVE",
+                "IPFS_ACCELERATE_AGENT_TEST_PRELOAD_PLAN_BOUND_NATIVE",
+                "IPFS_ACCELERATE_AGENT_TEST_PRELOAD_QUACK_NATIVE",
+            }:
+                raise OperatorError("R11 command environment opt-in is not allowed")
+            effective[name] = value
+    normalized = dict(effective)
+    if normalized.pop("PYTHONPATH", None) != str(checkout):
+        raise OperatorError("R11 command environment checkout differs")
+    normalized["PYTHONPATH"] = "<exact-r11-candidate-checkout>"
+    return _identity(normalized)
+
+
+def _r11_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Bind each validation to the tree whose authority it is checking.
+
+    Code and test validation runs against the detached immutable candidate
+    checkout.  The board validator's ``--check-all`` gate is intentionally a
+    launch-worktree check: it requires the configured ASEH branch as well as a
+    clean tree.  Run only that exact command against the separately witnessed
+    candidate authorization worktree.
+    """
+
+    if (
+        tuple(command)
+        == REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS[-2]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r11_native_dependency_authorization(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+) -> dict[str, Any]:
+    """Build the closed native contract admitted only by the R11 receipt."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        trusted_system_dependency_directories_json,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        state_authority_process_birth,
+    )
+
+    native_command = next(
+        command
+        for command in REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS
+        if "test/api/test_agent_supervisor_native_dependency_pin.py" in command
+    )
+    authorization: dict[str, Any] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-r11-native-dependency-authorization@1"
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness": dict(
+            candidate_authorization_witness
+        ),
+        "native_dependency_pin": dict(ASEH_R11_NATIVE_DEPENDENCY_PIN),
+        "duckdb_extension_files_sha256": dict(
+            ASEH_R11_DUCKDB_EXTENSION_HASHES
+        ),
+        "duckdb_qualification_home_contract": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-duckdb-qualification-home@1"
+            ),
+            "duckdb_version": "v1.5.5",
+            "platform": "linux_arm64",
+            "content_directory_name": ASEH_R11_QUALIFICATION_HOME_ID,
+            "path_grammar": (
+                "<runtime>/qualification-homes/"
+                + ASEH_R11_QUALIFICATION_HOME_ID
+            ),
+            "immutable_directory_mode": "0500",
+            "cache_directory_mode": "0700",
+            "environment_projection": {
+                "HOME": "<qualification_home>",
+                "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME": (
+                    "<qualification_home>"
+                ),
+                "XDG_CACHE_HOME": "<qualification_home>/.cache/xdg",
+                "CUDA_CACHE_PATH": "<qualification_home>/.cache/cuda",
+                "CUDA_CACHE_DISABLE": "1",
+            },
+            "python_startup_environment_required_absent": True,
+            "loader_environment_required_absent": True,
+        },
+        "native_validation_command": list(native_command),
+        "validation_environment_identity": (
+            _r11_command_environment_identity(
+                _r11_validation_environment(Path("/sealed-checkout")),
+                native_command,
+                checkout=Path("/sealed-checkout"),
+            )
+        ),
+        "interpreter_sha256": ASEH_R11_NATIVE_DEPENDENCY_PIN[
+            "python_executable_sha256"
+        ],
+        "system_dependency_directories": json.loads(
+            trusted_system_dependency_directories_json()
+        ),
+        "default_loader_abi_boundary": {
+            "ambient_loader_environment_required_absent": True,
+            "dt_needed": list(
+                ASEH_R11_NATIVE_DEPENDENCY_PIN["elf_dt_needed"]
+            ),
+            "system_default_loader_only": True,
+            "duckdb_extension_files_outside_native_memfd_are_host_boundary": True,
+        },
+    }
+    authorization["authorization_id"] = _identity(authorization)
+    return authorization
+
+
+def _validate_r11_native_dependency_authorization(
+    value: object,
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise OperatorError("R11 native dependency authorization is absent")
+    authorization = dict(value)
+    identifier = str(authorization.pop("authorization_id", "") or "")
+    witness = authorization.get("candidate_authorization_witness")
+    expected = _r11_native_dependency_authorization(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=(
+            witness if isinstance(witness, Mapping) else {}
+        ),
+    )
+    expected_identifier = str(expected.pop("authorization_id"))
+    if (
+        authorization != expected
+        or identifier != expected_identifier
+        or identifier != _identity(authorization)
+        or not isinstance(witness, Mapping)
+        or set(witness)
+        != {
+            "head", "tree", "branch_ref", "index_entries_digest",
+            "index_flags_digest", "status_digest", "head_reflog_digest",
+            "branch_reflog_digest",
+        }
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or not str(witness.get("branch_ref") or "").startswith("refs/heads/")
+        or witness.get("status_digest") != _identity(b"")
+        or witness.get("head_reflog_digest") == "absent"
+        or witness.get("branch_reflog_digest") == "absent"
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(witness.get(name) or ""))
+            is None
+            for name in (
+                "index_entries_digest", "index_flags_digest", "status_digest",
+                "head_reflog_digest", "branch_reflog_digest",
+            )
+        )
+    ):
+        raise OperatorError("R11 native dependency authorization differs")
+    return {**authorization, "authorization_id": identifier}
+
+
+def _assert_r11_validation_checkout_identity(
+    checkout: Path,
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+) -> None:
+    """Recheck outer and sibling checkout bytes, trees, status, and flags."""
+
+    if (
+        _git("rev-parse", "HEAD", cwd=checkout) != candidate_head
+        or _git("rev-parse", "HEAD^{tree}", cwd=checkout) != candidate_tree
+        or _git("status", "--porcelain=v1", "--untracked-files=all", cwd=checkout)
+    ):
+        raise OperatorError("R11 validation changed its immutable checkout")
+    _ordinary_git_index_flags_digest(cwd=checkout)
+    for relative in ("ipfs_datasets_py", "ipfs_kit_py"):
+        expected_commit = _git("rev-parse", f"{candidate_head}:{relative}")
+        nested = checkout / relative
+        expected_tree = _git(
+            "rev-parse", f"{expected_commit}^{{tree}}", cwd=nested
+        )
+        if (
+            _git("rev-parse", "HEAD", cwd=nested) != expected_commit
+            or _git("rev-parse", "HEAD^{tree}", cwd=nested) != expected_tree
+            or _git(
+                "status", "--porcelain=v1", "--untracked-files=all", cwd=nested
+            )
+        ):
+            raise OperatorError(f"R11 validation changed immutable {relative}")
+        _ordinary_git_index_flags_digest(cwd=nested)
+
+
+@contextmanager
+def _exact_candidate_validation_checkout(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+) -> Any:
+    """Materialize exact committed Accelerate/Datasets/Kit bytes for tests."""
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="aseh-r11-validation-") as raw:
+        checkout = Path(raw) / "ipfs_accelerate_py"
+        cloned = _run(
+            (
+                "/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "--",
+                str(ROOT),
+                str(checkout),
+            ),
+            env=_trusted_git_environment(),
+            timeout=120,
+        )
+        if cloned.returncode != 0:
+            raise OperatorError(
+                "R11 immutable validation checkout failed: "
+                + cloned.stderr[-1000:]
+            )
+        _git("checkout", "--detach", "--quiet", candidate_head, cwd=checkout)
+        if (
+            _git("rev-parse", "HEAD", cwd=checkout) != candidate_head
+            or _git("rev-parse", "HEAD^{tree}", cwd=checkout)
+            != candidate_tree
+            or _git(
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                cwd=checkout,
+            )
+        ):
+            raise OperatorError("R11 immutable validation checkout differs")
+
+        for relative in ("ipfs_datasets_py", "ipfs_kit_py"):
+            nested_commit = _git(
+                "rev-parse",
+                f"{candidate_head}:{relative}",
+            )
+            target = checkout / relative
+            try:
+                target.rmdir()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise OperatorError(
+                    f"R11 immutable {relative} checkout is not empty"
+                ) from exc
+            nested_clone = _run(
+                (
+                    "/usr/bin/git",
+                    "clone",
+                    "--quiet",
+                    "--shared",
+                    "--no-checkout",
+                    "--",
+                    str(ROOT / relative),
+                    str(target),
+                ),
+                env=_trusted_git_environment(),
+                timeout=120,
+            )
+            if nested_clone.returncode != 0:
+                raise OperatorError(
+                    f"R11 immutable {relative} clone failed: "
+                    + nested_clone.stderr[-1000:]
+                )
+            _git(
+                "checkout",
+                "--detach",
+                "--quiet",
+                nested_commit,
+                cwd=target,
+            )
+            if (
+                _git("rev-parse", "HEAD", cwd=target) != nested_commit
+                or _git(
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=all",
+                    cwd=target,
+                )
+            ):
+                raise OperatorError(
+                    f"R11 immutable {relative} identity differs"
+                )
+
+        validation_environment = _r11_validation_environment(checkout)
+        _assert_r11_validation_checkout_identity(
+            checkout,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+        yield checkout, validation_environment
+        _assert_r11_validation_checkout_identity(
+            checkout,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
 
 
 def _run_repair_transition_validations() -> list[dict[str, Any]]:
@@ -1467,6 +2811,217 @@ def _run_repair_provider_lease_ownership_transition_validations(
     return results
 
 
+def _run_repair_provider_cleanup_fence_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    outer_head = (
+        candidate_head
+        if authorization_witness is not None
+        else _git("rev-parse", "HEAD")
+    )
+    outer_tree = (
+        candidate_tree
+        if authorization_witness is not None
+        else _git("rev-parse", "HEAD^{tree}")
+    )
+    witness = dict(authorization_witness or {})
+    if not witness:
+        witness = _candidate_authorization_witness(
+            expected_head=outer_head,
+            expected_tree=outer_tree,
+        )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=outer_head,
+        expected_tree=outer_tree,
+        boundary="before immutable validation checkout",
+    )
+    results: list[dict[str, Any]] = []
+    with _exact_candidate_validation_checkout(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    ) as (checkout, validation_environment):
+        for ordinal, command in enumerate(
+            REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS
+        ):
+            _assert_candidate_authorization_witness(
+                witness,
+                expected_head=outer_head,
+                expected_tree=outer_tree,
+                boundary=f"before validation {ordinal}",
+            )
+            _assert_r11_validation_checkout_identity(
+                checkout,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            )
+            working_tree_scope = _r11_validation_working_tree_scope(command)
+            completed = _run(
+                command,
+                timeout=900,
+                env=validation_environment,
+                cwd=(
+                    ROOT
+                    if working_tree_scope == "candidate_authorization_worktree"
+                    else checkout
+                ),
+            )
+            result = {
+                "argv": list(command),
+                "candidate_head": candidate_head,
+                "candidate_tree": candidate_tree,
+                "environment_identity": _r11_command_environment_identity(
+                    validation_environment,
+                    command,
+                    checkout=checkout,
+                ),
+                "working_tree_scope": working_tree_scope,
+                "returncode": int(completed.returncode),
+                "stdout_digest": _identity(completed.stdout.encode("utf-8")),
+                "stderr_digest": _identity(completed.stderr.encode("utf-8")),
+            }
+            results.append(result)
+            _assert_r11_validation_checkout_identity(
+                checkout,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            )
+            if completed.returncode != 0:
+                raise OperatorError(
+                    "bootstrap repair provider-cleanup-fence validation failed: "
+                    + " ".join(command)
+                )
+            _assert_candidate_authorization_witness(
+                witness,
+                expected_head=outer_head,
+                expected_tree=outer_tree,
+                boundary=f"after validation {ordinal}",
+            )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=outer_head,
+        expected_tree=outer_tree,
+        boundary="after immutable validation checkout",
+    )
+    return results
+
+
+def _observe_repair_provider_cleanup_fence_known_baseline(
+) -> dict[str, Any]:
+    """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
+
+    import tempfile
+
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair known-baseline observation requires a clean "
+            "checkout"
+        )
+    command = REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_COMMAND
+    with tempfile.TemporaryDirectory(prefix="aseh-r10-known-baseline-") as raw:
+        checkout = Path(raw) / "checkout"
+        cloned = _run(
+            (
+                "/usr/bin/git",
+                "clone",
+                "--quiet",
+                "--shared",
+                "--no-checkout",
+                "--",
+                str(ROOT),
+                str(checkout),
+            ),
+            env=_trusted_git_environment(),
+            timeout=120,
+        )
+        if cloned.returncode != 0:
+            raise OperatorError(
+                "bootstrap repair R10 baseline checkout failed: "
+                + cloned.stderr[-1000:]
+            )
+        _git(
+            "checkout",
+            "--detach",
+            "--quiet",
+            REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD,
+            cwd=checkout,
+        )
+        if (
+            _git("rev-parse", "HEAD", cwd=checkout)
+            != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+            or _git("rev-parse", "HEAD^{tree}", cwd=checkout)
+            != REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_TREE
+            or _git(
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                cwd=checkout,
+            )
+        ):
+            raise OperatorError(
+                "bootstrap repair R10 baseline checkout identity differs"
+            )
+        baseline_env = _r11_validation_environment(checkout)
+        completed = _run(
+            command,
+            timeout=120,
+            env=baseline_env,
+            cwd=checkout,
+        )
+        if _git(
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            cwd=checkout,
+        ):
+            raise OperatorError(
+                "bootstrap repair R10 baseline observation dirtied its exact "
+                "checkout"
+            )
+    if (
+        completed.returncode != 1
+        or REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_NODE
+        not in completed.stdout
+    ):
+        raise OperatorError(
+            "bootstrap repair Prompt-v3 known baseline changed unexpectedly"
+        )
+    receipt: dict[str, Any] = {
+        "schema": REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_SCHEMA,
+        "source_head": REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD,
+        "source_tree": REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_TREE,
+        "command": list(command),
+        "expected_returncode": 1,
+        "observed_returncode": int(completed.returncode),
+        "first_failing_node": (
+            REPAIR_PROVIDER_CLEANUP_FENCE_KNOWN_BASELINE_NODE
+        ),
+        "normalized_failure_class": (
+            "prompt_v3_branch_specific_convergence_failure"
+        ),
+        "environment_identity": _r11_validation_environment_identity(
+            baseline_env,
+            checkout=checkout,
+        ),
+        "stdout_digest": _identity(completed.stdout.encode("utf-8")),
+        "stderr_digest": _identity(completed.stderr.encode("utf-8")),
+        "authoritative_for_r11": False,
+        "blocks_broad_quality_or_promotion_claim": True,
+        "corpus_changed": False,
+        "observed_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _repair_provider_cleanup_fence_known_baseline_receipt_id(receipt)
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair known-baseline observation dirtied the checkout"
+        )
+    return receipt
+
+
 def _safe_path(value: str, *, field: str) -> Path:
     candidate = (ROOT / value).resolve()
     try:
@@ -1590,6 +3145,16 @@ def _paths(board: Any) -> dict[str, Path]:
         / "bootstrap"
         / "bootstrap-repair-provider-lease-ownership-transition.json"
     )
+    result["repair_provider_cleanup_fence_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-provider-cleanup-fence-transition.json"
+    )
+    result["repair_transition_authorization_lock"] = (
+        result["evidence"]
+        / "bootstrap"
+        / ".authorize-repair-transition.lock"
+    )
     result["status_receipt"] = (
         result["evidence"] / "control-plane" / "live-status.json"
     )
@@ -1608,14 +3173,14 @@ def _paths(board: Any) -> dict[str, Path]:
 
 def _tracked_bytes(path: Path, *, head: str) -> bytes:
     relative = path.relative_to(ROOT).as_posix()
-    completed = subprocess.run(
-        ("git", "show", f"{head}:{relative}"),
-        cwd=ROOT, capture_output=True, check=False, timeout=60,
-    )
-    if completed.returncode != 0:
-        raise OperatorError(f"control input is not tracked at HEAD: {relative}")
+    try:
+        committed = _git_bytes("show", f"{head}:{relative}")
+    except OperatorError as exc:
+        raise OperatorError(
+            f"control input is not tracked at HEAD: {relative}"
+        ) from exc
     observed = path.read_bytes()
-    if observed != completed.stdout:
+    if observed != committed:
         raise OperatorError(f"control input differs from HEAD: {relative}")
     return observed
 
@@ -1645,6 +3210,7 @@ def _assert_clean_tree(board: Any) -> tuple[str, str]:
     status = _git("status", "--porcelain=v1", "--untracked-files=all")
     if status:
         raise OperatorError("materialization/launch requires a clean checkout")
+    _ordinary_git_index_flags_digest()
     branch = _git("branch", "--show-current")
     if branch != board.merge_target_branch:
         raise OperatorError("current branch differs from sealed merge target")
@@ -2115,35 +3681,50 @@ def _offline_database_guard(paths: Mapping[str, Path]) -> Any:
         owner_liveness,
     )
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
-        OwnerMarker,
+        QuackStateServerOwnershipError,
+        acquire_exclusive_owner_lock,
+        read_locked_owner_marker,
     )
 
     database = paths["database"]
     lock_path = database.with_name(f".{database.name}{OWNER_LOCK_SUFFIX}")
     marker_path = database.with_name(f".{database.name}{OWNER_MARKER_SUFFIX}")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = lock_path.open("a+b")
     try:
+        handle = acquire_exclusive_owner_lock(lock_path)
+    except BlockingIOError as exc:
+        raise OperatorError(
+            "offline database access refused while the Quack owner is live"
+        ) from exc
+
+    def assert_parent_current() -> None:
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
+            handle.assert_canonical_parent()
+        except QuackStateServerOwnershipError as exc:
             raise OperatorError(
-                "offline database access refused while the Quack owner is live"
+                "offline database access refused: database parent identity changed"
             ) from exc
-        if marker_path.exists():
-            try:
-                marker_payload = json.loads(marker_path.read_text(encoding="utf-8"))
-                marker = OwnerMarker.from_dict(marker_payload)
-            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                raise OperatorError(
-                    "offline database access refused: owner marker is invalid"
-                ) from exc
+
+    try:
+        assert_parent_current()
+        try:
+            marker = read_locked_owner_marker(handle, marker_path)
+        except QuackStateServerOwnershipError as exc:
+            raise OperatorError(
+                "offline database access refused: owner marker is invalid"
+            ) from exc
+        if marker is not None:
             liveness = owner_liveness(marker.process_birth)
             if liveness is not OwnerLiveness.DEAD:
                 raise OperatorError(
                     "offline database access refused: owner liveness is not dead"
                 )
-        yield
+        assert_parent_current()
+        try:
+            yield
+        finally:
+            # A direct-file operation is never allowed to silently finish after
+            # its canonical database parent was renamed or recreated.
+            assert_parent_current()
     finally:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
@@ -4971,6 +6552,226 @@ def _validate_repair_provider_lease_ownership_transition(
     }
 
 
+def _validate_repair_provider_cleanup_fence_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 11 chained to immutable lease ownership."""
+
+    receipt_id = _repair_provider_cleanup_fence_transition_receipt_id(
+        receipt
+    )
+    baseline_failures = receipt.get("known_baseline_failures")
+    if (
+        not isinstance(baseline_failures, list)
+        or len(baseline_failures) != 1
+        or not isinstance(baseline_failures[0], Mapping)
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-cleanup-fence known baseline differs"
+        )
+    _repair_provider_cleanup_fence_known_baseline_receipt_id(
+        baseline_failures[0]
+    )
+    previous_receipt_id = (
+        _repair_provider_lease_ownership_transition_receipt_id(
+            previous_receipt
+        )
+    )
+    if (
+        receipt.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R11"
+        or receipt.get("previous_receipt_cid") != previous_receipt_id
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("base_head")
+        != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+        or receipt.get("changed_paths")
+        != list(REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS)
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R10"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement")
+        != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_AUTHORITY
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-cleanup-fence authority differs"
+        )
+    repair = str(receipt.get("repair_head") or "").strip().casefold()
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or _git("show", "-s", "--format=%P", repair).split()
+        != [REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD]
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-cleanup-fence must be one exact child"
+        )
+    base_tree = _git(
+        "rev-parse",
+        f"{REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD}^{{tree}}",
+    )
+    repair_tree = _git("rev-parse", f"{repair}^{{tree}}")
+    native_dependency_authorization = (
+        _validate_r11_native_dependency_authorization(
+            receipt.get("native_dependency_authorization"),
+            candidate_head=repair,
+            candidate_tree=repair_tree,
+        )
+    )
+    if (
+        receipt.get("base_tree") != base_tree
+        or receipt.get("repair_tree") != repair_tree
+        or _git_changed_paths(
+            REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD,
+            repair,
+        )
+        != REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest")
+        != _git_patch_digest(
+            REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD,
+            repair,
+        )
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-cleanup-fence Git proof differs"
+        )
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError(
+                "bootstrap repair provider-cleanup-fence changed a sibling"
+            )
+    stored_results = receipt.get("validation_results")
+    if (
+        not isinstance(stored_results, list)
+        or len(stored_results)
+        != len(REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS)
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-cleanup-fence validation differs"
+        )
+    for stored, command in zip(
+        stored_results,
+        REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS,
+        strict=True,
+    ):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {
+                "argv",
+                "candidate_head",
+                "candidate_tree",
+                "environment_identity",
+                "working_tree_scope",
+                "returncode",
+                "stdout_digest",
+                "stderr_digest",
+            }
+            or stored.get("argv") != list(command)
+            or stored.get("candidate_head") != repair
+            or stored.get("candidate_tree") != repair_tree
+            or stored.get("environment_identity")
+            != _r11_command_environment_identity(
+                _r11_validation_environment(Path("/sealed-checkout")),
+                command,
+                checkout=Path("/sealed-checkout"),
+            )
+            or stored.get("working_tree_scope")
+            != _r11_validation_working_tree_scope(command)
+            or stored.get("returncode") != 0
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stdout_digest") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stderr_digest") or ""),
+            )
+            is None
+        ):
+            raise OperatorError(
+                "bootstrap repair provider-cleanup-fence validation differs"
+            )
+    if rerun_validations:
+        rerun = _run_repair_provider_cleanup_fence_transition_validations(
+            candidate_head=repair,
+            candidate_tree=repair_tree,
+        )
+        if [
+            (
+                item["argv"],
+                item["candidate_head"],
+                item["candidate_tree"],
+                item["environment_identity"],
+            )
+            for item in rerun
+        ] != [
+            (
+                item.get("argv"),
+                item.get("candidate_head"),
+                item.get("candidate_tree"),
+                item.get("environment_identity"),
+            )
+            for item in stored_results
+        ]:
+            raise OperatorError(
+                "bootstrap repair provider-cleanup-fence commands differ"
+            )
+        observed_baseline = (
+            _observe_repair_provider_cleanup_fence_known_baseline()
+        )
+        if (
+            observed_baseline["command"]
+            != baseline_failures[0].get("command")
+            or observed_baseline["normalized_failure_class"]
+            != baseline_failures[0].get("normalized_failure_class")
+            or observed_baseline["first_failing_node"]
+            != baseline_failures[0].get("first_failing_node")
+        ):
+            raise OperatorError(
+                "bootstrap repair Prompt-v3 known baseline differs"
+            )
+    return {
+        "schema": REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 11,
+        "base_head": REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "previous_receipt_cid": previous_receipt_id,
+        "native_dependency_authorization": native_dependency_authorization,
+        "receipt_cid": receipt_id,
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -5191,6 +6992,25 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
 
     board, _config = _load(config_path)
     paths = _paths(board)
+    with _repair_transition_authorization_guard(paths) as authorization_directory_fd:
+        return _authorize_repair_transition_locked(
+            board=board,
+            config=_config,
+            paths=paths,
+            authorization_directory_fd=authorization_directory_fd,
+        )
+
+
+def _authorize_repair_transition_locked(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    authorization_directory_fd: int,
+) -> dict[str, Any]:
+    """Validate or coalesce one repair-chain receipt under stable exclusion."""
+
+    _config = config
     population = _population(board, _config)
     head = str(population["source_head"])
     if head == REPAIR_TRANSITION_BASE_HEAD:
@@ -5456,6 +7276,344 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
                                                 ),
                                                 head,
                                             )
+                                            cleanup_fence_path = paths.get(
+                                                "repair_provider_cleanup_fence_transition_receipt"
+                                            )
+                                            if (
+                                                isinstance(
+                                                    cleanup_fence_path, Path
+                                                )
+                                                and cleanup_fence_path.is_file()
+                                            ):
+                                                cleanup_fence = (
+                                                    _secure_runtime_json(
+                                                        cleanup_fence_path,
+                                                        max_bytes=(
+                                                            STATUS_RECEIPT_MAX_BYTES
+                                                        ),
+                                                    )
+                                                )
+                                                cleanup_fence_transition = (
+                                                    _validate_repair_provider_cleanup_fence_transition(
+                                                        cleanup_fence,
+                                                        bootstrap=bootstrap,
+                                                        previous_receipt=(
+                                                            provider_lease
+                                                        ),
+                                                        rerun_validations=(
+                                                            cleanup_fence.get(
+                                                                "repair_head"
+                                                            )
+                                                            == head
+                                                        ),
+                                                    )
+                                                )
+                                                _git(
+                                                    "merge-base",
+                                                    "--is-ancestor",
+                                                    str(
+                                                        cleanup_fence_transition[
+                                                            "repair_head"
+                                                        ]
+                                                    ),
+                                                    head,
+                                                )
+                                                current_admission = (
+                                                    _admit_materialized_launch(
+                                                        board, _config, paths
+                                                    )
+                                                )
+                                                admitted_repair = (
+                                                    current_admission.get(
+                                                        "repair_transition"
+                                                    )
+                                                )
+                                                admitted_continuity = (
+                                                    current_admission.get(
+                                                        "canonical_continuity"
+                                                    )
+                                                )
+                                                if (
+                                                    not isinstance(
+                                                        admitted_repair, Mapping
+                                                    )
+                                                    or admitted_repair.get(
+                                                        "repair_head"
+                                                    )
+                                                    != cleanup_fence_transition[
+                                                        "repair_head"
+                                                    ]
+                                                    or not isinstance(
+                                                        admitted_continuity,
+                                                        Mapping,
+                                                    )
+                                                    or "repair_to_current"
+                                                    not in admitted_continuity
+                                                ):
+                                                    raise OperatorError(
+                                                        "current admission does "
+                                                        "not retain the provider-"
+                                                        "cleanup-fence repair "
+                                                        "transition"
+                                                    )
+                                                return {
+                                                    "schema": OPERATOR_SCHEMA,
+                                                    "command": (
+                                                        "authorize-repair-transition"
+                                                    ),
+                                                    "ok": True,
+                                                    "idempotent_replay": True,
+                                                    "repair_transition_receipt": (
+                                                        cleanup_fence
+                                                    ),
+                                                    "repair_transition_chain": [
+                                                        prior,
+                                                        followup,
+                                                        clean_launch,
+                                                        runtime_hardening,
+                                                        quack_recovery,
+                                                        parallel_startup,
+                                                        publication,
+                                                        replay,
+                                                        lifecycle,
+                                                        provider_lease,
+                                                        cleanup_fence,
+                                                    ],
+                                                    "current_admission_cid": (
+                                                        current_admission[
+                                                            "admission_cid"
+                                                        ]
+                                                    ),
+                                                    "runtime_source_head": (
+                                                        current_admission[
+                                                            "runtime_source_head"
+                                                        ]
+                                                    ),
+                                                }
+                                            if (
+                                                provider_lease.get("repair_head")
+                                                != head
+                                            ):
+                                                parents = _git(
+                                                    "show",
+                                                    "-s",
+                                                    "--format=%P",
+                                                    head,
+                                                ).split()
+                                                if parents != [
+                                                    REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+                                                ]:
+                                                    raise OperatorError(
+                                                        "bootstrap repair provider-"
+                                                        "cleanup-fence must be one "
+                                                        "child of the exact "
+                                                        "revision-10 repair"
+                                                    )
+                                                if _git_changed_paths(
+                                                    REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD,
+                                                    head,
+                                                ) != (
+                                                    REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS
+                                                ):
+                                                    raise OperatorError(
+                                                        "bootstrap repair provider-"
+                                                        "cleanup-fence changed-path "
+                                                        "set differs"
+                                                    )
+                                                candidate_tree = _git(
+                                                    "rev-parse",
+                                                    f"{head}^{{tree}}",
+                                                )
+                                                authorization_witness = (
+                                                    _candidate_authorization_witness(
+                                                        expected_head=head,
+                                                        expected_tree=(
+                                                            candidate_tree
+                                                        ),
+                                                    )
+                                                )
+                                                validation_results = (
+                                                    _run_repair_provider_cleanup_fence_transition_validations(
+                                                        candidate_head=head,
+                                                        candidate_tree=(
+                                                            candidate_tree
+                                                        ),
+                                                        authorization_witness=(
+                                                            authorization_witness
+                                                        ),
+                                                    )
+                                                )
+                                                known_baseline = (
+                                                    _observe_repair_provider_cleanup_fence_known_baseline()
+                                                )
+                                                _assert_candidate_authorization_witness(
+                                                    authorization_witness,
+                                                    expected_head=head,
+                                                    expected_tree=(
+                                                        candidate_tree
+                                                    ),
+                                                    boundary=(
+                                                        "after R10 baseline "
+                                                        "observation"
+                                                    ),
+                                                )
+                                                receipt = {
+                                                    "schema": (
+                                                        REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SCHEMA
+                                                    ),
+                                                    "task_id": (
+                                                        REPAIR_TRANSITION_TASK_ID
+                                                    ),
+                                                    "stable_identity": (
+                                                        f"{PROGRAM}/"
+                                                        f"{REPAIR_TRANSITION_TASK_ID}"
+                                                        "@ASEH-PLAN-R11"
+                                                    ),
+                                                    "program_id": PROGRAM,
+                                                    "transition_revision": 11,
+                                                    "bootstrap_receipt_id": (
+                                                        bootstrap_id
+                                                    ),
+                                                    "previous_receipt_cid": (
+                                                        provider_lease_transition[
+                                                            "receipt_cid"
+                                                        ]
+                                                    ),
+                                                    "plan_root_cid": bootstrap[
+                                                        "plan_root_cid"
+                                                    ],
+                                                    "repository_tree_id": (
+                                                        bootstrap[
+                                                            "repository_tree_id"
+                                                        ]
+                                                    ),
+                                                    "base_head": (
+                                                        REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+                                                    ),
+                                                    "base_tree": _git(
+                                                        "rev-parse",
+                                                        REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD
+                                                        + "^{tree}",
+                                                    ),
+                                                    "repair_head": head,
+                                                    "repair_tree": candidate_tree,
+                                                    "changed_paths": list(
+                                                        REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS
+                                                    ),
+                                                    "patch_digest": (
+                                                        _git_patch_digest(
+                                                            REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_BASE_HEAD,
+                                                            head,
+                                                        )
+                                                    ),
+                                                    "dependencies": [
+                                                        "ASEH-BOOTSTRAP-002@ASEH-PLAN-R10"
+                                                    ],
+                                                    "owning_repository": (
+                                                        "ipfs_accelerate_py"
+                                                    ),
+                                                    "risk_class": (
+                                                        "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+                                                    ),
+                                                    "authority_requirement": (
+                                                        REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_AUTHORITY
+                                                    ),
+                                                    "validation_results": (
+                                                        validation_results
+                                                    ),
+                                                    "native_dependency_authorization": (
+                                                        _r11_native_dependency_authorization(
+                                                            candidate_head=head,
+                                                            candidate_tree=candidate_tree,
+                                                            candidate_authorization_witness=(
+                                                                authorization_witness
+                                                            ),
+                                                        )
+                                                    ),
+                                                    "known_baseline_failures": [
+                                                        known_baseline
+                                                    ],
+                                                    "terminal_success_criteria": (
+                                                        REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_SUCCESS
+                                                    ),
+                                                    "terminal_non_success_criteria": (
+                                                        REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_NON_SUCCESS
+                                                    ),
+                                                    "semantic_corpus_changed": False,
+                                                    "database_mutated": False,
+                                                    "authorized_at": time.time(),
+                                                }
+                                                receipt["receipt_cid"] = (
+                                                    _identity(receipt)
+                                                )
+                                                _validate_repair_provider_cleanup_fence_transition(
+                                                    receipt,
+                                                    bootstrap=bootstrap,
+                                                    previous_receipt=(
+                                                        provider_lease
+                                                    ),
+                                                    rerun_validations=False,
+                                                )
+                                                if not isinstance(
+                                                    cleanup_fence_path, Path
+                                                ):
+                                                    raise OperatorError(
+                                                        "bootstrap repair provider-"
+                                                        "cleanup-fence path is absent"
+                                                    )
+                                                _assert_candidate_authorization_witness(
+                                                    authorization_witness,
+                                                    expected_head=head,
+                                                    expected_tree=(
+                                                        candidate_tree
+                                                    ),
+                                                    boundary=(
+                                                        "immediately before "
+                                                        "R11 receipt publication"
+                                                    ),
+                                                )
+                                                _atomic_json_create(
+                                                    cleanup_fence_path,
+                                                    receipt,
+                                                    authority_directory_fd=(
+                                                        authorization_directory_fd
+                                                    ),
+                                                )
+                                                _assert_candidate_authorization_witness(
+                                                    authorization_witness,
+                                                    expected_head=head,
+                                                    expected_tree=(
+                                                        candidate_tree
+                                                    ),
+                                                    boundary=(
+                                                        "after R11 receipt "
+                                                        "publication"
+                                                    ),
+                                                )
+                                                return {
+                                                    "schema": OPERATOR_SCHEMA,
+                                                    "command": (
+                                                        "authorize-repair-transition"
+                                                    ),
+                                                    "ok": True,
+                                                    "idempotent_replay": False,
+                                                    "repair_transition_receipt": (
+                                                        receipt
+                                                    ),
+                                                    "repair_transition_chain": [
+                                                        prior,
+                                                        followup,
+                                                        clean_launch,
+                                                        runtime_hardening,
+                                                        quack_recovery,
+                                                        parallel_startup,
+                                                        publication,
+                                                        replay,
+                                                        lifecycle,
+                                                        provider_lease,
+                                                        receipt,
+                                                    ],
+                                                }
                                             current_admission = (
                                                 _admit_materialized_launch(
                                                     board, _config, paths
@@ -7205,6 +9363,9 @@ def _admit_materialized_launch(
             provider_lease_ownership_transition: (
                 dict[str, Any] | None
             ) = None
+            provider_cleanup_fence_transition: (
+                dict[str, Any] | None
+            ) = None
             clean_launch_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
@@ -7472,6 +9633,49 @@ def _admit_materialized_launch(
                                             active_transition = (
                                                 provider_lease_ownership_transition
                                             )
+                                            cleanup_fence_path = paths.get(
+                                                "repair_provider_cleanup_fence_transition_receipt"
+                                            )
+                                            if (
+                                                isinstance(
+                                                    cleanup_fence_path, Path
+                                                )
+                                                and cleanup_fence_path.is_file()
+                                            ):
+                                                cleanup_fence_receipt = (
+                                                    _secure_runtime_json(
+                                                        cleanup_fence_path,
+                                                        max_bytes=(
+                                                            STATUS_RECEIPT_MAX_BYTES
+                                                        ),
+                                                    )
+                                                )
+                                                provider_cleanup_fence_transition = (
+                                                    _validate_repair_provider_cleanup_fence_transition(
+                                                        cleanup_fence_receipt,
+                                                        bootstrap=bootstrap,
+                                                        previous_receipt=(
+                                                            provider_lease_receipt
+                                                        ),
+                                                        rerun_validations=True,
+                                                    )
+                                                )
+                                                if (
+                                                    provider_cleanup_fence_transition[
+                                                        "base_head"
+                                                    ]
+                                                    != provider_lease_ownership_transition[
+                                                        "repair_head"
+                                                    ]
+                                                ):
+                                                    raise OperatorError(
+                                                        "provider-cleanup-fence "
+                                                        "repair does not extend "
+                                                        "revision 10"
+                                                    )
+                                                active_transition = (
+                                                    provider_cleanup_fence_transition
+                                                )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -7511,6 +9715,10 @@ def _admit_materialized_launch(
                 repair_transition_chain.append(
                     provider_lease_ownership_transition
                 )
+            if provider_cleanup_fence_transition is not None:
+                repair_transition_chain.append(
+                    provider_cleanup_fence_transition
+                )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -7548,6 +9756,10 @@ def _admit_materialized_launch(
                 continuity[
                     "control_receipt_lifecycle_to_provider_lease_ownership"
                 ] = provider_lease_ownership_transition
+            if provider_cleanup_fence_transition is not None:
+                continuity[
+                    "provider_lease_ownership_to_provider_cleanup_fence"
+                ] = provider_cleanup_fence_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -7644,24 +9856,718 @@ def _record_control_failure(
     failure_event.set()
 
 
-def _terminate_scheduler(process: subprocess.Popen[Any]) -> None:
+def _dedicated_process_group_birth(process: subprocess.Popen[Any]) -> int:
+    """Capture the exact birth of a newly created session/group leader."""
+
+    try:
+        raw = (Path("/proc") / str(process.pid) / "stat").read_bytes()
+        if len(raw) > 16 * 1024:
+            raise ValueError("oversized process stat")
+        closing = raw.rfind(b")")
+        fields = raw[closing + 2 :].split()
+        process_group = int(fields[2])
+        session = int(fields[3])
+        start_time_ticks = int(fields[19])
+    except (IndexError, OSError, ValueError) as exc:
+        raise OperatorError("dedicated child birth could not be captured") from exc
+    if (
+        process.pid <= 1
+        or process_group != process.pid
+        or session != process.pid
+        or start_time_ticks <= 0
+    ):
+        raise OperatorError("child does not own its declared process session")
+    return start_time_ticks
+
+
+def _signal_dedicated_process_group(
+    process: subprocess.Popen[Any],
+    *,
+    start_time_ticks: int,
+    signum: int,
+) -> None:
+    """Signal a live dedicated group only while its leader birth still matches."""
+
     if process.poll() is not None:
         return
+    if _dedicated_process_group_birth(process) != int(start_time_ticks):
+        raise OperatorError("dedicated child birth changed before signalling")
     try:
-        os.killpg(process.pid, signal.SIGTERM)
+        os.killpg(process.pid, int(signum))
     except ProcessLookupError:
         return
-    try:
-        process.wait(timeout=30.0)
-    except subprocess.TimeoutExpired:
+
+
+def _terminate_dedicated_process_group(
+    process: subprocess.Popen[Any],
+    *,
+    start_time_ticks: int | None,
+    grace_seconds: float,
+) -> None:
+    """Fence one exact session, including members surviving leader exit."""
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import (
+        terminate_pid_tree,
+    )
+
+    if start_time_ticks is None:
+        # Birth capture happens before authority delivery.  A failure at that
+        # boundary can safely terminate and reap only the still-unadmitted
+        # direct child; no numeric process-group authority was established.
+        if process.poll() is None:
+            process.kill()
         try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
+            process.wait(timeout=10.0)
+        except subprocess.TimeoutExpired as exc:
+            raise OperatorError("unadmitted child could not be reaped") from exc
+        return
+    if process.poll() is None:
+        _signal_dedicated_process_group(
+            process,
+            start_time_ticks=start_time_ticks,
+            signum=signal.SIGTERM,
+        )
+        try:
+            process.wait(timeout=max(0.0, float(grace_seconds)))
+        except subprocess.TimeoutExpired:
             pass
-        process.wait(timeout=10.0)
+    fenced = terminate_pid_tree(
+        process.pid,
+        grace_seconds=1.0,
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=process.pid,
+        expected_root_start_time_ticks=int(start_time_ticks),
+    )
+    if not fenced:
+        raise OperatorError("dedicated child process group was not fenced")
+    if process.poll() is None:
+        try:
+            process.wait(timeout=10.0)
+        except subprocess.TimeoutExpired as exc:
+            raise OperatorError("fenced child leader was not reaped") from exc
+
+
+def _terminate_scheduler(
+    process: subprocess.Popen[Any],
+    start_time_ticks: int | None,
+) -> None:
+    _terminate_dedicated_process_group(
+        process,
+        start_time_ticks=start_time_ticks,
+        grace_seconds=30.0,
+    )
+
+
+def _seal_r11_native_dependency(
+    *,
+    paths: Mapping[str, Path],
+    candidate_head: str,
+    candidate_tree: str,
+) -> Any:
+    """Seal only the exact DuckDB pin admitted by the current R11 receipt."""
+
+    from ipfs_accelerate_py.llm_router import (
+        inspect_agent_supervisor_native_dependency_source,
+        seal_agent_supervisor_native_dependency,
+    )
+
+    bootstrap = _secure_runtime_json(
+        paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
+    )
+    prior = _secure_runtime_json(
+        paths["repair_provider_lease_ownership_transition_receipt"],
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    receipt = _secure_runtime_json(
+        paths["repair_provider_cleanup_fence_transition_receipt"],
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    transition = _validate_repair_provider_cleanup_fence_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=prior,
+        rerun_validations=False,
+    )
+    if (
+        transition.get("repair_head") != candidate_head
+        or transition.get("repair_tree") != candidate_tree
+    ):
+        raise OperatorError("native dependency R11 candidate binding differs")
+    stored_authorization = transition.get("native_dependency_authorization")
+    stored_witness = (
+        stored_authorization.get("candidate_authorization_witness")
+        if isinstance(stored_authorization, Mapping)
+        else None
+    )
+    if not isinstance(stored_witness, Mapping):
+        raise OperatorError("R11 native candidate witness is absent")
+    _assert_candidate_authorization_witness(
+        stored_witness,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        boundary="before native dependency sealing",
+    )
+    specification = importlib.util.find_spec("_duckdb")
+    source = Path(str(getattr(specification, "origin", "") or ""))
+    try:
+        pin = inspect_agent_supervisor_native_dependency_source(
+            source,
+            distribution_version="1.5.5",
+            engine_version="v1.5.5",
+        )
+    except (OSError, ValueError) as exc:
+        raise OperatorError("reviewed R11 DuckDB dependency is unavailable") from exc
+    if pin.as_dict() != ASEH_R11_NATIVE_DEPENDENCY_PIN:
+        raise OperatorError("installed DuckDB differs from the reviewed R11 pin")
+    authorization = transition.get("native_dependency_authorization")
+    if (
+        not isinstance(authorization, Mapping)
+        or authorization.get("native_dependency_pin") != pin.as_dict()
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(authorization.get("authorization_id") or ""),
+        )
+        is None
+    ):
+        raise OperatorError("R11 native dependency authorization is not admitted")
+    authorization_id = str(authorization["authorization_id"])
+    launch = seal_agent_supervisor_native_dependency(
+        source,
+        expected_pin=pin,
+        accepted_authorization_id=authorization_id,
+    )
+    _assert_candidate_authorization_witness(
+        stored_witness,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        boundary="after native dependency sealing",
+    )
+    return launch
+
+
+def _aseh_stable_extension_digest(path: Path) -> tuple[os.stat_result, str]:
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        before = os.fstat(descriptor)
+        digest = hashlib.sha256()
+        offset = 0
+        while offset < before.st_size:
+            block = os.pread(
+                descriptor,
+                min(1024 * 1024, before.st_size - offset),
+                offset,
+            )
+            if not block:
+                break
+            digest.update(block)
+            offset += len(block)
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise OperatorError("qualified DuckDB extension is unavailable") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    identity = lambda item: (
+        item.st_dev,
+        item.st_ino,
+        item.st_mode,
+        item.st_uid,
+        item.st_nlink,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+    if (
+        identity(before) != identity(after)
+        or not stat.S_ISREG(before.st_mode)
+        or before.st_uid != os.geteuid()
+        or before.st_nlink != 1
+        or not 0 < before.st_size <= 512 * 1024 * 1024
+        or offset != before.st_size
+    ):
+        raise OperatorError("qualified DuckDB extension identity drifted")
+    return before, digest.hexdigest()
+
+
+def _validate_aseh_qualification_home(home: Path) -> Path:
+    extension_home = (
+        home / ".duckdb" / "extensions" / "v1.5.5" / "linux_arm64"
+    )
+    immutable_directories = (
+        home,
+        home / ".duckdb",
+        home / ".duckdb" / "extensions",
+        home / ".duckdb" / "extensions" / "v1.5.5",
+        extension_home,
+    )
+    cache_directories = (
+        home / ".cache",
+        home / ".cache" / "cuda",
+        home / ".cache" / "ipfs_accelerate",
+        home / ".cache" / "xdg",
+    )
+    for directory, mode in (
+        *((item, 0o500) for item in immutable_directories),
+        *((item, 0o700) for item in cache_directories),
+    ):
+        try:
+            observed = os.lstat(directory)
+        except OSError as exc:
+            raise OperatorError("ASEH qualification HOME is incomplete") from exc
+        if (
+            not stat.S_ISDIR(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or stat.S_IMODE(observed.st_mode) != mode
+            or directory.resolve(strict=True) != directory
+        ):
+            raise OperatorError("ASEH qualification HOME is unsafe")
+    expected_children = {
+        home: {".cache", ".duckdb"},
+        home / ".cache": {"cuda", "ipfs_accelerate", "xdg"},
+        home / ".duckdb": {"extensions"},
+        home / ".duckdb" / "extensions": {"v1.5.5"},
+        home / ".duckdb" / "extensions" / "v1.5.5": {"linux_arm64"},
+        extension_home: set(ASEH_R11_DUCKDB_EXTENSION_HASHES),
+    }
+    for directory, expected in expected_children.items():
+        try:
+            observed = {entry.name for entry in directory.iterdir()}
+        except OSError as exc:
+            raise OperatorError("ASEH qualification HOME is unreadable") from exc
+        if observed != expected:
+            raise OperatorError("ASEH qualification HOME has undeclared content")
+    for name, expected_digest in ASEH_R11_DUCKDB_EXTENSION_HASHES.items():
+        observed, digest = _aseh_stable_extension_digest(extension_home / name)
+        if stat.S_IMODE(observed.st_mode) != 0o400 or digest != expected_digest:
+            raise OperatorError("ASEH qualification extension differs")
+    return home
+
+
+def _build_aseh_qualification_home(paths: Mapping[str, Path]) -> Path:
+    import shutil
+    import tempfile
+
+    runtime = Path(paths["runtime"])
+    homes_root = runtime / "qualification-homes"
+    try:
+        homes_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        root_identity = os.lstat(homes_root)
+    except OSError as exc:
+        raise OperatorError("ASEH qualification HOME root is unavailable") from exc
+    if (
+        not stat.S_ISDIR(root_identity.st_mode)
+        or stat.S_ISLNK(root_identity.st_mode)
+        or root_identity.st_uid != os.geteuid()
+        or stat.S_IMODE(root_identity.st_mode) != 0o700
+    ):
+        raise OperatorError("ASEH qualification HOME root is unsafe")
+    identity = ASEH_R11_QUALIFICATION_HOME_ID
+    home = homes_root / identity
+    if home.exists() or home.is_symlink():
+        return _validate_aseh_qualification_home(home)
+    staging = Path(tempfile.mkdtemp(prefix=f".{identity}.staging-", dir=homes_root))
+    try:
+        extension_home = (
+            staging / ".duckdb" / "extensions" / "v1.5.5" / "linux_arm64"
+        )
+        extension_home.mkdir(parents=True, mode=0o700)
+        for name, expected_digest in ASEH_R11_DUCKDB_EXTENSION_HASHES.items():
+            source = ASEH_R11_DUCKDB_EXTENSION_SOURCE / name
+            source_identity, digest = _aseh_stable_extension_digest(source)
+            if digest != expected_digest:
+                raise OperatorError("installed DuckDB extension differs from R11")
+            target = extension_home / name
+            source_descriptor = os.open(
+                source,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            target_descriptor = -1
+            try:
+                copy_before = os.fstat(source_descriptor)
+                copy_digest = hashlib.sha256()
+                if (
+                    copy_before.st_dev != source_identity.st_dev
+                    or copy_before.st_ino != source_identity.st_ino
+                    or copy_before.st_size != source_identity.st_size
+                    or copy_before.st_mtime_ns != source_identity.st_mtime_ns
+                    or copy_before.st_ctime_ns != source_identity.st_ctime_ns
+                ):
+                    raise OperatorError(
+                        "installed DuckDB extension changed before copy"
+                    )
+                target_descriptor = os.open(
+                    target,
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    0o400,
+                )
+                offset = 0
+                while offset < source_identity.st_size:
+                    block = os.pread(
+                        source_descriptor,
+                        min(1024 * 1024, source_identity.st_size - offset),
+                        offset,
+                    )
+                    if not block:
+                        break
+                    copy_digest.update(block)
+                    view = memoryview(block)
+                    while view:
+                        written = os.write(target_descriptor, view)
+                        if written <= 0:
+                            raise OSError("qualification copy made no progress")
+                        view = view[written:]
+                    offset += len(block)
+                os.fsync(target_descriptor)
+                copy_after = os.fstat(source_descriptor)
+                if (
+                    copy_after.st_dev != copy_before.st_dev
+                    or copy_after.st_ino != copy_before.st_ino
+                    or copy_after.st_size != copy_before.st_size
+                    or copy_after.st_mtime_ns != copy_before.st_mtime_ns
+                    or copy_after.st_ctime_ns != copy_before.st_ctime_ns
+                    or copy_digest.hexdigest() != expected_digest
+                ):
+                    raise OperatorError(
+                        "installed DuckDB extension changed during copy"
+                    )
+            finally:
+                os.close(source_descriptor)
+                if target_descriptor >= 0:
+                    os.close(target_descriptor)
+            if offset != source_identity.st_size:
+                raise OperatorError("ASEH qualification copy is incomplete")
+        for directory in (
+            staging / ".cache",
+            staging / ".cache" / "cuda",
+            staging / ".cache" / "ipfs_accelerate",
+            staging / ".cache" / "xdg",
+        ):
+            directory.mkdir(mode=0o700)
+        for directory in (
+            staging / ".duckdb",
+            staging / ".duckdb" / "extensions",
+            staging / ".duckdb" / "extensions" / "v1.5.5",
+            extension_home,
+            staging,
+        ):
+            directory.chmod(0o500)
+        _validate_aseh_qualification_home(staging)
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is None:
+            raise OperatorError("atomic qualification HOME publication is unavailable")
+        renameat2.argtypes = (
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        )
+        renameat2.restype = ctypes.c_int
+        result = renameat2(
+            -100,
+            os.fsencode(staging),
+            -100,
+            os.fsencode(home),
+            1,
+        )
+        if result != 0:
+            error_number = ctypes.get_errno()
+            if error_number != errno.EEXIST:
+                raise OperatorError(
+                    "ASEH qualification HOME publication failed"
+                )
+            return _validate_aseh_qualification_home(home)
+        for directory in (home, homes_root):
+            descriptor = os.open(
+                directory,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        return _validate_aseh_qualification_home(home)
+    finally:
+        if staging.exists():
+            for directory in sorted(
+                (item for item in staging.rglob("*") if item.is_dir()),
+                key=lambda item: len(item.parts),
+                reverse=True,
+            ):
+                try:
+                    directory.chmod(0o700)
+                except OSError:
+                    pass
+            try:
+                staging.chmod(0o700)
+                shutil.rmtree(staging)
+            except OSError:
+                pass
+
+
+def _sealed_owner_delegation_environment(
+    qualification_home: Path,
+) -> dict[str, str]:
+    """Return the positive, credential-free environment for the owner birth."""
+
+    return {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(qualification_home),
+        "LC_ALL": "C.UTF-8",
+        "LANG": "C.UTF-8",
+        "TZ": "UTC",
+        "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME": str(qualification_home),
+        "XDG_CACHE_HOME": str(qualification_home / ".cache" / "xdg"),
+        "CUDA_CACHE_PATH": str(qualification_home / ".cache" / "cuda"),
+        "CUDA_CACHE_DISABLE": "1",
+    }
+
+
+def _sealed_owner_delegation_environment_identity(
+    qualification_home: Path,
+) -> str:
+    return _identity(_sealed_owner_delegation_environment(qualification_home))
 
 
 def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> int:
+    """Delegate owner authority to exact code in one retained sealed capsule."""
+
+    import shutil
+    import tempfile
+
+    from ipfs_accelerate_py.llm_router import (
+        materialize_agent_implementation_control_plane_capsule,
+        seal_agent_implementation_control_plane_capsule,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        ASEH_SEALED_OWNER_MARKER,
+        _cleanup_plan_bound_control_plane,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        accepted_control_plane_pin_json,
+        build_sealed_control_plane_module_command,
+        retain_control_plane_interpreter,
+        trusted_system_dependency_directories_json,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        state_authority_process_birth,
+    )
+
+    board, _configuration = _load(config_path)
+    candidate_head, candidate_tree = _assert_clean_tree(board)
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+    )
+    paths = _paths(board)
+    qualification_home = _build_aseh_qualification_home(paths)
+    forbidden_environment = (
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "IPFS_ACCELERATE_AGENT_OWNER_STATE_TOKEN",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET",
+        "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_ADDRESS",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_PID",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_START",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_BOOT_ID",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_PARENT_LOSS_POLICY",
+    )
+    if any(str(os.environ.get(name) or "") for name in forbidden_environment):
+        raise OperatorError(
+            "unprivileged sealed-owner delegate inherited state authority"
+        )
+    capsule_parent = Path(
+        tempfile.mkdtemp(prefix="asref-configured-control-plane-")
+    )
+    pin = None
+    sealed = None
+    interpreter = None
+    native_dependency = None
+    child: subprocess.Popen[Any] | None = None
+    child_start_time_ticks: int | None = None
+    try:
+        pin = materialize_agent_implementation_control_plane_capsule(
+            source_root=ROOT,
+            capsule_parent=capsule_parent,
+            source_head=candidate_head,
+            source_tree=candidate_tree,
+        )
+        sealed = seal_agent_implementation_control_plane_capsule(pin)
+        interpreter = retain_control_plane_interpreter(sys.executable)
+        native_dependency = _seal_r11_native_dependency(
+            paths=paths,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+        system_directories_json = trusted_system_dependency_directories_json()
+        _delegate_parent, delegate_start, delegate_boot = (
+            state_authority_process_birth()
+        )
+        _assert_candidate_authorization_witness(
+            authorization_witness,
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+            boundary="immediately before sealed owner delegation",
+        )
+        owner_arguments = [
+            ASEH_SEALED_OWNER_MARKER,
+            accepted_control_plane_pin_json(pin),
+            str(sealed.descriptor),
+            str(interpreter.descriptor),
+            interpreter.argv0,
+            interpreter.sha256,
+            str(ROOT),
+            str(board.config_path.resolve(strict=True)),
+            "1" if implement else "0",
+            str(duration),
+            _sealed_owner_delegation_environment_identity(
+                qualification_home
+            ),
+            str(native_dependency.descriptor.descriptor),
+            native_dependency.to_json(),
+            system_directories_json,
+            str(qualification_home),
+            str(os.getpid()),
+            str(delegate_start),
+            delegate_boot,
+        ]
+        command = build_sealed_control_plane_module_command(
+            python_executable=interpreter.argv0,
+            pin=pin,
+            descriptor=sealed.descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.runtime."
+                "configured_board_scheduler"
+            ),
+            argv=owner_arguments,
+            retained_interpreter=interpreter,
+            native_dependency_launch=native_dependency,
+            accepted_native_authorization_id=(
+                native_dependency.accepted_authorization_id
+            ),
+            system_dependency_directories_json=system_directories_json,
+        )
+        child = subprocess.Popen(
+            command,
+            executable=interpreter.executable_path,
+            cwd=ROOT,
+            env=_sealed_owner_delegation_environment(qualification_home),
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            pass_fds=(
+                sealed.descriptor,
+                interpreter.descriptor,
+                native_dependency.descriptor.descriptor,
+            ),
+        )
+        child_start_time_ticks = _dedicated_process_group_birth(child)
+        shutdown_requested = threading.Event()
+        received_signal: dict[str, int] = {}
+        forwarded = False
+        forwarding_deadline: float | None = None
+        with _stop_signal_handlers(shutdown_requested, received_signal):
+            while child.poll() is None:
+                if shutdown_requested.is_set() and not forwarded:
+                    forwarded = True
+                    forwarding_deadline = time.monotonic() + 10.0
+                    _signal_dedicated_process_group(
+                        child,
+                        start_time_ticks=child_start_time_ticks,
+                        signum=int(
+                            received_signal.get("signum", signal.SIGTERM)
+                        ),
+                    )
+                if (
+                    forwarding_deadline is not None
+                    and time.monotonic() >= forwarding_deadline
+                ):
+                    _terminate_dedicated_process_group(
+                        child,
+                        start_time_ticks=child_start_time_ticks,
+                        grace_seconds=0.0,
+                    )
+                    break
+                try:
+                    child.wait(timeout=0.2)
+                except subprocess.TimeoutExpired:
+                    continue
+        return int(child.returncode or 0)
+    finally:
+        if child is not None:
+            _terminate_dedicated_process_group(
+                child,
+                start_time_ticks=child_start_time_ticks,
+                grace_seconds=10.0,
+            )
+        if sealed is not None:
+            try:
+                os.close(sealed.descriptor)
+            except OSError:
+                pass
+        if interpreter is not None:
+            try:
+                os.close(interpreter.descriptor)
+            except OSError:
+                pass
+        if native_dependency is not None:
+            try:
+                os.close(native_dependency.descriptor.descriptor)
+            except OSError:
+                pass
+        if pin is not None:
+            _cleanup_plan_bound_control_plane(pin, capsule_parent)
+        if capsule_parent.exists():
+            try:
+                for directory in sorted(
+                    (
+                        entry
+                        for entry in capsule_parent.rglob("*")
+                        if entry.is_dir()
+                    ),
+                    key=lambda entry: len(entry.parts),
+                    reverse=True,
+                ):
+                    os.chmod(directory, 0o700)
+                os.chmod(capsule_parent, 0o700)
+                shutil.rmtree(capsule_parent)
+            except OSError as exc:
+                raise OperatorError(
+                    "sealed owner capsule cleanup was not observed"
+                ) from exc
+
+
+def _run_supervisor_owner(
+    config_path: Path,
+    *,
+    implement: bool,
+    duration: float,
+    sealed_control_plane_pin: Mapping[str, Any],
+    sealed_control_plane_descriptor: int,
+    retained_interpreter: Mapping[str, Any],
+    native_dependency_launch: Mapping[str, Any],
+    system_dependency_directories_json: str,
+    sealed_owner_environment: Mapping[str, str],
+) -> int:
+    """Run the owner only after entry through the sealed scheduler capsule."""
+
     from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
         preflight_configured_board,
     )
@@ -7670,13 +10576,76 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         STATE_SCHEMA_REVISION_ENV,
         STATE_STORE_GENERATION_ENV,
         STATE_STORE_LIVE_GENERATION_ENV,
+        accepted_control_plane_pin_json,
+        admit_retained_control_plane_interpreter,
+        admit_trusted_system_dependency_directories,
+        build_sealed_control_plane_module_command,
+        parse_accepted_control_plane_pin,
+        sealed_native_dependency_environment,
+        verify_agent_implementation_sealed_control_plane,
+    )
+    from ipfs_accelerate_py.llm_router import (
+        parse_agent_supervisor_native_dependency_launch,
+        verify_agent_supervisor_native_dependency_sealed_fd,
     )
     from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
         harden_state_authority_process,
-        state_authority_pass_fds,
+        make_state_authority_process_nondumpable,
+        prepare_state_authority_child_handoff,
     )
 
     board, _config = _load(config_path)
+    candidate_head, candidate_tree = _assert_clean_tree(board)
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+    )
+    try:
+        control_plane_pin = parse_accepted_control_plane_pin(
+            dict(sealed_control_plane_pin)
+        )
+        control_plane_descriptor = int(sealed_control_plane_descriptor)
+        if verify_agent_implementation_sealed_control_plane(
+            control_plane_pin,
+            control_plane_descriptor,
+        ) != f"/proc/self/fd/{control_plane_descriptor}":
+            raise ValueError("capsule descriptor path drifted")
+        interpreter = admit_retained_control_plane_interpreter(
+            descriptor=int(retained_interpreter["descriptor"]),
+            argv0=str(retained_interpreter["argv0"]),
+            expected_sha256=str(retained_interpreter["sha256"]),
+        )
+        native_dependency = parse_agent_supervisor_native_dependency_launch(
+            native_dependency_launch
+        )
+        native_descriptor = native_dependency.descriptor.descriptor
+        if verify_agent_supervisor_native_dependency_sealed_fd(
+            native_dependency
+        ) != f"/proc/self/fd/{native_descriptor}":
+            raise ValueError("native dependency descriptor path drifted")
+        admit_trusted_system_dependency_directories(
+            system_dependency_directories_json
+        )
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        raise OperatorError("sealed owner launch binding is invalid") from exc
+    if (
+        control_plane_pin.source_head != candidate_head
+        or control_plane_pin.source_tree != candidate_tree
+    ):
+        raise OperatorError("sealed owner capsule differs from candidate")
+    if (
+        dict(sealed_owner_environment)
+        != _sealed_owner_delegation_environment(
+            _validate_aseh_qualification_home(
+                Path(str(sealed_owner_environment.get("HOME") or ""))
+            )
+        )
+        or dict(os.environ) != dict(sealed_owner_environment)
+        or native_dependency.pin.as_dict() != ASEH_R11_NATIVE_DEPENDENCY_PIN
+        or sys.modules.get("duckdb") is not sys.modules.get("_duckdb")
+    ):
+        raise OperatorError("sealed owner dependency or environment differs")
     paths = _paths(board)
     if not paths["bootstrap_receipt"].is_file() or not paths["database"].is_file():
         raise OperatorError("materialize the sealed board before starting the owner")
@@ -7687,17 +10656,33 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             + json.dumps(preflight.get("errors") or [])
         )
     launch_admission = _admit_materialized_launch(board, _config, paths)
+    _assert_exact_run_launch_admission(
+        launch_admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
     server = _build_server(board, paths)
     stop = threading.Event()
     failure_event = threading.Event()
     failure: dict[str, Any] = {}
     monitor_thread: threading.Thread | None = None
     scheduler: subprocess.Popen[Any] | None = None
+    scheduler_start_time_ticks: int | None = None
     prior_environment: dict[str, str | None] = {}
     shutdown_requested = threading.Event()
     received_signal: dict[str, int] = {}
     with _stop_signal_handlers(shutdown_requested, received_signal):
         try:
+            # The owner becomes non-dumpable before it creates the reusable
+            # sealed broker secret.  Children never inherit that descriptor;
+            # they redeem it one-shot only after their final exec hardens.
+            make_state_authority_process_nondumpable()
+            _assert_candidate_authorization_witness(
+                authorization_witness,
+                expected_head=candidate_head,
+                expected_tree=candidate_tree,
+                boundary="after launch admission immediately before owner start",
+            )
             identity = server.start()
             launched_at = time.time()
             configured_program = board.resolved_database_program()
@@ -7744,18 +10729,95 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
                 prior_environment[name] = os.environ.get(name)
                 os.environ[name] = value
             harden_state_authority_process()
-            argv = [
-                sys.executable,
-                str(ROOT / "scripts/ops/agent_supervisor/configured_board_scheduler.py"),
+            scheduler_arguments = [
                 "--repo-root", str(ROOT), "--config", str(board.config_path),
+                "--accepted-tree-root", str(ROOT),
+                "--accepted-control-plane-pin-json",
+                accepted_control_plane_pin_json(control_plane_pin),
+                "--accepted-control-plane-fd", str(control_plane_descriptor),
+                "--accepted-control-plane-capsule-parent",
+                str(Path(control_plane_pin.capsule_root).parent),
                 "launch", "--foreground", "--duration-seconds", str(duration),
             ]
             if implement:
-                argv.append("--implement")
-            scheduler = subprocess.Popen(
-                argv, cwd=ROOT, env=dict(os.environ), start_new_session=True,
-                pass_fds=state_authority_pass_fds(os.environ),
+                scheduler_arguments.append("--implement")
+            argv = build_sealed_control_plane_module_command(
+                python_executable=interpreter.argv0,
+                pin=control_plane_pin,
+                descriptor=control_plane_descriptor,
+                module_name=(
+                    "ipfs_accelerate_py.agent_supervisor.runtime."
+                    "configured_board_scheduler"
+                ),
+                argv=scheduler_arguments,
+                retained_interpreter=interpreter,
+                native_dependency_launch=native_dependency,
+                accepted_native_authorization_id=(
+                    native_dependency.accepted_authorization_id
+                ),
+                system_dependency_directories_json=(
+                    system_dependency_directories_json
+                ),
             )
+            scheduler_environment = dict(os.environ)
+            for name in tuple(scheduler_environment):
+                if (
+                    name.startswith(("PYTHON", "PYTEST", "LD_", "DYLD_"))
+                    or name == "GLIBC_TUNABLES"
+                ):
+                    scheduler_environment.pop(name, None)
+            scheduler_environment.update(
+                sealed_native_dependency_environment(
+                    native_dependency,
+                    system_dependency_directories_json=(
+                        system_dependency_directories_json
+                    ),
+                )
+            )
+            scheduler_handoff = prepare_state_authority_child_handoff(
+                scheduler_environment,
+                parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
+            )
+            try:
+                _assert_candidate_authorization_witness(
+                    authorization_witness,
+                    expected_head=candidate_head,
+                    expected_tree=candidate_tree,
+                    boundary="immediately before sealed scheduler Popen",
+                )
+                scheduler = subprocess.Popen(
+                    argv,
+                    executable=interpreter.executable_path,
+                    cwd=ROOT,
+                    env=scheduler_environment,
+                    start_new_session=True,
+                    pass_fds=tuple(
+                        sorted(
+                            {
+                                control_plane_descriptor,
+                                interpreter.descriptor,
+                                native_descriptor,
+                                *scheduler_handoff.pass_fds,
+                            }
+                        )
+                    ),
+                )
+                scheduler_start_time_ticks = _dedicated_process_group_birth(
+                    scheduler
+                )
+                scheduler_handoff.deliver(
+                    scheduler,
+                    expected_executable_descriptor=interpreter.descriptor,
+                    expected_argv=argv,
+                )
+            except BaseException:
+                scheduler_handoff.close()
+                if scheduler is not None:
+                    _terminate_scheduler(
+                        scheduler,
+                        scheduler_start_time_ticks,
+                    )
+                raise
             initial_health, last_progress_at = _await_initial_health(
                 board, paths, server, scheduler, launched_at=launched_at,
                 failure=failure, failure_event=failure_event,
@@ -7805,7 +10867,10 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
                         int(received_signal.get("signum") or signal.SIGTERM)
                     )
                 if failure_event.wait(0.25):
-                    _terminate_scheduler(scheduler)
+                    _terminate_scheduler(
+                        scheduler,
+                        scheduler_start_time_ticks,
+                    )
                     raise OperatorError(
                         f"foreground control plane failed: {failure.get('reason_code')}"
                     )
@@ -7815,7 +10880,10 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         finally:
             stop.set()
             if scheduler is not None:
-                _terminate_scheduler(scheduler)
+                _terminate_scheduler(
+                    scheduler,
+                    scheduler_start_time_ticks,
+                )
             if monitor_thread is not None:
                 monitor_thread.join(timeout=2.0)
             try:
@@ -8386,8 +11454,13 @@ def _broker_status_query(
         owner_status=owner_status,
         expected_snapshot=snapshot,
     )
+    event_cursor = snapshot.get("event_cursor")
+    if type(event_cursor) is not int or event_cursor < 0:
+        raise OperatorError("Quack status event cursor is unavailable")
     return {
         "available": True,
+        "metrics_available": True,
+        "metrics_unavailable_reason": "",
         "transport": "quack",
         "credential_path": "sealed_memfd_broker",
         "projection_matches_events": replay_witness.get(
@@ -8418,7 +11491,7 @@ def _broker_status_query(
         "terminal_count": sum(statuses.get(item, 0) for item in TERMINAL_STATUSES),
         "objective_count": int(snapshot.get("objective_count", -1)),
         "plan_count": int(snapshot.get("plan_count", -1)),
-        "event_cursor": int(snapshot.get("event_cursor") or 0),
+        "event_cursor": event_cursor,
     }
 
 
@@ -8720,6 +11793,37 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
     return rows
 
 
+def _unavailable_status_authority(
+    *,
+    reason_code: str,
+    error_type: str,
+    error: str,
+) -> dict[str, Any]:
+    """Represent missing Quack observations as unavailable, never as zero."""
+
+    if reason_code not in {
+        "quack_status_query_failed",
+        "owner_publication_race",
+        "owner_replica_binding_unavailable",
+        "owner_replica_publication_unstable",
+    }:
+        raise OperatorError("status metric unavailability reason is invalid")
+    return {
+        "available": False,
+        "metrics_available": False,
+        "metrics_unavailable_reason": reason_code,
+        "error_type": error_type,
+        "error": error,
+        "ready_count": None,
+        "active_count": None,
+        "blocked_count": None,
+        "terminal_count": None,
+        "event_cursor": None,
+        "task_statuses": None,
+        "task_revisions": None,
+    }
+
+
 def _status_sample(
     board: Any,
     paths: Mapping[str, Path],
@@ -8764,18 +11868,15 @@ def _status_sample(
             )
             if transport_refresh:
                 reset_quack_transport_cache(quack_uri)
-            authority = {
-                "available": False,
-                "error_type": type(exc).__name__,
-                "error": str(exc),
-                "ready_count": 0,
-                "active_count": 0,
-                "blocked_count": 0,
-                "terminal_count": 0,
-                "event_cursor": 0,
-                "task_statuses": {},
-                "task_revisions": {},
-            }
+            authority = _unavailable_status_authority(
+                reason_code=(
+                    "owner_publication_race"
+                    if retryable_publication_race
+                    else "quack_status_query_failed"
+                ),
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
         owner_status_after = server.status()
         if authority.get("available") is not True:
             if (
@@ -8791,36 +11892,20 @@ def _status_sample(
                 == _published_replica_binding(owner_status_after, paths)
             )
         except Exception as exc:
-            authority = {
-                "available": False,
-                "error_type": type(exc).__name__,
-                "error": str(exc),
-                "ready_count": 0,
-                "active_count": 0,
-                "blocked_count": 0,
-                "terminal_count": 0,
-                "event_cursor": 0,
-                "task_statuses": {},
-                "task_revisions": {},
-            }
+            authority = _unavailable_status_authority(
+                reason_code="owner_replica_binding_unavailable",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             break
         if stable_replica:
             break
         if attempt + 1 == STATUS_REPLICA_STABILITY_ATTEMPTS:
-            authority = {
-                "available": False,
-                "error_type": "OperatorError",
-                "error": (
-                    "owner replica publication changed during status query"
-                ),
-                "ready_count": 0,
-                "active_count": 0,
-                "blocked_count": 0,
-                "terminal_count": 0,
-                "event_cursor": 0,
-                "task_statuses": {},
-                "task_revisions": {},
-            }
+            authority = _unavailable_status_authority(
+                reason_code="owner_replica_publication_unstable",
+                error_type="OperatorError",
+                error="owner replica publication changed during status query",
+            )
     scheduler_returncode = scheduler.poll()
     try:
         scheduler_process_group = os.getpgid(scheduler.pid)
@@ -9020,8 +12105,12 @@ def _bootstrap_authoritative_witness(
     bootstrap_snapshot = (
         bootstrap_snapshot if isinstance(bootstrap_snapshot, Mapping) else {}
     )
-    if int(authority.get("event_cursor") or 0) <= int(
-        bootstrap_snapshot.get("event_cursor") or 0
+    authority_cursor = authority.get("event_cursor")
+    bootstrap_cursor = bootstrap_snapshot.get("event_cursor")
+    if (
+        type(authority_cursor) is not int
+        or type(bootstrap_cursor) is not int
+        or authority_cursor <= bootstrap_cursor
     ):
         return []
     evidence = ["authoritative_event_since_bootstrap"]
@@ -9291,10 +12380,14 @@ def _health_receipt(
         admitted_semantic_corpus(candidate)
         for candidate in (prior_authority, authority)
     )
-    blocked_count = int(authority.get("blocked_count") or 0)
-    terminal_count = int(authority.get("terminal_count") or 0)
-    ready_count = int(authority.get("ready_count") or 0)
-    active_count = int(authority.get("active_count") or 0)
+    def observed_count(name: str) -> int | None:
+        value = authority.get(name)
+        return value if type(value) is int and value >= 0 else None
+
+    blocked_count = observed_count("blocked_count")
+    terminal_count = observed_count("terminal_count")
+    ready_count = observed_count("ready_count")
+    active_count = observed_count("active_count")
     delayed_ready_task_ids = authority.get("delayed_ready_task_ids")
     delayed_ready_task_ids = (
         delayed_ready_task_ids
@@ -9346,7 +12439,11 @@ def _health_receipt(
             and now - last_progress_at >= stale_seconds
         )
     )
-    blocked = bool(blocked_count or dependency_deadlock or failure)
+    blocked = bool(
+        (blocked_count is not None and blocked_count > 0)
+        or dependency_deadlock
+        or failure
+    )
     bootstrap_progress = _bootstrap_authoritative_witness(paths, authority)
     admission_progress = bool(progress or bootstrap_progress or terminal)
     ready_task_ids = authority.get("ready_task_ids")
@@ -9413,24 +12510,27 @@ def _health_receipt(
     blocked_recovery_scope = (
         "dependency_deadlock"
         if (
-            blocked_count > 0
+            blocked_count is not None
+            and blocked_count > 0
             and dependency_deadlock
             and now - last_progress_at <= blocked_recovery_window_seconds
         )
         else "parallel_startup"
         if (
-            blocked_count > 0
+            blocked_count is not None
+            and blocked_count > 0
             and startup_active
             and (
-                ready_count > 0
-                or active_count > 0
+                (ready_count is not None and ready_count > 0)
+                or (active_count is not None and active_count > 0)
                 or delayed_frontier_admitted
             )
         )
         else ""
     )
     blocked_recovery_admitted = bool(
-        blocked_count > 0
+        blocked_count is not None
+        and blocked_count > 0
         and blocked_recovery_scope
         and not terminal
         and not lane_stalled
@@ -9995,9 +13095,75 @@ def preflight(config_path: Path) -> tuple[int, dict[str, Any]]:
         preflight_configured_board,
     )
 
-    board, _config = _load(config_path)
-    report = preflight_configured_board(board)
-    return (0 if report.get("valid") is True else 1), dict(report)
+    board, configuration = _load(config_path)
+    report = dict(preflight_configured_board(board))
+    if report.get("valid") is not True:
+        return 1, report
+    paths = _paths(board)
+    if not paths["bootstrap_receipt"].is_file() or not paths["database"].is_file():
+        report["valid"] = False
+        report.setdefault("errors", []).append(
+            "sealed launch admission requires materialized control state"
+        )
+        return 1, report
+    try:
+        candidate_head = _git("rev-parse", "HEAD")
+        candidate_tree = _git("rev-parse", "HEAD^{tree}")
+        authorization_witness = _candidate_authorization_witness(
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+        )
+        admission = _admit_materialized_launch(
+            board,
+            configuration,
+            paths,
+        )
+        _assert_exact_run_launch_admission(
+            admission,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+    except (OperatorError, OSError, RuntimeError, ValueError) as exc:
+        report["valid"] = False
+        report.setdefault("errors", []).append(
+            "sealed launch admission failed: " + str(exc)
+        )
+        report["sealed_launch_admission"] = {
+            "admitted": False,
+            "error_type": type(exc).__name__,
+        }
+        return 1, report
+    report["sealed_launch_admission"] = {
+        "admitted": True,
+        "admission_cid": admission["admission_cid"],
+        "runtime_source_head": admission["runtime_source_head"],
+        "runtime_repository_tree_id": admission[
+            "runtime_repository_tree_id"
+        ],
+        "repair_transition_receipt_cid": (
+            admission.get("repair_transition", {}).get("receipt_cid")
+            if isinstance(admission.get("repair_transition"), Mapping)
+            else ""
+        ),
+    }
+    try:
+        _assert_candidate_authorization_witness(
+            authorization_witness,
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+            boundary="immediately before preflight admission",
+        )
+    except (OperatorError, OSError, RuntimeError, ValueError) as exc:
+        report["valid"] = False
+        report.setdefault("errors", []).append(
+            "sealed launch admission failed: " + str(exc)
+        )
+        report["sealed_launch_admission"] = {
+            "admitted": False,
+            "error_type": type(exc).__name__,
+        }
+        return 1, report
+    return 0, report
 
 
 def main(argv: list[str] | None = None) -> int:

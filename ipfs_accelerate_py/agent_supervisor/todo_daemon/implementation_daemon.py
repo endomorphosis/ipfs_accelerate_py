@@ -66414,6 +66414,7 @@ class PortalImplementationDaemon:
             STATE_ENDPOINT_SECRET_HANDLE_ENV,
             DatabaseProgramConfig,
             DatabaseProgramConfigError,
+            provider_subprocess_environment,
             scrub_state_credentials_from_environment,
         )
 
@@ -66424,6 +66425,7 @@ class PortalImplementationDaemon:
         raw_program = str(
             source_environment.get(DATABASE_PROGRAM_JSON_ENV, "") or ""
         ).strip()
+        database_program = None
         if raw_program:
             try:
                 program_payload = json.loads(raw_program)
@@ -66440,9 +66442,12 @@ class PortalImplementationDaemon:
                 ) from exc
             secret_handle = database_program.endpoint_secret_handle
 
-        environment = scrub_state_credentials_from_environment(
-            source_environment,
-            secret_handle=secret_handle,
+        environment = provider_subprocess_environment(
+            scrub_state_credentials_from_environment(
+                source_environment,
+                secret_handle=secret_handle,
+            ),
+            program=database_program,
         )
         for name in DATABASE_PROGRAM_ENV_NAMES:
             environment.pop(name, None)
@@ -66483,7 +66488,6 @@ class PortalImplementationDaemon:
 
         return observe
 
-    @staticmethod
     @staticmethod
     def _normalize_implementation_failure(
         failure: Mapping[str, Any],

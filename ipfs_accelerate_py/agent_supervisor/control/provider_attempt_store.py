@@ -6,12 +6,14 @@ separates "safe to start the Docker effect" from "adopt existing state".
 """
 from __future__ import annotations
 
+import errno
 import fcntl
 import hashlib
 import json
 import os
 import re
 import secrets
+import socket
 import stat
 import subprocess
 import tempfile
@@ -20,7 +22,20 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
 
-CAS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/provider-attempt-cas@5"
+CAS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/provider-attempt-cas@7"
+_PREVIOUS_CAS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/provider-attempt-cas@6"
+)
+_LEGACY_CAS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/provider-attempt-cas@5"
+TERMINAL_CLEANUP_AUTHORITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/terminal-cleanup-authority@1"
+)
+TERMINAL_CLEANUP_INTENT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/terminal-cleanup-intent@1"
+)
+TERMINAL_CLEANUP_PROGRESS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/terminal-cleanup-progress@1"
+)
 EFFECT_LAUNCH_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/provider-effect-launch@2"
 )
@@ -34,6 +49,7 @@ _STATES = frozenset({"reserved", "effect_started", "quarantined", "terminal"})
 _MAX_RESERVATION_BYTES = 768 * 1024
 _MAX_DOCKER_INSPECTION_BYTES = 256 * 1024
 _MAX_AUTHORIZATION_CONTEXT_BYTES = 512 * 1024
+_PROVIDER_ATTEMPT_LOCK_TIMEOUT_SECONDS = 5.0
 _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
 _CODEX_CONTAINER_NAME_RE = re.compile(
     r"ipfs-accelerate-codex-[0-9]+-[0-9a-f]{32}"
@@ -73,11 +89,34 @@ class ProviderAttemptStoreError(ValueError):
 
 
 def _canonical(value: Mapping[str, Any]) -> bytes:
+    """Encode the historical provider-attempt CAS byte contract.
+
+    This ASCII-escaped encoding is part of the content identities already
+    persisted by the @5/@6 schemas and must not be changed in place.
+    """
+
     return json.dumps(
         dict(value),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _cleanup_canonical(value: Mapping[str, Any]) -> bytes:
+    """Encode the cross-module terminal-cleanup identity byte contract.
+
+    Cleanup intents are constructed in the Grok runtime and admitted here,
+    so both modules deliberately use canonical, unescaped Unicode encoded as
+    UTF-8.  Keep this separate from the historical attempt-CAS encoder above.
+    """
+
+    return json.dumps(
+        dict(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
         allow_nan=False,
     ).encode("utf-8")
 
@@ -397,6 +436,8 @@ class ProviderAttemptReservation:
     terminal_returncode: int | None = None
     terminal_outcome_id: str = ""
     terminal_outcome: Mapping[str, Any] = field(default_factory=dict)
+    terminal_cleanup_authority: Mapping[str, Any] = field(default_factory=dict)
+    terminal_cleanup_progress: Mapping[str, Any] = field(default_factory=dict)
     schema: str = CAS_SCHEMA
 
     @property
@@ -425,6 +466,433 @@ class ProviderAttemptCASResult:
     adoption_authorized: bool = False
     effect_launch_receipt: Mapping[str, Any] = field(default_factory=dict)
     completion_capability: str = field(default="", repr=False, compare=False)
+
+
+def _terminal_cleanup_authority_value(
+    reservation: ProviderAttemptReservation,
+    *,
+    terminal_outcome: Mapping[str, Any],
+    returncode: int,
+    evidence: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Bind protected Docker cleanup identity into the terminal CAS.
+
+    The runtime validates the live cleanup binding and supplies only its
+    content identities. This store adds the attempt/launch identities while
+    holding the terminal CAS lock. A later same-UID, self-hashed completion
+    record therefore cannot mint a different binding or termination fence.
+    """
+
+    launch = reservation.effect_launch_receipt
+    protected = bool(
+        isinstance(launch, Mapping)
+        and "cleanup_id" in launch
+        and "cleanup_receipt" in launch
+    )
+    supplied = dict(evidence or {})
+    if not protected:
+        if supplied:
+            raise ProviderAttemptStoreError(
+                "legacy terminal effect cannot claim cleanup authority"
+            )
+        return {}
+    if set(supplied) != {
+        "binding_path",
+        "binding_record_id",
+        "termination_fence_id",
+    }:
+        raise ProviderAttemptStoreError(
+            "protected terminal cleanup evidence is incomplete"
+        )
+    binding_path = Path(str(supplied.get("binding_path") or ""))
+    binding_record_id = str(supplied.get("binding_record_id") or "")
+    termination_fence_id = str(
+        supplied.get("termination_fence_id") or ""
+    )
+    fallback_dispatched = terminal_outcome.get("fallback_dispatched")
+    expected_binding_name = (
+        hashlib.sha256(
+            str(launch.get("container_name") or "").encode("ascii")
+        ).hexdigest()
+        + ".json"
+    )
+    cleanup_receipt = launch.get("cleanup_receipt")
+    if (
+        terminal_outcome.get("reservation_id") != reservation.reservation_id
+        or terminal_outcome.get("effect_launch_receipt") != launch
+        or terminal_outcome.get("fallback_returncode") != returncode
+        or not isinstance(fallback_dispatched, bool)
+        or not binding_path.is_absolute()
+        or ".." in binding_path.parts
+        or binding_path.name != expected_binding_name
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", binding_record_id) is None
+        or (
+            fallback_dispatched
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}", termination_fence_id
+            )
+            is None
+        )
+        or (not fallback_dispatched and termination_fence_id)
+        or not isinstance(cleanup_receipt, Mapping)
+        or launch.get("cleanup_id") != cleanup_receipt.get("receipt_id")
+    ):
+        raise ProviderAttemptStoreError(
+            "protected terminal cleanup evidence is invalid"
+        )
+    body: dict[str, Any] = {
+        "schema": TERMINAL_CLEANUP_AUTHORITY_SCHEMA,
+        "logical_attempt_id": reservation.logical_attempt_id,
+        "reservation_id": reservation.reservation_id,
+        "cleanup_id": launch["cleanup_id"],
+        "binding_path": str(binding_path),
+        "binding_record_id": binding_record_id,
+        "termination_fence_id": termination_fence_id,
+    }
+    body["authority_id"] = "sha256:" + hashlib.sha256(
+        _cleanup_canonical(body)
+    ).hexdigest()
+    return body
+
+
+def _valid_terminal_cleanup_authority(
+    reservation: ProviderAttemptReservation,
+) -> bool:
+    authority = reservation.terminal_cleanup_authority
+    launch = reservation.effect_launch_receipt
+    protected = bool(
+        isinstance(launch, Mapping)
+        and "cleanup_id" in launch
+        and "cleanup_receipt" in launch
+    )
+    if not protected:
+        return not authority
+    # Existing @5 terminal records remain readable for diagnosis, but runtime
+    # cleanup admission explicitly rejects their absent authority. Every new
+    # terminal transition upgrades to @6 below.
+    if reservation.schema == _LEGACY_CAS_SCHEMA and not authority:
+        return True
+    expected = {
+        "schema",
+        "logical_attempt_id",
+        "reservation_id",
+        "cleanup_id",
+        "binding_path",
+        "binding_record_id",
+        "termination_fence_id",
+        "authority_id",
+    }
+    if not isinstance(authority, Mapping) or set(authority) != expected:
+        return False
+    body = {
+        key: item for key, item in authority.items() if key != "authority_id"
+    }
+    binding_path = Path(str(authority.get("binding_path") or ""))
+    fallback_dispatched = reservation.terminal_outcome.get(
+        "fallback_dispatched"
+    )
+    expected_binding_name = (
+        hashlib.sha256(
+            str(launch.get("container_name") or "").encode("ascii")
+        ).hexdigest()
+        + ".json"
+    )
+    return bool(
+        authority.get("schema") == TERMINAL_CLEANUP_AUTHORITY_SCHEMA
+        and authority.get("logical_attempt_id")
+        == reservation.logical_attempt_id
+        and authority.get("reservation_id") == reservation.reservation_id
+        and authority.get("cleanup_id") == launch.get("cleanup_id")
+        and binding_path.is_absolute()
+        and ".." not in binding_path.parts
+        and binding_path.name == expected_binding_name
+        and re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(authority.get("binding_record_id") or ""),
+        )
+        is not None
+        and isinstance(fallback_dispatched, bool)
+        and (
+            (
+                fallback_dispatched
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(authority.get("termination_fence_id") or ""),
+                )
+                is not None
+            )
+            or (
+                not fallback_dispatched
+                and authority.get("termination_fence_id") == ""
+            )
+        )
+        and authority.get("authority_id")
+        == "sha256:" + hashlib.sha256(_cleanup_canonical(body)).hexdigest()
+    )
+
+
+def _valid_terminal_cleanup_intent(
+    reservation: ProviderAttemptReservation,
+    intent: Mapping[str, Any],
+) -> bool:
+    """Validate one exact, pre-mutation cleanup intent against terminal CAS."""
+
+    authority = reservation.terminal_cleanup_authority
+    launch = reservation.effect_launch_receipt
+    cleanup = launch.get("cleanup_receipt")
+    expected_fields = {
+        "schema",
+        "logical_attempt_id",
+        "reservation_id",
+        "cleanup_id",
+        "authority_id",
+        "binding_path",
+        "binding_identity",
+        "binding_record_id",
+        "termination_fence_id",
+        "lifecycle",
+        "resources",
+        "docker_absence",
+        "intent_id",
+    }
+    if (
+        not isinstance(intent, Mapping)
+        or set(intent) != expected_fields
+        or not isinstance(authority, Mapping)
+        or not isinstance(cleanup, Mapping)
+    ):
+        return False
+    body = {key: item for key, item in intent.items() if key != "intent_id"}
+    binding_identity = intent.get("binding_identity")
+    lifecycle = intent.get("lifecycle")
+    resources = intent.get("resources")
+    docker_absence = intent.get("docker_absence")
+    expected_lifecycle = {
+        "run_id",
+        "profile_id",
+        "target_id",
+        "repository_root",
+        "state_root",
+        "run_root",
+        "configuration_root",
+        "fencing_epoch",
+    }
+    if (
+        intent.get("schema") != TERMINAL_CLEANUP_INTENT_SCHEMA
+        or intent.get("logical_attempt_id") != reservation.logical_attempt_id
+        or intent.get("reservation_id") != reservation.reservation_id
+        or intent.get("cleanup_id") != authority.get("cleanup_id")
+        or intent.get("authority_id") != authority.get("authority_id")
+        or intent.get("binding_path") != authority.get("binding_path")
+        or intent.get("binding_record_id")
+        != authority.get("binding_record_id")
+        or intent.get("termination_fence_id")
+        != authority.get("termination_fence_id")
+        or not isinstance(binding_identity, Mapping)
+        or set(binding_identity) != {"device", "inode", "mode", "uid"}
+        or any(
+            isinstance(binding_identity.get(name), bool)
+            or not isinstance(binding_identity.get(name), int)
+            or int(binding_identity.get(name) or 0) < 0
+            for name in ("device", "inode", "mode", "uid")
+        )
+        or binding_identity.get("uid") != os.geteuid()
+        or not stat.S_ISREG(int(binding_identity.get("mode") or 0))
+        or not isinstance(lifecycle, Mapping)
+        or set(lifecycle) != expected_lifecycle
+        or any(
+            not isinstance(lifecycle.get(name), str)
+            or not str(lifecycle.get(name) or "")
+            for name in expected_lifecycle - {"fencing_epoch"}
+        )
+        or isinstance(lifecycle.get("fencing_epoch"), bool)
+        or not isinstance(lifecycle.get("fencing_epoch"), int)
+        or int(lifecycle.get("fencing_epoch") or 0) < 0
+        or not isinstance(resources, list)
+        or len(resources) != 3
+        or not isinstance(docker_absence, Mapping)
+        or docker_absence.get("binding_record_id")
+        != authority.get("binding_record_id")
+        or intent.get("intent_id")
+        != "sha256:" + hashlib.sha256(_cleanup_canonical(body)).hexdigest()
+    ):
+        return False
+
+    expected_resources = (
+        ("prompt_path", cleanup.get("prompt_path"), False),
+        ("provider_home", cleanup.get("provider_home"), True),
+        ("lease_root", cleanup.get("lease_root"), True),
+    )
+    for item, (name, expected_path, directory) in zip(
+        resources,
+        expected_resources,
+        strict=True,
+    ):
+        if not isinstance(item, Mapping) or set(item) != {
+            "name",
+            "path",
+            "directory",
+            "identity",
+            "tombstone_id",
+        }:
+            return False
+        identity = item.get("identity")
+        if (
+            item.get("name") != name
+            or item.get("path") != expected_path
+            or item.get("directory") is not directory
+            or not isinstance(identity, Mapping)
+            or set(identity) != {"device", "inode", "mode", "uid"}
+            or any(
+                isinstance(identity.get(field), bool)
+                or not isinstance(identity.get(field), int)
+                or int(identity.get(field) or 0) < 0
+                for field in ("device", "inode", "mode", "uid")
+            )
+            or identity.get("uid") != os.geteuid()
+            or (
+                stat.S_ISDIR(int(identity.get("mode") or 0))
+                if directory
+                else stat.S_ISREG(int(identity.get("mode") or 0))
+            )
+            is not True
+        ):
+            return False
+        tombstone_body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "cleanup-path-tombstone@1"
+            ),
+            "path": str(Path(str(expected_path or "")).absolute()),
+            "directory": directory,
+            "identity": {
+                field: int(identity.get(field, -1))
+                for field in ("device", "inode", "mode", "uid")
+            },
+            "transition": "exact_inode_quarantined_for_removal",
+        }
+        expected_tombstone_id = "sha256:" + hashlib.sha256(
+            _cleanup_canonical(tombstone_body)
+        ).hexdigest()
+        if item.get("tombstone_id") != expected_tombstone_id:
+            return False
+    fence_id = str(authority.get("termination_fence_id") or "")
+    if fence_id:
+        if (
+            docker_absence.get("kind") != "fenced_effect_absence"
+            or docker_absence.get("fence_id") != fence_id
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(docker_absence.get("dispatch_id") or ""),
+            )
+            is None
+        ):
+            return False
+    elif docker_absence.get("kind") != "unmaterialized_name_absence":
+        return False
+    return True
+
+
+def _terminal_cleanup_progress_value(
+    reservation: ProviderAttemptReservation,
+    *,
+    intent: Mapping[str, Any],
+    phase: str,
+    completion_id: str = "",
+    previous_progress_id: str = "",
+) -> dict[str, Any]:
+    if phase not in {"intent_committed", "completion_committed"}:
+        raise ProviderAttemptStoreError("terminal cleanup phase is invalid")
+    if not _valid_terminal_cleanup_intent(reservation, intent):
+        raise ProviderAttemptStoreError("terminal cleanup intent is invalid")
+    if (
+        (phase == "intent_committed" and completion_id)
+        or (
+            phase == "completion_committed"
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", completion_id) is None
+        )
+        or (
+            previous_progress_id
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}", previous_progress_id
+            )
+            is None
+        )
+    ):
+        raise ProviderAttemptStoreError(
+            "terminal cleanup progress identity is invalid"
+        )
+    body: dict[str, Any] = {
+        "schema": TERMINAL_CLEANUP_PROGRESS_SCHEMA,
+        "logical_attempt_id": reservation.logical_attempt_id,
+        "reservation_id": reservation.reservation_id,
+        "authority_id": reservation.terminal_cleanup_authority.get(
+            "authority_id"
+        ),
+        "phase": phase,
+        "intent_id": intent.get("intent_id"),
+        "intent": dict(intent),
+        "completion_id": completion_id,
+        "previous_progress_id": previous_progress_id,
+    }
+    body["progress_id"] = "sha256:" + hashlib.sha256(
+        _cleanup_canonical(body)
+    ).hexdigest()
+    return body
+
+
+def _valid_terminal_cleanup_progress(
+    reservation: ProviderAttemptReservation,
+) -> bool:
+    progress = reservation.terminal_cleanup_progress
+    if not progress:
+        return True
+    if reservation.state != "terminal" or reservation.schema != CAS_SCHEMA:
+        return False
+    expected = {
+        "schema",
+        "logical_attempt_id",
+        "reservation_id",
+        "authority_id",
+        "phase",
+        "intent_id",
+        "intent",
+        "completion_id",
+        "previous_progress_id",
+        "progress_id",
+    }
+    if not isinstance(progress, Mapping) or set(progress) != expected:
+        return False
+    intent = progress.get("intent")
+    if not isinstance(intent, Mapping):
+        return False
+    try:
+        expected_value = _terminal_cleanup_progress_value(
+            reservation,
+            intent=intent,
+            phase=str(progress.get("phase") or ""),
+            completion_id=str(progress.get("completion_id") or ""),
+            previous_progress_id=str(
+                progress.get("previous_progress_id") or ""
+            ),
+        )
+    except ProviderAttemptStoreError:
+        return False
+    if progress != expected_value:
+        return False
+    if progress.get("phase") == "intent_committed":
+        return progress.get("previous_progress_id") == ""
+    try:
+        predecessor = _terminal_cleanup_progress_value(
+            reservation,
+            intent=intent,
+            phase="intent_committed",
+        )
+    except ProviderAttemptStoreError:
+        return False
+    return progress.get("previous_progress_id") == predecessor.get(
+        "progress_id"
+    )
 
 
 def _valid_effect_launch_receipt(
@@ -1291,6 +1759,66 @@ def _inspect_recorded_docker_effect(
     }
 
 
+class _ProviderAttemptLock:
+    """One file lock plus a pathname-independent kernel uniqueness lease."""
+
+    def __init__(
+        self,
+        descriptor: int,
+        uniqueness_socket: socket.socket,
+    ) -> None:
+        self.descriptor = descriptor
+        self.uniqueness_socket = uniqueness_socket
+        self._closed = False
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            fcntl.flock(self.descriptor, fcntl.LOCK_UN)
+        finally:
+            try:
+                os.close(self.descriptor)
+            finally:
+                # Acquisition takes this pathname lease before the inode
+                # flock, so a successor cannot enter either the original or
+                # a replacement inode until the complete handle is closed.
+                self.uniqueness_socket.close()
+
+
+def _provider_attempt_lock_uniqueness_socket(
+    path: Path,
+    *,
+    deadline: float,
+) -> socket.socket:
+    """Bind one Linux kernel name for an exact normalized lock pathname."""
+
+    normalized = os.path.normpath(os.path.abspath(os.fspath(path)))
+    identity = hashlib.sha256(
+        f"{os.geteuid()}\0{normalized}".encode("utf-8")
+    ).hexdigest()
+    address = b"\0ipfs-accelerate-provider-attempt-" + identity.encode("ascii")
+    while True:
+        channel = socket.socket(
+            socket.AF_UNIX,
+            socket.SOCK_DGRAM | getattr(socket, "SOCK_CLOEXEC", 0),
+        )
+        try:
+            channel.set_inheritable(False)
+            channel.bind(address)
+            return channel
+        except OSError as exc:
+            channel.close()
+            remaining = deadline - time.monotonic()
+            if exc.errno != errno.EADDRINUSE or remaining <= 0:
+                raise
+            time.sleep(min(0.01, remaining))
+        except BaseException:
+            channel.close()
+            raise
+
+
 class DurableProviderAttemptCAS:
     """File-lock-backed compare-and-swap for one fallback provider effect."""
 
@@ -1299,11 +1827,16 @@ class DurableProviderAttemptCAS:
         directory: Path | str,
         *,
         expected_directory_identity: str = "",
+        create_if_missing: bool = True,
     ) -> None:
         self.directory = _absolute_without_symlinks(Path(directory))
         if _entry_exists(self.directory):
             observed_identity = _owned_directory(self.directory)
         else:
+            if not create_if_missing:
+                raise ProviderAttemptStoreError(
+                    "attempt reservation directory is absent"
+                )
             created_identity = _create_directory_chain(self.directory)
             if _absolute_without_symlinks(self.directory) != self.directory:
                 raise ProviderAttemptStoreError(
@@ -1364,7 +1897,7 @@ class DurableProviderAttemptCAS:
         ).hexdigest()
         return self.directory / (safe + ".json")
 
-    def _lock(self, logical_attempt_id: str) -> tuple[int, Path]:
+    def _validate_directory_binding(self) -> None:
         observed_identity = _owned_directory(self.directory)
         if observed_identity != self.directory_identity:
             raise ProviderAttemptStoreError(
@@ -1385,8 +1918,13 @@ class DurableProviderAttemptCAS:
             raise ProviderAttemptStoreError(
                 "attempt reservation directory binding drifted"
             )
+
+    def _lock(self, logical_attempt_id: str) -> tuple[_ProviderAttemptLock, Path]:
+        self._validate_directory_binding()
         path = self._path(logical_attempt_id)
         lock_name = path.with_suffix(".lock").name
+        descriptor = -1
+        uniqueness_socket: socket.socket | None = None
         try:
             descriptor = os.open(
                 lock_name,
@@ -1397,40 +1935,82 @@ class DurableProviderAttemptCAS:
                 0o600,
                 dir_fd=self._directory_fd,
             )
-        except OSError as exc:
-            raise ProviderAttemptStoreError(
-                "attempt reservation lock is unavailable"
-            ) from exc
-        metadata = os.fstat(descriptor)
-        try:
+            metadata = os.fstat(descriptor)
             final_path = os.stat(
                 lock_name,
                 dir_fd=self._directory_fd,
                 follow_symlinks=False,
             )
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+                or metadata.st_nlink != 1
+                or stat.S_IMODE(metadata.st_mode) != 0o600
+                or _regular_snapshot(metadata) != _regular_snapshot(final_path)
+            ):
+                raise ProviderAttemptStoreError(
+                    "attempt reservation lock is invalid"
+                )
+            lock_deadline = (
+                time.monotonic() + _PROVIDER_ATTEMPT_LOCK_TIMEOUT_SECONDS
+            )
+            try:
+                uniqueness_socket = _provider_attempt_lock_uniqueness_socket(
+                    path.with_suffix(".lock"),
+                    deadline=lock_deadline,
+                )
+            except OSError as exc:
+                if exc.errno == errno.EADDRINUSE:
+                    raise ProviderAttemptStoreError(
+                        "attempt reservation lock pathname is contended"
+                    ) from exc
+                raise ProviderAttemptStoreError(
+                    "attempt reservation lock uniqueness lease is unavailable"
+                ) from exc
+            while True:
+                try:
+                    fcntl.flock(
+                        descriptor,
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+                    break
+                except BlockingIOError:
+                    remaining = lock_deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise ProviderAttemptStoreError(
+                            "attempt reservation lock is contended"
+                        ) from None
+                    time.sleep(min(0.01, remaining))
+            named = os.stat(
+                lock_name,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            locked = os.fstat(descriptor)
+            if _regular_snapshot(named) != _regular_snapshot(locked):
+                raise ProviderAttemptStoreError(
+                    "attempt reservation lock name changed"
+                )
+            self._validate_directory_binding()
+            return _ProviderAttemptLock(descriptor, uniqueness_socket), path
+        except ProviderAttemptStoreError:
+            if uniqueness_socket is not None:
+                uniqueness_socket.close()
+            if descriptor >= 0:
+                os.close(descriptor)
+            raise
         except OSError as exc:
-            os.close(descriptor)
+            if uniqueness_socket is not None:
+                uniqueness_socket.close()
+            if descriptor >= 0:
+                os.close(descriptor)
             raise ProviderAttemptStoreError(
-                "attempt reservation lock is invalid"
+                "attempt reservation lock is unavailable"
             ) from exc
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_uid != os.geteuid()
-            or metadata.st_nlink != 1
-            or stat.S_IMODE(metadata.st_mode) != 0o600
-            or _regular_snapshot(metadata) != _regular_snapshot(final_path)
-        ):
-            os.close(descriptor)
-            raise ProviderAttemptStoreError("attempt reservation lock is invalid")
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        return descriptor, path
 
     @staticmethod
-    def _unlock(descriptor: int) -> None:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-        finally:
-            os.close(descriptor)
+    def _unlock(descriptor: _ProviderAttemptLock) -> None:
+        descriptor.close()
 
     @staticmethod
     def _parse(value: Mapping[str, Any]) -> ProviderAttemptReservation:
@@ -1439,10 +2019,30 @@ class DurableProviderAttemptCAS:
             task_id="x", worktree_id="x", reservation_id="x",
             state="reserved", created_at_ms=1,
         )))
-        if not isinstance(value, Mapping) or set(value) != expected:
+        previous_expected = expected - {"terminal_cleanup_progress"}
+        legacy_expected = previous_expected - {"terminal_cleanup_authority"}
+        if not isinstance(value, Mapping) or frozenset(value) not in {
+            frozenset(expected),
+            frozenset(previous_expected),
+            frozenset(legacy_expected),
+        }:
             raise ProviderAttemptStoreError("attempt reservation fields are invalid")
+        parsed_value = dict(value)
+        if set(value) == previous_expected:
+            if value.get("schema") != _PREVIOUS_CAS_SCHEMA:
+                raise ProviderAttemptStoreError(
+                    "attempt reservation fields are invalid"
+                )
+            parsed_value["terminal_cleanup_progress"] = {}
+        elif set(value) == legacy_expected:
+            if value.get("schema") != _LEGACY_CAS_SCHEMA:
+                raise ProviderAttemptStoreError(
+                    "attempt reservation fields are invalid"
+                )
+            parsed_value["terminal_cleanup_authority"] = {}
+            parsed_value["terminal_cleanup_progress"] = {}
         try:
-            reservation = ProviderAttemptReservation(**dict(value))
+            reservation = ProviderAttemptReservation(**parsed_value)
         except (TypeError, ValueError) as exc:
             raise ProviderAttemptStoreError(
                 "attempt reservation fields are invalid"
@@ -1455,7 +2055,11 @@ class DurableProviderAttemptCAS:
         )
         if (
             not isinstance(reservation.schema, str)
-            or reservation.schema != CAS_SCHEMA
+            or reservation.schema not in {
+                CAS_SCHEMA,
+                _PREVIOUS_CAS_SCHEMA,
+                _LEGACY_CAS_SCHEMA,
+            }
             or not isinstance(reservation.state, str)
             or reservation.state not in _STATES
             or any(
@@ -1487,6 +2091,8 @@ class DurableProviderAttemptCAS:
             )
             or not isinstance(reservation.terminal_outcome_id, str)
             or not isinstance(reservation.terminal_outcome, Mapping)
+            or not isinstance(reservation.terminal_cleanup_authority, Mapping)
+            or not isinstance(reservation.terminal_cleanup_progress, Mapping)
             or not isinstance(reservation.authorization_context, Mapping)
             or len(_canonical(reservation.authorization_context))
             > _MAX_AUTHORIZATION_CONTEXT_BYTES
@@ -1538,6 +2144,8 @@ class DurableProviderAttemptCAS:
                     reservation.terminal_returncode,
                     reservation.terminal_outcome_id,
                     reservation.terminal_outcome,
+                    reservation.terminal_cleanup_authority,
+                    reservation.terminal_cleanup_progress,
                     )
                 )
             ))
@@ -1554,6 +2162,8 @@ class DurableProviderAttemptCAS:
                 or reservation.terminal_returncode is not None
                 or reservation.terminal_outcome_id
                 or reservation.terminal_outcome
+                or reservation.terminal_cleanup_authority
+                or reservation.terminal_cleanup_progress
                 or reservation.quarantine_at_ms is not None
                 or reservation.quarantine_receipt
                 or reservation.quarantine_terminalization_receipt
@@ -1581,6 +2191,8 @@ class DurableProviderAttemptCAS:
                 or reservation.terminal_returncode is not None
                 or reservation.terminal_outcome_id
                 or reservation.terminal_outcome
+                or reservation.terminal_cleanup_authority
+                or reservation.terminal_cleanup_progress
             ))
             or (reservation.state == "terminal" and (
                 reservation.effect_started_at_ms is None
@@ -1594,6 +2206,8 @@ class DurableProviderAttemptCAS:
                 or reservation.terminal_at_ms is None
                 or reservation.terminal_returncode is None
                 or not reservation.terminal_outcome_id
+                or not _valid_terminal_cleanup_authority(reservation)
+                or not _valid_terminal_cleanup_progress(reservation)
                 or (
                     reservation.quarantine_at_ms is None
                     and (
@@ -1644,6 +2258,7 @@ class DurableProviderAttemptCAS:
 
     def _read(self, path: Path) -> ProviderAttemptReservation:
         try:
+            self._validate_directory_binding()
             descriptor = os.open(
                 path.name,
                 os.O_RDONLY
@@ -1687,6 +2302,11 @@ class DurableProviderAttemptCAS:
                     )
             finally:
                 os.close(descriptor)
+            # A retained dirfd remains usable after its lexical directory is
+            # renamed.  Re-attest the canonical name after consuming the
+            # exact record so a detached historical directory can never be
+            # reported as current authoritative state.
+            self._validate_directory_binding()
             value = json.loads(
                 raw.decode("utf-8"),
                 object_pairs_hook=_unique_json_object,
@@ -1701,7 +2321,9 @@ class DurableProviderAttemptCAS:
             raise ProviderAttemptStoreError(
                 "attempt reservation is unreadable"
             ) from exc
-        return self._parse(value)
+        parsed = self._parse(value)
+        self._validate_directory_binding()
+        return parsed
 
     def _write(self, path: Path, reservation: ProviderAttemptReservation) -> None:
         # Parse our own serialization before replacing durable state.
@@ -1711,6 +2333,7 @@ class DurableProviderAttemptCAS:
             raise ProviderAttemptStoreError("attempt reservation is oversized")
         temporary_name = "." + path.name + "." + secrets.token_hex(8)
         try:
+            self._validate_directory_binding()
             descriptor = os.open(
                 temporary_name,
                 os.O_WRONLY
@@ -1725,6 +2348,11 @@ class DurableProviderAttemptCAS:
                 stream.flush()
                 os.fchmod(stream.fileno(), 0o600)
                 os.fsync(stream.fileno())
+            # Do not publish into a retained but detached directory.  A
+            # replacement after this check is detected by the post-fsync
+            # attestation below, so the caller never receives a successful
+            # CAS result for state outside the canonical namespace.
+            self._validate_directory_binding()
             os.replace(
                 temporary_name,
                 path.name,
@@ -1732,6 +2360,7 @@ class DurableProviderAttemptCAS:
                 dst_dir_fd=self._directory_fd,
             )
             os.fsync(self._directory_fd)
+            self._validate_directory_binding()
         finally:
             try:
                 os.unlink(temporary_name, dir_fd=self._directory_fd)
@@ -1739,6 +2368,7 @@ class DurableProviderAttemptCAS:
                 pass
 
     def _entry_exists(self, path: Path) -> bool:
+        self._validate_directory_binding()
         try:
             os.stat(
                 path.name,
@@ -1746,11 +2376,13 @@ class DurableProviderAttemptCAS:
                 follow_symlinks=False,
             )
         except FileNotFoundError:
+            self._validate_directory_binding()
             return False
         except OSError as exc:
             raise ProviderAttemptStoreError(
                 "attempt reservation is unavailable"
             ) from exc
+        self._validate_directory_binding()
         return True
 
     @staticmethod
@@ -2498,6 +3130,7 @@ class DurableProviderAttemptCAS:
         returncode: int = 0,
         outcome: Mapping[str, Any] | None = None,
         completion_capability: str = "",
+        terminal_cleanup_evidence: Mapping[str, Any] | None = None,
         effect_owner_id: str = _PROCESS_EFFECT_OWNER_ID,
         now_ms: int | None = None,
     ) -> ProviderAttemptReservation:
@@ -2597,18 +3230,157 @@ class DurableProviderAttemptCAS:
                 raise ProviderAttemptStoreError(
                     "terminal timestamp predates effect start"
                 )
+            terminal_cleanup_authority = _terminal_cleanup_authority_value(
+                current,
+                terminal_outcome=terminal_outcome,
+                returncode=returncode,
+                evidence=terminal_cleanup_evidence,
+            )
             terminal = ProviderAttemptReservation(
                 **{
                     **asdict(current),
+                    "schema": CAS_SCHEMA,
                     "state": "terminal",
                     "terminal_at_ms": timestamp,
                     "terminal_returncode": returncode,
                     "terminal_outcome_id": outcome_id,
                     "terminal_outcome": terminal_outcome,
+                    "terminal_cleanup_authority": terminal_cleanup_authority,
                 }
             )
             self._write(path, terminal)
             return terminal
+        finally:
+            self._unlock(descriptor)
+
+    def commit_terminal_cleanup_intent(
+        self,
+        reservation: ProviderAttemptReservation,
+        *,
+        intent: Mapping[str, Any],
+    ) -> ProviderAttemptReservation:
+        """Precommit exact cleanup inputs before any resource inode mutates."""
+
+        descriptor, path = self._lock(reservation.logical_attempt_id)
+        try:
+            if not self._entry_exists(path):
+                raise ProviderAttemptStoreError(
+                    "terminal cleanup reservation is absent"
+                )
+            current = self._read(path)
+            if (
+                current.state != "terminal"
+                or current.schema != CAS_SCHEMA
+                or current.logical_attempt_id != reservation.logical_attempt_id
+                or current.reservation_id != reservation.reservation_id
+                or current.terminal_outcome_id
+                != reservation.terminal_outcome_id
+                or current.terminal_cleanup_authority
+                != reservation.terminal_cleanup_authority
+            ):
+                raise ProviderAttemptStoreError(
+                    "terminal cleanup reservation changed"
+                )
+            supplied = dict(intent)
+            if not _valid_terminal_cleanup_intent(current, supplied):
+                raise ProviderAttemptStoreError(
+                    "terminal cleanup intent is invalid"
+                )
+            progress = current.terminal_cleanup_progress
+            if progress:
+                if progress.get("intent") == supplied:
+                    return current
+                raise ProviderAttemptStoreError(
+                    "terminal cleanup intent changed"
+                )
+            committed = _terminal_cleanup_progress_value(
+                current,
+                intent=supplied,
+                phase="intent_committed",
+            )
+            updated = ProviderAttemptReservation(
+                **{
+                    **asdict(current),
+                    "schema": CAS_SCHEMA,
+                    "terminal_cleanup_progress": committed,
+                }
+            )
+            self._write(path, updated)
+            return updated
+        finally:
+            self._unlock(descriptor)
+
+    def commit_terminal_cleanup_completion(
+        self,
+        reservation: ProviderAttemptReservation,
+        *,
+        intent_id: str,
+        completion_id: str,
+    ) -> ProviderAttemptReservation:
+        """Bind exact post-removal completion bytes into terminal CAS once."""
+
+        if (
+            re.fullmatch(r"sha256:[0-9a-f]{64}", intent_id) is None
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", completion_id) is None
+        ):
+            raise ProviderAttemptStoreError(
+                "terminal cleanup completion identity is invalid"
+            )
+        descriptor, path = self._lock(reservation.logical_attempt_id)
+        try:
+            if not self._entry_exists(path):
+                raise ProviderAttemptStoreError(
+                    "terminal cleanup reservation is absent"
+                )
+            current = self._read(path)
+            progress = current.terminal_cleanup_progress
+            if (
+                current.state != "terminal"
+                or current.schema != CAS_SCHEMA
+                or current.logical_attempt_id != reservation.logical_attempt_id
+                or current.reservation_id != reservation.reservation_id
+                or current.terminal_outcome_id
+                != reservation.terminal_outcome_id
+                or current.terminal_cleanup_authority
+                != reservation.terminal_cleanup_authority
+                or not isinstance(progress, Mapping)
+                or progress.get("intent_id") != intent_id
+                or not _valid_terminal_cleanup_progress(current)
+            ):
+                raise ProviderAttemptStoreError(
+                    "terminal cleanup intent is not committed"
+                )
+            if progress.get("phase") == "completion_committed":
+                if progress.get("completion_id") == completion_id:
+                    return current
+                raise ProviderAttemptStoreError(
+                    "terminal cleanup completion changed"
+                )
+            if progress.get("phase") != "intent_committed":
+                raise ProviderAttemptStoreError(
+                    "terminal cleanup progress is invalid"
+                )
+            intent = progress.get("intent")
+            if not isinstance(intent, Mapping):
+                raise ProviderAttemptStoreError(
+                    "terminal cleanup intent is invalid"
+                )
+            committed = _terminal_cleanup_progress_value(
+                current,
+                intent=intent,
+                phase="completion_committed",
+                completion_id=completion_id,
+                previous_progress_id=str(progress.get("progress_id") or ""),
+            )
+            updated = ProviderAttemptReservation(
+                **{
+                    **asdict(current),
+                    "schema": CAS_SCHEMA,
+                    "terminal_cleanup_progress": committed,
+                }
+            )
+            self._write(path, updated)
+            return updated
         finally:
             self._unlock(descriptor)
 
@@ -2899,3 +3671,16 @@ class DurableProviderAttemptCAS:
             return self._read(path) if self._entry_exists(path) else None
         finally:
             self._unlock(descriptor)
+
+    def observe(self, logical_attempt_id: str) -> ProviderAttemptReservation | None:
+        """Observe one published state without creating a lock or other entry.
+
+        Writers publish complete private files with ``os.replace``.  ``_read``
+        binds one exact inode and validates its snapshot before and after the
+        read, so a lockless observer sees either the prior or replacement
+        record and fails closed on a concurrent identity change.
+        """
+
+        self._validate_directory_binding()
+        path = self._path(logical_attempt_id)
+        return self._read(path) if self._entry_exists(path) else None

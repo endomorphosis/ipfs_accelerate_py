@@ -23,8 +23,10 @@ from .supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
+    adopt_supervised_child,
     adopt_or_launch_supervised_child,
     clear_child_pid_file,
+    launch_supervised_child,
     supervised_log_path,
     supervisor_run_id,
     terminate_supervised_child,
@@ -76,6 +78,9 @@ class SupervisorLoopConfig:
     latest_log_path: Optional[Path] = None
     child_env: Mapping[str, str] = field(default_factory=dict)
     child_pass_fds: tuple[int, ...] = ()
+    child_executable: str | None = None
+    child_start_new_session: bool = True
+    child_process_group: int | None = None
     status_static_fields: Mapping[str, Any] = field(default_factory=dict)
     status_extra_fields: Mapping[str, Any] = field(default_factory=dict)
     watchdog_quiescent_status_predicate: Optional[
@@ -186,6 +191,9 @@ class SupervisorLoop:
             latest_log_path=self.config.latest_log_path or self.config.spec.latest_log_path,
             env=self.config.child_env,
             pass_fds=self.config.child_pass_fds,
+            executable=self.config.child_executable,
+            start_new_session=self.config.child_start_new_session,
+            process_group=self.config.child_process_group,
         )
 
     def _write_status(
@@ -837,6 +845,8 @@ class SupervisorLoop:
                 child = adopt_or_launch_supervised_child(
                     child_spec,
                     launch_lock_path=launch_lock_path,
+                    adopt=adopt_supervised_child,
+                    launch=launch_supervised_child,
                 )
             except Exception as exc:
                 self.last_exit_code = 127
