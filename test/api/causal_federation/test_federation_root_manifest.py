@@ -12,31 +12,31 @@ ROOT = Path(__file__).resolve().parents[3]
 MANIFEST_RELATIVE_PATH = (
     "docs/architecture/causal_event_federation_inventory/federation_root_manifest.json"
 )
-PROJECTION_REVISION: Final = "67e9fe1c82c357b7bf59a91121b0c33103e7ee41"
-PROJECTION_TREE: Final = "a548f4a229f459c53ae46712918cb8391033651f"
-PROJECTION_PARENT: Final = "e45c6fe6790f1110b061f8cbefb2ce1dce4d8544"
-PROJECTION_BLOB: Final = "838a03ad0710892bbffa37970e0763c74df5e733"
-PROJECTION_RAW_SHA256: Final = "a23431f8324cf8aa1fb7938b5be61321bd0d079b86fb231c9f4bafbabd3d4034"
+PROJECTION_REVISION: Final = "af50032ff5958130d0f3307375ac816a2295e751"
+PROJECTION_TREE: Final = "294d2f8ee125c707f4be1e7b87b1d3e0e016a055"
+PROJECTION_PARENT: Final = "c0f13ce42a095349296dd346c264b8ab8d4e89ae"
+PROJECTION_BLOB: Final = "1a5711de9a900720cba70751aeaffd2010f9718f"
+PROJECTION_RAW_SHA256: Final = "1d580b82fc1bd2295f0285506c0b1ae90a20e080a97f43045a0903f4f7497a87"
 PROJECTION_BYTE_COUNT: Final = 6535
 
 REPORT_ARTIFACTS = (
     (
         report_validation.REPORT_RELATIVE_PATH,
-        "4dbf6c2e385295a59c4c0beaaadd6b09623d43de",
-        "4a0519e991263c09f08f51a9a07be04043ee7fba8a96c05eedb141e7a1332dff",
-        31002,
+        "766aa3561250bd1de3fb6be17377a6997779130e",
+        "d0cc7aaba5df53cb16812e3c4f2a07f2342350cb206823401b54042604d568e4",
+        30109,
     ),
     (
         report_validation.MARKDOWN_RELATIVE_PATH,
-        "5d8388289e03e995078bfe75443ffc7730cd0492",
-        "2f53aea535133a041af840faeb4b670fdb1c675c8fc164050bcab1b60080f330",
-        12835,
+        "f754897abfb8b8ffda786f6d4a036869fad7bcda",
+        "ee55222cbee3b69e1923faecefc7e7911b768f52f99d62e8061e60f885faef1b",
+        12596,
     ),
     (
         report_validation.TEST_RELATIVE_PATH,
-        "9abb3df6297a1d1565ff020be6e01b8f7a61efdb",
-        "332a3ee335e6358b83c7ff6cf11b8a499d87a9b82a2a636b38003d9f062713b0",
-        75777,
+        "e0a11f7e17b175d94e96cacb25b2a0c7c0b83400",
+        "17621fcf0f2e0bd2be2c78fdec58df799a14a16ee7a79d0405d7bdab5a4372fa",
+        78586,
     ),
 )
 
@@ -125,6 +125,10 @@ def test_projection_commit_and_current_manifest_bytes_are_exact() -> None:
         ROOT, MANIFEST_RELATIVE_PATH, 256 * 1024, head
     )
     assert current == projected
+    current_validator = report_validation._verify_worktree_matches_head(
+        ROOT, report_validation.TEST_RELATIVE_PATH, 256 * 1024, head
+    )
+    assert current_validator == _artifact_at(PROJECTION_PARENT, REPORT_ARTIFACTS[2])
 
 
 def test_manifest_schema_identity_authority_and_pending_binding_are_exact() -> None:
@@ -226,7 +230,7 @@ def test_hardened_report_projection_and_residual_gaps_are_exact() -> None:
         ROOT, "rev-parse", "--verify", f"{PROJECTION_PARENT}^{{tree}}"
     )
     assert projection["report_id"] == (
-        "sha256:d1525586b485407f0642d9155b97fa0eed8ac40f9e007cc1133798632642ad9e"
+        "sha256:5dc88bec61ac3e8bc3e19a47e01614896f1ad5c212ec4447b4a8ea941605528c"
     )
     assert len(projection["artifacts"]) == len(REPORT_ARTIFACTS)
     for binding, expected in zip(projection["artifacts"], REPORT_ARTIFACTS, strict=True):
