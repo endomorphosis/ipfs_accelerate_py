@@ -28,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import 
     closing_task_ids,
     collect_host_admission_receipts,
     verify_admission_bundle_receipt,
+    verify_host_admission_task_receipt,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.implementation_auto_rescue import (
     AutoRescueAction,
@@ -386,6 +387,201 @@ def test_tracked_admission_word_is_not_current_launch_authority() -> None:
     )
     assert verification["admitted"] is False
     assert verification["blockers"]
+
+
+def _write_current_task_receipt(
+    receipt_dir: Path,
+    *,
+    task_id: str,
+    decision: str,
+    source_head: str,
+    source_tree: str,
+    board_namespace: str,
+    board_cid: str,
+    overrides: dict | None = None,
+) -> dict:
+    payload = {
+        "schema": RECEIPT_SCHEMA if task_id != "EAAEF-191" else BUNDLE_SCHEMA,
+        "task_id": task_id,
+        "receipt_name": RECEIPT_FILES[task_id],
+        "decision": decision,
+        "process_started": False,
+        "supervisor_process_started": False,
+        "self_signed": False,
+        "independent_signatures": [],
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "board_namespace": board_namespace,
+        "board_cid": board_cid,
+        "evidence": {},
+        **(overrides or {}),
+    }
+    payload["receipt_cid"] = cid(payload)
+    (receipt_dir / RECEIPT_FILES[task_id]).write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return payload
+
+
+def test_single_task_verifier_accepts_only_the_task_decision(tmp_path: Path) -> None:
+    expected = {
+        "receipt_dir": tmp_path,
+        "expected_source_head": "1" * 40,
+        "expected_source_tree": "2" * 40,
+        "expected_board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "expected_board_cid": "sha256:" + "3" * 64,
+    }
+    accepted_decisions = {
+        "EAAEF-180": "inventory",
+        "EAAEF-181": "bound_unadmitted",
+        **{f"EAAEF-{number}": "admitted" for number in range(182, 191)},
+    }
+    for task_id, decision in accepted_decisions.items():
+        _write_current_task_receipt(
+            tmp_path,
+            task_id=task_id,
+            decision=decision,
+            source_head=expected["expected_source_head"],
+            source_tree=expected["expected_source_tree"],
+            board_namespace=expected["expected_board_namespace"],
+            board_cid=expected["expected_board_cid"],
+        )
+        verification = verify_host_admission_task_receipt(
+            task_id=task_id,
+            **expected,
+        )
+        assert verification == {
+            "valid": True,
+            "decision": decision,
+            "blockers": [],
+        }
+
+        _write_current_task_receipt(
+            tmp_path,
+            task_id=task_id,
+            decision="typed_missing",
+            source_head=expected["expected_source_head"],
+            source_tree=expected["expected_source_tree"],
+            board_namespace=expected["expected_board_namespace"],
+            board_cid=expected["expected_board_cid"],
+        )
+        rejected = verify_host_admission_task_receipt(task_id=task_id, **expected)
+        assert rejected["valid"] is False
+        assert f"{task_id} host receipt decision is not {decision}" in rejected[
+            "blockers"
+        ]
+
+
+def test_single_task_verifier_binds_identity_source_and_launch_separation(
+    tmp_path: Path,
+) -> None:
+    task_id = "EAAEF-182"
+    expected = {
+        "receipt_dir": tmp_path,
+        "expected_source_head": "1" * 40,
+        "expected_source_tree": "2" * 40,
+        "expected_board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "expected_board_cid": "sha256:" + "3" * 64,
+    }
+    payload = _write_current_task_receipt(
+        tmp_path,
+        task_id=task_id,
+        decision="admitted",
+        source_head="4" * 40,
+        source_tree="5" * 40,
+        board_namespace="wrong-board",
+        board_cid="sha256:" + "6" * 64,
+        overrides={
+            "schema": "wrong-schema",
+            "task_id": "EAAEF-183",
+            "receipt_name": "wrong.json",
+            "process_started": True,
+            "supervisor_process_started": None,
+            "self_signed": True,
+        },
+    )
+    payload["receipt_cid"] = "sha256:" + "7" * 64
+    (tmp_path / RECEIPT_FILES[task_id]).write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    verification = verify_host_admission_task_receipt(task_id=task_id, **expected)
+    assert verification["valid"] is False
+    for blocker in (
+        "EAAEF-182 host receipt schema differs",
+        "EAAEF-182 host receipt task identity differs",
+        "EAAEF-182 host receipt filename differs",
+        "EAAEF-182 host receipt CID differs",
+        "EAAEF-182 host receipt source_head differs",
+        "EAAEF-182 host receipt source_tree differs",
+        "EAAEF-182 host receipt board_namespace differs",
+        "EAAEF-182 host receipt board_cid differs",
+        "EAAEF-182 host receipt launch-separation field process_started differs",
+        "EAAEF-182 host receipt launch-separation field supervisor_process_started differs",
+        "EAAEF-182 host receipt launch-separation field self_signed differs",
+    ):
+        assert blocker in verification["blockers"]
+
+
+def test_bundle_task_verifier_requires_full_admission_verification(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    expected = {
+        "receipt_dir": tmp_path,
+        "expected_source_head": "1" * 40,
+        "expected_source_tree": "2" * 40,
+        "expected_board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "expected_board_cid": "sha256:" + "3" * 64,
+    }
+    _write_current_task_receipt(
+        tmp_path,
+        task_id="EAAEF-191",
+        decision="admitted",
+        source_head=expected["expected_source_head"],
+        source_tree=expected["expected_source_tree"],
+        board_namespace=expected["expected_board_namespace"],
+        board_cid=expected["expected_board_cid"],
+    )
+    calls = []
+
+    def _reject_bundle(**kwargs):
+        calls.append(kwargs)
+        return {
+            "admitted": False,
+            "decision": "admitted",
+            "target_decision": "admitted",
+            "blockers": ["signed child receipt replay"],
+        }
+
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "verify_admission_bundle_receipt",
+        _reject_bundle,
+    )
+    rejected = verify_host_admission_task_receipt(task_id="EAAEF-191", **expected)
+    assert rejected["valid"] is False
+    assert "signed child receipt replay" in rejected["blockers"]
+    assert calls == [expected]
+
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "verify_admission_bundle_receipt",
+        lambda **_kwargs: {
+            "admitted": True,
+            "decision": "admitted",
+            "target_decision": "admitted",
+            "blockers": [],
+        },
+    )
+    admitted = verify_host_admission_task_receipt(task_id="EAAEF-191", **expected)
+    assert admitted == {
+        "valid": True,
+        "decision": "admitted",
+        "blockers": [],
+    }
 
 
 def test_current_signed_bundle_rejects_child_receipt_replay(

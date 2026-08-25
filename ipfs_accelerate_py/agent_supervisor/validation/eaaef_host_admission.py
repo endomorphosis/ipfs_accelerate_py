@@ -148,6 +148,12 @@ RECEIPT_FILES: Final[dict[str, str]] = {
     "EAAEF-191": "admission_bundle.json",
 }
 
+_ACCEPTED_TASK_DECISIONS: Final[dict[str, str]] = {
+    "EAAEF-180": "inventory",
+    "EAAEF-181": "bound_unadmitted",
+    **{f"EAAEF-{number}": "admitted" for number in range(182, 192)},
+}
+
 _HOST_GATED_MARKERS: Final[tuple[str, ...]] = (
     "quack_owner_",
     "provider_container_qualification",
@@ -499,6 +505,102 @@ def verify_admission_bundle_receipt(
         "admitted": not blockers,
         "decision": str(bundle.get("decision") or ""),
         "target_decision": target_decision,
+        "blockers": list(dict.fromkeys(blockers)),
+    }
+
+
+def verify_host_admission_task_receipt(
+    *,
+    task_id: str,
+    receipt_dir: Path = RECEIPT_DIR,
+    expected_source_head: str,
+    expected_source_tree: str,
+    expected_board_namespace: str,
+    expected_board_cid: str,
+) -> dict[str, Any]:
+    """Verify one current-source EAAEF host-admission task receipt.
+
+    The check is deliberately read-only and uses only the caller-supplied
+    source and board identities.  EAAEF-191 additionally requires the full
+    independently signed admission-bundle verification; an ``admitted`` word
+    in the tracked receipt is not sufficient authority.
+    """
+
+    filename = RECEIPT_FILES.get(task_id)
+    expected_decision = _ACCEPTED_TASK_DECISIONS.get(task_id)
+    if filename is None or expected_decision is None:
+        return {
+            "valid": False,
+            "decision": "",
+            "blockers": [f"unsupported EAAEF host-admission task {task_id}"],
+        }
+
+    blockers: list[str] = []
+    payload: dict[str, Any] | None = None
+    path = receipt_dir / filename
+    try:
+        raw_payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        blockers.append(f"{task_id} host receipt is unavailable or malformed")
+    else:
+        if isinstance(raw_payload, dict):
+            payload = raw_payload
+        else:
+            blockers.append(f"{task_id} host receipt is not an object")
+
+    decision = str((payload or {}).get("decision") or "")
+    if payload is not None:
+        expected_schema = RECEIPT_SCHEMA if task_id != "EAAEF-191" else BUNDLE_SCHEMA
+        if payload.get("schema") != expected_schema:
+            blockers.append(f"{task_id} host receipt schema differs")
+        if payload.get("task_id") != task_id:
+            blockers.append(f"{task_id} host receipt task identity differs")
+        if payload.get("receipt_name") != filename:
+            blockers.append(f"{task_id} host receipt filename differs")
+        body = {
+            key: value for key, value in payload.items() if key != "receipt_cid"
+        }
+        if payload.get("receipt_cid") != cid(body):
+            blockers.append(f"{task_id} host receipt CID differs")
+
+        expected_source = {
+            "source_head": expected_source_head,
+            "source_tree": expected_source_tree,
+            "board_namespace": expected_board_namespace,
+            "board_cid": expected_board_cid,
+        }
+        for field, expected_value in expected_source.items():
+            if payload.get(field) != expected_value:
+                blockers.append(f"{task_id} host receipt {field} differs")
+
+        for field in ("process_started", "supervisor_process_started", "self_signed"):
+            if payload.get(field) is not False:
+                blockers.append(
+                    f"{task_id} host receipt launch-separation field {field} differs"
+                )
+
+    if decision != expected_decision:
+        blockers.append(
+            f"{task_id} host receipt decision is not {expected_decision}"
+        )
+
+    if task_id == "EAAEF-191":
+        bundle_verification = verify_admission_bundle_receipt(
+            receipt_dir=receipt_dir,
+            expected_source_head=expected_source_head,
+            expected_source_tree=expected_source_tree,
+            expected_board_namespace=expected_board_namespace,
+            expected_board_cid=expected_board_cid,
+        )
+        if bundle_verification.get("admitted") is not True:
+            bundle_blockers = bundle_verification.get("blockers")
+            if isinstance(bundle_blockers, list):
+                blockers.extend(str(item) for item in bundle_blockers)
+            blockers.append("EAAEF-191 full admission-bundle verification failed")
+
+    return {
+        "valid": not blockers,
+        "decision": decision,
         "blockers": list(dict.fromkeys(blockers)),
     }
 
