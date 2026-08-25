@@ -8930,12 +8930,31 @@ class PortalSupervisorConfig:
                 != "datasets-authoritative-operational-v1"
                 or program.endpoint_secret_handle
                 != "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+                or self.database_owner_session_id
+                != live.admission.lane_names[self.task_shard_index]
+                or self.state_owner_bootstrap_fd < 3
+                or self.state_owner_bootstrap_fd in live.pass_fds
+                or self.state_owner_bootstrap_store_id
+                != str(program.store_id)
                 or live.admission.candidate_config_path
                 != LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH
             ):
                 raise SupervisorSchedulerConfigError(
                     "LGCVF live supervisor profile is not exact"
                 )
+            from ..task_sources.state_owner_bootstrap import (
+                StateOwnerBootstrapError,
+                validate_state_owner_bootstrap_listener,
+            )
+
+            try:
+                validate_state_owner_bootstrap_listener(
+                    int(self.state_owner_bootstrap_fd)
+                )
+            except StateOwnerBootstrapError as exc:
+                raise SupervisorSchedulerConfigError(
+                    "LGCVF live state-owner bootstrap listener is invalid"
+                ) from exc
             root = _canonical_plan_bound_repo_root(self.repo_root)
             state_dir = _plan_bound_contained_path(
                 root,
@@ -11126,7 +11145,14 @@ class PortalImplementationSupervisor:
         ):
             sealed_fds = (int(self.config.accepted_control_plane_descriptor),)
         live_fds = () if live_context is None else live_context.pass_fds
-        pass_fds = tuple(dict.fromkeys((*live_fds, *sealed_fds)))
+        bootstrap_fds = (
+            (int(self.config.state_owner_bootstrap_fd),)
+            if int(self.config.state_owner_bootstrap_fd) >= 3
+            else ()
+        )
+        pass_fds = tuple(
+            dict.fromkeys((*live_fds, *sealed_fds, *bootstrap_fds))
+        )
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
@@ -11211,14 +11237,11 @@ class PortalImplementationSupervisor:
         environment.update(
             program.environment(repository_root=self.config.repo_root)
         )
-        from ..runtime.process_security import (
-            forward_env_secret_handle_credentials,
-        )
-
-        forward_env_secret_handle_credentials(
-            environment,
-            secret_handle=program.endpoint_secret_handle,
-        )
+        # The daemon's inherited rendezvous listener is its only state
+        # bootstrap capability.  Its exact process birth receives a narrow
+        # typed-owner grant over that channel; forwarding the controller's
+        # root token would silently defeat that boundary.
+        environment.pop("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", None)
         return environment, live_context
 
     def _verify_lgcvf_live_supervisor_loop_child_launch(
@@ -11248,7 +11271,15 @@ class PortalImplementationSupervisor:
             child_spec.repo_root != self.config.repo_root
             or child_spec.command != expected_command
             or child_spec.inherit_environment
-            or child_spec.pass_fds != live_context.pass_fds
+            or child_spec.pass_fds
+            != tuple(
+                dict.fromkeys(
+                    (
+                        *live_context.pass_fds,
+                        int(self.config.state_owner_bootstrap_fd),
+                    )
+                )
+            )
             or dict(child_spec.env) != expected_environment
         ):
             raise SupervisorSchedulerConfigError(
@@ -21833,42 +21864,8 @@ class PortalImplementationSupervisor:
         command = self._build_daemon_command()
         live_context = self.config.configured_board_live_context
         if live_context is not None:
-            program = self.config.database_program
-            if program is None:
-                raise SupervisorSchedulerConfigError(
-                    "LGCVF live daemon lacks its Quack program"
-                )
-            live_context = verify_lgcvf_configured_board_live_context(
-                capsule_pin_json=live_context.capsule_pin_json,
-                capsule_descriptor=live_context.capsule_descriptor,
-                admission_json=live_context.admission_json,
-                native_launch_json=live_context.native_launch_json,
-                native_descriptor=live_context.native_descriptor,
-            )
-            self.config.configured_board_live_context = live_context
-            env = _lgcvf_configured_board_live_positive_child_environment(
-                os.environ,
-                # The daemon intentionally carries the opaque handle only in
-                # its environment.  Re-present that already verified handle
-                # to the closed projector without putting it in child argv.
-                common_args=(
-                    *command,
-                    "--endpoint-secret-handle",
-                    program.endpoint_secret_handle,
-                ),
-            )
-            env.update(
-                program.environment(
-                    repository_root=self.config.repo_root
-                )
-            )
-            from ..runtime.process_security import (
-                forward_env_secret_handle_credentials,
-            )
-
-            forward_env_secret_handle_credentials(
-                env,
-                secret_handle=program.endpoint_secret_handle,
+            env, live_context = (
+                self._lgcvf_live_managed_daemon_environment(command)
             )
         else:
             env = os.environ.copy()
@@ -21888,7 +21885,14 @@ class PortalImplementationSupervisor:
                 native_descriptor=live_context.native_descriptor,
             )
             self.config.configured_board_live_context = live_context
-            popen_options["pass_fds"] = live_context.pass_fds
+            popen_options["pass_fds"] = tuple(
+                dict.fromkeys(
+                    (
+                        *live_context.pass_fds,
+                        int(self.config.state_owner_bootstrap_fd),
+                    )
+                )
+            )
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,

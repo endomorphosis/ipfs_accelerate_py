@@ -27,7 +27,7 @@ import threading
 import time
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -2330,34 +2330,114 @@ class TypedStateOwnerGateway:
                 if grant.grant_id != selected
             }
 
+    def renew_grant(
+        self,
+        grant_id: str,
+        *,
+        ttl_seconds: float = DEFAULT_GRANT_TTL_SECONDS,
+    ) -> OwnerClientGrant:
+        """Extend one still-live exact grant without changing its authority.
+
+        Long-lived clients retain a connection-local grant record. Renewal
+        therefore keeps the stable grant ID and token while replacing only
+        its bounded issuance window in the server table. Every subsequent
+        request resolves that current table record before authorization.
+        """
+
+        selected_id = str(grant_id or "").strip()
+        try:
+            ttl = float(ttl_seconds)
+        except (TypeError, ValueError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "grant renewal lifetime is invalid"
+            ) from exc
+        if (
+            not selected_id
+            or not math.isfinite(ttl)
+            or ttl < MIN_GRANT_TTL_SECONDS
+            or ttl > MAX_GRANT_TTL_SECONDS
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "grant renewal lifetime is outside the closed bound"
+            )
+        now_ms = int(time.time() * 1_000)
+        with self._grants_lock:
+            matches = tuple(
+                (token, candidate)
+                for token, candidate in self._grants.items()
+                if candidate.grant_id == selected_id
+            )
+            if (
+                selected_id in self._revoked_grants
+                or len(matches) != 1
+                or now_ms >= matches[0][1].expires_at
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "owner grant cannot be renewed"
+                )
+            token, current = matches[0]
+            try:
+                peer_uid = os.stat(f"/proc/{current.peer_pid}").st_uid
+                peer_start = _process_start_time_ticks(current.peer_pid)
+            except OSError as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "grant renewal peer process is unavailable"
+                ) from exc
+            if (
+                peer_uid != current.peer_uid
+                or peer_start != current.peer_start_time_ticks
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "grant renewal peer process identity differs"
+                )
+            renewed = replace(
+                current,
+                issued_at=now_ms,
+                expires_at=now_ms + int(ttl * 1_000),
+            )
+            self._grants[token] = renewed
+            return renewed
+
     def _require_active_grant(
         self,
         grant: OwnerClientGrant,
         *,
         peer_identity: tuple[int, int, int],
-    ) -> None:
+    ) -> OwnerClientGrant:
         """Revalidate revocation, expiry, and kernel peer identity per request."""
 
         with self._grants_lock:
             revoked = grant.grant_id in self._revoked_grants
-            still_issued = any(
-                candidate.grant_id == grant.grant_id
+            current = tuple(
+                candidate
                 for candidate in self._grants.values()
+                if candidate.grant_id == grant.grant_id
             )
-        if revoked or not still_issued:
-            raise TypedStateOwnerAuthorizationError("owner grant is revoked")
-        if int(time.time() * 1_000) >= grant.expires_at:
-            self.revoke_grant(grant.grant_id)
-            raise TypedStateOwnerAuthorizationError("owner grant is expired")
-        peer_pid, peer_uid, peer_start = peer_identity
-        if (
-            peer_pid != grant.peer_pid
-            or peer_uid != grant.peer_uid
-            or peer_start != grant.peer_start_time_ticks
-        ):
-            raise TypedStateOwnerAuthorizationError(
-                "kernel peer identity differs from the owner grant"
-            )
+            if revoked or len(current) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "owner grant is revoked"
+                )
+            active = current[0]
+            if int(time.time() * 1_000) >= active.expires_at:
+                self._revoked_grants.add(active.grant_id)
+                self._grants = {
+                    token: candidate
+                    for token, candidate in self._grants.items()
+                    if candidate.grant_id != active.grant_id
+                }
+                raise TypedStateOwnerAuthorizationError(
+                    "owner grant is expired"
+                )
+            peer_pid, peer_uid, peer_start = peer_identity
+            if (
+                peer_pid != active.peer_pid
+                or peer_uid != active.peer_uid
+                or peer_start != active.peer_start_time_ticks
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "kernel peer identity differs from the owner grant"
+                )
+            return active
 
     def start(self) -> None:
         self.socket_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -2652,7 +2732,10 @@ class TypedStateOwnerGateway:
                     )
             else:
                 raise TypedStateOwnerAuthorizationError("gateway authentication failed")
-            self._require_active_grant(grant, peer_identity=peer_identity)
+            grant = self._require_active_grant(
+                grant,
+                peer_identity=peer_identity,
+            )
             if (
                 not client_id
                 or len(client_id) > 256
@@ -2706,7 +2789,10 @@ class TypedStateOwnerGateway:
                 action = str(request.get("action") or "")
                 request_id = str(request.get("request_id") or "")
                 try:
-                    self._require_active_grant(grant, peer_identity=peer_identity)
+                    grant = self._require_active_grant(
+                        grant,
+                        peer_identity=peer_identity,
+                    )
                     if action == "begin":
                         self._reject_unknown(
                             request,
@@ -2721,7 +2807,7 @@ class TypedStateOwnerGateway:
                                 "owner transaction admission timed out"
                             )
                         try:
-                            self._require_active_grant(
+                            grant = self._require_active_grant(
                                 grant,
                                 peer_identity=peer_identity,
                             )
@@ -2787,7 +2873,7 @@ class TypedStateOwnerGateway:
                             result = self._execute(operation, parameters)
                         else:
                             with self._transaction_lock:
-                                self._require_active_grant(
+                                grant = self._require_active_grant(
                                     grant,
                                     peer_identity=peer_identity,
                                 )
@@ -2923,7 +3009,7 @@ class TypedStateOwnerGateway:
                             request.get("envelope") or {}
                         )
                         with self._transaction_lock:
-                            self._require_active_grant(
+                            grant = self._require_active_grant(
                                 grant,
                                 peer_identity=peer_identity,
                             )
@@ -3028,7 +3114,7 @@ class TypedStateOwnerGateway:
                             request.get("envelope") or {}
                         )
                         with self._transaction_lock:
-                            self._require_active_grant(
+                            grant = self._require_active_grant(
                                 grant,
                                 peer_identity=peer_identity,
                             )

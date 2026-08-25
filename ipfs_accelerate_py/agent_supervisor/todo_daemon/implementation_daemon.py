@@ -3174,13 +3174,11 @@ def _grok_cli_trusted_failure_command(
     grok = _grok_binary()
     if not grok:
         raise RuntimeError("grok CLI is not installed")
-    runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
-    if not runner_path.is_file():
+    runner_path = _TRUSTED_QUOTA_FALLBACK_SCRIPT
+    if not _trusted_packaged_sibling_is_available(runner_path):
         raise RuntimeError(f"packaged Grok adapter missing at {runner_path}")
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip()
-    return [
-        sys.executable,
-        str(runner_path),
+    arguments = [
         "--workspace",
         str(workspace_path.resolve()),
         "--model",
@@ -3193,6 +3191,13 @@ def _grok_cli_trusted_failure_command(
         "--grok-bin",
         grok,
     ]
+    return _packaged_provider_entry_command(
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"
+        ),
+        runner_path=runner_path,
+        arguments=arguments,
+    )
 
 
 def _copilot_has_auth() -> bool:
@@ -3335,8 +3340,24 @@ _TRUSTED_QUOTA_FALLBACK_PYTHON_EXECUTABLE = Path(sys.executable).resolve(
 )
 
 
-def _trusted_quota_fallback_script_path(module_file: str | Path) -> Path:
-    """Return the trusted sibling without resolving a sealed ZIP member.
+_TRUSTED_PACKAGED_PROVIDER_SIBLINGS = frozenset(
+    {"grok_cli_runner.py", "provider_fallback_runner.py"}
+)
+_SEALED_IMPLEMENTATION_DAEMON_ORIGIN = re.compile(
+    r"/proc/self/fd/([0-9]+)/ipfs_accelerate_py/agent_supervisor/"
+    r"todo_daemon/implementation_daemon\.py"
+)
+_SEALED_PACKAGED_PROVIDER_SIBLING = re.compile(
+    r"/proc/self/fd/([0-9]+)/ipfs_accelerate_py/agent_supervisor/"
+    r"(grok_cli_runner|provider_fallback_runner)\.py"
+)
+
+
+def _trusted_packaged_sibling_script_path(
+    module_file: str | Path,
+    sibling_name: str,
+) -> Path:
+    """Return a trusted sibling without resolving a sealed ZIP member.
 
     A live LGCVF module origin is a zipimport member below ``/proc/self/fd``.
     Resolving that pseudo-path follows the descriptor to the kernel's deleted
@@ -3346,21 +3367,95 @@ def _trusted_quota_fallback_script_path(module_file: str | Path) -> Path:
     Ordinary filesystem imports keep the existing strict resolution checks.
     """
 
+    if sibling_name not in _TRUSTED_PACKAGED_PROVIDER_SIBLINGS:
+        raise ValueError("packaged provider sibling name is not admitted")
     origin = Path(module_file)
     raw_origin = str(origin)
-    sealed = re.fullmatch(
-        r"/proc/self/fd/([0-9]+)/ipfs_accelerate_py/agent_supervisor/"
-        r"todo_daemon/implementation_daemon\.py",
-        raw_origin,
-    )
+    sealed = _SEALED_IMPLEMENTATION_DAEMON_ORIGIN.fullmatch(raw_origin)
     if sealed is not None and int(sealed.group(1)) >= 3:
-        return origin.parents[1] / "grok_cli_runner.py"
-    return (
-        origin.resolve(strict=True).parents[1] / "grok_cli_runner.py"
-    ).resolve(strict=True)
+        return origin.parents[1] / sibling_name
+    return (origin.resolve(strict=True).parents[1] / sibling_name).resolve(
+        strict=True
+    )
+
+
+def _trusted_quota_fallback_script_path(module_file: str | Path) -> Path:
+    """Return the exact packaged Grok adapter for this module origin."""
+
+    return _trusted_packaged_sibling_script_path(
+        module_file,
+        "grok_cli_runner.py",
+    )
+
+
+def _trusted_provider_fallback_script_path(module_file: str | Path) -> Path:
+    """Return the exact packaged ordered-route adapter for this origin."""
+
+    return _trusted_packaged_sibling_script_path(
+        module_file,
+        "provider_fallback_runner.py",
+    )
+
+
+def _trusted_packaged_sibling_is_available(path: Path) -> bool:
+    """Check ordinary siblings and trust only exact sealed-member identities.
+
+    A ZIP member below ``/proc/self/fd`` is not stat-able as a normal child
+    path.  Its containing archive and member inventory were already verified
+    and write-sealed by the LGCVF bootstrap, so only the exact lexical member
+    identity is admissible here.
+    """
+
+    sealed = _SEALED_PACKAGED_PROVIDER_SIBLING.fullmatch(str(path))
+    if sealed is not None:
+        return int(sealed.group(1)) >= 3
+    return path.is_file()
+
+
+def _trusted_packaged_sibling_argument_matches(
+    value: str | Path,
+    expected: Path,
+) -> bool:
+    """Match a command argument without dereferencing sealed ZIP members."""
+
+    expected_sealed = _SEALED_PACKAGED_PROVIDER_SIBLING.fullmatch(
+        str(expected)
+    )
+    if expected_sealed is not None:
+        return (
+            int(expected_sealed.group(1)) >= 3
+            and str(value) == str(expected)
+        )
+    try:
+        return Path(value).expanduser().resolve(strict=True) == expected
+    except (OSError, RuntimeError):
+        return False
 
 
 _TRUSTED_QUOTA_FALLBACK_SCRIPT = _trusted_quota_fallback_script_path(__file__)
+_TRUSTED_PROVIDER_FALLBACK_SCRIPT = _trusted_provider_fallback_script_path(
+    __file__
+)
+
+
+def _packaged_provider_entry_command(
+    *,
+    module_name: str,
+    runner_path: Path,
+    arguments: Sequence[str],
+) -> list[str]:
+    """Execute an admitted provider entry from disk or its sealed ZIP."""
+
+    from ..sealed_provider_module import build_sealed_provider_module_command
+
+    sealed = build_sealed_provider_module_command(
+        module_name,
+        arguments,
+        module_file=__file__,
+    )
+    if sealed is not None:
+        return sealed
+    return [sys.executable, str(runner_path), *(str(item) for item in arguments)]
 _CANONICAL_INVOCATION_NULL_GROK_ROUTE = resolve_agent_implementation_route(
     primary_provider_id="grok_cli",
     primary_model_id=DEFAULT_AUTOMATIC_GROK_MODEL,
@@ -22465,8 +22560,10 @@ class PortalImplementationDaemon:
             try:
                 script_runner = bool(
                     len(command_items) >= 2
-                    and Path(command_items[1]).expanduser().resolve(strict=True)
-                    == _TRUSTED_QUOTA_FALLBACK_SCRIPT
+                    and _trusted_packaged_sibling_argument_matches(
+                        command_items[1],
+                        _TRUSTED_QUOTA_FALLBACK_SCRIPT,
+                    )
                 )
             except (OSError, RuntimeError):
                 script_runner = False
@@ -52639,6 +52736,9 @@ class PortalImplementationDaemon:
                             input_text=rescue_prompt,
                             env=provider_environment,
                             inherit_environment=False,
+                            pass_fds=self._accepted_control_plane_pass_fds(
+                                command
+                            ),
                             timeout_seconds=min(
                                 float(self.implementation_timeout),
                                 3600.0,
@@ -69525,6 +69625,13 @@ class PortalImplementationDaemon:
             for launch in launches
             if launch is not None and launch.executable_path in command[:3]
         }
+        from ..sealed_provider_module import (
+            sealed_provider_module_command_descriptor,
+        )
+
+        sealed_provider_fd = sealed_provider_module_command_descriptor(command)
+        if sealed_provider_fd >= 3:
+            matches.add(sealed_provider_fd)
         if len(matches) > 1:
             raise ImplementationRetryDeferred(
                 "accepted control-plane command is ambiguous",
@@ -98300,12 +98407,10 @@ def _ordered_provider_fallback_command(
 ) -> list[str]:
     """Build the no-shell ordered provider runner command."""
 
-    runner_path = Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
-    if not runner_path.is_file():
+    runner_path = _TRUSTED_PROVIDER_FALLBACK_SCRIPT
+    if not _trusted_packaged_sibling_is_available(runner_path):
         raise RuntimeError(f"provider_fallback_runner missing at {runner_path}")
-    command = [
-        sys.executable,
-        str(runner_path),
+    arguments = [
         "--workspace",
         str(workspace_path.resolve()),
         "--primary-provider",
@@ -98320,16 +98425,22 @@ def _ordered_provider_fallback_command(
         fallback_policy,
     ]
     if primary_unavailable_kind:
-        command.extend(["--primary-unavailable-kind", primary_unavailable_kind])
+        arguments.extend(["--primary-unavailable-kind", primary_unavailable_kind])
     if route_receipt_path is not None:
-        command.extend(["--route-receipt-path", str(route_receipt_path.resolve())])
+        arguments.extend(["--route-receipt-path", str(route_receipt_path.resolve())])
     if route_task_id:
-        command.extend(["--route-task-id", route_task_id])
+        arguments.extend(["--route-task-id", route_task_id])
     if route_attempt is not None:
-        command.extend(["--route-attempt", str(route_attempt)])
+        arguments.extend(["--route-attempt", str(route_attempt)])
     if route_stage:
-        command.extend(["--route-stage", route_stage])
-    return command
+        arguments.extend(["--route-stage", route_stage])
+    return _packaged_provider_entry_command(
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.provider_fallback_runner"
+        ),
+        runner_path=runner_path,
+        arguments=arguments,
+    )
 
 
 def _uses_packaged_provider_fallback_runner(command_template: str) -> bool:
@@ -98341,23 +98452,31 @@ def _uses_packaged_provider_fallback_runner(command_template: str) -> bool:
         return False
     if not command:
         return False
-    expected = (
-        Path(__file__).resolve().parents[1] / "provider_fallback_runner.py"
-    ).resolve()
-    try:
-        executable = Path(command[0]).expanduser().resolve()
-    except (OSError, RuntimeError):
-        return False
-    if executable == expected:
+    from ..sealed_provider_module import (
+        sealed_provider_module_command_descriptor,
+    )
+
+    if sealed_provider_module_command_descriptor(
+        command,
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.provider_fallback_runner"
+        ),
+    ) >= 3:
         return True
-    if len(command) < 2:
-        return False
+    expected = _TRUSTED_PROVIDER_FALLBACK_SCRIPT
+    if _trusted_packaged_sibling_argument_matches(command[0], expected):
+        return True
     try:
         interpreter = Path(sys.executable).resolve(strict=True)
-        script = Path(command[1]).expanduser().resolve()
+        executable = Path(command[0]).expanduser().resolve(strict=True)
     except (OSError, RuntimeError):
         return False
-    return executable == interpreter and script == expected
+    if len(command) < 2:
+        return False
+    return executable == interpreter and _trusted_packaged_sibling_argument_matches(
+        command[1],
+        expected,
+    )
 
 
 def _provider_state_boundary_required() -> bool:

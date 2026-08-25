@@ -12187,6 +12187,8 @@ def _test_live_daemon_termination_authority(
     state_dir: Path,
     todo_path: Path,
     sealed_command_prefix: tuple[str, ...],
+    state_owner_bootstrap_fd: int = 999,
+    state_owner_bootstrap_store_id: str = "test-lgcvf-control.duckdb",
 ) -> multi_runner_module._LgcvfLiveDaemonTerminationAuthority:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
         supervised_child_identity_path,
@@ -12213,6 +12215,9 @@ def _test_live_daemon_termination_authority(
         identity_path=supervised_child_identity_path(pid_path),
         owner_scope=tuple(sorted(owner_scope.items())),
         sealed_command_prefix=sealed_command_prefix,
+        database_owner_session_id="lgcvf-quack-lane-0",
+        state_owner_bootstrap_fd=state_owner_bootstrap_fd,
+        state_owner_bootstrap_store_id=state_owner_bootstrap_store_id,
     )
 
 
@@ -12372,6 +12377,12 @@ def test_lgcvf_live_exited_root_fences_real_nondumpable_daemon_sidecar(
         "4",
         "--task-shard-index",
         "0",
+        "--owner-session-id",
+        "lgcvf-quack-lane-0",
+        "--state-owner-bootstrap-fd",
+        "999",
+        "--state-owner-bootstrap-store-id",
+        "test-lgcvf-control.duckdb",
         "--strict-task-sharding",
     )
     daemon = _spawn_test_process(

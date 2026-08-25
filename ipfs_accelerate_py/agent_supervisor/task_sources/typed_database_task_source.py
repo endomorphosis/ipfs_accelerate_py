@@ -119,6 +119,18 @@ _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset(
 )
 
 
+def daemon_required_owner_operations() -> tuple[str, ...]:
+    """Return the exact typed query/mutation grant required by one daemon."""
+
+    return tuple(sorted(_DAEMON_REQUIRED_OWNER_OPERATIONS))
+
+
+def daemon_required_owner_command_operations() -> tuple[str, ...]:
+    """Return the exact owner-command grant required by one daemon."""
+
+    return tuple(sorted(_DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS))
+
+
 def _bounded_json(value: Any, *, noun: str) -> Any:
     if value in (None, ""):
         return None
@@ -1549,4 +1561,6 @@ __all__ = [
     "TYPED_DATABASE_TASK_SOURCE_INTERFACE",
     "TYPED_DATABASE_TASK_SOURCE_SCHEMA",
     "TypedDatabaseTaskSource",
+    "daemon_required_owner_command_operations",
+    "daemon_required_owner_operations",
 ]

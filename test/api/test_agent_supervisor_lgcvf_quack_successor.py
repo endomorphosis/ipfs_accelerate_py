@@ -6,12 +6,14 @@ import importlib.util
 import json
 import os
 import select
+import shlex
 import signal
+import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -50,6 +52,55 @@ def _operator() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _lgcvf_test_execution_route_policy(operator: ModuleType) -> object:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskRecord,
+        TaskSourceSnapshot,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        GROK_CODEX_EXECUTION_MODE,
+        TaskExecutionRoutePolicy,
+    )
+
+    plan_root_cid = "plan:test-lgcvf-bootstrap"
+    tasks = tuple(
+        TaskRecord(
+            task_cid=f"task:test-lgcvf-bootstrap:{index:02d}",
+            task_alias=alias,
+            goal_cid="goal:test-lgcvf-bootstrap",
+            plan_cid=plan_root_cid,
+            ordinal=index + 1,
+            status="ready",
+            revision=1,
+        )
+        for index, alias in enumerate(operator.LGCVF_TASK_ALIASES)
+    )
+    snapshot = TaskSourceSnapshot(
+        source_schema="test-lgcvf-task-source@1",
+        schema_version=1,
+        plan_root_cid=plan_root_cid,
+        repository_tree_id="tree:test-lgcvf-bootstrap",
+        projection_cid="projection:test-lgcvf-bootstrap",
+        formal_plan_id=plan_root_cid,
+        source_identity="source:test-lgcvf-bootstrap",
+        revision=1,
+        event_cursor=0,
+        goal_count=1,
+        task_count=len(tasks),
+        dependency_count=0,
+        terminal=False,
+        objective_count=1,
+        plan_count=1,
+    )
+    return TaskExecutionRoutePolicy.seal(
+        snapshot=snapshot,
+        tasks=tasks,
+        execution_modes={
+            task.task_alias: GROK_CODEX_EXECUTION_MODE for task in tasks
+        },
+    )
 
 
 def _seed_datasets_profile(database: Path) -> None:
@@ -140,7 +191,7 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
             "source_forest_root": "sha256:" + ("a" * 64),
         },
     )
-    stage = tmp_path / "run-v35.stage-test"
+    stage = tmp_path / "run-v36.stage-test"
     stage.mkdir(mode=0o700)
     staged_config = operator._native_resume_stage_config(
         config,
@@ -160,9 +211,9 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
         receipt,
         config=config,
         database_paths={
-            "control": "run-v35.stage-test/control.duckdb",
-            "coordination": "run-v35.stage-test/control.coordination.duckdb",
-            "execution": "run-v35.stage-test/control.execution.duckdb",
+            "control": "run-v36.stage-test/control.duckdb",
+            "coordination": "run-v36.stage-test/control.coordination.duckdb",
+            "execution": "run-v36.stage-test/control.execution.duckdb",
         },
         source_head=str(population["source_head"]),
         repository_tree_id=str(population["repository_tree_id"]),
@@ -220,11 +271,11 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
                 tampered,
                 config=config,
                 database_paths={
-                    "control": "run-v35.stage-test/control.duckdb",
+                    "control": "run-v36.stage-test/control.duckdb",
                     "coordination": (
-                        "run-v35.stage-test/control.coordination.duckdb"
+                        "run-v36.stage-test/control.coordination.duckdb"
                     ),
-                    "execution": "run-v35.stage-test/control.execution.duckdb",
+                    "execution": "run-v36.stage-test/control.execution.duckdb",
                 },
                 source_head=str(population["source_head"]),
                 repository_tree_id=str(population["repository_tree_id"]),
@@ -336,6 +387,76 @@ def test_lgcvf_sealed_module_sibling_keeps_exact_proc_fd_member() -> None:
     ) == Path(
         "/proc/self/fd/71/ipfs_accelerate_py/agent_supervisor/"
         "grok_cli_runner.py"
+    )
+    assert implementation_daemon._trusted_provider_fallback_script_path(
+        origin
+    ) == Path(
+        "/proc/self/fd/71/ipfs_accelerate_py/agent_supervisor/"
+        "provider_fallback_runner.py"
+    )
+    with pytest.raises(ValueError, match="sibling name is not admitted"):
+        implementation_daemon._trusted_packaged_sibling_script_path(
+            origin,
+            "lookalike_runner.py",
+        )
+
+
+def test_lgcvf_sealed_provider_commands_keep_exact_proc_fd_members(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_daemon,
+    )
+
+    grok_runner = Path(
+        "/proc/self/fd/71/ipfs_accelerate_py/agent_supervisor/"
+        "grok_cli_runner.py"
+    )
+    fallback_runner = grok_runner.with_name("provider_fallback_runner.py")
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_TRUSTED_QUOTA_FALLBACK_SCRIPT",
+        grok_runner,
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_TRUSTED_PROVIDER_FALLBACK_SCRIPT",
+        fallback_runner,
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/usr/bin/true",
+    )
+
+    grok_command = implementation_daemon._grok_cli_trusted_failure_command(
+        workspace_path=tmp_path,
+        model="grok-4.6",
+    )
+    fallback_command = implementation_daemon._ordered_provider_fallback_command(
+        workspace_path=tmp_path,
+        primary_provider="grok",
+        primary_command=grok_command,
+        fallback_provider="codex",
+        fallback_command=["/usr/bin/true"],
+    )
+
+    assert grok_command[1] == str(grok_runner)
+    assert fallback_command[1] == str(fallback_runner)
+    assert implementation_daemon._uses_packaged_provider_fallback_runner(
+        shlex.join([implementation_daemon.sys.executable, str(fallback_runner)])
+    )
+    assert implementation_daemon._uses_packaged_provider_fallback_runner(
+        shlex.join([str(fallback_runner)])
+    )
+    assert not implementation_daemon._uses_packaged_provider_fallback_runner(
+        shlex.join(
+            [
+                implementation_daemon.sys.executable,
+                str(fallback_runner).replace("/fd/71/", "/fd/72/"),
+            ]
+        )
     )
 
 
@@ -1410,6 +1531,656 @@ def test_projection_extension_policy_is_load_only_and_never_installs(
         == board_control_plane_module.BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
         == operator.BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
     )
+
+
+def test_lgcvf_route_sealer_uses_one_temporary_exact_population_grant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
+        process_birth_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        quack_state_client as client_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        typed_database_task_source as projection_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        GROK_CODEX_EXECUTION_MODE,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        TYPED_STATE_OWNER_TOKEN_ENV,
+    )
+
+    operator = _operator()
+    policy = _lgcvf_test_execution_route_policy(operator)
+    controller_birth = read_process_birth(os.getpid())
+    assert controller_birth is not None
+    birth_id = process_birth_id(controller_birth)
+    events: list[object] = []
+
+    class Server:
+        def __init__(self) -> None:
+            self.issued: list[dict[str, object]] = []
+            self.revoked: list[str] = []
+
+        def issue_typed_client_grant_record(
+            self, **kwargs: object
+        ) -> tuple[str, SimpleNamespace]:
+            self.issued.append(dict(kwargs))
+            return "temporary-route-sealer-token", SimpleNamespace(
+                grant_id="grant:route-sealer"
+            )
+
+        def revoke_typed_client_grant(self, grant_id: str) -> None:
+            self.revoked.append(grant_id)
+
+    class Client:
+        def __init__(self, **kwargs: object) -> None:
+            events.append(
+                (
+                    "client.init",
+                    dict(kwargs),
+                    os.environ.get(TYPED_STATE_OWNER_TOKEN_ENV),
+                    os.environ.get(TYPED_STATE_OWNER_SOCKET_ENV),
+                )
+            )
+
+        def attach(self, endpoint: str, *, server_id: str) -> None:
+            events.append(("client.attach", endpoint, server_id))
+
+        def close(self) -> None:
+            events.append("client.close")
+
+    class Projection:
+        def __init__(self, client: object, *, owns_client: bool) -> None:
+            events.append(("projection.init", client, owns_client))
+
+        def seal_execution_route_policy(
+            self, execution_modes: dict[str, str]
+        ) -> object:
+            assert execution_modes == {
+                alias: GROK_CODEX_EXECUTION_MODE
+                for alias in operator.LGCVF_TASK_ALIASES
+            }
+            events.append("projection.seal")
+            return policy
+
+        def close(self) -> None:
+            events.append("projection.close")
+
+    monkeypatch.setattr(client_module, "QuackStateClient", Client)
+    monkeypatch.setattr(
+        projection_module,
+        "TypedDatabaseTaskSource",
+        Projection,
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, "prior-test-token")
+    monkeypatch.setenv(TYPED_STATE_OWNER_SOCKET_ENV, "/prior/test.sock")
+    server = Server()
+    owner_socket = tmp_path / "typed-owner.sock"
+    program = SimpleNamespace(
+        store_id="store:lgcvf-bootstrap-test",
+        quack_endpoint="quack://lgcvf-bootstrap-test",
+    )
+    identity = SimpleNamespace(
+        process_birth_id=birth_id,
+        server_id="server:lgcvf-bootstrap-test",
+    )
+
+    result = operator._seal_lgcvf_execution_route_policy(
+        server=server,
+        program=program,
+        identity=identity,
+        controller_birth=controller_birth,
+        owner_socket=owner_socket,
+    )
+
+    assert result is policy
+    assert server.issued == [
+        {
+            "client_id": "lgcvf-route-sealer",
+            "process_birth_id": birth_id,
+            "allowed_operations": (
+                "whoami_metadata",
+                "load_store_generation",
+                "executor_control_snapshot",
+                "executor_task_projection_page",
+            ),
+            "allowed_command_operations": (),
+            "peer_pid": os.getpid(),
+            "ttl_seconds": 60.0,
+        }
+    ]
+    assert server.revoked == ["grant:route-sealer"]
+    assert events[0] == (
+        "client.init",
+        {
+            "owner_id": "lgcvf-route-sealer",
+            "store_id": program.store_id,
+            "process_birth_id": birth_id,
+        },
+        "temporary-route-sealer-token",
+        str(owner_socket),
+    )
+    assert events[1] == (
+        "client.attach",
+        program.quack_endpoint,
+        identity.server_id,
+    )
+    assert events[-2:] == ["projection.close", "client.close"]
+    assert os.environ[TYPED_STATE_OWNER_TOKEN_ENV] == "prior-test-token"
+    assert os.environ[TYPED_STATE_OWNER_SOCKET_ENV] == "/prior/test.sock"
+
+
+@pytest.mark.timeout(30)
+def test_lgcvf_bootstrap_broker_mints_four_lane_grants_and_rotates_one(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        daemon_required_owner_command_operations,
+        daemon_required_owner_operations,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        current_process_birth,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+        STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA,
+        _send_frame,
+    )
+
+    operator = _operator()
+    policy = _lgcvf_test_execution_route_policy(operator)
+    daemon_script = tmp_path / "bootstrap_daemon.py"
+    supervisor_script = tmp_path / "lane_supervisor.py"
+    scheduler_script = tmp_path / "board_scheduler.py"
+    gate = tmp_path / "scheduler.go"
+    output_root = tmp_path / "results"
+    output_root.mkdir(mode=0o700)
+    daemon_script.write_text(
+        r'''from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+    request_state_owner_bootstrap,
+)
+
+descriptor, client_id, store_id, output_path = sys.argv[1:]
+credentials = request_state_owner_bootstrap(
+    int(descriptor),
+    client_id=client_id,
+    store_id=store_id,
+    timeout_seconds=15.0,
+)
+Path(output_path).write_text(
+    json.dumps(
+        {
+            "pid": os.getpid(),
+            "client_id": credentials.client_id,
+            "store_id": credentials.store_id,
+            "server_id": credentials.server_id,
+            "process_birth_id": credentials.process_birth_id,
+            "token_length": len(credentials.token),
+            "execution_route_policy_id": (
+                credentials.execution_route_policy.policy_id
+            ),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    + "\n",
+    encoding="utf-8",
+)
+time.sleep(2.0)
+''',
+        encoding="utf-8",
+    )
+    supervisor_script.write_text(
+        r'''from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+(
+    descriptor,
+    session,
+    lane_text,
+    repository_root,
+    output_root_text,
+    store_id,
+    daemon_script,
+) = sys.argv[1:8]
+lane = int(lane_text)
+for attempt in range(2 if lane == 0 else 1):
+    output_path = (
+        Path(output_root_text) / f"lane-{lane}-attempt-{attempt}.json"
+    )
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            daemon_script,
+            descriptor,
+            f"database-implementation-daemon:{session}",
+            store_id,
+            str(output_path),
+        ],
+        cwd=repository_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        pass_fds=(int(descriptor),),
+    )
+    stdout, stderr = process.communicate(timeout=20.0)
+    if process.returncode != 0:
+        sys.stderr.buffer.write(stdout + stderr)
+        raise SystemExit(process.returncode)
+''',
+        encoding="utf-8",
+    )
+    scheduler_script.write_text(
+        r'''from __future__ import annotations
+
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+(
+    descriptor,
+    gate_text,
+    repository_root,
+    output_root,
+    store_id,
+    supervisor_script,
+    daemon_script,
+) = sys.argv[1:]
+deadline = time.monotonic() + 15.0
+while not Path(gate_text).is_file():
+    if time.monotonic() >= deadline:
+        raise TimeoutError("scheduler gate timed out")
+    time.sleep(0.01)
+processes = []
+for lane in range(4):
+    session = f"lgcvf-quack-lane-{lane}"
+    processes.append(
+        subprocess.Popen(
+            [
+                sys.executable,
+                supervisor_script,
+                descriptor,
+                session,
+                str(lane),
+                repository_root,
+                output_root,
+                store_id,
+                daemon_script,
+                "--board-namespace",
+                "logic-governed-compositional-verification-fabric-v1",
+                "--task-shard-count",
+                "4",
+                "--task-shard-index",
+                str(lane),
+                "--state-prefix",
+                f"lgcvf_lane_{lane}",
+                "--database-owner-session-id",
+                session,
+                "--state-owner-bootstrap-fd",
+                descriptor,
+                "--state-owner-bootstrap-store-id",
+                store_id,
+            ],
+            cwd=repository_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            pass_fds=(int(descriptor),),
+        )
+    )
+failed = []
+for process in processes:
+    stdout, stderr = process.communicate(timeout=25.0)
+    if process.returncode != 0:
+        failed.append(
+            (process.pid, process.returncode, stdout.decode(), stderr.decode())
+        )
+if failed:
+    raise RuntimeError(f"lane supervisors failed: {failed!r}")
+''',
+        encoding="utf-8",
+    )
+
+    class Server:
+        def __init__(self) -> None:
+            self.identity = SimpleNamespace(
+                server_id="server:lgcvf-bootstrap-broker-test"
+            )
+            self.issued: list[dict[str, object]] = []
+            self.revoked: list[str] = []
+            self.renewed: list[str] = []
+
+        def issue_typed_client_grant_record(
+            self, **kwargs: object
+        ) -> tuple[str, SimpleNamespace]:
+            grant_id = f"grant:lgcvf-bootstrap:{len(self.issued) + 1}"
+            self.issued.append({**kwargs, "grant_id": grant_id})
+            return (
+                f"lgcvf-bootstrap-token-{len(self.issued):04d}",
+                SimpleNamespace(
+                    grant_id=grant_id,
+                    expires_at=(
+                        int(time.time() * 1_000)
+                        + int(float(kwargs["ttl_seconds"]) * 1_000)
+                    ),
+                ),
+            )
+
+        def revoke_typed_client_grant(self, grant_id: str) -> None:
+            self.revoked.append(grant_id)
+
+        def renew_typed_client_grant(
+            self,
+            grant_id: str,
+            *,
+            ttl_seconds: float,
+        ) -> SimpleNamespace:
+            assert any(
+                record["grant_id"] == grant_id for record in self.issued
+            )
+            self.renewed.append(grant_id)
+            return SimpleNamespace(
+                grant_id=grant_id,
+                expires_at=(
+                    int(time.time() * 1_000) + int(ttl_seconds * 1_000)
+                ),
+            )
+
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    address = "\0lgcvf-broker-test-" + os.urandom(8).hex()
+    listener.bind(address)
+    listener.listen(8)
+    store_id = "store:lgcvf-bootstrap-broker-test"
+    server = Server()
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        item
+        for item in (str(ROOT), environment.get("PYTHONPATH", ""))
+        if item
+    )
+    scheduler = subprocess.Popen(
+        [
+            sys.executable,
+            str(scheduler_script),
+            str(listener.fileno()),
+            str(gate),
+            str(ROOT),
+            str(output_root),
+            store_id,
+            str(supervisor_script),
+            str(daemon_script),
+        ],
+        cwd=ROOT,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        pass_fds=(listener.fileno(),),
+        start_new_session=True,
+    )
+    scheduler_birth = _capture_process_birth(scheduler)
+    broker = operator._LgcvfStateOwnerBootstrapBroker(
+        channel=listener,
+        descriptor=listener.fileno(),
+        server=server,
+        scheduler_birth=scheduler_birth,
+        endpoint="quack://lgcvf-bootstrap-broker-test",
+        socket_path=tmp_path / "typed-owner.sock",
+        store_id=store_id,
+        execution_route_policy=policy,
+    )
+    broker_stopped = False
+    try:
+        broker.start()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as malformed:
+            malformed.settimeout(2.0)
+            malformed.connect(address)
+            _send_frame(
+                malformed,
+                {
+                    "schema": STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA,
+                    "pid": "not-an-integer",
+                    "process_birth": {},
+                    "process_birth_id": "malformed",
+                    "client_id": (
+                        "database-implementation-daemon:"
+                        + operator.LGCVF_DATABASE_OWNER_SESSIONS[0]
+                    ),
+                    "store_id": store_id,
+                },
+            )
+        rejection_deadline = time.monotonic() + 2.0
+        while broker.rejection_count < 1:
+            assert time.monotonic() < rejection_deadline
+            assert broker.failure == ""
+            time.sleep(0.01)
+        assert broker.last_rejection == "SuccessorOperatorError"
+        assert broker._thread.is_alive()
+        overflow_birth = current_process_birth().to_dict()
+        overflow_birth["start_time_ticks"] = "OVERFLOW"
+        overflow_payload = json.dumps(
+            {
+                "schema": STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA,
+                "pid": os.getpid(),
+                "process_birth": overflow_birth,
+                "process_birth_id": "malformed-overflow",
+                "client_id": (
+                    "database-implementation-daemon:"
+                    + operator.LGCVF_DATABASE_OWNER_SESSIONS[0]
+                ),
+                "store_id": store_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8").replace(b'"OVERFLOW"', b"1e10000")
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as malformed:
+            malformed.settimeout(2.0)
+            malformed.connect(address)
+            malformed.sendall(
+                len(overflow_payload).to_bytes(4, "big") + overflow_payload
+            )
+        rejection_deadline = time.monotonic() + 2.0
+        while broker.rejection_count < 2:
+            assert time.monotonic() < rejection_deadline
+            assert broker.failure == ""
+            time.sleep(0.01)
+        assert broker.last_rejection == "SuccessorOperatorError"
+        assert broker._thread.is_alive()
+        gate.write_text("go\n", encoding="utf-8")
+        ready_deadline = time.monotonic() + 15.0
+        while broker.ready_sessions != operator.LGCVF_DATABASE_OWNER_SESSIONS:
+            assert time.monotonic() < ready_deadline
+            assert broker.failure == ""
+            time.sleep(0.01)
+        renewal_session = operator.LGCVF_DATABASE_OWNER_SESSIONS[1]
+        with broker._lock:
+            broker.current_by_session[renewal_session][
+                "grant_renew_after"
+            ] = 0.0
+            renewal_grant = broker.active_grants[renewal_session]
+        renewal_deadline = time.monotonic() + 5.0
+        while renewal_grant not in server.renewed:
+            assert time.monotonic() < renewal_deadline
+            assert broker.failure == ""
+            time.sleep(0.01)
+        stdout, stderr = scheduler.communicate(timeout=25.0)
+        assert scheduler.returncode == 0, (stdout, stderr, broker.failure)
+        assert broker.failure == ""
+        with broker._lock:
+            broker.current_by_session[renewal_session][
+                "grant_renew_after"
+            ] = 0.0
+        renewed_after_live_birth = len(server.renewed)
+        broker._renew_due_grants()
+        assert len(server.renewed) == renewed_after_live_birth
+        assert broker.ready_sessions == operator.LGCVF_DATABASE_OWNER_SESSIONS
+        assert len(server.issued) == 5
+        assert len(broker.active_grants) == 4
+        assert set(broker.active_grants) == set(
+            operator.LGCVF_DATABASE_OWNER_SESSIONS
+        )
+
+        results = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in sorted(output_root.glob("*.json"))
+        ]
+        assert len(results) == 5
+        assert all(
+            result["execution_route_policy_id"] == policy.policy_id
+            for result in results
+        )
+        assert all(result["token_length"] >= 16 for result in results)
+        assert {result["client_id"] for result in results} == {
+            f"database-implementation-daemon:{session}"
+            for session in operator.LGCVF_DATABASE_OWNER_SESSIONS
+        }
+        assert {result["store_id"] for result in results} == {store_id}
+        assert {result["server_id"] for result in results} == {
+            server.identity.server_id
+        }
+        assert len({result["process_birth_id"] for result in results}) == 5
+
+        expected_operations = daemon_required_owner_operations()
+        expected_commands = daemon_required_owner_command_operations()
+        assert all(
+            record["allowed_operations"] == expected_operations
+            and record["allowed_command_operations"] == expected_commands
+            and record["ttl_seconds"]
+            == operator.INTERNAL_CLIENT_GRANT_TTL_SECONDS
+            for record in server.issued
+        )
+        assert {record["client_id"] for record in server.issued} == {
+            f"database-implementation-daemon:{session}"
+            for session in operator.LGCVF_DATABASE_OWNER_SESSIONS
+        }
+        assert {
+            int(record["peer_pid"]) for record in server.issued
+        } == {int(result["pid"]) for result in results}
+
+        lane_zero_client = (
+            "database-implementation-daemon:"
+            + operator.LGCVF_DATABASE_OWNER_SESSIONS[0]
+        )
+        lane_zero_grants = [
+            str(record["grant_id"])
+            for record in server.issued
+            if record["client_id"] == lane_zero_client
+        ]
+        assert len(lane_zero_grants) == 2
+        assert lane_zero_grants[0] in server.revoked
+        assert broker.active_grants[
+            operator.LGCVF_DATABASE_OWNER_SESSIONS[0]
+        ] == lane_zero_grants[1]
+
+        broker.stop()
+        broker_stopped = True
+        assert broker._thread.is_alive() is False
+        assert broker.active_grants == {}
+        assert set(server.revoked) == {
+            str(record["grant_id"]) for record in server.issued
+        }
+    finally:
+        if scheduler.poll() is None:
+            try:
+                os.killpg(scheduler.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            scheduler.wait(timeout=5.0)
+        if not broker_stopped:
+            broker.stop()
+        listener.close()
+
+
+@pytest.mark.timeout(10)
+def test_lgcvf_broker_fences_separate_session_births_before_revocation(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        current_process_birth,
+        owner_liveness,
+    )
+
+    operator = _operator()
+    policy = _lgcvf_test_execution_route_policy(operator)
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind("\0lgcvf-broker-stop-test-" + os.urandom(8).hex())
+    listener.listen(2)
+    children = [
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import signal,time;"
+                    "signal.signal(signal.SIGTERM,lambda *_:None);"
+                    "print('ready',flush=True);time.sleep(60)"
+                ),
+            ],
+            cwd=tmp_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        for _index in range(2)
+    ]
+    births = tuple(_capture_process_birth(child) for child in children)
+    assert all(child.stdout is not None for child in children)
+    assert all(child.stdout.readline().strip() == "ready" for child in children)
+    revoked_after_fence: list[str] = []
+
+    class Server:
+        def revoke_typed_client_grant(self, grant_id: str) -> None:
+            assert all(
+                owner_liveness(birth) is OwnerLiveness.DEAD
+                for birth in births
+            )
+            revoked_after_fence.append(grant_id)
+
+    broker = operator._LgcvfStateOwnerBootstrapBroker(
+        channel=listener,
+        descriptor=listener.fileno(),
+        server=Server(),
+        scheduler_birth=current_process_birth(),
+        endpoint="quack://lgcvf-bootstrap-stop-test",
+        socket_path=tmp_path / "typed-owner.sock",
+        store_id="store:lgcvf-bootstrap-stop-test",
+        execution_route_policy=policy,
+        process_stop_grace_seconds=0.1,
+    )
+    session = operator.LGCVF_DATABASE_OWNER_SESSIONS[0]
+    broker.current_by_session[session] = {
+        "supervisor_process_birth": births[0].to_dict(),
+        "daemon_process_birth": births[1].to_dict(),
+    }
+    broker.active_grants[session] = "grant:lgcvf-bootstrap-stop-test"
+    try:
+        broker.stop()
+        assert revoked_after_fence == [
+            "grant:lgcvf-bootstrap-stop-test"
+        ]
+        assert all(child.poll() is not None for child in children)
+        assert broker.active_grants == {}
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=5.0)
 
 
 OWNER_PROCESS = r"""

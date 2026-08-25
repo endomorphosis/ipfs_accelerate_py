@@ -326,10 +326,15 @@ def _field(value,name):
 try:
     if not sys.flags.isolated or not sys.flags.no_site or not sys.flags.dont_write_bytecode or not sys.platform.startswith('linux') or any(name.startswith(('LD_','PYTHON')) or name=='GLIBC_TUNABLES' for name in os.environ): _deny()
     if os.environ.get('IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY','')!='load_only': _deny()
+    candidate_module=sys.argv[6] if len(sys.argv)>6 else ''
+    daemon_bootstrap=candidate_module=='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon'
     token=os.environ.get('IPFS_ACCELERATE_AGENT_QUACK_TOKEN','')
-    try: token_bytes=token.encode('ascii')
-    except BaseException: _deny()
-    if not 8<=len(token_bytes)<=4096 or any(value not in b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-' for value in token_bytes): _deny()
+    if daemon_bootstrap:
+        if token: _deny()
+    else:
+        try: token_bytes=token.encode('ascii')
+        except BaseException: _deny()
+        if not 8<=len(token_bytes)<=4096 or any(value not in b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-' for value in token_bytes): _deny()
     libc=ctypes.CDLL(None,use_errno=True)
     if libc.prctl(4,0,0,0,0)!=0 or libc.prctl(3,0,0,0,0)!=0: _deny()
     import fcntl,hashlib,json,re,stat
@@ -406,6 +411,24 @@ try:
     if admission.get('schema')!='ipfs_accelerate_py.agent_supervisor.lgcvf-configured-board-live-admission@1' or admission.get('admission_id')!=admission_id: _deny()
     expected={'capsule_id':pin.capsule_id,'capsule_archive_sha256':pin.archive_sha256,'source_head':pin.source_head,'source_tree':pin.source_tree,'candidate_config_path':pin.candidate_config_path,'candidate_config_sha256':pin.candidate_config_sha256,'board_namespace':'logic-governed-compositional-verification-fabric-v1','scheduler_schema':'ipfs_accelerate_py.agent_supervisor.logic_governed_compositional_verification_fabric.scheduler_config@1','validator_sha256':pin.validator_sha256,'materializer_sha256':pin.materializer_sha256,'operator_sha256':pin.operator_sha256,'native_authorization_id':pin.native_authorization_id,'native_dependency_id':pin.native_dependency_id,'task_source_kind':'duckdb','authority_mode':'quack','state_schema_revision':'datasets-authoritative-operational-v1','lane_names':['lgcvf-quack-lane-0','lgcvf-quack-lane-1','lgcvf-quack-lane-2','lgcvf-quack-lane-3']}
     if any(admission.get(name)!=value for name,value in expected.items()): _deny()
+    if daemon_bootstrap:
+        def _values(option):
+            found=[]; index=1
+            while index<len(sys.argv):
+                item=sys.argv[index]
+                if item==option:
+                    if index+1>=len(sys.argv) or sys.argv[index+1].startswith('--'): _deny()
+                    found.append(sys.argv[index+1]); index+=2; continue
+                if item.startswith(option+'='):
+                    value=item[len(option)+1:]
+                    if not value: _deny()
+                    found.append(value)
+                index+=1
+            return found
+        bootstrap_values=_values('--state-owner-bootstrap-fd'); bootstrap_stores=_values('--state-owner-bootstrap-store-id'); owner_sessions=_values('--owner-session-id')
+        try: daemon_bootstrap_fd=int(bootstrap_values[0])
+        except BaseException: _deny()
+        if len(bootstrap_values)!=1 or daemon_bootstrap_fd<3 or daemon_bootstrap_fd in {capsule_fd,native_fd} or len(bootstrap_stores)!=1 or not bootstrap_stores[0] or len(owner_sessions)!=1 or owner_sessions[0] not in expected['lane_names']: _deny()
     python_identity=pin.python_identity
     accepted_python=_field(python_identity,'python_executable_sha256')
     if accepted_python is None: accepted_python=_field(python_identity,'executable_sha256')
@@ -3462,6 +3485,48 @@ def _lgcvf_live_exact_option(
         )
 
 
+def _lgcvf_state_owner_bootstrap_binding(
+    common_args: Sequence[str],
+    *,
+    context: LgcvfConfiguredBoardLiveContext,
+    expected_store_id: str,
+) -> tuple[int, str]:
+    """Return the exact inherited listener bound to the live Quack store."""
+
+    descriptors = _profile_option_values(
+        common_args,
+        "--state-owner-bootstrap-fd",
+    )
+    stores = _profile_option_values(
+        common_args,
+        "--state-owner-bootstrap-store-id",
+    )
+    if len(descriptors) != 1 or stores != (str(expected_store_id),):
+        raise ValueError("LGCVF state-owner bootstrap binding is not exact")
+    try:
+        descriptor = int(descriptors[0])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "LGCVF state-owner bootstrap descriptor is invalid"
+        ) from exc
+    if descriptor < 3 or descriptor in context.pass_fds:
+        raise ValueError(
+            "LGCVF state-owner bootstrap descriptor collides with sealed authority"
+        )
+    from ..task_sources.state_owner_bootstrap import (
+        StateOwnerBootstrapError,
+        validate_state_owner_bootstrap_listener,
+    )
+
+    try:
+        validate_state_owner_bootstrap_listener(descriptor)
+    except StateOwnerBootstrapError as exc:
+        raise ValueError(
+            "LGCVF state-owner bootstrap listener is invalid"
+        ) from exc
+    return descriptor, stores[0]
+
+
 def _verify_lgcvf_configured_board_live_profile(
     *,
     tracks: Sequence[SupervisorTrack],
@@ -3551,12 +3616,21 @@ def _verify_lgcvf_configured_board_live_profile(
         or database.get("endpoint_secret_handle")
         != "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
         or common.count("--strict-task-sharding") != 1
+        or _profile_option_values(
+            common,
+            "--database-owner-session-id",
+        )
     ):
         raise ValueError("LGCVF live database profile is not exact Quack authority")
     for option, expected in exact_options.items():
         if not expected:
             raise ValueError(f"LGCVF capsule config lacks {option}")
         _lgcvf_live_exact_option(common, option, expected)
+    _lgcvf_state_owner_bootstrap_binding(
+        common,
+        context=context,
+        expected_store_id=str(database.get("store_id") or ""),
+    )
     if require_complete_lane_set:
         if tuple(track.name for track in tracks) != (
             LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES
@@ -3596,6 +3670,10 @@ def _verify_lgcvf_configured_board_live_profile(
             or not _path_within(resolved.log_path, root)
             or not _path_within(resolved.supervisor_pid_path, root)
             or not _path_within(resolved.daemon_pid_path, root)
+            or _profile_option_values(
+                resolved.extra_args,
+                "--database-owner-session-id",
+            )
         ):
             raise ValueError("LGCVF live lane paths are not exact")
         _lgcvf_live_exact_option(
@@ -6356,6 +6434,9 @@ class _LgcvfLiveDaemonTerminationAuthority:
     identity_path: Path
     owner_scope: tuple[tuple[str, str], ...]
     sealed_command_prefix: tuple[str, ...]
+    database_owner_session_id: str
+    state_owner_bootstrap_fd: int
+    state_owner_bootstrap_store_id: str
 
 
 def _lgcvf_live_daemon_termination_authority(
@@ -6380,6 +6461,18 @@ def _lgcvf_live_daemon_termination_authority(
     shard_counts = _profile_option_values(argv, "--task-shard-count")
     shard_indices = _profile_option_values(argv, "--task-shard-index")
     namespaces = _profile_option_values(argv, "--board-namespace")
+    owner_sessions = _profile_option_values(
+        argv,
+        "--database-owner-session-id",
+    )
+    bootstrap_fds = _profile_option_values(
+        argv,
+        "--state-owner-bootstrap-fd",
+    )
+    bootstrap_stores = _profile_option_values(
+        argv,
+        "--state-owner-bootstrap-store-id",
+    )
     if (
         len(state_dirs) != 1
         or len(state_prefixes) != 1
@@ -6389,6 +6482,10 @@ def _lgcvf_live_daemon_termination_authority(
         or shard_indices[0] not in {"0", "1", "2", "3"}
         or namespaces != (LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,)
         or state_prefixes[0] != f"lgcvf_lane_{shard_indices[0]}"
+        or owner_sessions
+        != (context.admission.lane_names[int(shard_indices[0])],)
+        or len(bootstrap_fds) != 1
+        or len(bootstrap_stores) != 1
         or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", state_prefixes[0])
         is None
     ):
@@ -6472,6 +6569,9 @@ def _lgcvf_live_daemon_termination_authority(
         identity_path=identity_path,
         owner_scope=owner_scope,
         sealed_command_prefix=sealed_command_prefix,
+        database_owner_session_id=owner_sessions[0],
+        state_owner_bootstrap_fd=int(bootstrap_fds[0]),
+        state_owner_bootstrap_store_id=bootstrap_stores[0],
     )
 
 
@@ -7010,6 +7110,8 @@ def start_track(
     live_seal_verification: dict[str, Any] | None = None
     configured_board_live_seal_config = ""
     worker_network_launch_authority_json = ""
+    lgcvf_bootstrap_descriptor = -1
+    lgcvf_owner_session_id = ""
     if live_profile_required and configured_board_live_context is None:
         raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
     if configured_board_live_context is not None:
@@ -7040,6 +7142,23 @@ def start_track(
             common_args=common_args,
             context=configured_board_live_context,
             require_complete_lane_set=False,
+        )
+        live_payload = _lgcvf_configured_board_live_embedded_config(
+            configured_board_live_context
+        )
+        live_database = live_payload.get("database_program")
+        if type(live_database) is not dict:
+            raise ValueError("LGCVF live database profile is unavailable")
+        lgcvf_bootstrap_descriptor, _bootstrap_store = (
+            _lgcvf_state_owner_bootstrap_binding(
+                common_args,
+                context=configured_board_live_context,
+                expected_store_id=str(live_database.get("store_id") or ""),
+            )
+        )
+        lane_index = LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES.index(track.name)
+        lgcvf_owner_session_id = (
+            configured_board_live_context.admission.lane_names[lane_index]
         )
 
     resolved = track.resolve(repo_root)
@@ -7368,6 +7487,8 @@ def start_track(
         supervisor_argv = [
             *common_args,
             *resolved.extra_args,
+            "--database-owner-session-id",
+            lgcvf_owner_session_id,
             _LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_FLAG,
             LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH,
             "--configured-board-live-capsule-pin-json",
@@ -7612,6 +7733,11 @@ def start_track(
                         sorted(
                             {
                                 gate_read_fd,
+                                *(
+                                    (lgcvf_bootstrap_descriptor,)
+                                    if lgcvf_live_dispatch
+                                    else ()
+                                ),
                                 *(
                                     configured_board_live_context.pass_fds
                                     if lgcvf_live_dispatch
@@ -8912,6 +9038,15 @@ def _lgcvf_live_daemon_command_matches(
             and _profile_option_values(tokens, "--task-shard-count") == ("4",)
             and _profile_option_values(tokens, "--task-shard-index")
             == (expected_shard_index,)
+            and _profile_option_values(tokens, "--owner-session-id")
+            == (authority.database_owner_session_id,)
+            and _profile_option_values(tokens, "--state-owner-bootstrap-fd")
+            == (str(authority.state_owner_bootstrap_fd),)
+            and _profile_option_values(
+                tokens,
+                "--state-owner-bootstrap-store-id",
+            )
+            == (authority.state_owner_bootstrap_store_id,)
             and tokens.count("--strict-task-sharding") == 1
         )
     except ValueError:
@@ -11213,12 +11348,29 @@ def _run_lgcvf_configured_board_live_launch_gate(
             "--task-shard-index",
         )
         state_prefixes = _profile_option_values(child_argv, "--state-prefix")
+        live_payload = _lgcvf_configured_board_live_embedded_config(context)
+        live_database = live_payload.get("database_program")
+        if type(live_database) is not dict:
+            return 78
+        bootstrap_fd, _bootstrap_store = (
+            _lgcvf_state_owner_bootstrap_binding(
+                child_argv,
+                context=context,
+                expected_store_id=str(live_database.get("store_id") or ""),
+            )
+        )
         if (
             len(shard_indices) != 1
             or shard_indices[0] not in {"0", "1", "2", "3"}
             or state_prefixes != (f"lgcvf_lane_{shard_indices[0]}",)
+            or _profile_option_values(
+                child_argv,
+                "--database-owner-session-id",
+            )
+            != (context.admission.lane_names[int(shard_indices[0])],)
             or gate_fd < 3
             or gate_fd in context.pass_fds
+            or gate_fd == bootstrap_fd
         ):
             return 78
     except ValueError:

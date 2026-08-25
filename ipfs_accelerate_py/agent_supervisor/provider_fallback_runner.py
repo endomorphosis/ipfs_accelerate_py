@@ -47,6 +47,9 @@ from ipfs_accelerate_py.llm_router import (  # noqa: E402
 from ipfs_accelerate_py.agent_supervisor.grok_cli_runner import (  # noqa: E402
     TRUSTED_FAILURE_RECEIPT_FD_ENV,
 )
+from ipfs_accelerate_py.agent_supervisor.sealed_provider_module import (  # noqa: E402
+    sealed_provider_module_command_descriptor,
+)
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (  # noqa: E402
     PROOF_REUSE_STATE_ROOT_ENV,
     PROVIDER_PROTECTED_STATE_ROOT_ENV,
@@ -231,6 +234,11 @@ def _command_from_json(
 
 
 def _uses_packaged_grok_adapter(command: Sequence[str]) -> bool:
+    if sealed_provider_module_command_descriptor(
+        command,
+        module_name="ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+    ) >= 3:
+        return True
     if len(command) < 2:
         return False
     expected_python = Path(sys.executable).resolve()
@@ -289,6 +297,9 @@ def _run_provider(
     popen_kwargs: dict[str, object] = {}
     child_env = dict(child_environment or os.environ)
     pass_fds: list[int] = []
+    sealed_provider_fd = sealed_provider_module_command_descriptor(command)
+    if sealed_provider_fd >= 3:
+        pass_fds.append(sealed_provider_fd)
     if provider_name.lower() == "grok" and _uses_packaged_grok_adapter(command):
         trusted_read_fd, trusted_write_fd = os.pipe()
         child_env[TRUSTED_FAILURE_RECEIPT_FD_ENV] = str(trusted_write_fd)

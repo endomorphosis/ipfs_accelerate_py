@@ -3466,6 +3466,29 @@ class QuackStateServer:
             ttl_seconds=ttl_seconds,
         )
 
+    def renew_typed_client_grant(
+        self,
+        grant_id: str,
+        *,
+        ttl_seconds: float = 3_600.0,
+    ) -> OwnerClientGrant:
+        """Renew one live exact-client grant without changing its scope."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "client grant renewal requires a ready state owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError(
+                "typed command gateway is unavailable"
+            )
+        return gateway.renew_grant(
+            grant_id,
+            ttl_seconds=ttl_seconds,
+        )
+
     def _require_eaaef_owner_gateway(self) -> TypedStateOwnerGateway:
         identity = self._identity
         owner = self._owner

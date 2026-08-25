@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import socket
+import uuid
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,11 +20,11 @@ from ipfs_accelerate_py.agent_supervisor.runtime import (
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
     CODEX_MODEL_ENV,
     CODEX_REASONING_EFFORT_ENV,
-    ConfiguredBoardError,
     FALLBACK_PROVIDER_ENV,
     FALLBACK_TRIGGER_ENV,
     GROK_MODEL_ENV,
     PROVIDER_ENV,
+    ConfiguredBoardError,
     configured_board_common_args,
     configured_board_launch_plan,
     load_configured_board,
@@ -57,11 +60,11 @@ CANONICAL_PATH = ROOT / (
 BOARD_BRANCH = "agent/logic-governed-compositional-verification-fabric-v1"
 RUNTIME_ROOT = (
     "data/agent_supervisor/"
-    "logic_governed_compositional_verification_fabric/run-v35"
+    "logic_governed_compositional_verification_fabric/run-v36"
 )
 QUACK_OWNER = f"{RUNTIME_ROOT}/quack-owner"
 QUACK_HANDLE = "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
-QUACK_ENDPOINT = "quack:127.0.0.1:24697"
+QUACK_ENDPOINT = "quack:127.0.0.1:24698"
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -77,7 +80,18 @@ def _option_value(argv: list[str], option: str) -> str:
     return argv[argv.index(option) + 1]
 
 
-def test_lgcvf_quack_candidate_is_additive_run_v35_fail_closed_profile() -> None:
+@pytest.fixture
+def state_owner_bootstrap_listener() -> socket.socket:
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(f"\0lgcvf-test-bootstrap-{uuid.uuid4().hex}")
+    listener.listen(8)
+    try:
+        yield listener
+    finally:
+        listener.close()
+
+
+def test_lgcvf_quack_candidate_is_additive_run_v36_fail_closed_profile() -> None:
     candidate = _load_json(CANDIDATE_PATH)
     canonical = _load_json(CANONICAL_PATH)
 
@@ -128,8 +142,8 @@ def test_lgcvf_quack_candidate_is_additive_run_v35_fail_closed_profile() -> None
     assert program["quack_endpoint"] == QUACK_ENDPOINT
     assert program["runtime_registry_path"] == runtime["quack_owner"]
     assert program["store_id"] == f"{RUNTIME_ROOT}/control.duckdb"
-    assert program["store_generation"] == "lgcvf-run-v35"
-    assert program["export_profile"] == "lgcvf-run-v35"
+    assert program["store_generation"] == "lgcvf-run-v36"
+    assert program["export_profile"] == "lgcvf-run-v36"
     assert program["failover_policy"] == "fail_closed"
     assert program["explicit_legacy"] is False
     assert program["claim_policy"] == {
@@ -194,7 +208,13 @@ def test_lgcvf_quack_candidate_is_additive_run_v35_fail_closed_profile() -> None
     assert CANDIDATE_RELATIVE.as_posix() in protected
     assert CANONICAL_PATH.relative_to(ROOT).as_posix() in protected
     assert {
+        "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/sealed_provider_module.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/task_execution_route_policy.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py",
         "scripts/run_logic_governed_compositional_verification_fabric_quack.py",
+        "test/api/test_agent_supervisor_sealed_provider_module.py",
         "test/api/test_agent_supervisor_lgcvf_quack_successor.py",
     } <= protected
 
@@ -271,7 +291,7 @@ def test_lgcvf_quack_candidate_loads_and_renders_detached_launch_plan(
     assert environment[STATE_FAILOVER_POLICY_ENV] == "fail_closed"
     assert environment[STATE_ENDPOINT_SECRET_HANDLE_ENV] == QUACK_HANDLE
     assert environment[STATE_QUACK_ENDPOINT_ENV] == QUACK_ENDPOINT
-    assert environment[STATE_STORE_GENERATION_ENV] == "lgcvf-run-v35"
+    assert environment[STATE_STORE_GENERATION_ENV] == "lgcvf-run-v36"
     expected_owner = str((ROOT / QUACK_OWNER).resolve())
     assert environment[RUNTIME_REGISTRY_PATH_ENV] == expected_owner
     assert environment[STATE_QUACK_MUTATION_DIR_ENV] == (
@@ -294,22 +314,26 @@ def _fake_lgcvf_live_context() -> SimpleNamespace:
     return SimpleNamespace(
         capsule_pin=SimpleNamespace(
             candidate_config_sha256=f"sha256:{candidate_sha256}",
+            capsule_id="sha256:" + "a" * 64,
         ),
-        capsule_descriptor=101,
+        capsule_descriptor=100_001,
         capsule_pin_json="sealed-capsule-pin",
         admission=SimpleNamespace(
             lane_names=tuple(
                 f"lgcvf-quack-lane-{index}" for index in range(4)
             ),
+            admission_id="sha256:" + "b" * 64,
         ),
         admission_json="sealed-live-admission",
         native_launch_json="sealed-native-launch",
-        native_descriptor=102,
+        native_descriptor=100_002,
+        pass_fds=(100_001, 100_002),
     )
 
 
 def test_lgcvf_live_scheduler_admits_exact_virgin_transfer_policy(
     monkeypatch,
+    state_owner_bootstrap_listener: socket.socket,
 ) -> None:
     board = load_configured_board(CANDIDATE_PATH, repo_root=ROOT)
     context = _fake_lgcvf_live_context()
@@ -324,6 +348,10 @@ def test_lgcvf_live_scheduler_admits_exact_virgin_transfer_policy(
         "configured_board_live_admission_json": context.admission_json,
         "configured_board_live_native_launch_json": context.native_launch_json,
         "configured_board_live_native_descriptor": context.native_descriptor,
+        "state_owner_bootstrap_fd": state_owner_bootstrap_listener.fileno(),
+        "state_owner_bootstrap_store_id": (
+            board.resolved_database_program().store_id
+        ),
     }
 
     plan = configured_board_launch_plan(
@@ -341,6 +369,13 @@ def test_lgcvf_live_scheduler_admits_exact_virgin_transfer_policy(
         plan["argv"],
         "--implementation-supervisor-idle-lane-work-stealing",
     ) == "virgin-transfer"
+    common = _common_args(plan["argv"])
+    assert _option_value(common, "--state-owner-bootstrap-fd") == str(
+        state_owner_bootstrap_listener.fileno()
+    )
+    assert _option_value(common, "--state-owner-bootstrap-store-id") == (
+        board.resolved_database_program().store_id
+    )
     with pytest.raises(
         ConfiguredBoardError,
         match="does not match the exact foreground four-lane Quack board",
@@ -355,8 +390,80 @@ def test_lgcvf_live_scheduler_admits_exact_virgin_transfer_policy(
         )
 
 
+def test_lgcvf_live_scheduler_bootstrap_binding_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    state_owner_bootstrap_listener: socket.socket,
+) -> None:
+    board = load_configured_board(CANDIDATE_PATH, repo_root=ROOT)
+    context = _fake_lgcvf_live_context()
+    monkeypatch.setattr(
+        scheduler_module,
+        "verify_lgcvf_configured_board_live_context",
+        lambda **_kwargs: context,
+    )
+    live_arguments = {
+        "configured_board_live_capsule_pin_json": context.capsule_pin_json,
+        "configured_board_live_capsule_descriptor": context.capsule_descriptor,
+        "configured_board_live_admission_json": context.admission_json,
+        "configured_board_live_native_launch_json": context.native_launch_json,
+        "configured_board_live_native_descriptor": context.native_descriptor,
+    }
+    store_id = board.resolved_database_program().store_id
+
+    with pytest.raises(ConfiguredBoardError, match="bidirectional"):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260825T000000Z",
+            **live_arguments,
+        )
+    with pytest.raises(ConfiguredBoardError, match="fields are incomplete"):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260825T000000Z",
+            state_owner_bootstrap_fd=state_owner_bootstrap_listener.fileno(),
+            **live_arguments,
+        )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="does not match the exact foreground four-lane Quack board",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260825T000000Z",
+            state_owner_bootstrap_fd=state_owner_bootstrap_listener.fileno(),
+            state_owner_bootstrap_store_id="foreign/control.duckdb",
+            **live_arguments,
+        )
+
+    read_fd, write_fd = os.pipe()
+    try:
+        with pytest.raises(
+            ConfiguredBoardError,
+            match="state-owner bootstrap listener is invalid",
+        ):
+            configured_board_launch_plan(
+                board,
+                implement=True,
+                detach=False,
+                stamp="20260825T000000Z",
+                state_owner_bootstrap_fd=read_fd,
+                state_owner_bootstrap_store_id=store_id,
+                **live_arguments,
+            )
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
+
+
 def test_lgcvf_live_runner_binds_policy_from_capsule_to_lane_argv(
     monkeypatch,
+    state_owner_bootstrap_listener: socket.socket,
 ) -> None:
     candidate = _load_json(CANDIDATE_PATH)
     board = load_configured_board(CANDIDATE_PATH, repo_root=ROOT)
@@ -372,7 +479,15 @@ def test_lgcvf_live_runner_binds_policy_from_capsule_to_lane_argv(
         stamp="20260825T000000Z",
         lanes_per_track=4,
     )
-    common = configured_board_common_args(board, implement=True)
+    common = configured_board_common_args(
+        board,
+        implement=True,
+        state_owner_bootstrap_fd=state_owner_bootstrap_listener.fileno(),
+        state_owner_bootstrap_store_id=(
+            board.resolved_database_program().store_id
+        ),
+    )
+    context = _fake_lgcvf_live_context()
     monkeypatch.setattr(
         multi_runner_module,
         "_lgcvf_configured_board_live_embedded_config",
@@ -383,7 +498,7 @@ def test_lgcvf_live_runner_binds_policy_from_capsule_to_lane_argv(
         tracks=tracks,
         repo_root=ROOT,
         common_args=common,
-        context=object(),
+        context=context,
     )
 
     assert tuple(track.name for track in admitted) == tuple(
@@ -404,7 +519,7 @@ def test_lgcvf_live_runner_binds_policy_from_capsule_to_lane_argv(
             tracks=tracks,
             repo_root=ROOT,
             common_args=tampered_common,
-            context=object(),
+            context=context,
         )
 
     without_policy = dict(candidate)
@@ -419,5 +534,166 @@ def test_lgcvf_live_runner_binds_policy_from_capsule_to_lane_argv(
             tracks=tracks,
             repo_root=ROOT,
             common_args=common,
-            context=object(),
+            context=context,
         )
+
+
+def test_lgcvf_live_runner_passes_one_bootstrap_listener_to_lane_supervisor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    state_owner_bootstrap_listener: socket.socket,
+) -> None:
+    candidate = _load_json(CANDIDATE_PATH)
+    board = load_configured_board(CANDIDATE_PATH, repo_root=ROOT)
+    context = _fake_lgcvf_live_context()
+    common = configured_board_common_args(
+        board,
+        implement=True,
+        state_owner_bootstrap_fd=state_owner_bootstrap_listener.fileno(),
+        state_owner_bootstrap_store_id=(
+            board.resolved_database_program().store_id
+        ),
+    )
+    lane_index = 2
+    lane_name = f"lgcvf-quack-lane-{lane_index}"
+    lane_dir = tmp_path / f"lane-{lane_index}"
+    track = multi_runner_module.SupervisorTrack(
+        name=lane_name,
+        script_path=ROOT / multi_runner_module.PLAN_BOUND_ACCEPTED_ENTRY_PATH,
+        log_path=lane_dir / "supervisor.log",
+        supervisor_pid_path=lane_dir / "supervisor.pid",
+        daemon_pid_path=lane_dir / "daemon.pid",
+        extra_args=(
+            "--state-dir",
+            str(lane_dir),
+            "--state-prefix",
+            f"lgcvf_lane_{lane_index}",
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            str(lane_index),
+        ),
+    )
+    built_commands: list[dict[str, object]] = []
+    popen_calls: list[dict[str, object]] = []
+
+    def build_command(**kwargs: object) -> list[str]:
+        built_commands.append(dict(kwargs))
+        return [
+            "/sealed/python",
+            str(kwargs["module_name"]),
+            *[str(item) for item in kwargs["argv"]],
+        ]
+
+    class FakeProcess:
+        pid = 42_424
+
+        def __init__(self, inherited: tuple[int, ...]) -> None:
+            self.inherited = inherited
+            self.held_fds: list[int] = []
+            for descriptor in inherited:
+                try:
+                    self.held_fds.append(os.dup(descriptor))
+                except OSError:
+                    pass
+
+    def popen(_command: object, **kwargs: object) -> FakeProcess:
+        popen_calls.append(dict(kwargs))
+        return FakeProcess(tuple(kwargs["pass_fds"]))
+
+    def capture_identity(
+        _process: FakeProcess,
+        profile: multi_runner_module.LifecycleProfile,
+    ) -> multi_runner_module.ProcessIdentity:
+        return multi_runner_module.ProcessIdentity(
+            pid=FakeProcess.pid,
+            start_time_ticks=1,
+            parent_pid=os.getpid(),
+            process_group_id=FakeProcess.pid,
+            session_id=FakeProcess.pid,
+            boot_id="test-boot",
+            argv=profile.argv,
+            cwd=profile.cwd,
+            executable="/sealed/python",
+            run_id=profile.run_id,
+            profile_id=profile.profile_id,
+            target_id=profile.target_id,
+            repository_root=profile.repository_root,
+            state_root=profile.state_root,
+            run_root=profile.run_root,
+            fencing_epoch=0,
+            configuration_root=profile.configuration_root,
+        )
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "verify_lgcvf_configured_board_live_context",
+        lambda **_kwargs: context,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_verify_lgcvf_configured_board_live_profile",
+        lambda **_kwargs: (track,),
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_lgcvf_configured_board_live_embedded_config",
+        lambda _context: candidate,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "build_lgcvf_configured_board_live_module_command",
+        build_command,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_lgcvf_configured_board_live_profile_environment",
+        lambda _environment: (),
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_lgcvf_configured_board_live_positive_child_environment",
+        lambda environment, **_kwargs: dict(environment),
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_lgcvf_live_daemon_termination_authority",
+        lambda **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_capture_lgcvf_live_gated_process_identity",
+        capture_identity,
+    )
+    monkeypatch.setattr(multi_runner_module.subprocess, "Popen", popen)
+
+    process = multi_runner_module.start_track(
+        track,
+        repo_root=ROOT,
+        common_args=common,
+        configured_board_live_context=context,
+        output=lambda _message: None,
+    )
+    try:
+        assert len(popen_calls) == 1
+        inherited = tuple(popen_calls[0]["pass_fds"])
+        assert state_owner_bootstrap_listener.fileno() in inherited
+        assert set(context.pass_fds) < set(inherited)
+        assert len(inherited) == len(set(inherited)) == 4
+
+        supervisor_argv = [str(item) for item in built_commands[0]["argv"]]
+        assert _option_value(
+            supervisor_argv,
+            "--database-owner-session-id",
+        ) == lane_name
+        assert _option_value(
+            supervisor_argv,
+            "--state-owner-bootstrap-fd",
+        ) == str(state_owner_bootstrap_listener.fileno())
+        assert _option_value(
+            supervisor_argv,
+            "--state-owner-bootstrap-store-id",
+        ) == board.resolved_database_program().store_id
+    finally:
+        for descriptor in process.held_fds:
+            os.close(descriptor)

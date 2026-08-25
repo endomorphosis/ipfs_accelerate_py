@@ -2,16 +2,24 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    BOARD_EXTENSION_INSTALL_POLICY_ENV,
+    BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY,
     DATABASE_PROGRAM_JSON_ENV,
+    QUACK_TOKEN_FILE_ENV,
     RUNTIME_REGISTRY_PATH_ENV,
     STATE_AUTHORITY_MODE_ENV,
+    STATE_ENDPOINT_SECRET_HANDLE_ENV,
     STATE_FAILOVER_POLICY_ENV,
     STATE_QUACK_MUTATION_DIR_ENV,
     TASK_SOURCE_KIND_ENV,
+    DatabaseProgramConfig,
     DatabaseProgramConfigError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
@@ -30,6 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
     SUPERVISED_CHILD_OWNER_SCOPE_ENV,
+    SupervisedChildSpec,
 )
 
 _LEGACY_AUTHORITY_ARGS = (
@@ -256,6 +265,137 @@ def test_managed_daemon_forwards_env_secret_handle_token(
         repo_root=tmp_path,
     )
     assert child_env["QUACK_TOKEN"] == "admitted-parent-token"
+
+
+def test_lgcvf_bootstrap_daemon_omits_root_token_and_passes_sealed_prelaunch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bootstrap listener replaces root-token inheritance at daemon birth."""
+
+    root_token_name = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+    marker = tmp_path / ".ephemeral-token-persistence-disabled"
+    marker.write_text(
+        "trusted controller keeps the Quack attach credential in memory\n",
+        encoding="utf-8",
+    )
+    marker.chmod(0o400)
+    monkeypatch.setenv(root_token_name, "owner-root-token-must-not-cross")
+    monkeypatch.setenv(QUACK_TOKEN_FILE_ENV, str(marker / "unavailable"))
+    monkeypatch.setenv(
+        BOARD_EXTENSION_INSTALL_POLICY_ENV,
+        BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY,
+    )
+
+    program = DatabaseProgramConfig(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        endpoint_secret_handle=f"env://{root_token_name}",
+        quack_endpoint="quack:127.0.0.1:45123",
+        store_id="data/lgcvf/control.duckdb",
+        store_generation="lgcvf-test-v1",
+        schema_revision="datasets-authoritative-operational-v1",
+        event_store_path="state/events",
+        runtime_registry_path="state/registry",
+        export_profile="operator-export",
+        failover_policy="fail_closed",
+    )
+    capsule_descriptor, native_descriptor = os.pipe()
+    context = SimpleNamespace(
+        capsule_pin_json="sealed-capsule-pin",
+        capsule_descriptor=capsule_descriptor,
+        admission_json="sealed-live-admission",
+        native_launch_json="sealed-native-launch",
+        native_descriptor=native_descriptor,
+        pass_fds=(capsule_descriptor, native_descriptor),
+    )
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(
+        b"\0ipfs-accelerate-lgcvf-daemon-env-test-"
+        + str(os.getpid()).encode("ascii")
+    )
+    listener.listen(1)
+    supervisor = object.__new__(
+        supervisor_module.PortalImplementationSupervisor
+    )
+    supervisor.config = SimpleNamespace(
+        configured_board_live_context=context,
+        database_program=program,
+        repo_root=tmp_path,
+        state_owner_bootstrap_fd=listener.fileno(),
+        state_owner_bootstrap_store_id=program.store_id,
+        database_owner_session_id="lgcvf-quack-lane-2",
+    )
+    command = (
+        "/sealed/python",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+        "--state-owner-bootstrap-fd",
+        str(listener.fileno()),
+        "--state-owner-bootstrap-store-id",
+        program.store_id,
+    )
+    identity_path = tmp_path / "daemon.identity.json"
+    owner_scope = {"lane": "lgcvf-quack-lane-2"}
+    monkeypatch.setattr(
+        supervisor_module,
+        "verify_lgcvf_configured_board_live_context",
+        lambda **_kwargs: context,
+    )
+    monkeypatch.setattr(
+        supervisor_module.PortalImplementationSupervisor,
+        "_build_daemon_command",
+        lambda _self: list(command),
+    )
+    monkeypatch.setattr(
+        supervisor_module.PortalImplementationSupervisor,
+        "_managed_daemon_identity_path",
+        lambda _self: identity_path,
+    )
+    monkeypatch.setattr(
+        supervisor_module.PortalImplementationSupervisor,
+        "_managed_daemon_owner_scope",
+        lambda _self: owner_scope,
+    )
+    try:
+        child_env, verified_context = (
+            supervisor._lgcvf_live_managed_daemon_environment(command)
+        )
+        assert verified_context is context
+        assert root_token_name not in child_env
+        assert child_env[STATE_ENDPOINT_SECRET_HANDLE_ENV] == (
+            f"env://{root_token_name}"
+        )
+        assert child_env[STATE_AUTHORITY_MODE_ENV] == "quack"
+        assert child_env[TASK_SOURCE_KIND_ENV] == "duckdb"
+        assert DATABASE_PROGRAM_JSON_ENV in child_env
+
+        expected_env = {
+            **child_env,
+            SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(identity_path),
+            SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                owner_scope,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        }
+        child_spec = SupervisedChildSpec(
+            repo_root=tmp_path,
+            command=command,
+            log_path=tmp_path / "daemon.log",
+            child_pid_path=tmp_path / "daemon.pid",
+            env=expected_env,
+            inherit_environment=False,
+            pass_fds=(*context.pass_fds, listener.fileno()),
+        )
+        # The sealed pre-Popen verifier still accepts the exact command,
+        # context descriptors, bootstrap listener, and non-secret authority.
+        supervisor._verify_lgcvf_live_supervisor_loop_child_launch(child_spec)
+    finally:
+        listener.close()
+        os.close(capsule_descriptor)
+        os.close(native_descriptor)
 
 
 def test_direct_supervisor_round_trips_embedded_one_writer_authority(

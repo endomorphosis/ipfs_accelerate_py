@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as quack_server_module
+
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    quack_state_server as quack_server_module,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     MUTATION_REQUEST_NAME,
     QUACK_ISOLATION_RECEIPT_SCHEMA,
@@ -21,7 +24,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     QuackStateServerIsolationError,
     build_server,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as duckdb_state_module
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    duckdb_state as duckdb_state_module,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    typed_state_owner as typed_owner_module,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     canonical_json_bytes,
     content_identity,
@@ -78,6 +86,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
+    TypedStateOwnerAuthorizationError,
+    TypedStateOwnerConnection,
     build_control_plane_operation_catalog,
 )
 
@@ -186,6 +196,153 @@ def _typed_task_source(
         monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
     assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
     return TypedDatabaseTaskSource(client, clock_ms=clock_ms)
+
+
+def test_typed_client_grant_renews_an_existing_connected_client(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Renewal must extend the grant already bound to an open Unix channel."""
+
+    server, identity, _owner_token, _database = _server(tmp_path)
+    client_id = "client:transparent-grant-renewal"
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(sorted(build_control_plane_operation_catalog())),
+        peer_pid=os.getpid(),
+        ttl_seconds=2.0,
+    )
+    connection = TypedStateOwnerConnection(
+        socket_path=server.typed_command_socket_path(),
+        token=token,
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        store_id=identity.store_id,
+    )
+    try:
+        initial_generation = connection.execute_operation(
+            "load_store_generation"
+        ).fetchall()
+
+        renewal_now_ms = grant.expires_at - 100
+        with monkeypatch.context() as renewal_clock:
+            renewal_clock.setattr(
+                typed_owner_module.time,
+                "time",
+                lambda: renewal_now_ms / 1_000,
+            )
+            renewed = server.renew_typed_client_grant(
+                grant.grant_id,
+                ttl_seconds=2.0,
+            )
+            assert renewed.grant_id == grant.grant_id
+            assert renewed.expires_at > grant.expires_at
+            assert {
+                key: value
+                for key, value in renewed.public_dict().items()
+                if key not in {"issued_at", "expires_at"}
+            } == {
+                key: value
+                for key, value in grant.public_dict().items()
+                if key not in {"issued_at", "expires_at"}
+            }
+
+            # This instant is after the record captured by the open channel
+            # expired, but before the server-side renewal expires.  No token
+            # replacement, reconnect, or new client object is allowed here.
+            renewal_clock.setattr(
+                typed_owner_module.time,
+                "time",
+                lambda: (grant.expires_at + 100) / 1_000,
+            )
+            assert connection.execute_operation(
+                "load_store_generation"
+            ).fetchall() == initial_generation
+    finally:
+        connection.close()
+        server.stop()
+
+
+def test_typed_client_grant_renewal_rejects_nonexact_or_inactive_grants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only one exact, currently active grant ID is renewable."""
+
+    primary_root = tmp_path / "primary"
+    primary_root.mkdir()
+    server, identity, _owner_token, _database = _server(primary_root)
+    foreign_root = tmp_path / "foreign"
+    foreign_root.mkdir()
+    foreign_server, foreign_identity, _foreign_token, _foreign_database = (
+        _server(foreign_root)
+    )
+    grant_kwargs = {
+        "client_id": "client:grant-renewal-negative",
+        "process_birth_id": identity.process_birth_id,
+        "allowed_operations": ("load_store_generation", "whoami_metadata"),
+        "peer_pid": os.getpid(),
+        "ttl_seconds": 2.0,
+    }
+    _active_token, active = server.issue_typed_client_grant_record(**grant_kwargs)
+    _revoked_token, revoked = server.issue_typed_client_grant_record(
+        **{**grant_kwargs, "client_id": "client:grant-renewal-revoked"}
+    )
+    _expired_token, expired = server.issue_typed_client_grant_record(
+        **{**grant_kwargs, "client_id": "client:grant-renewal-expired"}
+    )
+    _foreign_client_token, foreign = (
+        foreign_server.issue_typed_client_grant_record(
+            client_id="client:grant-renewal-foreign",
+            process_birth_id=foreign_identity.process_birth_id,
+            allowed_operations=("load_store_generation", "whoami_metadata"),
+            peer_pid=os.getpid(),
+            ttl_seconds=2.0,
+        )
+    )
+    try:
+        with pytest.raises(TypedStateOwnerAuthorizationError):
+            server.renew_typed_client_grant(
+                f"{active.grant_id}:tampered",
+                ttl_seconds=2.0,
+            )
+
+        # A valid grant from a different owner is still the wrong grant here.
+        with pytest.raises(TypedStateOwnerAuthorizationError):
+            server.renew_typed_client_grant(
+                foreign.grant_id,
+                ttl_seconds=2.0,
+            )
+
+        server.revoke_typed_client_grant(revoked.grant_id)
+        with pytest.raises(TypedStateOwnerAuthorizationError):
+            server.renew_typed_client_grant(
+                revoked.grant_id,
+                ttl_seconds=2.0,
+            )
+
+        with monkeypatch.context() as expired_clock:
+            expired_clock.setattr(
+                typed_owner_module.time,
+                "time",
+                lambda: (expired.expires_at + 1) / 1_000,
+            )
+            with pytest.raises(TypedStateOwnerAuthorizationError):
+                server.renew_typed_client_grant(
+                    expired.grant_id,
+                    ttl_seconds=2.0,
+                )
+
+        # None of the rejected requests may disturb an unrelated active grant.
+        renewed = server.renew_typed_client_grant(
+            active.grant_id,
+            ttl_seconds=2.0,
+        )
+        assert renewed.grant_id == active.grant_id
+    finally:
+        foreign_server.stop()
+        server.stop()
 
 
 def _typed_claim_receipt(

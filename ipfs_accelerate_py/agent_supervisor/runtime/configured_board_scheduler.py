@@ -5117,6 +5117,8 @@ def configured_board_common_args(
     board: ConfiguredBoard,
     *,
     implement: bool,
+    state_owner_bootstrap_fd: int = -1,
+    state_owner_bootstrap_store_id: str = "",
 ) -> tuple[str, ...]:
     """Map scheduler policy to existing implementation-supervisor CLI args."""
 
@@ -5237,6 +5239,45 @@ def configured_board_common_args(
         args.append("--no-dependency-guardrail")
     if payload.get("reconciliation_guardrail_enabled") is False:
         args.append("--no-reconciliation-guardrail")
+    bootstrap_presence = (
+        state_owner_bootstrap_fd >= 3,
+        bool(str(state_owner_bootstrap_store_id or "").strip()),
+    )
+    if any(bootstrap_presence) and not all(bootstrap_presence):
+        raise ConfiguredBoardError(
+            "state-owner bootstrap descriptor and store must be paired"
+        )
+    if all(bootstrap_presence):
+        program = board.resolved_database_program()
+        if (
+            board.board_namespace != LGCVF_LIVE_BOARD_NAMESPACE
+            or program.authority_mode != "quack"
+            or str(state_owner_bootstrap_store_id) != str(program.store_id)
+        ):
+            raise ConfiguredBoardError(
+                "state-owner bootstrap scope differs from the LGCVF Quack board"
+            )
+        from ..task_sources.state_owner_bootstrap import (
+            StateOwnerBootstrapError,
+            validate_state_owner_bootstrap_listener,
+        )
+
+        try:
+            validate_state_owner_bootstrap_listener(
+                int(state_owner_bootstrap_fd)
+            )
+        except StateOwnerBootstrapError as exc:
+            raise ConfiguredBoardError(
+                "state-owner bootstrap listener is invalid"
+            ) from exc
+        args.extend(
+            [
+                "--state-owner-bootstrap-fd",
+                str(state_owner_bootstrap_fd),
+                "--state-owner-bootstrap-store-id",
+                str(state_owner_bootstrap_store_id),
+            ]
+        )
     return tuple(args)
 
 
@@ -5255,6 +5296,8 @@ def configured_board_launch_plan(
     configured_board_live_admission_json: str = "",
     configured_board_live_native_launch_json: str = "",
     configured_board_live_native_descriptor: int = -1,
+    state_owner_bootstrap_fd: int = -1,
+    state_owner_bootstrap_store_id: str = "",
 ) -> dict[str, Any]:
     """Render the exact existing multi-supervisor runner invocation."""
 
@@ -5268,6 +5311,18 @@ def configured_board_launch_plan(
     if any(live_values) and not all(live_values):
         raise ConfiguredBoardError(
             "LGCVF configured-board live launch fields are incomplete"
+        )
+    bootstrap_values = (
+        state_owner_bootstrap_fd >= 3,
+        bool(str(state_owner_bootstrap_store_id or "").strip()),
+    )
+    if any(bootstrap_values) and not all(bootstrap_values):
+        raise ConfiguredBoardError(
+            "LGCVF state-owner bootstrap fields are incomplete"
+        )
+    if all(live_values) != all(bootstrap_values):
+        raise ConfiguredBoardError(
+            "LGCVF live capsule and state-owner bootstrap are bidirectional"
         )
     live_context = None
     if all(live_values):
@@ -5339,6 +5394,12 @@ def configured_board_launch_plan(
             or program.schema_revision
             != "datasets-authoritative-operational-v1"
             or program.failover_policy != "fail_closed"
+            or str(state_owner_bootstrap_store_id) != str(program.store_id)
+            or state_owner_bootstrap_fd
+            in {
+                live_context.capsule_descriptor,
+                live_context.native_descriptor,
+            }
         ):
             raise ConfiguredBoardError(
                 "LGCVF live capsule does not match the exact foreground "
@@ -5420,6 +5481,8 @@ def configured_board_launch_plan(
         common_args=configured_board_common_args(
             board,
             implement=implement,
+            state_owner_bootstrap_fd=state_owner_bootstrap_fd,
+            state_owner_bootstrap_store_id=state_owner_bootstrap_store_id,
         ),
         detach=(detach and not plan_bound),
         database_program=board.database_program,
@@ -5683,6 +5746,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--configured-board-live-native-fd",
         type=int,
         default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--state-owner-bootstrap-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--state-owner-bootstrap-store-id",
+        default="",
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
@@ -7677,6 +7751,10 @@ def _run_parsed_command(
             bool(args.configured_board_live_native_launch_json),
             args.configured_board_live_native_fd >= 3,
         )
+        bootstrap_values = (
+            args.state_owner_bootstrap_fd >= 3,
+            bool(str(args.state_owner_bootstrap_store_id or "").strip()),
+        )
         root = Path(args.repo_root).resolve()
         requested_config = Path(args.config)
         if not requested_config.is_absolute():
@@ -7688,6 +7766,14 @@ def _run_parsed_command(
         if any(live_values) and not all(live_values):
             raise ConfiguredBoardError(
                 "LGCVF configured-board live launch fields are incomplete"
+            )
+        if any(bootstrap_values) and not all(bootstrap_values):
+            raise ConfiguredBoardError(
+                "LGCVF state-owner bootstrap fields are incomplete"
+            )
+        if all(live_values) != all(bootstrap_values):
+            raise ConfiguredBoardError(
+                "LGCVF live capsule and state-owner bootstrap are bidirectional"
             )
         if exact_live_config and not all(live_values):
             raise ConfiguredBoardError(
@@ -8067,6 +8153,16 @@ def _run_parsed_command(
         ),
         configured_board_live_native_descriptor=(
             live_context.native_descriptor if live_context is not None else -1
+        ),
+        state_owner_bootstrap_fd=(
+            args.state_owner_bootstrap_fd
+            if live_context is not None
+            else -1
+        ),
+        state_owner_bootstrap_store_id=(
+            args.state_owner_bootstrap_store_id
+            if live_context is not None
+            else ""
         ),
     )
     plan["authoritative_board_projection_repair"] = projection_repair

@@ -6,10 +6,10 @@ generations remain preserved recovery history.  The active operator has two
 explicit stages:
 
 * ``bootstrap`` materializes the exact tracked candidate projection and
-  atomically publishes one no-overwrite run-v35 database with provenance;
+  atomically publishes one no-overwrite run-v36 database with provenance;
 * ``bootstrap-sealed-continuity`` admits a separately preserved run-v17 only
   into the legacy run-v23 boundary through six explicit raw-byte pins;
-* ``launch`` owns run-v35 in-process, starts exactly one foreground
+* ``launch`` owns run-v36 in-process, starts exactly one foreground
   configured-board scheduler child, and services the closed mutation inbox.
 
 The Quack attach credential exists only in the controller's memory and in the
@@ -37,14 +37,18 @@ import importlib.machinery
 import importlib.metadata
 import importlib.util
 import json
+import math
 import os
 import re
 import shutil
 import signal
+import socket
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 import zipfile
@@ -79,7 +83,7 @@ PROGRAM_ROOT_RELATIVE: Final = Path(
 )
 SOURCE_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v17"
 LEGACY_SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v23"
-SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v35"
+SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v36"
 SOURCE_DATABASE_RELATIVE: Final = SOURCE_RUN_RELATIVE / "control.duckdb"
 SUCCESSOR_DATABASE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "control.duckdb"
 OWNER_STATE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "quack-owner"
@@ -105,7 +109,47 @@ PROVENANCE_SCHEMA: Final = (
 )
 NATIVE_RESUME_ADMISSION_MODE: Final = "tracked_candidate_initial_projection_reset"
 NATIVE_RESUME_SOURCE_GENERATION: Final = "lgcvf-tracked-candidate-projection"
-SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v35"
+SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v36"
+INTERNAL_CLIENT_GRANT_TTL_SECONDS: Final = 86_400.0
+INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS: Final = 43_200.0
+STATE_OWNER_BOOTSTRAP_CLIENT_TIMEOUT_SECONDS: Final = 1.0
+STATE_OWNER_BOOTSTRAP_PROCESS_STOP_GRACE_SECONDS: Final = 35.0
+STATE_OWNER_BOOTSTRAP_READY_TIMEOUT_SECONDS: Final = 90.0
+STATE_OWNER_BOOTSTRAP_STABILITY_SECONDS: Final = 12.0
+LGCVF_SCHEDULER_TREE_STOP_GRACE_SECONDS: Final = 300.0
+LGCVF_DATABASE_OWNER_SESSIONS: Final = tuple(
+    f"lgcvf-quack-lane-{index}" for index in range(4)
+)
+LGCVF_TASK_ALIASES: Final = (
+    "LGCVF-001",
+    "LGCVF-002",
+    "LGCVF-010",
+    "LGCVF-020",
+    "LGCVF-030",
+    "LGCVF-040",
+    "LGCVF-050",
+    "LGCVF-051",
+    "LGCVF-060",
+    "LGCVF-061",
+    "LGCVF-070",
+    "LGCVF-071",
+    "LGCVF-080",
+    "LGCVF-081",
+    "LGCVF-090",
+    "LGCVF-091",
+    "LGCVF-100",
+    "LGCVF-101",
+    "LGCVF-102",
+    "LGCVF-110",
+    "LGCVF-111",
+    "LGCVF-112",
+    "LGCVF-113",
+    "LGCVF-120",
+    "LGCVF-121",
+    "LGCVF-122",
+    "LGCVF-123",
+    "LGCVF-124",
+)
 SEALED_CONTINUITY_VERIFICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "lgcvf-target-only-initial-continuity-verification@1"
@@ -177,12 +221,16 @@ LGCVF_LIVE_CONTROLLER_PRELOAD_MODULES: Final = (
     "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts",
     "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema",
     "ipfs_accelerate_py.agent_supervisor.merge.database_coordination",
+    "ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry",
     "ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle",
     "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler",
     "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
     "ipfs_accelerate_py.agent_supervisor.runtime.process_security",
     "ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server",
     "ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source",
 )
 LGCVF_LIVE_REPOSITORY_MODULE_PREFIXES: Final = (
     "ipfs_accelerate_py",
@@ -223,7 +271,7 @@ APPROVED_REMOTE_BRANCH_REF: Final = "refs/remotes/github/" + APPROVED_BOARD_BRAN
 MAX_DATABASE_BYTES: Final = 8 * 1024 * 1024 * 1024
 MAX_JSON_BYTES: Final = 4 * 1024 * 1024
 MAX_SECRET_SURFACE_BYTES: Final = 1024 * 1024 * 1024
-MAX_STOP_SECONDS: Final = 20.0
+MAX_STOP_SECONDS: Final = 360.0
 UNIX_SOCKET_PATH_CEILING: Final = 100
 COMPLETED_TASK_IDS: Final = (
     "LGCVF-001",
@@ -302,6 +350,815 @@ GIT_TIMEOUT_SECONDS: Final = 120.0
 
 class SuccessorOperatorError(RuntimeError):
     """The successor cannot be admitted without weakening a boundary."""
+
+
+def _closed_option_values(argv: Sequence[str], option: str) -> tuple[str, ...]:
+    """Read one closed CLI option without accepting a missing value."""
+
+    values: list[str] = []
+    tokens = tuple(str(item) for item in argv)
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == option:
+            if index + 1 >= len(tokens) or tokens[index + 1].startswith("--"):
+                raise SuccessorOperatorError(f"{option} has no value")
+            values.append(tokens[index + 1])
+            index += 2
+            continue
+        prefix = option + "="
+        if token.startswith(prefix):
+            value = token[len(prefix) :]
+            if not value:
+                raise SuccessorOperatorError(f"{option} has no value")
+            values.append(value)
+        index += 1
+    return tuple(values)
+
+
+def _seal_lgcvf_execution_route_policy(
+    *,
+    server: Any,
+    program: Any,
+    identity: Any,
+    controller_birth: Any,
+    owner_socket: Path,
+) -> Any:
+    """Seal the exact 28-task Grok/Codex route through a temporary grant."""
+
+    from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
+        process_birth_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+        QuackStateClient,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        GROK_CODEX_EXECUTION_MODE,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        TYPED_STATE_OWNER_TOKEN_ENV,
+    )
+
+    birth_id = process_birth_id(controller_birth)
+    if str(getattr(identity, "process_birth_id", "") or "") != birth_id:
+        raise SuccessorOperatorError(
+            "route sealer process birth differs from the state owner"
+        )
+    token, grant = server.issue_typed_client_grant_record(
+        client_id="lgcvf-route-sealer",
+        process_birth_id=birth_id,
+        allowed_operations=(
+            "whoami_metadata",
+            "load_store_generation",
+            "executor_control_snapshot",
+            "executor_task_projection_page",
+        ),
+        allowed_command_operations=(),
+        peer_pid=os.getpid(),
+        ttl_seconds=60.0,
+    )
+    client: Any | None = None
+    projection: Any | None = None
+    previous_token = os.environ.get(TYPED_STATE_OWNER_TOKEN_ENV)
+    previous_socket = os.environ.get(TYPED_STATE_OWNER_SOCKET_ENV)
+    try:
+        os.environ[TYPED_STATE_OWNER_TOKEN_ENV] = token
+        os.environ[TYPED_STATE_OWNER_SOCKET_ENV] = str(owner_socket)
+        client = QuackStateClient(
+            owner_id="lgcvf-route-sealer",
+            store_id=str(program.store_id),
+            process_birth_id=birth_id,
+        )
+        client.attach(
+            str(program.quack_endpoint),
+            server_id=str(identity.server_id),
+        )
+        if previous_token is None:
+            os.environ.pop(TYPED_STATE_OWNER_TOKEN_ENV, None)
+        else:
+            os.environ[TYPED_STATE_OWNER_TOKEN_ENV] = previous_token
+        if previous_socket is None:
+            os.environ.pop(TYPED_STATE_OWNER_SOCKET_ENV, None)
+        else:
+            os.environ[TYPED_STATE_OWNER_SOCKET_ENV] = previous_socket
+        projection = TypedDatabaseTaskSource(client, owns_client=False)
+        execution_modes = {
+            alias: GROK_CODEX_EXECUTION_MODE for alias in LGCVF_TASK_ALIASES
+        }
+        policy = projection.seal_execution_route_policy(execution_modes)
+        entries = tuple(policy.entries_by_cid.values())
+        if (
+            len(entries) != len(LGCVF_TASK_ALIASES)
+            or {entry.task_alias for entry in entries} != set(LGCVF_TASK_ALIASES)
+            or any(
+                entry.execution_mode != GROK_CODEX_EXECUTION_MODE
+                for entry in entries
+            )
+        ):
+            raise SuccessorOperatorError(
+                "sealed execution route differs from the admitted LGCVF population"
+            )
+        return policy
+    finally:
+        if previous_token is None:
+            os.environ.pop(TYPED_STATE_OWNER_TOKEN_ENV, None)
+        else:
+            os.environ[TYPED_STATE_OWNER_TOKEN_ENV] = previous_token
+        if previous_socket is None:
+            os.environ.pop(TYPED_STATE_OWNER_SOCKET_ENV, None)
+        else:
+            os.environ[TYPED_STATE_OWNER_SOCKET_ENV] = previous_socket
+        if projection is not None:
+            projection.close()
+        if client is not None:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+
+
+class _LgcvfStateOwnerBootstrapBroker:
+    """Mint one exact-birth typed grant per live LGCVF lane daemon."""
+
+    def __init__(
+        self,
+        *,
+        channel: socket.socket,
+        descriptor: int,
+        server: Any,
+        scheduler_birth: Any,
+        endpoint: str,
+        socket_path: Path,
+        store_id: str,
+        execution_route_policy: Any,
+        process_stop_grace_seconds: float = (
+            STATE_OWNER_BOOTSTRAP_PROCESS_STOP_GRACE_SECONDS
+        ),
+    ) -> None:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+            validate_state_owner_bootstrap_listener,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+            TaskExecutionRoutePolicy,
+        )
+
+        if not isinstance(execution_route_policy, TaskExecutionRoutePolicy):
+            raise SuccessorOperatorError(
+                "bootstrap broker requires an immutable execution route policy"
+            )
+        validate_state_owner_bootstrap_listener(descriptor)
+        self.channel = channel
+        self.descriptor = int(descriptor)
+        self.server = server
+        self.scheduler_birth = scheduler_birth
+        self.endpoint = str(endpoint)
+        self.socket_path = Path(socket_path)
+        self.store_id = str(store_id)
+        self.execution_route_policy = execution_route_policy
+        self.process_stop_grace_seconds = float(process_stop_grace_seconds)
+        if (
+            not math.isfinite(self.process_stop_grace_seconds)
+            or self.process_stop_grace_seconds < 0.05
+            or self.process_stop_grace_seconds > 300.0
+        ):
+            raise SuccessorOperatorError(
+                "bootstrap broker process-stop grace is invalid"
+            )
+        self.stopping = threading.Event()
+        self.failure = ""
+        self.last_rejection = ""
+        self.rejection_count = 0
+        self._lock = threading.RLock()
+        self._accepted: socket.socket | None = None
+        self._thread = threading.Thread(
+            target=self._run,
+            name="lgcvf-state-owner-bootstrap",
+            daemon=True,
+        )
+        self._started = False
+        self.current_by_session: dict[str, dict[str, Any]] = {}
+        self.active_grants: dict[str, str] = {}
+
+    @property
+    def ready_sessions(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(
+                session
+                for session in LGCVF_DATABASE_OWNER_SESSIONS
+                if session in self.current_by_session
+                and session in self.active_grants
+            )
+
+    @property
+    def live_ready_signature(self) -> tuple[str, ...]:
+        """Return all four exact daemon births only while each remains alive."""
+
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            OwnerLiveness,
+            ProcessBirthIdentity,
+            owner_liveness,
+        )
+
+        with self._lock:
+            records = {
+                session: dict(self.current_by_session.get(session) or {})
+                for session in LGCVF_DATABASE_OWNER_SESSIONS
+            }
+        signature: list[str] = []
+        for session in LGCVF_DATABASE_OWNER_SESSIONS:
+            record = records[session]
+            raw_birth = record.get("daemon_process_birth")
+            birth_id = str(record.get("daemon_process_birth_id") or "")
+            if (
+                not isinstance(raw_birth, Mapping)
+                or not birth_id
+                or owner_liveness(ProcessBirthIdentity.from_dict(raw_birth))
+                is not OwnerLiveness.ALIVE
+            ):
+                return ()
+            signature.append(birth_id)
+        return tuple(signature)
+
+    def start(self) -> None:
+        if self._started:
+            raise SuccessorOperatorError("bootstrap broker was already started")
+        self._started = True
+        self._thread.start()
+
+    def stop(self) -> None:
+        self.stopping.set()
+        with self._lock:
+            accepted = self._accepted
+        if accepted is not None:
+            try:
+                accepted.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                accepted.close()
+            except OSError:
+                pass
+        try:
+            self.channel.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self.channel.close()
+        except OSError:
+            pass
+        if self._started:
+            self._thread.join(timeout=5.0)
+        if self._started and self._thread.is_alive():
+            raise SuccessorOperatorError(
+                "state-owner bootstrap broker did not stop"
+            )
+        self._fence_admitted_births()
+        with self._lock:
+            grant_ids = tuple(self.active_grants.values())
+        revoke_failure = ""
+        for grant_id in grant_ids:
+            try:
+                self.server.revoke_typed_client_grant(grant_id)
+            except Exception as exc:  # noqa: BLE001 - revoke every lane.
+                revoke_failure = revoke_failure or type(exc).__name__
+        if revoke_failure:
+            raise SuccessorOperatorError(
+                "state-owner bootstrap grant revocation failed: "
+                + revoke_failure
+            )
+        with self._lock:
+            for session, grant_id in tuple(self.active_grants.items()):
+                if grant_id in grant_ids:
+                    self.active_grants.pop(session, None)
+
+    def _admitted_births(self) -> tuple[Any, ...]:
+        """Return each exact current credential-holder birth once."""
+
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            ProcessBirthIdentity,
+        )
+
+        with self._lock:
+            records = tuple(
+                dict(record) for record in self.current_by_session.values()
+            )
+        result: list[Any] = []
+        seen: set[tuple[int, int, str]] = set()
+        for field in (
+            "supervisor_process_birth",
+            "daemon_process_birth",
+        ):
+            for record in records:
+                raw = record.get(field)
+                if not isinstance(raw, Mapping):
+                    raise SuccessorOperatorError(
+                        "state-owner admitted process birth is unavailable"
+                    )
+                try:
+                    birth = ProcessBirthIdentity.from_dict(raw)
+                except (OverflowError, TypeError, ValueError) as exc:
+                    raise SuccessorOperatorError(
+                        "state-owner admitted process birth is malformed"
+                    ) from exc
+                if birth.pid <= 1 or birth.start_time_ticks <= 0:
+                    raise SuccessorOperatorError(
+                        "state-owner admitted process birth is unsafe"
+                    )
+                key = (birth.pid, birth.start_time_ticks, birth.boot_id)
+                if key not in seen:
+                    seen.add(key)
+                    result.append(birth)
+        return tuple(result)
+
+    @staticmethod
+    def _signal_admitted_birth(birth: Any, signum: int) -> None:
+        """Signal one PID-reuse-resistant admitted birth, or prove it dead."""
+
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            OwnerLiveness,
+            owner_liveness,
+        )
+
+        if not hasattr(os, "pidfd_open") or not hasattr(
+            signal,
+            "pidfd_send_signal",
+        ):
+            raise SuccessorOperatorError(
+                "state-owner admitted process fencing requires Linux pidfds"
+            )
+        pidfd = -1
+        try:
+            pidfd = os.pidfd_open(birth.pid, 0)
+        except ProcessLookupError:
+            return
+        except OSError as exc:
+            raise SuccessorOperatorError(
+                "state-owner admitted process pidfd is unavailable"
+            ) from exc
+        try:
+            # Opening the pidfd first makes the subsequent signal immune to a
+            # PID disappearing and being reused after this identity check.
+            state = owner_liveness(birth)
+            if state is OwnerLiveness.DEAD:
+                return
+            if state is not OwnerLiveness.ALIVE:
+                raise SuccessorOperatorError(
+                    "state-owner admitted process birth is uninspectable"
+                )
+            try:
+                signal.pidfd_send_signal(pidfd, signum)
+            except ProcessLookupError:
+                return
+            except OSError as exc:
+                raise SuccessorOperatorError(
+                    "state-owner admitted process could not be signalled"
+                ) from exc
+        finally:
+            os.close(pidfd)
+
+    @staticmethod
+    def _live_admitted_births(births: Sequence[Any]) -> tuple[Any, ...]:
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            OwnerLiveness,
+            owner_liveness,
+        )
+
+        live: list[Any] = []
+        for birth in births:
+            state = owner_liveness(birth)
+            if state is OwnerLiveness.UNKNOWN:
+                raise SuccessorOperatorError(
+                    "state-owner admitted process became uninspectable"
+                )
+            if state is OwnerLiveness.ALIVE:
+                live.append(birth)
+        return tuple(live)
+
+    def _fence_admitted_births(self) -> None:
+        """Prove every credential-holding lane birth dead before revocation."""
+
+        births = self._admitted_births()
+        live = self._live_admitted_births(births)
+        for birth in live:
+            self._signal_admitted_birth(birth, signal.SIGTERM)
+        deadline = time.monotonic() + self.process_stop_grace_seconds
+        while live and time.monotonic() < deadline:
+            time.sleep(0.02)
+            live = self._live_admitted_births(live)
+        for birth in live:
+            self._signal_admitted_birth(birth, signal.SIGKILL)
+        deadline = time.monotonic() + 5.0
+        while live and time.monotonic() < deadline:
+            time.sleep(0.02)
+            live = self._live_admitted_births(live)
+        if live:
+            raise SuccessorOperatorError(
+                "state-owner admitted process births survived bounded stop"
+            )
+
+    @staticmethod
+    def _require_dead(birth_payload: Mapping[str, Any], *, noun: str) -> None:
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            OwnerLiveness,
+            ProcessBirthIdentity,
+            owner_liveness,
+        )
+
+        birth = ProcessBirthIdentity.from_dict(birth_payload)
+        if owner_liveness(birth) is not OwnerLiveness.DEAD:
+            raise SuccessorOperatorError(f"prior {noun} birth remains live")
+
+    def _supervisor_for_daemon(self, daemon_birth: Any, *, session: str) -> Any:
+        from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
+            process_birth_id,
+        )
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            read_process_birth,
+        )
+
+        observed_scheduler = read_process_birth(self.scheduler_birth.pid)
+        if observed_scheduler != self.scheduler_birth:
+            raise SuccessorOperatorError(
+                "bootstrap scheduler process birth is no longer exact"
+            )
+        supervisor = read_process_birth(int(daemon_birth.parent_pid))
+        if (
+            supervisor is None
+            or supervisor.pid <= 1
+            or supervisor.parent_pid != self.scheduler_birth.pid
+        ):
+            raise SuccessorOperatorError(
+                "bootstrap daemon is not a child of an admitted lane supervisor"
+            )
+        before = supervisor
+        try:
+            raw = Path(f"/proc/{supervisor.pid}/cmdline").read_bytes()
+        except OSError as exc:
+            raise SuccessorOperatorError(
+                "bootstrap lane supervisor argv is unavailable"
+            ) from exc
+        after = read_process_birth(supervisor.pid)
+        if before != after or len(raw) > 1_048_576:
+            raise SuccessorOperatorError(
+                "bootstrap lane supervisor identity changed during inspection"
+            )
+        try:
+            argv = tuple(
+                item.decode("utf-8") for item in raw.split(b"\0") if item
+            )
+        except UnicodeError as exc:
+            raise SuccessorOperatorError(
+                "bootstrap lane supervisor argv is malformed"
+            ) from exc
+        lane_index = LGCVF_DATABASE_OWNER_SESSIONS.index(session)
+        exact = {
+            "--board-namespace": (
+                "logic-governed-compositional-verification-fabric-v1"
+            ),
+            "--task-shard-count": "4",
+            "--task-shard-index": str(lane_index),
+            "--state-prefix": f"lgcvf_lane_{lane_index}",
+            "--database-owner-session-id": session,
+            "--state-owner-bootstrap-fd": str(self.descriptor),
+            "--state-owner-bootstrap-store-id": self.store_id,
+        }
+        if any(
+            _closed_option_values(argv, option) != (expected,)
+            for option, expected in exact.items()
+        ):
+            raise SuccessorOperatorError(
+                "bootstrap lane supervisor argv differs from its sealed lane"
+            )
+        supervisor_id = process_birth_id(supervisor)
+        for other_session, record in self.current_by_session.items():
+            if (
+                other_session != session
+                and record.get("supervisor_process_birth_id") == supervisor_id
+            ):
+                raise SuccessorOperatorError(
+                    "one lane supervisor requested multiple owner sessions"
+                )
+        return supervisor
+
+    def _admit(
+        self,
+        request: Mapping[str, Any],
+        *,
+        peer_pid: int,
+        peer_uid: int,
+    ) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
+            process_birth_id,
+        )
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            ProcessBirthIdentity,
+            read_process_birth,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+            STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA,
+            STATE_OWNER_BOOTSTRAP_RESPONSE_SCHEMA,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+            daemon_required_owner_command_operations,
+            daemon_required_owner_operations,
+        )
+
+        required = {
+            "schema",
+            "pid",
+            "process_birth",
+            "process_birth_id",
+            "client_id",
+            "store_id",
+        }
+        if (
+            set(request) != required
+            or request.get("schema") != STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA
+            or self.stopping.is_set()
+        ):
+            raise SuccessorOperatorError(
+                "state-owner bootstrap request differs from its closed schema"
+            )
+        request_birth = request.get("process_birth")
+        raw_pid = request.get("pid")
+        if (
+            isinstance(raw_pid, bool)
+            or not isinstance(raw_pid, int)
+            or raw_pid <= 1
+            or not isinstance(request_birth, Mapping)
+        ):
+            raise SuccessorOperatorError(
+                "state-owner bootstrap request identity is malformed"
+            )
+        pid = raw_pid
+        if pid != peer_pid or peer_uid != os.geteuid():
+            raise SuccessorOperatorError(
+                "state-owner bootstrap SO_PEERCRED identity differs"
+            )
+        birth_integer_fields = ("pid", "start_time_ticks", "parent_pid")
+        if (
+            set(request_birth)
+            != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+            or any(
+                isinstance(request_birth.get(name), bool)
+                or not isinstance(request_birth.get(name), int)
+                for name in birth_integer_fields
+            )
+            or request_birth.get("pid") != pid
+            or request_birth.get("start_time_ticks", 0) <= 0
+            or request_birth.get("parent_pid", -1) < 0
+            or not isinstance(request_birth.get("boot_id"), str)
+            or len(request_birth.get("boot_id", "")) > 128
+        ):
+            raise SuccessorOperatorError(
+                "state-owner bootstrap process birth is malformed"
+            )
+        try:
+            supplied = ProcessBirthIdentity.from_dict(request_birth)
+        except (KeyError, OverflowError, TypeError, ValueError) as exc:
+            raise SuccessorOperatorError(
+                "state-owner bootstrap process birth is malformed"
+            ) from exc
+        observed = read_process_birth(pid)
+        supplied_birth_id = request.get("process_birth_id")
+        if (
+            not isinstance(supplied_birth_id, str)
+            or not supplied_birth_id
+            or observed is None
+            or observed != supplied
+            or process_birth_id(observed) != supplied_birth_id
+        ):
+            raise SuccessorOperatorError(
+                "state-owner bootstrap process birth is stale"
+            )
+        client_id = request.get("client_id")
+        requested_store = request.get("store_id")
+        if not isinstance(client_id, str) or not isinstance(
+            requested_store,
+            str,
+        ):
+            raise SuccessorOperatorError(
+                "state-owner bootstrap lane scope is malformed"
+            )
+        matching_sessions = tuple(
+            session
+            for session in LGCVF_DATABASE_OWNER_SESSIONS
+            if client_id == f"database-implementation-daemon:{session}"
+        )
+        if (
+            len(matching_sessions) != 1
+            or requested_store != self.store_id
+        ):
+            raise SuccessorOperatorError(
+                "state-owner bootstrap lane scope differs from admission"
+            )
+        session = matching_sessions[0]
+        with self._lock:
+            supervisor = self._supervisor_for_daemon(observed, session=session)
+            prior = self.current_by_session.get(session)
+            if prior is not None:
+                prior_daemon = prior.get("daemon_process_birth")
+                if not isinstance(prior_daemon, Mapping):
+                    raise SuccessorOperatorError(
+                        "prior daemon bootstrap record is malformed"
+                    )
+                self._require_dead(prior_daemon, noun="lane daemon")
+                prior_supervisor = prior.get("supervisor_process_birth")
+                if (
+                    isinstance(prior_supervisor, Mapping)
+                    and dict(prior_supervisor) != supervisor.to_dict()
+                ):
+                    self._require_dead(
+                        prior_supervisor,
+                        noun="lane supervisor",
+                    )
+            prior_grant = self.active_grants.pop(session, "")
+            if prior_grant:
+                self.server.revoke_typed_client_grant(prior_grant)
+            token, grant = self.server.issue_typed_client_grant_record(
+                client_id=client_id,
+                process_birth_id=supplied_birth_id,
+                allowed_operations=daemon_required_owner_operations(),
+                allowed_command_operations=(
+                    daemon_required_owner_command_operations()
+                ),
+                peer_pid=pid,
+                ttl_seconds=INTERNAL_CLIENT_GRANT_TTL_SECONDS,
+            )
+            if self.stopping.is_set():
+                self.server.revoke_typed_client_grant(grant.grant_id)
+                raise SuccessorOperatorError(
+                    "state-owner bootstrap admission closed during grant issue"
+                )
+            owner_identity = self.server.identity
+            if owner_identity is None:
+                self.server.revoke_typed_client_grant(grant.grant_id)
+                raise SuccessorOperatorError(
+                    "state owner lost identity during bootstrap"
+                )
+            self.current_by_session[session] = {
+                "session": session,
+                "client_id": client_id,
+                "daemon_process_birth": supplied.to_dict(),
+                "daemon_process_birth_id": supplied_birth_id,
+                "supervisor_process_birth": supervisor.to_dict(),
+                "supervisor_process_birth_id": process_birth_id(supervisor),
+                "execution_route_policy": (
+                    self.execution_route_policy.public_summary()
+                ),
+                "grant_expires_at_ms": int(grant.expires_at),
+                "grant_renew_after": (
+                    time.monotonic() + INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS
+                ),
+            }
+            self.active_grants[session] = grant.grant_id
+            return {
+                "schema": STATE_OWNER_BOOTSTRAP_RESPONSE_SCHEMA,
+                "ok": True,
+                "endpoint": self.endpoint,
+                "socket_path": str(self.socket_path),
+                "store_id": self.store_id,
+                "server_id": str(owner_identity.server_id),
+                "client_id": client_id,
+                "process_birth_id": supplied_birth_id,
+                "token": token,
+                "execution_route_policy": self.execution_route_policy.to_dict(),
+            }
+
+    def _renew_due_grants(self) -> None:
+        """Keep exact live-birth grants bounded and usable indefinitely."""
+
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            OwnerLiveness,
+            ProcessBirthIdentity,
+            owner_liveness,
+        )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+            TypedStateOwnerAuthorizationError,
+        )
+
+        now = time.monotonic()
+        with self._lock:
+            due = tuple(
+                (
+                    session,
+                    grant_id,
+                    float(
+                        (self.current_by_session.get(session) or {}).get(
+                            "grant_renew_after",
+                            0.0,
+                        )
+                    ),
+                    dict(self.current_by_session.get(session) or {}),
+                )
+                for session, grant_id in self.active_grants.items()
+            )
+        for session, grant_id, renew_after, record in due:
+            if now < renew_after:
+                continue
+            raw_birth = record.get("daemon_process_birth")
+            if not isinstance(raw_birth, Mapping):
+                raise SuccessorOperatorError(
+                    "state-owner renewal daemon birth is unavailable"
+                )
+            daemon_birth = ProcessBirthIdentity.from_dict(raw_birth)
+            liveness = owner_liveness(daemon_birth)
+            if liveness is OwnerLiveness.DEAD:
+                # The supervisor may already be creating this lane's next
+                # exact birth.  Leave the old grant for `_admit` to revoke so
+                # this serial broker can accept the replacement immediately.
+                continue
+            if liveness is not OwnerLiveness.ALIVE:
+                raise SuccessorOperatorError(
+                    "state-owner renewal daemon birth is uninspectable"
+                )
+            try:
+                renewed = self.server.renew_typed_client_grant(
+                    grant_id,
+                    ttl_seconds=INTERNAL_CLIENT_GRANT_TTL_SECONDS,
+                )
+            except TypedStateOwnerAuthorizationError:
+                if owner_liveness(daemon_birth) is OwnerLiveness.DEAD:
+                    continue
+                raise
+            with self._lock:
+                if self.active_grants.get(session) != grant_id:
+                    raise SuccessorOperatorError(
+                        "state-owner grant rotated during renewal"
+                    )
+                record = self.current_by_session.get(session)
+                if not isinstance(record, dict):
+                    raise SuccessorOperatorError(
+                        "state-owner renewal record is unavailable"
+                    )
+                record["grant_expires_at_ms"] = int(renewed.expires_at)
+                record["grant_renew_after"] = (
+                    time.monotonic() + INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS
+                )
+
+    def _run(self) -> None:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+            StateOwnerBootstrapError,
+            _receive_frame,
+            _send_frame,
+        )
+
+        self.channel.settimeout(1.0)
+        while not self.stopping.is_set():
+            accepted: socket.socket | None = None
+            try:
+                self._renew_due_grants()
+                accepted, _address = self.channel.accept()
+                with self._lock:
+                    if self.stopping.is_set():
+                        accepted.close()
+                        return
+                    self._accepted = accepted
+                accepted.settimeout(
+                    STATE_OWNER_BOOTSTRAP_CLIENT_TIMEOUT_SECONDS
+                )
+                peer = accepted.getsockopt(
+                    socket.SOL_SOCKET,
+                    socket.SO_PEERCRED,
+                    struct.calcsize("3i"),
+                )
+                peer_pid, peer_uid, _peer_gid = struct.unpack("3i", peer)
+                response = self._admit(
+                    _receive_frame(accepted),
+                    peer_pid=int(peer_pid),
+                    peer_uid=int(peer_uid),
+                )
+                _send_frame(accepted, response)
+            except TimeoutError:
+                continue
+            except (EOFError, StateOwnerBootstrapError, SuccessorOperatorError) as exc:
+                if not self.stopping.is_set():
+                    self.last_rejection = type(exc).__name__
+                    self.rejection_count += 1
+                continue
+            except OSError:
+                if not self.stopping.is_set() and accepted is None:
+                    self.failure = "state_owner_bootstrap_channel_closed"
+                    return
+                continue
+            except BaseException as exc:
+                self.failure = type(exc).__name__
+                try:
+                    self.channel.close()
+                except OSError:
+                    pass
+                return
+            finally:
+                if accepted is not None:
+                    with self._lock:
+                        if self._accepted is accepted:
+                            self._accepted = None
+                    try:
+                        accepted.close()
+                    except OSError:
+                        pass
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -2758,7 +3615,7 @@ def _require_ignored_successor(
 
 
 def _load_native_resume_config(root: Path) -> tuple[dict[str, Any], bytes]:
-    """Load the exact tracked run-v35 profile with duplicate-key rejection."""
+    """Load the exact tracked run-v36 profile with duplicate-key rejection."""
 
     path = _contained(root, DEFAULT_SUCCESSOR_CONFIG_RELATIVE)
     raw = _read_bounded_regular_file(
@@ -3388,7 +4245,7 @@ def _cleanup_native_resume_stage(stage: Path, *, publish_parent: Path) -> None:
 
 
 def bootstrap_native_resume(root: Path = ROOT) -> dict[str, Any]:
-    """Atomically publish run-v35 from the tracked candidate projection."""
+    """Atomically publish run-v36 from the tracked candidate projection."""
 
     root = root.resolve(strict=True)
     paths = _paths(root)
@@ -5467,6 +6324,8 @@ def _run_locked_successor(
         provenance=raw_provenance,
     )
     server: Any | None = None
+    bootstrap_channel: socket.socket | None = None
+    bootstrap_broker: _LgcvfStateOwnerBootstrapBroker | None = None
     previous_extension_environment: dict[str, str | None] = {}
 
     def stop_owner() -> Mapping[str, Any]:
@@ -5476,6 +6335,22 @@ def _run_locked_successor(
         owned_server = server
         server = None
         return owned_server.stop()
+
+    def stop_bootstrap_broker() -> None:
+        nonlocal bootstrap_broker, bootstrap_channel
+        if bootstrap_broker is not None:
+            owned_broker = bootstrap_broker
+            owned_broker.stop()
+            bootstrap_broker = None
+            bootstrap_channel = None
+            return
+        if bootstrap_channel is not None:
+            owned_channel = bootstrap_channel
+            bootstrap_channel = None
+            try:
+                owned_channel.close()
+            except OSError:
+                pass
 
     try:
         launch_home = Path(live_launch["launch_home"])
@@ -5575,6 +6450,17 @@ def _run_locked_successor(
             os.environ.get(DATABASE_PROGRAM_JSON_ENV),
         )
         os.environ[DATABASE_PROGRAM_JSON_ENV] = owner_program_json
+        bootstrap_channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        bootstrap_channel.bind(
+            "\0ipfs-lgcvf-bootstrap-" + uuid.uuid4().hex
+        )
+        bootstrap_channel.listen(8)
+        bootstrap_descriptor = bootstrap_channel.fileno()
+        from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
+            validate_state_owner_bootstrap_listener,
+        )
+
+        validate_state_owner_bootstrap_listener(bootstrap_descriptor)
         scheduler_argv = [
             "--repo-root",
             str(root),
@@ -5590,6 +6476,10 @@ def _run_locked_successor(
             str(live_launch["native_launch_json"]),
             "--configured-board-live-native-fd",
             str(live_launch["native_launch"].descriptor.descriptor),
+            "--state-owner-bootstrap-fd",
+            str(bootstrap_descriptor),
+            "--state-owner-bootstrap-store-id",
+            str(program.store_id),
             "launch",
             "--foreground",
             "--duration-seconds",
@@ -5657,6 +6547,13 @@ def _run_locked_successor(
         ):
             stop_owner()
             raise SuccessorOperatorError("owner published its Quack attach token")
+        execution_route_policy = _seal_lgcvf_execution_route_policy(
+            server=server,
+            program=program,
+            identity=identity,
+            controller_birth=controller_birth,
+            owner_socket=paths["owner_socket"],
+        )
 
         if any(token in item for item in command):
             stop_owner()
@@ -5689,7 +6586,11 @@ def _run_locked_successor(
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 env=environment,
-                pass_fds=tuple(live_launch["pass_fds"]),
+                pass_fds=tuple(
+                    dict.fromkeys(
+                        (*live_launch["pass_fds"], bootstrap_descriptor)
+                    )
+                ),
                 start_new_session=True,
             )
             # Popen returns only after the child has crossed exec.  The child
@@ -5699,6 +6600,51 @@ def _run_locked_successor(
             _close_lgcvf_configured_board_live_launch(live_launch)
             live_launch = None
             scheduler_birth = _exact_birth(scheduler.pid)
+            assert bootstrap_channel is not None
+            bootstrap_broker = _LgcvfStateOwnerBootstrapBroker(
+                channel=bootstrap_channel,
+                descriptor=bootstrap_descriptor,
+                server=server,
+                scheduler_birth=scheduler_birth,
+                endpoint=str(program.quack_endpoint),
+                socket_path=paths["owner_socket"],
+                store_id=str(program.store_id),
+                execution_route_policy=execution_route_policy,
+            )
+            bootstrap_broker.start()
+            bootstrap_deadline = (
+                time.monotonic()
+                + STATE_OWNER_BOOTSTRAP_READY_TIMEOUT_SECONDS
+            )
+            stable_signature: tuple[str, ...] = ()
+            stable_since = 0.0
+            while True:
+                if scheduler.poll() is not None:
+                    raise SuccessorOperatorError(
+                        "scheduler exited before all lane daemons attached"
+                    )
+                if bootstrap_broker.failure:
+                    raise SuccessorOperatorError(
+                        "lane state-owner bootstrap failed closed: "
+                        + bootstrap_broker.failure
+                    )
+                if time.monotonic() >= bootstrap_deadline:
+                    raise SuccessorOperatorError(
+                        "lane state-owner bootstrap readiness timed out"
+                    )
+                observed_signature = bootstrap_broker.live_ready_signature
+                if observed_signature != stable_signature:
+                    stable_signature = observed_signature
+                    stable_since = time.monotonic()
+                if (
+                    len(stable_signature)
+                    == len(LGCVF_DATABASE_OWNER_SESSIONS)
+                    and time.monotonic() - stable_since
+                    >= STATE_OWNER_BOOTSTRAP_STABILITY_SECONDS
+                ):
+                    break
+                server.service_mutation_inbox(max_requests=32)
+                time.sleep(0.01)
             for signum in (signal.SIGINT, signal.SIGTERM):
                 prior_handlers[signum] = signal.signal(signum, request_stop)
             ready_status = _status_payload(
@@ -5713,6 +6659,20 @@ def _run_locked_successor(
             started = time.monotonic()
             pump_error = ""
             while scheduler.poll() is None and not stop_requested:
+                if (
+                    bootstrap_broker is None
+                    or bootstrap_broker.failure
+                ):
+                    pump_error = (
+                        "state-owner bootstrap broker failed: "
+                        + (
+                            "missing"
+                            if bootstrap_broker is None
+                            else bootstrap_broker.failure
+                        )
+                    )
+                    stop_requested = True
+                    break
                 if duration_seconds != float("inf") and (
                     time.monotonic() - started >= duration_seconds
                 ):
@@ -5728,10 +6688,11 @@ def _run_locked_successor(
             if stop_requested and scheduler.poll() is None:
                 _terminate_exact(
                     scheduler_birth,
-                    grace_seconds=10.0,
+                    grace_seconds=LGCVF_SCHEDULER_TREE_STOP_GRACE_SECONDS,
                     child_process=scheduler,
                 )
             returncode = scheduler.wait(timeout=5.0)
+            stop_bootstrap_broker()
             if pump_error:
                 raise SuccessorOperatorError(
                     "mutation inbox pump failed: " + pump_error
@@ -5746,10 +6707,11 @@ def _run_locked_successor(
             ):
                 _terminate_exact(
                     scheduler_birth,
-                    grace_seconds=5.0,
+                    grace_seconds=LGCVF_SCHEDULER_TREE_STOP_GRACE_SECONDS,
                     child_process=scheduler,
                 )
                 scheduler.wait(timeout=5.0)
+            stop_bootstrap_broker()
             log_handle.close()
             stop_receipt = stop_owner()
             credential_leak = bool(tuple(paths["owner_state"].glob("*.quack-token")))
@@ -5788,6 +6750,13 @@ def _run_locked_successor(
                 )
         return int(returncode)
     finally:
+        try:
+            stop_bootstrap_broker()
+        except Exception as cleanup_exc:  # noqa: BLE001
+            sys.stderr.write(
+                "LGCVF bootstrap broker emergency stop failed: "
+                f"{type(cleanup_exc).__name__}\n"
+            )
         if server is not None:
             try:
                 stop_owner()
@@ -5839,7 +6808,19 @@ def stop_controller(
 
     status = controller_status(root)
     birth = ProcessBirthIdentity.from_dict(status.get("controller_birth"))
-    disposition = _terminate_exact(birth, grace_seconds=min(timeout_seconds, 15.0))
+    selected_timeout = float(timeout_seconds)
+    if (
+        not math.isfinite(selected_timeout)
+        or selected_timeout < 1.0
+        or selected_timeout > MAX_STOP_SECONDS
+    ):
+        raise SuccessorOperatorError(
+            "controller stop timeout is outside the closed bound"
+        )
+    disposition = _terminate_exact(
+        birth,
+        grace_seconds=selected_timeout,
+    )
     return {
         "stopped": True,
         "disposition": disposition,
