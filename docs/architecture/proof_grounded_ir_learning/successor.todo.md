@@ -116,7 +116,7 @@ evidence.
 
 ## PGIR-201 Materialize the sealed corpus after rights admission
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
