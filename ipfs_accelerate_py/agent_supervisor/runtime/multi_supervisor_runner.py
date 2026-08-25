@@ -62,6 +62,7 @@ from ..control.lifecycle_orchestrator import (
     LinuxProcessAdapter,
     ProcessIdentity,
     ProcessIdentityMismatch,
+    ProcessTreeSnapshot,
 )
 from ..core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
@@ -6427,12 +6428,43 @@ def _validate_plan_bound_accepted_tree(
             )
 
 
+def _managed_process_birth_identity(
+    process: subprocess.Popen[bytes],
+    profile: LifecycleProfile,
+) -> ProcessIdentity | None:
+    """Return the exact captured wrapper birth, rejecting mixed authority."""
+
+    identity = getattr(process, "_agent_supervisor_process_identity", None)
+    if identity is None:
+        return None
+    if not isinstance(identity, ProcessIdentity):
+        raise ProcessIdentityMismatch(
+            "managed Popen has an untyped process-birth identity"
+        )
+    if (
+        identity.pid != process.pid
+        or identity.profile_id != profile.profile_id
+        or identity.run_id != profile.run_id
+        or identity.target_id != profile.target_id
+        or identity.repository_root != profile.repository_root
+        or identity.state_root != profile.state_root
+        or identity.run_root != profile.run_root
+        or identity.configuration_root != profile.configuration_root
+        or identity.argv != profile.argv
+        or identity.cwd != profile.cwd
+    ):
+        raise ProcessIdentityMismatch(
+            "managed Popen process birth does not match its lifecycle profile"
+        )
+    return identity
+
+
 def _terminate_managed_process(
     process: subprocess.Popen[bytes] | None,
     *,
     grace_seconds: float,
 ) -> tuple[bool, tuple[int, ...]]:
-    """Fence the exact marker-bound tree associated with ``process``."""
+    """Fence the exact owned wrapper birth and its marker-bound descendants."""
 
     if process is None:
         return True, ()
@@ -6441,14 +6473,52 @@ def _terminate_managed_process(
         # A caller-created Popen has no durable run/profile binding.  Refuse to
         # turn its PID into signal authority.
         return False, ()
+    process_identity = _managed_process_birth_identity(process, profile)
     adapter = LinuxProcessAdapter()
     tree = adapter.snapshot(profile)
-    if not tree.members:
-        return True, ()
-    root_ids = {item.pid for item in tree.roots}
     process_member = next(
         (item for item in tree.members if item.pid == process.pid), None
     )
+    process_identity_alive = (
+        process_identity is not None and adapter.identity_alive(process_identity)
+    )
+    if process_member is not None and process_identity is not None:
+        if (
+            not process_identity_alive
+            or process_member.start_time_ticks
+            != process_identity.start_time_ticks
+            or (
+                process_member.boot_id
+                and process_identity.boot_id
+                and process_member.boot_id != process_identity.boot_id
+            )
+        ):
+            raise ProcessIdentityMismatch(
+                "managed Popen PID was reused after its captured process birth"
+            )
+    if process_identity_alive:
+        # A wrapper may scrub or replace its lifecycle-visible environment
+        # after launch.  The immutable PID/start-time birth captured from the
+        # owned Popen remains exact signal authority even when a later marker
+        # scan sees only descendants (or no members at all).
+        members = tuple(
+            process_identity if item.pid == process.pid else item
+            for item in tree.members
+        )
+        if process_member is None:
+            members = (*members, process_identity)
+        tree = ProcessTreeSnapshot(
+            profile_id=tree.profile_id,
+            run_id=tree.run_id,
+            members=members,
+            captured_at_ms=tree.captured_at_ms,
+        )
+        process_member = process_identity
+    if not tree.members:
+        # An empty marker scan is proof of neither ownership nor wrapper exit.
+        # Without a live exact birth there is no safe process to signal.
+        return process.poll() is not None, ()
+    root_ids = {item.pid for item in tree.roots}
     if process_member is not None and process.pid not in root_ids:
         raise ProcessIdentityMismatch(
             "managed Popen does not identify the marker-bound tree root"
@@ -6459,10 +6529,16 @@ def _terminate_managed_process(
         grace_seconds=grace_seconds,
         deadline_ms=max(1, int(max(0.0, grace_seconds) * 1000) + 1_000),
     )
-    deadline = time.monotonic() + max(0.1, grace_seconds) + 1.0
+    # ``terminate`` owns the complete graceful wait and exact SIGKILL fence.
+    # Allow only a short reap/projection observation after it returns instead
+    # of charging the caller a second full grace period.
+    deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline:
         if not any(adapter.identity_alive(item) for item in tree.members):
-            if not adapter.snapshot(profile).members:
+            if (
+                process.poll() is not None
+                and not adapter.snapshot(profile).members
+            ):
                 return True, member_pids
         time.sleep(0.02)
     return False, member_pids
@@ -6488,18 +6564,11 @@ def stop_tracks(
             process,
             grace_seconds=grace_seconds,
         )
-        if process is not None:
-            try:
-                process.wait(timeout=max(0.1, grace_seconds))
-            except subprocess.TimeoutExpired:
-                pass
-            # A marker-bound tree snapshot can become empty while the exact
-            # wrapper Popen remains alive (for example, after a child changes
-            # its lifecycle-visible environment).  The wrapper is still
-            # signal authority and its PID marker must not be retired.  Bind
-            # the successful fence result to both observations.
-            if process.poll() is None:
-                fenced = False
+        # The managed termination helper owns both the grace window and exact
+        # wrapper reap.  Keep this independent observation so a future or
+        # monkeypatched implementation still cannot retire a live PID marker.
+        if process is not None and process.poll() is None:
+            fenced = False
         if fenced:
             stopped.extend(member_pids)
         elif process is not None:

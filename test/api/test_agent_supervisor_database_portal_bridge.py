@@ -191,6 +191,153 @@ def test_datasets_authority_marker_reaches_provider_without_state_secrets(
     assert SEMANTIC_WRITER_POLICY_ENV not in ordinary_environment
 
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_database_portal_attempt_isolates_foreign_merge_history_and_dequeue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Attempt Scope Test",
+            "-c",
+            "user.email=attempt-scope@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "base",
+        ],
+        cwd=repo,
+        check=True,
+    )
+
+    record = _record()
+    record.dependencies = ()
+    record.status = "in_progress"
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repo,
+        task_header_prefix="## LGSWF-",
+    )
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    [projected_task] = parse_task_text(
+        paths.task_projection.read_text(encoding="utf-8"),
+        path=paths.task_projection,
+        task_header_prefix="## LGSWF-",
+    )
+
+    repository_id = checkout_repository_id(repo)
+    queue = MergeQueue(
+        tmp_path / "merge-queue",
+        target_repository_id=repository_id,
+        target_branch="main",
+        require_target_binding=True,
+    )
+
+    def metadata(*, owned: bool) -> dict[str, object]:
+        root = paths.root if owned else tmp_path / "older-attempt"
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            ),
+            "todo_path": str(
+                paths.task_projection if owned else root / "task-projection.md"
+            ),
+            "state_path": str(paths.state if owned else root / "state.json"),
+            "strategy_path": str(
+                paths.strategy if owned else root / "strategy.json"
+            ),
+            "events_path": str(
+                paths.events if owned else root / "events.jsonl"
+            ),
+            "completion_task_cids": {
+                projected_task.task_id: projected_task.canonical_task_cid
+            },
+        }
+
+    def enqueue(commit: str, *, owned: bool) -> object:
+        return queue.enqueue(
+            branch_name=f"implementation/{commit[0]}",
+            task_id=projected_task.task_id,
+            canonical_task_id=projected_task.canonical_task_cid,
+            canonical_task_key=projected_task.canonical_task_key,
+            commit_sha=commit,
+            metadata=metadata(owned=owned),
+        )
+
+    stale_completed = enqueue("a" * 40, owned=False)
+    claimed_stale = queue.claim_pending_request(
+        stale_completed.request_id,
+        consumer_id="merge-train:stale-attempt",
+    )
+    assert claimed_stale is not None
+    queue.complete(claimed_stale)
+    foreign_pending = enqueue("b" * 40, owned=False)
+
+    daemon = PortalImplementationDaemon(
+        todo_path=paths.task_projection,
+        state_path=paths.state,
+        strategy_path=paths.strategy,
+        events_path=paths.events,
+        repo_root=repo,
+        task_header_prefix="## LGSWF-",
+        merge_queue=queue,
+        merge_target_branch="main",
+        isolate_merge_queue_to_task_projection=True,
+        worktree_pool_enabled=False,
+        maintenance_interval_seconds=0,
+    )
+    [task] = daemon._load_tasks()
+
+    assert daemon.merge_queue is queue
+    assert daemon._task_projection_merge_queue is not queue
+    assert daemon._shared_merge_queue_task_cids(
+        "completed_canonical_task_ids"
+    ) == set()
+    assert daemon._shared_completed_task_cid_bindings() == {}
+    assert daemon._shared_merge_queue_task_cids(
+        "active_canonical_task_ids"
+    ) == set()
+    assert daemon._task_has_blocking_pending_merge(task) is False
+
+    result = daemon.run_once()
+    assert result["active_task_id"] == projected_task.task_id
+    assert result["shared_completed_task_ids"] == []
+    assert result["shared_active_merge_task_ids"] == []
+    assert queue.get(foreign_pending.request_id).status == "pending"
+
+    current_pending = enqueue("c" * 40, owned=True)
+    assert daemon._shared_merge_queue_task_cids(
+        "active_canonical_task_ids"
+    ) == {projected_task.canonical_task_cid}
+    assert daemon._task_has_blocking_pending_merge(task) is True
+
+    observed: dict[str, object] = {}
+
+    def claim_scoped_request(train: MergeTrain) -> dict[str, object]:
+        observed["queue"] = train.queue
+        request = train._dequeue()
+        observed["request"] = request
+        return {"request_id": getattr(request, "request_id", "")}
+
+    monkeypatch.setattr(MergeTrain, "run_once", claim_scoped_request)
+    progress = daemon._consume_one_merge_candidate()
+
+    assert progress == {"request_id": current_pending.request_id}
+    assert observed["queue"] is daemon._task_projection_merge_queue
+    assert getattr(observed["request"], "request_id", "") == (
+        current_pending.request_id
+    )
+    assert queue.get(current_pending.request_id).status == "processing"
+    assert queue.get(foreign_pending.request_id).status == "pending"
+
+
 class _TaskSource:
     def __init__(self, record: object) -> None:
         self.record = record

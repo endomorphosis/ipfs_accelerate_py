@@ -1322,6 +1322,7 @@ def bind_database_portal_execution_from_args(
             merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
             merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
             merge_queue=recovery_queue,
+            isolate_merge_queue_to_task_projection=True,
             worktree_submodule_paths=worktree_submodule_paths,
             implementation_protected_paths=implementation_protected_paths,
             manual_completion_authority_task_ids=getattr(

@@ -1093,6 +1093,7 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     )
     assert portal.kwargs["merge_queue"] is bridge.merge_queue
     assert portal.kwargs["merge_target_branch"] == "main"
+    assert portal.kwargs["isolate_merge_queue_to_task_projection"] is True
 
 
 def test_database_runner_requires_protected_preservation_daemon_binding(

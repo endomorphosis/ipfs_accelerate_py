@@ -4782,6 +4782,169 @@ def _task_alias_home_shard_index(task_alias: str, shard_count: int) -> int:
     return int(digest[:8], 16) % shard_count
 
 
+class _TaskProjectionMergeQueueView:
+    """Expose only merge rows authored by one private task projection.
+
+    Database-backed execution attempts intentionally share the repository's
+    durable merge train, while their Portal task/state/event projections are
+    attempt-local.  Queue-wide completion and active-task indexes therefore
+    cannot be used directly: an older attempt for the same canonical task CID
+    would otherwise suppress provider dispatch or close a fresh projection.
+
+    Mutations for a request already selected through this view are delegated
+    unchanged.  Selection itself is fail closed: dequeue claims one exact
+    path-bound request through ``claim_pending_request`` and never falls back
+    to the queue-wide priority dequeue.
+    """
+
+    _CANDIDATE_SCHEMA = (
+        "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+    )
+    _SNAPSHOT_LIMIT = 256
+
+    def __init__(
+        self,
+        queue: Any,
+        *,
+        todo_path: Path,
+        state_path: Path,
+        strategy_path: Path,
+        events_path: Path,
+    ) -> None:
+        self._queue = queue
+        self._expected_paths = {
+            "todo_path": str(todo_path),
+            "state_path": str(state_path),
+            "strategy_path": str(strategy_path),
+            "events_path": str(events_path),
+        }
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._queue, name)
+
+    def matches(self, request: Any) -> bool:
+        metadata = getattr(request, "metadata", None)
+        return bool(
+            isinstance(metadata, Mapping)
+            and metadata.get("schema") == self._CANDIDATE_SCHEMA
+            and all(
+                type(metadata.get(field)) is str
+                and metadata.get(field) == expected
+                for field, expected in self._expected_paths.items()
+            )
+        )
+
+    def _snapshot(self, method_name: str) -> tuple[Any, ...]:
+        method = getattr(self._queue, method_name, None)
+        if not callable(method):
+            return ()
+        rows = method(limit=self._SNAPSHOT_LIMIT)
+        if not isinstance(rows, (list, tuple)):
+            return ()
+        return tuple(row for row in rows if self.matches(row))
+
+    def quarantined_requests(
+        self,
+        *,
+        limit: int = 32,
+    ) -> tuple[Any, ...]:
+        requested = max(0, min(int(limit), self._SNAPSHOT_LIMIT))
+        return self._snapshot("quarantined_requests")[:requested]
+
+    def active_canonical_task_ids(self) -> set[str]:
+        requests = (
+            *self._snapshot("pending_requests"),
+            *self._snapshot("processing_requests"),
+        )
+        return {
+            str(getattr(request, "canonical_task_id", "") or "")
+            for request in requests
+            if str(getattr(request, "canonical_task_id", "") or "")
+        }
+
+    def completed_canonical_task_ids(self) -> set[str]:
+        return {
+            str(getattr(request, "canonical_task_id", "") or "")
+            for request in self._snapshot("completed_requests")
+            if str(getattr(request, "canonical_task_id", "") or "")
+        }
+
+    def completed_task_cid_bindings(self) -> dict[str, set[str]]:
+        bindings: dict[str, set[str]] = {}
+        for request in self._snapshot("completed_requests"):
+            metadata = getattr(request, "metadata", None)
+            if not isinstance(metadata, Mapping):
+                continue
+            raw_bindings = metadata.get("completion_task_cids")
+            if not isinstance(raw_bindings, Mapping) or not raw_bindings:
+                continue
+            primary_task_id = str(getattr(request, "task_id", "") or "")
+            primary_task_cid = str(
+                getattr(request, "canonical_task_id", "") or ""
+            )
+            if (
+                not primary_task_id
+                or not primary_task_cid
+                or str(raw_bindings.get(primary_task_id) or "")
+                != primary_task_cid
+            ):
+                continue
+            for task_id, task_cid in raw_bindings.items():
+                normalized_id = str(task_id).strip()
+                normalized_cid = str(task_cid).strip()
+                if normalized_id and normalized_cid:
+                    bindings.setdefault(normalized_id, set()).add(
+                        normalized_cid
+                    )
+        return bindings
+
+    def has_pending_for_task(
+        self,
+        task_id: str,
+        *,
+        commit_sha: str | None = None,
+    ) -> bool:
+        identity = str(task_id).strip().casefold()
+        requests = (
+            *self._snapshot("pending_requests"),
+            *self._snapshot("processing_requests"),
+        )
+        for request in requests:
+            identities = {
+                str(getattr(request, "task_id", "") or "").casefold(),
+                str(
+                    getattr(request, "canonical_task_id", "") or ""
+                ).casefold(),
+                str(
+                    getattr(request, "canonical_task_key", "") or ""
+                ).casefold(),
+            }
+            if identity not in identities:
+                continue
+            request_commit = str(
+                getattr(request, "commit_sha", "") or ""
+            ).casefold()
+            if commit_sha is None or request_commit == str(commit_sha).casefold():
+                return True
+        return False
+
+    def dequeue(self, consumer_id: str = "") -> Any:
+        claim = getattr(self._queue, "claim_pending_request", None)
+        if not callable(claim):
+            return None
+        for request in self._snapshot("pending_requests"):
+            claimed = claim(request, consumer_id=consumer_id)
+            if claimed is not None and self.matches(claimed):
+                return claimed
+        return None
+
+    def recover_abandoned_train_claims(self) -> int:
+        # The queue offers only a repository-wide recovery operation.  The
+        # bridge owns the unscoped recovery path, so a private Portal pass must
+        # not rewrite foreign processing rows while holding the train lease.
+        return 0
+
+
 class PortalImplementationDaemon:
     shared_todo_runner_class = TodoDaemonRunner
     shared_todo_hooks_class = TodoDaemonHooks
@@ -4837,6 +5000,7 @@ class PortalImplementationDaemon:
         idle_lane_work_stealing: str = "",
         merge_queue: MergeQueue | None = None,
         merge_queue_dir: Path | None = None,
+        isolate_merge_queue_to_task_projection: bool = False,
         validation_scheduler: ValidationScheduler | None = None,
         validation_cache_dir: Path | None = None,
         validation_max_workers: int | None = None,
@@ -4863,6 +5027,13 @@ class PortalImplementationDaemon:
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
+        if type(isolate_merge_queue_to_task_projection) is not bool:
+            raise TypeError(
+                "isolate_merge_queue_to_task_projection must be a boolean"
+            )
+        self.isolate_merge_queue_to_task_projection = (
+            isolate_merge_queue_to_task_projection
+        )
         configured_task_source = task_source
         if configured_task_source is None and task_source_kind:
             configured_task_source = todo_path
@@ -5301,6 +5472,17 @@ class PortalImplementationDaemon:
             self.merge_target_repository_id,
             self.resolved_merge_target_branch,
             required=True,
+        )
+        self._task_projection_merge_queue = (
+            _TaskProjectionMergeQueueView(
+                self.merge_queue,
+                todo_path=self.todo_path,
+                state_path=self.state_path,
+                strategy_path=self.strategy_path,
+                events_path=self.events_path,
+            )
+            if self.isolate_merge_queue_to_task_projection
+            else self.merge_queue
         )
         configured_validation_workers = (
             _env_int(VALIDATION_MAX_WORKERS_ENV, DEFAULT_VALIDATION_MAX_WORKERS)
@@ -12278,7 +12460,11 @@ class PortalImplementationDaemon:
         self.task_queue.save()
 
     def _shared_merge_queue_task_cids(self, method_name: str) -> set[str]:
-        method = getattr(self.merge_queue, method_name, None)
+        method = getattr(
+            self._task_projection_merge_queue,
+            method_name,
+            None,
+        )
         if not callable(method):
             return set()
         try:
@@ -12298,7 +12484,7 @@ class PortalImplementationDaemon:
         self,
     ) -> dict[str, set[str]]:
         method = getattr(
-            self.merge_queue,
+            self._task_projection_merge_queue,
             "completed_task_cid_bindings",
             None,
         )
@@ -31782,7 +31968,8 @@ class PortalImplementationDaemon:
         from ..merge.merge_train import MergeTrain
 
         target_branch = self.resolved_merge_target_branch or self._main_branch_name()
-        queue_branch = str(getattr(self.merge_queue, "target_branch", "") or "").strip()
+        merge_queue = self._task_projection_merge_queue
+        queue_branch = str(getattr(merge_queue, "target_branch", "") or "").strip()
         if queue_branch and queue_branch != target_branch:
             raise RuntimeError(
                 "merge queue target branch "
@@ -31792,9 +31979,9 @@ class PortalImplementationDaemon:
             )
         train = MergeTrain(
             repo_root=self.repo_root,
-            queue=self.merge_queue,
+            queue=merge_queue,
             target_branch=target_branch,
-            max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
+            max_attempts=int(getattr(merge_queue, "max_attempts", 3)),
             merge_callback=self._merge_train_callback,
             formal_verification_policy=self.formal_verification_policy,
             proof_gate=self.proof_gate,
@@ -62350,7 +62537,11 @@ class PortalImplementationDaemon:
     def _task_has_blocking_pending_merge(self, task: PortalTask) -> bool:
         """True when the shared queue still owns a live, unresolved merge."""
 
-        has_pending = getattr(self.merge_queue, "has_pending_for_task", None)
+        has_pending = getattr(
+            self._task_projection_merge_queue,
+            "has_pending_for_task",
+            None,
+        )
         if not callable(has_pending):
             return False
         if not (
