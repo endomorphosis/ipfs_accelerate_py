@@ -259,11 +259,11 @@ evidence.
 - Subgoal: superseding-freeze
 - Owning repository: ipfs_accelerate_py
 - Owned paths: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/**
-- Base source revisions: current successor branch plus RESULT(PGIR-200) through RESULT(PGIR-204) and RESULT(PGIR-208)
+- Base source revisions: current successor branch plus RESULT(PGIR-200) through RESULT(PGIR-204), RESULT(PGIR-208), RESULT(PGIR-209), and RESULT(PGIR-210)
 - Objective: Bind new rights, corpus, split, tokenizer, and baseline identities into a superseding campaign input root whose previous_root_cid is the historical no-go freeze.
-- Depends on: PGIR-200, PGIR-201, PGIR-202, PGIR-203, PGIR-204, PGIR-208
+- Depends on: PGIR-200, PGIR-201, PGIR-202, PGIR-203, PGIR-204, PGIR-208, PGIR-209, PGIR-210
 - Resource class: cpu-small
-- Expected inputs: historical RESULT(PGIR-014), RESULT(PGIR-200) through RESULT(PGIR-204), RESULT(PGIR-208)
+- Expected inputs: historical RESULT(PGIR-014), RESULT(PGIR-200) through RESULT(PGIR-204), RESULT(PGIR-208), and the superseding evidence adjudications RESULT(PGIR-209) and RESULT(PGIR-210)
 - Expected outputs: a successor-v1 freeze root, descendant task revisions, plan-admission receipt, and go or documented no-go
 - Allowed effects: successor-v1 freeze artifacts only
 - Prohibited effects: historical freeze mutation, hidden-test access, promotion
@@ -377,3 +377,69 @@ evidence.
 - Submodules: ipfs_datasets_py
 - Exclusive group: source-chain-acceptance-successor-v1
 - Conflict policy: immutable nested inputs and one exclusive outer acceptance writer
+
+## PGIR-209 Correct and independently adjudicate the PGIR-204 retirement evidence
+
+- Status: todo
+- Completion: supervisor-evidence
+- Is schedulable: true
+- Priority: P0
+- Track: qualification
+- Parent goal: PGIR-G040
+- Goal id: PGIR-G040
+- Board namespace: proof-grounded-ir-learning-successor-v1
+- Subgoal: current-baseline-acceptance
+- Owning repository: ipfs_accelerate_py
+- Owned paths: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/baseline-acceptance/**, scripts/verify_proof_grounded_ir_learning_successor_baseline.py
+- Base source revisions: RESULT(PGIR-202), RESULT(PGIR-204); outer commits fdf3839bc11c60c7e0b801397499a7b4ce0d4634, a0f54e787e141d6d03fcef56b7d48ff42ce516f1, b9c7aaece6c75b1413a6a951f647ca409834dff9; datasets commit 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6
+- Objective: Emit an append-only outer adjudication and tracked verifier for the correct PGIR-204 zero-row retirement while correcting its evidence terminology and Git-object typing without rewriting the completed nested result.
+- Depends on: PGIR-202, PGIR-204
+- Resource class: cpu-small
+- Expected inputs: all seven RESULT(PGIR-204) JSON payloads, the current corpus and split artifacts, the historical R1 identities, and the exact outer and nested Git objects
+- Expected outputs: a canonical baseline-acceptance receipt, accurate twenty-partition protection table, recursive repository forest, tracked verifier, and replay or typed portability no-go
+- Allowed effects: successor-v1 outer baseline-acceptance evidence and its verifier only
+- Prohibited effects: mutation of evaluations/deterministic/successor-v1, hidden-test access, historical-score reuse, claiming a commit is a tree, treating a one-off runtime probe as durable evidence, publication, training, promotion
+- Acceptance: the valid PGIR-204 retirement and all seven payload CIDs remain byte-identical; c4cf42fccb58d73b9f48c7f70799165b29cfe3a9 is typed as a commit with tree df137b9691df22a4d928d998062e81a24491705a; the integrated outer implementation, merge, completion, nested commit, trees, parents, and gitlink form a recursive forest; all twenty split partitions and their protection states replay from the empty admitted corpus without calling the fifteen protected holdout axes non-hidden; a tracked verifier closes every input and output CID; unavailable remote refs produce portability_no_go and keep PGIR-205 fail-closed
+- Required proof or evaluation evidence: canonical receipt CID, exact seven-payload population, twenty-partition table, recursive repository-forest manifest, verifier source identity, independent replay receipt, remote-reachability result, fresh recursive checkout receipt or typed unpublished-ref blocker, and focused R1 integration tests
+- Result identity: RESULT(PGIR-209) in successor-v1
+- Outputs: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/baseline-acceptance/, scripts/verify_proof_grounded_ir_learning_successor_baseline.py
+- Validation: python scripts/verify_proof_grounded_ir_learning_successor_baseline.py && python -m pytest -q ipfs_datasets_py/tests/integration/logic/test_canonical_semantic_roundtrip.py
+- Bundle: pgir/successor/baseline-acceptance
+- Parallel lane: baseline-acceptance
+- Predicted files: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/baseline-acceptance/, scripts/verify_proof_grounded_ir_learning_successor_baseline.py
+- Submodules: ipfs_datasets_py
+- Exclusive group: baseline-acceptance-successor-v1
+- Conflict policy: immutable nested inputs and one exclusive outer baseline-acceptance writer
+
+## PGIR-210 Supersede and portably re-adjudicate the PGIR-208 source-chain seal
+
+- Status: todo
+- Completion: supervisor-evidence
+- Is schedulable: true
+- Priority: P0
+- Track: qualification
+- Parent goal: PGIR-G030
+- Goal id: PGIR-G030
+- Board namespace: proof-grounded-ir-learning-successor-v1
+- Subgoal: source-chain-acceptance-v2
+- Owning repository: ipfs_accelerate_py
+- Owned paths: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/source-chain-acceptance-v2/**, scripts/verify_proof_grounded_ir_learning_successor_source_chain_v2.py
+- Base source revisions: RESULT(PGIR-204), RESULT(PGIR-208); source-chain implementation effac002de038c02ef94cdb8e1b1b2c9a0a8d2e3, merge 1ceb7183b16b3358dd956ebcd4917955e017ef7f, completion edb419c80275757cbedac8c6731e49f85ad58d88; current datasets descendant 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6
+- Objective: Emit an append-only superseding source-chain seal whose portable verifier accepts the immutable PGIR-202 datasets commit as an ancestor of the current descendant gitlink and closes the evidence omitted by PGIR-208.
+- Depends on: PGIR-204, PGIR-208
+- Resource class: network
+- Expected inputs: every RESULT(PGIR-208) artifact and verifier, all immutable RESULT(PGIR-200) through RESULT(PGIR-202) payloads and Git objects, the historical campaign-root binding closure, the current descendant gitlink, exact twenty-one cited source revisions, and the thirty-four focused test outcomes
+- Expected outputs: a canonical v2 source-chain acceptance receipt, current recursive forest, tracked v2 verifier, network and test receipts, verifier-source identity, and fresh-checkout replay or typed portability no-go
+- Allowed effects: successor-v1 outer source-chain-acceptance-v2 evidence and its verifier only
+- Prohibited effects: mutation of source-chain-acceptance or any nested source-chain artifact, exact-gitlink rejection when the sealed commit is an immutable ancestor, hidden-test access, ignored runtime completion authority, publication, training, promotion
+- Acceptance: the fourteen PGIR-200 through PGIR-202 payloads and every recursively bound historical campaign-root input replay under exact byte/hash/CID/Git identity, including lineage, reconciliation, source-release, split-manifest, inventory-manifest/result, and pinset bindings; 7,173 is independently reconstructed as unique exhaustive quarantine ranges 2,174 plus 4,999 with zero admission/materialization, and every corpus/split result link, artifact identity, digest, empty assignment, leakage value, thirteen named holdout no-go, and unchanged hidden-test commitment cross-checks; all twenty-one exact citations replay; compare-and-swap replay proves each outer implementation parent's old gitlink, its new gitlink, nested parent chain, exact three-task role/topology, merge-tree equality, and completion-parent chain; the current nested gitlink 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6 is accepted only by proving 8736a0023d5d3afe4d0e5b044a3e4480966a8bf7 is its ancestor and that the intervening PGIR-204 commit leaves all fourteen sealed paths byte-identical; the v2 receipt records the exact network replay timestamp and response hashes with explicit no-offline-replay language, verifier source identity, thirty-four-test and post-merge verification receipts, current outer and nested forest, and an actual fresh recursive checkout receipt or a typed outer-and-nested unpublished-ref portability_no_go with observation method/time and exact missing commits that keeps PGIR-205 fail-closed
+- Required proof or evaluation evidence: canonical v2 receipt CID, closed artifact population, recursive repository-forest manifest, network timestamp and response hashes, verifier source identity, thirty-four-test receipt, fresh recursive checkout receipt or typed unpublished-ref blocker
+- Result identity: RESULT(PGIR-210) in successor-v1
+- Outputs: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/source-chain-acceptance-v2/, scripts/verify_proof_grounded_ir_learning_successor_source_chain_v2.py
+- Validation: python scripts/verify_proof_grounded_ir_learning_successor_source_chain_v2.py --network && python -m pytest -q ipfs_datasets_py/tests/unit/logic/intent_ir/graphrag/test_skillcenter_hf_release.py ipfs_datasets_py/tests/unit/logic/ir_learning/source/test_corpus_build.py ipfs_datasets_py/tests/unit/logic/ir_learning/source/test_successor_rights.py ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/test_legal_ir_eval_splits.py
+- Bundle: pgir/successor/source-chain-acceptance-v2
+- Parallel lane: source-chain-acceptance-v2
+- Predicted files: data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/source-chain-acceptance-v2/, scripts/verify_proof_grounded_ir_learning_successor_source_chain_v2.py
+- Submodules: ipfs_datasets_py
+- Exclusive group: source-chain-acceptance-successor-v1-v2
+- Conflict policy: immutable source-chain inputs and one exclusive outer v2 acceptance writer

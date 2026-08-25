@@ -22,7 +22,7 @@
     "planning_revision_is_runtime_completion_evidence": false
   },
   "initial_projection": {
-    "task_count": 13,
+    "task_count": 15,
     "completed_task_ids": [
       "PGIR-072",
       "PGIR-090",
@@ -30,12 +30,14 @@
       "PGIR-111",
       "PGIR-200",
       "PGIR-201",
-      "PGIR-202"
-    ],
-    "ready_task_ids": [
+      "PGIR-202",
       "PGIR-203",
       "PGIR-204",
       "PGIR-208"
+    ],
+    "ready_task_ids": [
+      "PGIR-209",
+      "PGIR-210"
     ],
     "terminal_task_id": "PGIR-207",
     "goal_count": 12,
@@ -98,19 +100,18 @@
       "name": "pgir-successor-lane-0",
       "strict_shard_remainder": 0,
       "initial_task_ids": [
-        "PGIR-204"
+        "PGIR-209"
       ],
-      "initial_focus": "deterministic-baseline"
+      "initial_focus": "baseline-acceptance"
     },
     {
       "index": 1,
       "name": "pgir-successor-lane-1",
       "strict_shard_remainder": 1,
       "initial_task_ids": [
-        "PGIR-203",
-        "PGIR-208"
+        "PGIR-210"
       ],
-      "initial_focus": "tokenizer-and-source-chain-acceptance"
+      "initial_focus": "source-chain-acceptance-v2"
     }
   ],
   "provider": {
