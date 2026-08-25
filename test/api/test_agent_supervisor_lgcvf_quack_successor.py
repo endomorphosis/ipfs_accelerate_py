@@ -149,8 +149,8 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v22" / "control.duckdb"
-    provenance = tmp_path / "run-v22" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v23" / "control.duckdb"
+    provenance = tmp_path / "run-v23" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
     source_digest = operator._sha256_regular_file(source)
@@ -177,7 +177,7 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
         "evidence",
     }
     assert {item.name for item in provenance.parent.iterdir()} == {provenance.name}
-    assert not tuple(tmp_path.glob("run-v22.stage-*"))
+    assert not tuple(tmp_path.glob("run-v23.stage-*"))
     for path, expected_mode in (
         (target.parent, 0o700),
         (provenance.parent, 0o700),
@@ -189,7 +189,7 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
         if path.is_file():
             assert metadata.st_nlink == 1
     assert receipt["source_generation"] == "lgcvf-run-v17"
-    assert receipt["target_generation"] == "lgcvf-run-v22"
+    assert receipt["target_generation"] == "lgcvf-run-v23"
     assert receipt["source_database_statuses_read"] is False
     assert (
         operator._strict_json(
@@ -213,8 +213,8 @@ def test_successor_bootstrap_rejects_any_preexisting_generation(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v22" / "control.duckdb"
-    provenance = tmp_path / "run-v22" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v23" / "control.duckdb"
+    provenance = tmp_path / "run-v23" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
     if existing_kind == "directory":
@@ -222,7 +222,7 @@ def test_successor_bootstrap_rejects_any_preexisting_generation(
     elif existing_kind == "file":
         target.parent.write_bytes(b"occupied")
     else:
-        target.parent.symlink_to("missing-run-v22")
+        target.parent.symlink_to("missing-run-v23")
     before = os.lstat(target.parent)
     recovery = {
         "valid": True,
@@ -252,8 +252,8 @@ def test_successor_receipt_failure_never_publishes_database_only_generation(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v22" / "control.duckdb"
-    provenance = tmp_path / "run-v22" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v23" / "control.duckdb"
+    provenance = tmp_path / "run-v23" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
 
@@ -275,7 +275,7 @@ def test_successor_receipt_failure_never_publishes_database_only_generation(
         )
 
     assert not os.path.lexists(target.parent)
-    assert not tuple(tmp_path.glob("run-v22.stage-*"))
+    assert not tuple(tmp_path.glob("run-v23.stage-*"))
 
 
 def test_successor_stage_remains_clean_during_reverification(
@@ -299,8 +299,8 @@ def test_successor_stage_remains_clean_during_reverification(
             env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
         )
     source = repository / "run-v17" / "control.duckdb"
-    target = repository / "run-v22" / "control.duckdb"
-    provenance = repository / "run-v22" / "evidence" / "provenance.json"
+    target = repository / "run-v23" / "control.duckdb"
+    provenance = repository / "run-v23" / "evidence" / "provenance.json"
     source.parent.mkdir()
     _seed_datasets_profile(source)
     operator._require_ignored_successor(repository)
@@ -336,7 +336,7 @@ def test_successor_stage_remains_clean_during_reverification(
     )
 
     assert observed_status == [""]
-    assert not tuple(repository.glob("run-v22.stage-*"))
+    assert not tuple(repository.glob("run-v23.stage-*"))
 
 
 @pytest.mark.parametrize(
@@ -352,8 +352,8 @@ def test_successor_load_rejects_aliases_and_live_wal(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v22" / "control.duckdb"
-    provenance = tmp_path / "run-v22" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v23" / "control.duckdb"
+    provenance = tmp_path / "run-v23" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
     operator.clone_verified_successor(
@@ -1535,7 +1535,7 @@ def test_real_four_process_quack_cas_has_one_winner_and_private_sidecars(
         )
 
     operator = _operator()
-    runtime = tmp_path / "run-v22"
+    runtime = tmp_path / "run-v23"
     database = runtime / "control.duckdb"
     owner_state = runtime / "quack-owner"
     logical_generation = "lgcvf-synthetic-v1"

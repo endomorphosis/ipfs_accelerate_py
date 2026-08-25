@@ -10214,6 +10214,32 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
 def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
     """Return the effective common supervisor args for parsed runner options."""
 
+    # Wrapper controls may describe the same child policy already present in
+    # the explicit common profile.  Suppress only that derived copy; retain
+    # the explicit argv unchanged so ambiguous raw duplicates remain visible
+    # to fail-closed profile validation.
+    explicit_common_args = [str(item) for item in args.common_arg]
+    explicit_strict_task_sharding = (
+        "--strict-task-sharding" in explicit_common_args
+    )
+    explicit_idle_lane_work_stealing = (
+        "--idle-lane-work-stealing" in explicit_common_args
+    )
+    strict_task_sharding = bool(
+        getattr(
+            args,
+            "implementation_supervisor_strict_task_sharding",
+            False,
+        )
+    )
+    idle_lane_work_stealing = str(
+        getattr(
+            args,
+            "implementation_supervisor_idle_lane_work_stealing",
+            "",
+        )
+        or ""
+    )
     common_args: list[str] = []
     if args.implementation_supervisor_defaults:
         common_args.extend(
@@ -10237,45 +10263,32 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                 codebase_scan_cooldown_seconds=args.implementation_supervisor_codebase_scan_cooldown_seconds,
                 codebase_refill_timeout_seconds=args.implementation_supervisor_codebase_refill_timeout_seconds,
                 llm_merge_resolver_timeout_seconds=args.implementation_supervisor_llm_merge_resolver_timeout_seconds,
-                strict_task_sharding=bool(
-                    getattr(
-                        args,
-                        "implementation_supervisor_strict_task_sharding",
-                        False,
-                    )
+                strict_task_sharding=(
+                    strict_task_sharding
+                    and not explicit_strict_task_sharding
                 ),
-                idle_lane_work_stealing=str(
-                    getattr(
-                        args,
-                        "implementation_supervisor_idle_lane_work_stealing",
-                        "",
-                    )
-                    or ""
+                idle_lane_work_stealing=(
+                    ""
+                    if explicit_idle_lane_work_stealing
+                    else idle_lane_work_stealing
                 ),
             )
         )
     if (
-        bool(
-            getattr(
-                args,
-                "implementation_supervisor_strict_task_sharding",
-                False,
-            )
-        )
+        strict_task_sharding
         and "--strict-task-sharding" not in common_args
+        and not explicit_strict_task_sharding
     ):
         common_args.append("--strict-task-sharding")
-    work_stealing = str(
-        getattr(
-            args,
-            "implementation_supervisor_idle_lane_work_stealing",
-            "",
+    if (
+        idle_lane_work_stealing
+        and "--idle-lane-work-stealing" not in common_args
+        and not explicit_idle_lane_work_stealing
+    ):
+        common_args.extend(
+            ["--idle-lane-work-stealing", idle_lane_work_stealing]
         )
-        or ""
-    )
-    if work_stealing and "--idle-lane-work-stealing" not in common_args:
-        common_args.extend(["--idle-lane-work-stealing", work_stealing])
-    common_args.extend(args.common_arg)
+    common_args.extend(explicit_common_args)
     return common_args
 
 
