@@ -1,0 +1,157 @@
+{
+  "schema": "casf/release-manifest@1",
+  "manifest_id": "sha256:66283f80c82afafc554c0e1a32acf44424f2250bca1002ef6a0b3cb53fe13843",
+  "artifact_type": "casf_federation_root_manifest",
+  "artifact_version": 1,
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "repository_id": "endomorphosis/ipfs_accelerate_py",
+  "root_goal_id": "CASF-G000",
+  "tranche_goal_id": "CASF-G040",
+  "goal_id": "CASF-G043",
+  "status": "not_qualified",
+  "manifest_kind": "non_authoritative_repository_projection",
+  "authority": {
+    "authoritative": false,
+    "qualification_authority": false,
+    "completion_authority": false,
+    "promotion_authority": false,
+    "scheduling_authority": false,
+    "release_authority": false
+  },
+  "starting_baseline": {
+    "revision": "84a056e41e48a81d4484be43840196578d6c87da",
+    "tree_id": "40f0771e77d394ac91d92cc1edb02f7860f6131b"
+  },
+  "qualification_input_snapshot": {
+    "revision": "5796d3f78b77b2b6c1c59a2b74c86020a0b141ae",
+    "tree_id": "14b36ca1f21bfd03dd4b88a7866a0c1a40059249"
+  },
+  "qualification_report_projection": {
+    "revision": "e5f1b61b44732df63915578d7701e4df9ad724c3",
+    "tree_id": "71b72e2dc88da312e481081faf6275b411a8525d",
+    "report_id": "sha256:aef8c9036eb09c42e04269723265fb9fb869ffbec9091150fcd8ca12512c0237",
+    "artifacts": [
+      {
+        "path": "docs/architecture/causal_event_federation_inventory/final_qualification_report.json",
+        "git_blob_oid": "3cf294cd0687cebf5220222d85c9cc6aa8ed724a",
+        "raw_sha256": "efbfe15e327ad44d2f6b97e351e5a190a1a5904b612aa7daf554dab71ba4fd46",
+        "byte_count": 27940
+      },
+      {
+        "path": "docs/architecture/causal_event_federation_inventory/final_qualification_report.md",
+        "git_blob_oid": "9b42e846d45f847bee3e698a51c926213fe5e8ab",
+        "raw_sha256": "636542409baeb39a68f998aa5edcfc7fc0b426ab6d78fd169bae936347875cc0",
+        "byte_count": 12133
+      },
+      {
+        "path": "test/api/causal_federation/test_qualification_report.py",
+        "git_blob_oid": "3b93df54bceadafbb8fdcd2e1505bbd1942ee895",
+        "raw_sha256": "6b0d19a8b8f639b9fa7a4c2e29b1bd9717a87ae5b23477cee9633541a75ce0e0",
+        "byte_count": 62418
+      }
+    ]
+  },
+  "benchmark_suite_projection": {
+    "schema": "casf/benchmark-suite@1",
+    "suite_id": "sha256:aa916a4418b4345e90c75b7955f5d0bdefde657158c5fb4f2834ae6cfea3eb0b",
+    "component_revision": "75f9487ff051ce5defd6171d7b41dd8127a0d59f",
+    "component_tree_id": "4e31236de005816686e68a336adb1a7fe679e6fa",
+    "projection_revision": "edeb276d83713315864d38eb81dc09b519f5360e",
+    "projection_tree_id": "1853e8297c44b7b5ee67f8a015fd67107670eb2a",
+    "path": "benchmarks/agent_supervisor/causal_event_federation/manifest.json",
+    "git_blob_oid": "ed4682d69c60509f960f71023c6a38838fdf88f4",
+    "raw_sha256": "0d6280f6dc982dae824f24fe6de4ef245afa4f9e30b7ad18ceb48bea71ff3646",
+    "suite_status": "not_run",
+    "result_artifacts": [],
+    "metrics_omitted": true,
+    "authoritative": false,
+    "promotion_eligible": false,
+    "release_eligible": false
+  },
+  "qualification_summary": {
+    "status": "not_qualified",
+    "duckdb_quack_status": "not_qualified",
+    "ducklake_quack_status": "not_qualified",
+    "ducklake_authoritative": false,
+    "ducklake_blocks_core_qualification": false,
+    "contention_free_operation_qualified": false,
+    "promotion_eligible": false,
+    "release_eligible": false,
+    "root_completion_eligible": false,
+    "disposition": "quarantine_recommended",
+    "disposition_authoritative": false,
+    "quarantine_applied": false,
+    "promotion_applied": false,
+    "production_state_changed": false,
+    "authority_created": false,
+    "completion_created": false,
+    "promotion_decision_ref": null,
+    "completion_receipt_ref": null
+  },
+  "final_tree_binding": {
+    "status": "pending_post_merge_state_owner_acceptance",
+    "revision": null,
+    "tree_id": null,
+    "control_plane_generation": null,
+    "schema_fingerprint": null,
+    "qualification_identity_ref": null,
+    "validation_receipt_ref": null,
+    "acceptance_receipt_ref": null,
+    "final_result_identity": null
+  },
+  "residual_gap_ids": [
+    "CASF-043-FINAL-TREE-ACCEPTANCE",
+    "CASF-043-LIVE-TYPED-QUACK-STATE-OWNER",
+    "CASF-043-CASF-030-PROVENANCE",
+    "CASF-043-CASF-032-DUCKLAKE-PROVENANCE",
+    "CASF-043-CASF-033-PROVENANCE",
+    "CASF-043-CASF-034-STATE-OWNER-CAPABILITY",
+    "CASF-043-CASF-035-CONTROL-PARITY-DECODER",
+    "CASF-043-CASF-036-FORMAL-DECODER",
+    "CASF-043-CASF-037-LOCAL-QUALIFICATION",
+    "CASF-043-CASF-038-IDLE-NOT-RUN",
+    "CASF-043-CASF-039-PARALLEL-NOT-RUN",
+    "CASF-043-CASF-040-LOAD-NOT-RUN",
+    "CASF-043-CASF-041-TOKEN-NOT-RUN",
+    "CASF-043-BENCHMARK-RESULT-ARTIFACTS",
+    "CASF-043-CONJUNCTIVE-PROMOTION-DECISION",
+    "CASF-043-ROLLBACK-VERIFICATION"
+  ],
+  "manifest_projection_binding": {
+    "status": "pending_external_git_projection_binding",
+    "revision": null,
+    "tree_id": null,
+    "git_blob_oid": null,
+    "raw_sha256": null
+  },
+  "rollback": {
+    "status": "not_authorized",
+    "scope": [
+      "docs/architecture/causal_event_federation_inventory/federation_root_manifest.json"
+    ],
+    "target": {
+      "revision": "e5f1b61b44732df63915578d7701e4df9ad724c3",
+      "tree_id": "71b72e2dc88da312e481081faf6275b411a8525d"
+    },
+    "applied": false,
+    "executable": false,
+    "decision_ref": null,
+    "history_rewrite_permitted": false
+  },
+  "provenance": {
+    "evidence_source": "repository_only",
+    "database_queried": false,
+    "runtime_contacted": false,
+    "network_used": false,
+    "provider_output_admitted": false,
+    "model_output_admitted_as_evidence": false,
+    "task_board_status_admitted_as_evidence": false,
+    "ducklake_projection_admitted_as_authority": false
+  },
+  "nonclaims": [
+    "This manifest is a non-authoritative repository projection, not a release authorization, qualification identity, completion receipt, promotion decision, or state-owner receipt.",
+    "A content-addressed blocked report and manifest preserve evidence boundaries but do not make the CASF root complete.",
+    "No task-board state, source presence, test result, model output, quiet queue, metric, historical receipt, or DuckLake projection grants qualification, completion, promotion, scheduling, or release authority.",
+    "No production state, quarantine, promotion, rollback, provider, network, DuckDB, Quack, or DuckLake effect was applied by this manifest."
+  ]
+}
