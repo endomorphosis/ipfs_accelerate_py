@@ -17,9 +17,16 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
 from ipfs_accelerate_py.agent_supervisor.validation import (
     external_agent_configured_board_capsule as capsule,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.eaaef_authority_registry import (
+    EAAEFAuthorityRegistry,
+)
 
 NOW_MS = 1_800_000_000_000
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _sibling_authority_root(tmp_path: Path) -> Path:
+    return tmp_path.parent / f"{tmp_path.name}-authority"
 
 
 def _sha(token: str) -> str:
@@ -407,29 +414,44 @@ def test_capsule_publication_is_create_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     value, reviewer = _signed_capsule(monkeypatch)
-    target = tmp_path / capsule.external_agent_configured_board_launch_capsule_relative_path(
+    authority_root = _sibling_authority_root(tmp_path)
+    logical_path = capsule.external_agent_configured_board_launch_capsule_relative_path(
         str(value["source_head"]),
         str(value["active_plan"]["plan_root_cid"]),
     )
-    target.parent.mkdir(parents=True, mode=0o700)
-    relative = target.relative_to(tmp_path)
-    current = tmp_path
-    for part in relative.parts[:-1]:
-        current /= part
-        os.chmod(current, 0o700)
+    registry = EAAEFAuthorityRegistry(
+        repo_root=tmp_path,
+        authority_root=authority_root,
+    )
+    target = registry.physical_path(logical_path)
     capsule.publish_external_agent_configured_board_capsule(
         tmp_path,
         value,
         trusted_reviewer_dids=[reviewer],
         now_ms=NOW_MS,
+        authority_root=authority_root,
     )
     original = target.read_bytes()
-    with pytest.raises(capsule.ExternalAgentConfiguredBoardCapsuleError, match="overwrite"):
+    capsule.publish_external_agent_configured_board_capsule(
+        tmp_path,
+        value,
+        trusted_reviewer_dids=[reviewer],
+        now_ms=NOW_MS,
+        authority_root=authority_root,
+    )
+    assert target.read_bytes() == original
+
+    conflicting, conflicting_reviewer = _signed_capsule(monkeypatch)
+    with pytest.raises(
+        capsule.ExternalAgentConfiguredBoardCapsuleError,
+        match="overwrite",
+    ):
         capsule.publish_external_agent_configured_board_capsule(
             tmp_path,
-            value,
-            trusted_reviewer_dids=[reviewer],
+            conflicting,
+            trusted_reviewer_dids=[conflicting_reviewer],
             now_ms=NOW_MS,
+            authority_root=authority_root,
         )
     assert target.read_bytes() == original
 
@@ -439,18 +461,21 @@ def test_live_seal_uses_paths_not_cyclic_cids_and_rejects_post_parent_swap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     value, reviewer = _signed_capsule(monkeypatch)
-    admission_path = tmp_path / capsule.external_agent_bootstrap_admission_relative_path(
+    authority_root = _sibling_authority_root(tmp_path)
+    registry = EAAEFAuthorityRegistry(
+        repo_root=tmp_path,
+        authority_root=authority_root,
+    )
+    admission_path = capsule.external_agent_bootstrap_admission_relative_path(
         str(value["source_head"])
     )
-    capsule_path = tmp_path / capsule.external_agent_configured_board_launch_capsule_relative_path(
+    capsule_logical_path = capsule.external_agent_configured_board_launch_capsule_relative_path(
         str(value["source_head"]),
         str(value["active_plan"]["plan_root_cid"]),
     )
-    admission_path.parent.mkdir(parents=True, mode=0o700)
-    admission_path.write_text("{}\n", encoding="utf-8")
-    capsule_path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
-    os.chmod(admission_path, 0o600)
-    os.chmod(capsule_path, 0o600)
+    registry.publish_json(admission_path, {})
+    registry.publish_json(capsule_logical_path, value)
+    capsule_path = registry.physical_path(capsule_logical_path)
     statement = _statement()
     monkeypatch.setattr(
         capsule,
@@ -545,13 +570,15 @@ def test_live_seal_uses_paths_not_cyclic_cids_and_rejects_post_parent_swap(
         expected_source_tree=statement["source_tree"],
         accepted_control_plane_pin=_pin(),
         now_ms=NOW_MS,
+        authority_root=authority_root,
     )
     assert first["valid"] is True
 
     tampered = deepcopy(value)
     tampered["quack_fence"] = 99
-    capsule_path.write_text(json.dumps(tampered, sort_keys=True) + "\n", encoding="utf-8")
     os.chmod(capsule_path, 0o600)
+    capsule_path.write_text(json.dumps(tampered, sort_keys=True) + "\n", encoding="utf-8")
+    os.chmod(capsule_path, 0o400)
     with pytest.raises(capsule.ExternalAgentConfiguredBoardCapsuleError, match="self-address"):
         capsule.verify_external_agent_configured_board_live_seal(
             live_config,
@@ -561,4 +588,5 @@ def test_live_seal_uses_paths_not_cyclic_cids_and_rejects_post_parent_swap(
             expected_source_tree=statement["source_tree"],
             accepted_control_plane_pin=_pin(),
             now_ms=NOW_MS,
+            authority_root=authority_root,
         )

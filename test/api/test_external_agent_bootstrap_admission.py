@@ -414,33 +414,51 @@ def test_runtime_principal_cannot_approve_its_own_launch(
         )
 
 
-def test_create_once_publication_is_idempotency_fail_closed(tmp_path: Path) -> None:
+def test_create_once_publication_accepts_exact_replay_and_rejects_conflict(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "checkout"
+    authority_root = tmp_path / "authority"
+    repo_root.mkdir(mode=0o700)
     receipt, operator, security = _receipt()
     relative = admission.external_agent_bootstrap_admission_relative_path(
         str(receipt["source_head"])
     )
-    target = tmp_path / relative
-    target.parent.mkdir(parents=True, mode=0o700)
-    for parent in target.parents:
-        if parent == tmp_path:
-            break
-        parent.chmod(0o700)
+    target = authority_root / relative.name
     result = admission.publish_external_agent_bootstrap_admission(
-        tmp_path,
+        repo_root,
         receipt,
         trusted_operator_dids=[operator],
         trusted_security_reviewer_dids=[security],
         now_ms=NOW_MS,
+        authority_root=authority_root,
     )
     original = target.read_bytes()
     assert result["receipt_cid"] == receipt["receipt_cid"]
-    with pytest.raises(admission.ExternalAgentBootstrapAdmissionError, match="overwrite"):
+
+    replay = admission.publish_external_agent_bootstrap_admission(
+        repo_root,
+        receipt,
+        trusted_operator_dids=[operator],
+        trusted_security_reviewer_dids=[security],
+        now_ms=NOW_MS,
+        authority_root=authority_root,
+    )
+    assert replay["receipt_cid"] == receipt["receipt_cid"]
+    assert target.read_bytes() == original
+
+    conflicting, conflicting_operator, conflicting_security = _receipt()
+    with pytest.raises(
+        admission.ExternalAgentBootstrapAdmissionError,
+        match="already contains different bytes",
+    ):
         admission.publish_external_agent_bootstrap_admission(
-            tmp_path,
-            receipt,
-            trusted_operator_dids=[operator],
-            trusted_security_reviewer_dids=[security],
+            repo_root,
+            conflicting,
+            trusted_operator_dids=[conflicting_operator],
+            trusted_security_reviewer_dids=[conflicting_security],
             now_ms=NOW_MS,
+            authority_root=authority_root,
         )
     assert target.read_bytes() == original
 
@@ -448,6 +466,8 @@ def test_create_once_publication_is_idempotency_fail_closed(tmp_path: Path) -> N
 def test_publication_rejects_outside_and_symlinked_parent(
     tmp_path: Path,
 ) -> None:
+    repo_root = tmp_path / "checkout"
+    repo_root.mkdir(mode=0o700)
     receipt, operator, security = _receipt()
     with pytest.raises(
         admission.ExternalAgentBootstrapAdmissionError,
@@ -460,27 +480,24 @@ def test_publication_rejects_outside_and_symlinked_parent(
 
     managed = tmp_path / "outside-managed"
     managed.mkdir(mode=0o700)
-    prefix_parent = tmp_path / "data/agent_supervisor"
-    prefix_parent.mkdir(parents=True, mode=0o700)
-    (tmp_path / "data").chmod(0o700)
-    prefix_parent.chmod(0o700)
-    linked = prefix_parent / "external_agent_autonomous_execution_fabric"
+    linked = tmp_path / "authority"
     linked.symlink_to(managed, target_is_directory=True)
-    with pytest.raises(
-        admission.ExternalAgentBootstrapAdmissionError,
-        match="parent is unavailable",
-    ):
+    with pytest.raises(OSError, match="Not a directory"):
         admission.publish_external_agent_bootstrap_admission(
-            tmp_path,
+            repo_root,
             receipt,
             trusted_operator_dids=[operator],
             trusted_security_reviewer_dids=[security],
             now_ms=NOW_MS,
+            authority_root=linked,
         )
     assert not list(managed.iterdir())
 
 
-def test_create_once_issuer_diagnoses_current_head_without_publishing() -> None:
+def test_create_once_issuer_diagnoses_current_head_without_publishing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import importlib.util
 
     script = REPO_ROOT / "scripts/issue_eaaef_bootstrap_admission.py"
@@ -488,6 +505,8 @@ def test_create_once_issuer_diagnoses_current_head_without_publishing() -> None:
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    authority_root = tmp_path / "authority"
+    monkeypatch.setattr(module, "AUTHORITY_ROOT_OVERRIDE", authority_root)
     report = module.diagnose()
     assert report["process_started"] is False
     assert report["configured_board_launch"] is False
@@ -496,7 +515,7 @@ def test_create_once_issuer_diagnoses_current_head_without_publishing() -> None:
     assert report["exists"] is False
     relative = report["relative_path"]
     assert relative.endswith(f"bootstrap-admission--{report['source_head']}.json")
-    assert not (REPO_ROOT / relative).exists()
+    assert not (authority_root / Path(relative).name).exists()
     assert "materialization_source_or_board_mismatch" in report["blockers"]
     assert report["would_publish"] is False
 
@@ -871,3 +890,164 @@ def test_issuer_prepares_admitted_statement_but_requires_separate_approvals(
     assert publication_attempts == []
     for name, value in verified_inputs.items():
         assert captured[name] is value or captured[name] == value
+
+
+def test_issuer_reuses_exact_prepared_statement_for_external_review_and_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_bootstrap_issuer()
+    source_head = "1" * 40
+    source_tree = "2" * 40
+    operator_key = Ed25519PrivateKey.generate()
+    security_key = Ed25519PrivateKey.generate()
+    operator_did = ed25519_did_key(operator_key.public_key())
+    security_did = ed25519_did_key(security_key.public_key())
+    config = {
+        "configured_board_live_seal": {
+            "trusted_operator_dids": [operator_did],
+            "trusted_security_reviewer_dids": [security_did],
+        },
+        "bootstrap_qualification_trust": {},
+    }
+    verified_inputs = {
+        "provider_container_qualification": {},
+        "route_plan": object(),
+        "image_qualification": {},
+        "container_profile": {},
+        "quack_owner_qualification": {},
+        "trusted_provider_signer_dids": ("did:key:zProviderReviewer",),
+        "trusted_image_reviewer_dids": ("did:key:zImageReviewer",),
+        "trusted_container_profile_reviewer_dids": (
+            "did:key:zProfileReviewer",
+        ),
+        "trusted_quack_reviewer_dids": ("did:key:zQuackReviewer",),
+    }
+    monkeypatch.setattr(
+        issuer,
+        "diagnose",
+        lambda: {
+            "source_head": source_head,
+            "source_tree": source_tree,
+            "identity_blockers": [],
+            "blockers": [],
+        },
+    )
+    monkeypatch.setattr(
+        issuer,
+        "_load",
+        lambda path: config if path == issuer.CONFIG_PATH else {},
+    )
+    monkeypatch.setattr(issuer, "_receipt_path", lambda: Path("receipt.json"))
+    monkeypatch.setattr(
+        issuer,
+        "_load_admission_inputs",
+        lambda **_kwargs: verified_inputs,
+    )
+    monkeypatch.setattr(
+        issuer,
+        "_principal_did",
+        lambda role: f"did:key:zRuntime{role}",
+    )
+    monkeypatch.setattr(issuer.time, "time", lambda: NOW_MS / 1000)
+    monkeypatch.setattr(
+        issuer,
+        "_admission_expiry_ms",
+        lambda **_kwargs: NOW_MS + 100_000,
+    )
+    preparation_calls: list[tuple[str, int, int]] = []
+    drift = {"enabled": False}
+
+    def prepare(**kwargs):
+        preparation_calls.append(
+            (
+                kwargs["one_use_nonce"],
+                kwargs["issued_at_ms"],
+                kwargs["expires_at_ms"],
+            )
+        )
+        value = _statement()
+        value.update(
+            {
+                "source_head": kwargs["expected_source_commit"],
+                "source_tree": kwargs["expected_source_tree"],
+                "one_use_nonce": kwargs["one_use_nonce"],
+                "issued_at_ms": kwargs["issued_at_ms"],
+                "expires_at_ms": kwargs["expires_at_ms"],
+                "provider_qualification_expires_at_ms": NOW_MS + 100_000,
+                "quack_qualification_expires_at_ms": NOW_MS + 100_000,
+                "provider_workload_class": (
+                    "drifted" if drift["enabled"] else "agent_worker"
+                ),
+            }
+        )
+        value["statement_cid"] = admission._cid(
+            {key: item for key, item in value.items() if key != "statement_cid"}
+        )
+        return value
+
+    monkeypatch.setattr(
+        issuer,
+        "prepare_external_agent_bootstrap_admission",
+        prepare,
+    )
+    repo_root = tmp_path / "checkout"
+    authority_root = tmp_path / "authority"
+    repo_root.mkdir(mode=0o700)
+    monkeypatch.setattr(issuer, "ROOT", repo_root)
+    monkeypatch.setattr(issuer, "AUTHORITY_ROOT_OVERRIDE", authority_root)
+
+    prepared_result = issuer.issue()
+    statement = prepared_result["prepared_statement"]
+    assert prepared_result["published"] is False
+    assert statement["decision"] == "admitted"
+
+    operator = admission.prepare_external_agent_bootstrap_approval(
+        statement,
+        role="independent_operator",
+        identity_did=operator_did,
+        issued_at_ms=NOW_MS,
+        expires_at_ms=NOW_MS + 50_000,
+    )
+    operator["signature"] = base64.b64encode(
+        operator_key.sign(admission._canonical_bytes(operator))
+    ).decode("ascii")
+    security = admission.prepare_external_agent_bootstrap_approval(
+        statement,
+        role="independent_security_reviewer",
+        identity_did=security_did,
+        issued_at_ms=NOW_MS,
+        expires_at_ms=NOW_MS + 50_000,
+    )
+    security["signature"] = base64.b64encode(
+        security_key.sign(admission._canonical_bytes(security))
+    ).decode("ascii")
+    relative = admission.external_agent_bootstrap_admission_relative_path(source_head)
+    target = authority_root / relative.name
+
+    published = issuer.issue(
+        prepared_statement=statement,
+        operator_approval=operator,
+        security_approval=security,
+    )
+
+    assert published["published"] is True
+    assert target.is_file()
+    assert preparation_calls[0] == preparation_calls[1]
+
+    replayed = issuer.issue(
+        prepared_statement=statement,
+        operator_approval=operator,
+        security_approval=security,
+    )
+    assert replayed["published"] is True
+    assert replayed["receipt_cid"] == published["receipt_cid"]
+    assert target.is_file()
+
+    drift["enabled"] = True
+    rejected = issuer.issue(prepared_statement=statement)
+    assert rejected["published"] is False
+    assert (
+        "prepared bootstrap admission statement differs from current inputs"
+        in rejected["blockers"]
+    )

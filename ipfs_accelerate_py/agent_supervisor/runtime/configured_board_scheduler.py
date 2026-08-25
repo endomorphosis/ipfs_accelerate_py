@@ -542,10 +542,30 @@ def _apply_eaaef_generation_cursor(
     return _rewrite_eaaef_generation(copy.deepcopy(payload), configured, active)
 
 
-def _eaaef_host_receipt_admitted(repo_root: Path, task_id: str) -> bool:
+def _eaaef_host_receipt_admitted(
+    repo_root: Path,
+    task_id: str,
+    *,
+    expected_source_head: str = "",
+    expected_source_tree: str = "",
+) -> bool:
     filename = _EAAEF_HOST_RECEIPT_NAMES.get(task_id)
     if not filename:
         return False
+    if task_id == "EAAEF-191":
+        try:
+            from ..validation.eaaef_host_admission import (
+                verify_current_admission_bundle_receipt,
+            )
+
+            verification = verify_current_admission_bundle_receipt(
+                repo_root,
+                expected_source_head=expected_source_head,
+                expected_source_tree=expected_source_tree,
+            )
+        except Exception:
+            return False
+        return verification.get("admitted") is True
     path = (
         repo_root
         / "docs/architecture/external_agent_autonomous_execution_fabric"
@@ -1032,14 +1052,35 @@ def _eaaef_live_quack_status_overlay(board: "ConfiguredBoard") -> dict[str, str]
         "quarantined",
         "in_progress",
     }
+    runtime_extensions: Any | None = None
     try:
         from ..todo_daemon.eaaef_host_admitted_daemon_gateway import (
             _connect_admitted_duckdb,
             _import_admitted_duckdb,
             _resolve_owner_token,
         )
+        from ..validation.eaaef_host_admission import (
+            verify_current_admission_bundle_receipt,
+        )
 
-        duckdb_module, extension = _import_admitted_duckdb(board.repo_root)
+        source_head, source_tree = _git_identity(board.repo_root)
+        verification = verify_current_admission_bundle_receipt(
+            board.repo_root,
+            expected_source_head=source_head,
+            expected_source_tree=source_tree,
+            include_verified_artifacts=True,
+        )
+        artifacts = verification.get("verified_artifacts")
+        if verification.get("admitted") is not True or not isinstance(
+            artifacts, Mapping
+        ):
+            return {}
+        duckdb_receipt = artifacts.get("EAAEF-182")
+        if not isinstance(duckdb_receipt, Mapping):
+            return {}
+        duckdb_module, runtime_extensions = _import_admitted_duckdb(
+            duckdb_receipt
+        )
         generation = str(program.store_generation or "eaaef-run-v14")
         run_dir = generation.removeprefix("eaaef-")
         vault = (
@@ -1049,7 +1090,10 @@ def _eaaef_live_quack_status_overlay(board: "ConfiguredBoard") -> dict[str, str]
             / "live/state/quack-owner"
         )
         token = _resolve_owner_token(handle, vault_dir=vault)
-        connection = _connect_admitted_duckdb(duckdb_module, extension)
+        connection = _connect_admitted_duckdb(
+            duckdb_module,
+            runtime_extensions,
+        )
         try:
             connection.execute(
                 f"ATTACH '{endpoint}' AS control_plane (TYPE QUACK, TOKEN ?)",
@@ -1063,6 +1107,9 @@ def _eaaef_live_quack_status_overlay(board: "ConfiguredBoard") -> dict[str, str]
             connection.close()
     except Exception:
         return {}
+    finally:
+        if runtime_extensions is not None:
+            runtime_extensions.close()
     return _eaaef_normalize_status_overlay(rows, allowed=allowed)
 
 
@@ -4848,17 +4895,29 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
         and isinstance(launch_policy, dict)
         and launch_policy.get("live_multi_supervisor_allowed") is True
     )
+    eaaef_receipt_only_drift = False
+    if eaaef_live_admitted:
+        from ..validation.eaaef_host_admission import (
+            eaaef_checkout_has_only_generated_receipt_drift,
+        )
+
+        eaaef_receipt_only_drift = (
+            eaaef_checkout_has_only_generated_receipt_drift(board.repo_root)
+        )
     _append_check(
         checks,
         errors,
         name="checkout_clean",
         passed=status.returncode == 0
-        and (not dirty_lines or eaaef_live_admitted),
+        and (
+            not dirty_lines
+            or (eaaef_live_admitted and eaaef_receipt_only_drift)
+        ),
         detail=dirty_lines[:100],
     )
-    if eaaef_live_admitted and dirty_lines:
+    if eaaef_live_admitted and dirty_lines and eaaef_receipt_only_drift:
         warnings.append(
-            "EAAEF live launch proceeding with admitted overlay dirty checkout"
+            "EAAEF live launch proceeding with generated receipt staging only"
         )
 
     validator_report: dict[str, Any] = {}
@@ -4963,7 +5022,7 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
             and planning_ancestor.returncode == 0
             and clean is not None
             and clean.returncode == 0
-            and (not submodule_dirty or eaaef_live_admitted)
+            and not submodule_dirty
         )
         submodule_checks.append(
             {
@@ -4991,11 +5050,6 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
         passed=all(item["valid"] for item in submodule_checks),
         detail=submodule_checks,
     )
-    if eaaef_live_admitted and any(item.get("dirty") for item in submodule_checks):
-        warnings.append(
-            "EAAEF live launch proceeding with admitted overlay dirty nested worktrees"
-        )
-
     implementation_entry = board.path(
         IMPLEMENTATION_ENTRY_PATH.as_posix()
     )
@@ -6375,7 +6429,12 @@ def _materialize_plan_bound_control_plane(
             TypeError,
             ValueError,
         ) as exc:
-            if not _eaaef_host_receipt_admitted(board.repo_root, "EAAEF-191"):
+            if not _eaaef_host_receipt_admitted(
+                board.repo_root,
+                "EAAEF-191",
+                expected_source_head=source_head,
+                expected_source_tree=source_tree,
+            ):
                 if isinstance(exc, ConfiguredBoardError):
                     raise
                 raise ConfiguredBoardError(
@@ -6394,7 +6453,12 @@ def _materialize_plan_bound_control_plane(
             source_tree=source_tree,
             allow_dirty_worktree=(
                 _eaaef_plan_bound_profile(board)
-                and _eaaef_host_receipt_admitted(board.repo_root, "EAAEF-191")
+                and _eaaef_host_receipt_admitted(
+                    board.repo_root,
+                    "EAAEF-191",
+                    expected_source_head=source_head,
+                    expected_source_tree=source_tree,
+                )
             ),
         )
         sealed = seal_agent_implementation_control_plane_capsule(pin)

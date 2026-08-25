@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -179,6 +180,71 @@ def test_eaaef_legacy_quack_profile_cannot_substitute_for_command_fabric() -> No
             provider_principal_did="did:key:zProviderService",
             forbidden_bootstrap_paths=forbidden,
         )
+
+
+def test_eaaef_child_birth_rejects_connect_only_command_fabric_listeners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _database_payload()
+    operational, forbidden, command_fabric, network_policy = (
+        runner._validated_eaaef_database_programs(payload)
+    )
+    runtime = tmp_path / "runtime"
+    socket_dir = runtime / "eaaef-cf"
+    socket_dir.mkdir(parents=True, mode=0o700)
+    socket_dir.chmod(0o700)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    servers: list[socket.socket] = []
+    endpoints: dict[str, str] = {}
+    for field, name in (
+        ("command_authorizer_endpoint", "authorizer"),
+        ("quack_ingress_endpoint", "ingress"),
+        ("quack_projection_endpoint", "projection"),
+        ("dispatcher_endpoint", "dispatcher"),
+    ):
+        path = socket_dir / f"{name}.sock"
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(str(path))
+        server.listen(1)
+        os.chmod(path, 0o600)
+        servers.append(server)
+        endpoints[field] = f"unix://{path}"
+    immutable_receipts = {
+        task_id: {"decision": "admitted"}
+        for task_id in ("EAAEF-187", "EAAEF-189", "EAAEF-191")
+    }
+    immutable_receipts["EAAEF-188"] = {
+        "decision": "admitted",
+        "evidence": endpoints,
+    }
+    monkeypatch.setattr(
+        runner,
+        "_eaaef_source_addressed_host_receipts",
+        lambda *_args, **_kwargs: immutable_receipts,
+    )
+    arguments = {
+        "common_args": operational.cli_args(),
+        "track_args": ("--plan-bound-dispatch",),
+        "repo_root": tmp_path,
+        "operational": operational,
+        "command_fabric": command_fabric,
+        "worker_network_policy": network_policy,
+        "worker_principal_did": "did:key:zWorker",
+        "provider_principal_did": "did:key:zProviderService",
+        "forbidden_bootstrap_paths": forbidden,
+        "expected_source_head": "1" * 40,
+        "expected_source_tree": "2" * 40,
+    }
+    try:
+        with pytest.raises(
+            ValueError,
+            match="signed_command_fabric_child_adapter_unavailable",
+        ):
+            runner._assert_eaaef_operational_child_profile(**arguments)
+    finally:
+        for server in servers:
+            server.close()
 
 
 def test_eaaef_database_roles_reject_direct_file_fallback() -> None:

@@ -747,25 +747,11 @@ def _verify_live_host_admission(board: dict[str, Any]) -> dict[str, Any]:
         }
     try:
         from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
-            verify_admission_bundle_receipt,
+            verify_current_admission_bundle_receipt,
         )
 
-        source_head = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            cwd=ROOT,
-            text=True,
-        ).strip()
-        source_tree = subprocess.check_output(
-            ["git", "rev-parse", "HEAD^{tree}"],
-            cwd=ROOT,
-            text=True,
-        ).strip()
-        return verify_admission_bundle_receipt(
-            receipt_dir=CAMPAIGN_DIR / "receipts/host_admission",
-            expected_source_head=source_head,
-            expected_source_tree=source_tree,
-            expected_board_namespace=str(board.get("board_namespace") or ""),
-            expected_board_cid=str(board.get("board_cid") or ""),
+        return verify_current_admission_bundle_receipt(
+            ROOT,
         )
     except Exception as exc:
         return {

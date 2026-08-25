@@ -9,6 +9,7 @@ rematerialize a new store generation.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -31,11 +32,17 @@ from cryptography.hazmat.primitives.serialization import load_der_private_key
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     ed25519_did_key,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.eaaef_authority_registry import (
+    EAAEFAuthorityNotFound,
+    EAAEFAuthorityRegistry,
+    EAAEFAuthorityRegistryError,
+)
 from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_admission import (
     ExternalAgentBootstrapAdmissionError,
     _canonical_bytes,
     _open_secure_publication_parent,
     _publication_parent_is_stable,
+    _validate_statement_shape,
     assemble_external_agent_bootstrap_admission,
     external_agent_bootstrap_admission_relative_path,
     prepare_external_agent_bootstrap_admission,
@@ -55,6 +62,10 @@ AUTHORITY_DIR = (
     / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
     / "authority"
 )
+# Test-only injection seam. Production publication always resolves the platform
+# state registry by leaving this unset; tests use an external sibling directory
+# so they cannot observe or mutate the account's live authority records.
+AUTHORITY_ROOT_OVERRIDE: Path | None = None
 PRINCIPAL_DIR = AUTHORITY_DIR / "runtime-principals"
 _PRINCIPAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-runtime-principal-secret@1"
@@ -65,8 +76,7 @@ _IDENTITY_BLOCKERS = frozenset(
         "materialization_source_tree_mismatch",
         "materialization_board_cid_mismatch",
         "materialization_generation_cursor_invalid",
-        "immutable publication parent is not an owner-only directory",
-        "immutable publication parent is unavailable",
+        "immutable authority registry is unsafe",
         "bootstrap admission receipt already exists",
     }
 )
@@ -123,6 +133,57 @@ def _git(*args: str) -> str:
 
 def _load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_ceremony_artifact(path: str | Path, *, noun: str) -> dict[str, Any]:
+    """Load one reviewer-supplied object without following its final link."""
+
+    selected = Path(path).expanduser()
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(selected, flags)
+    except OSError as exc:
+        raise RuntimeError(f"{noun} is unavailable or unsafe") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) & 0o022
+            or before.st_size <= 0
+            or before.st_size > 2 * 1024 * 1024
+        ):
+            raise RuntimeError(f"{noun} is unsafe")
+        raw = os.read(descriptor, before.st_size + 1)
+        after = os.fstat(descriptor)
+        pathname = os.lstat(selected)
+        identity = lambda value: (  # noqa: E731
+            value.st_dev,
+            value.st_ino,
+            value.st_mode,
+            value.st_uid,
+            value.st_nlink,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
+        if (
+            len(raw) != before.st_size
+            or identity(before) != identity(after)
+            or identity(before) != identity(pathname)
+            or stat.S_ISLNK(pathname.st_mode)
+        ):
+            raise RuntimeError(f"{noun} changed while read")
+    finally:
+        os.close(descriptor)
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"{noun} is invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{noun} is not an object")
+    return payload
 
 
 def _principal_did(role: str) -> str:
@@ -529,7 +590,20 @@ def diagnose() -> dict[str, Any]:
     source_head = _git("rev-parse", "HEAD")
     source_tree = _git("rev-parse", "HEAD^{tree}")
     relative = external_agent_bootstrap_admission_relative_path(source_head)
-    target = ROOT / relative
+    authority_error = ""
+    target_exists = False
+    try:
+        authority_registry = EAAEFAuthorityRegistry(
+            repo_root=ROOT,
+            authority_root=AUTHORITY_ROOT_OVERRIDE,
+        )
+        authority_registry.read_json(relative)
+    except EAAEFAuthorityNotFound:
+        pass
+    except EAAEFAuthorityRegistryError as exc:
+        authority_error = str(exc)
+    else:
+        target_exists = True
     receipt_error = ""
     try:
         receipt_path = _receipt_path()
@@ -568,8 +642,9 @@ def diagnose() -> dict[str, Any]:
         )
     except (OSError, TypeError, ValueError, RuntimeError):
         blockers.append("bootstrap_qualification_trust_missing_or_overlapping")
-    blockers.extend(_parent_mode_blockers(relative))
-    if target.is_file():
+    if authority_error:
+        blockers.append("immutable authority registry is unsafe")
+    if target_exists:
         blockers.append("bootstrap admission receipt already exists")
     return {
         "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-admission-issue@1",
@@ -586,7 +661,7 @@ def diagnose() -> dict[str, Any]:
         ),
         "board_cid": str(board.get("board_cid") or ""),
         "relative_path": relative.as_posix(),
-        "exists": target.is_file(),
+        "exists": target_exists,
         "qualifications": qualifications,
         "materialization_child_adapter_status": str(
             (receipt.get("database_program_bindings") or {}).get(
@@ -604,7 +679,7 @@ def diagnose() -> dict[str, Any]:
         "would_publish_nogo": not any(
             item in _IDENTITY_BLOCKERS for item in blockers
         )
-        and not target.is_file(),
+        and not target_exists,
         "published": False,
         "process_started": False,
         "configured_board_launch": False,
@@ -614,6 +689,7 @@ def diagnose() -> dict[str, Any]:
 
 def issue(
     *,
+    prepared_statement: dict[str, Any] | None = None,
     operator_approval: dict[str, Any] | None = None,
     security_approval: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -648,11 +724,31 @@ def issue(
         report["would_publish"] = False
         report["published"] = False
         return report
-    expires_at_ms = _admission_expiry_ms(
-        now_ms=now_ms,
-        admission_inputs=admission_inputs,
-    )
     try:
+        if prepared_statement is None:
+            one_use_nonce = os.urandom(24).hex()
+            issued_at_ms = now_ms
+            expires_at_ms = _admission_expiry_ms(
+                now_ms=issued_at_ms,
+                admission_inputs=admission_inputs,
+            )
+        else:
+            _validate_statement_shape(prepared_statement)
+            one_use_nonce = str(prepared_statement["one_use_nonce"])
+            issued_at_ms = int(prepared_statement["issued_at_ms"])
+            expires_at_ms = int(prepared_statement["expires_at_ms"])
+            if now_ms < issued_at_ms or now_ms >= expires_at_ms:
+                raise ExternalAgentBootstrapAdmissionError(
+                    "prepared bootstrap admission statement is not current"
+                )
+            expected_expiry_ms = _admission_expiry_ms(
+                now_ms=issued_at_ms,
+                admission_inputs=admission_inputs,
+            )
+            if expires_at_ms != expected_expiry_ms:
+                raise ExternalAgentBootstrapAdmissionError(
+                    "prepared bootstrap admission lifetime differs from current inputs"
+                )
         statement = prepare_external_agent_bootstrap_admission(
             board=board,
             materialization_receipt=receipt,
@@ -661,10 +757,16 @@ def issue(
             expected_provider_principal_did=_principal_did("provider"),
             expected_source_commit=str(report["source_head"]),
             expected_source_tree=str(report["source_tree"]),
-            one_use_nonce=os.urandom(24).hex(),
-            issued_at_ms=now_ms,
+            one_use_nonce=one_use_nonce,
+            issued_at_ms=issued_at_ms,
             expires_at_ms=expires_at_ms,
         )
+        if prepared_statement is not None and _canonical_bytes(
+            statement
+        ) != _canonical_bytes(prepared_statement):
+            raise ExternalAgentBootstrapAdmissionError(
+                "prepared bootstrap admission statement differs from current inputs"
+            )
     except ExternalAgentBootstrapAdmissionError as exc:
         report["blockers"] = list(dict.fromkeys([*report["blockers"], str(exc)]))
         report["would_publish"] = False
@@ -698,21 +800,28 @@ def issue(
         report["would_publish"] = False
         report["published"] = False
         return report
-    receipt_out = assemble_external_agent_bootstrap_admission(
-        statement,
-        operator_approval=operator_approval,
-        security_approval=security_approval,
-        trusted_operator_dids=trusted_operator,
-        trusted_security_reviewer_dids=trusted_security,
-        now_ms=now_ms,
-    )
-    verification = publish_external_agent_bootstrap_admission(
-        ROOT,
-        receipt_out,
-        trusted_operator_dids=trusted_operator,
-        trusted_security_reviewer_dids=trusted_security,
-        now_ms=now_ms,
-    )
+    try:
+        receipt_out = assemble_external_agent_bootstrap_admission(
+            statement,
+            operator_approval=operator_approval,
+            security_approval=security_approval,
+            trusted_operator_dids=trusted_operator,
+            trusted_security_reviewer_dids=trusted_security,
+            now_ms=now_ms,
+        )
+        verification = publish_external_agent_bootstrap_admission(
+            ROOT,
+            receipt_out,
+            trusted_operator_dids=trusted_operator,
+            trusted_security_reviewer_dids=trusted_security,
+            now_ms=now_ms,
+            authority_root=AUTHORITY_ROOT_OVERRIDE,
+        )
+    except ExternalAgentBootstrapAdmissionError as exc:
+        report["blockers"] = list(dict.fromkeys([*report["blockers"], str(exc)]))
+        report["would_publish"] = False
+        report["published"] = False
+        return report
     report["published"] = True
     report["statement_decision"] = statement.get("decision")
     report["receipt_cid"] = verification.get("receipt_cid")
@@ -725,12 +834,66 @@ def issue(
 
 
 def main() -> int:
-    command = sys.argv[1] if len(sys.argv) > 1 else "diagnose"
-    if command not in {"diagnose", "issue"}:
-        raise SystemExit("usage: issue_eaaef_bootstrap_admission.py [diagnose|issue]")
-    payload = diagnose() if command == "diagnose" else issue()
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser("diagnose")
+    subparsers.add_parser("prepare")
+    issue_parser = subparsers.add_parser("issue")
+    issue_parser.add_argument("--statement", type=Path)
+    issue_parser.add_argument("--operator-approval", type=Path)
+    issue_parser.add_argument("--security-approval", type=Path)
+    arguments = parser.parse_args()
+    command = arguments.command or "diagnose"
+    if command == "diagnose":
+        payload = diagnose()
+    elif command == "prepare":
+        payload = issue()
+    else:
+        artifact_paths = (
+            arguments.statement,
+            arguments.operator_approval,
+            arguments.security_approval,
+        )
+        if any(path is not None for path in artifact_paths) and any(
+            path is None for path in artifact_paths
+        ):
+            parser.error(
+                "issue requires --statement, --operator-approval, and "
+                "--security-approval together"
+            )
+        payload = issue(
+            prepared_statement=(
+                None
+                if arguments.statement is None
+                else _load_ceremony_artifact(
+                    arguments.statement,
+                    noun="prepared bootstrap admission statement",
+                )
+            ),
+            operator_approval=(
+                None
+                if arguments.operator_approval is None
+                else _load_ceremony_artifact(
+                    arguments.operator_approval,
+                    noun="operator approval",
+                )
+            ),
+            security_approval=(
+                None
+                if arguments.security_approval is None
+                else _load_ceremony_artifact(
+                    arguments.security_approval,
+                    noun="security approval",
+                )
+            ),
+        )
     print(json.dumps(payload, indent=2, sort_keys=True))
-    return 0 if payload.get("published") else 1
+    prepared = (
+        command == "prepare"
+        and payload.get("statement_decision") == "admitted"
+        and isinstance(payload.get("prepared_statement"), dict)
+    )
+    return 0 if payload.get("published") or prepared else 1
 
 
 if __name__ == "__main__":

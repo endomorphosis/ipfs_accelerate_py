@@ -1233,6 +1233,24 @@ def _host_receipt_decision(task_id: str) -> str:
         / "receipts/host_admission"
         / filename
     )
+    if task_id == "EAAEF-191":
+        try:
+            from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+                verify_admission_bundle_receipt,
+            )
+
+            board = _load_object(EAAEF_BOARD_PATH)
+            verification = verify_admission_bundle_receipt(
+                receipt_dir=path.parent,
+                expected_source_head=_git("rev-parse", "HEAD"),
+                expected_source_tree=_git("rev-parse", "HEAD^{tree}"),
+                expected_board_namespace=str(board.get("board_namespace") or ""),
+                expected_board_cid=str(board.get("board_cid") or ""),
+                require_source_addressed=True,
+            )
+        except Exception:
+            return "no_go"
+        return "admitted" if verification.get("admitted") is True else "no_go"
     if not path.is_file():
         return ""
     try:
@@ -1242,24 +1260,7 @@ def _host_receipt_decision(task_id: str) -> str:
     if not isinstance(payload, dict):
         return ""
     decision = str(payload.get("decision") or "")
-    if task_id != "EAAEF-191" or decision != "admitted":
-        return decision
-    try:
-        from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
-            verify_admission_bundle_receipt,
-        )
-
-        board = _load_object(EAAEF_BOARD_PATH)
-        verification = verify_admission_bundle_receipt(
-            receipt_dir=path.parent,
-            expected_source_head=_git("rev-parse", "HEAD"),
-            expected_source_tree=_git("rev-parse", "HEAD^{tree}"),
-            expected_board_namespace=str(board.get("board_namespace") or ""),
-            expected_board_cid=str(board.get("board_cid") or ""),
-        )
-    except Exception:
-        return "no_go"
-    return "admitted" if verification.get("admitted") is True else "no_go"
+    return decision
 
 
 def _drop_stale_launch_blockers(blockers: list[str]) -> list[str]:

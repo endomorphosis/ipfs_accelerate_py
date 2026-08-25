@@ -96251,6 +96251,7 @@ def main(argv: list[str] | None = None) -> None:
             program is not None
             and str(authority_mode or "").strip().lower() == "quack"
             and bootstrap_fd < 3
+            and _IMPORTED_CONTROL_PLANE_CAPSULE is not None
         ):
             from .eaaef_host_admitted_daemon_gateway import (
                 build_eaaef_host_admitted_command_gateway,
@@ -96264,10 +96265,22 @@ def main(argv: list[str] | None = None) -> None:
                 repo_root=REPO_ROOT,
                 program=program,
                 owner_session_id=owner_session,
+                expected_source_head=(
+                    _IMPORTED_CONTROL_PLANE_CAPSULE.source_head
+                ),
+                expected_source_tree=(
+                    _IMPORTED_CONTROL_PLANE_CAPSULE.source_tree
+                ),
             )
             dispatcher_factory = (
                 build_eaaef_host_admitted_container_dispatcher_factory(
-                    repo_root=REPO_ROOT
+                    repo_root=REPO_ROOT,
+                    expected_source_head=(
+                        _IMPORTED_CONTROL_PLANE_CAPSULE.source_head
+                    ),
+                    expected_source_tree=(
+                        _IMPORTED_CONTROL_PLANE_CAPSULE.source_tree
+                    ),
                 )
             )
         typed_task_source: Any = None

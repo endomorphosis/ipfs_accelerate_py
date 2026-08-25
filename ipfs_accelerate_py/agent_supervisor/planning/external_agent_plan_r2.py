@@ -22,6 +22,11 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     ed25519_public_key_from_did,
     verify_did_key_signature,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.eaaef_authority_registry import (
+    EAAEFAuthorityConflict,
+    EAAEFAuthorityRegistry,
+    EAAEFAuthorityRegistryError,
+)
 
 PLAN_R2_TRANSITION_STATEMENT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -1877,42 +1882,25 @@ def _publish_or_confirm_plan_r2_artifact(
     value: Mapping[str, Any],
     *,
     noun: str,
+    authority_root: str | Path | None = None,
+    registry: EAAEFAuthorityRegistry | None = None,
 ) -> None:
     """Create once, or confirm an exact immutable replay after a crash."""
 
-    from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_admission import (
-        ExternalAgentBootstrapAdmissionError,
-        _publish_create_once_repo_json,
-    )
-
     try:
-        _publish_create_once_repo_json(
-            repo_root,
-            relative_path,
-            value,
-            noun=noun,
+        selected = registry or EAAEFAuthorityRegistry(
+            repo_root=repo_root,
+            authority_root=authority_root,
         )
-        return
-    except ExternalAgentBootstrapAdmissionError as exc:
-        if "refusing to overwrite immutable" not in str(exc):
-            raise ExternalAgentPlanR2Error(str(exc)) from exc
-    from ipfs_accelerate_py.agent_supervisor.validation.external_agent_configured_board_capsule import (
-        ExternalAgentConfiguredBoardCapsuleError,
-        _read_stable_repo_json,
-    )
-
-    try:
-        observed, _file_cid = _read_stable_repo_json(
-            Path(repo_root),
-            relative_path.as_posix(),
-            noun=noun,
-        )
-    except ExternalAgentConfiguredBoardCapsuleError as exc:
-        raise ExternalAgentPlanR2Error(str(exc)) from exc
-    if _canonical_bytes(observed) != _canonical_bytes(dict(value)):
+        selected.publish_json(relative_path, value)
+    except EAAEFAuthorityConflict as exc:
         raise ExternalAgentPlanR2Error(
             f"immutable {noun} conflicts with the requested replay"
-        )
+        ) from exc
+    except EAAEFAuthorityRegistryError as exc:
+        raise ExternalAgentPlanR2Error(
+            f"immutable {noun} registry rejected publication: {exc}"
+        ) from exc
 
 
 def publish_plan_r2_transition_authorization(
@@ -1922,6 +1910,7 @@ def publish_plan_r2_transition_authorization(
     trusted_operator_dids: Sequence[str],
     trusted_security_reviewer_dids: Sequence[str],
     now_ms: int,
+    authority_root: str | Path | None = None,
 ) -> dict[str, Any]:
     verification = verify_plan_r2_transition_authorization(
         authorization,
@@ -1937,6 +1926,7 @@ def publish_plan_r2_transition_authorization(
         ),
         authorization,
         noun="Plan R2 transition authorization",
+        authority_root=authority_root,
     )
     return verification
 
@@ -1951,6 +1941,7 @@ def publish_plan_r2_transition_result(
     trusted_operator_dids: Sequence[str],
     trusted_security_reviewer_dids: Sequence[str],
     now_ms: int,
+    authority_root: str | Path | None = None,
 ) -> dict[str, Any]:
     verification = validate_plan_r2_launch_transition(
         repository=repository,
@@ -1963,18 +1954,29 @@ def publish_plan_r2_transition_result(
     )
     source_head = str(authorization["source_head"])
     plan_root_cid = str(authorization["plan_root_cid"])
-    _publish_or_confirm_plan_r2_artifact(
-        repo_root,
-        plan_r2_transition_receipt_relative_path(source_head, plan_root_cid),
-        transition_receipt,
-        noun="Plan R2 transition receipt",
+    registry = EAAEFAuthorityRegistry(
+        repo_root=repo_root,
+        authority_root=authority_root,
     )
-    _publish_or_confirm_plan_r2_artifact(
-        repo_root,
-        plan_r2_state_observation_relative_path(source_head, plan_root_cid),
-        state_observation,
-        noun="Plan R2 state observation",
-    )
+    with registry.ceremony():
+        _publish_or_confirm_plan_r2_artifact(
+            repo_root,
+            plan_r2_transition_receipt_relative_path(
+                source_head, plan_root_cid
+            ),
+            transition_receipt,
+            noun="Plan R2 transition receipt",
+            registry=registry,
+        )
+        _publish_or_confirm_plan_r2_artifact(
+            repo_root,
+            plan_r2_state_observation_relative_path(
+                source_head, plan_root_cid
+            ),
+            state_observation,
+            noun="Plan R2 state observation",
+            registry=registry,
+        )
     return verification
 
 

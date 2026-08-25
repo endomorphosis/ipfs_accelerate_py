@@ -1681,10 +1681,11 @@ def test_sealed_bootstrap_denies_missing_native_dependency_pin(
     assert result.returncode == 78
 
 
-def test_sealed_bootstrap_admits_implementation_supervisor_when_eaaef_191_is_admitted(
+def test_sealed_bootstrap_requires_verified_eaaef_191_not_an_admission_word(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Independently signed EAAEF-191 selects the admitted native-authority gate."""
+    """A tracked decision word cannot select the native-authority gate."""
 
     receipt_dir = (
         tmp_path
@@ -1715,9 +1716,14 @@ def test_sealed_bootstrap_admits_implementation_supervisor_when_eaaef_191_is_adm
         repo_root=tmp_path,
     )
     assert command[9] == (
-        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
     )
-    denied = multi_runner_module.build_sealed_control_plane_module_command(
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_eaaef_host_receipt_admitted",
+        lambda _root, task_id, **_identity: task_id == "EAAEF-191",
+    )
+    admitted = multi_runner_module.build_sealed_control_plane_module_command(
         python_executable=sys.executable,
         pin=control_plane_pin,
         descriptor=control_plane_launch.descriptor,
@@ -1726,9 +1732,10 @@ def test_sealed_bootstrap_admits_implementation_supervisor_when_eaaef_191_is_adm
             "implementation_supervisor"
         ),
         argv=("--help",),
+        repo_root=tmp_path,
     )
-    assert denied[9] == (
-        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
+    assert admitted[9] == (
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
     )
 
 

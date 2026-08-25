@@ -12,7 +12,6 @@ import hashlib
 import json
 import os
 import re
-import secrets
 import stat
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -21,6 +20,10 @@ from typing import Any, Final
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     LocalProfileTampered,
     verify_did_key_signature,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.eaaef_authority_registry import (
+    EAAEFAuthorityRegistry,
+    EAAEFAuthorityRegistryError,
 )
 
 EAAEF_BOOTSTRAP_ADMISSION_STATEMENT_SCHEMA: Final = (
@@ -912,74 +915,21 @@ def _publish_create_once_repo_json(
     value: Mapping[str, Any],
     *,
     noun: str,
+    authority_root: str | Path | None = None,
 ) -> None:
-    """Publish canonical JSON through an anchored, no-follow directory walk."""
+    """Publish one logical authority record outside the source checkout."""
 
     relative = _safe_repo_relative_path(relative_path)
-    root_fd, parent_fd, identities = _open_secure_publication_parent(
-        repo_root, relative
-    )
-    raw = json.dumps(value, indent=2, sort_keys=True).encode("utf-8") + b"\n"
-    temporary = f".{relative.name}.{secrets.token_hex(16)}.tmp"
-    temp_created = False
-    target_created = False
     try:
-        descriptor = os.open(
-            temporary,
-            os.O_WRONLY
-            | os.O_CREAT
-            | os.O_EXCL
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-            dir_fd=parent_fd,
+        registry = EAAEFAuthorityRegistry(
+            repo_root=repo_root,
+            authority_root=authority_root,
         )
-        temp_created = True
-        try:
-            offset = 0
-            while offset < len(raw):
-                written = os.write(descriptor, raw[offset:])
-                if written <= 0:
-                    raise OSError(f"short immutable {noun} write")
-                offset += written
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        try:
-            os.link(
-                temporary,
-                relative.name,
-                src_dir_fd=parent_fd,
-                dst_dir_fd=parent_fd,
-                follow_symlinks=False,
-            )
-            target_created = True
-        except FileExistsError as exc:
-            raise ExternalAgentBootstrapAdmissionError(
-                f"refusing to overwrite immutable {noun}"
-            ) from exc
-        if not _publication_parent_is_stable(
-            root_fd, identities, parent_fd
-        ):
-            raise ExternalAgentBootstrapAdmissionError(
-                "immutable publication parent changed during commit"
-            )
-        os.fsync(parent_fd)
-    except Exception:
-        if target_created:
-            try:
-                os.unlink(relative.name, dir_fd=parent_fd)
-            except OSError:
-                pass
-        raise
-    finally:
-        if temp_created:
-            try:
-                os.unlink(temporary, dir_fd=parent_fd)
-            except OSError:
-                pass
-        os.close(parent_fd)
-        os.close(root_fd)
+        registry.publish_json(relative, value)
+    except EAAEFAuthorityRegistryError as exc:
+        raise ExternalAgentBootstrapAdmissionError(
+            f"immutable {noun} registry rejected publication: {exc}"
+        ) from exc
 
 
 def _verify_approval(
@@ -1202,6 +1152,7 @@ def publish_external_agent_bootstrap_admission(
     trusted_operator_dids: Sequence[str],
     trusted_security_reviewer_dids: Sequence[str],
     now_ms: int,
+    authority_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Verify and atomically publish one immutable receipt without overwrite."""
 
@@ -1220,6 +1171,7 @@ def publish_external_agent_bootstrap_admission(
         relative_path,
         receipt,
         noun="bootstrap admission receipt",
+        authority_root=authority_root,
     )
     return verification
 

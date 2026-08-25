@@ -238,6 +238,11 @@ def test_current_completion_decisions_remain_completed(
             "valid": True,
             "decision": decisions[kwargs["task_id"]],
             "blockers": [],
+            **(
+                {"receipt_cid": "sha256:" + "4" * 64}
+                if kwargs["task_id"] == "EAAEF-191"
+                else {}
+            ),
         },
     )
 
@@ -284,6 +289,102 @@ def test_completion_rechecks_and_binds_receipt_digest(
     digests = source.cas_calls[0]["evidence_digests"]
     assert digests is not None and len(digests) == 2
     assert digests[1] == source.evidence_calls[0]["digest"]
+
+
+def test_eaaef_191_completion_binds_immutable_registry_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _load_runner("tested_eaaef_191_completion_binding")
+    receipt_dir, files = _receipt_contract(tmp_path)
+    alias = "EAAEF-191"
+    immutable_cid = "sha256:" + "4" * 64
+    source = _FakeSource({alias: "todo"})
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    monkeypatch.setattr(runner, "_receipt_contract", lambda: (receipt_dir, files))
+    monkeypatch.setattr(
+        runner,
+        "_verify_host_admission_task_receipt",
+        lambda **_kwargs: {
+            "valid": True,
+            "decision": "admitted",
+            "blockers": [],
+            "receipt_cid": immutable_cid,
+        },
+    )
+    monkeypatch.setattr(
+        runner,
+        "_run_argv",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0], returncode=0, stdout="passed", stderr=""
+        ),
+    )
+
+    result = runner._complete_s_task(source, alias, IDENTITY)
+
+    assert result["status"] == "completed"
+    assert not (receipt_dir / files[alias]).exists()
+    assert source.evidence_calls == [
+        {
+            "task_cid": f"cid:{alias}",
+            "evidence_kind": "host_admission_receipt",
+            "digest": immutable_cid,
+            "body": {
+                "path": (
+                    "data/agent_supervisor/"
+                    "external_agent_autonomous_execution_fabric/authority/"
+                    "host-admission/admission_bundle--"
+                    f"{IDENTITY['source_head']}.json"
+                ),
+                "source_head": IDENTITY["source_head"],
+                "source_tree": IDENTITY["source_tree"],
+                "board_namespace": IDENTITY["board_namespace"],
+                "board_cid": IDENTITY["board_cid"],
+                "decision": "admitted",
+            },
+        }
+    ]
+    assert source.cas_calls[0]["evidence_digests"] == [
+        source.validation_calls[0]["evidence_digest"],
+        immutable_cid,
+    ]
+
+
+def test_eaaef_191_receipt_cid_change_during_validation_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _load_runner("tested_eaaef_191_receipt_toctou")
+    receipt_dir, files = _receipt_contract(tmp_path)
+    alias = "EAAEF-191"
+    receipt_cids = iter(("sha256:" + "4" * 64, "sha256:" + "5" * 64))
+    source = _FakeSource({alias: "todo"})
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    monkeypatch.setattr(runner, "_receipt_contract", lambda: (receipt_dir, files))
+    monkeypatch.setattr(
+        runner,
+        "_verify_host_admission_task_receipt",
+        lambda **_kwargs: {
+            "valid": True,
+            "decision": "admitted",
+            "blockers": [],
+            "receipt_cid": next(receipt_cids),
+        },
+    )
+    monkeypatch.setattr(
+        runner,
+        "_run_argv",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0], returncode=0, stdout="passed", stderr=""
+        ),
+    )
+
+    result = runner._complete_s_task(source, alias, IDENTITY)
+
+    assert result["status"] == "receipt_changed_or_revoked"
+    assert any("changed during validation" in item for item in result["blockers"])
+    assert source.evidence_calls == []
+    assert source.cas_calls == []
 
 
 def test_receipt_mutation_during_validation_fails_closed(
