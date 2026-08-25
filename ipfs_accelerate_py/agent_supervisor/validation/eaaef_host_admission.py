@@ -153,6 +153,19 @@ RECEIPT_FILES: Final[dict[str, str]] = {
     "EAAEF-191": "admission_bundle.json",
 }
 
+EARLY_FRONTIER_TASK_IDS: Final[tuple[str, ...]] = (
+    "EAAEF-180",
+    "EAAEF-181",
+    "EAAEF-182",
+    "EAAEF-183",
+)
+EARLY_FRONTIER_LAUNCH_PLAN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-launch-plan@2"
+)
+EARLY_FRONTIER_PREFLIGHT_BLOCKER: Final = (
+    "eaaef_early_frontier_lifecycle_preflight_blocked"
+)
+
 _ACCEPTED_TASK_DECISIONS: Final[dict[str, str]] = {
     "EAAEF-180": "inventory",
     "EAAEF-181": "bound_unadmitted",
@@ -670,6 +683,73 @@ def _base_receipt(task_id: str, *, decision: str, evidence: Mapping[str, Any]) -
     return payload
 
 
+class EarlyFrontierPreflightBlocked(RuntimeError):
+    """The current source lifecycle cannot safely produce early receipts."""
+
+
+def _preflight_blocked(detail: object) -> EarlyFrontierPreflightBlocked:
+    message = str(detail or "isolated launch-plan is unavailable").strip()
+    return EarlyFrontierPreflightBlocked(
+        f"{EARLY_FRONTIER_PREFLIGHT_BLOCKER}: {message}"
+    )
+
+
+def validate_early_frontier_launch_plan(value: object) -> dict[str, Any]:
+    """Require a current typed no-go launch plan before any host-side effects."""
+
+    if not isinstance(value, Mapping):
+        raise _preflight_blocked("isolated launch-plan did not emit an object")
+    plan = dict(value)
+    if plan.get("schema") != EARLY_FRONTIER_LAUNCH_PLAN_SCHEMA:
+        detail = plan.get("error") or "isolated launch-plan schema is unavailable"
+        raise _preflight_blocked(detail)
+    if plan.get("process_started") is not False:
+        raise _preflight_blocked("isolated launch-plan process separation differs")
+    if (
+        plan.get("allowed") is not False
+        or plan.get("execution_prohibited") is not True
+        or plan.get("candidate_executable_withheld") is not True
+        or plan.get("argv") != []
+    ):
+        raise _preflight_blocked("early collection requires an executable-withheld no-go")
+    blockers = plan.get("blockers")
+    if (
+        not isinstance(blockers, list)
+        or not blockers
+        or any(not isinstance(item, str) or not item.strip() for item in blockers)
+    ):
+        raise _preflight_blocked("typed no-go blocker inventory is unavailable")
+    blocker_classes = plan.get("blocker_classes")
+    if not isinstance(blocker_classes, Mapping) or set(blocker_classes) != set(blockers):
+        raise _preflight_blocked("typed no-go blocker classes differ from inventory")
+    allowed_classes = {
+        "auto_recoverable",
+        "host_source_commit_required",
+        "host_gated_external_authority",
+        "unclassified",
+    }
+    if any(str(item) not in allowed_classes for item in blocker_classes.values()):
+        raise _preflight_blocked("typed no-go blocker class is unsupported")
+    materialization_cid = str(plan.get("materialization_receipt_cid") or "")
+    if materialization_cid and not _full_sha256(materialization_cid):
+        raise _preflight_blocked("materialization receipt identity is malformed")
+    statement = plan.get("bootstrap_admission_statement")
+    if statement is not None:
+        if not isinstance(statement, Mapping):
+            raise _preflight_blocked("bootstrap admission statement is malformed")
+        if (
+            statement.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/"
+            "eaaef-bootstrap-admission-statement@1"
+            or statement.get("decision") != "no_go"
+            or statement.get("process_started") is True
+        ):
+            raise _preflight_blocked("bootstrap admission statement is not a typed no-go")
+    if plan.get("bootstrap_admission_published") is not False:
+        raise _preflight_blocked("bootstrap admission publication separation differs")
+    return plan
+
+
 def load_isolated_launch_plan(*, timeout_seconds: int = 180) -> dict[str, Any]:
     """Run the admitted isolated launcher. Never starts configured-board-launch."""
 
@@ -681,26 +761,37 @@ def load_isolated_launch_plan(*, timeout_seconds: int = 180) -> dict[str, Any]:
         str(LAUNCHER),
         "launch-plan",
     ]
-    completed = subprocess.run(
-        argv,
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        timeout=timeout_seconds,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise _preflight_blocked(
+            f"isolated launch-plan invocation failed: {type(exc).__name__}"
+        ) from exc
     stdout = completed.stdout.strip()
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            "isolated launch-plan did not emit JSON: "
-            f"rc={completed.returncode} stderr={completed.stderr[-400:]}"
+        raise _preflight_blocked(
+            "isolated launch-plan did not emit JSON "
+            f"(returncode={completed.returncode})"
         ) from exc
-    if payload.get("process_started") is True:
-        raise RuntimeError("isolated launch-plan started a process")
-    payload["_collector_returncode"] = completed.returncode
-    return payload
+    if completed.returncode != 0:
+        detail = (
+            payload.get("error")
+            if isinstance(payload, Mapping)
+            else "isolated launch-plan command failed"
+        )
+        raise _preflight_blocked(detail)
+    plan = validate_early_frontier_launch_plan(payload)
+    plan["_collector_returncode"] = completed.returncode
+    return plan
 
 
 def bind_runtime_principals() -> dict[str, Any]:
@@ -810,18 +901,33 @@ def probe_duckdb_quack() -> dict[str, Any]:
     }
 
 
-def _docker_info(host: str = "") -> tuple[int, dict[str, Any]]:
-    command = ["docker"]
-    if host:
-        command.extend(["-H", host])
+def _is_local_unix_docker_host(host: object) -> bool:
+    raw = str(host or "").strip()
+    if not raw.startswith("unix://"):
+        return False
+    socket_path = raw.removeprefix("unix://")
+    return bool(socket_path) and Path(socket_path).is_absolute() and "\x00" not in socket_path
+
+
+def _docker_info(host: str) -> tuple[int, dict[str, Any]]:
+    if not _is_local_unix_docker_host(host):
+        raise ValueError("Docker probe endpoint must be one local absolute unix:// socket")
+    command = ["docker", "-H", host]
     command.extend(["info", "--format", "{{json .}}"])
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except FileNotFoundError:
+        return 127, {}
+    except subprocess.TimeoutExpired:
+        return 124, {}
+    except OSError:
+        return 126, {}
     info: dict[str, Any] = {}
     if completed.returncode == 0 and completed.stdout.strip():
         try:
@@ -841,29 +947,54 @@ def _is_rootless_info(info: Mapping[str, Any]) -> bool:
     return "/.local/share/docker" in root_dir or root_dir.endswith("/docker-rootless")
 
 
-def _rootless_docker_hosts() -> list[str]:
+def _docker_host_candidates() -> tuple[list[str], list[dict[str, str]]]:
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-    candidates = [
-        str(os.environ.get("EAAEF_DOCKER_HOST") or "").strip(),
-        f"unix://{runtime_dir}/docker.sock",
-        f"unix://{Path.home()}/.docker/run/docker.sock",
+    raw_candidates = [
+        ("EAAEF_DOCKER_HOST", str(os.environ.get("EAAEF_DOCKER_HOST") or "").strip()),
+        ("DOCKER_HOST", str(os.environ.get("DOCKER_HOST") or "").strip()),
+        ("default_rootless_runtime", f"unix://{runtime_dir}/docker.sock"),
+        ("default_rootless_home", f"unix://{Path.home()}/.docker/run/docker.sock"),
+        ("default_rootful_fallback", "unix:///var/run/docker.sock"),
     ]
-    seen: list[str] = []
-    for item in candidates:
-        if item and item not in seen and item != "unix:///var/run/docker.sock":
-            seen.append(item)
-    return seen
+    candidates: list[str] = []
+    rejected: list[dict[str, str]] = []
+    for source, item in raw_candidates:
+        if not item:
+            continue
+        if not _is_local_unix_docker_host(item):
+            rejected.append(
+                {
+                    "source": source,
+                    "reason": "non_local_unix_docker_endpoint_rejected",
+                }
+            )
+            continue
+        if item not in candidates:
+            candidates.append(item)
+    return candidates, rejected
+
+
+def _rootless_docker_hosts() -> list[str]:
+    candidates, _rejected = _docker_host_candidates()
+    return [
+        item
+        for item in candidates
+        if item != "unix:///var/run/docker.sock"
+    ]
 
 
 def probe_engine_mode() -> dict[str, Any]:
     """Prefer a verified rootless engine; never mount the host Docker socket."""
 
+    candidates, endpoint_rejections = _docker_host_candidates()
     probes: list[dict[str, Any]] = []
     selected_host = ""
     selected_info: dict[str, Any] = {}
     selected_returncode = 1
-    for host in _rootless_docker_hosts():
+    fallback_observation: tuple[str, int, dict[str, Any]] | None = None
+    for host in candidates:
         returncode, info = _docker_info(host)
+        selected_returncode = returncode
         probes.append(
             {
                 "docker_host": host,
@@ -878,25 +1009,15 @@ def probe_engine_mode() -> dict[str, Any]:
             selected_info = info
             selected_returncode = returncode
             break
-    if not selected_info:
-        returncode, info = _docker_info("")
-        selected_returncode = returncode
-        selected_info = info
-        selected_host = str(os.environ.get("DOCKER_HOST") or "unix:///var/run/docker.sock")
-        probes.append(
-            {
-                "docker_host": selected_host,
-                "returncode": returncode,
-                "rootless": _is_rootless_info(info),
-                "root_dir": str(info.get("DockerRootDir") or ""),
-                "security_options": [str(item) for item in info.get("SecurityOptions") or ()],
-            }
-        )
+        if returncode == 0 and info and fallback_observation is None:
+            fallback_observation = (host, returncode, info)
+    if not selected_info and fallback_observation is not None:
+        selected_host, selected_returncode, selected_info = fallback_observation
     security = [str(item) for item in selected_info.get("SecurityOptions") or ()]
     rootless = _is_rootless_info(selected_info)
     root_dir = str(selected_info.get("DockerRootDir") or "")
     server_version = str(selected_info.get("ServerVersion") or "")
-    uses_host_socket = selected_host in {"", "unix:///var/run/docker.sock"}
+    uses_host_socket = bool(selected_info) and not rootless
     fallback = {
         "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-rootful-fallback-package@1",
         "engine": "docker",
@@ -933,6 +1054,7 @@ def probe_engine_mode() -> dict[str, Any]:
         "fallback_package": fallback if not rootless else None,
         "docker_info_returncode": selected_returncode,
         "probes": probes,
+        "endpoint_rejections": endpoint_rejections,
     }
 
 
@@ -2661,6 +2783,72 @@ def _typed_missing_artifact(
     return evidence
 
 
+def collect_early_frontier_host_admission_receipts(
+    *,
+    timeout_seconds: int = 180,
+) -> dict[str, dict[str, Any]]:
+    """Build only EAAEF-180..183 receipts without later host-evidence effects."""
+
+    # This is deliberately the last fallible lifecycle gate before principal,
+    # Quack, Docker, or receipt effects become reachable.
+    plan = validate_early_frontier_launch_plan(
+        load_isolated_launch_plan(timeout_seconds=timeout_seconds)
+    )
+    blocker_classes = {
+        str(key): str(value)
+        for key, value in dict(plan.get("blocker_classes") or {}).items()
+    }
+    inventory_items = [
+        {
+            "blocker": blocker,
+            "class": blocker_classes.get(blocker) or classify_blocker(blocker),
+            "closing_task_ids": closing_task_ids(blocker),
+        }
+        for blocker in (
+            str(item) for item in plan.get("blockers") or () if str(item)
+        )
+    ]
+    principals = bind_runtime_principals()
+    duckdb = probe_duckdb_quack()
+    engine = probe_engine_mode()
+    receipts = {
+        "EAAEF-180": _base_receipt(
+            "EAAEF-180",
+            decision="inventory",
+            evidence={
+                "launch_plan_allowed": False,
+                "launch_plan_schema": plan.get("schema"),
+                "materialization_receipt_cid": plan.get(
+                    "materialization_receipt_cid"
+                ),
+                "bootstrap_admission_decision": (
+                    (plan.get("bootstrap_admission_statement") or {}).get("decision")
+                ),
+                "items": inventory_items,
+                "auto_recoverable_action": "host_bootstrap_recovery",
+            },
+        ),
+        "EAAEF-181": _base_receipt(
+            "EAAEF-181",
+            decision="bound_unadmitted",
+            evidence=principals,
+        ),
+        "EAAEF-182": _base_receipt(
+            "EAAEF-182",
+            decision=str(duckdb["decision"]),
+            evidence=duckdb,
+        ),
+        "EAAEF-183": _base_receipt(
+            "EAAEF-183",
+            decision=str(engine["decision"]),
+            evidence=engine,
+        ),
+    }
+    if tuple(receipts) != EARLY_FRONTIER_TASK_IDS:
+        raise RuntimeError("early-frontier receipt population escaped its exact bound")
+    return receipts
+
+
 def collect_host_admission_receipts(
     *,
     launch_plan: Mapping[str, Any] | None = None,
@@ -2852,6 +3040,46 @@ def write_host_admission_receipts(
         )
         written.append(str(path.relative_to(ROOT)))
     return written
+
+
+def write_early_frontier_host_admission_receipts(
+    receipts: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    """Write exactly four early-frontier receipts and leave later files untouched."""
+
+    if set(receipts) != set(EARLY_FRONTIER_TASK_IDS):
+        raise ValueError("early-frontier receipt set must be exactly EAAEF-180..183")
+    RECEIPT_DIR.mkdir(parents=True, exist_ok=True)
+    written: list[str] = []
+    for task_id in EARLY_FRONTIER_TASK_IDS:
+        filename = RECEIPT_FILES[task_id]
+        path = RECEIPT_DIR / filename
+        path.write_text(
+            json.dumps(dict(receipts[task_id]), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        written.append(str(path.relative_to(ROOT)))
+    return written
+
+
+def collect_early_frontier_and_write(*, timeout_seconds: int = 180) -> dict[str, Any]:
+    """Collect/write only EAAEF-180..183 without probing later S tasks."""
+
+    receipts = collect_early_frontier_host_admission_receipts(
+        timeout_seconds=timeout_seconds
+    )
+    written = write_early_frontier_host_admission_receipts(receipts)
+    return {
+        "written": written,
+        "decisions": {
+            task_id: receipts[task_id]["decision"]
+            for task_id in EARLY_FRONTIER_TASK_IDS
+        },
+        "scope": "early_frontier_180_183",
+        "process_started": False,
+        "configured_board_launch": False,
+        "live_launch_allowed": False,
+    }
 
 
 def collect_and_write(*, timeout_seconds: int = 180) -> dict[str, Any]:

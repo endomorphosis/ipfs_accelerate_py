@@ -45,6 +45,7 @@ BOARD_PATH = (
 S_AUTO = {f"EAAEF-{number}" for number in range(180, 191)}
 A_AUTO = {f"EAAEF-{number:03d}" for number in range(0, 10)}
 HOST_AUTO = S_AUTO | A_AUTO | {"EAAEF-191"}
+EARLY_FRONTIER = frozenset({"EAAEF-180", "EAAEF-181", "EAAEF-182", "EAAEF-183"})
 BOOTSTRAP = HOST_AUTO
 ADMIT_WAIT_STATUS = {
     "EAAEF-180": "waiting_current_blocker_inventory",
@@ -83,9 +84,26 @@ MAX_PASSES = 24
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse the intentionally argument-free legacy execution contract."""
+    """Parse a bounded execution scope; an omitted scope is early-only."""
 
     parser = argparse.ArgumentParser(description=__doc__)
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument(
+        "--early-frontier",
+        dest="scope",
+        action="store_const",
+        const="early_frontier",
+        default=argparse.SUPPRESS,
+        help="collect and complete only EAAEF-180 through EAAEF-183 (default)",
+    )
+    scope.add_argument(
+        "--full-bootstrap",
+        dest="scope",
+        action="store_const",
+        const="full_bootstrap",
+        default=argparse.SUPPRESS,
+        help="explicitly collect and advance the complete S/A bootstrap",
+    )
     return parser.parse_args(argv)
 
 
@@ -219,6 +237,15 @@ def _host_receipt_completion_verdict(
 
 
 def _collect_host_admission() -> dict[str, Any]:
+    _ensure_repository_importable()
+    from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+        collect_early_frontier_and_write,
+    )
+
+    return collect_early_frontier_and_write()
+
+
+def _collect_full_host_admission() -> dict[str, Any]:
     _ensure_repository_importable()
     from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
         collect_and_write,
@@ -603,12 +630,17 @@ def _complete(
 def _reopen_invalid_host_admission_tasks(
     source: DatabaseTaskSource,
     expected_identity: dict[str, str],
+    *,
+    task_ids: frozenset[str] | None = None,
 ) -> list[dict]:
     """Reopen completed S tasks whose receipts cannot satisfy dependencies."""
 
     receipt_dir, receipt_files = _receipt_contract()
     reopened: list[dict] = []
-    for alias in sorted(receipt_files):
+    selected = set(receipt_files) if task_ids is None else set(task_ids)
+    if not selected.issubset(receipt_files):
+        raise ValueError("host-admission reopen scope contains an unknown task")
+    for alias in sorted(selected):
         task = source.get_task(alias)
         if task is None or task.status != "completed":
             continue
@@ -649,13 +681,21 @@ def _reopen_invalid_host_admission_tasks(
     return reopened
 
 
-def run_once() -> dict:
+def run_once(*, scope: str = "early_frontier") -> dict:
+    if scope not in {"early_frontier", "full_bootstrap"}:
+        raise ValueError("EAAEF host-admission scope is invalid")
+    early_frontier = scope == "early_frontier"
+    target_tasks = EARLY_FRONTIER if early_frontier else frozenset(HOST_AUTO)
     control = _active_control_db()
     lease = _acquire_state_owner_lease(control)
     try:
         # Host-evidence materialization writes durable receipts, so it belongs
         # inside the exact same exclusive lease as the embedded DuckDB writer.
-        collection = _collect_host_admission()
+        collection = (
+            _collect_host_admission()
+            if early_frontier
+            else _collect_full_host_admission()
+        )
         expected_identity = _current_host_admission_identity()
         database_task_source = _database_task_source_class()
         completed: list[dict] = []
@@ -663,26 +703,33 @@ def run_once() -> dict:
         blocked_held: list[str] = []
         with database_task_source(control, install_schema=False) as source:
             completed.extend(
-                _reopen_invalid_host_admission_tasks(source, expected_identity)
+                _reopen_invalid_host_admission_tasks(
+                    source,
+                    expected_identity,
+                    task_ids=target_tasks if early_frontier else None,
+                )
             )
             first = source.ready_tasks(limit=1000)
             ready_before = [
-                item.task_alias for item in first.tasks if item.task_alias in BOOTSTRAP
+                item.task_alias
+                for item in first.tasks
+                if item.task_alias in target_tasks
             ]
-            for _pass in range(MAX_PASSES):
+            passes = 1 if early_frontier else MAX_PASSES
+            for _pass in range(passes):
                 page = source.ready_tasks(limit=1000)
                 ready = [
                     item.task_alias
                     for item in page.tasks
-                    if item.task_alias in HOST_AUTO
+                    if item.task_alias in target_tasks
                 ]
                 held_ready = [
                     item.task_alias
                     for item in page.tasks
-                    if item.task_alias not in BOOTSTRAP
+                    if item.task_alias not in target_tasks
                 ]
                 blocked_held = held_ready
-                if held_ready:
+                if held_ready and not early_frontier:
                     raise RuntimeError(
                         "held Plan-R2 tasks became ready without EAAEF-009: "
                         + ",".join(held_ready)
@@ -691,6 +738,8 @@ def run_once() -> dict:
                     break
                 progressed = False
                 for alias in ready:
+                    if alias not in target_tasks:
+                        raise RuntimeError("host-admission execution escaped its scope")
                     result = _complete(source, alias, expected_identity)
                     completed.append(result)
                     if result.get("status") == "completed" and result.get("changed"):
@@ -705,6 +754,7 @@ def run_once() -> dict:
                 status_counts[item.status] = status_counts.get(item.status, 0) + 1
         payload = {
             "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-supervisor@1",
+            "execution_scope": scope,
             "process_started": True,
             "configured_board_launch": False,
             "live_multi_supervisor": False,
@@ -727,8 +777,8 @@ def run_once() -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    _parse_args(argv)
-    payload = run_once()
+    args = _parse_args(argv)
+    payload = run_once(scope=str(getattr(args, "scope", "early_frontier")))
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
 
