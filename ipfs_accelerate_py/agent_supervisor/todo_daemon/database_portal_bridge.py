@@ -4611,6 +4611,40 @@ class DatabasePortalExecutionBridge:
         )
 
     @staticmethod
+    def _pending_merge_state_is_current(
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        pending_identity: tuple[str, str, int, str, str, str],
+    ) -> bool:
+        """Verify Portal still owns the exact candidate awaiting integration."""
+
+        state = DatabasePortalExecutionBridge._read_json_object(
+            paths.state,
+            noun="Portal pending-merge state",
+        )
+        alias, portal_task_cid, portal_attempt, commit, _request_id, _path = (
+            pending_identity
+        )
+        statuses = state.get("task_statuses")
+        attempts = state.get("implementation_attempts")
+        attempts_by_cid = state.get("implementation_attempts_by_cid")
+        return bool(
+            alias == binding.get("task_alias")
+            and portal_attempt == binding.get("attempt_number")
+            and isinstance(statuses, Mapping)
+            and statuses.get(alias) == "merge-queued"
+            and isinstance(attempts, Mapping)
+            and attempts.get(alias) == portal_attempt
+            and isinstance(attempts_by_cid, Mapping)
+            and attempts_by_cid.get(portal_task_cid) == portal_attempt
+            and state.get("last_implementation_task_id") == alias
+            and state.get("last_implementation_task_cid") == portal_task_cid
+            and state.get("last_implementation_commit") == commit
+            and type(state.get("last_implementation_returncode")) is int
+            and state.get("last_implementation_returncode") == 0
+        )
+
+    @staticmethod
     def _continues_verified_quota_fallback(
         result: Mapping[str, Any],
         *,
@@ -7560,14 +7594,6 @@ class DatabasePortalExecutionBridge:
                             "Portal pending-merge candidate identity changed "
                             "while the database claim was waiting"
                         )
-                elif (
-                    pending_merge_identity is not None
-                    and _projection_status(projection) != "merge-queued"
-                ):
-                    raise DatabasePortalBridgeError(
-                        "Portal pending-merge projection left its queued state "
-                        "without durable completion"
-                    )
                 if pending_merge_identity is None:
                     ordinary_passes += 1
                 if (
@@ -7691,6 +7717,15 @@ class DatabasePortalExecutionBridge:
                             )
                     raise DatabasePortalBridgeError(failure)
                 if pending_merge_identity is not None:
+                    if not self._pending_merge_state_is_current(
+                        paths,
+                        binding,
+                        pending_merge_identity,
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "Portal pending-merge state no longer matches the "
+                            "queued candidate"
+                        )
                     remaining = inflight_deadline - _monotonic_seconds()
                     if remaining <= 0:
                         raise DatabasePortalBridgeError("pending_merge_timeout")

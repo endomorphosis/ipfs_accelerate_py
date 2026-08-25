@@ -268,6 +268,20 @@ def _pending_merge_result(
     identity = portal_task_identity(task, todo_path=paths.task_projection)
     task_cid = canonical_task_cid or identity.canonical_task_cid
     implementation_commit = "c" * 40
+    paths.state.write_text(
+        json.dumps(
+            {
+                "task_statuses": {task_alias: "merge-queued"},
+                "implementation_attempts": {task_alias: 1},
+                "implementation_attempts_by_cid": {task_cid: 1},
+                "last_implementation_task_id": task_alias,
+                "last_implementation_task_cid": task_cid,
+                "last_implementation_commit": implementation_commit,
+                "last_implementation_returncode": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
     return {
         "implementation_result": {
             "task_id": task_alias,
@@ -2036,6 +2050,74 @@ def test_bridge_polls_exact_pending_merge_until_portal_completion(
     assert portals[0].calls == 2
     assert portals[0].closed is True
     assert clock.sleeps == [15.0]
+
+
+def test_bridge_polls_pending_merge_through_nonpending_portal_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClock:
+        def __init__(self) -> None:
+            self.now = 0.0
+            self.sleeps: list[float] = []
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            self.sleeps.append(seconds)
+            self.now += seconds
+
+    class PendingNoopCompletingPortal(_ProjectionIdentityCompletingPortal):
+        def __init__(self, paths: object, task_alias: str) -> None:
+            super().__init__(paths, task_alias)
+            self.calls = 0
+
+        def run_once(self) -> dict[str, object]:
+            self.calls += 1
+            if self.calls == 1:
+                return _pending_merge_result(self.paths, self.task_alias)
+            if self.calls == 2:
+                # A merge consumer may still hold the queue row while this
+                # lane produces an otherwise ordinary no-op pass. The private
+                # Markdown projection intentionally remains ``ready``; the
+                # bound Portal state is the pending-merge authority.
+                return {"unchanged": True, "write_count": 0}
+            return super().run_once()
+
+    clock = FakeClock()
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._monotonic_seconds",
+        clock.monotonic,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "database_portal_bridge._sleep_seconds",
+        clock.sleep,
+    )
+    portals: list[PendingNoopCompletingPortal] = []
+
+    def factory(paths: object, alias: str) -> PendingNoopCompletingPortal:
+        portal = PendingNoopCompletingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        max_passes=1,
+        implementation_timeout=31.0,
+    )
+
+    provider = bridge.run_provider(_attempt())
+
+    assert provider["accepted"] is True
+    assert len(portals) == 1
+    assert portals[0].calls == 3
+    assert portals[0].closed is True
+    assert clock.sleeps == [15.0, 15.0]
 
 
 def test_bridge_rejects_pending_merge_with_forged_projection_identity(
