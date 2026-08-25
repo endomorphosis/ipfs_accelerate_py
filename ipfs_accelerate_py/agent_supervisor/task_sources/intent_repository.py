@@ -24,6 +24,7 @@ provider, or process action.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -91,6 +92,22 @@ TASK_PROJECTION_SPEC_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-projection-spec@1"
 )
 TASK_AUTHORITY_SPEC_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/task-authority-spec@1"
+DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "database-virgin-task-transfer-request@1"
+)
+DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "database-virgin-task-transfer-binding@1"
+)
+DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "database-virgin-task-transfer-claim-cursor@1"
+)
+DATABASE_VIRGIN_TASK_TRANSFER_MODE: Final[str] = "virgin-transfer"
+DATABASE_CLAIM_POLICY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-claim-policy@1"
+)
 TASK_REVISION_HISTORY_PROJECTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1"
 )
@@ -383,6 +400,882 @@ def _receipt_with_preserved_reopen_count(
     except (TypeError, ValueError):
         return dict(receipt)
     return stored
+
+
+def database_task_alias_home_shard_index(task_alias: str, shard_count: int) -> int:
+    """Return the shared deterministic alias-hash home lane."""
+
+    if shard_count <= 1:
+        return 0
+    digest = hashlib.sha256(str(task_alias).encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % shard_count
+
+
+def _trusted_database_claim_policy() -> Mapping[str, Any] | None:
+    raw = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", "") or ""
+    ).strip()
+    if not raw:
+        return None
+    try:
+        program = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise IntentRepositoryTransitionError(
+            "trusted database program JSON is malformed"
+        ) from exc
+    policy = program.get("claim_policy") if isinstance(program, Mapping) else None
+    if policy is None:
+        return None
+    if not isinstance(policy, Mapping):
+        raise IntentRepositoryTransitionError(
+            "trusted database claim policy is malformed"
+        )
+    normalized = dict(policy)
+    shard_count = normalized.get("task_shard_count")
+    if (
+        set(normalized)
+        != {
+            "schema",
+            "task_prefix",
+            "task_shard_count",
+            "strict_task_sharding",
+            "idle_lane_work_stealing",
+        }
+        or normalized.get("schema") != DATABASE_CLAIM_POLICY_SCHEMA
+        or not str(normalized.get("task_prefix") or "").strip()
+        or isinstance(shard_count, bool)
+        or not isinstance(shard_count, int)
+        or shard_count <= 1
+        or normalized.get("strict_task_sharding") is not True
+        or normalized.get("idle_lane_work_stealing")
+        != DATABASE_VIRGIN_TASK_TRANSFER_MODE
+    ):
+        raise IntentRepositoryTransitionError(
+            "trusted database claim policy is invalid"
+        )
+    normalized["task_prefix"] = str(normalized["task_prefix"]).strip()
+    return MappingProxyType(normalized)
+
+
+def _database_virgin_transfer_binding(
+    *,
+    task_cid: str,
+    task_alias: str,
+    receipt: Mapping[str, Any],
+    shard_count: int,
+) -> Mapping[str, Any] | None:
+    raw = receipt.get("virgin_task_transfer")
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise IntentRepositoryTransitionError(
+            "database virgin-transfer binding is malformed"
+        )
+    binding = dict(raw)
+    binding_id = str(binding.pop("binding_id", "") or "")
+    recipient = binding.get("recipient_shard_index")
+    source_revision = binding.get("source_task_revision")
+    fencing_token = binding.get("fencing_token")
+    fence_epoch = binding.get("fence_epoch")
+    task_prefix = str(binding.get("task_prefix") or "")
+    claim_policy_id = str(binding.get("claim_policy_id") or "")
+    store_generation = str(binding.get("store_generation") or "")
+    cohort_id = content_identity(
+        {
+            "kind": "database-virgin-task-transfer-cohort",
+            "task_prefix": task_prefix,
+            "task_shard_count": shard_count,
+            "claim_policy_id": claim_policy_id,
+            "store_generation": store_generation,
+        }
+    )
+    trusted_policy = _trusted_database_claim_policy()
+    trusted_policy_id = (
+        content_identity(dict(trusted_policy))
+        if trusted_policy is not None
+        else ""
+    )
+    trusted_generation = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "") or ""
+    ).strip()
+    home_lane = database_task_alias_home_shard_index(task_alias, shard_count)
+    valid = bool(
+        binding_id
+        and binding_id == content_identity(binding)
+        and binding.get("schema") == DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA
+        and binding.get("mode") == DATABASE_VIRGIN_TASK_TRANSFER_MODE
+        and binding.get("task_cid") == task_cid
+        and binding.get("task_alias") == task_alias
+        and task_prefix
+        and task_alias.startswith(task_prefix)
+        and binding.get("task_shard_count") == shard_count
+        and binding.get("home_shard_index") == home_lane
+        and binding.get("cohort_id") == cohort_id
+        and (trusted_policy is None or claim_policy_id == trusted_policy_id)
+        and (
+            trusted_policy is None
+            or task_prefix == str(trusted_policy["task_prefix"])
+        )
+        and (
+            trusted_policy is None
+            or shard_count == int(trusted_policy["task_shard_count"])
+        )
+        and (not trusted_generation or store_generation == trusted_generation)
+        and isinstance(recipient, int)
+        and not isinstance(recipient, bool)
+        and 0 <= int(recipient) < shard_count
+        and int(recipient) != home_lane
+        and isinstance(source_revision, int)
+        and not isinstance(source_revision, bool)
+        and int(source_revision) >= 1
+        and str(binding.get("claim_id") or "")
+        and str(binding.get("attempt_id") or "")
+        and str(binding.get("owner_session_id") or "")
+        and str(binding.get("lease_id") or "")
+        and isinstance(fencing_token, int)
+        and not isinstance(fencing_token, bool)
+        and int(fencing_token) >= 1
+        and isinstance(fence_epoch, int)
+        and not isinstance(fence_epoch, bool)
+        and int(fence_epoch) >= 1
+    )
+    if not valid:
+        raise IntentRepositoryTransitionError(
+            "database virgin-transfer binding does not match the task shard"
+        )
+    if receipt.get("operation") == "database_claim":
+        claimed_from_revision = receipt.get("claimed_from_revision")
+        valid = bool(
+            receipt.get("task_shard_count") == shard_count
+            and receipt.get("task_shard_index") == int(recipient)
+            and receipt.get("owner_session_id") == binding.get("owner_session_id")
+            and isinstance(claimed_from_revision, int)
+            and not isinstance(claimed_from_revision, bool)
+            and int(claimed_from_revision) >= int(source_revision)
+            and str(receipt.get("claim_id") or "")
+            and str(receipt.get("attempt_id") or "")
+            and str(receipt.get("lease_id") or "")
+            and isinstance(receipt.get("fencing_token"), int)
+            and not isinstance(receipt.get("fencing_token"), bool)
+            and int(receipt.get("fencing_token") or 0) >= int(fencing_token)
+            and isinstance(receipt.get("fence_epoch"), int)
+            and not isinstance(receipt.get("fence_epoch"), bool)
+            and int(receipt.get("fence_epoch") or 0) >= int(fence_epoch)
+        )
+        if valid and claimed_from_revision == source_revision:
+            valid = all(
+                receipt.get(name) == binding.get(name)
+                for name in (
+                    "claim_id",
+                    "attempt_id",
+                    "lease_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            )
+        elif valid:
+            valid = bool(
+                int(claimed_from_revision) > int(source_revision)
+                and all(
+                    receipt.get(name) != binding.get(name)
+                    for name in ("claim_id", "attempt_id", "lease_id")
+                )
+                and int(receipt.get("fencing_token") or 0)
+                > int(fencing_token)
+            )
+        if not valid:
+            raise IntentRepositoryTransitionError(
+                "database virgin-transfer claim does not match its binding"
+            )
+    return MappingProxyType({**binding, "binding_id": binding_id})
+
+
+def _database_virgin_transfer_claim_cursor(
+    *,
+    receipt: Mapping[str, Any],
+    binding: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    raw = receipt.get("virgin_task_transfer_claim_cursor")
+    if not isinstance(raw, Mapping):
+        raise IntentRepositoryTransitionError(
+            "database virgin-transfer claim cursor is missing"
+        )
+    cursor = dict(raw)
+    cursor_id = str(cursor.pop("cursor_id", "") or "")
+    claimed_from_revision = cursor.get("claimed_from_revision")
+    fencing_token = cursor.get("fencing_token")
+    fence_epoch = cursor.get("fence_epoch")
+    valid = bool(
+        cursor_id
+        and cursor_id == content_identity(cursor)
+        and cursor.get("schema") == DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA
+        and cursor.get("binding_id") == binding.get("binding_id")
+        and cursor.get("owner_session_id") == binding.get("owner_session_id")
+        and str(cursor.get("claim_id") or "")
+        and str(cursor.get("attempt_id") or "")
+        and str(cursor.get("lease_id") or "")
+        and isinstance(claimed_from_revision, int)
+        and not isinstance(claimed_from_revision, bool)
+        and int(claimed_from_revision) >= int(binding["source_task_revision"])
+        and isinstance(fencing_token, int)
+        and not isinstance(fencing_token, bool)
+        and int(fencing_token) >= int(binding["fencing_token"])
+        and isinstance(fence_epoch, int)
+        and not isinstance(fence_epoch, bool)
+        and int(fence_epoch) >= int(binding["fence_epoch"])
+    )
+    if not valid:
+        raise IntentRepositoryTransitionError(
+            "database virgin-transfer claim cursor is invalid"
+        )
+    return MappingProxyType({**cursor, "cursor_id": cursor_id})
+
+
+def _database_virgin_transfer_claim_cursor_body(
+    *,
+    binding: Mapping[str, Any],
+    receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    body = {
+        "schema": DATABASE_VIRGIN_TASK_TRANSFER_CURSOR_SCHEMA,
+        "binding_id": str(binding["binding_id"]),
+        "claim_id": str(receipt["claim_id"]),
+        "attempt_id": str(receipt["attempt_id"]),
+        "owner_session_id": str(receipt["owner_session_id"]),
+        "lease_id": str(receipt["lease_id"]),
+        "fencing_token": int(receipt["fencing_token"]),
+        "fence_epoch": int(receipt["fence_epoch"]),
+        "claimed_from_revision": int(receipt["claimed_from_revision"]),
+    }
+    return {**body, "cursor_id": content_identity(body)}
+
+
+def database_virgin_transfer_binding_for_task(
+    task: Any,
+    *,
+    shard_count: int,
+) -> Mapping[str, Any] | None:
+    """Validate and return the owner-stamped transfer assignment for a task."""
+
+    field = (
+        (lambda name, default="": task.get(name, default))
+        if isinstance(task, Mapping)
+        else (lambda name, default="": getattr(task, name, default))
+    )
+    body = field("body", {})
+    receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+    if not isinstance(receipt, Mapping):
+        return None
+    binding = _database_virgin_transfer_binding(
+        task_cid=str(field("task_cid") or ""),
+        task_alias=str(field("task_alias") or ""),
+        receipt=receipt,
+        shard_count=shard_count,
+    )
+    if binding is not None:
+        _database_virgin_transfer_claim_cursor(
+            receipt=receipt,
+            binding=binding,
+        )
+    return binding
+
+
+def _database_task_field(task: Any, name: str, default: Any = None) -> Any:
+    if isinstance(task, Mapping):
+        return task.get(name, default)
+    return getattr(task, name, default)
+
+
+def _database_task_status_receipt(task: Any) -> Mapping[str, Any]:
+    body = _database_task_field(task, "body", {})
+    receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+    return receipt if isinstance(receipt, Mapping) else {}
+
+
+def _database_task_forbids_automatic_claim(task: Any) -> bool:
+    body = _database_task_field(task, "body", {})
+    if not isinstance(body, Mapping):
+        return False
+    completion = body.get("completion")
+    if isinstance(completion, Mapping):
+        completion = completion.get("mode") or completion.get("kind")
+    review = body.get("review_only")
+    return bool(
+        str(completion or "").strip().lower() == "manual"
+        or review is True
+        or str(review or "").strip().lower() in {"1", "true", "yes"}
+    )
+
+
+def database_virgin_transfer_routes(
+    tasks: Sequence[Any],
+    ready_cids: Iterable[str],
+    *,
+    shard_count: int,
+    task_prefix: str,
+) -> Mapping[str, int]:
+    """Return the shared deterministic ready-task lane projection."""
+
+    if shard_count <= 1:
+        return MappingProxyType({})
+    prefix = str(task_prefix or "").strip()
+    ready_set = {str(item) for item in ready_cids}
+    routes: dict[str, int] = {}
+    occupied: set[int] = set()
+    ready_tasks: list[Any] = []
+    for task in tasks:
+        task_cid = str(_database_task_field(task, "task_cid", "") or "")
+        task_alias = str(_database_task_field(task, "task_alias", "") or "").strip()
+        if not task_cid or not task_alias:
+            continue
+        binding = database_virgin_transfer_binding_for_task(
+            task,
+            shard_count=shard_count,
+        )
+        status = str(_database_task_field(task, "status", "") or "").strip().lower()
+        if status == "in_progress" and task_alias.startswith(prefix):
+            if binding is not None:
+                occupied.add(int(binding["recipient_shard_index"]))
+            else:
+                receipt = _database_task_status_receipt(task)
+                lane = receipt.get("task_shard_index")
+                if (
+                    receipt.get("operation") == "database_claim"
+                    and receipt.get("task_shard_count") == shard_count
+                    and isinstance(lane, int)
+                    and not isinstance(lane, bool)
+                    and 0 <= lane < shard_count
+                ):
+                    occupied.add(lane)
+                else:
+                    occupied.add(
+                        database_task_alias_home_shard_index(task_alias, shard_count)
+                    )
+        if (
+            task_cid in ready_set
+            and task_alias.startswith(prefix)
+            and not _database_task_forbids_automatic_claim(task)
+        ):
+            ready_tasks.append(task)
+
+    def order(task: Any) -> tuple[int, int, str, str]:
+        priority = str(_database_task_field(task, "priority", "") or "").upper()
+        priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}.get(priority, 9)
+        ordinal = _database_task_field(task, "ordinal", 0)
+        ordinal = ordinal if isinstance(ordinal, int) and not isinstance(ordinal, bool) else 0
+        return (
+            priority_rank,
+            int(ordinal),
+            str(_database_task_field(task, "task_alias", "") or ""),
+            str(_database_task_field(task, "task_cid", "") or ""),
+        )
+
+    assigned = set(occupied)
+    virgin_by_home: dict[int, list[Any]] = {
+        lane: [] for lane in range(shard_count)
+    }
+    for task in sorted(ready_tasks, key=order):
+        task_cid = str(_database_task_field(task, "task_cid", "") or "")
+        binding = database_virgin_transfer_binding_for_task(
+            task,
+            shard_count=shard_count,
+        )
+        if binding is not None:
+            lane = int(binding["recipient_shard_index"])
+            routes[task_cid] = lane
+            assigned.add(lane)
+            continue
+        task_alias = str(_database_task_field(task, "task_alias", "") or "")
+        home = database_task_alias_home_shard_index(task_alias, shard_count)
+        if _database_task_status_receipt(task):
+            routes[task_cid] = home
+            assigned.add(home)
+            continue
+        virgin_by_home[home].append(task)
+
+    surplus: list[Any] = []
+    for home in range(shard_count):
+        candidates = virgin_by_home[home]
+        if candidates and home not in assigned:
+            retained = candidates.pop(0)
+            routes[str(_database_task_field(retained, "task_cid", ""))] = home
+            assigned.add(home)
+        surplus.extend(candidates)
+    free_lanes = [lane for lane in range(shard_count) if lane not in assigned]
+    surplus.sort(
+        key=lambda task: (
+            database_task_alias_home_shard_index(
+                str(_database_task_field(task, "task_alias", "") or ""),
+                shard_count,
+            ),
+            *order(task),
+        )
+    )
+    transfer_count = min(len(free_lanes), len(surplus))
+    for lane, task in zip(free_lanes, surplus[:transfer_count]):
+        routes[str(_database_task_field(task, "task_cid", ""))] = lane
+    for task in surplus[transfer_count:]:
+        task_alias = str(_database_task_field(task, "task_alias", "") or "")
+        routes[str(_database_task_field(task, "task_cid", ""))] = (
+            database_task_alias_home_shard_index(task_alias, shard_count)
+        )
+    return MappingProxyType(routes)
+
+
+def _database_ready_task_projection_on(
+    connection: Any,
+    *,
+    now_ms: int,
+) -> tuple[list[dict[str, Any]], set[str]]:
+    rows = connection.execute(
+        """
+        SELECT task_cid, task_alias, ordinal, status, revision, priority, body_json
+        FROM tasks ORDER BY ordinal, task_cid
+        """
+    ).fetchall()
+    dependencies: dict[str, set[str]] = {}
+    for row in connection.execute(
+        "SELECT task_cid, dependency_task_cid FROM task_dependencies"
+    ).fetchall():
+        dependencies.setdefault(str(row[0]), set()).add(str(row[1]))
+    completed = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT task_cid FROM tasks WHERE status IN ("
+            + ", ".join("?" for _ in _COMPLETED_STATUSES)
+            + ")",
+            list(_COMPLETED_STATUSES),
+        ).fetchall()
+    }
+    cooldown = {
+        str(row[0]): int(row[1] or 0)
+        for row in connection.execute(
+            "SELECT task_cid, retry_not_before_ms FROM leases"
+        ).fetchall()
+    }
+    blocked = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT DISTINCT task_cid FROM task_blocks WHERE state = 'active'"
+        ).fetchall()
+    }
+    tasks: list[dict[str, Any]] = []
+    ready: set[str] = set()
+    for row in rows:
+        task = {
+            "task_cid": str(row[0]),
+            "task_alias": str(row[1]),
+            "ordinal": int(row[2]),
+            "status": str(row[3]),
+            "revision": int(row[4]),
+            "priority": str(row[5] or ""),
+            "body": _decode_json(row[6], noun="task body"),
+        }
+        tasks.append(task)
+        task_cid = task["task_cid"]
+        if (
+            task["status"] in _READY_STATUSES
+            and task_cid not in blocked
+            and cooldown.get(task_cid, 0) <= now_ms
+            and dependencies.get(task_cid, set()).issubset(completed)
+        ):
+            ready.add(task_cid)
+    return tasks, ready
+
+
+def _database_claim_lane(task: Mapping[str, Any], shard_count: int) -> int:
+    binding = database_virgin_transfer_binding_for_task(
+        task,
+        shard_count=shard_count,
+    )
+    if binding is not None:
+        return int(binding["recipient_shard_index"])
+    receipt = (
+        task.get("body", {}).get("completion_receipt")
+        if isinstance(task.get("body"), Mapping)
+        else None
+    )
+    lane = receipt.get("task_shard_index") if isinstance(receipt, Mapping) else None
+    count = receipt.get("task_shard_count") if isinstance(receipt, Mapping) else None
+    if (
+        task.get("status") == "in_progress"
+        and isinstance(lane, int)
+        and not isinstance(lane, bool)
+        and count == shard_count
+        and 0 <= int(lane) < shard_count
+    ):
+        return int(lane)
+    return database_task_alias_home_shard_index(
+        str(task.get("task_alias") or ""),
+        shard_count,
+    )
+
+
+def _prepare_database_virgin_transfer_receipt_on(
+    connection: Any,
+    *,
+    task: Mapping[str, Any],
+    previous_status: str,
+    current_revision: int,
+    new_status: str,
+    receipt: Mapping[str, Any],
+    now_ms: int,
+) -> dict[str, Any]:
+    """Validate/stamp DB virgin transfer inside the owner status transaction."""
+
+    prepared = dict(receipt)
+    task_cid = str(task.get("task_cid") or "")
+    task_alias = str(task.get("task_alias") or "")
+    body = task.get("body")
+    prior_receipt = (
+        body.get("completion_receipt") if isinstance(body, Mapping) else None
+    )
+    prior_receipt = prior_receipt if isinstance(prior_receipt, Mapping) else {}
+    prior_raw = prior_receipt.get("virgin_task_transfer")
+    supplied = prepared.get("virgin_task_transfer")
+    supplied_cursor = prepared.get("virgin_task_transfer_claim_cursor")
+    if supplied is not None and prior_raw is None:
+        raise IntentRepositoryTransitionError(
+            "virgin_task_transfer is owner-reserved"
+        )
+    if supplied_cursor is not None and prior_raw is None:
+        raise IntentRepositoryTransitionError(
+            "virgin_task_transfer_claim_cursor is owner-reserved"
+        )
+
+    prior_binding: Mapping[str, Any] | None = None
+    prior_cursor: Mapping[str, Any] | None = None
+    prior_count = (
+        prior_raw.get("task_shard_count")
+        if isinstance(prior_raw, Mapping)
+        else None
+    )
+    if prior_raw is not None:
+        if (
+            isinstance(prior_count, bool)
+            or not isinstance(prior_count, int)
+            or prior_count <= 1
+        ):
+            raise IntentRepositoryTransitionError(
+                "stored database virgin-transfer shard count is invalid"
+            )
+        prior_binding = _database_virgin_transfer_binding(
+            task_cid=task_cid,
+            task_alias=task_alias,
+            receipt=prior_receipt,
+            shard_count=int(prior_count),
+        )
+        if prior_binding is None:
+            raise IntentRepositoryTransitionError(
+                "stored database virgin-transfer binding is missing"
+            )
+        prior_cursor = _database_virgin_transfer_claim_cursor(
+            receipt=prior_receipt,
+            binding=prior_binding,
+        )
+        if supplied is not None and (
+            not isinstance(supplied, Mapping)
+            or dict(supplied) != dict(prior_binding or {})
+        ):
+            raise IntentRepositoryTransitionError(
+                "database status CAS would replace a virgin-transfer binding"
+            )
+        if supplied_cursor is not None and (
+            not isinstance(supplied_cursor, Mapping)
+            or dict(supplied_cursor) != dict(prior_cursor)
+        ):
+            raise IntentRepositoryTransitionError(
+                "database status CAS would replace a virgin-transfer claim cursor"
+            )
+        prepared["virgin_task_transfer"] = dict(prior_binding or {})
+        prepared["virgin_task_transfer_claim_cursor"] = dict(prior_cursor)
+
+    database_claim = bool(
+        new_status == "in_progress"
+        and prepared.get("operation") == "database_claim"
+    )
+    trusted_policy = _trusted_database_claim_policy()
+    if (
+        trusted_policy is not None
+        and new_status == "in_progress"
+        and not database_claim
+    ):
+        raise IntentRepositoryTransitionError(
+            "trusted database claim policy requires database_claim"
+        )
+    if trusted_policy is not None and database_claim:
+        if any(
+            prepared.get(name) != trusted_policy.get(name)
+            for name in (
+                "task_prefix",
+                "task_shard_count",
+                "strict_task_sharding",
+                "idle_lane_work_stealing",
+            )
+        ):
+            raise IntentRepositoryTransitionError(
+                "database claim disagrees with the trusted store policy"
+            )
+    transfer_claim = bool(
+        database_claim
+        and prepared.get("idle_lane_work_stealing")
+        == DATABASE_VIRGIN_TASK_TRANSFER_MODE
+    )
+    if prior_binding is not None and new_status == "in_progress" and not transfer_claim:
+        raise IntentRepositoryTransitionError(
+            "database virgin-transfer retry requires its bound claim policy"
+        )
+    if not transfer_claim:
+        if database_claim and prepared.get("strict_task_sharding") is True:
+            shard_count = prepared.get("task_shard_count")
+            lane_index = prepared.get("task_shard_index")
+            task_prefix = str(prepared.get("task_prefix") or "")
+            if (
+                prepared.get("idle_lane_work_stealing") not in {None, ""}
+                or isinstance(shard_count, bool)
+                or not isinstance(shard_count, int)
+                or shard_count < 1
+                or isinstance(lane_index, bool)
+                or not isinstance(lane_index, int)
+                or not 0 <= lane_index < shard_count
+                or (task_prefix and not task_alias.startswith(task_prefix))
+                or lane_index
+                != database_task_alias_home_shard_index(task_alias, shard_count)
+            ):
+                raise IntentRepositoryTransitionError(
+                    "strict database claim does not match its home shard"
+                )
+        prepared.pop("virgin_task_transfer_request", None)
+        return prepared
+
+    shard_count = prepared.get("task_shard_count")
+    lane_index = prepared.get("task_shard_index")
+    task_prefix = str(prepared.get("task_prefix") or "")
+    if (
+        prepared.get("strict_task_sharding") is not True
+        or isinstance(shard_count, bool)
+        or not isinstance(shard_count, int)
+        or shard_count <= 1
+        or isinstance(lane_index, bool)
+        or not isinstance(lane_index, int)
+        or not 0 <= lane_index < shard_count
+        or not task_prefix
+        or not task_alias.startswith(task_prefix)
+        or prepared.get("claimed_from_revision") != current_revision
+        or not str(prepared.get("claim_id") or "")
+        or not str(prepared.get("attempt_id") or "")
+        or not str(prepared.get("owner_session_id") or "")
+        or not str(prepared.get("lease_id") or "")
+        or isinstance(prepared.get("fencing_token"), bool)
+        or not isinstance(prepared.get("fencing_token"), int)
+        or int(prepared.get("fencing_token") or 0) < 1
+        or isinstance(prepared.get("fence_epoch"), bool)
+        or not isinstance(prepared.get("fence_epoch"), int)
+        or int(prepared.get("fence_epoch") or 0) < 1
+    ):
+        raise IntentRepositoryTransitionError(
+            "database virgin-transfer claim metadata is invalid"
+        )
+    tasks, ready_cids = _database_ready_task_projection_on(
+        connection,
+        now_ms=now_ms,
+    )
+    by_cid = {str(item["task_cid"]): item for item in tasks}
+    if task_cid not in ready_cids:
+        raise IntentRepositoryConflictError(
+            "virgin-transfer target left the authoritative ready frontier"
+        )
+    routes = database_virgin_transfer_routes(
+        tasks,
+        ready_cids,
+        shard_count=shard_count,
+        task_prefix=task_prefix,
+    )
+    if routes.get(task_cid) != lane_index:
+        raise IntentRepositoryConflictError(
+            "virgin-transfer request disagrees with the authoritative route"
+        )
+    if prior_binding is not None:
+        if (
+            int(prior_binding["task_shard_count"]) != shard_count
+            or int(prior_binding["recipient_shard_index"]) != lane_index
+            or prior_binding["owner_session_id"]
+            != prepared["owner_session_id"]
+        ):
+            raise IntentRepositoryTransitionError(
+                "database virgin-transfer retry changed its assigned lane"
+            )
+        prepared.pop("virgin_task_transfer_request", None)
+        _database_virgin_transfer_binding(
+            task_cid=task_cid,
+            task_alias=task_alias,
+            receipt=prepared,
+            shard_count=shard_count,
+        )
+        if prior_cursor is None or not (
+            int(prepared["claimed_from_revision"])
+            > int(prior_cursor["claimed_from_revision"])
+            and all(
+                prepared.get(name) != prior_cursor.get(name)
+                for name in ("claim_id", "attempt_id", "lease_id")
+            )
+            and int(prepared["fencing_token"])
+            > int(prior_cursor["fencing_token"])
+            and int(prepared["fence_epoch"])
+            >= int(prior_cursor["fence_epoch"])
+        ):
+            raise IntentRepositoryTransitionError(
+                "database virgin-transfer retry did not advance its claim cursor"
+            )
+        prepared["virgin_task_transfer_claim_cursor"] = (
+            _database_virgin_transfer_claim_cursor_body(
+                binding=prior_binding,
+                receipt=prepared,
+            )
+        )
+        return prepared
+
+    home_lane = database_task_alias_home_shard_index(task_alias, shard_count)
+    request = prepared.pop("virgin_task_transfer_request", None)
+    if lane_index == home_lane:
+        if request is not None:
+            raise IntentRepositoryTransitionError(
+                "home-shard claim cannot request virgin transfer"
+            )
+        return prepared
+    if not isinstance(request, Mapping) or dict(request) != {
+        "schema": DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+        "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+        "task_shard_count": shard_count,
+        "recipient_shard_index": lane_index,
+        "task_prefix": task_prefix,
+    }:
+        raise IntentRepositoryTransitionError(
+            "foreign database claim lacks an exact transfer request"
+        )
+    if prior_receipt or previous_status not in _READY_STATUSES:
+        raise IntentRepositoryTransitionError(
+            "only a virgin ready task may transfer lanes"
+        )
+    completion = body.get("completion") if isinstance(body, Mapping) else None
+    if isinstance(completion, Mapping):
+        completion = completion.get("mode") or completion.get("kind")
+    review_only = body.get("review_only") if isinstance(body, Mapping) else None
+    if (
+        str(completion or "").strip().lower() == "manual"
+        or review_only is True
+        or str(review_only or "").strip().lower() in {"1", "true", "yes"}
+    ):
+        raise IntentRepositoryTransitionError(
+            "manual or review-only task cannot transfer lanes"
+        )
+
+    active_lanes = {
+        _database_claim_lane(item, shard_count)
+        for item in tasks
+        if item.get("status") == "in_progress"
+        and str(item.get("task_alias") or "").startswith(task_prefix)
+    }
+    ready_home_counts: dict[int, int] = {}
+    ready_transfer_lanes: set[int] = set()
+    for ready_cid in ready_cids:
+        item = by_cid[ready_cid]
+        alias = str(item.get("task_alias") or "")
+        if (
+            not alias.startswith(task_prefix)
+            or _database_task_forbids_automatic_claim(item)
+        ):
+            continue
+        binding = database_virgin_transfer_binding_for_task(
+            item,
+            shard_count=shard_count,
+        )
+        if binding is not None:
+            ready_transfer_lanes.add(int(binding["recipient_shard_index"]))
+            continue
+        lane = database_task_alias_home_shard_index(alias, shard_count)
+        ready_home_counts[lane] = ready_home_counts.get(lane, 0) + 1
+    if (
+        lane_index in active_lanes
+        or lane_index in ready_transfer_lanes
+        or ready_home_counts.get(lane_index, 0)
+    ):
+        raise IntentRepositoryConflictError(
+            "virgin-transfer recipient is not idle"
+        )
+    donor_active = home_lane in active_lanes
+    donor_ready_count = ready_home_counts.get(home_lane, 0)
+    if not donor_active and donor_ready_count < 2:
+        raise IntentRepositoryConflictError(
+            "virgin-transfer donor has no surplus task"
+        )
+
+    projection_id = content_identity(
+        {
+            "schema": "database-virgin-task-transfer-frontier@1",
+            "task_shard_count": shard_count,
+            "tasks": [
+                {
+                    "task_cid": item["task_cid"],
+                    "task_alias": item["task_alias"],
+                    "status": item["status"],
+                    "revision": item["revision"],
+                }
+                for item in tasks
+            ],
+            "ready_task_cids": sorted(ready_cids),
+        }
+    )
+    claim_policy_id = (
+        content_identity(dict(trusted_policy))
+        if trusted_policy is not None
+        else ""
+    )
+    store_generation = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "") or ""
+    ).strip()
+    binding_body = {
+        "schema": DATABASE_VIRGIN_TASK_TRANSFER_BINDING_SCHEMA,
+        "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+        "cohort_id": content_identity(
+            {
+                "kind": "database-virgin-task-transfer-cohort",
+                "task_prefix": task_prefix,
+                "task_shard_count": shard_count,
+                "claim_policy_id": claim_policy_id,
+                "store_generation": store_generation,
+            }
+        ),
+        "claim_policy_id": claim_policy_id,
+        "store_generation": store_generation,
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "task_prefix": task_prefix,
+        "task_shard_count": shard_count,
+        "home_shard_index": home_lane,
+        "recipient_shard_index": lane_index,
+        "source_task_revision": current_revision,
+        "claim_id": str(prepared["claim_id"]),
+        "attempt_id": str(prepared["attempt_id"]),
+        "owner_session_id": str(prepared["owner_session_id"]),
+        "lease_id": str(prepared["lease_id"]),
+        "fencing_token": int(prepared["fencing_token"]),
+        "fence_epoch": int(prepared["fence_epoch"]),
+        "preclaim_projection_id": projection_id,
+        "donor_active": donor_active,
+        "donor_ready_count": donor_ready_count,
+    }
+    prepared["virgin_task_transfer"] = {
+        **binding_body,
+        "binding_id": content_identity(binding_body),
+    }
+    prepared["virgin_task_transfer_claim_cursor"] = (
+        _database_virgin_transfer_claim_cursor_body(
+            binding=prepared["virgin_task_transfer"],
+            receipt=prepared,
+        )
+    )
+    return prepared
 
 
 def _mapping(value: Any, *, noun: str = "mapping") -> dict[str, Any]:
@@ -2228,7 +3121,7 @@ class IntentRepository:
         priority_text = str(priority or "P2").strip() or "P2"
         pcid = _optional_identifier(plan_cid, noun="plan_cid")
         oid = _optional_identifier(objective_id, noun="objective_id")
-        body_map = _mapping(body, noun="task body")
+        body_map = dict(_mapping(body, noun="task body"))
         identity_map = _mapping(identity, noun="task identity")
         # Identity material is canonical and must not include mutable aliases
         # as keys; always bind the durable task_cid.
@@ -2246,10 +3139,21 @@ class IntentRepository:
             if goal_row is None:
                 raise IntentRepositoryIntegrityError(f"goal {gcid!r} does not exist for task")
             existing = connection.execute(
-                "SELECT revision, status FROM tasks WHERE task_cid = ?",
+                "SELECT revision, status, task_alias, body_json "
+                "FROM tasks WHERE task_cid = ?",
                 [tcid],
             ).fetchone()
+            supplied_receipt = body_map.get("completion_receipt")
+            supplied_transfer = (
+                supplied_receipt.get("virgin_task_transfer")
+                if isinstance(supplied_receipt, Mapping)
+                else None
+            )
             if existing is None:
+                if supplied_transfer is not None:
+                    raise IntentRepositoryTransitionError(
+                        "virgin_task_transfer is owner-reserved"
+                    )
                 if expected_revision is not None and expected_revision != 0:
                     raise IntentRepositoryConflictError(
                         "task CAS expected revision does not match create"
@@ -2283,6 +3187,47 @@ class IntentRepository:
                 current_revision = int(existing[0])
                 if expected_revision is not None and expected_revision != current_revision:
                     raise IntentRepositoryConflictError("task revision CAS is stale")
+                stored_alias = str(existing[2] or "")
+                stored_body = _decode_json(existing[3], noun="stored task body")
+                stored_receipt = (
+                    stored_body.get("completion_receipt")
+                    if isinstance(stored_body, Mapping)
+                    else None
+                )
+                stored_transfer = (
+                    stored_receipt.get("virgin_task_transfer")
+                    if isinstance(stored_receipt, Mapping)
+                    else None
+                )
+                if stored_transfer is None:
+                    if supplied_transfer is not None:
+                        raise IntentRepositoryTransitionError(
+                            "virgin_task_transfer is owner-reserved"
+                        )
+                else:
+                    shard_count = (
+                        stored_transfer.get("task_shard_count")
+                        if isinstance(stored_transfer, Mapping)
+                        else None
+                    )
+                    if (
+                        isinstance(shard_count, bool)
+                        or not isinstance(shard_count, int)
+                        or shard_count <= 1
+                        or alias != stored_alias
+                    ):
+                        raise IntentRepositoryTransitionError(
+                            "upsert would invalidate a virgin-transfer binding"
+                        )
+                    _database_virgin_transfer_binding(
+                        task_cid=tcid,
+                        task_alias=stored_alias,
+                        receipt=stored_receipt,
+                        shard_count=shard_count,
+                    )
+                    raise IntentRepositoryTransitionError(
+                        "upsert cannot rewrite a virgin-transfer-assigned task"
+                    )
                 revision = current_revision + 1
                 # Canonical task_cid is immutable; alias/goal/plan may update.
                 connection.execute(
@@ -3184,6 +4129,21 @@ class IntentRepository:
             if not isinstance(body_map, dict):
                 body_map = {}
             body_map = dict(body_map)
+            receipt_map = _prepare_database_virgin_transfer_receipt_on(
+                connection,
+                task={
+                    "task_cid": resolved_cid,
+                    "task_alias": str(task_row[1]),
+                    "status": previous_status,
+                    "revision": current_revision,
+                    "body": body_map,
+                },
+                previous_status=previous_status,
+                current_revision=current_revision,
+                new_status=status_text,
+                receipt=receipt_map,
+                now_ms=self._clock_ms(),
+            )
             if receipt_map:
                 body_map["completion_receipt"] = _receipt_with_preserved_reopen_count(
                     receipt_map,

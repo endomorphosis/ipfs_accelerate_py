@@ -6,10 +6,10 @@ generations remain preserved recovery history.  The active operator has two
 explicit stages:
 
 * ``bootstrap`` materializes the exact tracked candidate projection and
-  atomically publishes one no-overwrite run-v25 database with provenance;
+  atomically publishes one no-overwrite run-v26 database with provenance;
 * ``bootstrap-sealed-continuity`` admits a separately preserved run-v17 only
   into the legacy run-v23 boundary through six explicit raw-byte pins;
-* ``launch`` owns run-v25 in-process, starts exactly one foreground
+* ``launch`` owns run-v26 in-process, starts exactly one foreground
   configured-board scheduler child, and services the closed mutation inbox.
 
 The Quack attach credential exists only in the controller's memory and in the
@@ -79,7 +79,7 @@ PROGRAM_ROOT_RELATIVE: Final = Path(
 )
 SOURCE_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v17"
 LEGACY_SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v23"
-SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v25"
+SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v26"
 SOURCE_DATABASE_RELATIVE: Final = SOURCE_RUN_RELATIVE / "control.duckdb"
 SUCCESSOR_DATABASE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "control.duckdb"
 OWNER_STATE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "quack-owner"
@@ -105,7 +105,7 @@ PROVENANCE_SCHEMA: Final = (
 )
 NATIVE_RESUME_ADMISSION_MODE: Final = "tracked_candidate_initial_projection_reset"
 NATIVE_RESUME_SOURCE_GENERATION: Final = "lgcvf-tracked-candidate-projection"
-SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v25"
+SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v26"
 SEALED_CONTINUITY_VERIFICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "lgcvf-target-only-initial-continuity-verification@1"
@@ -154,6 +154,7 @@ PROJECTION_RECEIPT_SCHEMA: Final = (
 )
 TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 TOKEN_FILE_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE"
+DATABASE_PROGRAM_JSON_ENV: Final = "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"
 STORE_GENERATION_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"
 BOARD_EXTENSION_INSTALL_POLICY_ENV: Final = (
     "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY"
@@ -2756,7 +2757,7 @@ def _require_ignored_successor(
 
 
 def _load_native_resume_config(root: Path) -> tuple[dict[str, Any], bytes]:
-    """Load the exact tracked run-v25 profile with duplicate-key rejection."""
+    """Load the exact tracked run-v26 profile with duplicate-key rejection."""
 
     path = _contained(root, DEFAULT_SUCCESSOR_CONFIG_RELATIVE)
     raw = _read_bounded_regular_file(
@@ -3386,7 +3387,7 @@ def _cleanup_native_resume_stage(stage: Path, *, publish_parent: Path) -> None:
 
 
 def bootstrap_native_resume(root: Path = ROOT) -> dict[str, Any]:
-    """Atomically publish run-v25 from the tracked candidate projection."""
+    """Atomically publish run-v26 from the tracked candidate projection."""
 
     root = root.resolve(strict=True)
     paths = _paths(root)
@@ -5561,6 +5562,18 @@ def _run_locked_successor(
                 "configured scheduler did not render the reviewed ordered "
                 "provider route"
             )
+        owner_program_json = str(
+            rendered_environment.get(DATABASE_PROGRAM_JSON_ENV) or ""
+        ).strip()
+        if not owner_program_json:
+            raise SuccessorOperatorError(
+                "configured scheduler did not render the database program"
+            )
+        previous_extension_environment.setdefault(
+            DATABASE_PROGRAM_JSON_ENV,
+            os.environ.get(DATABASE_PROGRAM_JSON_ENV),
+        )
+        os.environ[DATABASE_PROGRAM_JSON_ENV] = owner_program_json
         scheduler_argv = [
             "--repo-root",
             str(root),

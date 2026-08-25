@@ -49,11 +49,17 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
+    TaskSourceTransitionError as DatabaseTaskSourceTransitionError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnectionPolicyError,
     connect_duckdb_with_policy,
     open_duckdb_connection,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    DATABASE_CLAIM_POLICY_SCHEMA,
+    DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+    DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
@@ -210,6 +216,7 @@ def _open_daemon(
     task_shard_count: int = 1,
     task_shard_index: int = 0,
     strict_task_sharding: bool = False,
+    idle_lane_work_stealing: str = "",
     control_path: Path | None = None,
     repo_root: Path | None = None,
     merge_target_ref: str = "HEAD",
@@ -268,6 +275,7 @@ def _open_daemon(
         task_shard_count=task_shard_count,
         task_shard_index=task_shard_index,
         strict_task_sharding=strict_task_sharding,
+        idle_lane_work_stealing=idle_lane_work_stealing,
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
         validation_fn=validation,
@@ -283,6 +291,43 @@ def _open_daemon(
 def _alias_home(task_alias: str, shard_count: int) -> int:
     digest = hashlib.sha256(task_alias.encode("utf-8")).hexdigest()
     return int(digest[:8], 16) % shard_count
+
+
+def _database_transfer_claim_receipt(
+    daemon: DatabaseImplementationDaemon,
+    task: object,
+    *,
+    lane_index: int,
+    claim_id: str = "claim:test-transfer",
+    attempt_id: str = "attempt:test-transfer",
+    lease_id: str = "lease:test-transfer",
+    fencing_token: int = 1,
+    fence_epoch: int = 1,
+) -> dict[str, object]:
+    task_alias = str(getattr(task, "task_alias"))
+    revision = int(getattr(task, "revision"))
+    return {
+        "operation": "database_claim",
+        "claim_id": claim_id,
+        "attempt_id": attempt_id,
+        "owner_session_id": daemon.owner_session_id,
+        "lease_id": lease_id,
+        "fencing_token": fencing_token,
+        "fence_epoch": fence_epoch,
+        "claimed_from_revision": revision,
+        "task_shard_count": daemon.task_shard_count,
+        "task_shard_index": lane_index,
+        "strict_task_sharding": True,
+        "idle_lane_work_stealing": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+        "task_prefix": daemon.task_prefix,
+        "virgin_task_transfer_request": {
+            "schema": DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+            "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+            "task_shard_count": daemon.task_shard_count,
+            "recipient_shard_index": lane_index,
+            "task_prefix": daemon.task_prefix,
+        },
+    }
 
 
 def _consumed_no_progress_evidence(
@@ -6771,11 +6816,8 @@ def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
         daemon.close()
 
 
-def test_database_daemon_rejects_idle_lane_work_stealing(tmp_path: Path) -> None:
-    with pytest.raises(
-        DatabaseImplementationAuthorityError,
-        match="does not support idle-lane work stealing",
-    ):
+def test_database_daemon_validates_idle_lane_work_stealing(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="empty or 'virgin-transfer'"):
         DatabaseImplementationDaemon(
             database_path=tmp_path / "control.duckdb",
             coordination_path=tmp_path / "coordination.duckdb",
@@ -6785,8 +6827,404 @@ def test_database_daemon_rejects_idle_lane_work_stealing(tmp_path: Path) -> None
             task_shard_count=2,
             task_shard_index=0,
             strict_task_sharding=True,
+            idle_lane_work_stealing="unbounded",
+        )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="requires strict task sharding",
+    ):
+        DatabaseImplementationDaemon(
+            database_path=tmp_path / "non-strict-control.duckdb",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            task_shard_count=2,
+            task_shard_index=0,
+            strict_task_sharding=False,
             idle_lane_work_stealing="virgin-transfer",
         )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="requires at least two task shards",
+    ):
+        DatabaseImplementationDaemon(
+            database_path=tmp_path / "single-control.duckdb",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            task_shard_count=1,
+            task_shard_index=0,
+            strict_task_sharding=True,
+            idle_lane_work_stealing="virgin-transfer",
+        )
+
+
+def test_database_virgin_transfer_rejects_nondeterministic_surplus_route(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+        idle_lane_work_stealing="virgin-transfer",
+        task_prefix="DQP-",
+    )
+    try:
+        daemon.materialize_population(_population(2))
+        retained = daemon.task_source.get("task:cid:001")
+        assert retained is not None
+        assert _alias_home(retained.task_alias, 2) == 1
+        with pytest.raises(
+            DatabaseTaskSourceConflictError,
+            match="authoritative route",
+        ):
+            daemon.task_source.compare_and_set_status(
+                retained.task_cid,
+                expected_revision=int(retained.revision),
+                status="in_progress",
+                receipt=_database_transfer_claim_receipt(
+                    daemon,
+                    retained,
+                    lane_index=0,
+                ),
+            )
+    finally:
+        daemon.close()
+
+
+def test_database_virgin_transfer_excludes_manual_donor_capacity(
+    tmp_path: Path,
+) -> None:
+    population = _population(2)
+    tasks = population["tasks"]
+    assert isinstance(tasks, list)
+    tasks[0]["completion"] = {"mode": "manual"}
+    control_path = tmp_path / "control.duckdb"
+    recipient = _open_daemon(
+        tmp_path / "lane-0",
+        control_path=control_path,
+        session="session:manual-donor-lane-0",
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+        idle_lane_work_stealing="virgin-transfer",
+        task_prefix="DQP-",
+    )
+    home = _open_daemon(
+        tmp_path / "lane-1",
+        control_path=control_path,
+        session="session:manual-donor-lane-1",
+        task_shard_count=2,
+        task_shard_index=1,
+        strict_task_sharding=True,
+        idle_lane_work_stealing="virgin-transfer",
+        task_prefix="DQP-",
+    )
+    try:
+        recipient.materialize_population(population)
+        assert recipient.claim_next() is None
+        claimed = home.claim_next()
+        assert claimed is not None
+        assert claimed.task_alias == "DQP-T002"
+    finally:
+        home.close()
+        recipient.close()
+
+
+def test_database_claim_uses_trusted_store_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+        idle_lane_work_stealing="virgin-transfer",
+        task_prefix="DQP-",
+    )
+    policy = {
+        "schema": DATABASE_CLAIM_POLICY_SCHEMA,
+        "task_prefix": "DQP-",
+        "task_shard_count": 2,
+        "strict_task_sharding": True,
+        "idle_lane_work_stealing": "virgin-transfer",
+    }
+    monkeypatch.setenv(
+        DATABASE_PROGRAM_JSON_ENV,
+        json.dumps({"claim_policy": policy}),
+    )
+    try:
+        daemon.materialize_population(_population(2))
+        target = daemon.task_source.get("task:cid:002")
+        assert target is not None
+        forged = _database_transfer_claim_receipt(
+            daemon,
+            target,
+            lane_index=0,
+        )
+        forged["strict_task_sharding"] = False
+        with pytest.raises(
+            DatabaseTaskSourceTransitionError,
+            match="trusted store policy",
+        ):
+            daemon.task_source.compare_and_set_status(
+                target.task_cid,
+                expected_revision=int(target.revision),
+                status="in_progress",
+                receipt=forged,
+            )
+        forged["strict_task_sharding"] = True
+        forged["operation"] = "forged_database_claim"
+        with pytest.raises(
+            DatabaseTaskSourceTransitionError,
+            match="requires database_claim",
+        ):
+            daemon.task_source.compare_and_set_status(
+                target.task_cid,
+                expected_revision=int(target.revision),
+                status="in_progress",
+                receipt=forged,
+            )
+    finally:
+        daemon.close()
+
+
+def test_database_virgin_transfer_starts_exact_four_ready_lanes(
+    tmp_path: Path,
+) -> None:
+    aliases = ("LGCVF-051", "LGCVF-060", "LGCVF-070", "LGCVF-080")
+    population = _population(0)
+    population["tasks"] = [
+        {
+            "task_cid": f"task:cid:{alias}",
+            "task_id": alias,
+            "goal_cid": "goal:cid:root",
+            "status": "ready",
+            "priority": "P0" if index == 0 else "P1",
+            "ordinal": index + 1,
+            "title": alias,
+        }
+        for index, alias in enumerate(aliases)
+    ]
+    control_path = tmp_path / "control.duckdb"
+    daemons = [
+        _open_daemon(
+            tmp_path / f"lane-{index}",
+            control_path=control_path,
+            session=f"session:lgcvf-lane-{index}",
+            task_shard_count=4,
+            task_shard_index=index,
+            strict_task_sharding=True,
+            idle_lane_work_stealing="virgin-transfer",
+            task_prefix="LGCVF-",
+        )
+        for index in range(4)
+    ]
+    try:
+        daemons[0].materialize_population(population)
+        attempts = [daemon.claim_next() for daemon in daemons]
+        assert all(attempt is not None for attempt in attempts)
+        claimed = [attempt for attempt in attempts if attempt is not None]
+        assert [attempt.task_alias for attempt in claimed] == [
+            "LGCVF-080",
+            "LGCVF-051",
+            "LGCVF-060",
+            "LGCVF-070",
+        ]
+        assert len({attempt.task_cid for attempt in claimed}) == 4
+
+        for lane_index, (daemon, attempt) in enumerate(zip(daemons, claimed)):
+            task = daemon.task_source.get(attempt.task_cid)
+            assert task is not None
+            receipt = task.body["completion_receipt"]
+            assert receipt["task_shard_count"] == 4
+            assert receipt["task_shard_index"] == lane_index
+            home = _alias_home(attempt.task_alias, 4)
+            transfer = receipt.get("virgin_task_transfer")
+            if home == lane_index:
+                assert transfer is None
+            else:
+                assert transfer["mode"] == "virgin-transfer"
+                assert transfer["home_shard_index"] == home
+                assert transfer["recipient_shard_index"] == lane_index
+                assert transfer["task_cid"] == attempt.task_cid
+                assert transfer["binding_id"] == content_identity(
+                    {
+                        key: value
+                        for key, value in transfer.items()
+                        if key != "binding_id"
+                    }
+                )
+            assert daemon._strict_resume_admission_result(attempt) is None
+    finally:
+        for daemon in reversed(daemons):
+            daemon.close()
+
+
+def test_database_virgin_transfer_binding_survives_retry_claim(
+    tmp_path: Path,
+) -> None:
+    population = _population(2)
+    control_path = tmp_path / "control.duckdb"
+    recipient = _open_daemon(
+        tmp_path / "lane-0",
+        control_path=control_path,
+        session="session:transfer-lane-0",
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+        idle_lane_work_stealing="virgin-transfer",
+        task_prefix="DQP-",
+    )
+    home = _open_daemon(
+        tmp_path / "lane-1",
+        control_path=control_path,
+        session="session:transfer-lane-1",
+        task_shard_count=2,
+        task_shard_index=1,
+        strict_task_sharding=True,
+        idle_lane_work_stealing="virgin-transfer",
+        task_prefix="DQP-",
+    )
+    try:
+        recipient.materialize_population(population)
+        first = recipient.claim_next()
+        assert first is not None
+        assert first.task_alias == "DQP-T002"
+        current = recipient.task_source.get(first.task_cid)
+        assert current is not None
+        origin_binding = dict(
+            current.body["completion_receipt"]["virgin_task_transfer"]
+        )
+        origin_cursor = dict(
+            current.body["completion_receipt"][
+                "virgin_task_transfer_claim_cursor"
+            ]
+        )
+        population_tasks = population.get("taskboard") or population["tasks"]
+        population_before = {
+            task["task_cid"]: recipient.task_source.get(task["task_cid"])
+            for task in population_tasks
+        }
+        with pytest.raises(
+            DatabaseTaskSourceTransitionError,
+            match="materialization cannot rewrite a claimed task",
+        ):
+            recipient.materialize_population(population)
+        population_after = {
+            task["task_cid"]: recipient.task_source.get(task["task_cid"])
+            for task in population_tasks
+        }
+        assert population_after == population_before
+        current = recipient.task_source.get(first.task_cid)
+        assert current is not None
+        assert current.status == "in_progress"
+        assert current.body["completion_receipt"]["virgin_task_transfer"] == (
+            origin_binding
+        )
+
+        recipient._cas_task_status_database(
+            first.task_cid,
+            expected_revision=int(current.revision),
+            new_status="retrying",
+            receipt={"operation": "test_database_virgin_transfer_retry"},
+        )
+        first_claim = recipient.coordinator.get_task_claim(first.claim_id)
+        assert first_claim is not None
+        recipient._release_unadmitted_claim(
+            first_claim,
+            reason="test_transfer_retry",
+        )
+
+        successor = recipient.claim_next()
+        assert successor is not None
+        assert successor.task_cid == first.task_cid
+        assert successor.attempt_id != first.attempt_id
+        retried = recipient.task_source.get(successor.task_cid)
+        assert retried is not None
+        retry_receipt = retried.body["completion_receipt"]
+        assert retry_receipt["virgin_task_transfer"] == origin_binding
+        assert retry_receipt["claim_id"] == successor.claim_id
+        assert retry_receipt["attempt_id"] == successor.attempt_id
+        assert retry_receipt["fencing_token"] > origin_binding["fencing_token"]
+        successor_cursor = retry_receipt["virgin_task_transfer_claim_cursor"]
+        assert successor_cursor["cursor_id"] != origin_cursor["cursor_id"]
+        assert successor_cursor["fencing_token"] == successor.fencing_token
+        assert recipient._strict_resume_admission_result(successor) is None
+        assert home._task_belongs_to_strict_shard(retried) is False
+
+        recipient._cas_task_status_database(
+            successor.task_cid,
+            expected_revision=int(retried.revision),
+            new_status="retrying",
+            receipt={"operation": "test_database_virgin_transfer_retry_again"},
+        )
+        successor_claim = recipient.coordinator.get_task_claim(
+            successor.claim_id
+        )
+        assert successor_claim is not None
+        recipient._release_unadmitted_claim(
+            successor_claim,
+            reason="test_transfer_retry_again",
+        )
+        retrying_again = recipient.task_source.get(successor.task_cid)
+        assert retrying_again is not None
+        replay = _database_transfer_claim_receipt(
+            recipient,
+            retrying_again,
+            lane_index=0,
+            claim_id=successor.claim_id,
+            attempt_id=successor.attempt_id,
+            lease_id=successor.lease_id,
+            fencing_token=successor.fencing_token,
+            fence_epoch=successor.fence_epoch,
+        )
+        with pytest.raises(
+            DatabaseTaskSourceTransitionError,
+            match="did not advance its claim cursor",
+        ):
+            recipient.task_source.compare_and_set_status(
+                retrying_again.task_cid,
+                expected_revision=int(retrying_again.revision),
+                status="in_progress",
+                receipt=replay,
+            )
+        third = recipient.claim_next()
+        assert third is not None
+        assert third.task_cid == first.task_cid
+        assert third.fencing_token > successor.fencing_token
+    finally:
+        home.close()
+        recipient.close()
+
+
+def test_database_owner_rejects_client_authored_transfer_binding(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path)
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        with pytest.raises(
+            DatabaseTaskSourceTransitionError,
+            match="owner-reserved",
+        ):
+            daemon.task_source.compare_and_set_status(
+                task.task_cid,
+                expected_revision=int(task.revision),
+                status="in_progress",
+                receipt={
+                    "operation": "forged_database_claim",
+                    "virgin_task_transfer": {"binding_id": "forged"},
+                },
+            )
+        unchanged = daemon.task_source.get(task.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "ready"
+        assert "completion_receipt" not in unchanged.body
+    finally:
+        daemon.close()
 
 
 def test_idle_run_once_idles_on_quack_attach_failure(

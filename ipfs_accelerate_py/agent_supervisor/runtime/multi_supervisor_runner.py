@@ -1644,6 +1644,7 @@ class DatabaseProgramConfig:
     export_profile: str = ""
     failover_policy: str = FAILOVER_FAIL_CLOSED
     explicit_legacy: bool = False
+    claim_policy: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         mode = str(self.authority_mode or "").strip().lower().replace("-", "_")
@@ -1737,6 +1738,39 @@ class DatabaseProgramConfig:
         object.__setattr__(self, "export_profile", export_profile)
         object.__setattr__(self, "explicit_legacy", bool(self.explicit_legacy))
 
+        claim_policy = dict(self.claim_policy or {})
+        if claim_policy:
+            expected_fields = {
+                "schema",
+                "task_prefix",
+                "task_shard_count",
+                "strict_task_sharding",
+                "idle_lane_work_stealing",
+            }
+            shard_count = claim_policy.get("task_shard_count")
+            if (
+                set(claim_policy) != expected_fields
+                or claim_policy.get("schema")
+                != "ipfs_accelerate_py/agent-supervisor/database-claim-policy@1"
+                or not str(claim_policy.get("task_prefix") or "").strip()
+                or isinstance(shard_count, bool)
+                or not isinstance(shard_count, int)
+                or shard_count <= 1
+                or claim_policy.get("strict_task_sharding") is not True
+                or claim_policy.get("idle_lane_work_stealing") != "virgin-transfer"
+            ):
+                raise DatabaseProgramConfigError(
+                    "claim_policy must be an exact strict virgin-transfer policy"
+                )
+            claim_policy["task_prefix"] = str(
+                claim_policy["task_prefix"]
+            ).strip()
+        object.__setattr__(
+            self,
+            "claim_policy",
+            MappingProxyType(claim_policy),
+        )
+
         if mode == AUTHORITY_MODE_LEGACY_MARKDOWN:
             if kind not in {
                 TASK_SOURCE_LEGACY_MARKDOWN,
@@ -1785,7 +1819,7 @@ class DatabaseProgramConfig:
                 )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": DATABASE_PROGRAM_CONFIG_SCHEMA,
             "interface": DATABASE_PROGRAM_CONFIG_INTERFACE,
             "authority_mode": self.authority_mode,
@@ -1802,6 +1836,9 @@ class DatabaseProgramConfig:
             "failover_policy": self.failover_policy,
             "explicit_legacy": self.explicit_legacy,
         }
+        if self.claim_policy:
+            payload["claim_policy"] = dict(self.claim_policy)
+        return payload
 
     def redacted_dict(self) -> dict[str, Any]:
         """Return a public projection that never exposes raw secret material."""
@@ -1959,6 +1996,10 @@ class DatabaseProgramConfig:
             raise DatabaseProgramConfigError(
                 "database program config must be an object"
             )
+        if "claim_policy" in payload and not isinstance(
+            payload.get("claim_policy"), Mapping
+        ):
+            raise DatabaseProgramConfigError("claim_policy must be an object")
         return cls(
             authority_mode=str(payload.get("authority_mode") or ""),
             task_source_kind=str(payload.get("task_source_kind") or ""),
@@ -1983,6 +2024,11 @@ class DatabaseProgramConfig:
                 payload.get("failover_policy") or FAILOVER_FAIL_CLOSED
             ),
             explicit_legacy=bool(payload.get("explicit_legacy", False)),
+            claim_policy=(
+                payload.get("claim_policy")
+                if isinstance(payload.get("claim_policy"), Mapping)
+                else None
+            ),
         )
 
     @classmethod

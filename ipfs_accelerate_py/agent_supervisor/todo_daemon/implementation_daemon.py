@@ -177,6 +177,13 @@ from ..task_sources.board_control_plane import (
 from ..task_sources.database_task_source import (
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
 )
+from ..task_sources.intent_repository import (
+    DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+    DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+    database_task_alias_home_shard_index,
+    database_virgin_transfer_binding_for_task,
+    database_virgin_transfer_routes,
+)
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
 from ..task_sources.database_task_source import (
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
@@ -7229,10 +7236,7 @@ def transitive_task_dependents(
 def _task_alias_home_shard_index(task_alias: str, shard_count: int) -> int:
     """Return the shared deterministic alias-hash home lane."""
 
-    if shard_count <= 1:
-        return 0
-    digest = hashlib.sha256(str(task_alias).encode("utf-8")).hexdigest()
-    return int(digest[:8], 16) % shard_count
+    return database_task_alias_home_shard_index(task_alias, shard_count)
 
 
 class PortalImplementationDaemon:
@@ -74498,10 +74502,27 @@ class DatabaseImplementationDaemon:
         self.idle_lane_work_stealing = str(
             idle_lane_work_stealing or ""
         ).strip().lower()
-        if self.idle_lane_work_stealing:
+        if self.idle_lane_work_stealing not in IDLE_LANE_WORK_STEALING_MODES:
+            raise ValueError(
+                "idle_lane_work_stealing must be empty or 'virgin-transfer'"
+            )
+        if self.idle_lane_work_stealing and not self.strict_task_sharding:
             raise DatabaseImplementationAuthorityError(
-                "database authority does not support idle-lane work stealing; "
-                "use exact slices or deterministic strict sharding"
+                "database idle-lane work stealing requires strict task sharding"
+            )
+        if self.idle_lane_work_stealing and self.task_shard_count <= 1:
+            raise DatabaseImplementationAuthorityError(
+                "database idle-lane work stealing requires at least two task shards"
+            )
+        if self.idle_lane_work_stealing and not self.task_prefix:
+            raise DatabaseImplementationAuthorityError(
+                "database idle-lane work stealing requires a task prefix"
+            )
+        if self.idle_lane_work_stealing and (
+            self.execution_slice_task_ids or self.execution_slice_task_cids
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "database idle-lane work stealing cannot combine with exact slices"
             )
         if (
             self.authority_mode == "quack"
@@ -77169,6 +77190,7 @@ class DatabaseImplementationDaemon:
         """
 
         tasks, ready_cids = self._stable_authoritative_task_projection()
+        ready_routes = self._database_virgin_transfer_routes(tasks, ready_cids)
         synchronize = getattr(
             self.coordinator,
             "synchronize_authoritative_task",
@@ -77183,7 +77205,10 @@ class DatabaseImplementationDaemon:
             str(task.task_cid)
             for task in tasks
             if str(task.task_cid) in ready_cids
-            and self._database_task_is_eligible(task)
+            and self._database_task_is_eligible(
+                task,
+                ready_routes=ready_routes,
+            )
             and not self._automatic_claim_forbidden(task)
         }
         projection = self.coordinator.coordination_registry_projection()
@@ -77321,6 +77346,36 @@ class DatabaseImplementationDaemon:
 
         return _task_alias_home_shard_index(task_alias, self.task_shard_count)
 
+    @staticmethod
+    def _database_task_status_receipt(task: Any) -> Mapping[str, Any]:
+        body = getattr(task, "body", None)
+        receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        return receipt if isinstance(receipt, Mapping) else {}
+
+    def _database_virgin_transfer_routes(
+        self,
+        tasks: Sequence[Any],
+        ready_cids: Iterable[str],
+    ) -> Mapping[str, int]:
+        """Retain one home task and route virgin surplus to idle lanes."""
+
+        if (
+            not self.strict_task_sharding
+            or self.idle_lane_work_stealing
+            != IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER
+        ):
+            return MappingProxyType({})
+        return database_virgin_transfer_routes(
+            tasks,
+            ready_cids,
+            shard_count=self.task_shard_count,
+            task_prefix=self.task_prefix,
+        )
+
     def _task_belongs_to_strict_shard(self, task: Any) -> bool:
         """Return whether ``task`` is admitted to this strict database lane.
 
@@ -77334,6 +77389,12 @@ class DatabaseImplementationDaemon:
         task_alias = str(getattr(task, "task_alias", "") or "").strip()
         if not task_alias:
             return False
+        binding = database_virgin_transfer_binding_for_task(
+            task,
+            shard_count=self.task_shard_count,
+        )
+        if binding is not None:
+            return int(binding["recipient_shard_index"]) == self.task_shard_index
         return self._task_home_shard_index(task_alias) == self.task_shard_index
 
     def _database_task_is_in_execution_slice(self, task: Any) -> bool:
@@ -77348,11 +77409,22 @@ class DatabaseImplementationDaemon:
             return False
         return True
 
-    def _database_task_is_eligible(self, task: Any) -> bool:
+    def _database_task_is_eligible(
+        self,
+        task: Any,
+        *,
+        ready_routes: Mapping[str, int] | None = None,
+    ) -> bool:
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        shard_admitted = (
+            ready_routes.get(task_cid) == self.task_shard_index
+            if ready_routes is not None and task_cid in ready_routes
+            else self._task_belongs_to_strict_shard(task)
+        )
         return bool(
             self._database_task_is_in_execution_slice(task)
             and self._task_matches_prefix(task)
-            and self._task_belongs_to_strict_shard(task)
+            and shard_admitted
         )
 
     def _automatic_claim_exclusions(self) -> set[str]:
@@ -77809,6 +77881,10 @@ class DatabaseImplementationDaemon:
             current_tasks, authoritative_ready_cids = (
                 self._stable_authoritative_task_projection()
             )
+            current_ready_routes = self._database_virgin_transfer_routes(
+                current_tasks,
+                authoritative_ready_cids,
+            )
             current_by_cid = {str(item.task_cid): item for item in current_tasks}
             task = current_by_cid.get(str(claim.task_cid))
             task_status = str(getattr(task, "status", "") or "").lower()
@@ -77861,7 +77937,10 @@ class DatabaseImplementationDaemon:
             )
             shard_admitted = bool(
                 task is not None
-                and self._task_belongs_to_strict_shard(task)
+                and self._database_task_is_eligible(
+                    task,
+                    ready_routes=current_ready_routes,
+                )
             )
             ready = (
                 task is not None
@@ -77908,20 +77987,43 @@ class DatabaseImplementationDaemon:
                 # The owner-side status CAS is the shared exclusion point for
                 # daemons whose fenced coordination stores are lane-local.
                 if ready:
+                    claim_receipt: dict[str, Any] = {
+                        "operation": "database_claim",
+                        "claim_id": claim.claim_id,
+                        "attempt_id": claim.attempt_id,
+                        "owner_session_id": self.owner_session_id,
+                        "lease_id": claim.lease_id,
+                        "fencing_token": int(claim.fencing_token),
+                        "fence_epoch": int(claim.fence_epoch),
+                        "claimed_from_revision": int(task.revision),
+                        "task_shard_count": self.task_shard_count,
+                        "task_shard_index": self.task_shard_index,
+                        "strict_task_sharding": self.strict_task_sharding,
+                        "idle_lane_work_stealing": (
+                            self.idle_lane_work_stealing
+                        ),
+                        "task_prefix": self.task_prefix,
+                    }
+                    if (
+                        self.idle_lane_work_stealing
+                        == IDLE_LANE_WORK_STEALING_VIRGIN_TRANSFER
+                        and self._task_home_shard_index(task_alias)
+                        != self.task_shard_index
+                    ):
+                        claim_receipt["virgin_task_transfer_request"] = {
+                            "schema": (
+                                DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA
+                            ),
+                            "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                            "task_shard_count": self.task_shard_count,
+                            "recipient_shard_index": self.task_shard_index,
+                            "task_prefix": self.task_prefix,
+                        }
                     self._cas_task_status_database(
                         task.task_cid,
                         expected_revision=int(task.revision),
                         new_status="in_progress",
-                        receipt={
-                            "operation": "database_claim",
-                            "claim_id": claim.claim_id,
-                            "attempt_id": claim.attempt_id,
-                            "owner_session_id": self.owner_session_id,
-                            "lease_id": claim.lease_id,
-                            "fencing_token": int(claim.fencing_token),
-                            "fence_epoch": int(claim.fence_epoch),
-                            "claimed_from_revision": int(task.revision),
-                        },
+                        receipt=claim_receipt,
                     )
             except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
                 self._release_unadmitted_claim(
@@ -79395,6 +79497,23 @@ class DatabaseImplementationDaemon:
                 != str(new_status).strip().lower()
             ):
                 raise
+            if (
+                new_status == "in_progress"
+                and receipt_payload.get("operation") == "database_claim"
+            ):
+                current_receipt = self._database_task_status_receipt(current)
+                if any(
+                    current_receipt.get(field) != receipt_payload.get(field)
+                    for field in (
+                        "operation",
+                        "claim_id",
+                        "attempt_id",
+                        "owner_session_id",
+                    )
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database task was claimed by a different fenced attempt"
+                    ) from exc
             # The owner already holds the requested status.  Replay the CAS at
             # the observed revision so a no-op receipt is admitted instead of
             # crash-looping the daemon on transition_invalid.

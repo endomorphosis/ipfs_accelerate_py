@@ -63,17 +63,24 @@
     "task_source_kind": "duckdb",
     "endpoint_secret_handle": "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
     "quack_endpoint": "quack:127.0.0.1:24688",
-    "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/control.duckdb",
-    "store_generation": "lgcvf-run-v25",
+    "store_id": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/control.duckdb",
+    "store_generation": "lgcvf-run-v26",
     "schema_revision": "datasets-authoritative-operational-v1",
     "schema_profile": "datasets-authoritative-operational",
     "semantic_relations_permitted": false,
-    "event_store_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/events",
-    "runtime_registry_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/quack-owner",
-    "worktree_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/worktrees",
-    "export_profile": "lgcvf-run-v25",
+    "event_store_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/events",
+    "runtime_registry_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/quack-owner",
+    "worktree_root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/worktrees",
+    "export_profile": "lgcvf-run-v26",
     "failover_policy": "fail_closed",
-    "explicit_legacy": false
+    "explicit_legacy": false,
+    "claim_policy": {
+      "schema": "ipfs_accelerate_py/agent-supervisor/database-claim-policy@1",
+      "task_prefix": "LGCVF-",
+      "task_shard_count": 4,
+      "strict_task_sharding": true,
+      "idle_lane_work_stealing": "virgin-transfer"
+    }
   },
   "bootstrap_writer_policy": {
     "maximum_processes": 1,
@@ -89,9 +96,9 @@
     "scheduling_prerequisite": false,
     "completion_prerequisite": false,
     "source_authority": "database_program DuckDB committed state through the Quack owner",
-    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/ducklake-board-projection",
-    "catalog_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/ducklake-board-projection/lake.ducklake",
-    "data_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/ducklake-board-projection/lake-data",
+    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/ducklake-board-projection",
+    "catalog_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/ducklake-board-projection/lake.ducklake",
+    "data_path": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/ducklake-board-projection/lake-data",
     "logical_datasets": [
       "task_history",
       "validation_history",
@@ -164,13 +171,13 @@
     "test/api/test_agent_supervisor_lgcvf_quack_successor.py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25",
-    "state": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/state",
-    "worktrees": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/worktrees",
-    "merge_queue": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/merge-queue",
-    "logs": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/logs",
-    "evidence": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/evidence",
-    "quack_owner": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v25/quack-owner",
+    "root": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26",
+    "state": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/state",
+    "worktrees": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/worktrees",
+    "merge_queue": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/merge-queue",
+    "logs": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/logs",
+    "evidence": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/evidence",
+    "quack_owner": "data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v26/quack-owner",
     "generated_runtime_artifacts_are_completion_authority": false
   },
   "lanes": [

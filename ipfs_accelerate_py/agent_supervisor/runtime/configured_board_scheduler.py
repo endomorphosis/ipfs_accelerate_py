@@ -2377,6 +2377,29 @@ def load_configured_board(
             database_program = parse_database_program_config(program_payload)
         except DatabaseProgramConfigError as exc:
             raise ConfiguredBoardError(str(exc)) from exc
+        claim_policy = dict(database_program.claim_policy or {})
+        normalized_prefix = re.sub(
+            r"^\s*#{1,6}\s*",
+            "",
+            task_prefix,
+        ).strip()
+        expected_claim_policy = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-claim-policy@1"
+            ),
+            "task_prefix": normalized_prefix,
+            "task_shard_count": max_lanes,
+            "strict_task_sharding": strict_task_sharding,
+            "idle_lane_work_stealing": idle_lane_work_stealing,
+        }
+        if idle_lane_work_stealing and (
+            database_program.authority_mode == "quack"
+            and claim_policy != expected_claim_policy
+        ):
+            raise ConfiguredBoardError(
+                "database claim_policy differs from the configured board"
+            )
 
     _objective_refill_controls(payload)
 
