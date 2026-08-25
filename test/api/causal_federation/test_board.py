@@ -120,11 +120,7 @@ def test_production_parsers_preserve_goal_and_task_dags() -> None:
     by_id = {task.task_id: task for task in tasks}
     assert all(
         by_id[f"CASF-{index:03d}"].metadata.get("no-change completion") == "allowed"
-        for index in range(43)
-    )
-    assert all(
-        by_id[f"CASF-{index:03d}"].metadata.get("no-change completion") is None
-        for index in range(43, 44)
+        for index in range(44)
     )
 
 
@@ -316,20 +312,21 @@ def test_validator_rejects_no_change_population_drift(tmp_path, monkeypatch) -> 
         for error in report["errors"]
     )
 
-    broadened = tmp_path / "broadened-no-change.todo.md"
+    invalid = tmp_path / "invalid-no-change.todo.md"
     heading = "## CASF-043 Produce current-tree qualification and residual-gap report"
     prefix, suffix = original.split(heading, 1)
     suffix = suffix.replace(
-        "- Completion: auto\n",
-        "- Completion: auto\n- No-change completion: allowed\n",
+        "- No-change completion: allowed\n",
+        "- No-change completion: forbidden\n",
         1,
     )
-    broadened.write_text(prefix + heading + suffix, encoding="utf-8")
-    monkeypatch.setattr(validator, "BOARD", broadened)
+    invalid.write_text(prefix + heading + suffix, encoding="utf-8")
+    monkeypatch.setattr(validator, "BOARD", invalid)
     report = validator.validate_program()
     assert report["valid"] is False
     assert any(
-        "CASF-043: unlanded task must remain outside no-change completion" in error
+        "CASF-043: sealed landed task must allow exact validated no-change completion"
+        in error
         for error in report["errors"]
     )
 
