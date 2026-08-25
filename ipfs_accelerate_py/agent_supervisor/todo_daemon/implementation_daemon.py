@@ -65911,7 +65911,11 @@ class PortalImplementationDaemon:
             key = (task_id, attempt)
             if event_type == "implementation_started":
                 inflight[key] = event
-            elif event_type in {"implementation_finished", "implementation_provider_exhausted"}:
+            elif event_type in {
+                "implementation_finished",
+                "implementation_provider_exhausted",
+                "implementation_state_recovered",
+            }:
                 inflight.pop(key, None)
 
         return list(inflight.values())

@@ -1,0 +1,19 @@
+{
+  "completion_authoritative": false,
+  "decision": "permanent_deterministic_only",
+  "disposition": "frozen_no_learned_tokenizer_admission",
+  "golden_token_class_receipt_cid": "baguqeerateyt7bjwvke756iuphgjxd7hiozya3z6buk3z3ldgde2lrdm4twa",
+  "policy_cid": "baguqeeraluqwxtejicycax65cicqfibtyy5kxkxxyng5nzbxmuooqedw2vka",
+  "reason_codes": [
+    "no_learned_tokenizer_candidate_identity",
+    "no_rights_admitted_materialized_training_rows",
+    "successor_split_is_permanent_no_go"
+  ],
+  "result_cid": "baguqeera2wxw5woodrk5534uu6wzwhxu7e3c3glizd4ns6bofd32qx43yhbq",
+  "result_identity": "RESULT(PGIR-203)",
+  "result_sha256": "sha256:d5af6ed9ce1c55deef94a7ad9b1ef4f9362d9968c8f8d9782e28f7a85f9bc1c3",
+  "schema": "pgir-task-result@1",
+  "task_id": "PGIR-203",
+  "training_authorized": false,
+  "unknown_token_behavior": "fail_closed"
+}
