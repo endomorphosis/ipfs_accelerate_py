@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import base64
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
@@ -21,6 +23,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import 
     RECEIPT_DIR,
     RECEIPT_FILES,
     RECEIPT_SCHEMA,
+    REQUIRED_QUACK_EXTENSION_FINGERPRINT,
+    REQUIRED_QUACK_EXTENSION_VERSION,
+    REQUIRED_QUACK_PLATFORM,
     admission_bundle_review_payload,
     admission_bundle_target_decision,
     cid,
@@ -157,6 +162,66 @@ def test_duckdb_quack_receipt_contract() -> None:
         assert evidence["under_approved_import_root"] is True
         assert evidence["quack_probe"]["passes_health_check"] is True
         assert evidence["quack_probe"]["extension"]["installed_from"] == "core"
+
+
+def test_duckdb_quack_probe_requires_the_exact_host_profile(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import quack_capabilities
+
+    observed: dict[str, object] = {}
+
+    class _Report:
+        passes_health_check = True
+        extension = SimpleNamespace(
+            installed_from="core",
+            extension_version=REQUIRED_QUACK_EXTENSION_VERSION,
+        )
+        extension_fingerprint = REQUIRED_QUACK_EXTENSION_FINGERPRINT
+        platform_name = "linux"
+        platform_machine = "aarch64"
+
+        def to_dict(self) -> dict:
+            return {
+                "passes_health_check": True,
+                "extension": {
+                    "installed_from": "core",
+                    "extension_version": REQUIRED_QUACK_EXTENSION_VERSION,
+                },
+                "extension_fingerprint": REQUIRED_QUACK_EXTENSION_FINGERPRINT,
+                "platform_name": "linux",
+                "platform_machine": "aarch64",
+                "profile": observed["profile"].to_dict(),
+            }
+
+    def _probe(**kwargs):
+        observed.update(kwargs)
+        return _Report()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "duckdb",
+        SimpleNamespace(
+            __version__="1.5.5",
+            __file__=str(eaaef_host_admission.APPROVED_IMPORT_ROOT / "duckdb/__init__.py"),
+        ),
+    )
+    monkeypatch.setattr(quack_capabilities, "probe_quack_capabilities", _probe)
+
+    evidence = eaaef_host_admission.probe_duckdb_quack()
+
+    profile = observed["profile"]
+    assert profile.pinned_duckdb_version == "1.5.5"
+    assert profile.pinned_extension_fingerprint == REQUIRED_QUACK_EXTENSION_FINGERPRINT
+    assert profile.pinned_platform == REQUIRED_QUACK_PLATFORM
+    assert profile.allow_experimental_within_minor is False
+    assert observed["allow_network_install"] is False
+    assert evidence["decision"] == "admitted"
+    assert evidence["required_quack_extension_version"] == (
+        REQUIRED_QUACK_EXTENSION_VERSION
+    )
+    assert evidence["required_quack_extension_fingerprint"] == (
+        REQUIRED_QUACK_EXTENSION_FINGERPRINT
+    )
+    assert evidence["required_quack_platform"] == REQUIRED_QUACK_PLATFORM
 
 
 def test_engine_mode_receipt_contract() -> None:

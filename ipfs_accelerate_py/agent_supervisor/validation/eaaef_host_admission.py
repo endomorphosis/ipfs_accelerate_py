@@ -57,6 +57,11 @@ PRINCIPAL_STORE_SCHEMA: Final = (
 )
 REQUIRED_DUCKDB: Final = "1.5.5"
 REQUIRED_QUACK: Final = "1.5.5+core"
+REQUIRED_QUACK_EXTENSION_VERSION: Final = "c154811"
+REQUIRED_QUACK_EXTENSION_FINGERPRINT: Final = (
+    "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b"
+)
+REQUIRED_QUACK_PLATFORM: Final = "linux-aarch64"
 APPROVED_IMPORT_ROOT: Final = Path(
     "/home/barberb/.local/lib/python3.12/site-packages"
 )
@@ -747,6 +752,7 @@ def probe_duckdb_quack() -> dict[str, Any]:
     import duckdb
 
     from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
+        QuackCompatibilityProfile,
         probe_quack_capabilities,
     )
 
@@ -757,7 +763,15 @@ def probe_duckdb_quack() -> dict[str, Any]:
         under_approved_root = True
     except (ValueError, OSError):
         under_approved_root = False
+    profile = QuackCompatibilityProfile(
+        profile_id="eaaef-duckdb-quack-1.5.5-core-c154811-linux-aarch64",
+        pinned_duckdb_version=REQUIRED_DUCKDB,
+        pinned_extension_fingerprint=REQUIRED_QUACK_EXTENSION_FINGERPRINT,
+        pinned_platform=REQUIRED_QUACK_PLATFORM,
+        allow_experimental_within_minor=False,
+    )
     report = probe_quack_capabilities(
+        profile=profile,
         allow_network_install=False,
         allow_local_load=True,
         use_cache=False,
@@ -770,6 +784,11 @@ def probe_duckdb_quack() -> dict[str, Any]:
         report.passes_health_check
         and exact_duckdb
         and installed_from == "core"
+        and str(report.extension.extension_version or "")
+        == REQUIRED_QUACK_EXTENSION_VERSION
+        and report.extension_fingerprint == REQUIRED_QUACK_EXTENSION_FINGERPRINT
+        and f"{report.platform_name}-{report.platform_machine}"
+        == REQUIRED_QUACK_PLATFORM
     )
     if exact_duckdb and exact_quack and under_approved_root:
         decision = "admitted"
@@ -779,6 +798,9 @@ def probe_duckdb_quack() -> dict[str, Any]:
         "decision": decision,
         "required_duckdb": REQUIRED_DUCKDB,
         "required_quack": REQUIRED_QUACK,
+        "required_quack_extension_version": REQUIRED_QUACK_EXTENSION_VERSION,
+        "required_quack_extension_fingerprint": REQUIRED_QUACK_EXTENSION_FINGERPRINT,
+        "required_quack_platform": REQUIRED_QUACK_PLATFORM,
         "observed_duckdb": observed,
         "observed_module_path": str(module_path),
         "under_approved_import_root": under_approved_root,
