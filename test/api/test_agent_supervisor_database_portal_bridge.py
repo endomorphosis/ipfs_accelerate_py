@@ -5441,6 +5441,10 @@ def _append_exact_callback_completion_chain(
             terminal_merge["merge_commit"] = "e" * 40
         elif terminal_tamper == "target-commit":
             terminal_merge["target_commit"] = "e" * 40
+        elif terminal_tamper == "empty-target-commit":
+            terminal_merge["target_commit"] = ""
+        elif terminal_tamper == "missing-target-commit":
+            terminal_merge.pop("target_commit")
         append_jsonl_event(
             paths.events,
             "implementation_finished",
@@ -5547,7 +5551,40 @@ def test_bridge_accepts_exact_synchronous_source_with_terminal_confirmation(
     assert evidence["baseline_commit"] == "b" * 40
 
 
-@pytest.mark.parametrize("terminal_tamper", ["merge-commit", "target-commit"])
+def test_bridge_accepts_historical_terminal_confirmation_without_target_commit(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "historical terminal callback lineage reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    _append_exact_callback_completion_chain(
+        paths,
+        projected_source=True,
+        terminal_tamper="missing-target-commit",
+    )
+
+    evidence = bridge._completion_event_evidence(
+        paths,
+        alias="LGSWF-004",
+        task_cid="task:cid:004",
+    )
+
+    assert evidence is not None
+    assert evidence["completion_source_event_type"] == "implementation_finished"
+    assert evidence["implementation_commit"] == "a" * 40
+    assert evidence["baseline_commit"] == "b" * 40
+
+
+@pytest.mark.parametrize(
+    "terminal_tamper",
+    ["merge-commit", "target-commit", "empty-target-commit"],
+)
 def test_bridge_rejects_terminal_confirmation_commit_mismatch(
     tmp_path: Path,
     terminal_tamper: str,
@@ -6719,6 +6756,93 @@ def test_callback_integration_source_requires_exact_receipt_event_and_blobs(
         }
     ]
     assert isinstance(source["train_receipt"], str)
+
+    modern_source_event = json.loads(json.dumps(source_event))
+    modern_source_event.update(
+        sequence=20,
+        event_id="sha256:" + "5" * 64,
+        provider_dispatched=False,
+        board_completion={
+            "complete": True,
+            "pending_merge": False,
+            "reason": "merged_into_target",
+        },
+    )
+    modern_source_event["merge_result"] = {
+        "attempted": True,
+        "queued": False,
+        "merged": True,
+        "reason": "merged",
+        "request_id": request_id,
+        "implementation_commit": candidate,
+        "completion_task_cids": {task_alias: task_cid},
+        "merge_commit": integration,
+        "target_repository_id": "repository:exact-callback",
+        "target_branch": "main",
+    }
+    reconciliation_event = {
+        "type": "merge_reconciled",
+        "sequence": 19,
+        "event_id": "sha256:" + "6" * 64,
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "implementation_commit": candidate,
+        "request_id": request_id,
+        "merge_commit": integration,
+        "target_commit": integration,
+    }
+    modern_completion_event = {
+        **completion_event,
+        "sequence": 22,
+        "event_id": "sha256:" + "7" * 64,
+    }
+    bridge.merge_queue = SimpleNamespace(
+        target_repository_id="repository:exact-callback"
+    )
+    bridge._verified_event_chain = lambda _paths: [
+        reconciliation_event,
+        modern_source_event,
+        modern_completion_event,
+    ]
+    bridge._completion_event_evidence = lambda *_args, **_kwargs: {
+        "completion_source_event_type": "implementation_finished",
+        "completion_source_event_id": modern_source_event["event_id"],
+        "completion_event_id": modern_completion_event["event_id"],
+        "completion_source_portal_attempt": modern_source_event["attempt"],
+        "baseline_commit": baseline,
+        "implementation_commit": candidate,
+    }
+
+    modern_source = bridge._callback_integration_source_evidence(
+        request,
+        projection,
+        train=train,
+    )
+
+    assert modern_source is not None
+    assert modern_source["source_event_id"] == modern_source_event["event_id"]
+    explicit_target = json.loads(json.dumps(modern_source_event))
+    explicit_target["merge_result"]["target_commit"] = "9" * 40
+    bridge._verified_event_chain = lambda _paths: [
+        reconciliation_event,
+        explicit_target,
+        modern_completion_event,
+    ]
+    assert (
+        bridge._callback_integration_source_evidence(
+            request,
+            projection,
+            train=train,
+        )
+        is None
+    )
+
+    bridge.merge_queue = object()
+    bridge._verified_event_chain = lambda _paths: [
+        source_event,
+        completion_event,
+    ]
+    del bridge._completion_event_evidence
     forged = json.loads(json.dumps(receipt))
     forged["merge_result"]["integration_commit_proof"]["passed"] = False
     forged_train = SimpleNamespace(

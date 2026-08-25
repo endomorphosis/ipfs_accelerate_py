@@ -3420,12 +3420,14 @@ class DatabasePortalExecutionBridge:
         *,
         train: Any,
     ) -> dict[str, Any] | None:
-        """Verify one legacy callback integration that missed reconciliation.
+        """Verify one exact callback integration that missed database settlement.
 
-        This is intentionally closed over the historical schema-v3 shape.  A
-        completed row with a successful receipt is not enough: the queue row,
-        full train receipt, queued Portal source, later bare completion, Git
-        lineage, and every declared output blob must all agree exactly.
+        This is intentionally closed over two historical schema-v3 shapes: a
+        bare completion that missed reconciliation, or a zero-provider callback
+        confirmation whose terminal event omitted only the redundant target
+        commit.  A completed row with a successful receipt is not enough: the
+        queue row, full train receipt, exact Portal lineage, Git ancestry, and
+        every declared output blob must all agree.
         """
 
         if self.repository_root is None or self.merge_queue is None:
@@ -3747,44 +3749,99 @@ class DatabasePortalExecutionBridge:
             )
         ]
         completion_sequence = completions[0].get("sequence") if len(completions) == 1 else None
-        if (
-            source_event.get("task_id") != task_alias
-            or source_event.get("canonical_task_cid") != task_cid
-            or source_event.get("canonical_task_key") != task_key
-            or isinstance(source_attempt, bool)
-            or not isinstance(source_attempt, int)
-            or source_attempt < 1
-            or source_event.get("attempt_consumed") is not True
-            or source_event.get("provider_dispatched") is not True
-            or source_event.get("returncode") != 0
-            or source_event.get("baseline_ref") != baseline
-            or source_event.get("implementation_commit") != candidate
-            or re.fullmatch(r"sha256:[0-9a-f]{64}", source_event_id) is None
-            or isinstance(source_sequence, bool)
-            or not isinstance(source_sequence, int)
-            or not isinstance(event_validation, Mapping)
-            or event_validation.get("attempted") is not True
-            or event_validation.get("passed") is not True
-            or event_validation.get("returncode") != 0
-            or not isinstance(event_merge, Mapping)
-            or event_merge.get("queued") is not True
-            or event_merge.get("merged") is not False
-            or event_merge.get("reason") != "merge_queued"
-            or event_merge.get("request_id") != request_id
-            or event_merge.get("implementation_commit") != candidate
-            or event_merge.get("completion_task_cids") != {task_alias: task_cid}
-            or not isinstance(event_board, Mapping)
-            or event_board.get("complete") is not False
-            or event_board.get("pending_merge") is not True
-            or event_board.get("reason") != "merge_queued_awaiting_integration"
-            or len(completions) != 1
-            or completions[0].get("reason") != "task_became_completed"
-            or completions[0].get("completion_receipt_repair") is not False
-            or isinstance(completion_sequence, bool)
-            or not isinstance(completion_sequence, int)
-            or completion_sequence <= source_sequence
-            or reconciliations
-        ):
+        common_source_valid = bool(
+            source_event.get("task_id") == task_alias
+            and source_event.get("canonical_task_cid") == task_cid
+            and source_event.get("canonical_task_key") == task_key
+            and type(source_attempt) is int
+            and source_attempt >= 1
+            and source_event.get("returncode") == 0
+            and source_event.get("baseline_ref") == baseline
+            and source_event.get("implementation_commit") == candidate
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", source_event_id)
+            is not None
+            and type(source_sequence) is int
+            and isinstance(event_validation, Mapping)
+            and event_validation.get("attempted") is True
+            and event_validation.get("passed") is True
+            and event_validation.get("returncode") == 0
+            and isinstance(event_merge, Mapping)
+            and event_merge.get("request_id") == request_id
+            and event_merge.get("implementation_commit") == candidate
+            and event_merge.get("completion_task_cids")
+            == {task_alias: task_cid}
+            and isinstance(event_board, Mapping)
+            and len(completions) == 1
+            and completions[0].get("reason") == "task_became_completed"
+            and completions[0].get("completion_receipt_repair") is False
+            and type(completion_sequence) is int
+            and completion_sequence > source_sequence
+        )
+        legacy_bare_completion = bool(
+            common_source_valid
+            and source_event.get("attempt_consumed") is True
+            and source_event.get("provider_dispatched") is True
+            and event_merge.get("queued") is True
+            and event_merge.get("merged") is False
+            and event_merge.get("reason") == "merge_queued"
+            and event_board
+            == {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            }
+            and not reconciliations
+        )
+        try:
+            exact_completion = self._completion_event_evidence(
+                projection.paths,
+                alias=task_alias,
+                task_cid=task_cid,
+            )
+        except DatabasePortalBridgeError:
+            exact_completion = None
+        # One pre-fix producer copied the immutable integration into
+        # ``merge_commit`` after the exact callback reconciliation, but omitted
+        # the synonymous ``target_commit`` key from its terminal confirmation.
+        # Admit only that missing-key shape; an explicit conflicting target
+        # remains terminally invalid.
+        reconciliation = reconciliations[0] if len(reconciliations) == 1 else {}
+        historical_zero_provider_confirmation = bool(
+            common_source_valid
+            and isinstance(exact_completion, Mapping)
+            and exact_completion.get("completion_source_event_type")
+            == "implementation_finished"
+            and exact_completion.get("completion_source_event_id")
+            == source_event_id
+            and exact_completion.get("completion_event_id")
+            == completions[0].get("event_id")
+            and exact_completion.get("completion_source_portal_attempt")
+            == source_attempt
+            and exact_completion.get("baseline_commit") == baseline
+            and exact_completion.get("implementation_commit") == candidate
+            and source_event.get("attempt_consumed") is True
+            and source_event.get("provider_dispatched") is False
+            and event_merge.get("attempted") is True
+            and event_merge.get("queued") is False
+            and event_merge.get("merged") is True
+            and event_merge.get("reason") == "merged"
+            and event_merge.get("merge_commit") == integration
+            and "target_commit" not in event_merge
+            and event_merge.get("target_repository_id")
+            == str(getattr(self.merge_queue, "target_repository_id", "") or "")
+            and event_merge.get("target_branch") == self.merge_target_branch
+            and event_board
+            == {
+                "complete": True,
+                "pending_merge": False,
+                "reason": "merged_into_target",
+            }
+            and len(reconciliations) == 1
+            and reconciliation.get("request_id") == request_id
+            and reconciliation.get("merge_commit") == integration
+            and reconciliation.get("target_commit") == integration
+        )
+        if not legacy_bare_completion and not historical_zero_provider_confirmation:
             return None
 
         def git(*arguments: str) -> subprocess.CompletedProcess[Any]:
@@ -5558,7 +5615,15 @@ class DatabasePortalExecutionBridge:
                     == queued_merge.get("target_branch")
                     and terminal_merge.get("merge_commit")
                     == reconciliation_event.get("merge_commit")
-                    and terminal_merge.get("target_commit")
+                    # Historical terminal confirmations omitted this redundant
+                    # key after the exact reconciliation had already sealed it.
+                    # Fall back only when the key is absent, never when an
+                    # explicit value conflicts.
+                    and (
+                        terminal_merge.get("target_commit")
+                        if "target_commit" in terminal_merge
+                        else terminal_merge.get("merge_commit")
+                    )
                     == reconciliation_event.get("target_commit")
                 )
                 if ordered_confirmation:
