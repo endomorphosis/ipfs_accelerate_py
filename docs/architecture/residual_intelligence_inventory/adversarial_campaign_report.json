@@ -1,6 +1,8 @@
 {
-  "schema": "ipfs_accelerate_py/agent-supervisor/residual-adversarial-campaign-report@1",
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-adversarial-campaign-report@2",
   "tree_cid": "tree:fixture-not-qualified",
+  "assurance_interface": "AssuranceCampaignApi@1",
+  "completion_authoritative": false,
   "critical_zero_escape": true,
   "mutant_families": [
     "family",
@@ -21,5 +23,19 @@
     "authority",
     "completion"
   ],
-  "status": "fixture_campaign_not_production_authority"
+  "critical_boundary_evidence": {
+    "false_nonabstention_detected": true,
+    "prompt_injection_detected": true,
+    "leakage_blocked": true,
+    "stale_input_rejected": true,
+    "quantization_regression_detected": true,
+    "teacher_disagreement_escalated": true,
+    "authority_not_granted": true,
+    "completion_not_granted": true
+  },
+  "status": "fixture_campaign_not_production_authority",
+  "nonclaims": [
+    "This fixture is not an execution receipt from a qualified current-tree campaign.",
+    "This report cannot grant authority, promotion, proof acceptance, or completion."
+  ]
 }
