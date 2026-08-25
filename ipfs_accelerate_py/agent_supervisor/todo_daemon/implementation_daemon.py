@@ -24914,16 +24914,36 @@ class PortalImplementationDaemon:
                 task,
                 target_commit=target_before,
             )
-            lifecycle_record = self.worktree_lifecycle.begin_preparing(
-                task_id=task.task_id,
-                canonical_task_cid=self._canonical_ref(task),
-                attempt=attempt,
-                lane_id=self._worktree_lifecycle_lane_id(),
-                workspace_path=worktree_path,
-                branch=branch_name,
-                merge_target=target_branch,
-                state_dir=str(self.state_path.parent.resolve()),
-            )
+            try:
+                lifecycle_record = self.worktree_lifecycle.begin_preparing(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._canonical_ref(task),
+                    attempt=attempt,
+                    lane_id=self._worktree_lifecycle_lane_id(),
+                    workspace_path=worktree_path,
+                    branch=branch_name,
+                    merge_target=target_branch,
+                    state_dir=str(self.state_path.parent.resolve()),
+                )
+            except DuplicateAttemptError:
+                predecessor_recovery = (
+                    self._finalize_dead_predecessor_worktree_lifecycle_claim(
+                        task=task,
+                        attempt=attempt,
+                    )
+                )
+                if predecessor_recovery.get("finalized") is not True:
+                    raise
+                lifecycle_record = self.worktree_lifecycle.begin_preparing(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._canonical_ref(task),
+                    attempt=attempt,
+                    lane_id=self._worktree_lifecycle_lane_id(),
+                    workspace_path=worktree_path,
+                    branch=branch_name,
+                    merge_target=target_branch,
+                    state_dir=str(self.state_path.parent.resolve()),
+                )
             self._active_worktree_lifecycle = lifecycle_record
             baseline_ref = self._create_seeded_worktree(
                 worktree_path,
@@ -35014,8 +35034,8 @@ class PortalImplementationDaemon:
             # worktree exists so peer lanes cannot classify a branch-at-merge-
             # target checkout as already-merged while the owner is still mid
             # setup (ASI-171 / AICAT-025 prerequisite).
-            try:
-                lifecycle_record = self.worktree_lifecycle.begin_preparing(
+            def begin_lifecycle_claim() -> WorkspaceLifecycleRecord:
+                return self.worktree_lifecycle.begin_preparing(
                     task_id=task.task_id,
                     canonical_task_cid=self._canonical_ref(task),
                     attempt=attempt,
@@ -35025,18 +35045,48 @@ class PortalImplementationDaemon:
                     merge_target=self._main_branch_name(),
                     state_dir=str(self.state_path.parent.resolve()),
                 )
+
+            try:
+                lifecycle_record = begin_lifecycle_claim()
                 self._active_worktree_lifecycle = lifecycle_record
             except DuplicateAttemptError as exc:
-                return lifecycle_race_result(
-                    reason="worktree_lifecycle_claim_exists",
-                    task_id=task.task_id,
-                    attempt=attempt,
-                    extra={
-                        "error": str(exc)[-1000:],
-                        "worktree_path": str(worktree_path),
-                        "branch": branch_name,
-                    },
+                predecessor_recovery = (
+                    self._finalize_dead_predecessor_worktree_lifecycle_claim(
+                        task=task,
+                        attempt=attempt,
+                    )
                 )
+                if predecessor_recovery.get("finalized") is True:
+                    try:
+                        # One retry only.  A peer that wins after the exact
+                        # dead-owner finalization remains authoritative.
+                        lifecycle_record = begin_lifecycle_claim()
+                        self._active_worktree_lifecycle = lifecycle_record
+                    except DuplicateAttemptError as retry_exc:
+                        return lifecycle_race_result(
+                            reason="worktree_lifecycle_claim_exists",
+                            task_id=task.task_id,
+                            attempt=attempt,
+                            extra={
+                                "error": str(retry_exc)[-1000:],
+                                "initial_error": str(exc)[-1000:],
+                                "worktree_path": str(worktree_path),
+                                "branch": branch_name,
+                                "predecessor_recovery": predecessor_recovery,
+                            },
+                        )
+                else:
+                    return lifecycle_race_result(
+                        reason="worktree_lifecycle_claim_exists",
+                        task_id=task.task_id,
+                        attempt=attempt,
+                        extra={
+                            "error": str(exc)[-1000:],
+                            "worktree_path": str(worktree_path),
+                            "branch": branch_name,
+                            "predecessor_recovery": predecessor_recovery,
+                        },
+                    )
             seed_plan = (
                 {"reuse_prior_attempt": False}
                 if retry_no_change_probe_only
@@ -56758,6 +56808,588 @@ class PortalImplementationDaemon:
         state_dir = str(self.state_path.parent.resolve())
         shard = f"{self.task_shard_index}/{self.task_shard_count}"
         return f"{state_dir}:{shard}:{os.getpid()}"
+
+    def _finalize_dead_predecessor_worktree_lifecycle_claim(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Release one exact dead task-attempt claim before a bounded retry.
+
+        Lifecycle records are shared by every preserved supervisor generation
+        in the same Git common directory.  A successor generation deliberately
+        uses a new state directory, so its same-lane startup recovery cannot
+        retire an unexpired claim left by a stopped predecessor.  Only the
+        store's fully locked, exact-identity dead-owner CAS may bridge that
+        boundary; live, uninspectable, foreign-repository, and foreign-target
+        claims remain fenced.
+        """
+
+        canonical_task_cid = self._canonical_ref(task)
+        record = self.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=canonical_task_cid,
+            task_id=task.task_id,
+            attempt=attempt,
+        )
+        base: dict[str, Any] = {
+            "attempted": record is not None,
+            "finalized": False,
+            "task_id": task.task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": int(attempt),
+        }
+        if record is None:
+            return {**base, "reason": "task_attempt_claim_unavailable"}
+        base.update(
+            {
+                "record_id": record.record_id,
+                "workspace_path": record.workspace_path,
+                "predecessor_state_dir": record.state_dir,
+                "predecessor_owner_pid": record.owner.pid,
+                "predecessor_fence": record.fence,
+            }
+        )
+        if record.is_terminal:
+            return {**base, "reason": "task_attempt_claim_already_terminal"}
+
+        current_repo_root = str(self.repo_root.resolve(strict=False))
+        current_merge_target = self._main_branch_name().removeprefix(
+            "refs/heads/"
+        )
+        try:
+            record_repo_root = str(
+                Path(record.repo_root).resolve(strict=False)
+            )
+        except (OSError, RuntimeError, ValueError):
+            record_repo_root = ""
+        current_generation = self._state_dir_generation_binding(
+            self.state_path.parent
+        )
+        predecessor_generation = self._state_dir_generation_binding(
+            record.state_dir
+        )
+        predecessor_is_older = bool(
+            current_generation is not None
+            and predecessor_generation is not None
+            and predecessor_generation[0] == current_generation[0]
+            and predecessor_generation[1] < current_generation[1]
+        )
+        mismatched_fields = [
+            field_name
+            for field_name, matches in (
+                ("task_id", record.task_id == task.task_id),
+                (
+                    "canonical_task_cid",
+                    record.canonical_task_cid == canonical_task_cid,
+                ),
+                ("attempt", int(record.attempt) == int(attempt)),
+                ("repo_root", record_repo_root == current_repo_root),
+                (
+                    "merge_target",
+                    record.merge_target.removeprefix("refs/heads/")
+                    == current_merge_target,
+                ),
+                ("predecessor_generation", predecessor_is_older),
+            )
+            if not matches
+        ]
+        if mismatched_fields:
+            return {
+                **base,
+                "reason": "task_attempt_claim_identity_mismatch",
+                "mismatched_fields": mismatched_fields,
+            }
+        assert current_generation is not None
+        assert predecessor_generation is not None
+        base.update(
+            {
+                "current_generation": current_generation[1],
+                "predecessor_generation": predecessor_generation[1],
+            }
+        )
+
+        liveness = owner_liveness(
+            record.owner,
+            proc_root=self.worktree_lifecycle.proc_root,
+        )
+        base["predecessor_owner_liveness"] = liveness.value
+        if liveness is OwnerLiveness.ALIVE:
+            return {**base, "reason": "task_attempt_claim_owner_alive"}
+        if liveness is OwnerLiveness.UNKNOWN:
+            return {
+                **base,
+                "reason": "task_attempt_claim_owner_liveness_unknown",
+            }
+
+        quiescence = self._predecessor_worktree_dispatch_quiescence(record)
+        base["predecessor_dispatch_quiescence"] = quiescence
+        if quiescence.get("quiescent") is not True:
+            return {
+                **base,
+                "reason": str(
+                    quiescence.get("reason")
+                    or "task_attempt_claim_dispatch_quiescence_unproven"
+                ),
+            }
+
+        try:
+            terminal = self.worktree_lifecycle.finalize_exact_dead_owner(
+                record.workspace_path,
+                expected_record_id=record.record_id,
+                expected_fence=record.fence,
+                expected_lease_id=record.lease_id,
+                expected_owner=record.owner,
+                expected_task_id=record.task_id,
+                expected_canonical_task_cid=record.canonical_task_cid,
+                expected_attempt=record.attempt,
+                expected_branch=record.branch,
+                expected_merge_target=record.merge_target,
+                expected_repo_root=record.repo_root,
+                expected_state_dir=record.state_dir,
+                reason="successor_generation_dead_owner_superseded",
+            )
+        except (
+            FenceMismatchError,
+            OwnershipError,
+            WorktreeLifecycleError,
+            OSError,
+        ) as exc:
+            return {
+                **base,
+                "reason": "task_attempt_claim_finalization_race",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-500:],
+            }
+
+        finalized = {
+            **base,
+            "finalized": True,
+            "reason": "successor_generation_dead_owner_superseded",
+            "terminal_fence": terminal.fence,
+            "terminal_state": terminal.state.value,
+        }
+        self._record_event(
+            "worktree_lifecycle_dead_predecessor_claim_finalized",
+            finalized,
+        )
+        return finalized
+
+    @staticmethod
+    def _state_dir_generation_binding(
+        state_dir: str | Path,
+    ) -> tuple[tuple[str, ...], int] | None:
+        """Return the program-root identity and numeric ``run-vN`` generation."""
+
+        raw = str(state_dir or "").strip()
+        if not raw:
+            return None
+        try:
+            parts = Path(raw).resolve(strict=False).parts
+        except (OSError, RuntimeError, ValueError):
+            return None
+        matches = [
+            (index, match)
+            for index, part in enumerate(parts)
+            if (match := re.fullmatch(r"run-v([1-9][0-9]*)", part))
+            is not None
+        ]
+        if len(matches) != 1:
+            return None
+        index, match = matches[0]
+        if index + 1 >= len(parts) or parts[index + 1] != "state":
+            return None
+        return tuple(parts[:index]), int(match.group(1))
+
+    def _predecessor_worktree_dispatch_quiescence(
+        self,
+        record: WorkspaceLifecycleRecord,
+    ) -> dict[str, Any]:
+        """Prove no runner or isolation container still owns a dead claim."""
+
+        workspace = normalize_workspace_path(record.workspace_path)
+        age_seconds = max(
+            0.0,
+            float(self.worktree_lifecycle.clock())
+            - float(record.updated_at),
+        )
+        if age_seconds < INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_recent_activity_grace",
+                "age_seconds": age_seconds,
+                "required_age_seconds": (
+                    INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS
+                ),
+            }
+
+        def worktree_process_active() -> tuple[
+            bool | None,
+            int,
+            int,
+            dict[str, Any] | None,
+        ]:
+            process_lines = self._list_process_commands()
+            if not process_lines:
+                return None, 0, 0, None
+            # Cross-generation recovery is deliberately stricter than normal
+            # inflight classification: any process still naming the preserved
+            # workspace keeps its lifecycle fence, including custom runners
+            # and validation/MCP descendants unknown to the provider regex.
+            if any(workspace in line for line in process_lines):
+                return True, len(process_lines), 0, None
+
+            proc_root = self.worktree_lifecycle.proc_root
+            try:
+                entries = tuple(proc_root.iterdir())
+            except OSError:
+                return None, len(process_lines), 0, None
+            workspace_path = Path(workspace)
+            observed_cwds = 0
+            denied_cwds = 0
+            for entry in entries:
+                if not entry.name.isdigit():
+                    continue
+                try:
+                    if entry.stat().st_uid != os.getuid():
+                        continue
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    denied_cwds += 1
+                    continue
+                try:
+                    cwd = Path(os.readlink(entry / "cwd"))
+                except FileNotFoundError:
+                    # The process exited, is a zombie, or has no cwd.
+                    continue
+                except PermissionError:
+                    # With Yama ptrace_scope=1 a successor cannot read an
+                    # unrelated predecessor's cwd even when both have the same
+                    # uid.  Keep scanning readable descendants first, then
+                    # require an exact generation-cgroup proof below.
+                    denied_cwds += 1
+                    continue
+                except OSError:
+                    continue
+                observed_cwds += 1
+                try:
+                    cwd.resolve(strict=False).relative_to(workspace_path)
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                return True, len(process_lines), observed_cwds, None
+            if denied_cwds:
+                cgroup_proof = (
+                    self._predecessor_generation_cgroup_quiescence(record)
+                )
+                if cgroup_proof.get("quiescent") is not True:
+                    return (
+                        None,
+                        len(process_lines),
+                        observed_cwds,
+                        cgroup_proof,
+                    )
+                return (
+                    False,
+                    len(process_lines),
+                    observed_cwds,
+                    cgroup_proof,
+                )
+            return False, len(process_lines), observed_cwds, None
+
+        (
+            process_active,
+            process_count,
+            cwd_count,
+            cgroup_proof,
+        ) = worktree_process_active()
+        if process_active is None:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_process_inspection_unavailable",
+                "generation_cgroup_proof": cgroup_proof,
+            }
+        if process_active:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_worktree_process_still_active",
+                "observed_process_count": process_count,
+                "observed_process_cwd_count": cwd_count,
+            }
+
+        container_ids: set[str] = set()
+        for label in IMPLEMENTATION_DOCKER_ISOLATION_LABELS:
+            try:
+                listed = subprocess.run(
+                    [
+                        "docker",
+                        "ps",
+                        "--filter",
+                        f"label={label}",
+                        "--format",
+                        "{{.ID}}",
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_unavailable"
+                    ),
+                    "error_type": type(exc).__name__,
+                }
+            if listed.returncode != 0:
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_unavailable"
+                    ),
+                    "returncode": listed.returncode,
+                }
+            container_ids.update(
+                item.strip()
+                for item in listed.stdout.splitlines()
+                if item.strip()
+            )
+
+        for container_id in sorted(container_ids):
+            try:
+                inspected = subprocess.run(
+                    [
+                        "docker",
+                        "inspect",
+                        "--format",
+                        "{{json .Mounts}}",
+                        container_id,
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_unavailable"
+                    ),
+                    "container_id": container_id,
+                    "error_type": type(exc).__name__,
+                }
+            if inspected.returncode != 0:
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_unavailable"
+                    ),
+                    "container_id": container_id,
+                    "returncode": inspected.returncode,
+                }
+            try:
+                mounts = json.loads(inspected.stdout)
+            except (TypeError, ValueError):
+                mounts = None
+            if not isinstance(mounts, list):
+                return {
+                    "quiescent": False,
+                    "reason": (
+                        "task_attempt_claim_container_inspection_malformed"
+                    ),
+                    "container_id": container_id,
+                }
+            if any(
+                isinstance(mount, Mapping)
+                and normalize_workspace_path(str(mount.get("Source") or ""))
+                == workspace
+                for mount in mounts
+            ):
+                return {
+                    "quiescent": False,
+                    "reason": "task_attempt_claim_container_still_active",
+                    "container_id": container_id,
+                }
+
+        (
+            process_active,
+            process_count_after,
+            cwd_count_after,
+            cgroup_proof_after,
+        ) = worktree_process_active()
+        if process_active is None:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_process_inspection_unavailable",
+                "generation_cgroup_proof": cgroup_proof_after,
+            }
+        if process_active:
+            return {
+                "quiescent": False,
+                "reason": "task_attempt_claim_worktree_process_still_active",
+                "observed_process_count": process_count_after,
+                "observed_process_cwd_count": cwd_count_after,
+            }
+        return {
+            "quiescent": True,
+            "reason": "task_attempt_claim_dispatch_quiescent",
+            "age_seconds": age_seconds,
+            "observed_process_count": process_count_after,
+            "observed_process_cwd_count": cwd_count_after,
+            "observed_isolation_container_count": len(container_ids),
+            "generation_cgroup_proof": (
+                cgroup_proof_after or cgroup_proof
+            ),
+        }
+
+    def _predecessor_generation_cgroup_quiescence(
+        self,
+        record: WorkspaceLifecycleRecord,
+        *,
+        cgroup_root: Path = Path("/sys/fs/cgroup"),
+    ) -> dict[str, Any]:
+        """Prove a versioned predecessor systemd cgroup has no processes.
+
+        Linux Yama can deny ``/proc/<pid>/cwd`` for same-uid processes that
+        are not descendants of the inspecting successor.  A systemd service's
+        descendants cannot leave its cgroup merely by forking or creating a
+        new session, so bind the current ``run-vN`` state generation to the
+        current service component and inspect the exact older component.
+        """
+
+        current = self._state_dir_generation_binding(self.state_path.parent)
+        predecessor = self._state_dir_generation_binding(record.state_dir)
+        base: dict[str, Any] = {"quiescent": False}
+        if (
+            current is None
+            or predecessor is None
+            or current[0] != predecessor[0]
+            or predecessor[1] >= current[1]
+        ):
+            return {**base, "reason": "generation_cgroup_identity_unavailable"}
+
+        proc_root = self.worktree_lifecycle.proc_root
+        try:
+            own_cgroups = (proc_root / "self" / "cgroup").read_text(
+                encoding="utf-8"
+            )
+        except OSError as exc:
+            return {
+                **base,
+                "reason": "generation_cgroup_inspection_unavailable",
+                "error_type": type(exc).__name__,
+            }
+
+        current_token = re.compile(
+            rf"(?<![A-Za-z0-9])v{current[1]}(?![0-9])"
+        )
+        bindings: list[tuple[str, str]] = []
+        for line in own_cgroups.splitlines():
+            fields = line.split(":", 2)
+            if len(fields) != 3 or not fields[2].startswith("/"):
+                continue
+            cgroup_path = fields[2].rstrip("/") or "/"
+            components = tuple(Path(cgroup_path).parts[1:])
+            matching = [
+                component
+                for component in components
+                if current_token.search(component) is not None
+            ]
+            if len(matching) == 1 and matching[0] == components[-1]:
+                bindings.append((cgroup_path, matching[0]))
+        if len(bindings) != 1:
+            return {
+                **base,
+                "reason": "generation_cgroup_binding_unavailable",
+                "binding_count": len(bindings),
+            }
+
+        current_path, current_component = bindings[0]
+        predecessor_component, substitutions = current_token.subn(
+            f"v{predecessor[1]}",
+            current_component,
+        )
+        if substitutions != 1 or predecessor_component == current_component:
+            return {**base, "reason": "generation_cgroup_binding_invalid"}
+        predecessor_path = str(
+            Path(current_path).parent / predecessor_component
+        )
+
+        try:
+            entries = tuple(proc_root.iterdir())
+        except OSError as exc:
+            return {
+                **base,
+                "reason": "generation_cgroup_inspection_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        observed_processes = 0
+        for entry in entries:
+            if not entry.name.isdigit():
+                continue
+            try:
+                process_cgroups = (entry / "cgroup").read_text(
+                    encoding="utf-8"
+                )
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                return {
+                    **base,
+                    "reason": "generation_cgroup_inspection_unavailable",
+                    "error_type": type(exc).__name__,
+                }
+            observed_processes += 1
+            for line in process_cgroups.splitlines():
+                fields = line.split(":", 2)
+                if len(fields) != 3:
+                    return {
+                        **base,
+                        "reason": "generation_cgroup_inspection_malformed",
+                    }
+                process_path = fields[2].rstrip("/") or "/"
+                if process_path == predecessor_path or process_path.startswith(
+                    predecessor_path + "/"
+                ):
+                    return {
+                        **base,
+                        "reason": "generation_cgroup_process_still_active",
+                        "predecessor_cgroup": predecessor_path,
+                        "process_pid": int(entry.name),
+                    }
+
+        exact_cgroup = cgroup_root / predecessor_path.lstrip("/")
+        if exact_cgroup.exists():
+            try:
+                events = (exact_cgroup / "cgroup.events").read_text(
+                    encoding="utf-8"
+                )
+            except OSError as exc:
+                return {
+                    **base,
+                    "reason": "generation_cgroup_inspection_unavailable",
+                    "error_type": type(exc).__name__,
+                }
+            parsed_events = {
+                fields[0]: fields[1]
+                for line in events.splitlines()
+                if len(fields := line.split()) == 2
+            }
+            if parsed_events.get("populated") != "0":
+                return {
+                    **base,
+                    "reason": "generation_cgroup_population_unproven",
+                    "predecessor_cgroup": predecessor_path,
+                }
+        return {
+            "quiescent": True,
+            "reason": "generation_cgroup_quiescent",
+            "current_cgroup": current_path,
+            "predecessor_cgroup": predecessor_path,
+            "observed_process_count": observed_processes,
+        }
 
     def _active_worktree_lifecycle_lease_id(self) -> str:
         record = self._active_worktree_lifecycle
