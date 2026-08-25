@@ -413,7 +413,7 @@ evidence.
 
 ## PGIR-210 Supersede and portably re-adjudicate the PGIR-208 source-chain seal
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
