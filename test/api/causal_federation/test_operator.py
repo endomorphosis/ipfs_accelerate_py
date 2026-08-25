@@ -533,6 +533,37 @@ def test_state_owner_socket_is_short_server_derived_and_private(
         operator._prepare_private_socket_parent(linked_parent / "owner.sock")
 
 
+def test_executor_state_directory_is_private_and_fails_closed(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    private_state = tmp_path / "runtime" / "state" / "executor"
+    operator._prepare_private_executor_state(private_state)
+    metadata = os.lstat(private_state)
+    assert stat.S_ISDIR(metadata.st_mode)
+    assert stat.S_IMODE(metadata.st_mode) == 0o700
+    assert metadata.st_uid == os.geteuid()
+
+    unsafe_state = tmp_path / "unsafe-executor"
+    unsafe_state.mkdir(mode=0o770)
+    unsafe_state.chmod(0o770)
+    with pytest.raises(operator.OperatorError, match="custody is unsafe"):
+        operator._prepare_private_executor_state(unsafe_state)
+
+    inaccessible_state = tmp_path / "inaccessible-executor"
+    inaccessible_state.mkdir(mode=0o600)
+    inaccessible_state.chmod(0o600)
+    with pytest.raises(operator.OperatorError, match="custody is unsafe"):
+        operator._prepare_private_executor_state(inaccessible_state)
+
+    target = tmp_path / "executor-target"
+    target.mkdir(mode=0o700)
+    linked_state = tmp_path / "linked-executor"
+    linked_state.symlink_to(target, target_is_directory=True)
+    with pytest.raises(operator.OperatorError, match="custody is unsafe"):
+        operator._prepare_private_executor_state(linked_state)
+
+
 def test_receipts_are_private_content_addressed_and_tamper_evident(
     tmp_path: Path,
 ) -> None:

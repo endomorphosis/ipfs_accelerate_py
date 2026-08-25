@@ -861,6 +861,29 @@ def _prepare_private_socket_parent(socket_path: Path) -> None:
         os.chmod(parent, 0o700)
 
 
+def _prepare_private_executor_state(state_dir: Path) -> None:
+    """Create or verify the lane-private executor state directory."""
+
+    try:
+        state_dir.mkdir(mode=0o700, parents=True)
+        created = True
+    except FileExistsError:
+        created = False
+    if created:
+        os.chmod(state_dir, 0o700)
+    try:
+        metadata = os.lstat(state_dir)
+    except OSError as exc:
+        raise OperatorError("executor state directory is unavailable") from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise OperatorError("executor state directory custody is unsafe")
+
+
 def _control_plane_store_id(program: Any) -> str:
     """Return the compact transactional identity, distinct from the DB path."""
 
@@ -2146,6 +2169,7 @@ def _spawn_configured_executor(
 ) -> tuple[subprocess.Popen[Any], dict[str, Any], _ExecutorBootstrapBroker]:
     """Spawn and prove the configured supervisor plus its actual daemon birth."""
 
+    _prepare_private_executor_state(paths["executor_state"])
     owner_channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     rendezvous = "\0ipfs-casf-executor-" + secrets.token_hex(16)
     owner_channel.bind(rendezvous)
@@ -2155,7 +2179,6 @@ def _spawn_configured_executor(
     process: subprocess.Popen[Any] | None = None
     supervisor_birth: dict[str, Any] | None = None
     broker: _ExecutorBootstrapBroker | None = None
-    paths["executor_state"].mkdir(parents=True, exist_ok=True)
     log_handle = paths["executor_log"].open("ab")
     os.chmod(paths["executor_log"], 0o600)
     try:
