@@ -687,8 +687,8 @@ def test_canonical_casf_import_is_exact_and_structurally_valid(
         forest = _REAL_INSPECT_CURRENT_REPOSITORY_FOREST(repo_root)
         evidence = _REAL_VERIFY_IMPORTED_CASF_SOURCE(repo_root, forest=forest)
 
-    assert evidence["canonical_tip"] == "b8328ec3a9cc066acfb3240d0e4b03d16950f5c7"
-    assert evidence["canonical_tree"] == "1e26e0b1c7d7b8df9eafb1d2e7aede6bfea19233"
+    assert evidence["canonical_tip"] == "4030ab14cbe084ee4716a904fc37677aafd168d3"
+    assert evidence["canonical_tree"] == "7aa6f3c7c2bd90a046bb1514d7b3a92c7af55714"
     assert evidence["structural_validation_report_cid"] == (
         "sha256:ed81aec7bad2b030325fe998d187f32e757c3514d35eef01a7d1a91ba4d98c67"
     )
@@ -802,7 +802,7 @@ def test_casf_import_rejects_config_binding_and_current_blob_drift(
             *,
             maximum_bytes: int,
         ) -> bytes:
-            if blob_oid == "5885d53755c154377e5fa13d4cc59c4361087479":
+            if blob_oid == "ae25600a5a3cc866b8b94d262b60df5f62f60a78":
                 return b"raise RuntimeError('divergent sealed validator sentinel')\n"
             return real_git_blob(root, blob_oid, maximum_bytes=maximum_bytes)
 
