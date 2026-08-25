@@ -1,0 +1,337 @@
+{
+  "canonical_case": {
+    "candidate_ir": {
+      "family": "deontic",
+      "rules": [
+        {
+          "action": "provide_notice",
+          "modality": "obligation",
+          "subject": "agency"
+        }
+      ]
+    },
+    "encoding": {
+      "accepted": true,
+      "canonical_token_count": 13,
+      "family": "deontic",
+      "schema_version": "legal-ir-frozen-tokenizer-v1",
+      "source_surface_separated": true,
+      "source_surface_token_count": 0,
+      "token_class_counts": {
+        "binder": 0,
+        "family": 2,
+        "identifier": 7,
+        "operator": 1,
+        "padding": 0,
+        "production": 0,
+        "proof": 0,
+        "source": 0,
+        "source_surface": 0,
+        "special": 2,
+        "tactic": 0,
+        "type": 1
+      },
+      "token_ids": [
+        1,
+        94,
+        26,
+        89,
+        94,
+        90,
+        49,
+        111,
+        47,
+        12,
+        48,
+        115,
+        2
+      ],
+      "tokens": [
+        {
+          "piece": "<bos>",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "special",
+          "token_id": 1
+        },
+        {
+          "piece": "deontic",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "family",
+          "token_id": 94
+        },
+        {
+          "piece": "DeonticRule",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "type",
+          "token_id": 26
+        },
+        {
+          "piece": "family",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "identifier",
+          "token_id": 89
+        },
+        {
+          "piece": "deontic",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "family",
+          "token_id": 94
+        },
+        {
+          "piece": "rules",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "identifier",
+          "token_id": 90
+        },
+        {
+          "piece": "action",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "identifier",
+          "token_id": 49
+        },
+        {
+          "piece": "<id_bucket_00>",
+          "source_hash": "eb9b08bc9768c1c2ced225e9217e41ee1c711414cc1eb942a3a835c0610bb4a0",
+          "surface": "canonical",
+          "token_class": "identifier",
+          "token_id": 111
+        },
+        {
+          "piece": "modality",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "identifier",
+          "token_id": 47
+        },
+        {
+          "piece": "obligation",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "operator",
+          "token_id": 12
+        },
+        {
+          "piece": "subject",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "identifier",
+          "token_id": 48
+        },
+        {
+          "piece": "<id_bucket_04>",
+          "source_hash": "c4b2af4722ee54e317672875b2d8cf49aa884bf5820ec6091114fea5ec6560e4",
+          "surface": "canonical",
+          "token_class": "identifier",
+          "token_id": 115
+        },
+        {
+          "piece": "<eos>",
+          "source_hash": "",
+          "surface": "canonical",
+          "token_class": "special",
+          "token_id": 2
+        }
+      ],
+      "vocabulary_cid": "sha256:8782ea363f422557c7a1f62442fe376fb6586f90a679bebb4ba60824de425c1b",
+      "vocabulary_sha256": "sha256:8782ea363f422557c7a1f62442fe376fb6586f90a679bebb4ba60824de425c1b"
+    },
+    "family": "deontic"
+  },
+  "contract_source": {
+    "path": "ipfs_datasets_py/ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_ir_grammar_decoder.py",
+    "raw_cid": "bafkreiald2xcjmabk6xhjitqb4r4vfoh7gkx3r2va6gkv4lz4zahb7pp7u",
+    "sha256": "sha256:0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+    "size_bytes": 146870
+  },
+  "coverage": {
+    "declared_token_classes": [
+      "padding",
+      "special",
+      "binder",
+      "operator",
+      "type",
+      "family",
+      "proof",
+      "tactic",
+      "source",
+      "identifier",
+      "production",
+      "source_surface"
+    ],
+    "direct_class_assertions": {
+      "<bos>": "special",
+      "<id_bucket_00>": "identifier",
+      "<pad>": "padding",
+      "<source_ref>": "source",
+      "DeonticRule": "type",
+      "deontic": "family",
+      "emit_deontic_rule": "production",
+      "forall": "binder",
+      "hammer": "tactic",
+      "obligation": "operator",
+      "proved": "proof"
+    },
+    "source_surface_assertion": {
+      "class": "source_surface",
+      "count": 8,
+      "separated": true
+    }
+  },
+  "interface": "proof-grounded-ir-learning/tokenizer-golden-token-class-receipt/v1",
+  "negative_cases": [
+    {
+      "case": "unknown_closed_class_value",
+      "error_message": "closed-class value 'most' at $.formulas[0].quantifier is absent from the freeze",
+      "error_type": "UnknownFrozenTokenError"
+    },
+    {
+      "case": "unknown_closed_class_piece",
+      "error_message": "closed-class token 'brand_new_family' is absent from the frozen vocabulary",
+      "error_type": "UnknownFrozenTokenError"
+    },
+    {
+      "case": "unknown_token_id",
+      "error_message": "token id 143 is outside the freeze",
+      "error_type": "UnknownFrozenTokenError"
+    },
+    {
+      "case": "frozen_vocabulary_mutation",
+      "error_message": "frozen tokenizer vocabulary cannot be mutated; supersede with a new CID",
+      "error_type": "FrozenVocabularyMutationError"
+    }
+  ],
+  "receipt_cid": "baguqeerateyt7bjwvke756iuphgjxd7hiozya3z6buk3z3ldgde2lrdm4twa",
+  "receipt_sha256": "sha256:99313f8536aa89fef91479cc9b8fe743b3806f3e0d15bced6330c9a5c46ce4ec",
+  "schema": "PGIRTokenizerGoldenTokenClassReceipt@1",
+  "status": "passed_for_deterministic_canonical_tokenizer_only",
+  "surface_separation_case": {
+    "accepted": true,
+    "canonical_token_count": 3,
+    "family": "unscoped",
+    "schema_version": "legal-ir-frozen-tokenizer-v1",
+    "source_surface_separated": true,
+    "source_surface_token_count": 8,
+    "token_class_counts": {
+      "binder": 0,
+      "family": 0,
+      "identifier": 0,
+      "operator": 0,
+      "padding": 0,
+      "production": 0,
+      "proof": 0,
+      "source": 1,
+      "source_surface": 8,
+      "special": 2,
+      "tactic": 0,
+      "type": 0
+    },
+    "token_ids": [
+      1,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      2
+    ],
+    "tokens": [
+      {
+        "piece": "<bos>",
+        "source_hash": "",
+        "surface": "canonical",
+        "token_class": "special",
+        "token_id": 1
+      },
+      {
+        "piece": "<source_ref>",
+        "source_hash": "",
+        "surface": "canonical",
+        "token_class": "source",
+        "token_id": 6
+      },
+      {
+        "piece": "<source_ref>",
+        "source_hash": "00:d29dceee",
+        "surface": "source",
+        "token_class": "source_surface",
+        "token_id": 6
+      },
+      {
+        "piece": "<source_ref>",
+        "source_hash": "01:64d805e7",
+        "surface": "source",
+        "token_class": "source_surface",
+        "token_id": 6
+      },
+      {
+        "piece": "<source_ref>",
+        "source_hash": "02:143ec0d1",
+        "surface": "source",
+        "token_class": "source_surface",
+        "token_id": 6
+      },
+      {
+        "piece": "<source_ref>",
+        "source_hash": "03:b653039c",
+        "surface": "source",
+        "token_class": "source_surface",
+        "token_id": 6
+      },
+      {
+        "piece": "<source_ref>",
+        "source_hash": "04:b30804ea",
+        "surface": "source",
+        "token_class": "source_surface",
+        "token_id": 6
+      },
+      {
+        "piece": "<source_ref>",
+        "source_hash": "05:a061941e",
+        "surface": "source",
+        "token_class": "source_surface",
+        "token_id": 6
+      },
+      {
+        "piece": "<source_ref>",
+        "source_hash": "06:ec49eb9c",
+        "surface": "source",
+        "token_class": "source_surface",
+        "token_id": 6
+      },
+      {
+        "piece": "<source_ref>",
+        "source_hash": "07:d2fa78ae",
+        "surface": "source",
+        "token_class": "source_surface",
+        "token_id": 6
+      },
+      {
+        "piece": "<eos>",
+        "source_hash": "",
+        "surface": "canonical",
+        "token_class": "special",
+        "token_id": 2
+      }
+    ],
+    "vocabulary_cid": "sha256:8782ea363f422557c7a1f62442fe376fb6586f90a679bebb4ba60824de425c1b",
+    "vocabulary_sha256": "sha256:8782ea363f422557c7a1f62442fe376fb6586f90a679bebb4ba60824de425c1b"
+  },
+  "unknown_token_behavior": "fail_closed",
+  "vocabulary_identity": {
+    "frozen": true,
+    "vocabulary_cid": "sha256:8782ea363f422557c7a1f62442fe376fb6586f90a679bebb4ba60824de425c1b",
+    "vocabulary_sha256": "sha256:8782ea363f422557c7a1f62442fe376fb6586f90a679bebb4ba60824de425c1b",
+    "vocabulary_size": 143
+  }
+}

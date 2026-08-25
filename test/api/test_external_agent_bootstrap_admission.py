@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -498,3 +499,375 @@ def test_create_once_issuer_diagnoses_current_head_without_publishing() -> None:
     assert not (REPO_ROOT / relative).exists()
     assert "materialization_source_or_board_mismatch" in report["blockers"]
     assert report["would_publish"] is False
+
+
+def _load_bootstrap_issuer():
+    import importlib.util
+
+    script = REPO_ROOT / "scripts/issue_eaaef_bootstrap_admission.py"
+    spec = importlib.util.spec_from_file_location(
+        "eaaef_bootstrap_admission_input_test",
+        script,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_issuer_loads_only_exact_source_addressed_admission_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_bootstrap_issuer()
+    source_head = "1" * 40
+    source_tree = "2" * 40
+    provider = {
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "qualification_cid": "sha256:" + "a" * 64,
+    }
+    quack = {
+        "source": {"commit": source_head, "tree": source_tree},
+        "receipt_cid": "sha256:" + "b" * 64,
+    }
+    route_binding = {"route": "signed-binding"}
+    image = {"qualification_cid": "sha256:" + "3" * 64}
+    profile = {"profile_cid": "sha256:" + "4" * 64}
+    bundle = {
+        "schema": issuer._INPUT_BUNDLE_SCHEMA,
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "provider_container_qualification_cid": provider["qualification_cid"],
+        "quack_owner_qualification_cid": quack["receipt_cid"],
+        "route_binding": route_binding,
+        "image_qualification": image,
+        "container_profile": profile,
+    }
+    bundle["input_cid"] = "sha256:" + hashlib.sha256(
+        issuer._canonical_bytes(bundle)
+    ).hexdigest()
+    authority = tmp_path / "authority"
+    authority.mkdir(mode=0o700)
+    payloads = {
+        "provider_container": provider,
+        "quack_owner": quack,
+        "admission_inputs": bundle,
+    }
+    for kind, payload in payloads.items():
+        path = authority / issuer._authority_artifact_name(
+            kind,
+            source_head,
+            source_tree,
+        )
+        path.write_text(
+            json.dumps(payload),
+            encoding="utf-8",
+        )
+        path.chmod(0o400)
+    resolved_route = object()
+    calls: list[dict[str, object]] = []
+
+    def resolve(binding, **kwargs):
+        calls.append({"binding": binding, **kwargs})
+        return resolved_route
+
+    monkeypatch.setattr(issuer, "AUTHORITY_DIR", authority)
+    monkeypatch.setattr(issuer, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        issuer.routes,
+        "resolve_agent_implementation_route_binding",
+        resolve,
+    )
+    result = issuer._load_admission_inputs(
+        source_head=source_head,
+        source_tree=source_tree,
+        now_ms=NOW_MS,
+        qualification_trust={
+            "schema": issuer._QUALIFICATION_TRUST_SCHEMA,
+            "trusted_provider_signer_dids": ["did:key:zProviderSigner"],
+            "trusted_image_reviewer_dids": ["did:key:zImage"],
+            "trusted_container_profile_reviewer_dids": ["did:key:zProfile"],
+            "trusted_quack_reviewer_dids": ["did:key:zQuack"],
+        },
+    )
+
+    assert result["provider_container_qualification"] == provider
+    assert result["quack_owner_qualification"] == quack
+    assert result["route_plan"] is resolved_route
+    assert result["image_qualification"] == image
+    assert result["container_profile"] == profile
+    assert result["trusted_provider_signer_dids"] == (
+        "did:key:zProviderSigner",
+    )
+    assert result["trusted_image_reviewer_dids"] == ("did:key:zImage",)
+    assert result["trusted_container_profile_reviewer_dids"] == (
+        "did:key:zProfile",
+    )
+    assert result["trusted_quack_reviewer_dids"] == ("did:key:zQuack",)
+    assert calls == [
+        {
+            "binding": route_binding,
+            "repo_root": tmp_path,
+            "now_ms": NOW_MS,
+            "max_age_ms": 5 * 60 * 1000,
+        }
+    ]
+
+    stale_provider = {**provider, "source_tree": "9" * 40}
+    provider_path = (
+        authority
+        / issuer._authority_artifact_name(
+            "provider_container",
+            source_head,
+            source_tree,
+        )
+    )
+    provider_path.chmod(0o600)
+    provider_path.write_text(json.dumps(stale_provider), encoding="utf-8")
+    provider_path.chmod(0o400)
+    with pytest.raises(RuntimeError, match="qualifications are stale"):
+        issuer._load_admission_inputs(
+            source_head=source_head,
+            source_tree=source_tree,
+            now_ms=NOW_MS,
+            qualification_trust={
+                "schema": issuer._QUALIFICATION_TRUST_SCHEMA,
+                "trusted_provider_signer_dids": ["did:key:zProviderSigner"],
+                "trusted_image_reviewer_dids": ["did:key:zImage"],
+                "trusted_container_profile_reviewer_dids": ["did:key:zProfile"],
+                "trusted_quack_reviewer_dids": ["did:key:zQuack"],
+            },
+        )
+
+
+def test_issuer_requires_pairwise_distinct_explicit_qualification_trust() -> None:
+    issuer = _load_bootstrap_issuer()
+    with pytest.raises(RuntimeError, match="trust is unavailable"):
+        issuer._explicit_reviewer_trust({})
+    with pytest.raises(RuntimeError, match="trust roles overlap"):
+        issuer._explicit_reviewer_trust(
+            {
+                "schema": issuer._QUALIFICATION_TRUST_SCHEMA,
+                "trusted_provider_signer_dids": ["did:key:zProvider"],
+                "trusted_image_reviewer_dids": ["did:key:zShared"],
+                "trusted_container_profile_reviewer_dids": ["did:key:zShared"],
+                "trusted_quack_reviewer_dids": ["did:key:zQuack"],
+            }
+        )
+
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/external_agent_autonomous_execution_fabric_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    with pytest.raises(RuntimeError, match="trust is unavailable"):
+        issuer._explicit_reviewer_trust(
+            scheduler["bootstrap_qualification_trust"]
+        )
+
+
+def test_issuer_resolves_configured_and_valid_recovery_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_bootstrap_issuer()
+    config = {
+        "bootstrap_database_program": {
+            "store_generation": "eaaef-run-v7",
+            "runtime_registry_path": (
+                "data/agent_supervisor/"
+                "external_agent_autonomous_execution_fabric/run-v7/registry"
+            ),
+        }
+    }
+    cursor = tmp_path / "generation-cursor.json"
+    monkeypatch.setattr(issuer, "ROOT", tmp_path)
+    monkeypatch.setattr(issuer, "CURSOR_PATH", cursor)
+
+    assert issuer._receipt_path(config) == (
+        tmp_path
+        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+        / "run-v7/registry/bootstrap-materialization.json"
+    )
+    cursor.write_text(
+        json.dumps(
+            {
+                "schema": issuer._GENERATION_CURSOR_SCHEMA,
+                "configured_generation": "eaaef-run-v7",
+                "active_generation": "eaaef-run-v9",
+                "process_started": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert issuer._receipt_path(config) == (
+        tmp_path
+        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+        / "run-v9/registry/bootstrap-materialization.json"
+    )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"schema": "wrong"},
+        {"configured_generation": "eaaef-run-v8"},
+        {"active_generation": "eaaef-run-v8/../../outside"},
+        {"active_generation": "eaaef-run-v6"},
+        {"process_started": True},
+    ],
+)
+def test_issuer_rejects_invalid_generation_cursor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+) -> None:
+    issuer = _load_bootstrap_issuer()
+    config = {
+        "bootstrap_database_program": {
+            "store_generation": "eaaef-run-v7",
+            "runtime_registry_path": (
+                "data/agent_supervisor/"
+                "external_agent_autonomous_execution_fabric/run-v7/registry"
+            ),
+        }
+    }
+    cursor = tmp_path / "generation-cursor.json"
+    payload = {
+        "schema": issuer._GENERATION_CURSOR_SCHEMA,
+        "configured_generation": "eaaef-run-v7",
+        "active_generation": "eaaef-run-v8",
+        "process_started": False,
+        **overrides,
+    }
+    cursor.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(issuer, "ROOT", tmp_path)
+    monkeypatch.setattr(issuer, "CURSOR_PATH", cursor)
+
+    with pytest.raises(RuntimeError, match="generation cursor is invalid"):
+        issuer._receipt_path(config)
+
+
+def test_issuer_input_failure_never_publishes_create_once_no_go(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_bootstrap_issuer()
+    source_head = "1" * 40
+    source_tree = "2" * 40
+    publication_attempts: list[str] = []
+    config = {
+        "configured_board_live_seal": {
+            "trusted_operator_dids": ["did:key:zOperator"],
+            "trusted_security_reviewer_dids": ["did:key:zSecurity"],
+        },
+        "bootstrap_qualification_trust": {},
+    }
+    monkeypatch.setattr(
+        issuer,
+        "diagnose",
+        lambda: {
+            "source_head": source_head,
+            "source_tree": source_tree,
+            "identity_blockers": [],
+            "blockers": [],
+        },
+    )
+    monkeypatch.setattr(
+        issuer,
+        "_load",
+        lambda path: config if path == issuer.CONFIG_PATH else {},
+    )
+    monkeypatch.setattr(issuer, "_receipt_path", lambda: Path("receipt.json"))
+    monkeypatch.setattr(
+        issuer,
+        "_load_admission_inputs",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("qualification trust unavailable")
+        ),
+    )
+    monkeypatch.setattr(
+        issuer,
+        "publish_external_agent_bootstrap_admission",
+        lambda *_args, **_kwargs: publication_attempts.append("published"),
+    )
+
+    result = issuer.issue()
+
+    assert result["published"] is False
+    assert result["would_publish"] is False
+    assert "qualification trust unavailable" in result["blockers"]
+    assert publication_attempts == []
+
+
+def test_issuer_prepares_admitted_statement_but_requires_separate_approvals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_bootstrap_issuer()
+    source_head = "1" * 40
+    source_tree = "2" * 40
+    operator_did = "did:key:zOperator"
+    security_did = "did:key:zSecurity"
+    verified_inputs = {
+        "provider_container_qualification": {"provider": "qualification"},
+        "route_plan": object(),
+        "image_qualification": {"image": "qualification"},
+        "container_profile": {"container": "profile"},
+        "quack_owner_qualification": {"quack": "qualification"},
+        "trusted_provider_signer_dids": (operator_did,),
+        "trusted_image_reviewer_dids": (security_did,),
+        "trusted_container_profile_reviewer_dids": ("did:key:zProfile",),
+        "trusted_quack_reviewer_dids": (security_did,),
+    }
+    captured: dict[str, object] = {}
+    config = {
+        "configured_board_live_seal": {
+            "trusted_operator_dids": [operator_did],
+            "trusted_security_reviewer_dids": [security_did],
+        }
+    }
+
+    monkeypatch.setattr(
+        issuer,
+        "diagnose",
+        lambda: {
+            "source_head": source_head,
+            "source_tree": source_tree,
+            "identity_blockers": [],
+            "blockers": [],
+        },
+    )
+    monkeypatch.setattr(issuer, "_load", lambda path: config if path == issuer.CONFIG_PATH else {})
+    monkeypatch.setattr(issuer, "_receipt_path", lambda: Path("receipt.json"))
+    monkeypatch.setattr(
+        issuer,
+        "_load_admission_inputs",
+        lambda **_kwargs: verified_inputs,
+    )
+    monkeypatch.setattr(issuer, "_principal_did", lambda role: f"did:key:z{role}")
+
+    def prepare(**kwargs):
+        captured.update(kwargs)
+        return {"decision": "admitted"}
+
+    monkeypatch.setattr(issuer, "prepare_external_agent_bootstrap_admission", prepare)
+    publication_attempts: list[str] = []
+    monkeypatch.setattr(
+        issuer,
+        "publish_external_agent_bootstrap_admission",
+        lambda *_args, **_kwargs: publication_attempts.append("published"),
+    )
+
+    result = issuer.issue()
+
+    assert result["published"] is False
+    assert result["statement_decision"] == "admitted"
+    assert result["prepared_statement"] == {"decision": "admitted"}
+    assert (
+        "separate operator and security approval artifacts are required"
+        in result["blockers"]
+    )
+    assert publication_attempts == []
+    for name, value in verified_inputs.items():
+        assert captured[name] is value or captured[name] == value

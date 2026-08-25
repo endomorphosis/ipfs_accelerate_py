@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import time
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -14,6 +15,9 @@ from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     ed25519_did_key,
 )
 from ipfs_accelerate_py.agent_supervisor.validation import eaaef_host_admission
+from ipfs_accelerate_py.agent_supervisor.validation import (
+    external_agent_bootstrap_admission as bootstrap_admission,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 ISSUER_PATH = ROOT / "scripts/issue_eaaef_admission_bundle.py"
@@ -44,6 +48,55 @@ def _write_raw_private_key(
     )
 
 
+def _prebootstrap_statement(
+    *,
+    source_head: str,
+    source_tree: str,
+    board_cid: str,
+    materialization_cid: str,
+) -> dict[str, object]:
+    issued_at_ms = int(time.time() * 1000)
+    value: dict[str, object] = {
+        field: "" for field in bootstrap_admission._STATEMENT_FIELDS
+    }
+    value.update(
+        {
+            "schema": bootstrap_admission.EAAEF_BOOTSTRAP_ADMISSION_STATEMENT_SCHEMA,
+            "task_id": "EAAEF-000",
+            "board_namespace": (
+                "external-agent-autonomous-execution-fabric-v1"
+            ),
+            "decision": "no_go",
+            "outcome": "mutation_not_admitted",
+            "blockers": ["EAAEF-191 host admission bundle pending"],
+            "board_cid": board_cid,
+            "source_head": source_head,
+            "source_tree": source_tree,
+            "materialization_receipt_cid": materialization_cid,
+            "materialization_store_generation": "eaaef-test-run-v1",
+            "materialization_database_program_binding_cid": (
+                "sha256:" + "6" * 64
+            ),
+            "materialization_bootstrap_profile_cid": "sha256:" + "7" * 64,
+            "materialization_operational_profile_cid": "sha256:" + "8" * 64,
+            "provider_qualification_expires_at_ms": 0,
+            "provider_maximum_parallel_workers": 0,
+            "provider_maximum_parallel_containers": 0,
+            "provider_task_dispatch_admitted": False,
+            "quack_qualification_expires_at_ms": 0,
+            "quack_epoch": 0,
+            "quack_fence": 0,
+            "authority": dict(bootstrap_admission._EXPECTED_AUTHORITY),
+            "one_use_nonce": "single-capture-prebootstrap",
+            "issued_at_ms": issued_at_ms,
+            "expires_at_ms": issued_at_ms + 3_600_000,
+        }
+    )
+    value.pop("statement_cid", None)
+    value["statement_cid"] = bootstrap_admission._cid(value)
+    return value
+
+
 def _child_receipt(
     *,
     task_id: str,
@@ -53,6 +106,7 @@ def _child_receipt(
     source_tree: str,
     board_namespace: str,
     board_cid: str,
+    bootstrap_statement: Mapping[str, object],
 ) -> dict[str, object]:
     decision = {
         "EAAEF-180": "inventory",
@@ -72,7 +126,23 @@ def _child_receipt(
         "board_namespace": board_namespace,
         "board_cid": board_cid,
         # Every hypothetical collection produces a different child identity.
-        "evidence": {"volatile_capture": capture},
+        "evidence": {
+            "volatile_capture": capture,
+            "bootstrap_admission_statement": (
+                dict(bootstrap_statement) if task_id == "EAAEF-180" else None
+            ),
+            "items": (
+                [
+                    {
+                        "blocker": "EAAEF-191 host admission bundle pending",
+                        "class": "host_gated_external_authority",
+                        "closing_task_ids": ["EAAEF-191"],
+                    }
+                ]
+                if task_id == "EAAEF-180"
+                else None
+            ),
+        },
     }
     receipt["receipt_cid"] = eaaef_host_admission.cid(receipt)
     return receipt
@@ -137,8 +207,14 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
     source_tree = "2" * 40
     board_namespace = "external-agent-autonomous-execution-fabric-v1"
     board_cid = "sha256:" + "3" * 64
-    bootstrap_cid = "sha256:" + "4" * 64
     materialization_cid = "sha256:" + "5" * 64
+    bootstrap_statement = _prebootstrap_statement(
+        source_head=source_head,
+        source_tree=source_tree,
+        board_cid=board_cid,
+        materialization_cid=materialization_cid,
+    )
+    bootstrap_cid = str(bootstrap_statement["statement_cid"])
     collection_count = 0
     captured_child_cids: list[dict[str, str]] = []
 
@@ -158,6 +234,7 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
                 source_tree=source_tree,
                 board_namespace=board_namespace,
                 board_cid=board_cid,
+                bootstrap_statement=bootstrap_statement,
             )
             (receipt_dir / filename).write_text(
                 json.dumps(receipt, indent=2, sort_keys=True) + "\n",
@@ -190,7 +267,9 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
                 "security_reviewer_did": "",
                 "independent_signature_present": False,
                 "prospective_supervisor_signature_rejected": True,
-                "inventory_open_host_gated": [],
+                "inventory_open_host_gated": [
+                    "EAAEF-191 host admission bundle pending"
+                ],
             },
         }
         unsigned_bundle["receipt_cid"] = eaaef_host_admission.cid(
@@ -262,6 +341,7 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
                 source_tree=source_tree,
                 board_namespace=board_namespace,
                 board_cid=board_cid,
+                bootstrap_statement=bootstrap_statement,
             )["receipt_cid"]
         )
         for task_id, filename in issuer.RECEIPT_FILES.items()

@@ -1,0 +1,82 @@
+{
+  "canonical_tokenization": {
+    "allowed_uses": [
+      "contract validation",
+      "deterministic compiler/decompiler replay",
+      "schema migration testing"
+    ],
+    "identity": "deterministic-canonical-structure-only",
+    "learned_vocabulary_identity": "none",
+    "model_checkpoint_identity": "none",
+    "vocabulary_identity": {
+      "frozen": true,
+      "vocabulary_cid": "sha256:8782ea363f422557c7a1f62442fe376fb6586f90a679bebb4ba60824de425c1b",
+      "vocabulary_sha256": "sha256:8782ea363f422557c7a1f62442fe376fb6586f90a679bebb4ba60824de425c1b",
+      "vocabulary_size": 143
+    }
+  },
+  "contract_version": 1,
+  "evidence_inputs": {
+    "historical_tokenizer_policy": {
+      "path": "data/agent_supervisor/proof_grounded_ir_learning/freeze/tokenizer_policy.json",
+      "raw_cid": "bafkreiher3joxlah7pnpfkv653fcfsdrnyoansmctogzzbfq2254e5xn3q",
+      "sha256": "sha256:e48ed2ebac07fbdaf2aabeeeca22c8716e1c06c9829b8d9c84b0d6bbc276eddc",
+      "size_bytes": 958
+    },
+    "successor_corpus_root": {
+      "path": "ipfs_datasets_py/data/ir_learning/corpora/successor-v1/corpus_root.json",
+      "raw_cid": "bafkreig22siid32ilaygdudo2ccpojinsv4dnmjk5dm5begmlfq4brxbba",
+      "sha256": "sha256:dad49081ef48583061d06ed084f7250d957836b12ae8d9d090cc5961c0c6e108",
+      "size_bytes": 3026
+    },
+    "successor_split_root": {
+      "path": "ipfs_datasets_py/data/ir_learning/splits/successor-v1/split_root.json",
+      "raw_cid": "bafkreid6m4zd5e42eyqcljvr4uiwuwonpz4vyqcsa2zpx22khy6fplusdu",
+      "sha256": "sha256:7e67323e939a262025a6b1e5116a59cd7e795c405206b2fbeb4a3e3c57ae921d",
+      "size_bytes": 3190
+    }
+  },
+  "golden_token_class_receipt": {
+    "receipt_cid": "baguqeerateyt7bjwvke756iuphgjxd7hiozya3z6buk3z3ldgde2lrdm4twa",
+    "status": "passed_for_deterministic_canonical_tokenizer_only",
+    "vocabulary_cid": "sha256:8782ea363f422557c7a1f62442fe376fb6586f90a679bebb4ba60824de425c1b"
+  },
+  "interface": "proof-grounded-ir-learning/tokenizer-freeze-policy/v1",
+  "learned_tokenizer_admission": {
+    "admission_status": "not_admitted",
+    "exact_tokenizer_identity_evidence_passed": false,
+    "golden_token_class_evidence_passed": true,
+    "reason_codes": [
+      "no_learned_tokenizer_candidate_identity",
+      "no_rights_admitted_materialized_training_rows",
+      "successor_split_is_permanent_no_go"
+    ]
+  },
+  "mutation_policy": "supersede_never_overwrite",
+  "policy_cid": "baguqeeraluqwxtejicycax65cicqfibtyy5kxkxxyng5nzbxmuooqedw2vka",
+  "policy_sha256": "sha256:5d216bcc8940b0205fdd120502a033c63aabaaf7c34dd6e437651ce81076d554",
+  "schema": "IRTokenizerFreezePolicy@1",
+  "status": "permanently_deterministic_only",
+  "supersedes": {
+    "mode": "new_successor_location_without_historical_freeze_mutation",
+    "policy_path": "data/agent_supervisor/proof_grounded_ir_learning/freeze/tokenizer_policy.json"
+  },
+  "training_policy": {
+    "authorization_rule": "all_required_admission_evidence_must_pass",
+    "authorized": false,
+    "blocked_campaign_stages": [
+      "R2",
+      "R3",
+      "R4",
+      "R5",
+      "R6"
+    ],
+    "failed_requirements": [
+      "learned_tokenizer_admission.admission_status == admitted",
+      "learned_tokenizer_admission.exact_tokenizer_identity_evidence_passed == true"
+    ],
+    "reason": "PGIR-203 has no admitted learned tokenizer, and RESULT(PGIR-201) and RESULT(PGIR-202) seal an empty permanent-no-go training population.",
+    "superseding_root_required": true
+  },
+  "unknown_token_behavior": "fail_closed"
+}

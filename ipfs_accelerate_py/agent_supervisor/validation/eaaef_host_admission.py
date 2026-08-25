@@ -25,13 +25,24 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption,
     PrivateFormat,
 )
-
+from ipfs_accelerate_py.agent_supervisor.control.eaaef_provider_authority import (
+    EAAEF_PROVIDER_LEGACY_PROFILE_DIR,
+    EAAEF_PROVIDER_LIFECYCLE_DIR,
+    EAAEF_PROVIDER_PROFILE_ROOT,
+    eaaef_provider_profile_candidates,
+)
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
+    LocalProfileError,
     ed25519_did_key,
+    load_local_profile,
 )
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     LocalProfileTampered,
     verify_did_key_signature,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_admission import (
+    ExternalAgentBootstrapAdmissionError,
+    _validate_statement_shape,
 )
 
 RECEIPT_SCHEMA: Final = (
@@ -91,9 +102,9 @@ COMMAND_FABRIC_ARTIFACT = HOST_EVIDENCE_DIR / "command-fabric-endpoints.json"
 NATIVE_LANE_ARTIFACT = HOST_EVIDENCE_DIR / "native-lane-dispatcher.json"
 PLAN_R2_ARTIFACT = HOST_EVIDENCE_DIR / "plan-r2-remote-owner.json"
 GROK_MOUNT_DIR = HOST_EVIDENCE_DIR / "grok-mounts"
-OPERATOR_PROFILE_DIR = (
-    Path.home() / ".ipfs_accelerate" / "agent_supervisor" / "eaaef-route-profile"
-)
+OPERATOR_PROFILE_DIR = EAAEF_PROVIDER_LEGACY_PROFILE_DIR
+OPERATOR_PROFILE_ROOT = EAAEF_PROVIDER_PROFILE_ROOT
+OPERATOR_LIFECYCLE_DIR = EAAEF_PROVIDER_LIFECYCLE_DIR
 HOST_WORKER_IMAGE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-host-worker-image-admission@1"
 )
@@ -377,6 +388,7 @@ def _full_sha256(value: object) -> bool:
 def admission_bundle_target_decision(
     *,
     child_decisions: Mapping[str, str],
+    bootstrap_admission_preflight_valid: bool,
     bootstrap_admission_statement_cid: str,
     materialization_receipt_cid: str,
 ) -> str:
@@ -387,10 +399,58 @@ def admission_bundle_target_decision(
             child_decisions.get(task_id) == "admitted"
             for task_id in ADMIT_REQUIRED_CHILDREN
         )
+        and bootstrap_admission_preflight_valid is True
         and _full_sha256(bootstrap_admission_statement_cid)
         and _full_sha256(materialization_receipt_cid)
     )
     return "admitted" if admitted else "no_go"
+
+
+def verify_prebootstrap_admission_statement(
+    *,
+    statement: object,
+    expected_source_head: str,
+    expected_source_tree: str,
+    expected_board_namespace: str,
+    expected_board_cid: str,
+    expected_materialization_receipt_cid: str,
+    now_ms: int | None = None,
+) -> dict[str, Any]:
+    """Verify the exact typed no-go that precedes dependency EAAEF-000.
+
+    EAAEF-191 closes the host-gate evidence before EAAEF-000 may run, so this
+    must be a canonical unsigned pre-bootstrap statement, not a forged digest
+    and not the later signed EAAEF-000 receipt.
+    """
+
+    if not isinstance(statement, Mapping):
+        raise ExternalAgentBootstrapAdmissionError(
+            "pre-bootstrap admission statement is unavailable"
+        )
+    value = dict(statement)
+    _validate_statement_shape(value)
+    observed_now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    expected = {
+        "decision": "no_go",
+        "outcome": "mutation_not_admitted",
+        "source_head": expected_source_head,
+        "source_tree": expected_source_tree,
+        "board_namespace": expected_board_namespace,
+        "board_cid": expected_board_cid,
+        "materialization_receipt_cid": expected_materialization_receipt_cid,
+    }
+    if (
+        any(value.get(field) != selected for field, selected in expected.items())
+        or not value.get("blockers")
+        or int(value["issued_at_ms"]) > observed_now_ms
+        or observed_now_ms >= int(value["expires_at_ms"])
+        or int(value["expires_at_ms"]) - int(value["issued_at_ms"])
+        > 3_600_000
+    ):
+        raise ExternalAgentBootstrapAdmissionError(
+            "pre-bootstrap admission statement binding differs"
+        )
+    return value
 
 
 def verify_admission_bundle_receipt(
@@ -400,6 +460,7 @@ def verify_admission_bundle_receipt(
     expected_source_tree: str,
     expected_board_namespace: str,
     expected_board_cid: str,
+    prebootstrap_statement_now_ms: int | None = None,
 ) -> dict[str, Any]:
     """Verify current, closed, independently signed EAAEF host admission.
 
@@ -470,14 +531,68 @@ def verify_admission_bundle_receipt(
         blockers.append("EAAEF-191 child receipt identities differ")
     bootstrap_cid = str(evidence.get("bootstrap_admission_statement_cid") or "")
     materialization_cid = str(evidence.get("materialization_receipt_cid") or "")
+    bootstrap_evidence = (receipts.get("EAAEF-180") or {}).get("evidence")
+    bootstrap_statement = (
+        bootstrap_evidence.get("bootstrap_admission_statement")
+        if isinstance(bootstrap_evidence, Mapping)
+        else None
+    )
+    raw_inventory_items = (
+        bootstrap_evidence.get("items")
+        if isinstance(bootstrap_evidence, Mapping)
+        else None
+    )
+    inventory_items = (
+        list(raw_inventory_items) if isinstance(raw_inventory_items, list) else []
+    )
+    inventory_blockers = {
+        str(item.get("blocker") or "")
+        for item in inventory_items
+        if isinstance(item, Mapping)
+    }
+    bootstrap_preflight_valid = False
+    try:
+        verified_statement = verify_prebootstrap_admission_statement(
+            statement=bootstrap_statement,
+            expected_source_head=expected_source_head,
+            expected_source_tree=expected_source_tree,
+            expected_board_namespace=expected_board_namespace,
+            expected_board_cid=expected_board_cid,
+            expected_materialization_receipt_cid=materialization_cid,
+            now_ms=prebootstrap_statement_now_ms,
+        )
+    except (ExternalAgentBootstrapAdmissionError, TypeError, ValueError) as exc:
+        blockers.append(f"EAAEF-191 pre-bootstrap statement is invalid: {exc}")
+    else:
+        bootstrap_preflight_valid = (
+            verified_statement.get("statement_cid") == bootstrap_cid
+        )
+        if not bootstrap_preflight_valid:
+            blockers.append("EAAEF-191 pre-bootstrap statement identity differs")
+        if not set(verified_statement.get("blockers") or ()).issubset(
+            inventory_blockers
+        ):
+            bootstrap_preflight_valid = False
+            blockers.append(
+                "EAAEF-191 pre-bootstrap blockers differ from inventory"
+            )
     raw_open = evidence.get("inventory_open_host_gated")
     open_host_gates = (
         [str(item) for item in raw_open]
         if isinstance(raw_open, list) and all(isinstance(item, str) for item in raw_open)
         else ["host-gated blocker inventory is malformed"]
     )
+    expected_open_host_gates = [
+        str(item.get("blocker") or "")
+        for item in inventory_items
+        if isinstance(item, Mapping)
+        and item.get("class") == "host_gated_external_authority"
+    ]
+    if open_host_gates != expected_open_host_gates:
+        blockers.append("EAAEF-191 open host-gate inventory differs")
     target_decision = admission_bundle_target_decision(
         child_decisions=child_decisions,
+        bootstrap_admission_preflight_valid=bootstrap_preflight_valid,
         bootstrap_admission_statement_cid=bootstrap_cid,
         materialization_receipt_cid=materialization_cid,
     )
@@ -535,6 +650,7 @@ def verify_host_admission_task_receipt(
     expected_source_tree: str,
     expected_board_namespace: str,
     expected_board_cid: str,
+    prebootstrap_statement_now_ms: int | None = None,
 ) -> dict[str, Any]:
     """Verify one current-source EAAEF host-admission task receipt.
 
@@ -603,13 +719,18 @@ def verify_host_admission_task_receipt(
         )
 
     if task_id == "EAAEF-191":
-        bundle_verification = verify_admission_bundle_receipt(
+        bundle_arguments: dict[str, Any] = dict(
             receipt_dir=receipt_dir,
             expected_source_head=expected_source_head,
             expected_source_tree=expected_source_tree,
             expected_board_namespace=expected_board_namespace,
             expected_board_cid=expected_board_cid,
         )
+        if prebootstrap_statement_now_ms is not None:
+            bundle_arguments["prebootstrap_statement_now_ms"] = (
+                prebootstrap_statement_now_ms
+            )
+        bundle_verification = verify_admission_bundle_receipt(**bundle_arguments)
         if bundle_verification.get("admitted") is not True:
             bundle_blockers = bundle_verification.get("blockers")
             if isinstance(bundle_blockers, list):
@@ -664,7 +785,13 @@ def _source_identity() -> dict[str, str]:
     }
 
 
-def _base_receipt(task_id: str, *, decision: str, evidence: Mapping[str, Any]) -> dict[str, Any]:
+def _base_receipt(
+    task_id: str,
+    *,
+    decision: str,
+    evidence: Mapping[str, Any],
+    source_identity: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     payload = {
         "schema": RECEIPT_SCHEMA if task_id != "EAAEF-191" else BUNDLE_SCHEMA,
         "task_id": task_id,
@@ -674,13 +801,43 @@ def _base_receipt(task_id: str, *, decision: str, evidence: Mapping[str, Any]) -
         "supervisor_process_started": False,
         "self_signed": False,
         "independent_signatures": [],
-        **_source_identity(),
+        **dict(source_identity or _source_identity()),
         "evidence": dict(evidence),
     }
     payload["receipt_cid"] = cid(
         {key: value for key, value in payload.items() if key != "receipt_cid"}
     )
     return payload
+
+
+def _bootstrap_admission_capture(
+    *,
+    plan: Mapping[str, Any],
+    source_identity: Mapping[str, str],
+) -> tuple[dict[str, Any], str]:
+    """Capture and verify the dependency-safe pre-EAAEF-000 no-go statement."""
+
+    statement = plan.get("bootstrap_admission_statement")
+    try:
+        verified = verify_prebootstrap_admission_statement(
+            statement=statement,
+            expected_source_head=source_identity["source_head"],
+            expected_source_tree=source_identity["source_tree"],
+            expected_board_namespace=source_identity["board_namespace"],
+            expected_board_cid=source_identity["board_cid"],
+            expected_materialization_receipt_cid=str(
+                plan.get("materialization_receipt_cid") or ""
+            ),
+        )
+    except (ExternalAgentBootstrapAdmissionError, TypeError, ValueError) as exc:
+        return {
+            "bootstrap_admission_statement": (
+                dict(statement) if isinstance(statement, Mapping) else None
+            ),
+        }, f"pre-bootstrap admission statement rejected: {exc}"
+    return {
+        "bootstrap_admission_statement": verified,
+    }, ""
 
 
 class EarlyFrontierPreflightBlocked(RuntimeError):
@@ -841,7 +998,6 @@ def probe_duckdb_quack() -> dict[str, Any]:
     """Refuse silent 1.5.2 substitution. Do not network-install Quack."""
 
     import duckdb
-
     from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
         QuackCompatibilityProfile,
         probe_quack_capabilities,
@@ -1076,6 +1232,45 @@ def _committed_provider_authorization_paths() -> list[str]:
     return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
 
 
+def _loaded_provider_authorizations() -> tuple[list[Any], list[dict[str, str]]]:
+    """Load valid candidates newest-in-history first, independent of filenames."""
+
+    from ipfs_accelerate_py import agent_implementation_route as routes
+
+    loaded: list[tuple[int, Any]] = []
+    attempts: list[dict[str, str]] = []
+    for relative in _committed_provider_authorization_paths():
+        try:
+            authorization = routes.load_agent_implementation_route_authorization(
+                repo_root=ROOT,
+                artifact_path=relative,
+                board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            attempts.append({"path": relative, "error": str(exc)})
+            continue
+        distance = subprocess.run(
+            ["git", "rev-list", "--count", f"{authorization.source_head}..HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        try:
+            commit_distance = int(distance.stdout.strip())
+        except ValueError:
+            commit_distance = 2**31 - 1
+        loaded.append((commit_distance, authorization))
+    loaded.sort(
+        key=lambda item: (
+            item[0],
+            -int(item[1].authorized_at_ms),
+            str(item[1].artifact_path),
+        )
+    )
+    return [authorization for _distance, authorization in loaded], attempts
+
+
 def probe_provider_authorization() -> dict[str, Any]:
     """Admit only a loadable source-addressed grok_cli/codex authorization.
 
@@ -1086,17 +1281,8 @@ def probe_provider_authorization() -> dict[str, Any]:
     from ipfs_accelerate_py import agent_implementation_route as routes
 
     candidates = _committed_provider_authorization_paths()
-    attempts: list[dict[str, str]] = []
-    for relative in candidates:
-        try:
-            authorization = routes.load_agent_implementation_route_authorization(
-                repo_root=ROOT,
-                artifact_path=relative,
-                board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
-            )
-        except (OSError, TypeError, ValueError) as exc:
-            attempts.append({"path": relative, "error": str(exc)})
-            continue
+    loaded, attempts = _loaded_provider_authorizations()
+    for authorization in loaded:
         return {
             "decision": "admitted",
             "artifact": "eaaef_scoped_provider_authorization",
@@ -1147,14 +1333,48 @@ def _write_private_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _load_operator_key() -> tuple[Ed25519PrivateKey, str] | None:
-    key_path = OPERATOR_PROFILE_DIR / "local_dev_profile.key"
-    if not key_path.is_file():
-        return None
-    try:
-        key = Ed25519PrivateKey.from_private_bytes(key_path.read_bytes())
-    except ValueError:
-        return None
-    return key, ed25519_did_key(key.public_key())
+    """Resolve the private reviewer key for one admitted provider authority.
+
+    A source-specific profile is preferred, while the original fixed profile
+    remains a compatibility candidate for already committed authorizations.
+    The signed profile, lifecycle anchor, authorization bounds, and private-key
+    DID must all agree before host evidence may use the key.
+    """
+
+    loaded, _attempts = _loaded_provider_authorizations()
+    for authorization in loaded:
+        bounds = authorization.authority_bounds
+        if bounds is None:
+            continue
+        candidates = eaaef_provider_profile_candidates(
+            repository_cid=bounds.repository_cid,
+            baseline_commit=bounds.baseline_commit,
+            profile_root=OPERATOR_PROFILE_ROOT,
+            legacy_profile_dir=OPERATOR_PROFILE_DIR,
+        )
+        for profile_dir in candidates:
+            try:
+                profile = load_local_profile(
+                    repository_cid=bounds.repository_cid,
+                    profile_dir=profile_dir,
+                    lifecycle_dir=OPERATOR_LIFECYCLE_DIR,
+                )
+                key = Ed25519PrivateKey.from_private_bytes(
+                    (profile_dir / "local_dev_profile.key").read_bytes()
+                )
+            except (LocalProfileError, OSError, ValueError):
+                continue
+            signer_did = ed25519_did_key(key.public_key())
+            if (
+                profile.baseline_commit != bounds.baseline_commit
+                or profile.content_id != bounds.authority_cid
+                or profile.identity_did != authorization.reviewer_identity
+                or profile.reviewer_identity != authorization.reviewer_identity
+                or signer_did != authorization.reviewer_identity
+            ):
+                continue
+            return key, signer_did
+    return None
 
 
 def _sign_mapping(key: Ed25519PrivateKey, payload: Mapping[str, Any]) -> str:
@@ -1765,10 +1985,10 @@ def materialize_container_profile(
         worker_container_execution_profile_signing_bytes,
     )
     from ipfs_accelerate_py.agent_supervisor.validation.external_agent_fabric_bootstrap import (
+        _EXPECTED_CONTAINER_ENV,
         EAAEF_BOOTSTRAP_POLICY_CID,
         EAAEF_WORKER_CONTAINER_PROFILE_REVIEWER_ROLE_V2,
         EAAEF_WORKER_CONTAINER_PROFILE_SCHEMA_V2,
-        _EXPECTED_CONTAINER_ENV,
         eaaef_worker_container_profile_signing_bytes,
         validate_eaaef_worker_container_profile_artifact,
     )
@@ -2794,6 +3014,7 @@ def collect_early_frontier_host_admission_receipts(
     plan = validate_early_frontier_launch_plan(
         load_isolated_launch_plan(timeout_seconds=timeout_seconds)
     )
+    source_identity = _source_identity()
     blocker_classes = {
         str(key): str(value)
         for key, value in dict(plan.get("blocker_classes") or {}).items()
@@ -2821,27 +3042,35 @@ def collect_early_frontier_host_admission_receipts(
                 "materialization_receipt_cid": plan.get(
                     "materialization_receipt_cid"
                 ),
-                "bootstrap_admission_decision": (
-                    (plan.get("bootstrap_admission_statement") or {}).get("decision")
+                "bootstrap_admission_statement": (
+                    dict(plan["bootstrap_admission_statement"])
+                    if isinstance(
+                        plan.get("bootstrap_admission_statement"), Mapping
+                    )
+                    else None
                 ),
                 "items": inventory_items,
                 "auto_recoverable_action": "host_bootstrap_recovery",
             },
+            source_identity=source_identity,
         ),
         "EAAEF-181": _base_receipt(
             "EAAEF-181",
             decision="bound_unadmitted",
             evidence=principals,
+            source_identity=source_identity,
         ),
         "EAAEF-182": _base_receipt(
             "EAAEF-182",
             decision=str(duckdb["decision"]),
             evidence=duckdb,
+            source_identity=source_identity,
         ),
         "EAAEF-183": _base_receipt(
             "EAAEF-183",
             decision=str(engine["decision"]),
             evidence=engine,
+            source_identity=source_identity,
         ),
     }
     if tuple(receipts) != EARLY_FRONTIER_TASK_IDS:
@@ -2859,7 +3088,14 @@ def collect_host_admission_receipts(
     plan = dict(launch_plan or load_isolated_launch_plan(timeout_seconds=timeout_seconds))
     if plan.get("process_started") is True:
         raise RuntimeError("collector refuses a plan that started a process")
+    source_identity = _source_identity()
+    bootstrap_capture, bootstrap_error = _bootstrap_admission_capture(
+        plan=plan,
+        source_identity=source_identity,
+    )
     blockers = [str(item) for item in plan.get("blockers") or () if str(item)]
+    if bootstrap_error:
+        blockers.append(bootstrap_error)
     blocker_classes = {
         str(key): str(value)
         for key, value in dict(plan.get("blocker_classes") or {}).items()
@@ -2892,62 +3128,71 @@ def collect_host_admission_receipts(
                 "launch_plan_allowed": False,
                 "launch_plan_schema": plan.get("schema"),
                 "materialization_receipt_cid": plan.get("materialization_receipt_cid"),
-                "bootstrap_admission_decision": (
-                    (plan.get("bootstrap_admission_statement") or {}).get("decision")
-                ),
+                **bootstrap_capture,
                 "items": inventory_items,
                 "auto_recoverable_action": "host_bootstrap_recovery",
             },
+            source_identity=source_identity,
         ),
         "EAAEF-181": _base_receipt(
             "EAAEF-181",
             decision="bound_unadmitted",
             evidence=principals,
+            source_identity=source_identity,
         ),
         "EAAEF-182": _base_receipt(
             "EAAEF-182",
             decision=str(duckdb["decision"]),
             evidence=duckdb,
+            source_identity=source_identity,
         ),
         "EAAEF-183": _base_receipt(
             "EAAEF-183",
             decision=str(engine["decision"]),
             evidence=engine,
+            source_identity=source_identity,
         ),
         "EAAEF-184": _base_receipt(
             "EAAEF-184",
             decision=str(provider_authorization["decision"]),
             evidence=provider_authorization,
+            source_identity=source_identity,
         ),
         "EAAEF-185": _base_receipt(
             "EAAEF-185",
             decision=str(worker_image.get("decision") or "typed_missing"),
             evidence=worker_image,
+            source_identity=source_identity,
         ),
         "EAAEF-186": _base_receipt(
             "EAAEF-186",
             decision=str(container_profile.get("decision") or "typed_missing"),
             evidence=container_profile,
+            source_identity=source_identity,
         ),
         "EAAEF-187": _base_receipt(
             "EAAEF-187",
             decision=str(worker_network.get("decision") or "typed_missing"),
             evidence=worker_network,
+            source_identity=source_identity,
         ),
         "EAAEF-188": _base_receipt(
             "EAAEF-188",
             decision=str(command_fabric.get("decision") or "typed_missing"),
             evidence=command_fabric,
+            source_identity=source_identity,
         ),
         "EAAEF-189": _base_receipt(
             "EAAEF-189",
             decision=str(native_lane.get("decision") or "typed_missing"),
             evidence=native_lane,
+            source_identity=source_identity,
         ),
         "EAAEF-190": _base_receipt(
             "EAAEF-190",
             decision=str(plan_r2.get("decision") or "typed_missing"),
             evidence=plan_r2,
+            source_identity=source_identity,
         ),
     }
     child_cids = {
@@ -2960,8 +3205,18 @@ def collect_host_admission_receipts(
         for task_id in RECEIPT_FILES
         if task_id != "EAAEF-191"
     }
-    bootstrap_cid = str(
-        (plan.get("bootstrap_admission_statement") or {}).get("statement_cid") or ""
+    bootstrap_statement = bootstrap_capture.get("bootstrap_admission_statement")
+    bootstrap_preflight_valid = not bootstrap_error and isinstance(
+        bootstrap_statement, Mapping
+    )
+    if isinstance(bootstrap_statement, Mapping) and not set(
+        bootstrap_statement.get("blockers") or ()
+    ).issubset(set(blockers)):
+        bootstrap_preflight_valid = False
+    bootstrap_cid = (
+        str(bootstrap_statement.get("statement_cid") or "")
+        if isinstance(bootstrap_statement, Mapping)
+        else ""
     )
     materialization_cid = str(plan.get("materialization_receipt_cid") or "")
     open_host_gates = [
@@ -2969,9 +3224,10 @@ def collect_host_admission_receipts(
         for item in inventory_items
         if item["class"] == "host_gated_external_authority"
     ]
-    source_identity = receipts["EAAEF-180"]
+    receipt_source_identity = receipts["EAAEF-180"]
     target_decision = admission_bundle_target_decision(
         child_decisions=child_decisions,
+        bootstrap_admission_preflight_valid=bootstrap_preflight_valid,
         bootstrap_admission_statement_cid=bootstrap_cid,
         materialization_receipt_cid=materialization_cid,
     )
@@ -2979,10 +3235,10 @@ def collect_host_admission_receipts(
         "child_decisions": child_decisions,
         "child_receipt_cids": child_cids,
         "launch_plan_allowed": False,
-        "source_head": str(source_identity["source_head"]),
-        "source_tree": str(source_identity["source_tree"]),
-        "board_namespace": str(source_identity["board_namespace"]),
-        "board_cid": str(source_identity["board_cid"]),
+        "source_head": str(receipt_source_identity["source_head"]),
+        "source_tree": str(receipt_source_identity["source_tree"]),
+        "board_namespace": str(receipt_source_identity["board_namespace"]),
+        "board_cid": str(receipt_source_identity["board_cid"]),
         "bootstrap_admission_statement_cid": bootstrap_cid,
         "materialization_receipt_cid": materialization_cid,
         "inventory_open_host_gated": open_host_gates,
@@ -3022,6 +3278,7 @@ def collect_host_admission_receipts(
             "prospective_supervisor_signature_rejected": True,
             "inventory_open_host_gated": open_host_gates,
         },
+        source_identity=source_identity,
     )
     return receipts
 

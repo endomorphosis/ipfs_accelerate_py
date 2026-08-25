@@ -37,6 +37,10 @@ from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import 
     collect_and_write,
     load_admission_bundle_signatures,
     verify_admission_bundle_receipt,
+    verify_prebootstrap_admission_statement,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_admission import (
+    ExternalAgentBootstrapAdmissionError,
 )
 
 OPERATOR_KEY = (
@@ -99,8 +103,32 @@ def issue() -> dict[str, str]:
     ]
     bootstrap_cid = str(evidence.get("bootstrap_admission_statement_cid") or "")
     materialization_cid = str(evidence.get("materialization_receipt_cid") or "")
+    bootstrap_evidence = child_receipts["EAAEF-180"].get("evidence")
+    bootstrap_statement = (
+        bootstrap_evidence.get("bootstrap_admission_statement")
+        if isinstance(bootstrap_evidence, dict)
+        else None
+    )
+    try:
+        verify_prebootstrap_admission_statement(
+            statement=bootstrap_statement,
+            expected_source_head=str(unsigned_bundle.get("source_head") or ""),
+            expected_source_tree=str(unsigned_bundle.get("source_tree") or ""),
+            expected_board_namespace=str(
+                unsigned_bundle.get("board_namespace") or ""
+            ),
+            expected_board_cid=str(unsigned_bundle.get("board_cid") or ""),
+            expected_materialization_receipt_cid=materialization_cid,
+        )
+    except (ExternalAgentBootstrapAdmissionError, TypeError, ValueError):
+        bootstrap_preflight_valid = False
+    else:
+        bootstrap_preflight_valid = (
+            bootstrap_statement.get("statement_cid") == bootstrap_cid
+        )
     decision = admission_bundle_target_decision(
         child_decisions=child_decisions,
+        bootstrap_admission_preflight_valid=bootstrap_preflight_valid,
         bootstrap_admission_statement_cid=bootstrap_cid,
         materialization_receipt_cid=materialization_cid,
     )
