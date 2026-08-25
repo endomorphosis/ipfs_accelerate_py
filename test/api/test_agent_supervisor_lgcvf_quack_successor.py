@@ -140,7 +140,7 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
             "source_forest_root": "sha256:" + ("a" * 64),
         },
     )
-    stage = tmp_path / "run-v34.stage-test"
+    stage = tmp_path / "run-v35.stage-test"
     stage.mkdir(mode=0o700)
     staged_config = operator._native_resume_stage_config(
         config,
@@ -160,9 +160,9 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
         receipt,
         config=config,
         database_paths={
-            "control": "run-v34.stage-test/control.duckdb",
-            "coordination": "run-v34.stage-test/control.coordination.duckdb",
-            "execution": "run-v34.stage-test/control.execution.duckdb",
+            "control": "run-v35.stage-test/control.duckdb",
+            "coordination": "run-v35.stage-test/control.coordination.duckdb",
+            "execution": "run-v35.stage-test/control.execution.duckdb",
         },
         source_head=str(population["source_head"]),
         repository_tree_id=str(population["repository_tree_id"]),
@@ -220,11 +220,11 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
                 tampered,
                 config=config,
                 database_paths={
-                    "control": "run-v34.stage-test/control.duckdb",
+                    "control": "run-v35.stage-test/control.duckdb",
                     "coordination": (
-                        "run-v34.stage-test/control.coordination.duckdb"
+                        "run-v35.stage-test/control.coordination.duckdb"
                     ),
-                    "execution": "run-v34.stage-test/control.execution.duckdb",
+                    "execution": "run-v35.stage-test/control.execution.duckdb",
                 },
                 source_head=str(population["source_head"]),
                 repository_tree_id=str(population["repository_tree_id"]),
@@ -319,6 +319,24 @@ if 'ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile' in sys.module
     )
 
     assert completed.returncode == 0, completed.stderr
+
+
+def test_lgcvf_sealed_module_sibling_keeps_exact_proc_fd_member() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_daemon,
+    )
+
+    origin = Path(
+        "/proc/self/fd/71/ipfs_accelerate_py/agent_supervisor/"
+        "todo_daemon/implementation_daemon.py"
+    )
+
+    assert implementation_daemon._trusted_quota_fallback_script_path(
+        origin
+    ) == Path(
+        "/proc/self/fd/71/ipfs_accelerate_py/agent_supervisor/"
+        "grok_cli_runner.py"
+    )
 
 
 def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(

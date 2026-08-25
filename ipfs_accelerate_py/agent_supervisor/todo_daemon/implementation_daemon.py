@@ -3333,9 +3333,34 @@ DEFAULT_CODEX_REASONING_EFFORT = "medium"
 _TRUSTED_QUOTA_FALLBACK_PYTHON_EXECUTABLE = Path(sys.executable).resolve(
     strict=True
 )
-_TRUSTED_QUOTA_FALLBACK_SCRIPT = (
-    Path(__file__).resolve(strict=True).parents[1] / "grok_cli_runner.py"
-).resolve(strict=True)
+
+
+def _trusted_quota_fallback_script_path(module_file: str | Path) -> Path:
+    """Return the trusted sibling without resolving a sealed ZIP member.
+
+    A live LGCVF module origin is a zipimport member below ``/proc/self/fd``.
+    Resolving that pseudo-path follows the descriptor to the kernel's deleted
+    memfd label, where no child member pathname exists.  The surrounding
+    bootstrap has already hash-verified and write-sealed that descriptor, so
+    retaining its exact unresolved member path is the fail-closed identity.
+    Ordinary filesystem imports keep the existing strict resolution checks.
+    """
+
+    origin = Path(module_file)
+    raw_origin = str(origin)
+    sealed = re.fullmatch(
+        r"/proc/self/fd/([0-9]+)/ipfs_accelerate_py/agent_supervisor/"
+        r"todo_daemon/implementation_daemon\.py",
+        raw_origin,
+    )
+    if sealed is not None and int(sealed.group(1)) >= 3:
+        return origin.parents[1] / "grok_cli_runner.py"
+    return (
+        origin.resolve(strict=True).parents[1] / "grok_cli_runner.py"
+    ).resolve(strict=True)
+
+
+_TRUSTED_QUOTA_FALLBACK_SCRIPT = _trusted_quota_fallback_script_path(__file__)
 _CANONICAL_INVOCATION_NULL_GROK_ROUTE = resolve_agent_implementation_route(
     primary_provider_id="grok_cli",
     primary_model_id=DEFAULT_AUTOMATIC_GROK_MODEL,

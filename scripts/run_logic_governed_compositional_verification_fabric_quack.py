@@ -6,10 +6,10 @@ generations remain preserved recovery history.  The active operator has two
 explicit stages:
 
 * ``bootstrap`` materializes the exact tracked candidate projection and
-  atomically publishes one no-overwrite run-v34 database with provenance;
+  atomically publishes one no-overwrite run-v35 database with provenance;
 * ``bootstrap-sealed-continuity`` admits a separately preserved run-v17 only
   into the legacy run-v23 boundary through six explicit raw-byte pins;
-* ``launch`` owns run-v34 in-process, starts exactly one foreground
+* ``launch`` owns run-v35 in-process, starts exactly one foreground
   configured-board scheduler child, and services the closed mutation inbox.
 
 The Quack attach credential exists only in the controller's memory and in the
@@ -79,7 +79,7 @@ PROGRAM_ROOT_RELATIVE: Final = Path(
 )
 SOURCE_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v17"
 LEGACY_SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v23"
-SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v34"
+SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v35"
 SOURCE_DATABASE_RELATIVE: Final = SOURCE_RUN_RELATIVE / "control.duckdb"
 SUCCESSOR_DATABASE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "control.duckdb"
 OWNER_STATE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "quack-owner"
@@ -105,7 +105,7 @@ PROVENANCE_SCHEMA: Final = (
 )
 NATIVE_RESUME_ADMISSION_MODE: Final = "tracked_candidate_initial_projection_reset"
 NATIVE_RESUME_SOURCE_GENERATION: Final = "lgcvf-tracked-candidate-projection"
-SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v34"
+SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v35"
 SEALED_CONTINUITY_VERIFICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "lgcvf-target-only-initial-continuity-verification@1"
@@ -2758,7 +2758,7 @@ def _require_ignored_successor(
 
 
 def _load_native_resume_config(root: Path) -> tuple[dict[str, Any], bytes]:
-    """Load the exact tracked run-v34 profile with duplicate-key rejection."""
+    """Load the exact tracked run-v35 profile with duplicate-key rejection."""
 
     path = _contained(root, DEFAULT_SUCCESSOR_CONFIG_RELATIVE)
     raw = _read_bounded_regular_file(
@@ -3388,7 +3388,7 @@ def _cleanup_native_resume_stage(stage: Path, *, publish_parent: Path) -> None:
 
 
 def bootstrap_native_resume(root: Path = ROOT) -> dict[str, Any]:
-    """Atomically publish run-v34 from the tracked candidate projection."""
+    """Atomically publish run-v35 from the tracked candidate projection."""
 
     root = root.resolve(strict=True)
     paths = _paths(root)
