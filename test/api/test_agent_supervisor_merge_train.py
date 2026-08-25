@@ -1840,6 +1840,7 @@ def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
     result = daemon._merge_train_callback(request)
 
     assert result["merged"] is True
+    assert result["target_commit"] == result["merge_commit"]
     events = daemon._iter_merge_lifecycle_events()
     [reconciled] = [
         event for event in events if event.get("type") == "merge_reconciled"

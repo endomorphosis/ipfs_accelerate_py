@@ -32643,6 +32643,13 @@ class PortalImplementationDaemon:
             immutable_integration_commit = str(
                 integration_commit_proof.get("integration_commit") or ""
             )
+            # The terminal implementation event and its callback
+            # reconciliation must name the same immutable target.  Normal
+            # merge results historically exposed only ``merge_commit``, while
+            # the reconciliation receipt also exposed ``target_commit``.
+            # Persist the proved identity in both fields so Portal can collapse
+            # the queued and terminal sources into one evaluated baseline.
+            result["target_commit"] = immutable_integration_commit
         if (
             result.get("merged") or result.get("already_merged")
         ) and (
