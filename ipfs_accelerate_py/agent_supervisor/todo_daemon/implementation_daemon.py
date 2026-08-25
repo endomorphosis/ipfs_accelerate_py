@@ -76534,11 +76534,36 @@ class DatabaseImplementationDaemon:
             or [entry.get("revision") for entry in revisions]
             != list(range(1, len(revisions) + 1))
             or not revisions
-            or revisions[-1].get("revision") != task_revision
-            or revisions[-1].get("status")
-            != str(getattr(task, "status", "") or "")
-            or revisions[-1].get("body") != getattr(task, "body", None)
         ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge completion crash fence received malformed or "
+                "stale canonical history"
+            )
+        task_status = str(getattr(task, "status", "") or "")
+        task_body = getattr(task, "body", None)
+        current_entry = revisions[-1]
+        task_snapshot_current = bool(
+            current_entry.get("revision") == task_revision
+            and current_entry.get("status") == task_status
+            and current_entry.get("body") == task_body
+        )
+        historical_entry = (
+            revisions[task_revision - 1]
+            if task_revision <= len(revisions)
+            else None
+        )
+        # Ready-frontier and history projections are separate owner reads.
+        # A competing lane may advance the task between them; admit that only
+        # as a denial observation when history reproduces the exact snapshot.
+        task_snapshot_stale = bool(
+            not require_current_blocked
+            and isinstance(historical_entry, Mapping)
+            and current_entry.get("revision") > task_revision
+            and historical_entry.get("revision") == task_revision
+            and historical_entry.get("status") == task_status
+            and historical_entry.get("body") == task_body
+        )
+        if not (task_snapshot_current or task_snapshot_stale):
             raise DatabaseImplementationAuthorityError(
                 "post-merge completion crash fence received malformed or "
                 "stale canonical history"
@@ -77111,7 +77136,20 @@ class DatabaseImplementationDaemon:
             if not closed:
                 open_windows.append(candidate)
         if not open_windows:
-            return None
+            if not task_snapshot_stale:
+                return None
+            stale_snapshot = {
+                "task_cid": task_cid,
+                "task_revision": task_revision,
+                "canonical_task_revision": int(
+                    current_entry["revision"]
+                ),
+            }
+            return {
+                **stale_snapshot,
+                "stale_task_snapshot": True,
+                "context_id": content_identity(stale_snapshot),
+            }
         if len(open_windows) > 1:
             raise DatabaseImplementationAuthorityError(
                 "post-merge completion crash fence found ambiguous open "
