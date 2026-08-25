@@ -388,6 +388,39 @@ for module in (daemon, owner, intent):
         raise SystemExit(76)
 if not callable(getattr(daemon, "main", None)):
     raise SystemExit(77)
+
+# Portal execution reaches this classifier after a ready claim has been
+# promoted through its context phase and immediately before provider
+# dispatch.  A negative classification must not import the independently
+# qualified EAAEF dispatcher: that closure requires native ``cryptography``,
+# which is deliberately absent from this sealed LGCVF capsule.
+forbidden = {
+    (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "external_agent_container_dispatcher"
+    ),
+    (
+        "ipfs_accelerate_py.agent_supervisor.task_sources."
+        "eaaef_borrowed_transaction"
+    ),
+}
+if importlib.util.find_spec("cryptography") is not None:
+    raise SystemExit(78)
+if forbidden.intersection(sys.modules):
+    raise SystemExit(79)
+
+class PortalProvider:
+    def run_provider(self):
+        raise AssertionError("provider dispatch is outside this import probe")
+
+portal_provider = PortalProvider()
+if daemon._database_daemon_exact_container_callback(
+    portal_provider.run_provider,
+    method_name="run_provider",
+):
+    raise SystemExit(80)
+if forbidden.intersection(sys.modules) or "cryptography" in sys.modules:
+    raise SystemExit(81)
 daemon.main(["--help"])
 """
     try:

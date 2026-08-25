@@ -78049,7 +78049,7 @@ def _database_daemon_eaaef_validation_phase_body(
 ) -> dict[str, Any]:
     """Close the container validation receipt before its one owner write."""
 
-    from ..task_sources.eaaef_borrowed_transaction import (
+    from ..task_sources.eaaef_execution_contracts import (
         EAAEF_CONTAINER_VALIDATION_EVIDENCE_SCHEMA,
     )
 
@@ -78084,12 +78084,27 @@ def _database_daemon_exact_container_callback(
 ) -> bool:
     """Recognize only the reviewed dispatcher bound-method implementation."""
 
+    owner = getattr(callback, "__self__", None)
+    function = getattr(callback, "__func__", None)
+    dispatcher_module = __package__ + ".external_agent_container_dispatcher"
+    # Portal callbacks are the ordinary database-authoritative execution
+    # path.  Do not import the EAAEF dispatcher (and its independently
+    # qualified native-cryptography closure) merely to prove that a Portal
+    # callback is not that dispatcher.  This string check can only reject a
+    # callback; the exact type and function identity below remain the sole
+    # positive admission authority.
+    if (
+        getattr(type(owner), "__module__", "") != dispatcher_module
+        or getattr(type(owner), "__qualname__", "")
+        != "ExternalAgentContainerWorkerDispatcher"
+        or getattr(function, "__module__", "") != dispatcher_module
+    ):
+        return False
+
     from .external_agent_container_dispatcher import (
         ExternalAgentContainerWorkerDispatcher,
     )
 
-    owner = getattr(callback, "__self__", None)
-    function = getattr(callback, "__func__", None)
     return (
         type(owner) is ExternalAgentContainerWorkerDispatcher
         and function is getattr(ExternalAgentContainerWorkerDispatcher, method_name)
@@ -84372,7 +84387,7 @@ class DatabaseImplementationDaemon:
             attempt_id=attempt.attempt_id,
             idempotency_key=idempotency_key,
         )
-        from ..task_sources.eaaef_borrowed_transaction import (
+        from ..task_sources.eaaef_execution_contracts import (
             EAAEF_IDEMPOTENT_RESERVATION_SCHEMA,
         )
 

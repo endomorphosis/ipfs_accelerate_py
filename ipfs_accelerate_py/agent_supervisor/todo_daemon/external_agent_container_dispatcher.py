@@ -29,7 +29,7 @@ from types import MappingProxyType
 from typing import Any, Final
 
 from ..runtime.worker_network_dispatch import EAAEF_BOARD_NAMESPACE
-from ..task_sources.eaaef_borrowed_transaction import (
+from ..task_sources.eaaef_execution_contracts import (
     EAAEF_CONTAINER_VALIDATION_EVIDENCE_SCHEMA,
 )
 

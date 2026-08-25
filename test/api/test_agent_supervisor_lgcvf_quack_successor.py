@@ -191,7 +191,7 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
             "source_forest_root": "sha256:" + ("a" * 64),
         },
     )
-    stage = tmp_path / "run-v38.stage-test"
+    stage = tmp_path / "run-v39.stage-test"
     stage.mkdir(mode=0o700)
     staged_config = operator._native_resume_stage_config(
         config,
@@ -211,9 +211,9 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
         receipt,
         config=config,
         database_paths={
-            "control": "run-v38.stage-test/control.duckdb",
-            "coordination": "run-v38.stage-test/control.coordination.duckdb",
-            "execution": "run-v38.stage-test/control.execution.duckdb",
+            "control": "run-v39.stage-test/control.duckdb",
+            "coordination": "run-v39.stage-test/control.coordination.duckdb",
+            "execution": "run-v39.stage-test/control.execution.duckdb",
         },
         source_head=str(population["source_head"]),
         repository_tree_id=str(population["repository_tree_id"]),
@@ -271,11 +271,11 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
                 tampered,
                 config=config,
                 database_paths={
-                    "control": "run-v38.stage-test/control.duckdb",
+                    "control": "run-v39.stage-test/control.duckdb",
                     "coordination": (
-                        "run-v38.stage-test/control.coordination.duckdb"
+                        "run-v39.stage-test/control.coordination.duckdb"
                     ),
-                    "execution": "run-v38.stage-test/control.execution.duckdb",
+                    "execution": "run-v39.stage-test/control.execution.duckdb",
                 },
                 source_head=str(population["source_head"]),
                 repository_tree_id=str(population["repository_tree_id"]),
