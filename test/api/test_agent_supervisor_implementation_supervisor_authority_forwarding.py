@@ -43,6 +43,33 @@ _LEGACY_AUTHORITY_ARGS = (
 )
 
 
+def test_supervisor_rejects_invalid_accepted_control_plane_pin(
+    tmp_path: Path,
+) -> None:
+    args = supervisor_module.parse_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+            "--accepted-control-plane-pin-json",
+            "{}",
+            *_LEGACY_AUTHORITY_ARGS,
+        ]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="accepted control-plane pin fields are not exact",
+    ):
+        supervisor_module.supervisor_config_from_args(
+            args,
+            repo_root=tmp_path,
+        )
+
+
 def test_supervisor_accepts_and_forwards_explicit_legacy_authority(
     tmp_path: Path,
 ) -> None:

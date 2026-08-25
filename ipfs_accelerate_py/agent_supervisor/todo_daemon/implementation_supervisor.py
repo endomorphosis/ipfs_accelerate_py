@@ -107,7 +107,9 @@ from ..runtime.multi_supervisor_runner import (
     STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
     TRUSTED_DUCKDB_HOME_ENV,
+    _eaaef_host_receipt_admitted,
     _trusted_duckdb_runtime_environment,
+    parse_accepted_control_plane_pin,
     provider_subprocess_environment,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
@@ -2163,10 +2165,6 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
     pinned = parser.parse_args(binding_argv)
     if pinned.daemon_entrypoint != PLAN_BOUND_DAEMON_ENTRYPOINT:
         raise PlanBoundDispatchError("plan-bound daemon entrypoint is foreign")
-    from ..runtime.multi_supervisor_runner import (
-        parse_accepted_control_plane_pin,
-    )
-
     try:
         accepted_control_plane_pin = parse_accepted_control_plane_pin(
             pinned.accepted_control_plane_pin_json

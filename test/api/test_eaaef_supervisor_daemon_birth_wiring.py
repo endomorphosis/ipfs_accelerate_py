@@ -519,6 +519,7 @@ def test_daemon_constructor_rejects_empty_or_mismatched_gateway_revision(
 
 
 def test_live_eaaef_supervisor_and_daemon_launches_remain_pre_popen_no_go(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     program = multi_runner.DatabaseProgramConfig(
@@ -549,7 +550,10 @@ def test_live_eaaef_supervisor_and_daemon_launches_remain_pre_popen_no_go(
     supervisor = object.__new__(
         implementation_supervisor.PortalImplementationSupervisor
     )
-    supervisor.config = SimpleNamespace(database_program=program)
+    supervisor.config = SimpleNamespace(
+        database_program=program,
+        repo_root=tmp_path,
+    )
     monkeypatch.setattr(
         implementation_supervisor.PortalImplementationSupervisor,
         "ensure_managed_daemon_pid_file",
