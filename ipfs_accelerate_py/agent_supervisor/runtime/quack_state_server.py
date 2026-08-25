@@ -1411,6 +1411,72 @@ class ExclusiveOwnerLease:
         self._fence_token = fence
         return marker
 
+    def _rebind_held_marker(
+        self,
+        *,
+        expected_server_id: str,
+        server_id: str,
+        process_birth: ProcessBirthIdentity,
+        database_path: Path,
+        generation: int,
+    ) -> OwnerMarker:
+        """Rebind one held marker without releasing its OS lease or fence.
+
+        This is the narrow same-process handoff used when a bounded offline
+        writer has closed its database connection and the long-lived state
+        owner takes over.  Exact object state and the on-disk marker must still
+        agree; a forked child, copied marker, wrong database, or replaced fence
+        fails closed before owner startup can reach capability admission,
+        migration, or a database open.
+        """
+
+        if (
+            self._handle is None
+            or self._marker is None
+            or not self._fence_token
+        ):
+            raise QuackStateServerOwnershipError(
+                "owner lease handoff requires one held exclusive lease"
+            )
+        if (
+            not expected_server_id
+            or not server_id
+            or type(process_birth) is not ProcessBirthIdentity
+            or isinstance(generation, bool)
+            or int(generation) < 1
+        ):
+            raise QuackStateServerOwnershipError(
+                "owner lease handoff identity is invalid"
+            )
+
+        current = self._read_marker()
+        retained = self._marker
+        if (
+            current is None
+            or current != retained
+            or retained.server_id != expected_server_id
+            or retained.fence_token != self._fence_token
+            or retained.process_birth != process_birth
+            or retained.database_path != str(Path(database_path))
+        ):
+            raise QuackStateServerOwnershipError(
+                "owner lease handoff differs from the held marker"
+            )
+
+        rebound = OwnerMarker(
+            server_id=server_id,
+            process_birth=process_birth,
+            database_path=retained.database_path,
+            # Preserve the lease birth time and fence: their continuity is the
+            # evidence that no unlock/relock window occurred during handoff.
+            started_at=retained.started_at,
+            fence_token=retained.fence_token,
+            generation=int(generation),
+        )
+        _atomic_write_json(self.marker_path, rebound.to_dict(), mode=0o600)
+        self._marker = rebound
+        return rebound
+
     def release(self, *, fence_token: str | None = None) -> None:
         if self._handle is None:
             return
@@ -4953,11 +5019,44 @@ class QuackStateServer:
         """Acquire exclusive ownership, migrate, serve, and publish identity."""
 
         with self._lifecycle_gate:
-            return self._start_under_lifecycle_gate()
+            return self._start_under_lifecycle_gate(acquired_owner_lease=None)
 
-    def _start_under_lifecycle_gate(self) -> StateServerIdentity:
+    def start_with_acquired_lease(
+        self,
+        owner_lease: ExclusiveOwnerLease,
+    ) -> StateServerIdentity:
+        """Start by adopting a same-process offline-writer lease.
+
+        The caller must close every offline DuckDB handle before invoking this
+        method.  The exact held ``ExclusiveOwnerLease`` is consumed once its
+        marker is rebound; subsequent startup failure releases it through the
+        normal emergency-cleanup path.  Process-birth equality intentionally
+        refuses inherited-FD or unrelated-process handoff.
+
+        This is only a contention primitive.  It does not qualify CASF, EAAEF,
+        Quack, a provider launch, or any signed production authority.
+        """
+
+        if type(owner_lease) is not ExclusiveOwnerLease:
+            raise QuackStateServerOwnershipError(
+                "owner lease handoff requires exact ExclusiveOwnerLease"
+            )
+        with self._lifecycle_gate:
+            return self._start_under_lifecycle_gate(
+                acquired_owner_lease=owner_lease
+            )
+
+    def _start_under_lifecycle_gate(
+        self,
+        *,
+        acquired_owner_lease: ExclusiveOwnerLease | None,
+    ) -> StateServerIdentity:
         with self._lock:
             if self._lifecycle in {ServerLifecycle.READY, ServerLifecycle.STARTING}:
+                if acquired_owner_lease is not None:
+                    raise QuackStateServerOwnershipError(
+                        "ready state owner cannot consume another owner lease"
+                    )
                 if self._identity is not None:
                     return self._identity
                 raise QuackStateServerError("server is starting without identity")
@@ -4971,6 +5070,40 @@ class QuackStateServer:
                     self.config.host,
                     remote_policy=self.config.remote_bind_policy,
                 )
+                owner = acquired_owner_lease
+                if owner is not None:
+                    birth = (
+                        self.process_birth_factory()
+                        if self.process_birth_factory is not None
+                        else current_process_birth()
+                    )
+                    if birth != current_process_birth():
+                        raise QuackStateServerOwnershipError(
+                            "owner lease handoff process birth is not current"
+                        )
+                    server_id = f"server:{uuid.uuid4()}"
+                    marker = owner.marker
+                    if (
+                        owner.lock_path.resolve() != self.owner_lock_path().resolve()
+                        or owner.marker_path.resolve()
+                        != self.owner_marker_path().resolve()
+                        or marker is None
+                    ):
+                        raise QuackStateServerOwnershipError(
+                            "owner lease handoff paths differ from the state owner"
+                        )
+                    owner._rebind_held_marker(  # noqa: SLF001 - exact owner transfer
+                        expected_server_id=marker.server_id,
+                        server_id=server_id,
+                        process_birth=birth,
+                        database_path=self.config.database_path,
+                        generation=1,
+                    )
+                    # From this point onward the server owns cleanup; there is
+                    # no release/reacquire edge between the offline writer and
+                    # live state-owner startup.
+                    self._owner = owner
+
                 # Container isolation is an independently observed authority
                 # gate.  It must precede every database mutation, including
                 # schema installation, and is carried into connection birth so
@@ -4981,25 +5114,27 @@ class QuackStateServer:
                     if isolation_admission is None
                     else dict(isolation_admission)
                 )
-                birth = (
-                    self.process_birth_factory()
-                    if self.process_birth_factory is not None
-                    else current_process_birth()
-                )
-                server_id = f"server:{uuid.uuid4()}"
-                owner = ExclusiveOwnerLease(
-                    lock_path=self.owner_lock_path(),
-                    marker_path=self.owner_marker_path(),
-                    liveness=self.owner_liveness_probe,
-                )
-                # Generation is finalized after opening the DB; provisional 1.
-                owner.acquire(
-                    server_id=server_id,
-                    process_birth=birth,
-                    database_path=self.config.database_path,
-                    generation=1,
-                )
-                self._owner = owner
+
+                if owner is None:
+                    birth = (
+                        self.process_birth_factory()
+                        if self.process_birth_factory is not None
+                        else current_process_birth()
+                    )
+                    server_id = f"server:{uuid.uuid4()}"
+                    owner = ExclusiveOwnerLease(
+                        lock_path=self.owner_lock_path(),
+                        marker_path=self.owner_marker_path(),
+                        liveness=self.owner_liveness_probe,
+                    )
+                    # Generation is finalized after opening the DB; provisional 1.
+                    owner.acquire(
+                        server_id=server_id,
+                        process_birth=birth,
+                        database_path=self.config.database_path,
+                        generation=1,
+                    )
+                    self._owner = owner
                 # A previous generation's ready projection must never survive
                 # as a launch signal while this generation is qualifying.
                 self.status_path().unlink(missing_ok=True)
@@ -5040,6 +5175,18 @@ class QuackStateServer:
                     )
 
                 generation = self._next_generation(connection)
+                marker = owner.marker
+                if marker is None:
+                    raise QuackStateServerOwnershipError(
+                        "state-owner marker disappeared before generation bind"
+                    )
+                owner._rebind_held_marker(  # noqa: SLF001 - owner-local fence bind
+                    expected_server_id=marker.server_id,
+                    server_id=server_id,
+                    process_birth=birth,
+                    database_path=self.config.database_path,
+                    generation=generation,
+                )
                 port = int(self.config.port) or _allocate_loopback_port(
                     self.config.host
                     if _is_loopback_host(self.config.host)
