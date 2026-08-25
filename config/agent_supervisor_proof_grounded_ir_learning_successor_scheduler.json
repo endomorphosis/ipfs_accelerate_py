@@ -22,15 +22,20 @@
     "planning_revision_is_runtime_completion_evidence": false
   },
   "initial_projection": {
-    "task_count": 12,
+    "task_count": 13,
     "completed_task_ids": [
       "PGIR-072",
       "PGIR-090",
       "PGIR-100",
-      "PGIR-111"
+      "PGIR-111",
+      "PGIR-200",
+      "PGIR-201",
+      "PGIR-202"
     ],
     "ready_task_ids": [
-      "PGIR-200"
+      "PGIR-203",
+      "PGIR-204",
+      "PGIR-208"
     ],
     "terminal_task_id": "PGIR-207",
     "goal_count": 12,
@@ -93,16 +98,19 @@
       "name": "pgir-successor-lane-0",
       "strict_shard_remainder": 0,
       "initial_task_ids": [
-        "PGIR-200"
+        "PGIR-204"
       ],
-      "initial_focus": "rights-and-corpus-critical-path"
+      "initial_focus": "deterministic-baseline"
     },
     {
       "index": 1,
       "name": "pgir-successor-lane-1",
       "strict_shard_remainder": 1,
-      "initial_task_ids": [],
-      "initial_focus": "tokenizer-and-baseline-parallel-frontier"
+      "initial_task_ids": [
+        "PGIR-203",
+        "PGIR-208"
+      ],
+      "initial_focus": "tokenizer-and-source-chain-acceptance"
     }
   ],
   "provider": {

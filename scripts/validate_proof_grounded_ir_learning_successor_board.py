@@ -31,7 +31,8 @@ DATASETS_PGIR_MERGE = "09ed0f2f0"
 DECISION_CID = "baguqeeraejs56hwzs3bqtgzoayrc2fxwgfnhcsxjthi4dh7gh64wptlkfhwa"
 
 ANCHORS = ("PGIR-072", "PGIR-090", "PGIR-100", "PGIR-111")
-OPEN_TASKS = tuple(f"PGIR-{number}" for number in range(200, 208))
+SOURCE_OPEN_TASKS = tuple(f"PGIR-{number}" for number in range(200, 208))
+OPEN_TASKS = (*SOURCE_OPEN_TASKS, "PGIR-208")
 EXPECTED_TASKS = (*ANCHORS, *OPEN_TASKS)
 EXPECTED_DEPENDENCIES = {
     "PGIR-072": (),
@@ -43,9 +44,17 @@ EXPECTED_DEPENDENCIES = {
     "PGIR-202": ("PGIR-201",),
     "PGIR-203": ("PGIR-202",),
     "PGIR-204": ("PGIR-202",),
-    "PGIR-205": ("PGIR-200", "PGIR-201", "PGIR-202", "PGIR-203", "PGIR-204"),
+    "PGIR-205": (
+        "PGIR-200",
+        "PGIR-201",
+        "PGIR-202",
+        "PGIR-203",
+        "PGIR-204",
+        "PGIR-208",
+    ),
     "PGIR-206": ("PGIR-205",),
     "PGIR-207": ("PGIR-072", "PGIR-090", "PGIR-100", "PGIR-206"),
+    "PGIR-208": ("PGIR-200", "PGIR-201", "PGIR-202"),
 }
 EXPECTED_GOALS = {
     "PGIR-072": "PGIR-G090",
@@ -60,6 +69,7 @@ EXPECTED_GOALS = {
     "PGIR-205": "PGIR-G030",
     "PGIR-206": "PGIR-G110",
     "PGIR-207": "PGIR-G110",
+    "PGIR-208": "PGIR-G030",
 }
 BOARD_NAMESPACE = "proof-grounded-ir-learning-successor-v1"
 ALLOWED_OPEN_STATUSES = {
@@ -170,8 +180,8 @@ def validate_anchors(report: Report) -> None:
     )
     report.check(
         "historical_next_tasks_bound",
-        all(task_id in final_text for task_id in OPEN_TASKS),
-        list(OPEN_TASKS),
+        all(task_id in final_text for task_id in SOURCE_OPEN_TASKS),
+        list(SOURCE_OPEN_TASKS),
     )
 
 
@@ -189,12 +199,12 @@ def validate_projection(report: Report) -> None:
     )
     report.check(
         "protected_successor_population",
-        tuple(source_tasks) == OPEN_TASKS,
-        {"expected": list(OPEN_TASKS), "actual": list(source_tasks)},
+        tuple(source_tasks) == SOURCE_OPEN_TASKS,
+        {"expected": list(SOURCE_OPEN_TASKS), "actual": list(source_tasks)},
     )
     source_statuses = {
         task_id: source_tasks.get(task_id, {}).get("fields", {}).get("status")
-        for task_id in OPEN_TASKS
+        for task_id in SOURCE_OPEN_TASKS
     }
     report.check(
         "protected_successor_initial_statuses",
@@ -304,10 +314,13 @@ def validate_sources(report: Report) -> None:
     actual_nested_head = (
         nested_head.stdout.strip() if nested_head.returncode == 0 else ""
     )
+    datasets_base = run_git(
+        DATASETS, "merge-base", "--is-ancestor", DATASETS_BASE, "HEAD"
+    )
     report.check(
-        "datasets_head_bound",
-        actual_nested_head == DATASETS_BASE,
-        {"expected": DATASETS_BASE, "actual": actual_nested_head},
+        "datasets_planning_base_ancestor",
+        datasets_base.returncode == 0,
+        {"required_ancestor": DATASETS_BASE, "actual": actual_nested_head},
     )
     gitlink = run_git(ROOT, "ls-tree", "HEAD", "ipfs_datasets_py")
     actual_gitlink = (
@@ -315,8 +328,14 @@ def validate_sources(report: Report) -> None:
     )
     report.check(
         "datasets_gitlink_bound",
-        actual_gitlink == DATASETS_BASE and actual_nested_head == actual_gitlink,
-        {"gitlink": actual_gitlink, "nested_head": actual_nested_head},
+        bool(actual_gitlink)
+        and actual_nested_head == actual_gitlink
+        and datasets_base.returncode == 0,
+        {
+            "planning_ancestor": DATASETS_BASE,
+            "gitlink": actual_gitlink,
+            "nested_head": actual_nested_head,
+        },
     )
     datasets_pgir = run_git(
         DATASETS, "merge-base", "--is-ancestor", DATASETS_PGIR_MERGE, "HEAD"
