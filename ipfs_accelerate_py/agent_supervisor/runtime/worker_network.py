@@ -21,11 +21,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
-    LocalProfileTampered,
-    verify_did_key_signature,
-)
-
 WORKER_NETWORK_PROFILE_SCHEMA = "ipfs_accelerate_py/eaaef-worker-network-profile@1"
 WORKER_NETWORK_AUTHORIZATION_SCHEMA = (
     "ipfs_accelerate_py/eaaef-worker-network-authorization@1"
@@ -625,6 +620,16 @@ def load_worker_network_authorization(
     ):
         raise ValueError("worker network authorization binding is invalid")
     _validate_proxy_endpoint(authorization.proxy_endpoint)
+    # Ed25519 verification is an EAAEF worker-network capability, not a
+    # dependency of every supervisor process that imports the dispatch data
+    # types.  Keep the native ``cryptography`` dependency behind the exact
+    # effect gate so isolated LGCVF lanes can import their sealed Python
+    # closure without gaining an unrelated ambient site-packages path.
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
+        LocalProfileTampered,
+        verify_did_key_signature,
+    )
+
     try:
         verify_did_key_signature(
             identity_did=authorization.signer_did,

@@ -140,7 +140,7 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
             "source_forest_root": "sha256:" + ("a" * 64),
         },
     )
-    stage = tmp_path / "run-v33.stage-test"
+    stage = tmp_path / "run-v34.stage-test"
     stage.mkdir(mode=0o700)
     staged_config = operator._native_resume_stage_config(
         config,
@@ -160,9 +160,9 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
         receipt,
         config=config,
         database_paths={
-            "control": "run-v33.stage-test/control.duckdb",
-            "coordination": "run-v33.stage-test/control.coordination.duckdb",
-            "execution": "run-v33.stage-test/control.execution.duckdb",
+            "control": "run-v34.stage-test/control.duckdb",
+            "coordination": "run-v34.stage-test/control.coordination.duckdb",
+            "execution": "run-v34.stage-test/control.execution.duckdb",
         },
         source_head=str(population["source_head"]),
         repository_tree_id=str(population["repository_tree_id"]),
@@ -220,11 +220,11 @@ def test_native_resume_materialization_has_exact_four_task_frontier(
                 tampered,
                 config=config,
                 database_paths={
-                    "control": "run-v33.stage-test/control.duckdb",
+                    "control": "run-v34.stage-test/control.duckdb",
                     "coordination": (
-                        "run-v33.stage-test/control.coordination.duckdb"
+                        "run-v34.stage-test/control.coordination.duckdb"
                     ),
-                    "execution": "run-v33.stage-test/control.execution.duckdb",
+                    "execution": "run-v34.stage-test/control.execution.duckdb",
                 },
                 source_head=str(population["source_head"]),
                 repository_tree_id=str(population["repository_tree_id"]),
@@ -283,6 +283,42 @@ def test_successor_bootstrap_invokes_protected_recovery_verifier_isolated(
     assert isinstance(command, list)
     assert command[:4] == [sys.executable, "-I", "-S", "-B"]
     assert command[-1] == "recovery-verify"
+
+
+def test_lgcvf_lane_supervisor_import_closure_excludes_optional_host_crypto() -> None:
+    """The sealed ``-S`` lane must import before optional EAAEF crypto is used."""
+
+    probe = r'''import runpy,sys
+from pathlib import Path
+root=Path(sys.argv[1]).resolve()
+sys.path[:0]=[str(root),str(root/'ipfs_datasets_py')]
+namespace=runpy.run_module(
+    'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor',
+    run_name='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor',
+    alter_sys=True,
+)
+if not callable(namespace.get('main')): raise SystemExit(10)
+if 'cryptography' in sys.modules: raise SystemExit(11)
+if 'ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile' in sys.modules: raise SystemExit(12)
+'''
+    completed = subprocess.run(
+        (sys.executable, "-I", "-S", "-B", "-c", probe, str(ROOT)),
+        cwd=ROOT,
+        env={
+            "HOME": str(Path.home()),
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PATH": "/usr/bin:/bin",
+        },
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
