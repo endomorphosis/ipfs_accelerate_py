@@ -380,7 +380,7 @@ evidence.
 
 ## PGIR-209 Correct and independently adjudicate the PGIR-204 retirement evidence
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
