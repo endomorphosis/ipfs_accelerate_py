@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 ROOT = Path(__file__).resolve().parents[1]
+SOURCE_REPOSITORY_ROOT = ROOT
 
 if TYPE_CHECKING:
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
@@ -45,17 +46,10 @@ S_AUTO = {f"EAAEF-{number}" for number in range(180, 191)}
 A_AUTO = {f"EAAEF-{number:03d}" for number in range(0, 10)}
 HOST_AUTO = S_AUTO | A_AUTO | {"EAAEF-191"}
 BOOTSTRAP = HOST_AUTO
-ADMIT_REQUIRED_AUTO = {
-    "EAAEF-183",
-    "EAAEF-184",
-    "EAAEF-185",
-    "EAAEF-186",
-    "EAAEF-187",
-    "EAAEF-188",
-    "EAAEF-189",
-    "EAAEF-190",
-}
 ADMIT_WAIT_STATUS = {
+    "EAAEF-180": "waiting_current_blocker_inventory",
+    "EAAEF-181": "waiting_current_runtime_principals",
+    "EAAEF-182": "waiting_exact_duckdb_quack_155",
     "EAAEF-183": "waiting_rootless_engine",
     "EAAEF-184": "waiting_signed_provider_authorization",
     "EAAEF-185": "waiting_signed_worker_image",
@@ -65,6 +59,11 @@ ADMIT_WAIT_STATUS = {
     "EAAEF-189": "waiting_signed_native_lane_dispatcher",
     "EAAEF-190": "waiting_signed_plan_r2_remote_owner",
     "EAAEF-191": "waiting_signed_admission_bundle",
+}
+COMPLETION_DECISIONS = {
+    "EAAEF-180": frozenset({"inventory"}),
+    "EAAEF-181": frozenset({"bound_unadmitted"}),
+    **{f"EAAEF-{number}": frozenset({"admitted"}) for number in range(182, 192)},
 }
 S_PYTEST = {
     "EAAEF-180": "inventory",
@@ -103,6 +102,120 @@ def _receipt_contract() -> tuple[Path, dict[str, str]]:
     )
 
     return RECEIPT_DIR, RECEIPT_FILES
+
+
+def _current_host_admission_identity() -> dict[str, str]:
+    """Return the exact source and board identity receipts must bind."""
+
+    revisions: dict[str, str] = {}
+    for name, revision in (("source_head", "HEAD"), ("source_tree", "HEAD^{tree}")):
+        completed = _run_argv(
+            ["git", "rev-parse", "--verify", revision],
+            SOURCE_REPOSITORY_ROOT,
+            10,
+        )
+        value = completed.stdout.strip()
+        if completed.returncode != 0 or not value:
+            raise RuntimeError(
+                f"cannot resolve current EAAEF {name}: {completed.stderr.strip()}"
+            )
+        revisions[name] = value
+    board = json.loads(BOARD_PATH.read_text(encoding="utf-8"))
+    board_namespace = str(board.get("board_namespace") or "")
+    board_cid = str(board.get("board_cid") or "")
+    if not board_namespace or not board_cid:
+        raise RuntimeError("canonical EAAEF board identity is unavailable")
+    return {
+        **revisions,
+        "board_namespace": board_namespace,
+        "board_cid": board_cid,
+    }
+
+
+def _verify_host_admission_task_receipt(
+    *,
+    task_id: str,
+    receipt_dir: Path,
+    expected_identity: dict[str, str],
+) -> dict[str, Any]:
+    """Call the canonical verifier and normalize every failure to a no-go."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+            verify_host_admission_task_receipt,
+        )
+
+        raw = verify_host_admission_task_receipt(
+            task_id=task_id,
+            receipt_dir=receipt_dir,
+            expected_source_head=expected_identity["source_head"],
+            expected_source_tree=expected_identity["source_tree"],
+            expected_board_namespace=expected_identity["board_namespace"],
+            expected_board_cid=expected_identity["board_cid"],
+        )
+    except Exception as exc:  # A verifier failure must never admit a dependency.
+        return {
+            "valid": False,
+            "decision": "",
+            "blockers": [
+                f"host receipt verification failed: {type(exc).__name__}: {exc}"
+            ],
+        }
+    if not isinstance(raw, dict):
+        return {
+            "valid": False,
+            "decision": "",
+            "blockers": ["host receipt verifier returned a non-object result"],
+        }
+    raw_blockers = raw.get("blockers")
+    blockers = (
+        [str(item) for item in raw_blockers if str(item)]
+        if isinstance(raw_blockers, (list, tuple))
+        else []
+    )
+    return {
+        "valid": raw.get("valid") is True,
+        "decision": str(raw.get("decision") or ""),
+        "blockers": blockers,
+    }
+
+
+def _host_receipt_completion_verdict(
+    *,
+    task_id: str,
+    receipt_dir: Path,
+    receipt_path: Path,
+    expected_identity: dict[str, str],
+) -> dict[str, Any]:
+    """Return whether one receipt may satisfy its task and dependencies."""
+
+    verification = _verify_host_admission_task_receipt(
+        task_id=task_id,
+        receipt_dir=receipt_dir,
+        expected_identity=expected_identity,
+    )
+    blockers = list(verification["blockers"])
+    if not receipt_path.is_file():
+        blockers.append(f"{task_id} host receipt is missing")
+    decision = str(verification["decision"])
+    allowed_decisions = COMPLETION_DECISIONS.get(task_id, frozenset())
+    if decision not in allowed_decisions:
+        blockers.append(
+            f"{task_id} decision {decision or '<missing>'!r} is not "
+            "completion-authorizing"
+        )
+    blockers = list(dict.fromkeys(blockers))
+    return {
+        "valid": verification["valid"],
+        "decision": decision,
+        "blockers": blockers,
+        "completion_allowed": (
+            verification["valid"] is True
+            and receipt_path.is_file()
+            and decision in allowed_decisions
+            and not blockers
+        ),
+    }
 
 
 def _collect_host_admission() -> dict[str, Any]:
@@ -190,7 +303,9 @@ def _board_validations(alias: str) -> list[dict[str, object]]:
     return []
 
 
-def _run_argv(argv: list[str], cwd: Path, timeout: int) -> subprocess.CompletedProcess[str]:
+def _run_argv(
+    argv: list[str], cwd: Path, timeout: int
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         argv,
         cwd=cwd,
@@ -254,36 +369,41 @@ def _run_pytest_file_isolation(
     }
 
 
-def _complete_s_task(source: DatabaseTaskSource, alias: str) -> dict:
+def _complete_s_task(
+    source: DatabaseTaskSource,
+    alias: str,
+    expected_identity: dict[str, str],
+) -> dict:
     receipt_dir, receipt_files = _receipt_contract()
     task = source.get_task(alias)
     if task is None:
         return {"task_id": alias, "status": "missing"}
-    if task.status == "completed":
-        return {"task_id": alias, "status": "already_completed"}
     receipt_name = receipt_files[alias]
     receipt_path = receipt_dir / receipt_name
-    if alias in ADMIT_REQUIRED_AUTO and receipt_path.is_file():
-        current = json.loads(receipt_path.read_text(encoding="utf-8"))
-        if current.get("decision") != "admitted":
-            return {
-                "task_id": alias,
-                "status": ADMIT_WAIT_STATUS.get(alias, "waiting_admission"),
-                "decision": current.get("decision"),
-            }
-    if alias == "EAAEF-191" and receipt_path.is_file():
-        current = json.loads(receipt_path.read_text(encoding="utf-8"))
-        evidence = current.get("evidence") or {}
-        if (
-            current.get("decision") not in {"no_go", "admitted"}
-            or evidence.get("independent_signature_present") is not True
-            or evidence.get("launch_plan_allowed") is True
-        ):
-            return {
-                "task_id": alias,
-                "status": ADMIT_WAIT_STATUS["EAAEF-191"],
-                "decision": current.get("decision"),
-            }
+    verdict = _host_receipt_completion_verdict(
+        task_id=alias,
+        receipt_dir=receipt_dir,
+        receipt_path=receipt_path,
+        expected_identity=expected_identity,
+    )
+    if verdict["completion_allowed"] is not True:
+        return {
+            "task_id": alias,
+            "status": ADMIT_WAIT_STATUS.get(
+                alias, "waiting_current_valid_host_admission_receipt"
+            ),
+            "decision": verdict["decision"],
+            "receipt_valid": verdict["valid"],
+            "blockers": verdict["blockers"],
+        }
+    if task.status == "completed":
+        return {
+            "task_id": alias,
+            "status": "already_completed",
+            "decision": verdict["decision"],
+            "receipt_valid": True,
+        }
+    receipt_digest_before = _cid_bytes(receipt_path.read_bytes())
     validation = [
         "python3",
         "-m",
@@ -310,19 +430,48 @@ def _complete_s_task(source: DatabaseTaskSource, alias: str) -> dict:
             "returncode": completed.returncode,
             "stderr": completed.stderr[-400:],
         }
-    if receipt_path.is_file():
-        source.record_evidence(
-            task_cid=task.task_cid,
-            evidence_kind="host_admission_receipt",
-            digest=_cid_bytes(receipt_path.read_bytes()),
-            body={"path": str(receipt_path.relative_to(ROOT))},
-        )
+    final_verdict = _host_receipt_completion_verdict(
+        task_id=alias,
+        receipt_dir=receipt_dir,
+        receipt_path=receipt_path,
+        expected_identity=expected_identity,
+    )
+    receipt_digest_after = (
+        _cid_bytes(receipt_path.read_bytes()) if receipt_path.is_file() else ""
+    )
+    if (
+        final_verdict["completion_allowed"] is not True
+        or receipt_digest_after != receipt_digest_before
+    ):
+        blockers = list(final_verdict["blockers"])
+        if receipt_digest_after != receipt_digest_before:
+            blockers.append(f"{alias} host receipt changed during validation")
+        return {
+            "task_id": alias,
+            "status": "receipt_changed_or_revoked",
+            "decision": final_verdict["decision"],
+            "receipt_valid": final_verdict["valid"],
+            "blockers": list(dict.fromkeys(blockers)),
+        }
+    source.record_evidence(
+        task_cid=task.task_cid,
+        evidence_kind="host_admission_receipt",
+        digest=receipt_digest_after,
+        body={
+            "path": str(receipt_path.relative_to(ROOT)),
+            "source_head": expected_identity["source_head"],
+            "source_tree": expected_identity["source_tree"],
+            "board_namespace": expected_identity["board_namespace"],
+            "board_cid": expected_identity["board_cid"],
+            "decision": final_verdict["decision"],
+        },
+    )
     result = source.compare_and_set_status(
         task.task_cid,
         task.revision,
         "completed",
         {"validation": "passed", "host_controlled": True},
-        evidence_digests=[digest],
+        evidence_digests=[digest, receipt_digest_after],
     )
     return {
         "task_id": alias,
@@ -416,30 +565,31 @@ def _complete_a_task(source: DatabaseTaskSource, alias: str) -> dict:
     }
 
 
-def _plan_r2_remote_owner_admitted() -> bool:
+def _plan_r2_remote_owner_admitted(
+    expected_identity: dict[str, str],
+) -> bool:
     receipt_dir, receipt_files = _receipt_contract()
     receipt_path = receipt_dir / receipt_files.get(
         "EAAEF-190", "plan_r2_remote_owner.json"
     )
-    if not receipt_path.is_file():
-        return False
-    try:
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    evidence = receipt.get("evidence") or {}
-    return (
-        receipt.get("decision") == "admitted"
-        and evidence.get("independent_signature_present") is True
-        and evidence.get("self_signed_rejected") is True
+    verdict = _host_receipt_completion_verdict(
+        task_id="EAAEF-190",
+        receipt_dir=receipt_dir,
+        receipt_path=receipt_path,
+        expected_identity=expected_identity,
     )
+    return verdict["completion_allowed"] is True
 
 
-def _complete(source: DatabaseTaskSource, alias: str) -> dict:
+def _complete(
+    source: DatabaseTaskSource,
+    alias: str,
+    expected_identity: dict[str, str],
+) -> dict:
     _receipt_dir, receipt_files = _receipt_contract()
     if alias in receipt_files:
-        return _complete_s_task(source, alias)
-    if alias == "EAAEF-009" and not _plan_r2_remote_owner_admitted():
+        return _complete_s_task(source, alias, expected_identity)
+    if alias == "EAAEF-009" and not _plan_r2_remote_owner_admitted(expected_identity):
         return {
             "task_id": alias,
             "status": "waiting_signed_plan_r2_remote_owner",
@@ -450,35 +600,38 @@ def _complete(source: DatabaseTaskSource, alias: str) -> dict:
     return _complete_a_task(source, alias)
 
 
-def _reopen_unadmitted(source: DatabaseTaskSource) -> list[dict]:
-    """Reopen auto S tasks whose receipts are no longer admitted evidence."""
+def _reopen_invalid_host_admission_tasks(
+    source: DatabaseTaskSource,
+    expected_identity: dict[str, str],
+) -> list[dict]:
+    """Reopen completed S tasks whose receipts cannot satisfy dependencies."""
 
     receipt_dir, receipt_files = _receipt_contract()
     reopened: list[dict] = []
-    for alias in sorted(ADMIT_REQUIRED_AUTO | {"EAAEF-191"}):
+    for alias in sorted(receipt_files):
         task = source.get_task(alias)
         if task is None or task.status != "completed":
             continue
         receipt_path = receipt_dir / receipt_files[alias]
-        if not receipt_path.is_file():
-            continue
-        current = json.loads(receipt_path.read_text(encoding="utf-8"))
-        refresh_admitted = alias in {
-            "EAAEF-188",
-            "EAAEF-189",
-            "EAAEF-190",
-            "EAAEF-191",
-        } and current.get("decision") == "admitted"
-        if current.get("decision") == "admitted" and not refresh_admitted:
+        verdict = _host_receipt_completion_verdict(
+            task_id=alias,
+            receipt_dir=receipt_dir,
+            receipt_path=receipt_path,
+            expected_identity=expected_identity,
+        )
+        if verdict["completion_allowed"] is True:
             continue
         result = source.compare_and_set_status(
             task.task_cid,
             task.revision,
             "todo",
             {
-                "validation": "reopened_unadmitted",
+                "validation": "reopened_invalid_host_admission_receipt",
                 "host_controlled": True,
-                "previous_decision": current.get("decision"),
+                "receipt_quarantined": True,
+                "previous_decision": verdict["decision"],
+                "receipt_valid": verdict["valid"],
+                "receipt_blockers": verdict["blockers"],
             },
         )
         reopened.append(
@@ -486,8 +639,11 @@ def _reopen_unadmitted(source: DatabaseTaskSource) -> list[dict]:
                 "task_id": alias,
                 "status": result.task.status,
                 "changed": result.changed,
-                "reason": "receipt_not_admitted",
-                "decision": current.get("decision"),
+                "reason": "receipt_invalid_for_completion",
+                "decision": verdict["decision"],
+                "receipt_valid": verdict["valid"],
+                "receipt_quarantined": True,
+                "blockers": verdict["blockers"],
             }
         )
     return reopened
@@ -500,17 +656,18 @@ def run_once() -> dict:
         # Host-evidence materialization writes durable receipts, so it belongs
         # inside the exact same exclusive lease as the embedded DuckDB writer.
         collection = _collect_host_admission()
+        expected_identity = _current_host_admission_identity()
         database_task_source = _database_task_source_class()
         completed: list[dict] = []
         ready_before: list[str] = []
         blocked_held: list[str] = []
         with database_task_source(control, install_schema=False) as source:
-            completed.extend(_reopen_unadmitted(source))
+            completed.extend(
+                _reopen_invalid_host_admission_tasks(source, expected_identity)
+            )
             first = source.ready_tasks(limit=1000)
             ready_before = [
-                item.task_alias
-                for item in first.tasks
-                if item.task_alias in BOOTSTRAP
+                item.task_alias for item in first.tasks if item.task_alias in BOOTSTRAP
             ]
             for _pass in range(MAX_PASSES):
                 page = source.ready_tasks(limit=1000)
@@ -534,7 +691,7 @@ def run_once() -> dict:
                     break
                 progressed = False
                 for alias in ready:
-                    result = _complete(source, alias)
+                    result = _complete(source, alias, expected_identity)
                     completed.append(result)
                     if result.get("status") == "completed" and result.get("changed"):
                         progressed = True
@@ -553,6 +710,7 @@ def run_once() -> dict:
             "live_multi_supervisor": False,
             "provider_invoked": False,
             "control_db": str(control.relative_to(ROOT)),
+            "expected_receipt_identity": expected_identity,
             "collection": collection["decisions"],
             "completed": completed,
             "ready_before": ready_before,
