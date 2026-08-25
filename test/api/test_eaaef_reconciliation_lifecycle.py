@@ -422,6 +422,138 @@ def test_fresh_population_is_exact_22_plus_94_and_plan_r2_releases_all(
     assert "security_reviewer_signature" not in statement
 
 
+def test_signing_request_projection_is_deterministic_current_and_has_no_effects(
+    repo_root: Path,
+) -> None:
+    population = _population(repo_root)
+    arguments = {
+        "population": population,
+        "bootstrap_snapshot": _bootstrap_snapshot(population),
+        "operator_identity_did": "did:key:z" + "O" * 20,
+        "security_reviewer_identity_did": "did:key:z" + "S" * 20,
+        "capability_reviewer_identity_did": "did:key:z" + "C" * 20,
+        "issued_at_ms": 100_500,
+        "expires_at_ms": 250_000,
+    }
+    request = lifecycle.build_fresh_plan_r2_signing_request_projection(**arguments)
+
+    assert request == lifecycle.build_fresh_plan_r2_signing_request_projection(
+        **arguments
+    )
+    assert request["schema"] == lifecycle.EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA
+    assert request["source_head"] == population.source_head
+    assert request["source_tree"] == population.source_tree
+    assert request["source_forest_root"] == population.source_forest_root
+    assert request["statement_cid"] == request["unsigned_plan_r2_statement"][
+        "statement_cid"
+    ]
+    assert request["request_cid"] == lifecycle._cid(
+        {key: value for key, value in request.items() if key != "request_cid"}
+    )
+    assert set(request["signing_payloads"]) == {
+        "independent_operator",
+        "independent_security_reviewer",
+        "independent_plan_r2_capability_reviewer",
+    }
+    assert all(
+        "signature" not in payload and "reviewer_signature" not in payload
+        for payload in request["signing_payloads"].values()
+    )
+    assert request["deferred_external_signature"].startswith(
+        "independent_plan_r2_remote_transport_reviewer"
+    )
+    for field in (
+        "authority_valid",
+        "launch_allowed",
+        "trust_roots_read",
+        "signing_key_read",
+        "signature_created",
+        "authority_mutated",
+        "provider_process_started",
+    ):
+        assert request[field] is False
+
+    stale_snapshot = json.loads(json.dumps(arguments["bootstrap_snapshot"]))
+    stale_snapshot["source_head"] = "9" * 40
+    stale_snapshot.pop("snapshot_cid")
+    stale_snapshot["snapshot_cid"] = lifecycle._cid(stale_snapshot)
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="bootstrap owner snapshot differs",
+    ):
+        lifecycle.build_fresh_plan_r2_signing_request_projection(
+            **{
+                **arguments,
+                "bootstrap_snapshot": stale_snapshot,
+            }
+        )
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="identities are not independent",
+    ):
+        lifecycle.build_fresh_plan_r2_signing_request_projection(
+            **{
+                **arguments,
+                "security_reviewer_identity_did": arguments[
+                    "operator_identity_did"
+                ],
+            }
+        )
+
+
+def test_signing_request_cli_prints_only_and_never_resolves_an_owner(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    population = _population(repo_root)
+    snapshot_path = tmp_path / "bootstrap-snapshot.json"
+    snapshot_path.write_text(
+        json.dumps(_bootstrap_snapshot(population), sort_keys=True),
+        encoding="ascii",
+    )
+
+    def forbidden_owner_resolution(_repo_root: Path) -> object:
+        raise AssertionError("signing request must not resolve or start an owner")
+
+    monkeypatch.setattr(
+        lifecycle,
+        "resolve_production_reconciliation_owner",
+        forbidden_owner_resolution,
+    )
+    before = set(tmp_path.iterdir())
+    result = lifecycle.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--state-root",
+            str(tmp_path / "unused-state"),
+            "signing-request",
+            "--bootstrap-snapshot",
+            str(snapshot_path),
+            "--operator-identity-did",
+            "did:key:z" + "O" * 20,
+            "--security-reviewer-identity-did",
+            "did:key:z" + "S" * 20,
+            "--plan-r2-capability-reviewer-identity-did",
+            "did:key:z" + "C" * 20,
+            "--issued-at-ms",
+            "100500",
+            "--expires-at-ms",
+            "250000",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert result == 0
+    assert output["schema"] == lifecycle.EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA
+    assert output["signing_key_read"] is False
+    assert output["signature_created"] is False
+    assert output["provider_process_started"] is False
+    assert set(tmp_path.iterdir()) == before
+
+
 def test_stale_forest_and_bootstrap_bindings_fail_closed(
     repo_root: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1150,6 +1282,11 @@ def test_public_cli_and_source_have_no_raw_authority_or_historical_run_surface()
             "sql",
             "token",
             "credential",
+            "key_path",
+            "output",
+            "output_path",
+            "private_key",
+            "signing_key",
             "skip_source_check",
             "branch",
             "manifest",
