@@ -268,6 +268,8 @@ def _response_loss_daemon(
     daemon.authority_mode = "quack"
     daemon.require_real_execution = True
     daemon.owner_session_id = attempt.owner_session_id
+    daemon._quack_command_gateway = object()  # noqa: SLF001
+    daemon._task_source = SimpleNamespace()  # noqa: SLF001
     daemon._execution_repository = owner  # noqa: SLF001
     daemon._provider_fn = None  # noqa: SLF001
     daemon._effect_fn = None  # noqa: SLF001
@@ -558,6 +560,9 @@ def test_daemon_persists_one_canonical_dispatcher_validation_phase_and_replays_i
     daemon = object.__new__(DatabaseImplementationDaemon)
     daemon.authority_mode = "quack"
     daemon.require_real_execution = True
+    daemon._quack_command_gateway = object()  # noqa: SLF001
+    daemon._task_source = SimpleNamespace()  # noqa: SLF001
+    daemon.open = lambda: daemon
     daemon._validation_fn = None  # noqa: SLF001
     daemon._protect_attempt_write = lambda *_args, **_kwargs: None  # noqa: SLF001
     daemon._run_with_attempt_heartbeat = (  # noqa: SLF001
@@ -668,6 +673,7 @@ def test_daemon_emits_terminal_task_event_before_releasing_task_authority() -> N
     daemon.authority_mode = "quack"
     daemon.require_real_execution = True
     daemon.owner_session_id = attempt.owner_session_id
+    daemon._quack_command_gateway = object()  # noqa: SLF001
     daemon._clock_ms = lambda: 1_900_000_000_100  # noqa: SLF001
     daemon._task_source = SimpleNamespace(get=lambda _task_cid: task)  # noqa: SLF001
     daemon._coordinator = Coordinator()  # noqa: SLF001
@@ -754,6 +760,7 @@ def test_spoofed_eaaef_proxy_cannot_suppress_post_commit_event() -> None:
     daemon = object.__new__(DatabaseImplementationDaemon)
     daemon.authority_mode = "quack"
     daemon.require_real_execution = True
+    daemon._quack_command_gateway = object()  # noqa: SLF001
     daemon._execution_repository = Repository()  # noqa: SLF001
     daemon._clock_ms = lambda: 1_900_000_000_100  # noqa: SLF001
     daemon.open = lambda: daemon
@@ -870,6 +877,7 @@ def test_spoofed_eaaef_proxy_cannot_skip_mandatory_dead_lane_surface() -> None:
 
     daemon = object.__new__(DatabaseImplementationDaemon)
     daemon.authority_mode = "quack"
+    daemon._quack_command_gateway = object()  # noqa: SLF001
     daemon._clock_ms = lambda: 1_900_000_000_000  # noqa: SLF001
     daemon._coordinator = Coordinator()  # noqa: SLF001
     daemon._execution_repository = SimpleNamespace(  # noqa: SLF001
