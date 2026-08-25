@@ -5800,6 +5800,772 @@ def test_aseh_r15_sealed_owner_module_registration_versions_executor_policy(
         )
 
 
+def test_aseh_r16_docker_create_readiness_vendor_resolver_versions_executor_policy(
+) -> None:
+    r14 = aseh_operator._sealed_receipt_validation_executor_contract()
+    assert aseh_operator._identity(r14) == (
+        aseh_operator
+        .ASEH_R14_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    r15 = aseh_operator._r15_sealed_receipt_validation_executor_contract()
+    assert aseh_operator._identity(r15) == (
+        aseh_operator
+        .ASEH_R15_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    assert aseh_operator.ASEH_R15_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID == (
+        "sha256:d7fa34ff64e08957630f5e0b9dd180e7ff1c4c43c0c273dd9fd38f688f9a9bec"
+    )
+    r16 = aseh_operator._r16_sealed_receipt_validation_executor_contract()
+    assert r16["schema"].endswith("aseh-r16-validation-executor@1")
+    assert r16["parent_executor_contract_cid"] == (
+        aseh_operator
+        .ASEH_R15_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    assert r16["policy_revision"] == 16
+    assert r16["scope"] == (
+        "r16_authorization_preflight_and_materialized_launch_admission_only"
+    )
+    assert tuple(
+        aseh_operator
+        .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+    ) == (
+        "ipfs_accelerate_py/agent_implementation_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+    )
+    r16_python = [
+        command
+        for command in (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+        )
+        if aseh_operator._parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    assert r16["admitted_python_argv_digests"] == sorted(
+        aseh_operator._identity(list(command))
+        for command in r16_python
+        if command != aseh_operator._r16_production_lifecycle_live_command()
+    )
+    assert r16["admitted_sealed_python_argv_digests"] == (
+        r16["admitted_python_argv_digests"]
+    )
+    assert r16["production_lifecycle_validation_intent_argv_digest"] == (
+        aseh_operator._identity(
+            list(aseh_operator._r16_production_lifecycle_live_command())
+        )
+    )
+    live_command = next(
+        command
+        for command in r16_python
+        if any(
+            item
+            == "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_DOCKER_CLEANUP_VALIDATION=1"
+            for item in command
+        )
+    )
+    assert aseh_operator._uses_historical_self_qualified_native_route(
+        live_command
+    ) is False
+    assert not any(
+        item.startswith(
+            (
+                "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION=",
+                "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE=",
+                "IPFS_ACCELERATE_AGENT_TEST_PRELOAD_GROK_NATIVE=",
+            )
+        )
+        for item in live_command
+    )
+    r16_only = next(command for command in r16_python if command != live_command)
+    with pytest.raises(aseh_operator.OperatorError, match="R15"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r15,
+            declared=r16_only,
+        )
+    assert (
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r16,
+            declared=r16_only,
+        )
+        == r16
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R16"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r16,
+            declared=(
+                aseh_operator
+                .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS[0]
+            ),
+        )
+    with pytest.raises(aseh_operator.OperatorError, match="unknown"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            {**r16, "policy_revision": 17},
+            declared=r16_only,
+        )
+
+
+def test_aseh_r16_docker_create_readiness_vendor_resolver_binds_exact_executor_classes(
+) -> None:
+    matrix = tuple(
+        aseh_operator
+        .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+    )
+    live = aseh_operator._r16_production_lifecycle_live_command()
+    assert live in matrix
+    assert (
+        aseh_operator._r16_validation_executor_class(live)
+        == aseh_operator.ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+    )
+
+    python_commands = tuple(
+        command
+        for command in matrix
+        if aseh_operator._parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+        and command != live
+    )
+    assert python_commands
+    assert all(
+        aseh_operator._r16_validation_executor_class(command)
+        == aseh_operator.ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+        for command in python_commands
+    )
+    deterministic_commands = tuple(
+        command
+        for command in matrix
+        if aseh_operator._parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is None
+    )
+    assert deterministic_commands
+    assert all(
+        aseh_operator._r16_validation_executor_class(command)
+        == aseh_operator.ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+        for command in deterministic_commands
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="not in the R16"):
+        aseh_operator._r16_validation_executor_class(
+            (aseh_operator.ASEH_RECEIPT_VALIDATION_PYTHON, "-m", "pytest")
+        )
+
+
+def test_aseh_r16_docker_create_readiness_vendor_resolver_live_argv_cannot_use_sealed_subreaper(
+) -> None:
+    contract = aseh_operator._r16_sealed_receipt_validation_executor_contract()
+    live = aseh_operator._r16_production_lifecycle_live_command()
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="not admitted by the sealed subreaper",
+    ):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            contract,
+            declared=live,
+        )
+    assert (
+        aseh_operator
+        ._admit_r16_production_lifecycle_live_executor_contract(
+            contract,
+            declared=live,
+        )
+        == contract
+    )
+    sealed = next(
+        command
+        for command in (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+        )
+        if command != live
+        and aseh_operator._parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    )
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="not admitted by the R16 production lifecycle",
+    ):
+        aseh_operator._admit_r16_production_lifecycle_live_executor_contract(
+            contract,
+            declared=sealed,
+        )
+
+
+def test_aseh_r16_docker_create_readiness_vendor_resolver_contract_binds_each_argv_once(
+) -> None:
+    contract = aseh_operator._r16_sealed_receipt_validation_executor_contract()
+    matrix = tuple(
+        aseh_operator
+        .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+    )
+    bindings = contract["argv_executor_class_bindings"]
+    expected = sorted(
+        (
+            {
+                "argv_sha256": aseh_operator._identity(list(command)),
+                "executor_class": (
+                    aseh_operator._r16_validation_executor_class(command)
+                ),
+            }
+            for command in matrix
+        ),
+        key=lambda item: item["argv_sha256"],
+    )
+    assert bindings == expected
+    assert len({item["argv_sha256"] for item in bindings}) == len(matrix)
+    live_contract = contract["production_lifecycle_live_contract"]
+    assert live_contract == {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-r16-production-lifecycle-live-contract@1"
+        ),
+        "logical_argv_sha256": aseh_operator._identity(
+            list(aseh_operator._r16_production_lifecycle_live_command())
+        ),
+        "declared_command_executed": False,
+        "result_authority": (
+            "typed_lifecycle_evidence_not_logical_process_exit"
+        ),
+        "output_capture_policy": (
+            "canonical_start_track_combined_stdout_stderr_with_"
+            "separate_streams_explicitly_unavailable"
+        ),
+        "retained_interpreter_sha256": (
+            aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_PIN[
+                "python_executable_sha256"
+            ]
+        ),
+        "native_authorization_id": (
+            aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_AUTHORIZATION_ID
+        ),
+        "lifecycle_authority": (
+            "canonical_start_track_and_terminate_managed_process"
+        ),
+        "identity_authority": (
+            "one_command_bound_private_durable_cleanup_binding"
+        ),
+        "parent_loss_policy": "exact_parent_birth_pdeathsig_sigkill",
+        "provider_start_launch_policy": (
+            "fork_free_posix_spawn_to_fresh_isolated_interpreter_"
+            "arms_parent_loss_then_exact_exec"
+        ),
+        "dispatch_barrier": "two_exact_stopped_state_observations",
+        "reparent_qualification": (
+            "watchdog_exact_birth_parent_pid_one_before_effect"
+        ),
+        "observation_policy": (
+            "positive_exact_container_observation_while_managed_root_is_"
+            "alive_then_independent_terminal_cleanup"
+        ),
+        "cleanup_policy": (
+            "all_exact_issuers_and_private_binding_lease_roots_absent_plus_"
+            "two_successful_empty_exact_docker_snapshots"
+        ),
+    }
+
+
+def test_aseh_r16_docker_create_readiness_vendor_resolver_rejects_malformed_live_evidence(
+) -> None:
+    live = aseh_operator._r16_production_lifecycle_live_command()
+    contract = aseh_operator._r16_sealed_receipt_validation_executor_contract()
+    witness = {"head": "1" * 40, "tree": "2" * 40}
+    digest = "sha256:" + ("3" * 64)
+
+    malformed = {
+        "schema": aseh_operator.ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA,
+        "executor_class": (
+            aseh_operator.ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+        ),
+        "executor_contract_cid": aseh_operator._identity(contract),
+        "logical_argv": list(live),
+        "logical_argv_sha256": aseh_operator._identity(list(live)),
+        "candidate_head": witness["head"],
+        "candidate_tree": witness["tree"],
+        "candidate_authorization_witness_cid": aseh_operator._identity(witness),
+        "environment_identity": digest,
+        "nonce": "4" * 64,
+        "private_root_removed": True,
+        "stdout_digest": digest,
+        "stderr_digest": digest,
+        "terminal_class": "verified_success",
+        "evidence_cid": digest,
+    }
+    with pytest.raises(aseh_operator.OperatorError, match="evidence differs"):
+        aseh_operator._validate_r16_production_lifecycle_execution_evidence(
+            malformed,
+            declared=live,
+            candidate_head=witness["head"],
+            candidate_tree=witness["tree"],
+            authorization_witness=witness,
+            environment_identity=digest,
+            executed_returncode=-15,
+            combined_output_digest=digest,
+            stdout_digest=None,
+            stderr_digest=None,
+            executor_contract=contract,
+        )
+
+
+def test_aseh_r16_docker_create_readiness_vendor_resolver_rejects_subreaper_before_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    live = aseh_operator._r16_production_lifecycle_live_command()
+    contract = aseh_operator._r16_sealed_receipt_validation_executor_contract()
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        object(),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r16_parent_is_child_subreaper",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        aseh_operator.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "subreaper rejection must precede any process execution"
+        ),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="under a subreaper"):
+        aseh_operator._run_r16_production_lifecycle_live_validation(
+            live,
+            timeout=900.0,
+            env=None,
+            cwd=None,
+            executor_contract=contract,
+        )
+
+
+def test_aseh_r16_docker_observation_uses_independent_name_and_id_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    docker_bin = "/usr/bin/docker"
+    container_name = "ipfs-accelerate-codex-123-" + ("a" * 32)
+    container_id = "b" * 64
+    calls: list[tuple[str, ...]] = []
+    expected_stdout = f"{container_id} {container_name}\n".encode("ascii")
+
+    def fake_run(command: list[str], **_kwargs: object) -> object:
+        calls.append(tuple(command))
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=expected_stdout,
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(aseh_operator.subprocess, "run", fake_run)
+    observation = aseh_operator._r16_exact_docker_list_observation(
+        docker_bin=docker_bin,
+        container_name=container_name,
+        container_id=container_id,
+        expect_present=True,
+    )
+
+    assert len(calls) == 2
+    assert [command.count("--filter") for command in calls] == [1, 1]
+    assert [command[command.index("--filter") + 1] for command in calls] == [
+        f"name=^/{container_name}$",
+        f"id={container_id}",
+    ]
+    assert [item["selector"] for item in observation["queries"]] == [
+        "exact_name",
+        "exact_id",
+    ]
+    assert (
+        aseh_operator._validate_r16_exact_docker_list_observation(
+            observation,
+            docker_bin=docker_bin,
+            container_name=container_name,
+            container_id=container_id,
+            expect_present=True,
+        )
+        == observation
+    )
+    one_query = {**observation, "queries": [observation["queries"][0]]}
+    with pytest.raises(aseh_operator.OperatorError, match="query set"):
+        aseh_operator._validate_r16_exact_docker_list_observation(
+            one_query,
+            docker_bin=docker_bin,
+            container_name=container_name,
+            container_id=container_id,
+            expect_present=True,
+        )
+    combined = list(calls[0])
+    insert_at = combined.index("--format")
+    combined[insert_at:insert_at] = ["--filter", f"id={container_id}"]
+    forged = {
+        **observation,
+        "queries": [
+            {
+                **observation["queries"][0],
+                "command_sha256": aseh_operator._identity(combined),
+            },
+            observation["queries"][1],
+        ],
+    }
+    with pytest.raises(aseh_operator.OperatorError, match="query differs"):
+        aseh_operator._validate_r16_exact_docker_list_observation(
+            forged,
+            docker_bin=docker_bin,
+            container_name=container_name,
+            container_id=container_id,
+            expect_present=True,
+        )
+
+
+def test_aseh_r16_live_evidence_rejects_hostile_nested_mapping(
+) -> None:
+    class ExplodingInterpreter(dict[str, object]):
+        def get(self, key: str, default: object = None) -> object:
+            if key == "argv0":
+                raise TypeError("malformed nested evidence")
+            return super().get(key, default)
+
+    live = aseh_operator._r16_production_lifecycle_live_command()
+    contract = aseh_operator._r16_sealed_receipt_validation_executor_contract()
+    witness = {"head": "1" * 40, "tree": "2" * 40}
+    digest = "sha256:" + ("3" * 64)
+    nonce = "4" * 64
+    parent_pid = os.getpid()
+    parent_start = aseh_operator._r16_process_start_time_ticks(parent_pid)
+    boot_id = aseh_operator._r16_boot_id()
+    physical_argv = [
+        aseh_operator.ASEH_RECEIPT_VALIDATION_PYTHON,
+        str(
+            aseh_operator.ROOT
+            / "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+        ),
+        aseh_operator.ASEH_R16_PRODUCTION_LIFECYCLE_FIXTURE_COMMAND,
+        "--nonce",
+        nonce,
+        "--logical-argv-sha256",
+        aseh_operator._identity(list(live)),
+        "--candidate-head",
+        witness["head"],
+        "--candidate-tree",
+        witness["tree"],
+        "--expected-parent-pid",
+        str(parent_pid),
+        "--expected-parent-start-time-ticks",
+        str(parent_start),
+        "--expected-parent-boot-id",
+        boot_id,
+    ]
+    evidence = {
+        name: None
+        for name in {
+            "schema",
+            "executor_class",
+            "executor_contract_cid",
+            "logical_argv",
+            "logical_argv_sha256",
+            "physical_argv",
+            "physical_argv_sha256",
+            "candidate_head",
+            "candidate_tree",
+            "candidate_authorization_witness_cid",
+            "environment_identity",
+            "nonce",
+            "interpreter",
+            "private_root_identity",
+            "private_root_removed",
+            "lifecycle_profile",
+            "process_identity",
+            "ready",
+            "dispatch_barrier_observations",
+            "prepared_process_tree",
+            "binding_record",
+            "create_journal",
+            "create_issuer_terminal",
+            "provider_start_issuer",
+            "provider_start_issuer_terminal",
+            "pre_dispatch_observations",
+            "positive_observations",
+            "live_process_tree",
+            "termination",
+            "terminal_observations",
+            "output_capture",
+            "combined_output_digest",
+            "stdout_digest",
+            "stderr_digest",
+            "terminal_class",
+            "evidence_cid",
+        }
+    }
+    evidence.update(
+        {
+            "schema": (
+                aseh_operator.ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA
+            ),
+            "executor_class": (
+                aseh_operator
+                .ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+            ),
+            "executor_contract_cid": aseh_operator._identity(contract),
+            "logical_argv": list(live),
+            "logical_argv_sha256": aseh_operator._identity(list(live)),
+            "physical_argv": physical_argv,
+            "physical_argv_sha256": aseh_operator._identity(physical_argv),
+            "candidate_head": witness["head"],
+            "candidate_tree": witness["tree"],
+            "candidate_authorization_witness_cid": (
+                aseh_operator._identity(witness)
+            ),
+            "environment_identity": digest,
+            "nonce": nonce,
+            "interpreter": ExplodingInterpreter(
+                {
+                    "argv0": aseh_operator.ASEH_RECEIPT_VALIDATION_PYTHON,
+                    "sha256": (
+                        aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_PIN[
+                            "python_executable_sha256"
+                        ]
+                    ),
+                    "retained_descriptor_identity": [0] * 9,
+                    "child_executable": str(
+                        Path(
+                            aseh_operator.ASEH_RECEIPT_VALIDATION_PYTHON
+                        ).resolve(strict=True)
+                    ),
+                    "descriptor_backed_exec": False,
+                    "identity_equal_to_retained": True,
+                }
+            ),
+            "private_root_removed": True,
+            "output_capture": "combined_stdout_stderr",
+            "combined_output_digest": digest,
+            "terminal_class": "verified_success",
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError):
+        aseh_operator._validate_r16_production_lifecycle_execution_evidence(
+            evidence,
+            declared=live,
+            candidate_head=witness["head"],
+            candidate_tree=witness["tree"],
+            authorization_witness=witness,
+            environment_identity=digest,
+            executed_returncode=-15,
+            combined_output_digest=digest,
+            stdout_digest=None,
+            stderr_digest=None,
+            executor_contract=contract,
+        )
+
+
+def test_aseh_r16_provider_start_launcher_arms_before_exact_exec(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lease_root = tmp_path / "asref-codex-container-launcher"
+    docker_config = lease_root / "docker-config"
+    lease_root.mkdir(mode=0o700)
+    docker_config.mkdir(mode=0o700)
+    container_name = "ipfs-accelerate-codex-123-" + ("a" * 32)
+    events: list[object] = []
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r16_arm_sigkill_parent_loss_fence",
+        lambda **values: events.append(("armed", values)),
+    )
+
+    class ExactExecObserved(Exception):
+        pass
+
+    def observe_exec(
+        executable: str,
+        argv: list[str],
+        environment: dict[str, str],
+    ) -> None:
+        events.append(("exec", executable, argv, environment))
+        raise ExactExecObserved
+
+    monkeypatch.setattr(aseh_operator.os, "execve", observe_exec)
+    with pytest.raises(ExactExecObserved):
+        aseh_operator._r16_provider_start_launcher(
+            docker_bin="/usr/bin/docker",
+            docker_config=str(docker_config),
+            container_name=container_name,
+            expected_parent_pid=123,
+            expected_parent_start_time_ticks=456,
+            expected_parent_boot_id=(
+                "11111111-2222-3333-4444-555555555555"
+            ),
+        )
+
+    assert events == [
+        (
+            "armed",
+            {
+                "expected_parent_pid": 123,
+                "expected_parent_start_time_ticks": 456,
+                "expected_boot_id": (
+                    "11111111-2222-3333-4444-555555555555"
+                ),
+            },
+        ),
+        (
+            "exec",
+            "/usr/bin/docker",
+            [
+                "/usr/bin/docker",
+                "--host=unix:///var/run/docker.sock",
+                "--config",
+                str(docker_config),
+                "start",
+                "--attach",
+                "--interactive",
+                container_name,
+            ],
+            {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
+        ),
+    ]
+    fixture_source = inspect.getsource(
+        aseh_operator._r16_production_lifecycle_live_fixture
+    )
+    assert "preexec_fn" not in fixture_source
+    assert "subprocess.Popen(" not in fixture_source
+    assert "os.posix_spawn(" in fixture_source
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="PDEATHSIG requires Linux",
+)
+def test_aseh_r16_sigkill_parent_loss_fence_kills_stopped_exact_child(
+    tmp_path: Path,
+) -> None:
+    born_path = tmp_path / "born.json"
+    armed_path = tmp_path / "armed.json"
+    source = inspect.cleandoc(
+        """
+        import json, os, signal, sys
+        from pathlib import Path
+
+        sys.path.insert(0, __ROOT__)
+        from scripts import run_agent_supervisor_efficiency_state_hardening as m
+
+        def publish(path, payload):
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(payload), encoding="utf-8")
+            os.replace(temporary, path)
+
+        parent_pid = os.getpid()
+        parent_start = m._r16_process_start_time_ticks(parent_pid)
+        boot_id = m._r16_boot_id()
+        child_pid = os.fork()
+        if child_pid:
+            child_start = m._r16_process_start_time_ticks(child_pid)
+            publish(
+                Path(__BORN__),
+                {
+                    "parent_pid": parent_pid,
+                    "parent_start_time_ticks": parent_start,
+                    "child_pid": child_pid,
+                    "child_start_time_ticks": child_start,
+                    "boot_id": boot_id,
+                },
+            )
+            _, status = os.waitpid(child_pid, 0)
+            os._exit(os.waitstatus_to_exitcode(status))
+
+        observed_parent = os.getppid()
+        observed_start = m._r16_process_start_time_ticks(observed_parent)
+        m._r16_arm_sigkill_parent_loss_fence(
+            expected_parent_pid=observed_parent,
+            expected_parent_start_time_ticks=observed_start,
+            expected_boot_id=boot_id,
+        )
+        publish(
+            Path(__ARMED__),
+            {"child_pid": os.getpid(), "parent_pid": observed_parent},
+        )
+        os.kill(os.getpid(), signal.SIGSTOP)
+        os._exit(97)
+        """
+    )
+    source = (
+        source.replace("__ROOT__", repr(str(aseh_operator.ROOT)))
+        .replace("__BORN__", repr(str(born_path)))
+        .replace("__ARMED__", repr(str(armed_path)))
+    )
+    broker = subprocess.Popen(
+        (sys.executable, "-c", source),
+        cwd=aseh_operator.ROOT,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    child_pid = 0
+    child_start = 0
+    try:
+        deadline = time.monotonic() + 10.0
+        while (
+            not born_path.is_file() or not armed_path.is_file()
+        ) and time.monotonic() < deadline:
+            if broker.poll() is not None:
+                stdout, stderr = broker.communicate(timeout=2.0)
+                pytest.fail((stdout + stderr).decode(errors="replace"))
+            time.sleep(0.01)
+        assert born_path.is_file() and armed_path.is_file()
+        born = json.loads(born_path.read_text(encoding="utf-8"))
+        armed = json.loads(armed_path.read_text(encoding="utf-8"))
+        child_pid = int(born["child_pid"])
+        child_start = int(born["child_start_time_ticks"])
+        assert born["parent_pid"] == broker.pid
+        assert armed == {"child_pid": child_pid, "parent_pid": broker.pid}
+        deadline = time.monotonic() + 3.0
+        while True:
+            observed = aseh_operator._r16_exact_process_state(
+                child_pid,
+                expected_start_time_ticks=child_start,
+                expected_boot_id=born["boot_id"],
+            )
+            if observed["state"] in {"T", "t"}:
+                break
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        broker.kill()
+        assert broker.wait(timeout=5.0) == -signal.SIGKILL
+        _assert_process_not_executable(child_pid)
+    finally:
+        if broker.poll() is None:
+            broker.kill()
+            broker.wait(timeout=5.0)
+        if child_pid > 1:
+            try:
+                if (
+                    aseh_operator._r16_process_start_time_ticks(child_pid)
+                    == child_start
+                ):
+                    os.kill(child_pid, signal.SIGKILL)
+            except (aseh_operator.OperatorError, ProcessLookupError):
+                pass
+
+
 def test_aseh_sealed_receipt_validation_command_grammar_is_bounded() -> None:
     command = aseh_operator.REPAIR_TRANSITION_VALIDATIONS[0]
     parsed = aseh_operator._parse_receipt_validation_python_command(
@@ -6304,6 +7070,50 @@ def test_aseh_r15_sealed_owner_module_registration_rejects_unsealed_validation_b
         )
 
 
+def test_aseh_r16_docker_create_readiness_vendor_resolver_routes_only_board_check_to_launch_tree(
+) -> None:
+    commands = (
+        aseh_operator
+        .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+    )
+    scopes = [
+        aseh_operator._r16_validation_working_tree_scope(command)
+        for command in commands
+    ]
+    assert scopes[-2] == "candidate_authorization_worktree"
+    assert all(
+        scope == "immutable_candidate_checkout"
+        for index, scope in enumerate(scopes)
+        if index != len(scopes) - 2
+    )
+
+
+def test_aseh_r16_docker_create_readiness_vendor_resolver_rejects_unsealed_validation_before_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unsealed validation command executed"
+        ),
+    )
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="R16 sealed validation executor is unavailable",
+    ):
+        aseh_operator._run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={},
+        )
+
+
 def test_aseh_r15_sealed_owner_module_registration_requires_exact_chain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -6363,6 +7173,72 @@ def test_aseh_r15_sealed_owner_module_registration_requires_exact_chain(
     broken = [dict(item) for item in chain]
     broken[-1]["previous_receipt_cid"] = "sha256:" + ("f" * 64)
     with pytest.raises(aseh_operator.OperatorError, match="R15"):
+        aseh_operator._assert_exact_run_launch_admission(
+            {**admission, "repair_transition_chain": broken},
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+
+
+def test_aseh_r16_docker_create_readiness_vendor_resolver_requires_exact_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R16_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": "sha256:" + f"{index + 1:064x}",
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+
+    assert aseh_operator._admit_exact_r16_transition_chain(chain) == chain
+    with pytest.raises(aseh_operator.OperatorError, match="R16"):
+        aseh_operator._admit_exact_r16_transition_chain(chain[:-1])
+    swapped = [dict(item) for item in chain]
+    swapped[-2], swapped[-1] = swapped[-1], swapped[-2]
+    with pytest.raises(aseh_operator.OperatorError, match="R16"):
+        aseh_operator._admit_exact_r16_transition_chain(swapped)
+
+    candidate_head = "c" * 40
+    candidate_tree = "d" * 40
+    chain[-2]["repair_head"] = (
+        aseh_operator
+        .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+    )
+    chain[-1].update(
+        {
+            "repair_head": candidate_head,
+            "repair_tree": candidate_tree,
+        }
+    )
+    transition = dict(chain[-1])
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+        ),
+    )
+    admission = {
+        "runtime_source_head": candidate_head,
+        "runtime_repository_tree_id": candidate_tree,
+        "repair_transition": transition,
+        "repair_transition_chain": chain,
+    }
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    broken = [dict(item) for item in chain]
+    broken[-1]["previous_receipt_cid"] = "sha256:" + ("f" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R16"):
         aseh_operator._assert_exact_run_launch_admission(
             {**admission, "repair_transition_chain": broken},
             candidate_head=candidate_head,
@@ -6490,6 +7366,127 @@ def test_aseh_repair_sealed_owner_module_registration_transition_publication_is_
     ]
 
 
+def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_publication_is_fenced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt_path = tmp_path / "repair-r16.json"
+    candidate_head = "a" * 40
+    candidate_tree = "b" * 40
+    previous_cid = "sha256:" + ("c" * 64)
+    previous_transition = {
+        "repair_head": (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+        ),
+        "receipt_cid": previous_cid,
+    }
+    prior_chain = [
+        {"receipt_cid": "sha256:" + f"{index + 1:064x}"}
+        for index in range(14)
+    ] + [{"receipt_cid": previous_cid}]
+    ordering: list[str] = []
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args: (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+            if args[:3] == ("show", "-s", "--format=%P")
+            else candidate_tree
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: {"candidate": "exact"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_docker_create_readiness_vendor_resolver_transition_validations",
+        lambda **_kwargs: ordering.append("validate") or [],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda *_args: "sha256:" + ("d" * 64),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_docker_create_readiness_vendor_resolver_transition",
+        lambda *_args, **_kwargs: ordering.append("admit_receipt") or {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **kwargs: ordering.append(str(kwargs["boundary"])),
+    )
+
+    def publish(
+        path: Path,
+        _payload: object,
+        *,
+        authority_directory_fd: int,
+    ) -> None:
+        assert path == receipt_path
+        assert authority_directory_fd == 92
+        ordering.append("publish")
+
+    monkeypatch.setattr(aseh_operator, "_atomic_json_create", publish)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "database admission ran before R16 receipt publication"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_docker_create_readiness_vendor_resolver_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_docker_create_readiness_vendor_resolver_transition_receipt": (
+                    receipt_path
+                )
+            },
+            bootstrap={
+                "plan_root_cid": "plan:r16",
+                "repository_tree_id": "tree:bootstrap",
+            },
+            bootstrap_id="sha256:" + ("e" * 64),
+            head=candidate_head,
+            previous_receipt={"receipt_cid": previous_cid},
+            previous_transition=previous_transition,
+            prior_receipt_chain=prior_chain,
+            authorization_directory_fd=92,
+        )
+    )
+
+    assert result is not None
+    assert result["idempotent_replay"] is False
+    assert len(result["repair_transition_chain"]) == 16
+    assert result["repair_transition_receipt"]["database_mutated"] is False
+    assert ordering == [
+        "validate",
+        "after R16 validation before receipt publication",
+        "admit_receipt",
+        "immediately before R16 receipt publication",
+        "publish",
+        "after R16 receipt publication",
+    ]
+
+
 def test_aseh_repair_sealed_receipt_validation_delegates_r15_before_suffix_admission(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -6555,6 +7552,83 @@ def test_aseh_repair_sealed_receipt_validation_delegates_r15_before_suffix_admis
                 "repair_head": (
                     aseh_operator
                     .REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_BASE_HEAD
+                ),
+                "receipt_cid": previous_cid,
+            },
+            prior_receipt_chain=prior_chain,
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
+
+
+def test_aseh_repair_sealed_owner_module_registration_delegates_r16_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r15_path = tmp_path / "repair-r15.json"
+    r15_path.touch()
+    previous_cid = "sha256:" + ("a" * 64)
+    r15_cid = "sha256:" + ("b" * 64)
+    r15_receipt = {"repair_head": "c" * 40, "receipt_cid": r15_cid}
+    r15_transition = {
+        "repair_head": (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+        ),
+        "receipt_cid": r15_cid,
+    }
+    prior_chain = [
+        {"receipt_cid": "sha256:" + f"{index + 1:064x}"}
+        for index in range(13)
+    ] + [{"receipt_cid": previous_cid}]
+    sentinel = {"delegated": "r16"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r15_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_module_registration_transition",
+        lambda *_args, **_kwargs: r15_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_docker_create_readiness_vendor_resolver_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if len(kwargs["prior_receipt_chain"]) == 15
+            else pytest.fail("R15 did not delegate the full chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R15 suffix admission ran before R16 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_sealed_owner_module_registration_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_module_registration_transition_receipt": (
+                    r15_path
+                )
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="d" * 40,
+            previous_receipt={"receipt_cid": previous_cid},
+            previous_transition={
+                "repair_head": (
+                    aseh_operator
+                    .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
                 ),
                 "receipt_cid": previous_cid,
             },
@@ -7509,6 +8583,237 @@ def test_aseh_repair_sealed_owner_module_registration_transition_is_closed_and_c
     )
     with pytest.raises(aseh_operator.OperatorError, match="witness differs"):
         aseh_operator._validate_repair_sealed_owner_module_registration_transition(
+            replayed,
+            bootstrap=bootstrap,
+            previous_receipt={"receipt_cid": prior_cid},
+            rerun_validations=False,
+        )
+
+
+def test_aseh_repair_docker_create_readiness_vendor_resolver_transition_is_closed_and_chained(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repair_head = "a" * 40
+    repair_tree = "b" * 40
+    base_tree = "c" * 40
+    prior_cid = "sha256:" + ("d" * 64)
+    patch_digest = "sha256:" + ("e" * 64)
+    dataset_commit = "1" * 40
+    kit_commit = "2" * 40
+    witness = {
+        "head": repair_head,
+        "tree": repair_tree,
+        "branch_ref": "refs/heads/aseh-r16-fixture",
+        "index_entries_digest": "sha256:" + ("3" * 64),
+        "index_flags_digest": "sha256:" + ("4" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("5" * 64),
+        "branch_reflog_digest": "sha256:" + ("6" * 64),
+    }
+    executor_contract = (
+        aseh_operator._r16_sealed_receipt_validation_executor_contract()
+    )
+    validations = []
+    for command in (
+        aseh_operator
+        .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+    ):
+        environment_identity = (
+            aseh_operator._r11_command_environment_identity(
+                aseh_operator._r11_validation_environment(
+                    Path("/sealed-checkout")
+                ),
+                command,
+                checkout=Path("/sealed-checkout"),
+            )
+        )
+        executor_class = aseh_operator._r16_validation_executor_class(command)
+        declared_command_executed = True
+        executed_argv = list(command)
+        executed_returncode = 0
+        validation_outcome = "process_exit_zero"
+        output_capture = "separate_stdout_stderr"
+        combined_output_digest = None
+        execution_evidence = None
+        if (
+            executor_class
+            == aseh_operator.ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+        ):
+            execution_evidence = _sealed_validation_execution_fixture(
+                command,
+                candidate_head=repair_head,
+                candidate_tree=repair_tree,
+                authorization_witness=witness,
+                environment_identity=environment_identity,
+                stdout_digest="sha256:" + ("7" * 64),
+                stderr_digest="sha256:" + ("8" * 64),
+                executor_contract=executor_contract,
+            )
+        elif (
+            executor_class
+            == aseh_operator.ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+        ):
+            declared_command_executed = False
+            executed_argv = ["/usr/bin/python3", "typed-live-fixture"]
+            executed_returncode = -15
+            validation_outcome = "typed_lifecycle_verified"
+            output_capture = "combined_stdout_stderr"
+            combined_output_digest = "sha256:" + ("0" * 64)
+            execution_evidence = {"physical_argv": executed_argv}
+        validations.append(
+            {
+                "declared_argv": list(command),
+                "declared_command_executed": declared_command_executed,
+                "executed_argv": executed_argv,
+                "executor_class": executor_class,
+                "candidate_head": repair_head,
+                "candidate_tree": repair_tree,
+                "environment_identity": environment_identity,
+                "working_tree_scope": (
+                    aseh_operator._r16_validation_working_tree_scope(command)
+                ),
+                "executed_returncode": executed_returncode,
+                "validation_outcome": validation_outcome,
+                "output_capture": output_capture,
+                "combined_output_digest": combined_output_digest,
+                "stdout_digest": (
+                    None
+                    if output_capture == "combined_stdout_stderr"
+                    else "sha256:" + ("7" * 64)
+                ),
+                "stderr_digest": (
+                    None
+                    if output_capture == "combined_stdout_stderr"
+                    else "sha256:" + ("8" * 64)
+                ),
+                "execution_evidence": execution_evidence,
+            }
+        )
+    bootstrap = {
+        "bootstrap_receipt_id": "sha256:" + ("9" * 64),
+        "plan_root_cid": "plan:r16",
+        "repository_tree_id": "tree:bootstrap",
+        "source_forest": {
+            "by_owner": {
+                "ipfs_datasets_py": {"commit": dataset_commit},
+                "ipfs_kit_py": {"commit": kit_commit},
+            }
+        },
+    }
+    receipt = {
+        "schema": (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+        ),
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R16"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 16,
+        "bootstrap_receipt_id": bootstrap["bootstrap_receipt_id"],
+        "previous_receipt_cid": prior_cid,
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+        ),
+        "base_tree": base_tree,
+        "repair_head": repair_head,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": patch_digest,
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R15"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validations,
+        "candidate_authorization_witness": witness,
+        "sealed_validation_executor_contract": executor_contract,
+        "terminal_success_criteria": (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+
+    def fake_git(*arguments: str) -> str:
+        if arguments[:3] == ("show", "-s", "--format=%P"):
+            return (
+                aseh_operator
+                .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+            )
+        if arguments[:1] == ("rev-parse",):
+            revision = arguments[1]
+            if revision.endswith(":ipfs_datasets_py"):
+                return dataset_commit
+            if revision.endswith(":ipfs_kit_py"):
+                return kit_commit
+            if revision == repair_head + "^{tree}":
+                return repair_tree
+            return base_tree
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(aseh_operator, "_git", fake_git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda *_args: patch_digest,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_sealed_owner_module_registration_transition_receipt_id",
+        lambda _payload: prior_cid,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r16_production_lifecycle_execution_evidence",
+        lambda evidence, **_kwargs: dict(evidence),
+    )
+
+    admitted = (
+        aseh_operator
+        ._validate_repair_docker_create_readiness_vendor_resolver_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt={"receipt_cid": prior_cid},
+            rerun_validations=False,
+        )
+    )
+    assert admitted["transition_revision"] == 16
+    assert admitted["previous_receipt_cid"] == prior_cid
+    assert admitted["candidate_authorization_witness"] == witness
+
+    replayed = json.loads(json.dumps(receipt))
+    replayed["candidate_authorization_witness"]["tree"] = "f" * 40
+    replayed["receipt_cid"] = aseh_operator._identity(
+        {key: value for key, value in replayed.items() if key != "receipt_cid"}
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="witness differs"):
+        aseh_operator._validate_repair_docker_create_readiness_vendor_resolver_transition(
             replayed,
             bootstrap=bootstrap,
             previous_receipt={"receipt_cid": prior_cid},
@@ -10095,9 +11400,11 @@ def test_aseh_sealed_owner_rechecks_candidate_before_owner_start(
     ]
 
 
-def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admission_base(
+@pytest.mark.parametrize("include_r16", [False, True], ids=["r15", "r16"])
+def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r15_are_active_admission_bases(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    include_r16: bool,
 ) -> None:
     bootstrap_path = tmp_path / "bootstrap.json"
     repair_path = tmp_path / "repair-r1.json"
@@ -10115,6 +11422,9 @@ def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admissio
     validation_executor_identity_path = tmp_path / "repair-r13.json"
     sealed_receipt_validation_path = tmp_path / "repair-r14.json"
     sealed_owner_module_registration_path = tmp_path / "repair-r15.json"
+    docker_create_readiness_vendor_resolver_path = (
+        tmp_path / "repair-r16.json"
+    )
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
@@ -10136,6 +11446,8 @@ def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admissio
         database_path,
     ):
         path.touch()
+    if include_r16:
+        docker_create_readiness_vendor_resolver_path.touch()
     paths = {
         "bootstrap_receipt": bootstrap_path,
         "repair_transition_receipt": repair_path,
@@ -10174,6 +11486,9 @@ def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admissio
         ),
         "repair_sealed_owner_module_registration_transition_receipt": (
             sealed_owner_module_registration_path
+        ),
+        "repair_docker_create_readiness_vendor_resolver_transition_receipt": (
+            docker_create_readiness_vendor_resolver_path
         ),
         "database": database_path,
     }
@@ -10222,9 +11537,13 @@ def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admissio
         aseh_operator
         .REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_BASE_HEAD
     )
-    r15_head = "e" * 40
+    r15_head = (
+        aseh_operator
+        .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+    )
+    r16_head = "e" * 40
     population = {
-        "source_head": r15_head,
+        "source_head": r16_head if include_r16 else r15_head,
         "repository_tree_id": "tree:runtime",
         "plan_root_cid": "plan:sealed",
         "source_forest": {"forest_cid": "forest:runtime"},
@@ -10333,6 +11652,16 @@ def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admissio
         "transition_revision": 15,
         "receipt_cid": "receipt:r15",
     }
+    r16 = {
+        "schema": (
+            aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+        ),
+        "base_head": r15_head,
+        "repair_head": r16_head,
+        "transition_revision": 16,
+        "receipt_cid": "receipt:r16",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
@@ -10351,6 +11680,10 @@ def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admissio
         sealed_receipt_validation_path: {"revision": 14},
         sealed_owner_module_registration_path: {"revision": 15},
     }
+    if include_r16:
+        payloads[docker_create_readiness_vendor_resolver_path] = {
+            "revision": 16
+        }
     suffix_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
@@ -10443,6 +11776,11 @@ def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admissio
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_validate_repair_docker_create_readiness_vendor_resolver_transition",
+        lambda *_args, **_kwargs: r16,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_read_continuity_state",
         lambda *_args, **_kwargs: (
             {"projection_cid": "projection:current", "event_cursor": 79},
@@ -10481,12 +11819,14 @@ def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admissio
         object(), {}, paths
     )
 
-    assert admission["repair_transition"] == r15
+    expected_active = r16 if include_r16 else r15
+    assert admission["repair_transition"] == expected_active
     assert [
         item.get("transition_revision", 1)
         for item in admission["repair_transition_chain"]
-    ] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-    assert suffix_calls[-1] == (r15_head, r15_head)
+    ] == list(range(1, 17 if include_r16 else 16))
+    expected_head = r16_head if include_r16 else r15_head
+    assert suffix_calls[-1] == (expected_head, expected_head)
     assert admission["canonical_continuity"][
         "followup_to_clean_launch"
     ] == r3
@@ -10526,6 +11866,15 @@ def test_aseh_r15_sealed_owner_module_registration_transition_is_active_admissio
     assert admission["canonical_continuity"][
         "sealed_receipt_validation_to_sealed_owner_module_registration"
     ] == r15
+    if include_r16:
+        assert admission["canonical_continuity"][
+            "sealed_owner_module_registration_to_docker_create_readiness_vendor_resolver"
+        ] == r16
+    else:
+        assert (
+            "sealed_owner_module_registration_to_docker_create_readiness_vendor_resolver"
+            not in admission["canonical_continuity"]
+        )
 
 
 def test_aseh_repair_authorization_replay_rejects_head_regression(

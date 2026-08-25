@@ -23,6 +23,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import Counter
@@ -55,6 +56,37 @@ _TRUSTED_GIT_IDENTITY: tuple[int, ...] | None = None
 # ``sys.executable`` is not a stable receipt field across that boundary.
 ASEH_RECEIPT_VALIDATION_PYTHON: Final = "/usr/bin/python3"
 _ASEH_RECEIPT_VALIDATION_PYTHON_IDENTITY: tuple[int, ...] | None = None
+ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS: Final = "sealed_subreaper"
+ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS: Final = (
+    "production_lifecycle_live"
+)
+ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS: Final = "deterministic_direct"
+ASEH_R16_PRODUCTION_LIFECYCLE_READY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r16-production-lifecycle-ready@1"
+)
+ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r16-production-lifecycle-execution@1"
+)
+ASEH_R16_DOCKER_OBSERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r16-exact-docker-observation@1"
+)
+ASEH_R16_PRODUCTION_LIFECYCLE_FIXTURE_COMMAND: Final = (
+    "internal-r16-live-docker-fixture"
+)
+ASEH_R16_PROVIDER_START_LAUNCHER_COMMAND: Final = (
+    "internal-r16-provider-start-launcher"
+)
+ASEH_R16_PRODUCTION_LIFECYCLE_READY_NAME: Final = "r16-live-ready.json"
+ASEH_R16_PROVIDER_START_ISSUER_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r16-provider-start-issuer@1"
+)
+ASEH_R16_PROVIDER_START_ISSUER_NAME: Final = (
+    "r16-provider-start-issuer.json"
+)
 OPERATOR_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/aseh-program-operator@1"
 )
@@ -1714,6 +1746,130 @@ REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_NON_SUCCESS: Final = (
     "reduced validation, database mutation, contention, or validation failure "
     "is rejected before owner acquisition."
 )
+REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-docker-create-readiness-vendor-resolver-"
+    "transition@1"
+)
+REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD: Final = (
+    "d5ef60f297cc1e71a29bc02322a01bb021a84173"
+)
+REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_implementation_route.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/llm_router.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+    "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+)
+REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "ipfs_accelerate_py/agent_implementation_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/llm_router.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "-k",
+        (
+            "docker_codex_boundary_transforms_only_validated_sandbox or "
+            "docker_create_positive_grammar_admits_canonical_vendor_command_only "
+            "or router_codex_vendor_pair_requires_two_common_executables or "
+            "codex_vendor_lookup_does_not_import_the_implementation_daemon or "
+            "docker_cleanup_root_survives_ambient_tempdir_restore or "
+            "durable_cleanup_binding_uses_recorded_root_after_ambient_restore"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_llm_router_agent_supervisor_fallback_route.py",
+        "-k",
+        (
+            "protected_docker_receipt_rejects_semantic_argv_tampering or "
+            "effect_owner_and_two_dead_adopters_terminalize_one_container or "
+            "immutable_effect_receipt_survives_private_cleanup_root_retirement"
+        ),
+    ),
+    (
+        "/usr/bin/env",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_DOCKER_CLEANUP_VALIDATION=1",
+        "IPFS_ACCELERATE_AGENT_TEST_CODEX_EXECUTABLE=/usr/local/bin/codex",
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "-k",
+        "strict_fence_waits_for_detached_container_cleanup",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        (
+            "aseh_r16_docker_create_readiness_vendor_resolver or "
+            "repair_docker_create_readiness_vendor_resolver_transition or "
+            "delegates_r16_before_suffix_admission"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue fixing the existing canonical supervisor so its Docker create "
+    "readiness gate uses one router-owned native Codex vendor resolver without "
+    "a second state writer"
+)
+REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SUCCESS: Final = (
+    "The exact R15 child removes the provider-runner-to-daemon reverse import, "
+    "binds the runner and compatibility adapter to one router-owned matching "
+    "Codex vendor pair, keeps the production Docker-create timeout identity "
+    "consistent, binds one restart-safe private cleanup-root identity, and the "
+    "live bounded fixture reaches readiness before strict fencing drains "
+    "descendants and removes its exact container and lease."
+)
+REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R15 parent, changed sibling, duplicate writable resolver, "
+    "provider-runner import of the implementation daemon, timeout widening as "
+    "a substitute for readiness, cleanup-root identity drift, leaked container, "
+    "watchdog, descendant, or lease, reduced validation, database mutation, "
+    "contention, or validation failure is rejected before owner acquisition."
+)
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
     REPAIR_FOLLOWUP_TRANSITION_SCHEMA,
@@ -1741,6 +1897,10 @@ ASEH_R14_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R15_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R14_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_SCHEMA,
+)
+ASEH_R16_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R15_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -1832,6 +1992,9 @@ REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_RECEIPT_FIELDS: Final = (
 )
 REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_SEALED_RECEIPT_VALIDATION_TRANSITION_RECEIPT_FIELDS
+)
+REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -2769,6 +2932,44 @@ def _repair_sealed_owner_module_registration_transition_receipt_id(
     return receipt_id
 
 
+def _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-16 Docker readiness/vendor receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    if (
+        payload.get("schema")
+        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 16
+        or payload.get("terminal_success_criteria")
+        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r16_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "bootstrap repair Docker-create-readiness/vendor-resolver schema "
+            "is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair Docker-create-readiness/vendor-resolver CID is "
+            "invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -2966,9 +3167,13 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r15 = globals().get(
         "REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS"
     )
+    r16 = globals().get(
+        "REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
+        *((r16,) if isinstance(r16, Sequence) else ()),
     )
 
 
@@ -3144,6 +3349,184 @@ def _r15_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+ASEH_R15_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:d7fa34ff64e08957630f5e0b9dd180e7ff1c4c43c0c273dd9fd38f688f9a9bec"
+)
+
+
+def _r16_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Bind R16's exact validation policy without reminting R14 or R15."""
+
+    parent = _r15_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if (
+        parent_cid
+        != ASEH_R15_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    ):
+        raise OperatorError("historical R15 validation contract drifted")
+    matrix = (
+        REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+    )
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+        and command != _r16_production_lifecycle_live_command()
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r16_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r16-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 16,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command)) for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command)) for command in sealed_python_commands
+            ),
+            "production_lifecycle_validation_intent_argv_digest": _identity(
+                list(_r16_production_lifecycle_live_command())
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "production_lifecycle_live_contract": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "aseh-r16-production-lifecycle-live-contract@1"
+                ),
+                "logical_argv_sha256": _identity(
+                    list(_r16_production_lifecycle_live_command())
+                ),
+                "declared_command_executed": False,
+                "result_authority": (
+                    "typed_lifecycle_evidence_not_logical_process_exit"
+                ),
+                "output_capture_policy": (
+                    "canonical_start_track_combined_stdout_stderr_with_"
+                    "separate_streams_explicitly_unavailable"
+                ),
+                "retained_interpreter_sha256": (
+                    ASEH_R11_NATIVE_DEPENDENCY_PIN[
+                        "python_executable_sha256"
+                    ]
+                ),
+                "native_authorization_id": (
+                    ASEH_R11_NATIVE_DEPENDENCY_AUTHORIZATION_ID
+                ),
+                "lifecycle_authority": (
+                    "canonical_start_track_and_terminate_managed_process"
+                ),
+                "identity_authority": (
+                    "one_command_bound_private_durable_cleanup_binding"
+                ),
+                "parent_loss_policy": (
+                    "exact_parent_birth_pdeathsig_sigkill"
+                ),
+                "provider_start_launch_policy": (
+                    "fork_free_posix_spawn_to_fresh_isolated_interpreter_"
+                    "arms_parent_loss_then_exact_exec"
+                ),
+                "dispatch_barrier": (
+                    "two_exact_stopped_state_observations"
+                ),
+                "reparent_qualification": (
+                    "watchdog_exact_birth_parent_pid_one_before_effect"
+                ),
+                "observation_policy": (
+                    "positive_exact_container_observation_while_managed_"
+                    "root_is_alive_then_independent_terminal_cleanup"
+                ),
+                "cleanup_policy": (
+                    "all_exact_issuers_and_private_binding_lease_roots_absent_"
+                    "plus_two_successful_empty_exact_docker_snapshots"
+                ),
+            },
+            "scope": (
+                "r16_authorization_preflight_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _r16_production_lifecycle_live_command() -> tuple[str, ...]:
+    """Return the one R16 argv requiring the production lifecycle owner."""
+
+    matches = tuple(
+        tuple(command)
+        for command in (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+        )
+        if (
+            "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_DOCKER_CLEANUP_VALIDATION=1"
+            in command
+        )
+    )
+    if len(matches) != 1:
+        raise OperatorError("R16 live lifecycle command is not unique")
+    expected = (
+        "/usr/bin/env",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_DOCKER_CLEANUP_VALIDATION=1",
+        "IPFS_ACCELERATE_AGENT_TEST_CODEX_EXECUTABLE=/usr/local/bin/codex",
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "-k",
+        "strict_fence_waits_for_detached_container_cleanup",
+    )
+    if matches[0] != expected:
+        raise OperatorError("R16 live lifecycle argv drifted")
+    return matches[0]
+
+
+def _r16_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R16 argv; no broader command grammar is admitted."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+        )
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R16 validation matrix")
+    if declared == _r16_production_lifecycle_live_command():
+        return ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -3170,13 +3553,689 @@ def _admit_sealed_receipt_validation_executor_contract(
             )
         return r14
     r15 = _r15_sealed_receipt_validation_executor_contract()
-    if supplied != r15:
+    if supplied == r15:
+        if _identity(list(command)) not in r15[
+            "admitted_python_argv_digests"
+        ]:
+            raise OperatorError(
+                "Python command is not admitted by the R15 executor contract"
+            )
+        return r15
+    r16 = _r16_sealed_receipt_validation_executor_contract()
+    if supplied != r16:
         raise OperatorError("sealed validation executor contract is unknown")
-    if _identity(list(command)) not in r15["admitted_python_argv_digests"]:
+    if (
+        _r16_validation_executor_class(command)
+        != ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    ):
         raise OperatorError(
-            "Python command is not admitted by the R15 executor contract"
+            "R16 Python command is not admitted by the sealed subreaper "
+            "executor class"
         )
-    return r15
+    if (
+        _identity(list(command))
+        not in r16["admitted_sealed_python_argv_digests"]
+    ):
+        raise OperatorError(
+            "Python command is not admitted by the R16 executor contract"
+        )
+    return r16
+
+
+def _admit_r16_production_lifecycle_live_executor_contract(
+    executor_contract: Mapping[str, Any],
+    *,
+    declared: Sequence[str],
+) -> dict[str, Any]:
+    """Admit only R16's one exact live argv to its lifecycle executor."""
+
+    expected = _r16_sealed_receipt_validation_executor_contract()
+    supplied = dict(executor_contract)
+    command = tuple(declared)
+    if supplied != expected:
+        raise OperatorError("R16 production lifecycle contract is unknown")
+    if (
+        command != _r16_production_lifecycle_live_command()
+        or _r16_validation_executor_class(command)
+        != ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+    ):
+        raise OperatorError(
+            "command is not admitted by the R16 production lifecycle executor"
+        )
+    return expected
+
+
+def _r16_process_start_time_ticks(pid: int) -> int:
+    """Read one Linux process birth without turning a PID into authority."""
+
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        closing_parenthesis = raw.rfind(")")
+        fields = raw[closing_parenthesis + 2 :].split()
+        start_time_ticks = int(fields[19])
+    except (OSError, IndexError, UnicodeError, ValueError) as exc:
+        raise OperatorError("R16 live process birth is unavailable") from exc
+    if closing_parenthesis < 0 or start_time_ticks <= 0:
+        raise OperatorError("R16 live process birth is invalid")
+    return start_time_ticks
+
+
+def _r16_exact_process_state(
+    pid: int,
+    *,
+    expected_start_time_ticks: int,
+    expected_boot_id: str,
+) -> dict[str, Any]:
+    """Observe one exact Linux process birth and its current scheduler state."""
+
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+        closing_parenthesis = raw.rfind(")")
+        fields = raw[closing_parenthesis + 2 :].split()
+        state = fields[0]
+        start_time_ticks = int(fields[19])
+        boot_id = _r16_boot_id()
+    except (OSError, IndexError, UnicodeError, ValueError) as exc:
+        raise OperatorError("R16 live process state is unavailable") from exc
+    if (
+        closing_parenthesis < 0
+        or start_time_ticks != expected_start_time_ticks
+        or boot_id != expected_boot_id
+        or state not in {"R", "S", "D", "T", "t", "W", "X", "I"}
+    ):
+        raise OperatorError("R16 live process state identity differs")
+    return {
+        "pid": pid,
+        "start_time_ticks": start_time_ticks,
+        "boot_id": boot_id,
+        "state": state,
+        "observed_at_ns": time.time_ns(),
+    }
+
+
+def _r16_exact_process_argv(
+    pid: int,
+    *,
+    expected_start_time_ticks: int,
+    expected_boot_id: str,
+) -> list[str]:
+    """Read argv only while the exact Linux process birth remains stable."""
+
+    _r16_exact_process_state(
+        pid,
+        expected_start_time_ticks=expected_start_time_ticks,
+        expected_boot_id=expected_boot_id,
+    )
+    try:
+        payload = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError as exc:
+        raise OperatorError("R16 live process argv is unavailable") from exc
+    _r16_exact_process_state(
+        pid,
+        expected_start_time_ticks=expected_start_time_ticks,
+        expected_boot_id=expected_boot_id,
+    )
+    if (
+        not payload
+        or len(payload) > 262_144
+        or not payload.endswith(b"\0")
+    ):
+        raise OperatorError("R16 live process argv is invalid")
+    try:
+        argv = [
+            item.decode("utf-8", errors="strict")
+            for item in payload[:-1].split(b"\0")
+        ]
+    except UnicodeDecodeError as exc:
+        raise OperatorError("R16 live process argv is not UTF-8") from exc
+    if not argv or any(not item for item in argv):
+        raise OperatorError("R16 live process argv is invalid")
+    return argv
+
+
+def _validate_r16_distinct_terminal_process_birth(
+    observed: Any,
+    *,
+    issuer: Mapping[str, Any],
+) -> None:
+    """Admit absence or one exact same-PID, different-birth observation."""
+
+    if observed is None:
+        return
+    if (
+        type(observed) is not dict
+        or set(observed)
+        != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+        or type(observed.get("pid")) is not int
+        or observed.get("pid") != issuer.get("pid")
+        or type(observed.get("start_time_ticks")) is not int
+        or int(observed["start_time_ticks"]) <= 0
+        or observed.get("start_time_ticks")
+        == issuer.get("start_time_ticks")
+        or observed.get("boot_id") != issuer.get("boot_id")
+        or type(observed.get("parent_pid")) is not int
+        or int(observed["parent_pid"]) < 0
+    ):
+        raise OperatorError("R16 terminal process-birth evidence is invalid")
+    canonical = {
+        "pid": int(observed["pid"]),
+        "start_time_ticks": int(observed["start_time_ticks"]),
+        "boot_id": str(observed["boot_id"]),
+        "parent_pid": int(observed["parent_pid"]),
+    }
+    if observed != canonical:
+        raise OperatorError("R16 terminal process-birth evidence is invalid")
+
+
+def _r16_boot_id() -> str:
+    try:
+        value = Path("/proc/sys/kernel/random/boot_id").read_text(
+            encoding="ascii"
+        ).strip()
+    except (OSError, UnicodeError) as exc:
+        raise OperatorError("R16 live boot identity is unavailable") from exc
+    if re.fullmatch(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+        value,
+    ) is None:
+        raise OperatorError("R16 live boot identity is invalid")
+    return value
+
+
+def _r16_arm_sigkill_parent_loss_fence(
+    *,
+    expected_parent_pid: int,
+    expected_parent_start_time_ticks: int,
+    expected_boot_id: str,
+) -> None:
+    """Arm and verify SIGKILL parent loss for the deliberately stopped root."""
+
+    if (
+        os.getppid() != expected_parent_pid
+        or _r16_process_start_time_ticks(expected_parent_pid)
+        != expected_parent_start_time_ticks
+        or _r16_boot_id() != expected_boot_id
+    ):
+        raise OperatorError("R16 parent changed before its loss fence")
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(1, int(signal.SIGKILL), 0, 0, 0) != 0:
+        error = ctypes.get_errno()
+        raise OperatorError(
+            "R16 SIGKILL parent-loss fence failed: " + os.strerror(error)
+        )
+    observed_signal = ctypes.c_int(0)
+    if (
+        libc.prctl(2, ctypes.byref(observed_signal), 0, 0, 0) != 0
+        or observed_signal.value != int(signal.SIGKILL)
+    ):
+        raise OperatorError(
+            "R16 SIGKILL parent-loss fence verification failed"
+        )
+    if (
+        os.getppid() != expected_parent_pid
+        or _r16_process_start_time_ticks(expected_parent_pid)
+        != expected_parent_start_time_ticks
+        or _r16_boot_id() != expected_boot_id
+    ):
+        raise OperatorError(
+            "R16 parent changed while SIGKILL loss fence was armed"
+        )
+
+
+def _r16_provider_start_launcher(
+    *,
+    docker_bin: str,
+    docker_config: str,
+    container_name: str,
+    expected_parent_pid: int,
+    expected_parent_start_time_ticks: int,
+    expected_parent_boot_id: str,
+) -> int:
+    """Arm parent loss in a fresh interpreter, then exact-exec Docker.
+
+    Running Python in ``subprocess.Popen(preexec_fn=...)`` can deadlock after
+    native libraries have initialized locks which are invisible to
+    ``threading.active_count()``. This hidden launcher starts through exec,
+    arms the same exact-parent PDEATHSIG policy in a fresh interpreter, and
+    then replaces itself with the one admitted Docker start command.
+    """
+
+    docker_path = Path(docker_bin)
+    config_path = Path(docker_config)
+    lease_root = config_path.parent
+    try:
+        docker_resolved = docker_path.resolve(strict=True)
+        docker_metadata = os.stat(docker_resolved)
+        config_metadata = os.lstat(config_path)
+        lease_metadata = os.lstat(lease_root)
+    except OSError as exc:
+        raise OperatorError(
+            "R16 provider-start launcher identity is unavailable"
+        ) from exc
+    if (
+        docker_path != docker_resolved
+        or docker_resolved
+        not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
+        or not stat.S_ISREG(docker_metadata.st_mode)
+        or docker_metadata.st_uid != 0
+        or docker_metadata.st_mode & 0o022
+        or not config_path.is_absolute()
+        or config_path.name != "docker-config"
+        or not lease_root.name.startswith("asref-codex-container-")
+        or config_path.resolve(strict=True) != config_path
+        or lease_root.resolve(strict=True) != lease_root
+        or stat.S_ISLNK(config_metadata.st_mode)
+        or not stat.S_ISDIR(config_metadata.st_mode)
+        or config_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(config_metadata.st_mode) != 0o700
+        or stat.S_ISLNK(lease_metadata.st_mode)
+        or not stat.S_ISDIR(lease_metadata.st_mode)
+        or lease_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(lease_metadata.st_mode) != 0o700
+        or re.fullmatch(
+            r"ipfs-accelerate-codex-[0-9]+-[0-9a-f]{32}",
+            container_name,
+        )
+        is None
+    ):
+        raise OperatorError("R16 provider-start launcher identity is invalid")
+    _r16_arm_sigkill_parent_loss_fence(
+        expected_parent_pid=expected_parent_pid,
+        expected_parent_start_time_ticks=expected_parent_start_time_ticks,
+        expected_boot_id=expected_parent_boot_id,
+    )
+    command = [
+        str(docker_resolved),
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        str(config_path),
+        "start",
+        "--attach",
+        "--interactive",
+        container_name,
+    ]
+    os.execve(
+        str(docker_resolved),
+        command,
+        {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
+    )
+    raise OperatorError("R16 provider-start exact exec returned")
+
+
+def _r16_production_lifecycle_live_fixture(
+    *,
+    nonce: str,
+    logical_argv_sha256: str,
+    candidate_head: str,
+    candidate_tree: str,
+    expected_parent_pid: int,
+    expected_parent_start_time_ticks: int,
+    expected_parent_boot_id: str,
+) -> int:
+    """Materialize one Docker effect as the direct managed lifecycle root.
+
+    This hidden command has no success authority.  It publishes only a
+    pre-dispatch observation, stops itself, and later blocks with the exact
+    Docker effect live.  The outer operator owns dispatch release, positive
+    observation, canonical termination, and terminal admission.
+    """
+
+    if (
+        re.fullmatch(r"[0-9a-f]{64}", nonce) is None
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", logical_argv_sha256) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+        or type(expected_parent_pid) is not int
+        or expected_parent_pid <= 1
+        or type(expected_parent_start_time_ticks) is not int
+        or expected_parent_start_time_ticks <= 0
+        or re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            expected_parent_boot_id,
+        )
+        is None
+        or logical_argv_sha256
+        != _identity(list(_r16_production_lifecycle_live_command()))
+    ):
+        raise OperatorError("R16 live fixture identity is invalid")
+    # This direct managed root carries no state credential, so start_track's
+    # authority handoff is intentionally a no-op.  Arm the same exact
+    # parent-birth death fence explicitly before a lease or external effect
+    # can exist; a parent loss before or during arming fails closed.
+    _r16_arm_sigkill_parent_loss_fence(
+        expected_parent_pid=expected_parent_pid,
+        expected_parent_start_time_ticks=expected_parent_start_time_ticks,
+        expected_boot_id=expected_parent_boot_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator import (
+        CONFIGURATION_ROOT_ENV,
+        FENCING_EPOCH_ENV,
+        PROFILE_ID_ENV,
+        REPOSITORY_ROOT_ENV,
+        RUN_ID_ENV,
+        RUN_ROOT_ENV,
+        STATE_ROOT_ENV,
+        TARGET_ID_ENV,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+
+    if (
+        _git("rev-parse", "HEAD") != candidate_head
+        or _git("rev-parse", "HEAD^{tree}") != candidate_tree
+        or Path(grok_cli_runner.__file__).resolve().relative_to(ROOT).as_posix()
+        != "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    ):
+        raise OperatorError("R16 live fixture did not load the candidate tree")
+
+    lifecycle_names = (
+        RUN_ID_ENV,
+        PROFILE_ID_ENV,
+        TARGET_ID_ENV,
+        REPOSITORY_ROOT_ENV,
+        STATE_ROOT_ENV,
+        RUN_ROOT_ENV,
+        FENCING_EPOCH_ENV,
+        CONFIGURATION_ROOT_ENV,
+    )
+    lifecycle = {name: str(os.environ.get(name, "") or "") for name in lifecycle_names}
+    expected_target = f"supervisor-track:aseh-r16-live-{nonce}"
+    temporary_root = Path(str(os.environ.get("TMPDIR", "") or ""))
+    state_root = Path(lifecycle[STATE_ROOT_ENV])
+    run_root = Path(lifecycle[RUN_ROOT_ENV])
+    if (
+        any(not value for value in lifecycle.values())
+        or lifecycle[TARGET_ID_ENV] != expected_target
+        or lifecycle[REPOSITORY_ROOT_ENV] != str(ROOT)
+        or lifecycle[FENCING_EPOCH_ENV] != "0"
+        or not temporary_root.is_absolute()
+        or temporary_root.resolve(strict=True) != temporary_root
+        or stat.S_IMODE(os.lstat(temporary_root).st_mode) != 0o700
+        or state_root.resolve(strict=True) != state_root
+        or run_root.resolve(strict=True) != run_root
+        or not state_root.is_relative_to(temporary_root)
+        or not run_root.is_relative_to(state_root)
+    ):
+        raise OperatorError("R16 live fixture lifecycle binding is invalid")
+    # tempfile caches its root independently of the environment.  Bind the
+    # child cache before any Docker lease path is allocated.
+    tempfile.tempdir = str(temporary_root)
+
+    provider_home = Path(
+        tempfile.mkdtemp(prefix="asref-codex-home-", dir=temporary_root)
+    )
+    prompt_fd, prompt_name = tempfile.mkstemp(
+        prefix="asref-grok-prompt-", dir=temporary_root
+    )
+    os.close(prompt_fd)
+    prompt_path = Path(prompt_name)
+    lease = grok_cli_runner._DockerContainerLease.create(
+        "/usr/bin/docker",
+        provider="codex",
+        provider_home=provider_home,
+        prompt_path=prompt_path,
+    )
+    if lease.cleanup_binding_record is None:
+        raise OperatorError("R16 live fixture lacks a durable cleanup binding")
+    ready = {
+        "schema": ASEH_R16_PRODUCTION_LIFECYCLE_READY_SCHEMA,
+        "nonce": nonce,
+        "sequence": 1,
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "logical_argv_sha256": logical_argv_sha256,
+        "expected_parent_pid": expected_parent_pid,
+        "expected_parent_start_time_ticks": expected_parent_start_time_ticks,
+        "expected_parent_boot_id": expected_parent_boot_id,
+        "parent_loss_signal": "SIGKILL",
+        "runner_pid": os.getpid(),
+        "runner_start_time_ticks": _r16_process_start_time_ticks(os.getpid()),
+        "boot_id": _r16_boot_id(),
+        "lifecycle": lifecycle,
+        "container_name": lease.container_name,
+        "lease_root": str(lease.lease_root),
+        "binding_path": str(lease.cleanup_binding_record),
+        "watchdog_pid": lease._watchdog.pid,
+        "watchdog_start_time_ticks": lease._watchdog.start_ticks,
+        "dispatch_state": "prepared_no_dispatch",
+        "published_at_ns": time.time_ns(),
+    }
+    ready["ready_cid"] = _identity(ready)
+    ready_path = run_root / ASEH_R16_PRODUCTION_LIFECYCLE_READY_NAME
+    _atomic_json_create(ready_path, ready)
+
+    # SIGSTOP is the dispatch barrier.  The parent validates the exact root,
+    # retained cleanup-directory FD, durable prepared record, watchdog birth,
+    # and two successful exact-name absence observations before SIGCONT.
+    os.kill(os.getpid(), signal.SIGSTOP)
+
+    image = grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
+    lease.bind_isolation_image(image)
+    environment_assignments = [
+        f"{name}={value}"
+        for name, value in sorted(
+            grok_cli_runner._codex_task_container_environment().items()
+        )
+    ]
+    command = [
+        "/usr/bin/docker",
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        str(lease.docker_config),
+        "create",
+        "--pull=never",
+        "--cidfile",
+        str(lease.cidfile),
+        "--name",
+        lease.container_name,
+        "--interactive",
+        "--read-only",
+        "--network=bridge",
+        "--runtime=runc",
+        "--entrypoint=/usr/bin/env",
+        "--tmpfs",
+        (
+            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        "--tmpfs",
+        (
+            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        "--tmpfs",
+        (
+            f"{grok_cli_runner._CODEX_CONTAINER_HOME}:"
+            "rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit=1024",
+        "--label",
+        "ipfs_accelerate.codex_fallback_isolation=true",
+        "--user",
+        f"{os.getuid()}:{os.getgid()}",
+        "--workdir",
+        str(ROOT),
+        image,
+        "-i",
+        *environment_assignments,
+        "/bin/sh",
+        "-c",
+        grok_cli_runner._DOCKER_PROVIDER_START_SCRIPT,
+        "aseh-provider-start",
+        "/bin/sleep",
+        "300",
+    ]
+    created = lease.create_inert_container(
+        command,
+        cwd=ROOT,
+        env=grok_cli_runner._docker_control_env(),
+    )
+    if created.returncode != 0:
+        raise OperatorError("R16 live fixture Docker create failed")
+    provider_stdin = lease.take_provider_start_stdin()
+    provider_start_argv = [
+        "/usr/bin/docker",
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        str(lease.docker_config),
+        "start",
+        "--attach",
+        "--interactive",
+        lease.container_name,
+    ]
+    provider_parent_pid = os.getpid()
+    provider_parent_start = _r16_process_start_time_ticks(
+        provider_parent_pid
+    )
+    provider_parent_boot = _r16_boot_id()
+    provider_launcher_argv = [
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-I",
+        "-B",
+        str(ROOT / "scripts/run_agent_supervisor_efficiency_state_hardening.py"),
+        ASEH_R16_PROVIDER_START_LAUNCHER_COMMAND,
+        "--docker-bin",
+        provider_start_argv[0],
+        "--docker-config",
+        str(lease.docker_config),
+        "--container-name",
+        lease.container_name,
+        "--expected-parent-pid",
+        str(provider_parent_pid),
+        "--expected-parent-start-time-ticks",
+        str(provider_parent_start),
+        "--expected-parent-boot-id",
+        provider_parent_boot,
+    ]
+    provider_stdin_fd = provider_stdin.fileno()
+    inheritable_descriptors: list[int] = []
+    try:
+        for entry in Path("/proc/self/fd").iterdir():
+            descriptor = int(entry.name)
+            if descriptor > 2 and descriptor != provider_stdin_fd:
+                try:
+                    if os.get_inheritable(descriptor):
+                        inheritable_descriptors.append(descriptor)
+                except OSError:
+                    # The directory iterator owns a transient descriptor that
+                    # may disappear before it is queried.
+                    continue
+    except (OSError, ValueError) as exc:
+        provider_stdin.close()
+        raise OperatorError(
+            "R16 provider-start descriptor census is unavailable"
+        ) from exc
+    if (
+        inheritable_descriptors
+        or provider_stdin_fd <= 2
+        or os.get_inheritable(provider_stdin_fd)
+    ):
+        provider_stdin.close()
+        raise OperatorError(
+            "R16 provider-start descriptor inheritance is unsafe"
+        )
+    file_actions = [
+        (os.POSIX_SPAWN_DUP2, provider_stdin_fd, 0),
+        (os.POSIX_SPAWN_OPEN, 1, os.devnull, os.O_WRONLY, 0o600),
+        (os.POSIX_SPAWN_OPEN, 2, os.devnull, os.O_WRONLY, 0o600),
+        (os.POSIX_SPAWN_CLOSE, provider_stdin_fd),
+    ]
+    try:
+        provider_pid = os.posix_spawn(
+            provider_launcher_argv[0],
+            provider_launcher_argv,
+            {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
+            file_actions=file_actions,
+        )
+    finally:
+        provider_stdin.close()
+
+    provider_returncode: int | None = None
+
+    def poll_provider() -> int | None:
+        nonlocal provider_returncode
+        if provider_returncode is not None:
+            return provider_returncode
+        try:
+            waited_pid, status = os.waitpid(provider_pid, os.WNOHANG)
+        except ChildProcessError:
+            provider_returncode = 255
+            return provider_returncode
+        if waited_pid == 0:
+            return None
+        if waited_pid != provider_pid:
+            raise OperatorError("R16 provider-start wait identity differs")
+        provider_returncode = os.waitstatus_to_exitcode(status)
+        return provider_returncode
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        read_process_birth,
+    )
+
+    provider_birth = None
+    provider_exec_deadline = time.monotonic() + 5.0
+    while time.monotonic() < provider_exec_deadline:
+        observed_birth = read_process_birth(provider_pid)
+        if observed_birth is None:
+            if poll_provider() is not None:
+                break
+            time.sleep(0.01)
+            continue
+        if (
+            observed_birth.parent_pid != os.getpid()
+            or observed_birth.boot_id != _r16_boot_id()
+        ):
+            break
+        try:
+            observed_argv = _r16_exact_process_argv(
+                provider_pid,
+                expected_start_time_ticks=observed_birth.start_time_ticks,
+                expected_boot_id=observed_birth.boot_id,
+            )
+        except OperatorError:
+            if poll_provider() is not None:
+                break
+            time.sleep(0.01)
+            continue
+        if observed_argv == provider_start_argv:
+            provider_birth = observed_birth
+            break
+        if observed_argv != provider_launcher_argv:
+            break
+        time.sleep(0.01)
+    if provider_birth is None:
+        raise OperatorError("R16 provider-start issuer identity differs")
+    provider_start_issuer = {
+        "schema": ASEH_R16_PROVIDER_START_ISSUER_SCHEMA,
+        "nonce": nonce,
+        "container_name": lease.container_name,
+        "argv": provider_start_argv,
+        "argv_sha256": _identity(provider_start_argv),
+        "process_birth": provider_birth.to_dict(),
+        "parent_loss_signal": "SIGKILL",
+        "output_capture": "unavailable_discarded_to_devnull",
+        "stdout_digest": None,
+        "stderr_digest": None,
+        "published_at_ns": time.time_ns(),
+    }
+    provider_start_issuer["record_cid"] = _identity(provider_start_issuer)
+    _atomic_json_create(
+        run_root / ASEH_R16_PROVIDER_START_ISSUER_NAME,
+        provider_start_issuer,
+    )
+    fence = lease.capture_running_termination_fence()
+    if (
+        poll_provider() is not None
+        or int(fence.get("init_pid") or 0) <= 0
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", str(fence.get("fence_id") or "")
+        )
+        is None
+    ):
+        raise OperatorError("R16 live fixture did not materialize its effect")
+    while True:
+        time.sleep(3600.0)
 
 
 def _sealed_validation_execution_context(
@@ -3597,6 +4656,373 @@ def _read_bounded_pipe(
             raise OperatorError("sealed validation receipt is oversized")
         if stop_at_newline and observed.endswith(b"\n"):
             return bytes(observed)
+
+
+def _r16_parent_is_child_subreaper() -> bool:
+    """Observe the Linux subreaper bit before the live effect exists."""
+
+    value = ctypes.c_int(0)
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(37, ctypes.byref(value), 0, 0, 0) != 0:
+        error = ctypes.get_errno()
+        raise OperatorError(
+            "R16 production lifecycle subreaper state is unavailable: "
+            + os.strerror(error)
+        )
+    if value.value not in {0, 1}:
+        raise OperatorError("R16 production lifecycle subreaper state is invalid")
+    return value.value == 1
+
+
+def _r16_kernel_task_ids() -> tuple[int, ...]:
+    """Return the exact native task set before process-global mutation."""
+
+    try:
+        names = tuple(Path("/proc/self/task").iterdir())
+        task_ids = tuple(sorted(int(item.name) for item in names))
+    except (OSError, ValueError) as exc:
+        raise OperatorError("R16 native task census is unavailable") from exc
+    if (
+        not task_ids
+        or len(task_ids) != len(set(task_ids))
+        or any(item <= 0 for item in task_ids)
+        or os.getpid() not in task_ids
+    ):
+        raise OperatorError("R16 native task census is invalid")
+    return task_ids
+
+
+def _r16_exact_docker_list_observation(
+    *,
+    docker_bin: str,
+    container_name: str,
+    container_id: str = "",
+    expect_present: bool,
+) -> dict[str, Any]:
+    """Take independent exact-name and exact-ID Docker observations."""
+
+    if (
+        Path(docker_bin).resolve(strict=True)
+        not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
+        or re.fullmatch(
+            r"ipfs-accelerate-codex-[0-9]+-[0-9a-f]{32}",
+            container_name,
+        )
+        is None
+        or (
+            container_id
+            and re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+        )
+    ):
+        raise OperatorError("R16 Docker observation identity is invalid")
+    if expect_present and not container_id:
+        raise OperatorError("R16 present Docker observation lacks a container ID")
+    selectors = [("exact_name", f"name=^/{container_name}$")]
+    if container_id:
+        # Name and ID deliberately use distinct Docker calls.  Combining the
+        # two filters would admit a renamed surviving container as absent.
+        selectors.append(("exact_id", f"id={container_id}"))
+    queries: list[dict[str, Any]] = []
+    expected_stdout = (
+        f"{container_id} {container_name}\n".encode("ascii")
+        if expect_present
+        else b""
+    )
+    for selector, filter_value in selectors:
+        command = [
+            docker_bin,
+            "--host=unix:///var/run/docker.sock",
+            "container",
+            "ls",
+            "--all",
+            "--no-trunc",
+            "--filter",
+            filter_value,
+            "--format",
+            "{{.ID}} {{.Names}}",
+        ]
+        try:
+            observed = subprocess.run(
+                command,
+                env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"},
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=5.0,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise OperatorError("R16 Docker observation is unknown") from exc
+        if len(observed.stdout) > 262_144 or len(observed.stderr) > 262_144:
+            raise OperatorError("R16 Docker observation is oversized")
+        if (
+            observed.returncode != 0
+            or observed.stdout != expected_stdout
+            or observed.stderr != b""
+        ):
+            raise OperatorError(
+                "R16 exact Docker materialization differs from expectation"
+            )
+        queries.append(
+            {
+                "selector": selector,
+                "command_sha256": _identity(command),
+                "returncode": int(observed.returncode),
+                "stdout_sha256": _identity(observed.stdout),
+                "stderr_sha256": _identity(observed.stderr),
+            }
+        )
+    return {
+        "schema": ASEH_R16_DOCKER_OBSERVATION_SCHEMA,
+        "docker_bin": docker_bin,
+        "observed_at_ns": time.time_ns(),
+        "expected": "present" if expect_present else "absent",
+        "container_name": container_name,
+        "container_id": container_id,
+        "queries": queries,
+    }
+
+
+def _validate_r16_exact_docker_list_observation(
+    observation: Mapping[str, Any],
+    *,
+    docker_bin: str,
+    container_name: str,
+    container_id: str,
+    expect_present: bool,
+) -> dict[str, Any]:
+    """Recompute every exact Docker observation command and fixed output."""
+
+    expected_fields = {
+        "schema",
+        "docker_bin",
+        "observed_at_ns",
+        "expected",
+        "container_name",
+        "container_id",
+        "queries",
+    }
+    if (
+        type(observation) is not dict
+        or set(observation) != expected_fields
+        or observation.get("schema") != ASEH_R16_DOCKER_OBSERVATION_SCHEMA
+        or observation.get("docker_bin") != docker_bin
+        or observation.get("container_name") != container_name
+        or observation.get("container_id") != container_id
+        or observation.get("expected")
+        != ("present" if expect_present else "absent")
+        or type(observation.get("observed_at_ns")) is not int
+        or int(observation["observed_at_ns"]) <= 0
+        or (expect_present and not container_id)
+    ):
+        raise OperatorError("R16 Docker observation is invalid")
+    selectors = [("exact_name", f"name=^/{container_name}$")]
+    if container_id:
+        selectors.append(("exact_id", f"id={container_id}"))
+    queries = observation.get("queries")
+    if not isinstance(queries, list) or len(queries) != len(selectors):
+        raise OperatorError("R16 Docker observation query set differs")
+    expected_stdout = (
+        f"{container_id} {container_name}\n".encode("ascii")
+        if expect_present
+        else b""
+    )
+    for query, (selector, filter_value) in zip(queries, selectors, strict=True):
+        command = [
+            docker_bin,
+            "--host=unix:///var/run/docker.sock",
+            "container",
+            "ls",
+            "--all",
+            "--no-trunc",
+            "--filter",
+            filter_value,
+            "--format",
+            "{{.ID}} {{.Names}}",
+        ]
+        if (
+            type(query) is not dict
+            or set(query)
+            != {
+                "selector",
+                "command_sha256",
+                "returncode",
+                "stdout_sha256",
+                "stderr_sha256",
+            }
+            or query.get("selector") != selector
+            or query.get("command_sha256") != _identity(command)
+            or query.get("returncode") != 0
+            or query.get("stdout_sha256") != _identity(expected_stdout)
+            or query.get("stderr_sha256") != _identity(b"")
+        ):
+            raise OperatorError("R16 Docker observation query differs")
+    return dict(observation)
+
+
+def _r16_private_root_identity(path: Path, descriptor: int) -> list[int]:
+    opened = os.fstat(descriptor)
+    named = os.lstat(path)
+    if (
+        _validation_stat_identity(opened) != _validation_stat_identity(named)
+        or not stat.S_ISDIR(opened.st_mode)
+        or stat.S_ISLNK(named.st_mode)
+        or opened.st_uid != os.geteuid()
+        or stat.S_IMODE(opened.st_mode) != 0o700
+        or path.resolve(strict=True) != path
+    ):
+        raise OperatorError("R16 private lifecycle root identity is unsafe")
+    return _validation_stat_identity(opened)
+
+
+def _retire_r16_private_lifecycle_root(
+    path: Path,
+    *,
+    descriptor: int,
+    expected_identity: Sequence[int],
+) -> None:
+    """Remove only one verified private R16 root after a successful fence."""
+
+    current_identity = _r16_private_root_identity(path, descriptor)
+    if (
+        current_identity[0] != expected_identity[0]
+        or current_identity[1] != expected_identity[1]
+        or stat.S_IFMT(current_identity[2])
+        != stat.S_IFMT(int(expected_identity[2]))
+        or current_identity[3] != expected_identity[3]
+    ):
+        raise OperatorError("R16 private lifecycle root identity changed")
+    from ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner import (
+        _robust_remove_runner_temp_tree,
+    )
+
+    expected = {
+        "device": int(expected_identity[0]),
+        "inode": int(expected_identity[1]),
+        "mode": stat.S_IFMT(int(expected_identity[2])),
+        "uid": int(expected_identity[3]),
+    }
+    if not _robust_remove_runner_temp_tree(
+        path,
+        expected_identity=expected,
+    ) or os.path.lexists(path):
+        raise OperatorError("R16 private lifecycle root was not retired")
+
+
+def _prepare_r16_private_lifecycle_root(
+    track_name: str,
+) -> tuple[Path, int, list[int], Path, Path, Path]:
+    """Create the bounded R16 namespace or retire it before returning failure."""
+
+    private_root = Path(
+        tempfile.mkdtemp(
+            prefix="aseh-r16-production-lifecycle-",
+            dir="/tmp",
+        )
+    ).resolve(strict=True)
+    private_fd = -1
+    private_identity: list[int] = []
+    try:
+        os.chmod(private_root, 0o700)
+        private_fd = os.open(
+            private_root,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        private_identity = _r16_private_root_identity(
+            private_root, private_fd
+        )
+        state_root = private_root / "state"
+        run_root = state_root / "lifecycle-runs" / track_name
+        binding_directory = run_root / "provider-cleanup-bindings"
+        binding_directory.mkdir(parents=True, mode=0o700)
+        if tuple(binding_directory.iterdir()):
+            raise OperatorError("R16 live cleanup namespace is not empty")
+        log_path = state_root / "fixture.log"
+        log_fd = os.open(
+            log_path,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            os.fchmod(log_fd, 0o600)
+        finally:
+            os.close(log_fd)
+        return (
+            private_root,
+            private_fd,
+            private_identity,
+            state_root,
+            run_root,
+            log_path,
+        )
+    except BaseException:
+        try:
+            if private_fd >= 0 and private_identity:
+                _retire_r16_private_lifecycle_root(
+                    private_root,
+                    descriptor=private_fd,
+                    expected_identity=private_identity,
+                )
+            else:
+                metadata = os.lstat(private_root)
+                if (
+                    private_root.parent != Path("/tmp")
+                    or not private_root.name.startswith(
+                        "aseh-r16-production-lifecycle-"
+                    )
+                    or not stat.S_ISDIR(metadata.st_mode)
+                    or stat.S_ISLNK(metadata.st_mode)
+                    or metadata.st_uid != os.geteuid()
+                    or tuple(private_root.iterdir())
+                ):
+                    raise OperatorError(
+                        "R16 failed setup root cannot be retired safely"
+                    )
+                private_root.rmdir()
+        finally:
+            if private_fd >= 0:
+                try:
+                    os.close(private_fd)
+                except OSError:
+                    pass
+        raise
+
+
+def _r16_read_private_log(path: Path) -> bytes:
+    descriptor = os.open(
+        path,
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_uid != os.geteuid()
+            or opened.st_nlink != 1
+            or stat.S_IMODE(opened.st_mode) != 0o600
+            or opened.st_size > 1_048_576
+        ):
+            raise OperatorError("R16 live fixture log identity is unsafe")
+        payload = os.read(descriptor, int(opened.st_size) + 1)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if (
+        len(payload) != opened.st_size
+        or _validation_stat_identity(opened) != _validation_stat_identity(after)
+        or _validation_stat_identity(opened)
+        != _validation_stat_identity(os.lstat(path))
+    ):
+        raise OperatorError("R16 live fixture log changed while read")
+    return payload
 
 
 def _validation_open_directory(path: Path) -> tuple[int, dict[str, Any]]:
@@ -4034,6 +5460,1747 @@ def _run_sealed_receipt_validation(
                         pass
 
 
+def _run_r16_production_lifecycle_live_validation(
+    declared: tuple[str, ...],
+    *,
+    timeout: float,
+    env: Mapping[str, str] | None,
+    cwd: Path | None,
+    executor_contract: Mapping[str, Any],
+) -> subprocess.CompletedProcess[str]:
+    """Run R16's sole live effect through the production lifecycle fence."""
+
+    executor = _ASEH_RECEIPT_VALIDATION_EXECUTOR
+    if executor is None:
+        raise OperatorError("R16 production lifecycle executor is unavailable")
+    admitted_contract = _admit_r16_production_lifecycle_live_executor_contract(
+        executor_contract,
+        declared=declared,
+    )
+    if (
+        _r16_parent_is_child_subreaper()
+        or threading.current_thread() is not threading.main_thread()
+        or threading.active_count() != 1
+        or _r16_kernel_task_ids() != (os.getpid(),)
+        or timeout < 30.0
+    ):
+        raise OperatorError(
+            "R16 production lifecycle live validation cannot run under a "
+            "subreaper, concurrent thread set, or reduced timeout"
+        )
+    working_directory = (ROOT if cwd is None else cwd).resolve(strict=True)
+    logical_environment = (
+        json.loads(executor.base_environment_json)
+        if env is None
+        else dict(env)
+    )
+    if logical_environment != _r11_validation_environment(working_directory):
+        raise OperatorError("R16 production lifecycle environment is not closed")
+    if (
+        working_directory != Path(logical_environment["PYTHONPATH"])
+        or _git("rev-parse", "HEAD", cwd=working_directory)
+        != executor.candidate_head
+        or _git("rev-parse", "HEAD^{tree}", cwd=working_directory)
+        != executor.candidate_tree
+    ):
+        raise OperatorError("R16 production lifecycle checkout differs")
+    _validate_sealed_receipt_executor_capability(
+        executor,
+        boundary="before R16 production lifecycle birth",
+        full=True,
+    )
+    interpreter_path = _trusted_receipt_validation_python()
+    interpreter_stat = os.fstat(executor.interpreter.descriptor)
+    interpreter_identity = _validation_stat_identity(interpreter_stat)
+    authorization_witness = json.loads(executor.authorization_witness_json)
+    environment_identity = _r11_command_environment_identity(
+        logical_environment,
+        declared,
+        checkout=working_directory,
+    )
+
+    from ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator import (
+        LinuxProcessAdapter,
+        ProcessIdentity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        grok_cli_runner,
+        multi_supervisor_runner,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        SupervisorTrack,
+    )
+
+    parsed = _parse_receipt_validation_python_command(
+        declared,
+        require_known=True,
+    )
+    if parsed is None:
+        raise OperatorError("R16 production lifecycle command is not Python")
+    saved_environment = dict(os.environ)
+    saved_tempdir = tempfile.tempdir
+    effective_environment = dict(logical_environment)
+    effective_environment.update(parsed[1])
+    nonce = os.urandom(32).hex()
+    logical_argv_sha256 = _identity(list(declared))
+    track_name = f"aseh-r16-live-{nonce}"
+    physical_arguments = (
+        ASEH_R16_PRODUCTION_LIFECYCLE_FIXTURE_COMMAND,
+        "--nonce",
+        nonce,
+        "--logical-argv-sha256",
+        logical_argv_sha256,
+        "--candidate-head",
+        executor.candidate_head,
+        "--candidate-tree",
+        executor.candidate_tree,
+        "--expected-parent-pid",
+        str(os.getpid()),
+        "--expected-parent-start-time-ticks",
+        str(_r16_process_start_time_ticks(os.getpid())),
+        "--expected-parent-boot-id",
+        _r16_boot_id(),
+    )
+    physical_argv = (
+        interpreter_path,
+        str(
+            working_directory
+            / "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+        ),
+        *physical_arguments,
+    )
+    process: subprocess.Popen[bytes] | None = None
+    profile: Any = None
+    process_identity: ProcessIdentity | None = None
+    record: Any = None
+    ready: dict[str, Any] = {}
+    dispatch_barrier_observations: list[dict[str, Any]] = []
+    durable_binding_record: dict[str, Any] = {}
+    create_journal: dict[str, Any] = {}
+    create_issuer_terminal: dict[str, Any] = {}
+    provider_start_issuer: dict[str, Any] = {}
+    provider_start_issuer_terminal: dict[str, Any] = {}
+    prepared_process_tree: dict[str, Any] = {}
+    live_process_tree: dict[str, Any] = {}
+    pre_dispatch_observations: list[dict[str, Any]] = []
+    live_observations: list[dict[str, Any]] = []
+    terminal_observations: list[dict[str, Any]] = []
+    stopped_members: tuple[int, ...] = ()
+    fenced = False
+    cleanup_verified = False
+    private_root_retired = False
+    fixture_log = b""
+    pending_error: Exception | None = None
+    cleanup_error: Exception | None = None
+    (
+        private_root,
+        private_fd,
+        private_identity,
+        state_root,
+        run_root,
+        log_path,
+    ) = _prepare_r16_private_lifecycle_root(track_name)
+    effective_environment["TMPDIR"] = str(private_root)
+    try:
+        track = SupervisorTrack(
+            name=track_name,
+            script_path=Path(
+                "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+            ),
+            log_path=log_path,
+            supervisor_pid_path=state_root / "fixture.pid",
+            daemon_pid_path=state_root / "daemon.pid",
+            extra_args=physical_arguments,
+        )
+        if (
+            threading.active_count() != 1
+            or _r16_kernel_task_ids() != (os.getpid(),)
+        ):
+            raise OperatorError(
+                "R16 production lifecycle process-global environment is "
+                "contended"
+            )
+        os.environ.clear()
+        os.environ.update(effective_environment)
+        tempfile.tempdir = str(private_root)
+        process = multi_supervisor_runner.start_track(
+            track,
+            repo_root=working_directory,
+            common_args=(),
+            python_executable=interpreter_path,
+            output=lambda _message: None,
+        )
+        # The child has inherited its closed environment.  Restore the
+        # authorizer immediately; no process-global mutation is held while
+        # Docker lifecycle observation and fencing run.
+        os.environ.clear()
+        os.environ.update(saved_environment)
+        tempfile.tempdir = saved_tempdir
+        profile = getattr(process, "_agent_supervisor_lifecycle_profile", None)
+        process_identity = getattr(
+            process,
+            "_agent_supervisor_process_identity",
+            None,
+        )
+        cleanup_anchor = getattr(
+            process,
+            "_agent_supervisor_cleanup_directory_anchor",
+            None,
+        )
+        if (
+            profile is None
+            or not isinstance(process_identity, ProcessIdentity)
+            or cleanup_anchor is None
+            or tuple(profile.argv) != physical_argv
+            or profile.run_root != str(run_root)
+            or process_identity.argv != physical_argv
+            or process_identity.pid != process.pid
+            or process_identity.parent_pid != os.getpid()
+            or process_identity.executable
+            != str(Path(interpreter_path).resolve(strict=True))
+            or _validation_stat_identity(
+                os.stat(process_identity.executable)
+            )
+            != interpreter_identity
+        ):
+            raise OperatorError("R16 managed fixture birth identity differs")
+
+        ready_path = run_root / ASEH_R16_PRODUCTION_LIFECYCLE_READY_NAME
+        ready_deadline = min(
+            time.monotonic() + 30.0,
+            time.monotonic() + max(1.0, timeout),
+        )
+        while not ready_path.is_file() and time.monotonic() < ready_deadline:
+            if process.poll() is not None:
+                raise OperatorError("R16 live fixture exited before readiness")
+            time.sleep(0.02)
+        if not ready_path.is_file():
+            raise OperatorError(
+                "R16 live fixture did not reach the pre-dispatch barrier"
+            )
+        ready = _secure_runtime_json(ready_path, max_bytes=262_144)
+        expected_lifecycle = {
+            "IPFS_ACCELERATE_LIFECYCLE_RUN_ID": profile.run_id,
+            "IPFS_ACCELERATE_LIFECYCLE_PROFILE_ID": profile.profile_id,
+            "IPFS_ACCELERATE_LIFECYCLE_TARGET_ID": profile.target_id,
+            "IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT": profile.repository_root,
+            "IPFS_ACCELERATE_LIFECYCLE_STATE_ROOT": profile.state_root,
+            "IPFS_ACCELERATE_LIFECYCLE_RUN_ROOT": profile.run_root,
+            "IPFS_ACCELERATE_LIFECYCLE_FENCING_EPOCH": "0",
+            "IPFS_ACCELERATE_LIFECYCLE_CONFIGURATION_ROOT": (
+                profile.configuration_root
+            ),
+        }
+        unsigned_ready = dict(ready)
+        ready_cid = str(unsigned_ready.pop("ready_cid", "") or "")
+        expected_ready_fields = {
+            "schema",
+            "nonce",
+            "sequence",
+            "candidate_head",
+            "candidate_tree",
+            "logical_argv_sha256",
+            "expected_parent_pid",
+            "expected_parent_start_time_ticks",
+            "expected_parent_boot_id",
+            "parent_loss_signal",
+            "runner_pid",
+            "runner_start_time_ticks",
+            "boot_id",
+            "lifecycle",
+            "container_name",
+            "lease_root",
+            "binding_path",
+            "watchdog_pid",
+            "watchdog_start_time_ticks",
+            "dispatch_state",
+            "published_at_ns",
+            "ready_cid",
+        }
+        if (
+            set(ready) != expected_ready_fields
+            or ready.get("schema")
+            != ASEH_R16_PRODUCTION_LIFECYCLE_READY_SCHEMA
+            or ready.get("nonce") != nonce
+            or ready.get("sequence") != 1
+            or ready.get("candidate_head") != executor.candidate_head
+            or ready.get("candidate_tree") != executor.candidate_tree
+            or ready.get("logical_argv_sha256") != logical_argv_sha256
+            or ready.get("expected_parent_pid") != os.getpid()
+            or ready.get("expected_parent_start_time_ticks")
+            != _r16_process_start_time_ticks(os.getpid())
+            or ready.get("expected_parent_boot_id") != _r16_boot_id()
+            or ready.get("parent_loss_signal") != "SIGKILL"
+            or ready.get("runner_pid") != process_identity.pid
+            or ready.get("runner_start_time_ticks")
+            != process_identity.start_time_ticks
+            or ready.get("boot_id") != process_identity.boot_id
+            or ready.get("lifecycle") != expected_lifecycle
+            or ready.get("dispatch_state") != "prepared_no_dispatch"
+            or type(ready.get("published_at_ns")) is not int
+            or int(ready["published_at_ns"]) <= 0
+            or ready_cid != _identity(unsigned_ready)
+        ):
+            raise OperatorError("R16 live fixture readiness differs")
+
+        # Publication precedes the helper's SIGSTOP by a few instructions.
+        # Wait for two exact-birth stopped-state observations so SIGCONT cannot
+        # be delivered early and lost, leaving authorization apparently stuck.
+        barrier_deadline = min(
+            time.monotonic() + 5.0,
+            time.monotonic() + max(1.0, timeout),
+        )
+        while time.monotonic() < barrier_deadline:
+            barrier = _r16_exact_process_state(
+                process_identity.pid,
+                expected_start_time_ticks=process_identity.start_time_ticks,
+                expected_boot_id=process_identity.boot_id,
+            )
+            if barrier["state"] in {"T", "t"}:
+                dispatch_barrier_observations.append(barrier)
+                if len(dispatch_barrier_observations) == 2:
+                    break
+                time.sleep(0.02)
+                continue
+            dispatch_barrier_observations.clear()
+            time.sleep(0.01)
+        if len(dispatch_barrier_observations) != 2:
+            raise OperatorError("R16 live fixture dispatch barrier is unknown")
+
+        adapter = LinuxProcessAdapter()
+        prepared_records = multi_supervisor_runner._durable_docker_cleanup_bindings(
+            profile,
+            fencing_epoch=0,
+            directory_anchor=cleanup_anchor,
+        )
+        if len(prepared_records) != 1:
+            raise OperatorError("R16 prepared cleanup binding is not unique")
+        record = prepared_records[0]
+        prepared_tree = adapter.snapshot(profile)
+        prepared_process_tree = prepared_tree.to_dict()
+        bindings = multi_supervisor_runner._detached_docker_cleanup_bindings(
+            prepared_tree,
+            process_pid=process.pid,
+            process_start_ticks=process_identity.start_time_ticks,
+            process_boot_id=process_identity.boot_id,
+            records=prepared_records,
+        )
+        if (
+            record.binding_state != "prepared_no_dispatch"
+            or record.termination_fence
+            or record.runner_pid != process_identity.pid
+            or record.runner_start_ticks != process_identity.start_time_ticks
+            or record.boot_id != process_identity.boot_id
+            or ready.get("container_name") != record.container_name
+            or ready.get("lease_root") != str(record.lease_root)
+            or ready.get("binding_path") != str(record.record_path)
+            or ready.get("watchdog_pid") != record.watchdog_pid
+            or ready.get("watchdog_start_time_ticks")
+            != record.watchdog_start_ticks
+            or bindings != (record.binding,)
+            or process.poll() is not None
+        ):
+            raise OperatorError("R16 prepared lifecycle binding differs")
+        # The helper is SIGSTOPped and has not armed Docker create.  Two
+        # successful exact-name queries establish the no-effect baseline.
+        for _sample in range(2):
+            pre_dispatch_observations.append(
+                _r16_exact_docker_list_observation(
+                    docker_bin=record.docker_bin,
+                    container_name=record.container_name,
+                    expect_present=False,
+                )
+            )
+            time.sleep(0.05)
+        signal_exact = getattr(adapter, "_signal_exact", None)
+        if not callable(signal_exact) or not adapter.identity_alive(
+            process_identity
+        ):
+            raise OperatorError("R16 exact dispatch release is unavailable")
+        signal_exact(process_identity, signal.SIGCONT)
+
+        effect_deadline = min(
+            time.monotonic() + 30.0,
+            time.monotonic() + max(1.0, timeout),
+        )
+        while time.monotonic() < effect_deadline:
+            if process.poll() is not None:
+                raise OperatorError(
+                    "R16 live fixture exited before positive observation"
+                )
+            current = multi_supervisor_runner._durable_docker_cleanup_bindings(
+                profile,
+                fencing_epoch=0,
+                directory_anchor=cleanup_anchor,
+            )
+            if (
+                len(current) == 1
+                and current[0].binding_state == "command_bound"
+                and current[0].termination_fence
+            ):
+                record = current[0]
+                break
+            time.sleep(0.02)
+        else:
+            raise OperatorError(
+                "R16 live fixture did not publish a termination fence"
+            )
+        fence = dict(record.termination_fence)
+        container_id = str(fence.get("container_id") or "")
+        if (
+            fence.get("image_id")
+            != grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
+            or fence.get("docker_state") != "running"
+            or type(fence.get("init_pid")) is not int
+            or int(fence["init_pid"]) <= 0
+        ):
+            raise OperatorError("R16 running Docker fence differs")
+        attested = grok_cli_runner._attest_exact_docker_execution(
+            docker_bin=record.docker_bin,
+            docker_config=record.docker_config,
+            provider=record.provider,
+            container_name=record.container_name,
+            container_id=container_id,
+            image_id=grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID,
+            timeout=5.0,
+        )
+        if attested != fence:
+            raise OperatorError("R16 positive Docker fence differs")
+        live_observations.append(
+            _r16_exact_docker_list_observation(
+                docker_bin=record.docker_bin,
+                container_name=record.container_name,
+                container_id=container_id,
+                expect_present=True,
+            )
+        )
+        provider_start_path = (
+            Path(profile.run_root) / ASEH_R16_PROVIDER_START_ISSUER_NAME
+        )
+        provider_start_issuer = _secure_runtime_json(
+            provider_start_path,
+            max_bytes=262_144,
+        )
+        provider_start_body = {
+            name: item
+            for name, item in provider_start_issuer.items()
+            if name != "record_cid"
+        }
+        provider_birth = provider_start_issuer.get("process_birth")
+        expected_provider_start_argv = [
+            record.docker_bin,
+            "--host=unix:///var/run/docker.sock",
+            "--config",
+            str(record.docker_config),
+            "start",
+            "--attach",
+            "--interactive",
+            record.container_name,
+        ]
+        if (
+            set(provider_start_issuer)
+            != {
+                "schema",
+                "nonce",
+                "container_name",
+                "argv",
+                "argv_sha256",
+                "process_birth",
+                "parent_loss_signal",
+                "output_capture",
+                "stdout_digest",
+                "stderr_digest",
+                "published_at_ns",
+                "record_cid",
+            }
+            or provider_start_issuer.get("schema")
+            != ASEH_R16_PROVIDER_START_ISSUER_SCHEMA
+            or provider_start_issuer.get("nonce") != nonce
+            or provider_start_issuer.get("container_name")
+            != record.container_name
+            or provider_start_issuer.get("argv")
+            != expected_provider_start_argv
+            or provider_start_issuer.get("argv_sha256")
+            != _identity(expected_provider_start_argv)
+            or provider_start_issuer.get("parent_loss_signal") != "SIGKILL"
+            or provider_start_issuer.get("output_capture")
+            != "unavailable_discarded_to_devnull"
+            or provider_start_issuer.get("stdout_digest") is not None
+            or provider_start_issuer.get("stderr_digest") is not None
+            or type(provider_start_issuer.get("published_at_ns")) is not int
+            or int(provider_start_issuer["published_at_ns"])
+            <= int(ready["published_at_ns"])
+            or provider_start_issuer.get("record_cid")
+            != _identity(provider_start_body)
+            or not isinstance(provider_birth, Mapping)
+            or set(provider_birth)
+            != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+            or type(provider_birth.get("pid")) is not int
+            or int(provider_birth["pid"]) <= 1
+            or type(provider_birth.get("start_time_ticks")) is not int
+            or int(provider_birth["start_time_ticks"]) <= 0
+            or provider_birth.get("boot_id") != process_identity.boot_id
+            or provider_birth.get("parent_pid") != process_identity.pid
+        ):
+            raise OperatorError("R16 provider-start issuer receipt differs")
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            read_process_birth,
+        )
+
+        observed_provider_birth = read_process_birth(int(provider_birth["pid"]))
+        if (
+            observed_provider_birth is None
+            or observed_provider_birth.to_dict() != dict(provider_birth)
+            or _r16_exact_process_argv(
+                int(provider_birth["pid"]),
+                expected_start_time_ticks=int(
+                    provider_birth["start_time_ticks"]
+                ),
+                expected_boot_id=str(provider_birth["boot_id"]),
+            )
+            != expected_provider_start_argv
+        ):
+            raise OperatorError("R16 provider-start issuer is not exact-live")
+        live_tree = adapter.snapshot(profile)
+        if (
+            not any(
+                item.identity_id == process_identity.identity_id
+                for item in live_tree.members
+            )
+            or not any(
+                item.pid == record.watchdog_pid
+                and item.start_time_ticks == record.watchdog_start_ticks
+                and item.boot_id == record.boot_id
+                for item in live_tree.members
+            )
+        ):
+            raise OperatorError("R16 live lifecycle process tree differs")
+        live_process_tree = live_tree.to_dict()
+        durable_binding_record = dict(
+            multi_supervisor_runner._read_durable_docker_cleanup_record(
+                record.record_path,
+                directory_anchor=cleanup_anchor,
+            )
+        )
+        if (
+            durable_binding_record.get("record_id") != record.record_id
+            or durable_binding_record.get("termination_fence") != fence
+            or durable_binding_record.get("binding_state") != "command_bound"
+        ):
+            raise OperatorError("R16 durable cleanup record differs")
+        observed_journal = grok_cli_runner._validated_docker_create_journal(
+            lease_root=record.lease_root,
+            provider=record.provider,
+            docker_bin=record.docker_bin,
+            docker_config=record.docker_config,
+            container_name=record.container_name,
+            cidfile=record.cidfile,
+        )
+        if (
+            not isinstance(observed_journal, Mapping)
+            or observed_journal.get("state") != "create_observed"
+            or observed_journal.get("returncode") != 0
+            or observed_journal.get("command_id") != record.create_command_id
+        ):
+            raise OperatorError("R16 Docker-create journal differs")
+        create_journal = dict(observed_journal)
+        issuer_birth = create_journal.get("issuer_process_birth")
+        if (
+            not isinstance(issuer_birth, Mapping)
+            or grok_cli_runner._docker_removal_issuer_live(issuer_birth)
+            is not False
+        ):
+            raise OperatorError("R16 Docker-create issuer outcome is unknown")
+        issuer_pid = int(issuer_birth["pid"])
+        observed_birth = read_process_birth(issuer_pid)
+        if (
+            observed_birth is not None
+            and observed_birth.to_dict() == dict(issuer_birth)
+        ):
+            raise OperatorError("R16 Docker-create issuer remains live")
+        create_issuer_terminal = {
+            "issuer_process_birth": dict(issuer_birth),
+            "issuer_process_birth_cid": _identity(dict(issuer_birth)),
+            "observed_process_birth": (
+                None if observed_birth is None else observed_birth.to_dict()
+            ),
+            "exact_birth_alive": False,
+            "observed_at_ns": time.time_ns(),
+        }
+
+        fenced, stopped_members = (
+            multi_supervisor_runner._terminate_managed_process(
+                process,
+                grace_seconds=10.0,
+            )
+        )
+        if not fenced or process.pid not in stopped_members:
+            raise OperatorError("R16 production lifecycle fence is unknown")
+        provider_terminal_deadline = time.monotonic() + 5.0
+        while True:
+            observed_provider_terminal = read_process_birth(
+                int(provider_birth["pid"])
+            )
+            if (
+                observed_provider_terminal is None
+                or observed_provider_terminal.to_dict()
+                != dict(provider_birth)
+            ):
+                break
+            if time.monotonic() >= provider_terminal_deadline:
+                raise OperatorError("R16 provider-start issuer remains live")
+            time.sleep(0.02)
+        provider_start_issuer_terminal = {
+            "issuer_process_birth": dict(provider_birth),
+            "issuer_process_birth_cid": _identity(dict(provider_birth)),
+            "observed_process_birth": (
+                None
+                if observed_provider_terminal is None
+                else observed_provider_terminal.to_dict()
+            ),
+            "exact_birth_alive": False,
+            "observed_at_ns": time.time_ns(),
+        }
+        for _sample in range(2):
+            snapshot = adapter.snapshot(profile)
+            absence = _r16_exact_docker_list_observation(
+                docker_bin=record.docker_bin,
+                container_name=record.container_name,
+                container_id=container_id,
+                expect_present=False,
+            )
+            remaining_records = (
+                multi_supervisor_runner._durable_docker_cleanup_bindings(
+                    profile,
+                    fencing_epoch=0,
+                )
+            )
+            detached_absence = (
+                multi_supervisor_runner._detached_docker_cleanup_absence_verified(
+                    (record.binding,),
+                    deadline=time.monotonic() + 5.0,
+                )
+            )
+            if (
+                snapshot.members
+                or remaining_records
+                or not detached_absence
+                or any(
+                    os.path.lexists(path)
+                    for path in (
+                        record.lease_root,
+                        record.provider_home,
+                        record.prompt_path,
+                        record.record_path,
+                    )
+                )
+                or process.poll() is None
+            ):
+                raise OperatorError(
+                    "R16 terminal lifecycle cleanup is incomplete"
+                )
+            terminal_observations.append(
+                {
+                    "process_tree": snapshot.to_dict(),
+                    "binding_count": len(remaining_records),
+                    "detached_absence_verified": detached_absence,
+                    "docker": absence,
+                }
+            )
+            time.sleep(0.05)
+        cleanup_verified = True
+        fixture_log = _r16_read_private_log(log_path)
+        _validate_sealed_receipt_executor_capability(
+            executor,
+            boundary="after R16 production lifecycle fence",
+            full=True,
+        )
+        _assert_candidate_authorization_witness(
+            authorization_witness,
+            expected_head=executor.candidate_head,
+            expected_tree=executor.candidate_tree,
+            boundary="after R16 production lifecycle fence",
+        )
+        _retire_r16_private_lifecycle_root(
+            private_root,
+            descriptor=private_fd,
+            expected_identity=private_identity,
+        )
+        private_root_retired = True
+    except Exception as exc:
+        pending_error = exc
+    finally:
+        if process is not None and not cleanup_verified:
+            try:
+                fenced_now, members_now = (
+                    multi_supervisor_runner._terminate_managed_process(
+                        process,
+                        grace_seconds=10.0,
+                    )
+                )
+                fenced = bool(fenced or fenced_now)
+                stopped_members = tuple(
+                    sorted({*stopped_members, *members_now})
+                )
+            except Exception as exc:
+                fenced = False
+                cleanup_error = exc
+        elif process is None and not private_root_retired:
+            try:
+                _retire_r16_private_lifecycle_root(
+                    private_root,
+                    descriptor=private_fd,
+                    expected_identity=private_identity,
+                )
+                private_root_retired = True
+            except Exception as exc:
+                cleanup_error = exc
+        os.environ.clear()
+        os.environ.update(saved_environment)
+        tempfile.tempdir = saved_tempdir
+        try:
+            os.close(private_fd)
+        except OSError:
+            pass
+
+    if pending_error is not None:
+        recovery_locator = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r16-live-recovery-locator@1"
+            ),
+            "private_root": str(private_root),
+            "run_id": str(getattr(profile, "run_id", "") or ""),
+            "profile_id": str(getattr(profile, "profile_id", "") or ""),
+            "binding_path": str(
+                getattr(record, "record_path", "") or ""
+            ),
+            "process_identity": (
+                None
+                if process_identity is None
+                else process_identity.to_dict()
+            ),
+            "canonical_fence_observed": bool(fenced),
+            "cleanup_verified": bool(cleanup_verified),
+            "private_root_preserved": not private_root_retired,
+            "failure_class": type(pending_error).__name__,
+            "cleanup_failure_class": (
+                "" if cleanup_error is None else type(cleanup_error).__name__
+            ),
+        }
+        raise OperatorError(
+            "R16 production lifecycle validation failed; recovery_locator="
+            + _canonical_json(recovery_locator)
+        ) from pending_error
+
+    if (
+        not cleanup_verified
+        or not private_root_retired
+        or process is None
+        or process_identity is None
+        or record is None
+        or profile is None
+        or not durable_binding_record
+        or not create_journal
+        or not create_issuer_terminal
+        or not provider_start_issuer
+        or not provider_start_issuer_terminal
+        or not prepared_process_tree
+        or not live_process_tree
+        or len(dispatch_barrier_observations) != 2
+    ):
+        # A failed fence deliberately preserves the private root as recovery
+        # evidence.  No out-of-band Docker rm or broad temp deletion is safe.
+        raise OperatorError("R16 production lifecycle result is non-admitted")
+    combined_output_digest = _identity(fixture_log)
+    evidence: dict[str, Any] = {
+        "schema": ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA,
+        "executor_class": ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS,
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv": list(declared),
+        "logical_argv_sha256": logical_argv_sha256,
+        "physical_argv": list(physical_argv),
+        "physical_argv_sha256": _identity(list(physical_argv)),
+        "candidate_head": executor.candidate_head,
+        "candidate_tree": executor.candidate_tree,
+        "candidate_authorization_witness_cid": _identity(
+            authorization_witness
+        ),
+        "environment_identity": environment_identity,
+        "nonce": nonce,
+        "interpreter": {
+            "argv0": interpreter_path,
+            "sha256": executor.interpreter.sha256,
+            "retained_descriptor_identity": interpreter_identity,
+            "child_executable": process_identity.executable,
+            "descriptor_backed_exec": False,
+            "identity_equal_to_retained": True,
+        },
+        "private_root_identity": private_identity,
+        "private_root_removed": True,
+        "lifecycle_profile": profile.to_dict(),
+        "process_identity": process_identity.to_dict(),
+        "ready": ready,
+        "dispatch_barrier_observations": dispatch_barrier_observations,
+        "prepared_process_tree": prepared_process_tree,
+        "binding_record": durable_binding_record,
+        "create_journal": create_journal,
+        "create_issuer_terminal": create_issuer_terminal,
+        "provider_start_issuer": provider_start_issuer,
+        "provider_start_issuer_terminal": provider_start_issuer_terminal,
+        "pre_dispatch_observations": pre_dispatch_observations,
+        "positive_observations": [
+            {"termination_fence": dict(record.termination_fence)},
+            *live_observations,
+        ],
+        "live_process_tree": live_process_tree,
+        "termination": {
+            "canonical_fence": True,
+            "stopped_member_pids": list(stopped_members),
+            "managed_fixture_returncode": int(process.returncode),
+        },
+        "terminal_observations": terminal_observations,
+        "output_capture": "combined_stdout_stderr",
+        "combined_output_digest": combined_output_digest,
+        "stdout_digest": None,
+        "stderr_digest": None,
+        "terminal_class": "verified_success",
+    }
+    evidence["evidence_cid"] = _identity(evidence)
+    # The declared pytest argv is a validation intent, not an executed
+    # command.  Return the exact physical helper argv and its fenced signal
+    # result so no synthetic zero exit can be represented as an observation.
+    completed = subprocess.CompletedProcess(
+        physical_argv,
+        int(process.returncode),
+        None,
+        None,
+    )
+    completed.aseh_production_lifecycle_live_evidence = evidence
+    completed.aseh_production_lifecycle_combined_output_digest = (
+        combined_output_digest
+    )
+    return completed
+
+
+def _validate_r16_production_lifecycle_execution_evidence(
+    evidence: Mapping[str, Any],
+    *,
+    declared: Sequence[str],
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+    environment_identity: str,
+    executed_returncode: int,
+    combined_output_digest: str,
+    stdout_digest: str | None,
+    stderr_digest: str | None,
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit the closed live receipt without reminting process authority."""
+
+    admitted_contract = _admit_r16_production_lifecycle_live_executor_contract(
+        executor_contract,
+        declared=declared,
+    )
+    expected_fields = {
+        "schema",
+        "executor_class",
+        "executor_contract_cid",
+        "logical_argv",
+        "logical_argv_sha256",
+        "physical_argv",
+        "physical_argv_sha256",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "environment_identity",
+        "nonce",
+        "interpreter",
+        "private_root_identity",
+        "private_root_removed",
+        "lifecycle_profile",
+        "process_identity",
+        "ready",
+        "dispatch_barrier_observations",
+        "prepared_process_tree",
+        "binding_record",
+        "create_journal",
+        "create_issuer_terminal",
+        "provider_start_issuer",
+        "provider_start_issuer_terminal",
+        "pre_dispatch_observations",
+        "positive_observations",
+        "live_process_tree",
+        "termination",
+        "terminal_observations",
+        "output_capture",
+        "combined_output_digest",
+        "stdout_digest",
+        "stderr_digest",
+        "terminal_class",
+        "evidence_cid",
+    }
+    if (
+        type(evidence) is not dict
+        or set(evidence) != expected_fields
+        or evidence.get("schema")
+        != ASEH_R16_PRODUCTION_LIFECYCLE_EXECUTION_SCHEMA
+        or evidence.get("executor_class")
+        != ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+        or evidence.get("executor_contract_cid")
+        != _identity(admitted_contract)
+        or evidence.get("logical_argv") != list(declared)
+        or evidence.get("logical_argv_sha256")
+        != _identity(list(declared))
+        or evidence.get("candidate_head") != candidate_head
+        or evidence.get("candidate_tree") != candidate_tree
+        or evidence.get("candidate_authorization_witness_cid")
+        != _identity(dict(authorization_witness))
+        or evidence.get("environment_identity") != environment_identity
+        or re.fullmatch(r"[0-9a-f]{64}", str(evidence.get("nonce") or ""))
+        is None
+        or evidence.get("private_root_removed") is not True
+        or evidence.get("output_capture") != "combined_stdout_stderr"
+        or evidence.get("combined_output_digest")
+        != combined_output_digest
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(combined_output_digest or ""),
+        )
+        is None
+        or evidence.get("stdout_digest") is not None
+        or evidence.get("stderr_digest") is not None
+        or evidence.get("stdout_digest") != stdout_digest
+        or evidence.get("stderr_digest") != stderr_digest
+        or evidence.get("terminal_class") != "verified_success"
+    ):
+        raise OperatorError("R16 production lifecycle evidence differs")
+    physical_argv = evidence.get("physical_argv")
+    nonce = str(evidence["nonce"])
+    if (
+        not isinstance(physical_argv, list)
+        or len(physical_argv) != 17
+        or physical_argv[0] != ASEH_RECEIPT_VALIDATION_PYTHON
+        or not str(physical_argv[1]).endswith(
+            "/scripts/run_agent_supervisor_efficiency_state_hardening.py"
+        )
+        or physical_argv[2:11]
+        != [
+            ASEH_R16_PRODUCTION_LIFECYCLE_FIXTURE_COMMAND,
+            "--nonce",
+            nonce,
+            "--logical-argv-sha256",
+            _identity(list(declared)),
+            "--candidate-head",
+            candidate_head,
+            "--candidate-tree",
+            candidate_tree,
+        ]
+        or physical_argv[11] != "--expected-parent-pid"
+        or re.fullmatch(r"[1-9][0-9]*", str(physical_argv[12])) is None
+        or physical_argv[13] != "--expected-parent-start-time-ticks"
+        or re.fullmatch(r"[1-9][0-9]*", str(physical_argv[14])) is None
+        or physical_argv[15] != "--expected-parent-boot-id"
+        or re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            str(physical_argv[16]),
+        )
+        is None
+        or evidence.get("physical_argv_sha256")
+        != _identity(physical_argv)
+    ):
+        raise OperatorError("R16 production lifecycle physical argv differs")
+    expected_parent_pid = int(physical_argv[12])
+    expected_parent_start = int(physical_argv[14])
+    expected_parent_boot = str(physical_argv[16])
+    interpreter = evidence.get("interpreter")
+    if (
+        type(interpreter) is not dict
+        or set(interpreter)
+        != {
+            "argv0",
+            "sha256",
+            "retained_descriptor_identity",
+            "child_executable",
+            "descriptor_backed_exec",
+            "identity_equal_to_retained",
+        }
+        or interpreter.get("argv0") != ASEH_RECEIPT_VALIDATION_PYTHON
+        or interpreter.get("sha256")
+        != ASEH_R11_NATIVE_DEPENDENCY_PIN["python_executable_sha256"]
+        or not isinstance(interpreter.get("retained_descriptor_identity"), list)
+        or len(interpreter["retained_descriptor_identity"]) != 9
+        or interpreter.get("retained_descriptor_identity")
+        != _validation_stat_identity(
+            Path(ASEH_RECEIPT_VALIDATION_PYTHON)
+            .resolve(strict=True)
+            .stat()
+        )
+        or interpreter.get("child_executable")
+        != str(Path(ASEH_RECEIPT_VALIDATION_PYTHON).resolve(strict=True))
+        or interpreter.get("descriptor_backed_exec") is not False
+        or interpreter.get("identity_equal_to_retained") is not True
+    ):
+        raise OperatorError("R16 production lifecycle interpreter differs")
+    private_identity = evidence.get("private_root_identity")
+    if (
+        not isinstance(private_identity, list)
+        or len(private_identity) != 9
+        or any(type(item) is not int for item in private_identity)
+        or private_identity[0] < 0
+        or private_identity[1] <= 0
+        or not stat.S_ISDIR(private_identity[2])
+        or private_identity[3] != os.geteuid()
+        or private_identity[4] != os.getegid()
+        or private_identity[5] < 2
+        or private_identity[6] < 0
+        or private_identity[7] <= 0
+        or private_identity[8] <= 0
+    ):
+        raise OperatorError("R16 production lifecycle private root differs")
+
+    from ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator import (
+        LifecycleProfile,
+        ProcessIdentity,
+        ProcessTreeSnapshot,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner import (
+        _CODEX_TASK_TOOLCHAIN_IMAGE_ID,
+        _validated_docker_termination_fence,
+    )
+
+    lifecycle_profile = evidence.get("lifecycle_profile")
+    process_identity_value = evidence.get("process_identity")
+    if type(lifecycle_profile) is not dict or type(
+        process_identity_value
+    ) is not dict:
+        raise OperatorError("R16 production lifecycle identity is invalid")
+    try:
+        profile = LifecycleProfile.from_dict(lifecycle_profile)
+        process_identity = ProcessIdentity.from_dict(process_identity_value)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise OperatorError("R16 production lifecycle identity is invalid") from exc
+    expected_repository_root = str(Path(physical_argv[1]).parents[1])
+    expected_track_name = f"aseh-r16-live-{nonce}"
+    expected_private_root = Path(profile.state_root).parent
+    expected_configuration_root = "sha256:" + hashlib.sha256(
+        json.dumps(
+            physical_argv,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    expected_run_id = "multi-supervisor:" + hashlib.sha256(
+        f"{expected_repository_root}:{expected_track_name}".encode()
+    ).hexdigest()
+    if (
+        profile.to_dict() != evidence.get("lifecycle_profile")
+        or process_identity.to_dict() != evidence.get("process_identity")
+        or process_identity.profile_id != profile.profile_id
+        or process_identity.run_id != profile.run_id
+        or process_identity.target_id != profile.target_id
+        or process_identity.repository_root != profile.repository_root
+        or process_identity.state_root != profile.state_root
+        or process_identity.run_root != profile.run_root
+        or process_identity.parent_pid != expected_parent_pid
+        or process_identity.process_group_id != process_identity.pid
+        or process_identity.session_id != process_identity.pid
+        or process_identity.boot_id != expected_parent_boot
+        or process_identity.fencing_epoch != 0
+        or process_identity.argv != tuple(physical_argv)
+        or profile.argv != tuple(physical_argv)
+        or profile.repository_root != expected_repository_root
+        or expected_private_root.parent != Path("/tmp")
+        or not expected_private_root.name.startswith(
+            "aseh-r16-production-lifecycle-"
+        )
+        or Path(profile.state_root) != expected_private_root / "state"
+        or Path(profile.state_root) != Path(profile.run_root).parents[1]
+        or Path(profile.run_root)
+        != Path(profile.state_root) / "lifecycle-runs" / expected_track_name
+        or profile.target_id != f"supervisor-track:{expected_track_name}"
+        or profile.run_id != expected_run_id
+        or profile.configuration_root != expected_configuration_root
+        or profile.environment
+        or profile.health_path
+        or profile.health_stale_ms != 30_000
+        or profile.cwd != profile.repository_root
+        or process_identity.cwd != expected_repository_root
+        or process_identity.executable
+        != str(Path(ASEH_RECEIPT_VALIDATION_PYTHON).resolve(strict=True))
+        or process_identity.configuration_root
+        != expected_configuration_root
+    ):
+        raise OperatorError("R16 production lifecycle profile differs")
+    ready = evidence.get("ready")
+    if type(ready) is not dict:
+        raise OperatorError("R16 production lifecycle ready receipt is absent")
+    unsigned_ready = dict(ready)
+    ready_cid = str(unsigned_ready.pop("ready_cid", "") or "")
+    expected_ready_fields = {
+        "schema",
+        "nonce",
+        "sequence",
+        "candidate_head",
+        "candidate_tree",
+        "logical_argv_sha256",
+        "expected_parent_pid",
+        "expected_parent_start_time_ticks",
+        "expected_parent_boot_id",
+        "parent_loss_signal",
+        "runner_pid",
+        "runner_start_time_ticks",
+        "boot_id",
+        "lifecycle",
+        "container_name",
+        "lease_root",
+        "binding_path",
+        "watchdog_pid",
+        "watchdog_start_time_ticks",
+        "dispatch_state",
+        "published_at_ns",
+        "ready_cid",
+    }
+    expected_lifecycle = {
+        "IPFS_ACCELERATE_LIFECYCLE_RUN_ID": profile.run_id,
+        "IPFS_ACCELERATE_LIFECYCLE_PROFILE_ID": profile.profile_id,
+        "IPFS_ACCELERATE_LIFECYCLE_TARGET_ID": profile.target_id,
+        "IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT": profile.repository_root,
+        "IPFS_ACCELERATE_LIFECYCLE_STATE_ROOT": profile.state_root,
+        "IPFS_ACCELERATE_LIFECYCLE_RUN_ROOT": profile.run_root,
+        "IPFS_ACCELERATE_LIFECYCLE_FENCING_EPOCH": "0",
+        "IPFS_ACCELERATE_LIFECYCLE_CONFIGURATION_ROOT": (
+            profile.configuration_root
+        ),
+    }
+    if (
+        set(ready) != expected_ready_fields
+        or ready.get("schema") != ASEH_R16_PRODUCTION_LIFECYCLE_READY_SCHEMA
+        or ready.get("nonce") != nonce
+        or ready.get("sequence") != 1
+        or ready.get("candidate_head") != candidate_head
+        or ready.get("candidate_tree") != candidate_tree
+        or ready.get("logical_argv_sha256") != _identity(list(declared))
+        or ready.get("expected_parent_pid") != expected_parent_pid
+        or ready.get("expected_parent_start_time_ticks")
+        != expected_parent_start
+        or ready.get("expected_parent_boot_id") != expected_parent_boot
+        or ready.get("parent_loss_signal") != "SIGKILL"
+        or ready.get("runner_pid") != process_identity.pid
+        or ready.get("runner_start_time_ticks")
+        != process_identity.start_time_ticks
+        or ready.get("boot_id") != process_identity.boot_id
+        or ready.get("lifecycle") != expected_lifecycle
+        or ready.get("dispatch_state") != "prepared_no_dispatch"
+        or type(ready.get("published_at_ns")) is not int
+        or int(ready["published_at_ns"]) <= 0
+        or ready_cid != _identity(unsigned_ready)
+    ):
+        raise OperatorError("R16 production lifecycle ready receipt differs")
+    watchdog_pid = ready.get("watchdog_pid")
+    watchdog_start = ready.get("watchdog_start_time_ticks")
+    if (
+        type(watchdog_pid) is not int
+        or watchdog_pid <= 1
+        or type(watchdog_start) is not int
+        or watchdog_start <= 0
+    ):
+        raise OperatorError("R16 production lifecycle watchdog differs")
+    barrier_observations = evidence.get("dispatch_barrier_observations")
+    if (
+        not isinstance(barrier_observations, list)
+        or len(barrier_observations) != 2
+        or any(
+            type(item) is not dict
+            or set(item)
+            != {
+                "pid",
+                "start_time_ticks",
+                "boot_id",
+                "state",
+                "observed_at_ns",
+            }
+            or item.get("pid") != process_identity.pid
+            or item.get("start_time_ticks")
+            != process_identity.start_time_ticks
+            or item.get("boot_id") != process_identity.boot_id
+            or item.get("state") not in {"T", "t"}
+            or type(item.get("observed_at_ns")) is not int
+            or int(item["observed_at_ns"]) <= int(ready["published_at_ns"])
+            for item in barrier_observations
+        )
+        or [int(item["observed_at_ns"]) for item in barrier_observations]
+        != sorted(int(item["observed_at_ns"]) for item in barrier_observations)
+    ):
+        raise OperatorError("R16 production lifecycle dispatch barrier differs")
+    prepared_process_tree = evidence.get("prepared_process_tree")
+    if type(prepared_process_tree) is not dict:
+        raise OperatorError("R16 prepared process tree is invalid")
+    try:
+        prepared_tree = ProcessTreeSnapshot.from_dict(prepared_process_tree)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise OperatorError("R16 prepared process tree is invalid") from exc
+    prepared_by_pid = {item.pid: item for item in prepared_tree.members}
+    prepared_watchdog = prepared_by_pid.get(watchdog_pid)
+    if (
+        prepared_tree.to_dict() != evidence.get("prepared_process_tree")
+        or prepared_tree.profile_id != profile.profile_id
+        or prepared_tree.run_id != profile.run_id
+        or len(prepared_tree.members) != 2
+        or prepared_by_pid.get(process_identity.pid) != process_identity
+        or prepared_watchdog is None
+        or prepared_watchdog.start_time_ticks != watchdog_start
+        or prepared_watchdog.boot_id != process_identity.boot_id
+        or prepared_watchdog.parent_pid != 1
+    ):
+        raise OperatorError("R16 prepared process tree differs")
+    binding = evidence.get("binding_record")
+    if type(binding) is not dict:
+        raise OperatorError("R16 production lifecycle binding is absent")
+    termination_fence = binding.get("termination_fence")
+    if type(termination_fence) is not dict:
+        raise OperatorError("R16 production Docker fence is invalid")
+    container_name = str(binding.get("container_name") or "")
+    try:
+        admitted_fence = _validated_docker_termination_fence(
+            termination_fence,
+            provider=str(binding.get("provider") or ""),
+            container_name=container_name,
+            expected_image_id=_CODEX_TASK_TOOLCHAIN_IMAGE_ID,
+        )
+    except (TypeError, ValueError) as exc:
+        raise OperatorError("R16 production Docker fence is invalid") from exc
+    if (
+        admitted_fence.get("docker_state") != "running"
+        or type(admitted_fence.get("init_pid")) is not int
+        or int(admitted_fence["init_pid"]) <= 0
+    ):
+        raise OperatorError("R16 production Docker fence was not running")
+    binding_fields = {
+        "schema",
+        "binding_state",
+        "run_id",
+        "profile_id",
+        "target_id",
+        "repository_root",
+        "state_root",
+        "run_root",
+        "configuration_root",
+        "fencing_epoch",
+        "runner_pid",
+        "runner_start_ticks",
+        "watchdog_pid",
+        "watchdog_start_ticks",
+        "boot_id",
+        "provider",
+        "docker_bin",
+        "docker_device",
+        "docker_inode",
+        "docker_mode",
+        "docker_uid",
+        "container_name",
+        "cleanup_root",
+        "cleanup_root_identity",
+        "lease_root",
+        "docker_config",
+        "cidfile",
+        "provider_home",
+        "prompt_path",
+        "effect_observation",
+        "create_command_id",
+        "create_cwd",
+        "create_environment_id",
+        "termination_fence",
+        "path_identities",
+        "binding_path",
+        "record_id",
+    }
+    binding_body = {
+        name: item for name, item in binding.items() if name != "record_id"
+    }
+    private_root = Path(profile.state_root).parent
+    cleanup_root = Path(str(binding.get("cleanup_root") or ""))
+    cleanup_root_identity = binding.get("cleanup_root_identity")
+    lease_root = Path(str(binding.get("lease_root") or ""))
+    docker_config = Path(str(binding.get("docker_config") or ""))
+    cidfile = Path(str(binding.get("cidfile") or ""))
+    provider_home = Path(str(binding.get("provider_home") or ""))
+    prompt_path = Path(str(binding.get("prompt_path") or ""))
+    binding_path = Path(str(binding.get("binding_path") or ""))
+    docker_bin = str(binding.get("docker_bin") or "")
+    path_identities = binding.get("path_identities")
+    try:
+        docker_path = Path(docker_bin).resolve(strict=True)
+        docker_metadata = docker_path.stat()
+    except OSError as exc:
+        raise OperatorError("R16 Docker executable identity is unavailable") from exc
+    if (
+        set(binding) != binding_fields
+        or binding.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/docker-cleanup-binding@6"
+        or binding.get("provider") != "codex"
+        or binding.get("binding_state") != "command_bound"
+        or binding.get("run_id") != profile.run_id
+        or binding.get("profile_id") != profile.profile_id
+        or binding.get("target_id") != profile.target_id
+        or binding.get("repository_root") != profile.repository_root
+        or binding.get("state_root") != profile.state_root
+        or binding.get("run_root") != profile.run_root
+        or binding.get("configuration_root") != profile.configuration_root
+        or binding.get("fencing_epoch") != 0
+        or binding.get("runner_pid") != process_identity.pid
+        or binding.get("runner_start_ticks") != process_identity.start_time_ticks
+        or binding.get("watchdog_pid") != watchdog_pid
+        or binding.get("watchdog_start_ticks") != watchdog_start
+        or binding.get("boot_id") != process_identity.boot_id
+        or binding.get("container_name") != ready.get("container_name")
+        or binding.get("lease_root") != ready.get("lease_root")
+        or binding.get("binding_path") != ready.get("binding_path")
+        or termination_fence != admitted_fence
+        or binding.get("record_id") != _identity(binding_body)
+        or docker_path != Path("/usr/bin/docker")
+        or binding.get("docker_device") != docker_metadata.st_dev
+        or binding.get("docker_inode") != docker_metadata.st_ino
+        or binding.get("docker_mode") != docker_metadata.st_mode
+        or binding.get("docker_uid") != docker_metadata.st_uid
+        or docker_metadata.st_uid != 0
+        or docker_metadata.st_mode & 0o022
+        or cleanup_root != private_root
+        or type(cleanup_root_identity) is not dict
+        or set(cleanup_root_identity) != {"device", "inode", "mode", "uid"}
+        or cleanup_root_identity
+        != {
+            "device": private_identity[0],
+            "inode": private_identity[1],
+            "mode": private_identity[2],
+            "uid": private_identity[3],
+        }
+        or lease_root.parent != private_root
+        or not lease_root.name.startswith("asref-codex-container-")
+        or docker_config != lease_root / "docker-config"
+        or cidfile != lease_root / "container.cid"
+        or provider_home.parent != private_root
+        or not provider_home.name.startswith("asref-codex-home-")
+        or prompt_path.parent != private_root
+        or not prompt_path.name.startswith("asref-grok-prompt-")
+        or binding_path.parent
+        != Path(profile.run_root) / "provider-cleanup-bindings"
+        or binding_path.name
+        != hashlib.sha256(container_name.encode("ascii")).hexdigest() + ".json"
+        or binding.get("effect_observation") != {}
+        or binding.get("create_cwd") != profile.repository_root
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(binding.get("create_command_id") or ""),
+        )
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(binding.get("create_environment_id") or ""),
+        )
+        is None
+        or type(path_identities) is not dict
+        or set(path_identities)
+        != {"docker_config", "lease_root", "prompt_path", "provider_home"}
+        or any(
+            type(item) is not dict
+            or set(item) != {"device", "inode", "mode", "uid"}
+            or any(type(item.get(name)) is not int for name in item)
+            or int(item["device"]) < 0
+            or int(item["inode"]) <= 0
+            or int(item["uid"]) != os.geteuid()
+            or int(item["mode"]) & 0o022
+            for item in path_identities.values()
+        )
+        or not stat.S_ISDIR(int(path_identities["docker_config"]["mode"]))
+        or not stat.S_ISDIR(int(path_identities["lease_root"]["mode"]))
+        or not stat.S_ISDIR(int(path_identities["provider_home"]["mode"]))
+        or not stat.S_ISREG(int(path_identities["prompt_path"]["mode"]))
+    ):
+        raise OperatorError("R16 production lifecycle binding differs")
+    container_id = str(admitted_fence.get("container_id") or "")
+    journal = evidence.get("create_journal")
+    journal_fields = {
+        "schema",
+        "provider",
+        "docker_bin",
+        "docker_config",
+        "container_name",
+        "cidfile",
+        "cwd",
+        "environment_id",
+        "image_id",
+        "argv",
+        "command_id",
+        "state",
+        "issuer_process_birth",
+        "returncode",
+        "stdout_hex",
+        "stderr_hex",
+        "journal_id",
+    }
+    if type(journal) is not dict or set(journal) != journal_fields:
+        raise OperatorError("R16 Docker-create journal is invalid")
+    journal_body = {
+        name: item for name, item in journal.items() if name != "journal_id"
+    }
+    issuer_birth = journal.get("issuer_process_birth")
+    from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+
+    environment_assignments = [
+        f"{name}={value}"
+        for name, value in sorted(
+            grok_cli_runner._codex_task_container_environment().items()
+        )
+    ]
+    expected_create_environment_id = (
+        grok_cli_runner._docker_create_environment_payload(
+            grok_cli_runner._docker_control_env()
+        )[0]
+    )
+    expected_create_stdout_hex = (container_id + "\n").encode("ascii").hex()
+    expected_create_argv = [
+        docker_bin,
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        str(docker_config),
+        "create",
+        "--pull=never",
+        "--cidfile",
+        str(cidfile),
+        "--name",
+        container_name,
+        "--interactive",
+        "--read-only",
+        "--network=bridge",
+        "--runtime=runc",
+        "--entrypoint=/usr/bin/env",
+        "--tmpfs",
+        (
+            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        "--tmpfs",
+        (
+            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        "--tmpfs",
+        (
+            f"{grok_cli_runner._CODEX_CONTAINER_HOME}:"
+            "rw,nosuid,nodev,noexec,mode=0700,"
+            f"uid={os.getuid()},gid={os.getgid()}"
+        ),
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit=1024",
+        "--label",
+        "ipfs_accelerate.codex_fallback_isolation=true",
+        "--user",
+        f"{os.getuid()}:{os.getgid()}",
+        "--workdir",
+        profile.repository_root,
+        str(admitted_fence["image_id"]),
+        "-i",
+        *environment_assignments,
+        "/bin/sh",
+        "-c",
+        grok_cli_runner._DOCKER_PROVIDER_START_SCRIPT,
+        "aseh-provider-start",
+        "/bin/sleep",
+        "300",
+    ]
+    if (
+        journal.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/docker-create-journal@4"
+        or journal.get("provider") != "codex"
+        or journal.get("docker_bin") != docker_bin
+        or journal.get("docker_config") != str(docker_config)
+        or journal.get("container_name") != container_name
+        or journal.get("cidfile") != str(cidfile)
+        or journal.get("cwd") != profile.repository_root
+        or journal.get("environment_id")
+        != binding.get("create_environment_id")
+        or journal.get("environment_id") != expected_create_environment_id
+        or journal.get("image_id") != admitted_fence.get("image_id")
+        or journal.get("command_id") != binding.get("create_command_id")
+        or journal.get("state") != "create_observed"
+        or journal.get("returncode") != 0
+        or journal.get("stdout_hex") != expected_create_stdout_hex
+        or journal.get("stderr_hex") != ""
+        or journal.get("journal_id") != _identity(journal_body)
+        or journal.get("argv") != expected_create_argv
+        or type(issuer_birth) is not dict
+        or set(issuer_birth)
+        != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+        or type(issuer_birth.get("pid")) is not int
+        or int(issuer_birth["pid"]) <= 0
+        or type(issuer_birth.get("start_time_ticks")) is not int
+        or int(issuer_birth["start_time_ticks"]) <= 0
+        or issuer_birth.get("boot_id") != process_identity.boot_id
+        or issuer_birth.get("parent_pid") != watchdog_pid
+    ):
+        raise OperatorError("R16 Docker-create journal differs")
+    issuer_terminal = evidence.get("create_issuer_terminal")
+    if (
+        type(issuer_terminal) is not dict
+        or set(issuer_terminal)
+        != {
+            "issuer_process_birth",
+            "issuer_process_birth_cid",
+            "observed_process_birth",
+            "exact_birth_alive",
+            "observed_at_ns",
+        }
+        or issuer_terminal.get("issuer_process_birth") != issuer_birth
+        or issuer_terminal.get("issuer_process_birth_cid")
+        != _identity(dict(issuer_birth))
+        or issuer_terminal.get("exact_birth_alive") is not False
+        or type(issuer_terminal.get("observed_at_ns")) is not int
+        or int(issuer_terminal["observed_at_ns"]) <= 0
+        or (
+            issuer_terminal.get("observed_process_birth") is not None
+            and issuer_terminal.get("observed_process_birth") == issuer_birth
+        )
+    ):
+        raise OperatorError("R16 Docker-create issuer terminal evidence differs")
+    _validate_r16_distinct_terminal_process_birth(
+        issuer_terminal.get("observed_process_birth"),
+        issuer=issuer_birth,
+    )
+    provider_issuer = evidence.get("provider_start_issuer")
+    provider_issuer_fields = {
+        "schema",
+        "nonce",
+        "container_name",
+        "argv",
+        "argv_sha256",
+        "process_birth",
+        "parent_loss_signal",
+        "output_capture",
+        "stdout_digest",
+        "stderr_digest",
+        "published_at_ns",
+        "record_cid",
+    }
+    if type(provider_issuer) is not dict:
+        raise OperatorError("R16 provider-start issuer evidence is invalid")
+    provider_issuer_body = {
+        name: item
+        for name, item in provider_issuer.items()
+        if name != "record_cid"
+    }
+    provider_birth = provider_issuer.get("process_birth")
+    expected_provider_start_argv = [
+        docker_bin,
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        str(docker_config),
+        "start",
+        "--attach",
+        "--interactive",
+        container_name,
+    ]
+    if (
+        set(provider_issuer) != provider_issuer_fields
+        or provider_issuer.get("schema")
+        != ASEH_R16_PROVIDER_START_ISSUER_SCHEMA
+        or provider_issuer.get("nonce") != nonce
+        or provider_issuer.get("container_name") != container_name
+        or provider_issuer.get("argv") != expected_provider_start_argv
+        or provider_issuer.get("argv_sha256")
+        != _identity(expected_provider_start_argv)
+        or provider_issuer.get("parent_loss_signal") != "SIGKILL"
+        or provider_issuer.get("output_capture")
+        != "unavailable_discarded_to_devnull"
+        or provider_issuer.get("stdout_digest") is not None
+        or provider_issuer.get("stderr_digest") is not None
+        or type(provider_issuer.get("published_at_ns")) is not int
+        or int(provider_issuer["published_at_ns"])
+        <= int(ready["published_at_ns"])
+        or provider_issuer.get("record_cid")
+        != _identity(provider_issuer_body)
+        or type(provider_birth) is not dict
+        or set(provider_birth)
+        != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+        or type(provider_birth.get("pid")) is not int
+        or int(provider_birth["pid"]) <= 1
+        or type(provider_birth.get("start_time_ticks")) is not int
+        or int(provider_birth["start_time_ticks"]) <= 0
+        or provider_birth.get("boot_id") != process_identity.boot_id
+        or provider_birth.get("parent_pid") != process_identity.pid
+    ):
+        raise OperatorError("R16 provider-start issuer evidence differs")
+    provider_issuer_terminal = evidence.get(
+        "provider_start_issuer_terminal"
+    )
+    if (
+        type(provider_issuer_terminal) is not dict
+        or set(provider_issuer_terminal)
+        != {
+            "issuer_process_birth",
+            "issuer_process_birth_cid",
+            "observed_process_birth",
+            "exact_birth_alive",
+            "observed_at_ns",
+        }
+        or provider_issuer_terminal.get("issuer_process_birth")
+        != provider_birth
+        or provider_issuer_terminal.get("issuer_process_birth_cid")
+        != _identity(dict(provider_birth))
+        or provider_issuer_terminal.get("exact_birth_alive") is not False
+        or type(provider_issuer_terminal.get("observed_at_ns")) is not int
+        or int(provider_issuer_terminal["observed_at_ns"]) <= 0
+        or (
+            provider_issuer_terminal.get("observed_process_birth") is not None
+            and provider_issuer_terminal.get("observed_process_birth")
+            == provider_birth
+        )
+    ):
+        raise OperatorError("R16 provider-start terminal evidence differs")
+    _validate_r16_distinct_terminal_process_birth(
+        provider_issuer_terminal.get("observed_process_birth"),
+        issuer=provider_birth,
+    )
+    live_process_tree = evidence.get("live_process_tree")
+    if type(live_process_tree) is not dict:
+        raise OperatorError("R16 live process tree is invalid")
+    try:
+        live_tree = ProcessTreeSnapshot.from_dict(live_process_tree)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise OperatorError("R16 live process tree is invalid") from exc
+    live_by_pid = {item.pid: item for item in live_tree.members}
+    live_watchdog = live_by_pid.get(watchdog_pid)
+    if (
+        live_tree.to_dict() != evidence.get("live_process_tree")
+        or live_tree.profile_id != profile.profile_id
+        or live_tree.run_id != profile.run_id
+        or len(live_tree.members) != 2
+        or live_by_pid.get(process_identity.pid) != process_identity
+        or live_watchdog is None
+        or live_watchdog.identity_id != prepared_watchdog.identity_id
+        or live_watchdog.parent_pid != 1
+    ):
+        raise OperatorError("R16 live process tree differs")
+    pre = evidence.get("pre_dispatch_observations")
+    positive = evidence.get("positive_observations")
+    terminal = evidence.get("terminal_observations")
+    if (
+        not isinstance(pre, list)
+        or len(pre) != 2
+        or not isinstance(positive, list)
+        or len(positive) != 2
+        or positive[0] != {"termination_fence": admitted_fence}
+        or not isinstance(terminal, list)
+        or len(terminal) != 2
+    ):
+        raise OperatorError("R16 Docker observation sequence differs")
+    admitted_pre = [
+        _validate_r16_exact_docker_list_observation(
+            item,
+            docker_bin=docker_bin,
+            container_name=container_name,
+            container_id="",
+            expect_present=False,
+        )
+        for item in pre
+    ]
+    admitted_positive = _validate_r16_exact_docker_list_observation(
+        positive[1],
+        docker_bin=docker_bin,
+        container_name=container_name,
+        container_id=container_id,
+        expect_present=True,
+    )
+    terminal_times: list[int] = []
+    terminal_trees: list[ProcessTreeSnapshot] = []
+    for item in terminal:
+        if (
+            type(item) is not dict
+            or set(item)
+            != {
+                "process_tree",
+                "binding_count",
+                "detached_absence_verified",
+                "docker",
+            }
+            or item.get("binding_count") != 0
+            or item.get("detached_absence_verified") is not True
+        ):
+            raise OperatorError("R16 terminal lifecycle observation differs")
+        process_tree_value = item.get("process_tree")
+        if type(process_tree_value) is not dict:
+            raise OperatorError("R16 terminal process tree is invalid")
+        try:
+            terminal_tree = ProcessTreeSnapshot.from_dict(process_tree_value)
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
+            raise OperatorError("R16 terminal process tree is invalid") from exc
+        if (
+            terminal_tree.to_dict() != item.get("process_tree")
+            or terminal_tree.profile_id != profile.profile_id
+            or terminal_tree.run_id != profile.run_id
+            or terminal_tree.members
+        ):
+            raise OperatorError("R16 terminal process tree is not empty")
+        admitted_terminal_docker = _validate_r16_exact_docker_list_observation(
+            item["docker"],
+            docker_bin=docker_bin,
+            container_name=container_name,
+            container_id=container_id,
+            expect_present=False,
+        )
+        terminal_trees.append(terminal_tree)
+        terminal_times.append(int(admitted_terminal_docker["observed_at_ns"]))
+    observation_times = [
+        *(int(item["observed_at_ns"]) for item in admitted_pre),
+        int(admitted_positive["observed_at_ns"]),
+        *terminal_times,
+    ]
+    if (
+        observation_times != sorted(observation_times)
+        or observation_times[0]
+        <= int(barrier_observations[-1]["observed_at_ns"])
+        or int(provider_issuer["published_at_ns"])
+        > int(admitted_positive["observed_at_ns"])
+        or int(issuer_terminal["observed_at_ns"])
+        < int(admitted_positive["observed_at_ns"])
+        or int(provider_issuer_terminal["observed_at_ns"])
+        < int(admitted_positive["observed_at_ns"])
+        or terminal_times[0] <= int(issuer_terminal["observed_at_ns"])
+        or terminal_times[0]
+        <= int(provider_issuer_terminal["observed_at_ns"])
+        or terminal_trees[0].tree_id == terminal_trees[1].tree_id
+    ):
+        # Empty snapshots at two different capture times must have distinct
+        # content identities and preserve the full observation ordering.
+        raise OperatorError("R16 Docker observation ordering differs")
+    termination = evidence.get("termination")
+    if (
+        type(termination) is not dict
+        or set(termination)
+        != {
+            "canonical_fence",
+            "stopped_member_pids",
+            "managed_fixture_returncode",
+        }
+        or termination.get("canonical_fence") is not True
+        or not isinstance(termination.get("stopped_member_pids"), list)
+        or termination.get("stopped_member_pids")
+        != sorted({process_identity.pid, int(watchdog_pid)})
+        or type(termination.get("managed_fixture_returncode")) is not int
+        or int(termination["managed_fixture_returncode"]) >= 0
+        or int(termination["managed_fixture_returncode"])
+        != executed_returncode
+    ):
+        raise OperatorError("R16 production lifecycle terminal fence differs")
+    unsigned = dict(evidence)
+    evidence_cid = str(unsigned.pop("evidence_cid", "") or "")
+    if evidence_cid != _identity(unsigned):
+        raise OperatorError("R16 production lifecycle evidence CID differs")
+    return dict(evidence)
+
+
 def _run(
     argv: Sequence[str],
     *,
@@ -4046,6 +7213,17 @@ def _run(
         argv,
         require_known=_ASEH_RECEIPT_VALIDATION_EXECUTOR is not None,
     )
+    if (
+        executor_contract is not None
+        and tuple(argv) == _r16_production_lifecycle_live_command()
+    ):
+        return _run_r16_production_lifecycle_live_validation(
+            tuple(argv),
+            timeout=timeout,
+            env=env,
+            cwd=cwd,
+            executor_contract=executor_contract,
+        )
     if executor_contract is not None and (
         parsed is None or _ASEH_RECEIPT_VALIDATION_EXECUTOR is None
     ):
@@ -4423,6 +7601,39 @@ def _admit_exact_r15_transition_chain(
     return chain
 
 
+def _admit_exact_r16_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit the complete ordered and adjacent-linked R1-R16 chain."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R16_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R16 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R16_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R16 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R16 repair transition chain differs")
+        chain.append(item)
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -4559,6 +7770,35 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R15 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [
+        REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r16_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r15_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r15_admitted.get("repair_head")
+            != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r15_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r15_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current R16 candidate lacks its exact admitted validation seal"
+            )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -4689,6 +7929,17 @@ def _r15_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_SEALED_OWNER_MODULE_REGISTRATION_TRANSITION_VALIDATIONS[-2]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r16_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R16 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS[-2]
     ):
         return "candidate_authorization_worktree"
     return "immutable_candidate_checkout"
@@ -5817,6 +9068,253 @@ def _run_repair_sealed_owner_module_registration_transition_validations(
     return results
 
 
+def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R16 repair matrix against exact committed bytes."""
+
+    if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
+        raise OperatorError("R16 sealed validation executor is unavailable")
+    witness = dict(authorization_witness)
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        boundary="before R16 immutable validation checkout",
+    )
+    results: list[dict[str, Any]] = []
+    with _exact_candidate_validation_checkout(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    ) as (checkout, validation_environment):
+        for ordinal, command in enumerate(
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+        ):
+            _assert_candidate_authorization_witness(
+                witness,
+                expected_head=candidate_head,
+                expected_tree=candidate_tree,
+                boundary=f"before R16 validation {ordinal}",
+            )
+            _assert_r11_validation_checkout_identity(
+                checkout,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            )
+            working_tree_scope = _r16_validation_working_tree_scope(command)
+            python_validation = (
+                _parse_receipt_validation_python_command(
+                    command,
+                    require_known=True,
+                )
+                is not None
+            )
+            executor_class = _r16_validation_executor_class(command)
+            executor_contract = (
+                _r16_sealed_receipt_validation_executor_contract()
+                if python_validation
+                else None
+            )
+            completed = _run(
+                command,
+                timeout=900,
+                env=validation_environment,
+                cwd=(
+                    ROOT
+                    if working_tree_scope == "candidate_authorization_worktree"
+                    else checkout
+                ),
+                executor_contract=executor_contract,
+            )
+            sealed_execution = getattr(
+                completed,
+                "aseh_sealed_execution_evidence",
+                None,
+            )
+            live_execution = getattr(
+                completed,
+                "aseh_production_lifecycle_live_evidence",
+                None,
+            )
+            environment_identity = _r11_command_environment_identity(
+                validation_environment,
+                command,
+                checkout=checkout,
+            )
+            execution_evidence: Mapping[str, Any] | None
+            if (
+                executor_class
+                == ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+            ):
+                if sealed_execution is not None or not isinstance(
+                    live_execution, Mapping
+                ):
+                    raise OperatorError(
+                        "R16 live validation did not use the production "
+                        "lifecycle executor"
+                    )
+                combined_output_digest = getattr(
+                    completed,
+                    "aseh_production_lifecycle_combined_output_digest",
+                    None,
+                )
+                stdout_digest = None
+                stderr_digest = None
+                output_capture = "combined_stdout_stderr"
+                if (
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(combined_output_digest or ""),
+                    )
+                    is None
+                ):
+                    raise OperatorError(
+                        "R16 live validation combined output digest is absent"
+                    )
+                execution_evidence = (
+                    _validate_r16_production_lifecycle_execution_evidence(
+                        live_execution,
+                        declared=command,
+                        candidate_head=candidate_head,
+                        candidate_tree=candidate_tree,
+                        authorization_witness=witness,
+                        environment_identity=environment_identity,
+                        executed_returncode=int(completed.returncode),
+                        combined_output_digest=combined_output_digest,
+                        stdout_digest=stdout_digest,
+                        stderr_digest=stderr_digest,
+                        executor_contract=executor_contract,
+                    )
+                )
+            elif executor_class == ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS:
+                if not isinstance(sealed_execution, Mapping):
+                    raise OperatorError(
+                        "R16 validation did not use the sealed executor"
+                    )
+                stdout_digest = getattr(
+                    completed,
+                    "aseh_sealed_stdout_digest",
+                    None,
+                )
+                stderr_digest = getattr(
+                    completed,
+                    "aseh_sealed_stderr_digest",
+                    None,
+                )
+                if any(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(digest or ""),
+                    )
+                    is None
+                    for digest in (stdout_digest, stderr_digest)
+                ):
+                    raise OperatorError(
+                        "R16 validation raw output digest is absent"
+                    )
+                combined_output_digest = None
+                output_capture = "separate_stdout_stderr"
+                execution_evidence = (
+                    _validate_sealed_validation_execution_evidence(
+                        sealed_execution,
+                        declared=command,
+                        candidate_head=candidate_head,
+                        candidate_tree=candidate_tree,
+                        authorization_witness=witness,
+                        environment_identity=environment_identity,
+                        returncode=int(completed.returncode),
+                        stdout_digest=stdout_digest,
+                        stderr_digest=stderr_digest,
+                        executor_contract=executor_contract,
+                    )
+                )
+            else:
+                if sealed_execution is not None or live_execution is not None:
+                    raise OperatorError(
+                        "deterministic R16 validation claimed typed execution"
+                    )
+                stdout_digest = _identity(completed.stdout.encode("utf-8"))
+                stderr_digest = _identity(completed.stderr.encode("utf-8"))
+                combined_output_digest = None
+                output_capture = "separate_stdout_stderr"
+                execution_evidence = None
+            if (
+                not isinstance(completed.args, (list, tuple))
+                or not all(isinstance(item, str) for item in completed.args)
+            ):
+                raise OperatorError("R16 executed argv is unavailable")
+            executed_argv = list(completed.args)
+            if (
+                executor_class
+                == ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+            ):
+                if (
+                    executed_argv != execution_evidence.get("physical_argv")
+                    or int(completed.returncode) >= 0
+                ):
+                    raise OperatorError(
+                        "R16 production lifecycle physical outcome differs"
+                    )
+                declared_command_executed = False
+                validation_outcome = "typed_lifecycle_verified"
+            else:
+                if executed_argv != list(command):
+                    raise OperatorError("R16 validation executed argv differs")
+                declared_command_executed = True
+                validation_outcome = (
+                    "process_exit_zero"
+                    if completed.returncode == 0
+                    else "process_exit_nonzero"
+                )
+            result = {
+                "declared_argv": list(command),
+                "declared_command_executed": declared_command_executed,
+                "executed_argv": executed_argv,
+                "executor_class": executor_class,
+                "candidate_head": candidate_head,
+                "candidate_tree": candidate_tree,
+                "environment_identity": environment_identity,
+                "working_tree_scope": working_tree_scope,
+                "executed_returncode": int(completed.returncode),
+                "validation_outcome": validation_outcome,
+                "output_capture": output_capture,
+                "combined_output_digest": combined_output_digest,
+                "stdout_digest": stdout_digest,
+                "stderr_digest": stderr_digest,
+                "execution_evidence": execution_evidence,
+            }
+            results.append(result)
+            _assert_r11_validation_checkout_identity(
+                checkout,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+            )
+            if (
+                validation_outcome
+                not in {"process_exit_zero", "typed_lifecycle_verified"}
+            ):
+                raise OperatorError(
+                    "bootstrap repair Docker-create-readiness/vendor-resolver "
+                    "validation failed: " + " ".join(command)
+                )
+            _assert_candidate_authorization_witness(
+                witness,
+                expected_head=candidate_head,
+                expected_tree=candidate_tree,
+                boundary=f"after R16 validation {ordinal}",
+            )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        boundary="after R16 immutable validation checkout",
+    )
+    return results
+
+
 def _observe_repair_provider_cleanup_fence_known_baseline(
 ) -> dict[str, Any]:
     """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
@@ -6077,6 +9575,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-sealed-owner-module-registration-transition.json"
+    )
+    result["repair_docker_create_readiness_vendor_resolver_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-docker-create-readiness-vendor-resolver-transition.json"
     )
     result["repair_transition_authorization_lock"] = (
         result["evidence"]
@@ -10666,6 +14169,353 @@ def _validate_repair_sealed_owner_module_registration_transition(
     }
 
 
+def _validate_repair_docker_create_readiness_vendor_resolver_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 16 chained to the immutable R15 receipt."""
+
+    receipt_id = (
+        _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
+            receipt
+        )
+    )
+    previous_receipt_id = (
+        _repair_sealed_owner_module_registration_transition_receipt_id(
+            previous_receipt
+        )
+    )
+    witness = receipt.get("candidate_authorization_witness")
+    if (
+        receipt.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R16"
+        or receipt.get("previous_receipt_cid") != previous_receipt_id
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("base_head")
+        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+        or receipt.get("changed_paths")
+        != list(
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+        )
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R15"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement")
+        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
+        or receipt.get("sealed_validation_executor_contract")
+        != _r16_sealed_receipt_validation_executor_contract()
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "bootstrap repair Docker-create-readiness/vendor-resolver "
+            "authority differs"
+        )
+    repair = str(receipt.get("repair_head") or "").strip().casefold()
+    repair_tree = str(receipt.get("repair_tree") or "").strip().casefold()
+    base_head = (
+        REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+    )
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or re.fullmatch(r"[0-9a-f]{40}", repair_tree) is None
+        or _git("show", "-s", "--format=%P", repair).split() != [base_head]
+    ):
+        raise OperatorError(
+            "bootstrap repair Docker-create-readiness/vendor-resolver must "
+            "be one exact child"
+        )
+    base_tree = _git("rev-parse", f"{base_head}^{{tree}}")
+    if (
+        receipt.get("base_tree") != base_tree
+        or _git("rev-parse", f"{repair}^{{tree}}") != repair_tree
+        or _git_changed_paths(base_head, repair)
+        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest")
+        != _git_patch_digest(base_head, repair)
+    ):
+        raise OperatorError(
+            "bootstrap repair Docker-create-readiness/vendor-resolver Git "
+            "proof differs"
+        )
+    expected_witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != expected_witness_fields
+        or witness.get("head") != repair
+        or witness.get("tree") != repair_tree
+        or not str(witness.get("branch_ref") or "").startswith("refs/heads/")
+        or witness.get("status_digest") != _identity(b"")
+        or witness.get("head_reflog_digest") == "absent"
+        or witness.get("branch_reflog_digest") == "absent"
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(witness.get(name) or ""),
+            )
+            is None
+            for name in (
+                "index_entries_digest",
+                "index_flags_digest",
+                "status_digest",
+                "head_reflog_digest",
+                "branch_reflog_digest",
+            )
+        )
+    ):
+        raise OperatorError(
+            "bootstrap repair Docker-create-readiness/vendor-resolver witness "
+            "differs"
+        )
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError(
+                "bootstrap repair Docker-create-readiness/vendor-resolver "
+                "changed a sibling"
+            )
+    stored_results = receipt.get("validation_results")
+    commands = (
+        REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+    )
+    if not isinstance(stored_results, list) or len(stored_results) != len(
+        commands
+    ):
+        raise OperatorError(
+            "bootstrap repair Docker-create-readiness/vendor-resolver "
+            "validation differs"
+        )
+    for stored, command in zip(stored_results, commands, strict=True):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {
+                "declared_argv",
+                "declared_command_executed",
+                "executed_argv",
+                "executor_class",
+                "candidate_head",
+                "candidate_tree",
+                "environment_identity",
+                "working_tree_scope",
+                "executed_returncode",
+                "validation_outcome",
+                "output_capture",
+                "combined_output_digest",
+                "stdout_digest",
+                "stderr_digest",
+                "execution_evidence",
+            }
+            or stored.get("declared_argv") != list(command)
+            or stored.get("executor_class")
+            != _r16_validation_executor_class(command)
+            or stored.get("candidate_head") != repair
+            or stored.get("candidate_tree") != repair_tree
+            or stored.get("environment_identity")
+            != _r11_command_environment_identity(
+                _r11_validation_environment(Path("/sealed-checkout")),
+                command,
+                checkout=Path("/sealed-checkout"),
+            )
+            or stored.get("working_tree_scope")
+            != _r16_validation_working_tree_scope(command)
+            or type(stored.get("executed_returncode")) is not int
+            or not isinstance(stored.get("executed_argv"), list)
+            or not all(
+                isinstance(item, str) for item in stored["executed_argv"]
+            )
+        ):
+            raise OperatorError(
+                "bootstrap repair Docker-create-readiness/vendor-resolver "
+                "validation differs"
+            )
+        executor_class = _r16_validation_executor_class(command)
+        if executor_class == ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS:
+            if (
+                stored.get("declared_command_executed") is not True
+                or stored.get("executed_argv") != list(command)
+                or stored.get("executed_returncode") != 0
+                or stored.get("validation_outcome") != "process_exit_zero"
+                or stored.get("output_capture")
+                != "separate_stdout_stderr"
+                or stored.get("combined_output_digest") is not None
+                or any(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(stored.get(name) or ""),
+                    )
+                    is None
+                    for name in ("stdout_digest", "stderr_digest")
+                )
+                or not isinstance(stored["execution_evidence"], Mapping)
+            ):
+                raise OperatorError(
+                    "sealed Python validation evidence is absent"
+                )
+            _validate_sealed_validation_execution_evidence(
+                stored["execution_evidence"],
+                declared=command,
+                candidate_head=repair,
+                candidate_tree=repair_tree,
+                authorization_witness=witness,
+                environment_identity=str(stored["environment_identity"]),
+                returncode=int(stored["executed_returncode"]),
+                stdout_digest=str(stored["stdout_digest"]),
+                stderr_digest=str(stored["stderr_digest"]),
+                executor_contract=(
+                    _r16_sealed_receipt_validation_executor_contract()
+                ),
+            )
+        elif (
+            executor_class
+            == ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS
+        ):
+            live_evidence = stored.get("execution_evidence")
+            if (
+                stored.get("declared_command_executed") is not False
+                or not isinstance(stored.get("executed_argv"), list)
+                or not isinstance(live_evidence, Mapping)
+                or stored.get("executed_argv")
+                != live_evidence.get("physical_argv")
+            ):
+                raise OperatorError(
+                    "production lifecycle execution declaration differs"
+                )
+            if (
+                type(stored.get("executed_returncode")) is not int
+                or int(stored["executed_returncode"]) >= 0
+                or stored.get("validation_outcome")
+                != "typed_lifecycle_verified"
+                or stored.get("output_capture")
+                != "combined_stdout_stderr"
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(stored.get("combined_output_digest") or ""),
+                )
+                is None
+                or stored.get("stdout_digest") is not None
+                or stored.get("stderr_digest") is not None
+            ):
+                raise OperatorError(
+                    "production lifecycle validation evidence is absent"
+                )
+            _validate_r16_production_lifecycle_execution_evidence(
+                live_evidence,
+                declared=command,
+                candidate_head=repair,
+                candidate_tree=repair_tree,
+                authorization_witness=witness,
+                environment_identity=str(stored["environment_identity"]),
+                executed_returncode=int(stored["executed_returncode"]),
+                combined_output_digest=str(
+                    stored["combined_output_digest"]
+                ),
+                stdout_digest=None,
+                stderr_digest=None,
+                executor_contract=(
+                    _r16_sealed_receipt_validation_executor_contract()
+                ),
+            )
+        elif (
+            stored["execution_evidence"] is not None
+            or stored.get("declared_command_executed") is not True
+            or stored.get("executed_argv") != list(command)
+            or stored.get("executed_returncode") != 0
+            or stored.get("validation_outcome") != "process_exit_zero"
+            or stored.get("output_capture") != "separate_stdout_stderr"
+            or stored.get("combined_output_digest") is not None
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(stored.get(name) or ""),
+                )
+                is None
+                for name in ("stdout_digest", "stderr_digest")
+            )
+        ):
+            raise OperatorError("deterministic validation result differs")
+    if rerun_validations:
+        rerun = (
+            _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+                candidate_head=repair,
+                candidate_tree=repair_tree,
+                authorization_witness=witness,
+            )
+        )
+        comparison_fields = (
+            "declared_argv",
+            "declared_command_executed",
+            "executor_class",
+            "candidate_head",
+            "candidate_tree",
+            "environment_identity",
+            "working_tree_scope",
+            "validation_outcome",
+            "output_capture",
+        )
+        if [
+            tuple(item[field] for field in comparison_fields)
+            for item in rerun
+        ] != [
+            tuple(item.get(field) for field in comparison_fields)
+            for item in stored_results
+        ]:
+            raise OperatorError(
+                "bootstrap repair Docker-create-readiness/vendor-resolver "
+                "commands differ"
+            )
+    return {
+        "schema": (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+        ),
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 16,
+        "base_head": base_head,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "previous_receipt_cid": previous_receipt_id,
+        "candidate_authorization_witness": dict(witness),
+        "sealed_validation_executor_contract": dict(
+            receipt["sealed_validation_executor_contract"]
+        ),
+        "receipt_cid": receipt_id,
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -11700,6 +15550,22 @@ def _authorize_repair_sealed_owner_module_registration_transition_if_applicable(
             str(transition["repair_head"]),
             head,
         )
+        r16_result = (
+            _authorize_repair_docker_create_readiness_vendor_resolver_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=[*prior_chain, receipt],
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r16_result is not None:
+            return r16_result
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = current_admission.get("repair_transition_chain")
@@ -11829,6 +15695,202 @@ def _authorize_repair_sealed_owner_module_registration_transition_if_applicable(
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R15 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_docker_create_readiness_vendor_resolver_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one bounded R16 child after the admitted R15 chain."""
+
+    r16_path = paths.get(
+        "repair_docker_create_readiness_vendor_resolver_transition_receipt"
+    )
+    if not isinstance(r16_path, Path):
+        return None
+    prior_chain = list(prior_receipt_chain)
+    if (
+        len(prior_chain) != 15
+        or prior_chain[-1].get("receipt_cid")
+        != previous_transition.get("receipt_cid")
+        or previous_transition.get("repair_head")
+        != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError(
+            "bootstrap repair Docker-create-readiness/vendor-resolver prior "
+            "chain differs"
+        )
+    if r16_path.is_file():
+        receipt = _secure_runtime_json(
+            r16_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = (
+            _validate_repair_docker_create_readiness_vendor_resolver_transition(
+                receipt,
+                bootstrap=bootstrap,
+                previous_receipt=previous_receipt,
+                rerun_validations=receipt.get("repair_head") == head,
+            )
+        )
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition["repair_head"]),
+            head,
+        )
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = current_admission.get("repair_transition_chain")
+        admitted_continuity = current_admission.get("canonical_continuity")
+        expected_chain = [*prior_chain, receipt]
+        exact_chain = _admit_exact_r16_transition_chain(admitted_chain)
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head")
+            != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in exact_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or "sealed_owner_module_registration_to_docker_create_readiness_vendor_resolver"
+            not in admitted_continuity
+        ):
+            raise OperatorError(
+                "current admission does not retain the Docker-create-"
+                "readiness/vendor-resolver repair transition"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission[
+                "runtime_source_head"
+            ],
+        }
+    parents = _git("show", "-s", "--format=%P", head).split()
+    base_head = (
+        REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+    )
+    if parents != [base_head]:
+        return None
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair Docker-create-readiness/vendor-resolver "
+            "changed-path set differs"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    validation_results = (
+        _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R16 validation before receipt publication",
+    )
+    receipt = {
+        "schema": (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+        ),
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R16"
+        ),
+        "program_id": PROGRAM,
+        "transition_revision": 16,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": _git("rev-parse", f"{base_head}^{{tree}}"),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R15"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r16_sealed_receipt_validation_executor_contract()
+        ),
+        "terminal_success_criteria": (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R16 receipt publication",
+    )
+    _atomic_json_create(
+        r16_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R16 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -14254,12 +18316,16 @@ def _admit_materialized_launch(
             sealed_owner_module_registration_transition: (
                 dict[str, Any] | None
             ) = None
+            docker_create_readiness_vendor_resolver_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
             r13_receipt: dict[str, Any] | None = None
             r14_receipt: dict[str, Any] | None = None
             r15_receipt: dict[str, Any] | None = None
+            r16_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -14773,6 +18839,58 @@ def _admit_materialized_launch(
                                                                 active_transition = (
                                                                     sealed_owner_module_registration_transition
                                                                 )
+                                                                r16_path = paths.get(
+                                                                    "repair_docker_create_readiness_vendor_resolver_transition_receipt"
+                                                                )
+                                                                if (
+                                                                    isinstance(
+                                                                        r16_path,
+                                                                        Path,
+                                                                    )
+                                                                    and r16_path.is_file()
+                                                                ):
+                                                                    r16_receipt = (
+                                                                        _secure_runtime_json(
+                                                                            r16_path,
+                                                                            max_bytes=(
+                                                                                STATUS_RECEIPT_MAX_BYTES
+                                                                            ),
+                                                                        )
+                                                                    )
+                                                                    docker_create_readiness_vendor_resolver_transition = (
+                                                                        _validate_repair_docker_create_readiness_vendor_resolver_transition(
+                                                                            r16_receipt,
+                                                                            bootstrap=bootstrap,
+                                                                            previous_receipt=(
+                                                                                r15_receipt
+                                                                            ),
+                                                                            rerun_validations=(
+                                                                                r16_receipt.get(
+                                                                                    "repair_head"
+                                                                                )
+                                                                                == population[
+                                                                                    "source_head"
+                                                                                ]
+                                                                            ),
+                                                                        )
+                                                                    )
+                                                                    if (
+                                                                        docker_create_readiness_vendor_resolver_transition[
+                                                                            "base_head"
+                                                                        ]
+                                                                        != sealed_owner_module_registration_transition[
+                                                                            "repair_head"
+                                                                        ]
+                                                                    ):
+                                                                        raise OperatorError(
+                                                                            "Docker-create-readiness/"
+                                                                            "vendor-resolver repair "
+                                                                            "does not extend "
+                                                                            "revision 15"
+                                                                        )
+                                                                    active_transition = (
+                                                                        docker_create_readiness_vendor_resolver_transition
+                                                                    )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -14832,6 +18950,10 @@ def _admit_materialized_launch(
                 repair_transition_chain.append(
                     sealed_owner_module_registration_transition
                 )
+            if docker_create_readiness_vendor_resolver_transition is not None:
+                repair_transition_chain.append(
+                    docker_create_readiness_vendor_resolver_transition
+                )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -14889,6 +19011,10 @@ def _admit_materialized_launch(
                 continuity[
                     "sealed_receipt_validation_to_sealed_owner_module_registration"
                 ] = sealed_owner_module_registration_transition
+            if docker_create_readiness_vendor_resolver_transition is not None:
+                continuity[
+                    "sealed_owner_module_registration_to_docker_create_readiness_vendor_resolver"
+                ] = docker_create_readiness_vendor_resolver_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -18620,6 +22746,39 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("materialize")
     commands.add_parser("authorize-repair-transition")
     commands.add_parser("preflight")
+    live_fixture = commands.add_parser(
+        ASEH_R16_PRODUCTION_LIFECYCLE_FIXTURE_COMMAND,
+        help=argparse.SUPPRESS,
+    )
+    live_fixture.add_argument("--nonce", required=True)
+    live_fixture.add_argument("--logical-argv-sha256", required=True)
+    live_fixture.add_argument("--candidate-head", required=True)
+    live_fixture.add_argument("--candidate-tree", required=True)
+    live_fixture.add_argument("--expected-parent-pid", required=True, type=int)
+    live_fixture.add_argument(
+        "--expected-parent-start-time-ticks",
+        required=True,
+        type=int,
+    )
+    live_fixture.add_argument("--expected-parent-boot-id", required=True)
+    provider_start_launcher = commands.add_parser(
+        ASEH_R16_PROVIDER_START_LAUNCHER_COMMAND,
+        help=argparse.SUPPRESS,
+    )
+    provider_start_launcher.add_argument("--docker-bin", required=True)
+    provider_start_launcher.add_argument("--docker-config", required=True)
+    provider_start_launcher.add_argument("--container-name", required=True)
+    provider_start_launcher.add_argument(
+        "--expected-parent-pid", required=True, type=int
+    )
+    provider_start_launcher.add_argument(
+        "--expected-parent-start-time-ticks",
+        required=True,
+        type=int,
+    )
+    provider_start_launcher.add_argument(
+        "--expected-parent-boot-id", required=True
+    )
     run = commands.add_parser("run")
     run.add_argument("--implement", action=argparse.BooleanOptionalAction, default=True)
     run.add_argument("--duration-seconds", type=float, default=float("inf"))
@@ -18630,6 +22789,29 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "materialize":
             payload = materialize(args.config)
             code = 0
+        elif args.command == ASEH_R16_PRODUCTION_LIFECYCLE_FIXTURE_COMMAND:
+            return _r16_production_lifecycle_live_fixture(
+                nonce=args.nonce,
+                logical_argv_sha256=args.logical_argv_sha256,
+                candidate_head=args.candidate_head,
+                candidate_tree=args.candidate_tree,
+                expected_parent_pid=args.expected_parent_pid,
+                expected_parent_start_time_ticks=(
+                    args.expected_parent_start_time_ticks
+                ),
+                expected_parent_boot_id=args.expected_parent_boot_id,
+            )
+        elif args.command == ASEH_R16_PROVIDER_START_LAUNCHER_COMMAND:
+            return _r16_provider_start_launcher(
+                docker_bin=args.docker_bin,
+                docker_config=args.docker_config,
+                container_name=args.container_name,
+                expected_parent_pid=args.expected_parent_pid,
+                expected_parent_start_time_ticks=(
+                    args.expected_parent_start_time_ticks
+                ),
+                expected_parent_boot_id=args.expected_parent_boot_id,
+            )
         elif args.command == "authorize-repair-transition":
             payload = authorize_repair_transition(args.config)
             code = 0

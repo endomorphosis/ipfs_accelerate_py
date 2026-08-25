@@ -102,6 +102,7 @@ from ipfs_accelerate_py.llm_router import (
     AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL,
     AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
     AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS,
+    find_codex_vendor_binaries,
 )
 
 # Self-heal: if a static import is incomplete on an older pin or partial merge,
@@ -358,6 +359,7 @@ _SEALED_PROVIDER_ISOLATION_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
 )
 _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
+_DOCKER_CREATE_TIMEOUT_SECONDS = 120.0
 
 
 def _sealed_provider_isolation_image_id() -> str:
@@ -443,7 +445,7 @@ _DOCKER_CLEANUP_INTENT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/terminal-cleanup-intent@1"
 )
 _DOCKER_CLEANUP_BINDING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/docker-cleanup-binding@5"
+    "ipfs_accelerate_py/agent-supervisor/docker-cleanup-binding@6"
 )
 _DOCKER_TERMINATION_FENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/docker-termination-fence@1"
@@ -2449,6 +2451,107 @@ def _cleanup_path_identity(path: Path, *, directory: bool) -> dict[str, int]:
     }
 
 
+def _docker_cleanup_root_identity(path: Path) -> dict[str, int]:
+    """Bind one trusted shared or private provider allocator root."""
+
+    root = path.absolute()
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            root,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+        named = os.lstat(root)
+        resolved = root.resolve(strict=True)
+        final = os.lstat(root)
+    except OSError as exc:
+        raise ValueError("Docker cleanup root identity is unavailable") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    permissions = stat.S_IMODE(metadata.st_mode)
+    private_owned = metadata.st_uid == os.geteuid() and permissions == 0o700
+    trusted_shared = metadata.st_uid == 0 and permissions == 0o1777
+    if (
+        resolved != root
+        or stat.S_ISLNK(named.st_mode)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_uid,
+        )
+        != (
+            named.st_dev,
+            named.st_ino,
+            named.st_mode,
+            named.st_uid,
+        )
+        or (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_uid,
+        )
+        != (
+            final.st_dev,
+            final.st_ino,
+            final.st_mode,
+            final.st_uid,
+        )
+        or not (private_owned or trusted_shared)
+    ):
+        raise ValueError("Docker cleanup root identity is unsafe")
+    return {
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        "mode": metadata.st_mode,
+        "uid": metadata.st_uid,
+    }
+
+
+def _validated_docker_cleanup_root(
+    *,
+    lease_root: Path,
+    provider_home: Path,
+    prompt_path: Path,
+    expected_root: Path | None = None,
+    expected_identity: Mapping[str, object] | None = None,
+) -> tuple[Path, dict[str, int]]:
+    """Admit the exact direct parent shared by all disposable resources."""
+
+    cleanup_root = lease_root.parent.absolute()
+    if (
+        not lease_root.is_absolute()
+        or not provider_home.is_absolute()
+        or not prompt_path.is_absolute()
+        or provider_home.parent != cleanup_root
+        or prompt_path.parent != cleanup_root
+        or (expected_root is not None and expected_root != cleanup_root)
+    ):
+        raise ValueError("Docker cleanup resources do not share one root")
+    identity = _docker_cleanup_root_identity(cleanup_root)
+    if expected_identity is not None:
+        if (
+            not isinstance(expected_identity, Mapping)
+            or set(expected_identity) != {"device", "inode", "mode", "uid"}
+            or any(
+                isinstance(expected_identity.get(name), bool)
+                or not isinstance(expected_identity.get(name), int)
+                or int(expected_identity[name]) < 0
+                for name in ("device", "inode", "mode", "uid")
+            )
+            or dict(expected_identity) != identity
+        ):
+            raise ValueError("Docker cleanup root identity drifted")
+    return cleanup_root, identity
+
+
 def _provider_start_socketpair() -> tuple[socket.socket, socket.socket]:
     """Mint one anonymous, procfs-nonreopenable provider-start capability."""
 
@@ -2496,6 +2599,11 @@ def _docker_cleanup_binding_value(
 
     if binding_state not in {"prepared_no_dispatch", "command_bound"}:
         raise ValueError("Docker cleanup binding state is invalid")
+    cleanup_root, cleanup_root_identity = _validated_docker_cleanup_root(
+        lease_root=lease_root,
+        provider_home=provider_home,
+        prompt_path=prompt_path,
+    )
     lifecycle = {
         name: str(os.environ.get(name, "") or "").strip()
         for name in _DOCKER_WATCHDOG_LIFECYCLE_ENV_NAMES
@@ -2560,6 +2668,8 @@ def _docker_cleanup_binding_value(
         "docker_mode": docker_metadata.st_mode,
         "docker_uid": docker_metadata.st_uid,
         "container_name": container_name,
+        "cleanup_root": str(cleanup_root),
+        "cleanup_root_identity": cleanup_root_identity,
         "lease_root": str(lease_root),
         "docker_config": str(docker_config),
         "cidfile": str(cidfile),
@@ -3060,6 +3170,25 @@ def _docker_mount(
     return ["--mount", ",".join(fields)]
 
 
+def _docker_codex_host_vendor_mounts() -> list[str]:
+    """Project the router-admitted native Codex pair as one read-only mount."""
+
+    vendor = find_codex_vendor_binaries()
+    if vendor is None:
+        return []
+    host_codex, host_companion = vendor
+    if host_codex.parent != host_companion.parent:
+        return []
+    try:
+        return _docker_mount(
+            host_codex.parent,
+            destination=Path("/usr/local/bin"),
+            read_only=True,
+        )
+    except (OSError, ValueError):
+        return []
+
+
 def _remove_exact_docker_container(
     *,
     docker_bin: str,
@@ -3405,7 +3534,8 @@ def _docker_create_command_identity(
             raise ValueError("Docker create environment projection is unsafe")
 
     lease_root = docker_config.parent
-    temporary_root = Path(tempfile.gettempdir()).resolve()
+    cleanup_root = lease_root.parent
+    _docker_cleanup_root_identity(cleanup_root)
     allowed_git_sources = set(_git_metadata_roots(resolved_cwd))
     git_control_path = _existing_path(resolved_cwd / ".git")
     if git_control_path is not None:
@@ -3413,10 +3543,6 @@ def _docker_create_command_identity(
     allowed_codex_vendor_mounts: set[str] = set()
     if provider == "codex":
         try:
-            from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-                _docker_codex_host_vendor_mounts,
-            )
-
             vendor_arguments = _docker_codex_host_vendor_mounts()
             if len(vendor_arguments) % 2:
                 raise ValueError("Codex vendor mount arguments are incomplete")
@@ -3472,13 +3598,13 @@ def _docker_create_command_identity(
         )
         writable_grok_home = bool(
             provider == "grok"
-            and resolved_source.parent == temporary_root
+            and resolved_source.parent == cleanup_root
             and resolved_source.name.startswith("asref-grok-home-")
             and destination == resolved_source
         )
         writable_codex_auth = bool(
             provider == "codex"
-            and resolved_source.parent.parent == temporary_root
+            and resolved_source.parent.parent == cleanup_root
             and resolved_source.parent.name.startswith("asref-codex-home-")
             and resolved_source.name == "auth.json"
             and destination == _CODEX_CONTAINER_AUTH_PATH
@@ -3512,7 +3638,7 @@ def _docker_create_command_identity(
                     and resolved_source in allowed_git_sources
                 )
                 or (
-                    resolved_source.parent == temporary_root
+                    resolved_source.parent == cleanup_root
                     and resolved_source.name.startswith("asref-grok-prompt-")
                     and destination == resolved_source
                 )
@@ -4030,7 +4156,7 @@ def _run_fenced_docker_create_issuer(
             stderr_parent: bytearray(),
         }
         open_streams = set(streams)
-        deadline = time.monotonic() + 120.0
+        deadline = time.monotonic() + _DOCKER_CREATE_TIMEOUT_SECONDS
         while open_streams or status is None:
             now = time.monotonic()
             if status is None:
@@ -4172,6 +4298,8 @@ def _validated_cleanup_binding_record(
         "docker_mode",
         "docker_uid",
         "container_name",
+        "cleanup_root",
+        "cleanup_root_identity",
         "lease_root",
         "docker_config",
         "cidfile",
@@ -4235,6 +4363,16 @@ def _validated_cleanup_binding_record(
             provider=provider,
             container_name=container_name,
         )
+    try:
+        cleanup_root, cleanup_root_identity = _validated_docker_cleanup_root(
+            lease_root=lease_root,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
+            expected_root=Path(str(value.get("cleanup_root") or "")),
+            expected_identity=value.get("cleanup_root_identity"),  # type: ignore[arg-type]
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Docker cleanup binding root is invalid") from exc
     if (
         value.get("schema") != _DOCKER_CLEANUP_BINDING_SCHEMA
         or value.get("binding_state") != binding_state
@@ -4253,6 +4391,8 @@ def _validated_cleanup_binding_record(
         or value.get("docker_mode") != docker_metadata.st_mode
         or value.get("docker_uid") != docker_metadata.st_uid
         or value.get("container_name") != container_name
+        or value.get("cleanup_root") != str(cleanup_root)
+        or value.get("cleanup_root_identity") != cleanup_root_identity
         or value.get("lease_root") != str(lease_root)
         or value.get("docker_config") != str(docker_config)
         or value.get("cidfile") != str(cidfile)
@@ -6472,7 +6612,6 @@ def _recover_cleanup_completion(
         binding_record = value.get("binding_record")
         resources = value.get("resources")
         cleanup_intent = value.get("cleanup_intent")
-        temporary_root = Path(tempfile.gettempdir()).resolve()
         record_container = str(
             binding_record.get("container_name")
             if isinstance(binding_record, dict)
@@ -6504,6 +6643,29 @@ def _recover_cleanup_completion(
                 else ""
             )
         )
+        cleanup_root_valid = False
+        if isinstance(binding_record, dict):
+            try:
+                observed_root, observed_root_identity = (
+                    _validated_docker_cleanup_root(
+                        lease_root=record_lease,
+                        provider_home=record_home,
+                        prompt_path=record_prompt,
+                        expected_root=Path(
+                            str(binding_record.get("cleanup_root") or "")
+                        ),
+                        expected_identity=binding_record.get(
+                            "cleanup_root_identity"
+                        ),
+                    )
+                )
+                cleanup_root_valid = bool(
+                    binding_record.get("cleanup_root") == str(observed_root)
+                    and binding_record.get("cleanup_root_identity")
+                    == observed_root_identity
+                )
+            except (TypeError, ValueError):
+                cleanup_root_valid = False
         lifecycle_valid = bool(
             expected_lifecycle is None
             or (
@@ -6527,6 +6689,7 @@ def _recover_cleanup_completion(
             or not isinstance(binding_record, dict)
             or not isinstance(cleanup_intent, dict)
             or binding_record.get("schema") != _DOCKER_CLEANUP_BINDING_SCHEMA
+            or not cleanup_root_valid
             or binding_record.get("binding_path") != str(binding_path)
             or binding_record.get("provider") not in _DOCKER_ISOLATION_PROVIDERS
             or record_provider not in _DOCKER_ISOLATION_PROVIDERS
@@ -6537,15 +6700,12 @@ def _recover_cleanup_completion(
             or binding_path
             != binding_path.parent
             / (hashlib.sha256(record_container.encode("ascii")).hexdigest() + ".json")
-            or record_lease.parent != temporary_root
             or not record_lease.name.startswith(
                 f"asref-{record_provider}-container-"
             )
-            or record_home.parent != temporary_root
             or not record_home.name.startswith(
                 f"asref-{record_provider}-home-"
             )
-            or record_prompt.parent != temporary_root
             or not record_prompt.name.startswith("asref-grok-prompt-")
             or binding_record.get("docker_config")
             != str(record_lease / "docker-config")
@@ -7259,8 +7419,17 @@ def _docker_cleanup_watchdog_main(
     )
     cas_marker = lease_root / "cas-owned"
     terminal_marker = lease_root / "cas-terminal"
-    temporary_root = Path(tempfile.gettempdir()).resolve()
     expected_container_prefix = f"ipfs-accelerate-{args.provider}-"
+    try:
+        _cleanup_root, _cleanup_root_identity = (
+            _validated_docker_cleanup_root(
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+            )
+        )
+    except ValueError:
+        return 2
     if (
         docker_path not in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
         or docker_path.name not in {"docker", "docker.exe"}
@@ -7268,18 +7437,15 @@ def _docker_cleanup_watchdog_main(
         or docker_stat.st_mode & 0o022
         or _DOCKER_CONTAINER_NAME_RE.fullmatch(args.container_name) is None
         or not args.container_name.startswith(expected_container_prefix)
-        or lease_root.parent != temporary_root
         or not lease_root.name.startswith(
             f"asref-{args.provider}-container-"
         )
         or cidfile.parent != lease_root
         or cidfile.name != "container.cid"
         or not docker_config.is_dir()
-        or provider_home.parent != temporary_root
         or not provider_home.name.startswith(
             f"asref-{args.provider}-home-"
         )
-        or prompt_path.parent != temporary_root
         or not prompt_path.name.startswith("asref-grok-prompt-")
         or (
             cleanup_binding_record is not None
@@ -8873,7 +9039,7 @@ class _DockerContainerLease:
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=120.0,
+                timeout=_DOCKER_CREATE_TIMEOUT_SECONDS,
                 check=False,
             )
         environment_id, _environment_payload, create_environment = (
@@ -8928,7 +9094,7 @@ class _DockerContainerLease:
         except OSError as exc:
             self.preserve_for_recovery = True
             raise ValueError("Docker create worker dispatch failed") from exc
-        deadline = time.monotonic() + 120.0
+        deadline = time.monotonic() + _DOCKER_CREATE_TIMEOUT_SECONDS
         try:
             journal = _read_docker_create_private_result(
                 self._control_socket,
@@ -9693,7 +9859,7 @@ def _create_grok_container_and_build_start_command(
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=120.0,
+                timeout=_DOCKER_CREATE_TIMEOUT_SECONDS,
                 check=False,
             )
         )
@@ -9799,13 +9965,14 @@ def _docker_codex_fallback_command(
         source_auth=source_auth,
         workspace=workspace,
     )
-    temporary_root = Path(tempfile.gettempdir()).resolve()
+    cleanup_root = docker_config.parent.parent
+    _docker_cleanup_root_identity(cleanup_root)
     try:
         provider_home_metadata = os.lstat(provider_home)
     except OSError as exc:
         raise ValueError("Codex fallback provider home is unavailable") from exc
     if (
-        provider_home.parent != temporary_root
+        provider_home.parent != cleanup_root
         or not provider_home.name.startswith("asref-codex-home-")
         or not stat.S_ISDIR(provider_home_metadata.st_mode)
         or stat.S_ISLNK(provider_home_metadata.st_mode)
@@ -9888,14 +10055,7 @@ def _docker_codex_fallback_command(
     if host_usr is None:
         raise ValueError("Codex fallback requires the pinned host /usr toolchain")
     command.extend(_docker_mount(host_usr, read_only=True))
-    try:
-        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-            _docker_codex_host_vendor_mounts,
-        )
-
-        vendor_mounts = _docker_codex_host_vendor_mounts()
-    except Exception:
-        vendor_mounts = []
+    vendor_mounts = _docker_codex_host_vendor_mounts()
     if vendor_mounts:
         command.extend(vendor_mounts)
         inner[0] = "/usr/local/bin/codex"
@@ -10049,7 +10209,7 @@ def _run_codex_quota_fallback_in_docker(
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    timeout=120.0,
+                    timeout=_DOCKER_CREATE_TIMEOUT_SECONDS,
                     check=False,
                 )
             )
@@ -10326,12 +10486,12 @@ def _recorded_codex_cleanup_identity(
     prompt_path = Path(str(cleanup.get("prompt_path") or ""))
     watchdog_pid = cleanup.get("watchdog_pid")
     watchdog_start_ticks = cleanup.get("watchdog_start_ticks")
-    temporary_root = Path(tempfile.gettempdir()).resolve()
+    cleanup_root = lease_root.parent
     if (
         not config_path.is_absolute()
         or config_path.name != "docker-config"
         or cidfile_path != lease_root / "container.cid"
-        or lease_root.parent != temporary_root
+        or not cleanup_root.is_absolute()
         or not lease_root.name.startswith("asref-codex-container-")
         or _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
         or create_argv.count("--name") != 1
@@ -10340,9 +10500,11 @@ def _recorded_codex_cleanup_identity(
         or cleanup.get("lease_root") != str(lease_root)
         or cleanup.get("docker_config") != str(config_path)
         or cleanup.get("cidfile") != str(cidfile_path)
-        or provider_home.parent != temporary_root
+        or not provider_home.is_absolute()
+        or provider_home.parent != cleanup_root
         or not provider_home.name.startswith("asref-codex-home-")
-        or prompt_path.parent != temporary_root
+        or not prompt_path.is_absolute()
+        or prompt_path.parent != cleanup_root
         or not prompt_path.name.startswith("asref-grok-prompt-")
         or type(watchdog_pid) is not int
         or watchdog_pid <= 0
@@ -10360,6 +10522,14 @@ def _recorded_codex_lease_root(
 
     lease_root, config_path, container_name = (
         _recorded_codex_cleanup_identity(launch_receipt)
+    )
+    cleanup = launch_receipt.get("cleanup_receipt")
+    if not isinstance(cleanup, Mapping):
+        raise ValueError("recorded Docker cleanup receipt is unavailable")
+    _validated_docker_cleanup_root(
+        lease_root=lease_root,
+        provider_home=Path(str(cleanup.get("provider_home") or "")),
+        prompt_path=Path(str(cleanup.get("prompt_path") or "")),
     )
     cursor = Path(lease_root.anchor)
     for component in lease_root.parts[1:]:
@@ -10707,15 +10877,21 @@ def _release_recorded_codex_effect_cleanup(
     prompt_path = Path(str(cleanup.get("prompt_path") or ""))
     watchdog_pid = cleanup.get("watchdog_pid")
     watchdog_start_ticks = cleanup.get("watchdog_start_ticks")
-    temporary_root = Path(tempfile.gettempdir()).resolve()
+    try:
+        cleanup_root, cleanup_root_identity = (
+            _validated_docker_cleanup_root(
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+            )
+        )
+    except ValueError as exc:
+        raise ValueError("recorded Docker cleanup root is invalid") from exc
     if (
-        lease_root.parent != temporary_root
-        or not lease_root.name.startswith("asref-codex-container-")
+        not lease_root.name.startswith("asref-codex-container-")
         or docker_config != lease_root / "docker-config"
         or cidfile != lease_root / "container.cid"
-        or provider_home.parent != temporary_root
         or not provider_home.name.startswith("asref-codex-home-")
-        or prompt_path.parent != temporary_root
         or not prompt_path.name.startswith("asref-grok-prompt-")
         or isinstance(watchdog_pid, bool)
         or not isinstance(watchdog_pid, int)
@@ -10791,6 +10967,9 @@ def _release_recorded_codex_effect_cleanup(
             or completed_binding.get("provider") != "codex"
             or completed_binding.get("docker_bin") != docker_bin
             or completed_binding.get("container_name") != container_name
+            or completed_binding.get("cleanup_root") != str(cleanup_root)
+            or completed_binding.get("cleanup_root_identity")
+            != cleanup_root_identity
             or completed_binding.get("lease_root") != str(lease_root)
             or completed_binding.get("docker_config") != str(docker_config)
             or completed_binding.get("cidfile") != str(cidfile)
@@ -10873,6 +11052,8 @@ def _release_recorded_codex_effect_cleanup(
         or candidate.get("provider") != "codex"
         or candidate.get("docker_bin") != docker_bin
         or candidate.get("container_name") != container_name
+        or candidate.get("cleanup_root") != str(cleanup_root)
+        or candidate.get("cleanup_root_identity") != cleanup_root_identity
         or candidate.get("lease_root") != str(lease_root)
         or candidate.get("docker_config") != str(docker_config)
         or candidate.get("cidfile") != str(cidfile)

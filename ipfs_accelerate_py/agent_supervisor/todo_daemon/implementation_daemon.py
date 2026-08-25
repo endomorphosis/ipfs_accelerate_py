@@ -39,6 +39,7 @@ from ...llm_router import (
     build_agent_implementation_control_plane_pin,
     decide_agent_implementation_fallback,
     extract_agent_implementation_route_outcomes,
+    find_codex_vendor_binaries,
     load_agent_implementation_route_authorization,
     materialize_agent_implementation_control_plane_capsule,
     parse_agent_implementation_effect_authorization_context,
@@ -2674,83 +2675,10 @@ def _host_cli_binary(name: str) -> str | None:
     return None
 
 
-def _codex_vendor_pair_from_bin_dir(bindir: Path) -> tuple[Path, Path] | None:
-    """Return native Codex plus matching code-mode-host from one vendor bin."""
-
-    try:
-        codex = (bindir / "codex").resolve(strict=True)
-        companion = (bindir / "codex-code-mode-host").resolve(strict=True)
-    except OSError:
-        return None
-    if (
-        not codex.is_file()
-        or not companion.is_file()
-        or not os.access(codex, os.X_OK)
-        or not os.access(companion, os.X_OK)
-        or codex.parent != companion.parent
-    ):
-        return None
-    return codex, companion
-
-
 def _host_codex_vendor_binaries() -> tuple[Path, Path] | None:
-    """Locate the host npm Codex native pair (newer than the sealed image).
+    """Compatibility adapter for the router-owned native Codex pair."""
 
-    Image Codex 0.148.0 has no ``codex-code-mode-host``.  gpt-5.6-terra
-    fail-closes without that companion, so isolation bind-mounts the matching
-    host 0.149.0 vendor binaries together — never a mismatched companion.
-    """
-
-    roots: list[Path] = []
-    located = _host_cli_binary("codex")
-    if located:
-        path = Path(located)
-        try:
-            resolved = path.resolve(strict=True)
-        except OSError:
-            resolved = path
-        pair = _codex_vendor_pair_from_bin_dir(resolved.parent)
-        if pair is not None:
-            return pair
-        if resolved.name in {"codex.js", "codex"}:
-            roots.append(resolved.parent.parent)
-    roots.extend(
-        (
-            Path("/usr/local/lib/node_modules/@openai/codex"),
-            _operator_home_dir()
-            / ".npm-global"
-            / "lib"
-            / "node_modules"
-            / "@openai"
-            / "codex",
-            _operator_home_dir()
-            / ".local"
-            / "lib"
-            / "node_modules"
-            / "@openai"
-            / "codex",
-        )
-    )
-    seen: set[Path] = set()
-    for root in roots:
-        try:
-            key = root.resolve()
-        except OSError:
-            key = root
-        if key in seen or not root.is_dir():
-            continue
-        seen.add(key)
-        try:
-            matches = tuple(
-                root.glob("node_modules/@openai/codex-linux-*/vendor/*/bin")
-            )
-        except OSError:
-            continue
-        for bindir in matches:
-            pair = _codex_vendor_pair_from_bin_dir(bindir)
-            if pair is not None:
-                return pair
-    return None
+    return find_codex_vendor_binaries()
 
 
 def _goose_binary() -> str | None:

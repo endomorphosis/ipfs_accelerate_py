@@ -564,6 +564,27 @@ def _discard_live_cleanup_inputs(paths: dict[str, Path]) -> None:
         pass
 
 
+def test_immutable_effect_receipt_survives_private_cleanup_root_retirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cleanup_root = (tmp_path / "private-cleanup-root").resolve()
+    cleanup_root.mkdir(mode=0o700)
+    monkeypatch.setattr(tempfile, "tempdir", str(cleanup_root))
+    context, paths = _live_cleanup_launch_context()
+    monkeypatch.setattr(tempfile, "tempdir", None)
+
+    assert llm_router._agent_effect_launch_details_valid(context)
+    _discard_live_cleanup_inputs(paths)
+    cleanup_root.rmdir()
+
+    # The receipt remains immutable evidence after admitted cleanup, while a
+    # path that would mutate or adopt the retired effect must still fail shut.
+    assert llm_router._agent_effect_launch_details_valid(context)
+    with pytest.raises(ValueError, match="cleanup root identity is unavailable"):
+        grok_cli_runner_module._recorded_codex_lease_root(context)
+
+
 @pytest.mark.parametrize(
     "attack",
     [

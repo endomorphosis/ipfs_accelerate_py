@@ -280,6 +280,10 @@ def _same_boot_materialization_fixture(tmp_path: Path):
         docker_bin="/usr/bin/docker",
         provider="codex",
         container_name=container_name,
+        cleanup_root=tmp_path,
+        cleanup_root_identity=(
+            grok_cli_runner._docker_cleanup_root_identity(tmp_path)
+        ),
         lease_root=lease_root,
         docker_config=docker_config,
         cidfile=cidfile,
@@ -2246,6 +2250,244 @@ def test_docker_cleanup_watchdog_cannot_write_candidate_bytecode(
         lease.close(docker_run_finished=False)
 
 
+def test_docker_cleanup_root_survives_ambient_tempdir_restore(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    allocator_root = (tmp_path / "private-allocator").resolve()
+    allocator_root.mkdir(mode=0o700)
+    lease_root = allocator_root / "asref-codex-container-test"
+    provider_home = allocator_root / "asref-codex-home-test"
+    prompt_path = allocator_root / "asref-grok-prompt-test"
+    lease_root.mkdir(mode=0o700)
+    provider_home.mkdir(mode=0o700)
+    prompt_path.write_bytes(b"")
+    prompt_path.chmod(0o600)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "must-not-reach-cleanup-watchdog",
+    )
+
+    environment = grok_cli_runner._docker_cleanup_watchdog_env()
+    cleanup_root, cleanup_root_identity = (
+        grok_cli_runner._validated_docker_cleanup_root(
+            lease_root=lease_root,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
+        )
+    )
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    readmitted_root, readmitted_identity = (
+        grok_cli_runner._validated_docker_cleanup_root(
+            lease_root=lease_root,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
+            expected_root=cleanup_root,
+            expected_identity=cleanup_root_identity,
+        )
+    )
+
+    assert "TMPDIR" not in environment
+    assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in environment
+    assert readmitted_root == cleanup_root == allocator_root
+    assert readmitted_identity == cleanup_root_identity
+
+    drifted_identity = dict(cleanup_root_identity)
+    drifted_identity["inode"] += 1
+    with pytest.raises(ValueError, match="cleanup root identity drifted"):
+        grok_cli_runner._validated_docker_cleanup_root(
+            lease_root=lease_root,
+            provider_home=provider_home,
+            prompt_path=prompt_path,
+            expected_root=cleanup_root,
+            expected_identity=drifted_identity,
+        )
+
+    allocator_root.chmod(0o755)
+    try:
+        with pytest.raises(ValueError, match="cleanup root identity is unsafe"):
+            grok_cli_runner._validated_docker_cleanup_root(
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+            )
+    finally:
+        allocator_root.chmod(0o700)
+
+    relocated_root = tmp_path / "relocated-private-allocator"
+    allocator_root.rename(relocated_root)
+    allocator_root.symlink_to(relocated_root, target_is_directory=True)
+    try:
+        with pytest.raises(ValueError, match="cleanup root identity is unavailable"):
+            grok_cli_runner._validated_docker_cleanup_root(
+                lease_root=lease_root,
+                provider_home=provider_home,
+                prompt_path=prompt_path,
+            )
+    finally:
+        allocator_root.unlink()
+        relocated_root.rename(allocator_root)
+
+
+def test_durable_cleanup_binding_uses_recorded_root_after_ambient_restore(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator import (
+        LifecycleProfile,
+        ProcessIdentity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        multi_supervisor_runner,
+    )
+
+    cleanup_root = (tmp_path / "private-cleanup-root").resolve()
+    cleanup_root.mkdir(mode=0o700)
+    state_root = cleanup_root / "state"
+    run_root = state_root / "run"
+    binding_directory = run_root / "provider-cleanup-bindings"
+    binding_directory.mkdir(parents=True, mode=0o700)
+    binding_directory.chmod(0o700)
+    profile = LifecycleProfile(
+        target_id="recorded-cleanup-root-test",
+        run_id="run-recorded-cleanup-root-test",
+        configuration_root="sha256:" + ("7" * 64),
+        repository_root=str(tmp_path),
+        state_root=str(state_root),
+        run_root=str(run_root),
+        argv=(sys.executable, "supervisor.py"),
+        cwd=str(tmp_path),
+    )
+    for name, value in profile.launch_environment(5).items():
+        monkeypatch.setenv(name, value)
+
+    lease_root = cleanup_root / "asref-codex-container-recorded"
+    docker_config = lease_root / "docker-config"
+    provider_home = cleanup_root / "asref-codex-home-recorded"
+    prompt_path = cleanup_root / "asref-grok-prompt-recorded"
+    lease_root.mkdir(mode=0o700)
+    docker_config.mkdir(mode=0o700)
+    provider_home.mkdir(mode=0o700)
+    prompt_path.write_bytes(b"")
+    prompt_path.chmod(0o600)
+    cidfile = lease_root / "container.cid"
+    container_name = "ipfs-accelerate-codex-123-" + ("9" * 32)
+    binding_path = binding_directory / (
+        hashlib.sha256(container_name.encode("ascii")).hexdigest() + ".json"
+    )
+    birth = grok_cli_runner.read_process_birth(os.getpid())
+    assert birth is not None
+    path_identities = {
+        "docker_config": grok_cli_runner._cleanup_path_identity(
+            docker_config,
+            directory=True,
+        ),
+        "lease_root": grok_cli_runner._cleanup_path_identity(
+            lease_root,
+            directory=True,
+        ),
+        "prompt_path": grok_cli_runner._cleanup_path_identity(
+            prompt_path,
+            directory=False,
+        ),
+        "provider_home": grok_cli_runner._cleanup_path_identity(
+            provider_home,
+            directory=True,
+        ),
+    }
+    binding = grok_cli_runner._docker_cleanup_binding_value(
+        binding_state="prepared_no_dispatch",
+        provider="codex",
+        docker_bin="/usr/bin/docker",
+        container_name=container_name,
+        lease_root=lease_root,
+        docker_config=docker_config,
+        cidfile=cidfile,
+        provider_home=provider_home,
+        prompt_path=prompt_path,
+        effect_observation={},
+        path_identities=path_identities,
+        binding_path=binding_path,
+        runner_pid=os.getpid(),
+        runner_start_ticks=birth.start_time_ticks,
+        watchdog_pid=os.getpid(),
+        watchdog_start_ticks=birth.start_time_ticks,
+    )
+    grok_cli_runner._write_private_control_record(
+        binding_directory,
+        binding_path.name,
+        binding,
+        replace_existing=False,
+    )
+
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    monkeypatch.delenv("TMPDIR", raising=False)
+    records = multi_supervisor_runner._durable_docker_cleanup_bindings(
+        profile,
+        fencing_epoch=5,
+    )
+    assert len(records) == 1
+    assert records[0].cleanup_root == cleanup_root
+    assert dict(records[0].cleanup_root_identity) == binding[
+        "cleanup_root_identity"
+    ]
+
+    watchdog_argv = (
+        sys.executable,
+        str(Path(grok_cli_runner.__file__).resolve()),
+        grok_cli_runner._DOCKER_CLEANUP_WATCHDOG_LAUNCHER_ARG,
+        "--control-fd",
+        "9",
+        grok_cli_runner._DOCKER_CLEANUP_WATCHDOG_ARG,
+        "--provider",
+        "codex",
+        "--docker-bin",
+        "/usr/bin/docker",
+        "--container-name",
+        container_name,
+        "--cidfile",
+        str(cidfile),
+        "--lease-root",
+        str(lease_root),
+        "--provider-home",
+        str(provider_home),
+        "--prompt-path",
+        str(prompt_path),
+        "--cleanup-binding-record",
+        str(binding_path),
+        "--runner-pid",
+        str(os.getpid()),
+        "--runner-start-ticks",
+        str(birth.start_time_ticks),
+    )
+    identity = ProcessIdentity(
+        pid=os.getpid(),
+        start_time_ticks=birth.start_time_ticks,
+        parent_pid=1,
+        process_group_id=os.getpgrp(),
+        session_id=os.getsid(0),
+        boot_id=birth.boot_id,
+        argv=watchdog_argv,
+        cwd="/",
+        executable=str(Path(sys.executable).resolve()),
+        run_id=profile.run_id,
+        profile_id=profile.profile_id,
+        target_id=profile.target_id,
+        repository_root=profile.repository_root,
+        state_root=profile.state_root,
+        run_root=profile.run_root,
+        fencing_epoch=5,
+        configuration_root=profile.configuration_root,
+    )
+    assert multi_supervisor_runner._detached_docker_cleanup_binding(
+        identity,
+        runner_pid=os.getpid(),
+        runner_start_ticks=birth.start_time_ticks,
+        runner_boot_id=birth.boot_id,
+        records=records,
+    ) == ("/usr/bin/docker", container_name, str(lease_root))
+
+
 def test_docker_cleanup_watchdog_detaches_beyond_strict_fence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3942,7 +4184,12 @@ def test_strict_fence_waits_for_detached_container_cleanup(
         identity = adapter._identity(child.pid, profile)
         child._agent_supervisor_lifecycle_profile = profile  # type: ignore[attr-defined]
         child._agent_supervisor_process_identity = identity  # type: ignore[attr-defined]
-        deadline = time.monotonic() + 30.0
+        # This is a live pre-dispatch efficiency qualification, not the
+        # production Docker-create effect timeout. The fixture must reach its
+        # running fence without heavyweight supervisor imports consuming the
+        # bounded readiness budget.
+        ready_timeout = 30.0
+        deadline = time.monotonic() + ready_timeout
         while not ready_path.exists() and time.monotonic() < deadline:
             if child.poll() is not None:
                 _stdout, stderr = child.communicate(timeout=1.0)
@@ -3951,6 +4198,12 @@ def test_strict_fence_waits_for_detached_container_cleanup(
                     f"{child.returncode}: {stderr.decode(errors='replace')}"
                 )
             time.sleep(0.05)
+        if not ready_path.is_file():
+            pytest.fail(
+                "provider fixture did not publish readiness within its "
+                f"{ready_timeout:.0f}-second efficiency bound; "
+                f"child_state={'running' if child.poll() is None else child.returncode}"
+            )
         payload = json.loads(ready_path.read_text(encoding="utf-8"))
         container_name = str(payload["container_name"])
         lease_root = Path(str(payload["lease_root"]))
@@ -4103,6 +4356,10 @@ def test_strict_fence_never_reconciles_before_both_exact_owners_exit(
         docker_bin="/usr/bin/docker",
         provider="codex",
         container_name="ipfs-accelerate-codex-101-" + ("e" * 32),
+        cleanup_root=tmp_path,
+        cleanup_root_identity=(
+            grok_cli_runner._docker_cleanup_root_identity(tmp_path)
+        ),
         lease_root=tmp_path / "lease",
         docker_config=tmp_path / "lease" / "docker-config",
         cidfile=tmp_path / "lease" / "container.cid",
@@ -4282,6 +4539,10 @@ def test_strict_fence_reconciles_record_created_during_shutdown(
         docker_bin="/usr/bin/docker",
         provider="codex",
         container_name="ipfs-accelerate-codex-111-" + ("a" * 32),
+        cleanup_root=tmp_path,
+        cleanup_root_identity=(
+            grok_cli_runner._docker_cleanup_root_identity(tmp_path)
+        ),
         lease_root=tmp_path / "late-lease",
         docker_config=tmp_path / "late-lease" / "docker-config",
         cidfile=tmp_path / "late-lease" / "container.cid",
@@ -4592,6 +4853,12 @@ def test_self_hashed_cleanup_completion_cannot_remove_live_state(
                 "run_root": str(tmp_path),
                 "configuration_root": "sha256:" + ("d" * 64),
                 "fencing_epoch": 1,
+                "cleanup_root": str(lease_root.parent),
+                "cleanup_root_identity": (
+                    grok_cli_runner._docker_cleanup_root_identity(
+                        lease_root.parent
+                    )
+                ),
                 "lease_root": str(lease_root),
                 "docker_config": str(docker_config),
                 "cidfile": str(lease_root / "container.cid"),
@@ -5400,10 +5667,12 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
 ) -> None:
     workspace = tmp_path / "workspace"
     provider_bin = tmp_path / "provider-bin"
-    docker_config = tmp_path / "docker-config"
+    lease_root = tmp_path / "asref-codex-container-boundary"
+    docker_config = lease_root / "docker-config"
     provider_home = tmp_path / "asref-codex-home-test"
     workspace.mkdir()
     provider_bin.mkdir()
+    lease_root.mkdir(mode=0o700)
     docker_config.mkdir()
     provider_home.mkdir(mode=0o700)
     monkeypatch.setattr(
@@ -5425,13 +5694,9 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     host_companion.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     host_codex.chmod(0o755)
     host_companion.chmod(0o755)
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
-        implementation_daemon,
-    )
-
     monkeypatch.setattr(
-        implementation_daemon,
-        "_host_codex_vendor_binaries",
+        grok_cli_runner,
+        "find_codex_vendor_binaries",
         lambda: (host_codex.resolve(), host_companion.resolve()),
     )
     fallback = _terra_fallback_command(str(codex), workspace)
@@ -5447,7 +5712,7 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         child_env=child_env,
         docker_config=docker_config,
         container_name=container_name,
-        cidfile=tmp_path / "container.cid",
+        cidfile=lease_root / "container.cid",
         docker_bin="/usr/bin/docker",
         isolation_image=image,
     )
@@ -5529,15 +5794,8 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     inner = command[command.index(image) + 1 :]
     expected_inner = list(fallback)
     expected_inner[expected_inner.index("-s") + 1] = "danger-full-access"
-    try:
-        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-            _host_codex_vendor_binaries,
-        )
-
-        if _host_codex_vendor_binaries() is not None:
-            expected_inner[0] = "/usr/local/bin/codex"
-    except Exception:
-        pass
+    if grok_cli_runner.find_codex_vendor_binaries() is not None:
+        expected_inner[0] = "/usr/local/bin/codex"
     expected_environment = [
         f"{name}={value}" for name, value in sorted(child_env.items())
     ]
@@ -5558,12 +5816,17 @@ def test_docker_create_positive_grammar_admits_canonical_vendor_command_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    runner_source = Path(grok_cli_runner.__file__).read_text(encoding="utf-8")
+    assert "todo_daemon.implementation_daemon" not in runner_source
+
     workspace = tmp_path / "workspace"
     provider_bin = tmp_path / "provider-bin"
-    docker_config = tmp_path / "docker-config"
+    lease_root = tmp_path / "asref-codex-container-grammar"
+    docker_config = lease_root / "docker-config"
     provider_home = tmp_path / "asref-codex-home-grammar"
-    for directory in (workspace, provider_bin, docker_config, provider_home):
+    for directory in (workspace, provider_bin, lease_root, provider_home):
         directory.mkdir(mode=0o700)
+    docker_config.mkdir(mode=0o700)
     monkeypatch.setattr(
         grok_cli_runner.tempfile,
         "gettempdir",
@@ -5582,17 +5845,13 @@ def test_docker_create_positive_grammar_admits_canonical_vendor_command_only(
     for executable in (host_codex, host_companion):
         executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         executable.chmod(0o755)
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
-        implementation_daemon,
-    )
-
     monkeypatch.setattr(
-        implementation_daemon,
-        "_host_codex_vendor_binaries",
+        grok_cli_runner,
+        "find_codex_vendor_binaries",
         lambda: (host_codex.resolve(), host_companion.resolve()),
     )
     image = grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
-    cidfile = tmp_path / "container.cid"
+    cidfile = lease_root / "container.cid"
     container_name = "ipfs-accelerate-codex-1-" + "a" * 32
     command = grok_cli_runner._docker_codex_fallback_command(
         codex_command=_terra_fallback_command(str(codex), workspace),
@@ -5689,6 +5948,91 @@ def test_docker_create_positive_grammar_admits_canonical_vendor_command_only(
                 **identity_arguments,
                 argv=mutated,
             )
+
+
+def test_router_codex_vendor_pair_requires_two_common_executables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vendor_bin = tmp_path / "vendor-bin"
+    foreign_bin = tmp_path / "foreign-bin"
+    vendor_bin.mkdir()
+    foreign_bin.mkdir()
+    codex = vendor_bin / "codex"
+    companion = vendor_bin / "codex-code-mode-host"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    companion.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    companion.chmod(0o755)
+
+    assert llm_router._codex_vendor_pair_from_bin_dir(vendor_bin) == (
+        codex.resolve(),
+        companion.resolve(),
+    )
+    admitted_pair = (codex.resolve(), companion.resolve())
+    monkeypatch.setattr(
+        implementation_daemon,
+        "find_codex_vendor_binaries",
+        lambda: admitted_pair,
+    )
+    assert implementation_daemon._host_codex_vendor_binaries() == admitted_pair
+
+    companion.chmod(0o644)
+    assert llm_router._codex_vendor_pair_from_bin_dir(vendor_bin) is None
+    companion.unlink()
+    foreign_companion = foreign_bin / "codex-code-mode-host"
+    foreign_companion.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    foreign_companion.chmod(0o755)
+    companion.symlink_to(foreign_companion)
+    assert llm_router._codex_vendor_pair_from_bin_dir(vendor_bin) is None
+
+
+def test_codex_vendor_lookup_does_not_import_the_implementation_daemon(
+    tmp_path: Path,
+) -> None:
+    isolated_tmp = tmp_path / "isolated-tmp"
+    isolated_tmp.mkdir()
+    repository_root = Path(__file__).resolve().parents[2]
+    daemon_name = (
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+    )
+    code = "\n".join(
+        (
+            "import sys",
+            "from pathlib import Path",
+            f"sys.path.insert(0, {str(repository_root)!r})",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.runtime "
+                "import grok_cli_runner"
+            ),
+            f"assert {daemon_name!r} not in sys.modules",
+            "grok_cli_runner._docker_codex_host_vendor_mounts()",
+            f"assert {daemon_name!r} not in sys.modules",
+            (
+                f"assert not list(Path({str(isolated_tmp)!r}).glob("
+                "'asref-imported-control-plane-*'))"
+            ),
+        )
+    )
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("LD_", "PYTHON", "PYTEST"))
+    }
+    environment["TMPDIR"] = str(isolated_tmp)
+    completed = subprocess.run(
+        ["/usr/bin/python3", "-I", "-B", "-c", code],
+        cwd=repository_root,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=20.0,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr.decode(
+        errors="replace"
+    )
 
 
 @pytest.mark.parametrize("payload", [None, b"forged-provider-start\n"])

@@ -367,7 +367,7 @@ _DOCKER_CLEANUP_CONTAINER_RE = re.compile(
 _DOCKER_CLEANUP_INSPECTION_MAX_BYTES = 256 * 1024
 _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
 _DOCKER_CLEANUP_BINDING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/docker-cleanup-binding@5"
+    "ipfs_accelerate_py/agent-supervisor/docker-cleanup-binding@6"
 )
 _DOCKER_CREATE_JOURNAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/docker-create-journal@4"
@@ -382,6 +382,8 @@ class _DurableDockerCleanupBinding:
     docker_bin: str
     provider: str
     container_name: str
+    cleanup_root: Path
+    cleanup_root_identity: Mapping[str, int]
     lease_root: Path
     docker_config: Path
     cidfile: Path
@@ -8039,7 +8041,6 @@ def _detached_docker_cleanup_binding(
     lease_root = Path(raw_lease_root)
     if (
         not lease_root.is_absolute()
-        or lease_root.parent != Path(tempfile.gettempdir()).resolve()
         or re.fullmatch(
             r"asref-(?:grok|codex)-container-[a-z0-9_]+",
             lease_root.name,
@@ -8058,6 +8059,18 @@ def _detached_docker_cleanup_binding(
         value = _read_durable_docker_cleanup_record(binding_path)
     except OSError as exc:
         raise ValueError("detached Docker cleanup authority is unavailable") from exc
+    try:
+        from .grok_cli_runner import _validated_docker_cleanup_root
+
+        cleanup_root, cleanup_root_identity = _validated_docker_cleanup_root(
+            lease_root=lease_root,
+            provider_home=Path(provider_home),
+            prompt_path=Path(prompt_path),
+            expected_root=Path(str(value.get("cleanup_root") or "")),
+            expected_identity=value.get("cleanup_root_identity"),  # type: ignore[arg-type]
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("detached Docker cleanup root is invalid") from exc
     body = {key: item for key, item in value.items() if key != "record_id"}
     if (
         identity.pid <= 0
@@ -8087,6 +8100,8 @@ def _detached_docker_cleanup_binding(
         or value.get("provider") != provider
         or value.get("docker_bin") != str(docker_path)
         or value.get("container_name") != container_name
+        or value.get("cleanup_root") != str(cleanup_root)
+        or value.get("cleanup_root_identity") != cleanup_root_identity
         or value.get("lease_root") != str(lease_root)
         or value.get("docker_config") != str(lease_root / "docker-config")
         or value.get("cidfile") != cidfile
@@ -8104,6 +8119,8 @@ def _detached_docker_cleanup_binding(
         and record.watchdog_pid == identity.pid
         and record.watchdog_start_ticks == identity.start_time_ticks
         and record.boot_id == identity.boot_id
+        and record.cleanup_root == cleanup_root
+        and dict(record.cleanup_root_identity) == cleanup_root_identity
         and record.binding == (str(docker_path), container_name, str(lease_root))
     )
     if len(admitted) != 1:
@@ -8305,6 +8322,8 @@ def _durable_docker_cleanup_bindings(
         "docker_mode",
         "docker_uid",
         "container_name",
+        "cleanup_root",
+        "cleanup_root_identity",
         "lease_root",
         "docker_config",
         "cidfile",
@@ -8370,7 +8389,6 @@ def _durable_docker_cleanup_bindings(
         raise ValueError("durable Docker cleanup record set is invalid")
     records: list[_DurableDockerCleanupBinding] = []
     binding_values: dict[str, Mapping[str, object]] = {}
-    temporary_root = Path(tempfile.gettempdir()).resolve()
     for path in paths:
         try:
             value = _read_durable_docker_cleanup_record(
@@ -8481,6 +8499,29 @@ def _durable_docker_cleanup_bindings(
             except (KeyError, TypeError, ValueError):
                 termination_fence_valid = False
         try:
+            from .grok_cli_runner import _validated_docker_cleanup_root
+
+            cleanup_root, cleanup_root_identity = (
+                _validated_docker_cleanup_root(
+                    lease_root=lease_root,
+                    provider_home=provider_home,
+                    prompt_path=prompt_path,
+                    expected_root=Path(
+                        str(value.get("cleanup_root") or "")
+                    ),
+                    expected_identity=value.get("cleanup_root_identity"),  # type: ignore[arg-type]
+                )
+            )
+            cleanup_root_valid = bool(
+                value.get("cleanup_root") == str(cleanup_root)
+                and value.get("cleanup_root_identity")
+                == cleanup_root_identity
+            )
+        except (TypeError, ValueError):
+            cleanup_root = Path()
+            cleanup_root_identity = {}
+            cleanup_root_valid = False
+        try:
             docker_path = Path(docker_bin).resolve(strict=True)
             docker_metadata = docker_path.stat()
             runner_pid = int(value.get("runner_pid"))
@@ -8527,13 +8568,11 @@ def _durable_docker_cleanup_bindings(
             != hashlib.sha256(container_name.encode("ascii")).hexdigest()
             + ".json"
             or value.get("binding_path") != str(path)
-            or lease_root.parent != temporary_root
+            or not cleanup_root_valid
             or not lease_root.name.startswith(f"asref-{provider}-container-")
             or docker_config != lease_root / "docker-config"
             or cidfile != lease_root / "container.cid"
-            or provider_home.parent != temporary_root
             or not provider_home.name.startswith(f"asref-{provider}-home-")
-            or prompt_path.parent != temporary_root
             or not prompt_path.name.startswith("asref-grok-prompt-")
             or not isinstance(effect_observation, dict)
             or set(effect_observation)
@@ -8582,6 +8621,10 @@ def _durable_docker_cleanup_bindings(
                 docker_bin=str(docker_path),
                 provider=provider,
                 container_name=container_name,
+                cleanup_root=cleanup_root,
+                cleanup_root_identity=MappingProxyType(
+                    dict(cleanup_root_identity)
+                ),
                 lease_root=lease_root,
                 docker_config=docker_config,
                 cidfile=cidfile,

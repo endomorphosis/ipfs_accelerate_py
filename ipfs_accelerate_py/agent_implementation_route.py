@@ -2045,18 +2045,23 @@ def _agent_effect_launch_details_valid(
     cleanup_body = {
         key: item for key, item in cleanup.items() if key != "receipt_id"
     }
+    cleanup_root = lease_root.parent
     if (
         cleanup.get("schema")
         != "ipfs_accelerate_py.agent_supervisor.provider-effect-cleanup@1"
         or cleanup.get("lease_root") != str(lease_root)
         or cleanup.get("docker_config") != str(config_path)
         or cleanup.get("cidfile") != str(cidfile_path)
-        or lease_root.parent != Path(tempfile.gettempdir()).resolve()
+        # This validates immutable receipt semantics, so it must remain true
+        # after an admitted cleanup legitimately retires the private root.
+        # Live ownership, mode, symlink, and inode checks belong to the
+        # recorded-effect mutation paths and their durable @6 binding.
+        or not cleanup_root.is_absolute()
         or not provider_home.is_absolute()
-        or provider_home.parent != lease_root.parent
+        or provider_home.parent != cleanup_root
         or not provider_home.name.startswith("asref-codex-home-")
         or not prompt_path.is_absolute()
-        or prompt_path.parent != lease_root.parent
+        or prompt_path.parent != cleanup_root
         or not prompt_path.name.startswith("asref-grok-prompt-")
         or (workspace_path and provider_home.is_relative_to(Path(workspace_path)))
         or (workspace_path and prompt_path.is_relative_to(Path(workspace_path)))
