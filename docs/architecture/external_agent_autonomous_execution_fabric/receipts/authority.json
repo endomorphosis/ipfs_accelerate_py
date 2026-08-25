@@ -1,0 +1,46 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/qualification-receipt@1",
+  "task_alias": "EAAEF-034",
+  "evidence_mode": "contract_fail_closed",
+  "live_runtime_invoked": false,
+  "live_eight_container_evidence": false,
+  "result": "pass",
+  "focused_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/security/test_external_agent_authority_boundaries.py",
+    "-o",
+    "cache_dir=/tmp/eaaef-pytest-cache-a"
+  ],
+  "pytest": {
+    "collected": 4,
+    "passed": 4,
+    "skipped": 0,
+    "xfailed": 0,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "id": "forbidden_sources_cannot_bind_or_widen_effects",
+      "result": "pass",
+      "detail": "prompt, payment, commit, CID and imported history cannot bind or widen effects"
+    },
+    {
+      "id": "run_id_and_transport_authentication_are_not_authority",
+      "result": "pass",
+      "detail": "run IDs and transport/TLS/PeerID/Quack tokens are not AuthoritySource values and cannot request merge/secret/disclosure"
+    },
+    {
+      "id": "disclosure_and_secret_and_proof_key_cannot_be_widened",
+      "result": "pass",
+      "detail": "secret confidentiality, PEM proof keys and disclosure/secret effects fail closed"
+    },
+    {
+      "id": "workers_cids_and_prompts_cannot_approve_merge",
+      "result": "pass",
+      "detail": "workers and CIDs cannot approve; merge remains ungated without authenticated input-bound approval"
+    }
+  ]
+}

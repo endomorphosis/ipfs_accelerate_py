@@ -1,0 +1,47 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/qualification-receipt@1",
+  "task_alias": "EAAEF-055",
+  "evidence_mode": "contract_fail_closed",
+  "live_runtime_invoked": false,
+  "live_eight_container_evidence": false,
+  "live_admitted_runtime": false,
+  "result": "pass",
+  "notes": [
+    "OciRunner/build_oci_run_spec plan default-deny argv and never contact a live docker engine.",
+    "This receipt does not convert unit policy tests into a claim of live isolation.",
+    "Checkpoint contracts were imported and validated without starting containers."
+  ],
+  "focused_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/security/test_external_agent_container_isolation.py",
+    "-o",
+    "cache_dir=/tmp/eaaef-pytest-cache-a"
+  ],
+  "pytest": {
+    "collected": 3,
+    "passed": 3,
+    "skipped": 0,
+    "xfailed": 0,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "id": "default_deny_isolation_without_live_engine",
+      "result": "pass",
+      "detail": "no docker.sock, no privileged, network none, read-only, cap-drop ALL, no-new-privileges, bounded resources, live_engine_invoked false"
+    },
+    {
+      "id": "isolation_policy_rejects_docker_socket_and_privileged",
+      "result": "pass",
+      "detail": "IsolationPolicy(docker_socket_mounted=True) and privileged workers raise ContainerTrustError"
+    },
+    {
+      "id": "checkpoint_contracts_exist_without_starting_containers",
+      "result": "pass",
+      "detail": "ContainerCheckpoint recover requires a later fence and a dead owner; no container start"
+    }
+  ]
+}

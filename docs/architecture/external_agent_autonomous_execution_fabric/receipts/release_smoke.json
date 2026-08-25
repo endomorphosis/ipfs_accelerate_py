@@ -1,0 +1,13 @@
+{
+  "evidence_mode": "contract_fail_closed",
+  "live_containers": false,
+  "live_eight_container_qualification": false,
+  "live_runtime_invoked": false,
+  "repository_id": "repo:sha256-exported",
+  "run_id": "baguqeerawgt3k5r5xh65idq72onuwvimm7ksv4azrakf7ylo67g6exq4e5aa",
+  "run_status": "approved",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
+  "session_id": "session:exported-client",
+  "task_id": "EAAEF-172",
+  "terminal": "completed"
+}

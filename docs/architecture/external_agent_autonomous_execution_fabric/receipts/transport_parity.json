@@ -1,0 +1,141 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/external-handoff-transport-parity@1",
+  "task_id": "EAAEF-115",
+  "evidence_mode": "contract_fail_closed",
+  "live_runtime_invoked": false,
+  "live_quack": false,
+  "live_docker": false,
+  "preview_is_handoff": false,
+  "self_approval": false,
+  "storage_authority": false,
+  "new_mcpplusplus_profile": false,
+  "unknown_operation_reason_code": "unknown_operation",
+  "canonical_operations": [
+    "handoff",
+    "preview",
+    "attach",
+    "status",
+    "follow",
+    "steer",
+    "pause",
+    "resume",
+    "approve",
+    "reject",
+    "cancel",
+    "explain",
+    "doctor",
+    "report",
+    "export"
+  ],
+  "transports": {
+    "python": {
+      "module": "ipfs_accelerate_py.agent_supervisor.api.external_handoff",
+      "operations": [
+        "handoff",
+        "preview",
+        "attach",
+        "status",
+        "follow",
+        "steer",
+        "pause",
+        "resume",
+        "approve",
+        "reject",
+        "cancel",
+        "explain",
+        "doctor",
+        "report",
+        "export"
+      ]
+    },
+    "cli": {
+      "module": "ipfs_accelerate_py.cli.supervisor_handoff",
+      "commands": [
+        "handoff",
+        "status",
+        "follow",
+        "attach",
+        "steer",
+        "pause",
+        "resume",
+        "approve",
+        "reject",
+        "cancel",
+        "explain",
+        "doctor",
+        "report",
+        "export-result"
+      ],
+      "operations": [
+        "handoff",
+        "status",
+        "follow",
+        "attach",
+        "steer",
+        "pause",
+        "resume",
+        "approve",
+        "reject",
+        "cancel",
+        "explain",
+        "doctor",
+        "report",
+        "export"
+      ]
+    },
+    "mcp": {
+      "module": "ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools.external_handoff",
+      "operations": [
+        "handoff",
+        "preview",
+        "attach",
+        "status",
+        "follow",
+        "steer",
+        "pause",
+        "resume",
+        "approve",
+        "reject",
+        "cancel",
+        "explain",
+        "doctor",
+        "report"
+      ]
+    },
+    "mcplusplus": {
+      "module": "ipfs_kit_py.mcp_server.mcplusplus.external_agent_handoff",
+      "operations": [
+        "handoff",
+        "preview",
+        "attach",
+        "status",
+        "follow",
+        "steer",
+        "pause",
+        "resume",
+        "approve",
+        "reject",
+        "cancel",
+        "explain",
+        "doctor",
+        "report",
+        "export"
+      ]
+    }
+  },
+  "shared_operations": [
+    "approve",
+    "attach",
+    "cancel",
+    "doctor",
+    "explain",
+    "follow",
+    "handoff",
+    "pause",
+    "reject",
+    "report",
+    "resume",
+    "status",
+    "steer"
+  ]
+}

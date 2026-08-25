@@ -1,0 +1,41 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/qualification-receipt@1",
+  "task_alias": "EAAEF-074",
+  "evidence_mode": "contract_fail_closed",
+  "live_runtime_invoked": false,
+  "live_eight_container_evidence": false,
+  "result": "pass",
+  "focused_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_agent_plan_compilation.py",
+    "-o",
+    "cache_dir=/tmp/eaaef-pytest-cache-a"
+  ],
+  "pytest": {
+    "collected": 3,
+    "passed": 3,
+    "skipped": 0,
+    "xfailed": 0,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "id": "compile_goals_and_admit_exactly_one_plan",
+      "result": "pass",
+      "detail": "goals compile to work plans; admit_plan selects exactly one candidate deterministically"
+    },
+    {
+      "id": "empty_candidates_and_omitted_coverage_fail_closed",
+      "result": "pass",
+      "detail": "empty candidate sets and missing desired-outcome coverage fail closed"
+    },
+    {
+      "id": "ranking_uses_integer_axes_without_random_or_wall_clock",
+      "result": "pass",
+      "detail": "SCORE_AXES are integer only; no random or wall-clock ranking"
+    }
+  ]
+}

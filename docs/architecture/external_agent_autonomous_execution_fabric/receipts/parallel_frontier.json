@@ -1,0 +1,41 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/qualification-receipt@1",
+  "task_alias": "EAAEF-085",
+  "evidence_mode": "contract_fail_closed",
+  "live_runtime_invoked": false,
+  "live_eight_container_evidence": false,
+  "result": "pass",
+  "focused_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_agent_parallel_frontier.py",
+    "-o",
+    "cache_dir=/tmp/eaaef-pytest-cache-a"
+  ],
+  "pytest": {
+    "collected": 3,
+    "passed": 3,
+    "skipped": 0,
+    "xfailed": 0,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "id": "overlapping_writes_or_same_effects_conflict",
+      "result": "pass",
+      "detail": "overlapping write_scope or identical effect names conflict and serialize"
+    },
+    {
+      "id": "distinct_effects_and_writes_can_be_parallel",
+      "result": "pass",
+      "detail": "distinct effect names with different writes form a parallel frontier"
+    },
+    {
+      "id": "cpu_budget_and_completed_deps_are_required",
+      "result": "pass",
+      "detail": "CPU budget is respected and incomplete dependencies are excluded"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "docker_workers_started": 0,
+  "evidence_mode": "contract_fail_closed",
+  "exclusive_write_owner": "owner:exclusive-quack",
+  "exclusive_write_owner_epoch": 2,
+  "frontier_task_ids": [
+    "task:worker-0",
+    "task:worker-1",
+    "task:worker-2",
+    "task:worker-3",
+    "task:worker-4",
+    "task:worker-5",
+    "task:worker-6",
+    "task:worker-7"
+  ],
+  "live_eight_container_qualification": false,
+  "live_runtime_invoked": false,
+  "overlapping_pair_accepted": "task:overlap-b",
+  "overlapping_pair_rejected": "task:worker-0",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
+  "stale_supervisor_fence_rejected": true,
+  "supervisor_identities": [
+    "supervisor:analysis",
+    "supervisor:implementation",
+    "supervisor:verification"
+  ],
+  "supervisor_roles": [
+    "analysis",
+    "implementation",
+    "verification"
+  ],
+  "task_id": "EAAEF-141",
+  "worker_ids": [
+    "worker:slot-0",
+    "worker:slot-1",
+    "worker:slot-2",
+    "worker:slot-3",
+    "worker:slot-4",
+    "worker:slot-5",
+    "worker:slot-6",
+    "worker:slot-7"
+  ],
+  "worker_lease_count": 8,
+  "worktree_ids": [
+    "worktree:worker-0",
+    "worktree:worker-1",
+    "worktree:worker-2",
+    "worktree:worker-3",
+    "worktree:worker-4",
+    "worktree:worker-5",
+    "worktree:worker-6",
+    "worktree:worker-7"
+  ]
+}

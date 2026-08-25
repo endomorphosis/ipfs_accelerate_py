@@ -1,0 +1,12 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/repository-transfer-receipt@1",
+  "modes": [
+    "managed_alias",
+    "git_bundle",
+    "manifested_source_bundle",
+    "approved_remote_alias",
+    "uploaded_object_set"
+  ],
+  "refused": ["arbitrary_host_path", "file_uri", "path_traversal"],
+  "mutates_user_checkout": false
+}

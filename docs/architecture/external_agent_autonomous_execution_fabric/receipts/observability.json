@@ -1,0 +1,12 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/qualification-receipt@1",
+  "task_alias": "EAAEF-133",
+  "evidence_mode": "contract_fail_closed",
+  "live_runtime_invoked": false,
+  "result": "pass",
+  "cases": [
+    "events_bind_run_task_attempt_fence",
+    "secrets_rejected",
+    "steer_requires_authority_id"
+  ]
+}
