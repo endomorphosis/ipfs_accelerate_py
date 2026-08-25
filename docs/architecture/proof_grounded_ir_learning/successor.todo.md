@@ -182,7 +182,7 @@ evidence.
 
 ## PGIR-203 Admit a learned tokenizer or restrict the campaign to deterministic-only
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
