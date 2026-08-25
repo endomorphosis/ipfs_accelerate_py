@@ -29862,6 +29862,99 @@ class PortalImplementationDaemon:
             return False
         return True
 
+    def _database_portal_projection_request_binding(
+        self,
+        request: Any,
+        projection: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Bind one queue request to an exact verified Portal projection."""
+
+        metadata = (
+            request.metadata
+            if isinstance(getattr(request, "metadata", None), dict)
+            else {}
+        )
+        if (
+            str(metadata.get("schema") or "")
+            != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            or metadata.get("bundle_work_order") is not None
+        ):
+            return None
+        task_id = str(getattr(request, "task_id", "") or "").strip()
+        projection_task_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        ).strip()
+        projection_task_key = str(
+            getattr(request, "canonical_task_key", "") or ""
+        ).strip()
+        completion_task_cids = metadata.get("completion_task_cids")
+        if (
+            not task_id
+            or projection.get("task_alias") != task_id
+            or not projection_task_cid
+            or not projection_task_key
+            or not isinstance(completion_task_cids, Mapping)
+            or {
+                str(alias): str(cid)
+                for alias, cid in completion_task_cids.items()
+            }
+            != {task_id: projection_task_cid}
+        ):
+            return None
+        try:
+            projection_path = Path(
+                str(projection["projection_path"])
+            ).resolve(strict=True)
+            tasks = parse_task_text(
+                projection_path.read_text(encoding="utf-8"),
+                path=projection_path,
+                # The verified binding owns the exact alias.  Queue metadata
+                # is untrusted and cannot select a broader parser prefix.
+                task_header_prefix=f"## {task_id}",
+            )
+            if len(tasks) != 1:
+                return None
+            projected_task = tasks[0]
+            queued_task = self._portal_task_from_merge_request(request)
+            projected_payload = asdict(projected_task)
+            queued_payload = asdict(queued_task)
+            # Lifecycle status is mutable control-plane state.  All semantic
+            # fields and the full parsed metadata remain exact-bound.
+            projected_payload.pop("status", None)
+            queued_payload.pop("status", None)
+            identity = portal_task_identity(
+                projected_task,
+                todo_path=projection_path,
+            )
+        except Exception:
+            return None
+        task_cid = str(projection.get("task_cid") or "")
+        task_key = str(projection.get("canonical_task_key") or "")
+        projected_metadata = projected_task.metadata
+        if (
+            projected_task.task_id != task_id
+            or queued_payload != projected_payload
+            or not task_cid
+            or not task_key
+            or projected_metadata.get("database task cid") != task_cid
+            or projected_metadata.get("canonical task cid") != task_cid
+            or projected_metadata.get("canonical task key") != task_key
+            or projected_metadata.get("projection authority") != "false"
+            or identity.canonical_task_cid != projection_task_cid
+            or identity.canonical_task_key != projection_task_key
+        ):
+            return None
+        return {
+            "task": projected_task,
+            "identity": identity,
+            "task_id": task_id,
+            "task_cid": task_cid,
+            "canonical_task_key": task_key,
+            "projection_task_cid": projection_task_cid,
+            "projection_task_key": projection_task_key,
+            "projection_path": str(projection_path),
+        }
+
     def _database_portal_merge_continuation(
         self,
         request: Any,
@@ -29880,32 +29973,7 @@ class PortalImplementationDaemon:
 
         if request_todo_path == self.todo_path:
             return None
-        if (
-            str(metadata.get("schema") or "")
-            != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
-            or metadata.get("bundle_work_order") is not None
-        ):
-            return None
         task_id = str(getattr(request, "task_id", "") or "").strip()
-        task_cid = str(
-            getattr(request, "canonical_task_id", "") or ""
-        ).strip()
-        task_key = str(
-            getattr(request, "canonical_task_key", "") or ""
-        ).strip()
-        completion_task_cids = metadata.get("completion_task_cids")
-        if (
-            not task_id
-            or not task_cid
-            or not task_key
-            or not isinstance(completion_task_cids, Mapping)
-            or {
-                str(alias): str(cid)
-                for alias, cid in completion_task_cids.items()
-            }
-            != {task_id: task_cid}
-        ):
-            return None
         try:
             from .database_portal_bridge import (
                 verify_database_portal_attempt_projection,
@@ -29914,35 +29982,40 @@ class PortalImplementationDaemon:
             producer = verify_database_portal_attempt_projection(
                 request_todo_path,
                 expected_task_alias=task_id,
-                expected_task_cid=task_cid,
                 allowed_root=self.repo_root,
             )
-            queued_task = self._portal_task_from_merge_request(request)
-            queued_identity = self._identity_for_task(queued_task)
+            producer_request = (
+                self._database_portal_projection_request_binding(
+                    request,
+                    producer,
+                )
+            )
         except Exception:
             # This is a privilege-narrowing classifier.  Any unreadable,
             # malformed, stale, or unexpected input keeps the request on the
             # established foreign-board rejection path.
             return None
-        if (
-            producer.get("task_alias") != task_id
-            or producer.get("task_cid") != task_cid
-            or producer.get("canonical_task_key") != task_key
-            or queued_identity.canonical_task_cid != task_cid
-            or queued_identity.canonical_task_key != task_key
-        ):
+        if producer_request is None:
             return None
+        producer_task_cid = str(producer_request["task_cid"])
+        producer_task_key = str(producer_request["canonical_task_key"])
+        projection_task_cid = str(producer_request["projection_task_cid"])
+        projection_task_key = str(producer_request["projection_task_key"])
         consumer: Mapping[str, Any] | None = None
+        consumer_projection_task_cid = ""
+        consumer_projection_task_key = ""
         try:
             consumer_probe = verify_database_portal_attempt_projection(
                 self.todo_path,
                 expected_task_alias=task_id,
-                expected_task_cid=task_cid,
+                expected_task_cid=producer_task_cid,
                 allowed_root=self.repo_root,
             )
             current_tasks = self._load_tasks()
             if len(current_tasks) == 1 and current_tasks[0].task_id == task_id:
-                current_identity = self._identity_for_task(current_tasks[0])
+                current_task = current_tasks[0]
+                current_metadata = current_task.metadata
+                current_identity = self._identity_for_task(current_task)
                 if (
                     consumer_probe.get("binding_id")
                     != producer.get("binding_id")
@@ -29951,16 +30024,40 @@ class PortalImplementationDaemon:
                     and consumer_probe.get("claim_id")
                     != producer.get("claim_id")
                     and consumer_probe.get("task_alias") == task_id
-                    and consumer_probe.get("task_cid") == task_cid
-                    and consumer_probe.get("canonical_task_key") == task_key
+                    and consumer_probe.get("task_cid")
+                    == producer_task_cid
+                    and consumer_probe.get("canonical_task_key")
+                    == producer_task_key
                     and consumer_probe.get("goal_cid")
                     == producer.get("goal_cid")
                     and consumer_probe.get("plan_cid")
                     == producer.get("plan_cid")
-                    and current_identity.canonical_task_cid == task_cid
-                    and current_identity.canonical_task_key == task_key
+                    and int(producer.get("attempt_number") or 0)
+                    < int(consumer_probe.get("attempt_number") or 0)
+                    and (
+                        int(producer.get("fence_epoch") or 0),
+                        int(producer.get("fencing_token") or 0),
+                    )
+                    < (
+                        int(consumer_probe.get("fence_epoch") or 0),
+                        int(consumer_probe.get("fencing_token") or 0),
+                    )
+                    and current_metadata.get("database task cid")
+                    == producer_task_cid
+                    and current_metadata.get("canonical task cid")
+                    == producer_task_cid
+                    and current_metadata.get("canonical task key")
+                    == producer_task_key
+                    and current_metadata.get("projection authority")
+                    == "false"
                 ):
                     consumer = consumer_probe
+                    consumer_projection_task_cid = (
+                        current_identity.canonical_task_cid
+                    )
+                    consumer_projection_task_key = (
+                        current_identity.canonical_task_key
+                    )
         except Exception:
             consumer = None
         if consumer is None:
@@ -29987,8 +30084,16 @@ class PortalImplementationDaemon:
             "verified": True,
             "authority_created": False,
             "task_id": task_id,
-            "task_cid": task_cid,
-            "canonical_task_key": task_key,
+            "task_cid": producer_task_cid,
+            "canonical_task_key": producer_task_key,
+            "projection_task_cid": projection_task_cid,
+            "projection_task_key": projection_task_key,
+            "consumer_projection_task_cid": (
+                consumer_projection_task_cid
+            ),
+            "consumer_projection_task_key": (
+                consumer_projection_task_key
+            ),
             "goal_cid": str(producer["goal_cid"]),
             "plan_cid": str(producer["plan_cid"]),
             "producer_binding_id": str(producer["binding_id"]),
@@ -30000,6 +30105,65 @@ class PortalImplementationDaemon:
                 consumer.get("attempt_id") if consumer is not None else ""
             ),
         }
+
+    def _database_portal_merge_request_filter(
+        self,
+    ) -> Callable[[Any], bool] | None:
+        """Return a claim-narrowing filter for one private attempt projection.
+
+        Ordinary boards retain the shared train's fair unfiltered dequeue.
+        The canonical attempt-projection filename is private, so a missing or
+        malformed binding fails closed instead of silently widening back to an
+        ordinary consumer.  Foreign requests are admitted only when the sealed
+        same-task continuation proof succeeds; different-task siblings remain
+        pending for their own projection lane.
+        """
+
+        if self.todo_path.name != "task-projection.md":
+            return None
+        try:
+            from .database_portal_bridge import (
+                verify_database_portal_attempt_projection,
+            )
+
+            consumer = verify_database_portal_attempt_projection(
+                self.todo_path,
+                allowed_root=self.repo_root,
+            )
+            consumer_path = Path(
+                str(consumer["projection_path"])
+            ).resolve(strict=True)
+        except Exception:
+            return lambda _request: False
+
+        def request_admitted(request: Any) -> bool:
+            metadata = (
+                request.metadata
+                if isinstance(getattr(request, "metadata", None), dict)
+                else {}
+            )
+            raw_todo_path = metadata.get("todo_path")
+            if not isinstance(raw_todo_path, str) or not raw_todo_path.strip():
+                return False
+            request_todo_path = Path(raw_todo_path)
+            try:
+                if request_todo_path.resolve(strict=True) == consumer_path:
+                    return (
+                        self._database_portal_projection_request_binding(
+                            request,
+                            consumer,
+                        )
+                        is not None
+                    )
+            except OSError:
+                return False
+            return self._database_portal_merge_continuation(
+                request,
+                metadata,
+                request_todo_path,
+            ) is not None
+
+        return request_admitted
 
     def _declared_outputs_present_on_head(self, task: PortalTask) -> bool:
         """Return whether every declared output blob exists on HEAD."""
@@ -32660,15 +32824,29 @@ class PortalImplementationDaemon:
             request_primary_key = str(
                 getattr(request, "canonical_task_key", "") or ""
             )
-            queued_task = self._portal_task_from_merge_request(request)
-            queued_identity = self._identity_for_task(queued_task)
+            if database_portal_merge_continuation is not None:
+                queued_primary_cid = str(
+                    database_portal_merge_continuation.get(
+                        "projection_task_cid"
+                    )
+                    or ""
+                )
+                queued_primary_key = str(
+                    database_portal_merge_continuation.get(
+                        "projection_task_key"
+                    )
+                    or ""
+                )
+            else:
+                queued_task = self._portal_task_from_merge_request(request)
+                queued_identity = self._identity_for_task(queued_task)
+                queued_primary_cid = queued_identity.canonical_task_cid
+                queued_primary_key = queued_identity.canonical_task_key
             if (
                 not expected_primary_cid
                 or request_primary_cid != expected_primary_cid
-                or request_primary_key
-                != queued_identity.canonical_task_key
-                or queued_identity.canonical_task_cid
-                != expected_primary_cid
+                or request_primary_key != queued_primary_key
+                or queued_primary_cid != expected_primary_cid
             ):
                 return {
                     "attempted": False,
@@ -32678,13 +32856,50 @@ class PortalImplementationDaemon:
                     "expected_primary_task_cid": expected_primary_cid,
                     "request_primary_task_cid": request_primary_cid,
                     "request_primary_task_key": request_primary_key,
-                    "queued_primary_task_cid": (
-                        queued_identity.canonical_task_cid
-                    ),
-                    "queued_primary_task_key": (
-                        queued_identity.canonical_task_key
-                    ),
+                    "queued_primary_task_cid": queued_primary_cid,
+                    "queued_primary_task_key": queued_primary_key,
                 }
+        completion_binding_metadata: Mapping[str, Any] = metadata
+        if (
+            database_portal_merge_continuation is not None
+            and str(
+                database_portal_merge_continuation.get(
+                    "consumer_binding_id"
+                )
+                or ""
+            )
+        ):
+            consumer_completion_cid = str(
+                database_portal_merge_continuation.get(
+                    "consumer_projection_task_cid"
+                )
+                or ""
+            )
+            consumer_completion_key = str(
+                database_portal_merge_continuation.get(
+                    "consumer_projection_task_key"
+                )
+                or ""
+            )
+            if not consumer_completion_cid or not consumer_completion_key:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "merge_candidate_task_revision_mismatch",
+                    "completion_binding_error": {
+                        "reason": (
+                            "database_portal_consumer_identity_missing"
+                        )
+                    },
+                }
+            completion_task_cids = {
+                str(request.task_id): consumer_completion_cid
+            }
+            completion_binding_metadata = {
+                **metadata,
+                "completion_task_cids": completion_task_cids,
+            }
         task = self._portal_task_from_merge_request(request)
         branch_name = str(request.branch_name or "")
         implementation_commit = str(
@@ -32925,7 +33140,7 @@ class PortalImplementationDaemon:
         ):
             completion_binding_error = (
                 completion_daemon._completion_task_revision_binding_error(
-                    metadata,
+                    completion_binding_metadata,
                     require_pending=not initially_integrated,
                 )
             )
@@ -33305,7 +33520,7 @@ class PortalImplementationDaemon:
         ):
             completion_tasks, completion_tasks_error = (
                 completion_daemon._completion_tasks_for_declared_output_gate(
-                    metadata,
+                    completion_binding_metadata,
                     task,
                 )
             )
@@ -33479,7 +33694,7 @@ class PortalImplementationDaemon:
         ):
             completion_binding_error = (
                 completion_daemon._completion_task_revision_binding_error(
-                    metadata,
+                    completion_binding_metadata,
                     require_pending=not bool(
                         result.get("already_merged")
                     ),
@@ -33677,7 +33892,7 @@ class PortalImplementationDaemon:
                         return result
                     completion_receipt_error = (
                         completion_daemon._completed_task_binding_error(
-                            metadata
+                            completion_binding_metadata
                         )
                     )
                     if completion_receipt_error:
@@ -33877,7 +34092,9 @@ class PortalImplementationDaemon:
             decision_runtime=self.decision_runtime,
             decision_runtime_cancellation=self.implementation_cancelled,
         )
-        return train.run_once()
+        return train.run_once(
+            request_filter=self._database_portal_merge_request_filter()
+        )
 
     @staticmethod
     def _merge_train_result_is_integrated(result: dict[str, Any]) -> bool:
