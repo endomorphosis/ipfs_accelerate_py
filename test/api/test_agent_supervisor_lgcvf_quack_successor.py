@@ -108,6 +108,146 @@ def test_datasets_profile_callback_rejects_default_catalog_drift(
         install_control_plane_schema(database)
 
 
+def test_native_resume_materialization_has_exact_four_task_frontier(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    materializer = importlib.import_module(
+        "scripts."
+        "materialize_logic_governed_compositional_verification_fabric_control_plane"
+    )
+    config, _raw = operator._load_native_resume_config(ROOT)
+    formal_path = ROOT / str(config["formal_plan_path"])
+    todo_path = ROOT / str(config["taskboard_path"])
+    formal_plan = materializer.FormalWorkPlan.from_dict(
+        json.loads(formal_path.read_text(encoding="utf-8"))
+    )
+    population = materializer.project_population(
+        config,
+        formal_plan=formal_plan,
+        todo_text=todo_path.read_text(encoding="utf-8"),
+        source={
+            "accelerator_head": operator._git_text(
+                ROOT,
+                ("rev-parse", "HEAD"),
+                noun="test source HEAD",
+            ),
+            "accelerator_tree": operator._git_text(
+                ROOT,
+                ("rev-parse", "HEAD^{tree}"),
+                noun="test source tree",
+            ),
+            "source_forest_root": "sha256:" + ("a" * 64),
+        },
+    )
+    stage = tmp_path / "run-v24.stage-test"
+    staged_config = operator._native_resume_stage_config(
+        config,
+        root=tmp_path,
+        stage=stage,
+    )
+
+    receipt = materializer._materialize_canonical(
+        staged_config,
+        population,
+        root=tmp_path,
+        recheck_source=False,
+    )
+    profile = operator._verify_profile(stage / "control.duckdb")
+    operator._privatize_and_sync_native_resume_stage(stage)
+    operator._validate_native_bootstrap_receipt(
+        receipt,
+        config=config,
+        database_paths={
+            "control": "run-v24.stage-test/control.duckdb",
+            "coordination": "run-v24.stage-test/control.coordination.duckdb",
+            "execution": "run-v24.stage-test/control.execution.duckdb",
+        },
+        source_head=str(population["source_head"]),
+        repository_tree_id=str(population["repository_tree_id"]),
+        population_root=str(population["population_root"]),
+        plan_root_cid=str(population["plan_root_cid"]),
+        schema_fingerprint=str(profile["schema_fingerprint"]),
+        catalog_fingerprint=str(profile["catalog_fingerprint"]),
+    )
+    operator._verify_native_resume_stage_allowlist(
+        stage,
+        include_provenance=False,
+    )
+    unexpected = stage / "undeclared-runtime-object"
+    unexpected.write_bytes(b"unexpected")
+    unexpected.chmod(0o600)
+    with pytest.raises(operator.SuccessorOperatorError, match="exact allowlist"):
+        operator._verify_native_resume_stage_allowlist(
+            stage,
+            include_provenance=False,
+        )
+    unexpected.unlink()
+    semantic_tampers: list[dict[str, object]] = []
+    wrong_path = json.loads(json.dumps(receipt))
+    wrong_path["database_paths"]["control"] = "wrong/control.duckdb"
+    semantic_tampers.append(wrong_path)
+    extra_schema_authority = json.loads(json.dumps(receipt))
+    extra_schema_authority["schema_install"]["unvalidated_authority"] = True
+    semantic_tampers.append(extra_schema_authority)
+    extra_progress = json.loads(json.dumps(receipt))
+    extra_progress["verification"]["control"]["unvalidated_progress"] = {
+        "claims": 9
+    }
+    extra_progress["verification"].pop("verification_root")
+    extra_progress["verification"]["verification_root"] = operator._content_id(
+        extra_progress["verification"]
+    )
+    semantic_tampers.append(extra_progress)
+    integer_task_ids = json.loads(json.dumps(receipt))
+    integer_task_ids["materialization"]["registered_task_cids"] = list(range(28))
+    integer_task_ids["materialization"]["bootstrap_completed_task_cids"] = list(
+        range(7)
+    )
+    integer_task_ids["materialization"]["task_source"]["task_cids"] = list(
+        range(28)
+    )
+    semantic_tampers.append(integer_task_ids)
+    boolean_writer_count = json.loads(json.dumps(receipt))
+    boolean_writer_count["maximum_writer_processes"] = True
+    semantic_tampers.append(boolean_writer_count)
+    for tampered in semantic_tampers:
+        tampered.pop("receipt_cid")
+        tampered["receipt_cid"] = operator._content_id(tampered)
+        with pytest.raises(operator.SuccessorOperatorError, match="semantics differ"):
+            operator._validate_native_bootstrap_receipt(
+                tampered,
+                config=config,
+                database_paths={
+                    "control": "run-v24.stage-test/control.duckdb",
+                    "coordination": (
+                        "run-v24.stage-test/control.coordination.duckdb"
+                    ),
+                    "execution": "run-v24.stage-test/control.execution.duckdb",
+                },
+                source_head=str(population["source_head"]),
+                repository_tree_id=str(population["repository_tree_id"]),
+                population_root=str(population["population_root"]),
+                plan_root_cid=str(population["plan_root_cid"]),
+                schema_fingerprint=str(profile["schema_fingerprint"]),
+                catalog_fingerprint=str(profile["catalog_fingerprint"]),
+            )
+    projection = operator._verify_native_resume_projection(
+        stage / "control.duckdb",
+        config=config,
+    )
+
+    assert projection["completed_count"] == 7
+    assert projection["todo_count"] == 19
+    assert projection["blocked_count"] == 2
+    assert projection["ready_task_ids"] == [
+        "LGCVF-051",
+        "LGCVF-060",
+        "LGCVF-070",
+        "LGCVF-080",
+    ]
+
+
 def test_successor_bootstrap_invokes_protected_recovery_verifier_isolated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -344,6 +484,8 @@ def test_successor_stage_remains_clean_during_reverification(
     (
         ("database_hardlink", "bounded private"),
         ("database_wal", "live WAL"),
+        ("coordination_wal", "coordination database has a live WAL"),
+        ("execution_wal", "execution database has a live WAL"),
         ("provenance_symlink", "unreadable"),
     ),
 )
@@ -380,6 +522,10 @@ def test_successor_load_rejects_aliases_and_live_wal(
         os.link(target, target.with_name("hidden-control-alias.duckdb"))
     elif custody_change == "database_wal":
         target.with_name(target.name + ".wal").touch(mode=0o600)
+    elif custody_change == "coordination_wal":
+        target.with_name("control.coordination.duckdb.wal").touch(mode=0o600)
+    elif custody_change == "execution_wal":
+        target.with_name("control.execution.duckdb.wal").touch(mode=0o600)
     else:
         receipt = operator._strict_json(provenance)
         alias = provenance.with_name("identical-provenance.json")

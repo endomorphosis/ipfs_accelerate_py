@@ -2949,6 +2949,7 @@ def _verify_lgcvf_configured_board_live_profile(
         != LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE
         or payload.get("max_lanes") != 4
         or payload.get("strict_task_sharding") is not True
+        or payload.get("idle_lane_work_stealing") != "virgin-transfer"
         or type(database) is not dict
         or type(runtime_paths) is not dict
         or type(lanes) is not list
@@ -2973,6 +2974,9 @@ def _verify_lgcvf_configured_board_live_profile(
         "--board-namespace": LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,
         "--task-prefix": str(payload.get("task_prefix") or ""),
         "--merge-target-branch": str(payload.get("merge_target_branch") or ""),
+        "--idle-lane-work-stealing": str(
+            payload.get("idle_lane_work_stealing") or ""
+        ),
         "--task-source-kind": str(database.get("task_source_kind") or ""),
         "--authority-mode": str(database.get("authority_mode") or ""),
         "--state-failover-policy": str(database.get("failover_policy") or ""),
@@ -10376,6 +10380,7 @@ def _run_lgcvf_configured_board_live_launch_gate(
             "--state-schema-revision": (
                 DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION
             ),
+            "--idle-lane-work-stealing": "virgin-transfer",
             "--task-shard-count": "4",
         }
         for option, expected in exact_options.items():

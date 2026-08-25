@@ -12,12 +12,19 @@ These tests keep recovery authority deliberately narrow:
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     safe_retry_validation_command,
     validation_retry_task_block,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
@@ -153,6 +160,364 @@ def test_recovery_revision_changes_with_relevant_runtime_source(
     assert before.startswith("sha256:")
     assert after.startswith("sha256:")
     assert before != after
+
+
+def test_recovery_revision_reads_deleted_memfd_members_through_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default revision never resolves a sealed archive's dead pathname."""
+
+    prefix = "/memfd:ipfs-accelerate-lgcvf-live-capsule (deleted)/"
+    own_relative = daemon_module._IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH
+    payloads = {
+        prefix + "ipfs_accelerate_py/agent_supervisor/" + relative: (
+            f"sealed:{relative}\n".encode()
+        )
+        for relative in daemon_module.RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS
+    }
+    observed: list[str] = []
+
+    class DeletedMemfdLoader:
+        def get_data(self, path: str) -> bytes:
+            observed.append(path)
+            return payloads[path]
+
+    specification = SimpleNamespace(
+        origin=prefix + own_relative,
+        loader=DeletedMemfdLoader(),
+    )
+    monkeypatch.setattr(daemon_module, "__spec__", specification)
+    monkeypatch.setattr(
+        daemon_module,
+        "__file__",
+        prefix + own_relative,
+    )
+
+    revision = retry_budget_repair_runtime_revision()
+    digest = hashlib.sha256()
+    digest.update(
+        daemon_module.RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION.encode("utf-8")
+    )
+    digest.update(b"\0")
+    for relative in daemon_module.RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS:
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(
+            payloads[
+                prefix
+                + "ipfs_accelerate_py/agent_supervisor/"
+                + relative
+            ]
+        )
+        digest.update(b"\0")
+
+    assert revision == "sha256:" + digest.hexdigest()
+    assert observed == list(payloads)
+
+
+def test_import_generation_binding_rejects_loader_byte_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Every protected source must equal the immutable imported archive."""
+
+    capsule_root = tmp_path / "capsule"
+    sources = {
+        "ipfs_accelerate_py/llm_router.py": b"router-generation\n",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py": (
+            b"runner-generation\n"
+        ),
+    }
+    for relative, raw in sources.items():
+        path = capsule_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    capsule_id = "sha256:" + "c" * 64
+    source_head = "a" * 40
+    source_tree = "b" * 40
+    manifest = {
+        "schema": "ipfs_accelerate_py.agent_supervisor."
+        "materialized-control-plane@1",
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "files": {
+            relative: "sha256:" + hashlib.sha256(raw).hexdigest()
+            for relative, raw in sources.items()
+        },
+        "capsule_id": capsule_id,
+    }
+    capsule_root.joinpath(
+        daemon_module._CONTROL_PLANE_MATERIALIZED_MANIFEST_FILENAME
+    ).write_text(json.dumps(manifest), encoding="utf-8")
+    pin = SimpleNamespace(
+        runner_path=str(
+            capsule_root
+            / "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+        ),
+        capsule_root=str(capsule_root),
+        capsule_id=capsule_id,
+        source_head=source_head,
+        source_tree=source_tree,
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "build_agent_implementation_control_plane_pin",
+        lambda **_kwargs: pin,
+    )
+    imported = dict(sources)
+    monkeypatch.setattr(
+        daemon_module,
+        "_import_loader_control_plane_source_bytes",
+        lambda relative: imported[relative],
+    )
+
+    daemon_module._verify_import_loader_control_plane_generation(pin)
+    imported["ipfs_accelerate_py/llm_router.py"] = b"other-generation\n"
+
+    with pytest.raises(
+        ValueError,
+        match="differs from imported loader generation",
+    ):
+        daemon_module._verify_import_loader_control_plane_generation(pin)
+
+
+def test_import_loader_generation_binds_sealed_manifest_head_and_tree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Archive provenance is not reduced to source-tree byte equality."""
+
+    source_head = "a" * 40
+    source_tree = "b" * 40
+    implementation_raw = b"sealed implementation generation\n"
+    implementation_relative = (
+        daemon_module._IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH
+    )
+    manifest_filename, schema, _maximum_bytes = (
+        daemon_module._CONTROL_PLANE_IMPORTED_GENERATION_MANIFESTS[1]
+    )
+    manifest = json.dumps(
+        {
+            "schema": schema,
+            "capsule_id": "sha256:" + "c" * 64,
+            "source_head": source_head,
+            "source_tree": source_tree,
+            "files": {
+                implementation_relative: (
+                    "sha256:"
+                    + hashlib.sha256(implementation_raw).hexdigest()
+                )
+            },
+        }
+    ).encode()
+    members = {
+        manifest_filename: manifest,
+        implementation_relative: implementation_raw,
+    }
+
+    def loader_bytes(relative: str, **_kwargs: object) -> bytes:
+        try:
+            return members[relative]
+        except KeyError as exc:
+            raise OSError("archive member absent") from exc
+
+    monkeypatch.setattr(
+        daemon_module,
+        "_import_loader_control_plane_source_bytes",
+        loader_bytes,
+    )
+
+    assert daemon_module._import_loader_control_plane_source_generation() == (
+        source_head,
+        source_tree,
+    )
+    members[implementation_relative] = b"substituted implementation generation\n"
+
+    with pytest.raises(ValueError, match="generation manifest is invalid"):
+        daemon_module._import_loader_control_plane_source_generation()
+
+
+def test_materializer_subprocess_environment_drops_inherited_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Provider and Quack credentials never enter the verifier process."""
+
+    sentinel = "sentinel-provider-quack-token-secret"
+    monkeypatch.setenv("OPENAI_API_KEY", sentinel)
+    monkeypatch.setenv("QUACK_ENDPOINT_SECRET", sentinel)
+    monkeypatch.setenv("ASREF_SENTINEL_SECRET", sentinel)
+    source_root = tmp_path / "repo"
+    source_root.mkdir()
+    capsule_parent = tmp_path / "capsules"
+    source_head = "a" * 40
+    source_tree = "b" * 40
+    capsule_id = "sha256:" + "c" * 64
+    capsule_root = capsule_parent / capsule_id.removeprefix("sha256:")
+    runner_path = (
+        capsule_root
+        / "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+    )
+    receipt = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2"
+        ),
+        "runner_path": str(runner_path),
+        "runner_sha256": "sha256:" + "d" * 64,
+        "capsule_root": str(capsule_root),
+        "capsule_id": capsule_id,
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "archive_sha256": "sha256:" + "e" * 64,
+    }
+    pin = SimpleNamespace(
+        source_head=source_head,
+        source_tree=source_tree,
+        as_dict=lambda: receipt,
+    )
+    observed: dict[str, object] = {}
+
+    def fake_run(*_args: object, **kwargs: object) -> object:
+        observed.update(kwargs)
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(receipt),
+            stderr="",
+        )
+
+    monkeypatch.setattr(daemon_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        daemon_module,
+        "build_agent_implementation_control_plane_pin",
+        lambda **_kwargs: pin,
+    )
+
+    materialized = daemon_module._materialize_imported_control_plane_capsule(
+        source_root=source_root,
+        capsule_parent=capsule_parent,
+        source_head=source_head,
+        source_tree=source_tree,
+    )
+
+    child_environment = observed["env"]
+    assert materialized is pin
+    assert isinstance(child_environment, dict)
+    assert set(child_environment) == {"LANG", "LC_ALL", "PATH"}
+    assert sentinel not in child_environment
+    assert sentinel not in child_environment.values()
+    assert "OPENAI_API_KEY" not in child_environment
+    assert "QUACK_ENDPOINT_SECRET" not in child_environment
+
+
+def test_import_generation_capture_uses_verified_repo_root_not_module_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A deleted module origin cannot choose or prevent the source root."""
+
+    source_root = tmp_path / "repo"
+    source_root.mkdir()
+    capsule_parent = tmp_path / "capsules"
+    capsule_parent.mkdir()
+    head = "a" * 40
+    tree = "b" * 40
+    pin = SimpleNamespace(source_head=head, source_tree=tree)
+    launch = object()
+    calls: list[object] = []
+
+    def generation(root: Path) -> tuple[str, str]:
+        calls.append(("generation", Path(root)))
+        return head, tree
+
+    def materialize(**kwargs: object) -> object:
+        calls.append(("materialize", kwargs))
+        return pin
+
+    monkeypatch.setattr(daemon_module, "REPO_ROOT", source_root)
+    monkeypatch.setattr(
+        daemon_module,
+        "__file__",
+        "/memfd:ipfs-accelerate-lgcvf-live-capsule (deleted)/"
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "agent_implementation_control_plane_source_generation",
+        generation,
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_import_loader_control_plane_source_generation",
+        lambda: calls.append(("imported_generation",)) or (head, tree),
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_materialize_imported_control_plane_capsule",
+        materialize,
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_verify_import_loader_control_plane_generation",
+        lambda observed_pin: calls.append(("verify", observed_pin)),
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "seal_agent_implementation_control_plane_capsule",
+        lambda observed_pin: calls.append(("seal", observed_pin)) or launch,
+    )
+    monkeypatch.setattr(
+        daemon_module.tempfile,
+        "mkdtemp",
+        lambda **_kwargs: str(capsule_parent),
+    )
+
+    captured = daemon_module._capture_imported_control_plane_generation()
+
+    assert captured == (pin, launch, capsule_parent)
+    assert calls == [
+        ("generation", source_root),
+        ("imported_generation",),
+        (
+            "materialize",
+            {
+                "source_root": source_root,
+                "capsule_parent": capsule_parent,
+                "source_head": head,
+                "source_tree": tree,
+            },
+        ),
+        ("verify", pin),
+        ("generation", source_root),
+        ("seal", pin),
+    ]
+
+
+def test_import_generation_capture_rejects_a_different_sealed_head(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An identical tree from a different commit cannot replace provenance."""
+
+    source_root = tmp_path / "repo"
+    source_root.mkdir()
+    head = "a" * 40
+    tree = "b" * 40
+    monkeypatch.setattr(daemon_module, "REPO_ROOT", source_root)
+    monkeypatch.setattr(
+        daemon_module,
+        "agent_implementation_control_plane_source_generation",
+        lambda _root: (head, tree),
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_import_loader_control_plane_source_generation",
+        lambda: ("c" * 40, tree),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="generation differs from verified source",
+    ):
+        daemon_module._capture_imported_control_plane_generation()
 
 
 def test_attempt_limited_retry_repair_rearms_once_per_persisted_fingerprint(

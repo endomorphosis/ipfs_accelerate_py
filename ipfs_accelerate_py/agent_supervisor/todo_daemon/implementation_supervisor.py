@@ -6474,6 +6474,7 @@ class PortalSupervisorConfig:
     task_shard_count: int = 1
     task_shard_index: int = 0
     strict_task_sharding: bool = False
+    idle_lane_work_stealing: str = ""
     retry_budget_guardrail_enabled: bool = True
     retry_budget_discovery_dir: Path | None = None
     retry_budget_discovery_output_path: str = ""
@@ -6596,6 +6597,19 @@ class PortalSupervisorConfig:
     )
 
     def __post_init__(self) -> None:
+        self.idle_lane_work_stealing = str(
+            self.idle_lane_work_stealing or ""
+        ).strip().lower()
+        if self.idle_lane_work_stealing not in {"", "virgin-transfer"}:
+            raise ValueError(
+                "idle_lane_work_stealing must be empty or 'virgin-transfer'"
+            )
+        if self.idle_lane_work_stealing and (
+            not self.strict_task_sharding or self.task_shard_count <= 1
+        ):
+            raise ValueError(
+                "idle_lane_work_stealing requires strict multi-lane sharding"
+            )
         if self.configured_board_live_context is not None:
             live = self.configured_board_live_context
             try:
@@ -6622,6 +6636,7 @@ class PortalSupervisorConfig:
                 or self.task_shard_count != 4
                 or self.task_shard_index not in {0, 1, 2, 3}
                 or not self.strict_task_sharding
+                or self.idle_lane_work_stealing != "virgin-transfer"
                 or program is None
                 or program.task_source_kind != "duckdb"
                 or program.authority_mode != "quack"
@@ -13684,6 +13699,7 @@ class PortalImplementationSupervisor:
             task_shard_count=self.config.task_shard_count,
             task_shard_index=self.config.task_shard_index,
             strict_task_sharding=self.config.strict_task_sharding,
+            idle_lane_work_stealing=self.config.idle_lane_work_stealing,
         )
 
     @staticmethod
@@ -17552,14 +17568,21 @@ class PortalImplementationSupervisor:
         """Read the current heap for deterministic dynamic-finding assignment."""
 
         try:
-            from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
-            from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+            from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
+                parse_goal_heap,
+            )
         except Exception:
             return []
 
-        objective_path = self.config.objective_path or default_objective_path(
-            self.config.repo_root
-        )
+        objective_path = self.config.objective_path
+        if objective_path is None:
+            try:
+                from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
+                    default_objective_path,
+                )
+            except Exception:
+                return []
+            objective_path = default_objective_path(self.config.repo_root)
         try:
             return parse_goal_heap(objective_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError):
@@ -20168,6 +20191,13 @@ class PortalImplementationSupervisor:
             )
             if self.config.strict_task_sharding and not self.config.plan_bound_dispatch:
                 command.append("--strict-task-sharding")
+            if self.config.idle_lane_work_stealing and not self.config.plan_bound_dispatch:
+                command.extend(
+                    [
+                        "--idle-lane-work-stealing",
+                        self.config.idle_lane_work_stealing,
+                    ]
+                )
             for path in self.config.external_reservation_manifest_paths:
                 command.extend(["--external-reservation-manifest-path", str(path)])
             for task_id in self.config.assumed_completed_task_ids:
@@ -20821,6 +20851,13 @@ class PortalImplementationSupervisor:
                 if token == option
             ]
 
+        if option_value_list("--idle-lane-work-stealing") != (
+            [self.config.idle_lane_work_stealing]
+            if self.config.idle_lane_work_stealing
+            else []
+        ):
+            return False
+
         database_program = self.config.database_program
         expected_database_tokens = (
             database_program.daemon_cli_args()
@@ -21330,6 +21367,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Keep this supervisor lane within its deterministic task shard instead "
             "of borrowing ready work from other shards."
+        ),
+    )
+    parser.add_argument(
+        "--idle-lane-work-stealing",
+        choices=["virgin-transfer"],
+        default="",
+        help=(
+            "Opt-in strict-shard idle-lane handoff for never-attempted tasks."
         ),
     )
     parser.add_argument(
@@ -21901,6 +21946,9 @@ def supervisor_config_from_args(
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
         strict_task_sharding=bool(getattr(args, "strict_task_sharding", False)),
+        idle_lane_work_stealing=str(
+            getattr(args, "idle_lane_work_stealing", "") or ""
+        ),
         external_reservation_manifest_paths=tuple(
             args.external_reservation_manifest_path or ()
         ),

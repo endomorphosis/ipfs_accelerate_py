@@ -40,7 +40,6 @@ from ...llm_router import (
     decide_agent_implementation_fallback,
     extract_agent_implementation_route_outcomes,
     load_agent_implementation_route_authorization,
-    materialize_agent_implementation_control_plane_capsule,
     parse_agent_implementation_effect_authorization_context,
     parse_agent_implementation_quota_evidence,
     resolve_agent_implementation_private_state_path,
@@ -5223,6 +5222,29 @@ RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS = (
     "validation/implementation_auto_rescue.py",
     "task_sources/persistent_task_queue.py",
 )
+_IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH = (
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+)
+_CONTROL_PLANE_LOADER_SOURCE_MAX_BYTES = 4 * 1024 * 1024
+_CONTROL_PLANE_MATERIALIZED_MANIFEST_FILENAME = (
+    ".agent-control-plane-manifest.json"
+)
+_CONTROL_PLANE_MATERIALIZED_MANIFEST_MAX_BYTES = 2 * 1024 * 1024
+_CONTROL_PLANE_IMPORTED_GENERATION_MANIFESTS = (
+    (
+        _CONTROL_PLANE_MATERIALIZED_MANIFEST_FILENAME,
+        "ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1",
+        _CONTROL_PLANE_MATERIALIZED_MANIFEST_MAX_BYTES,
+    ),
+    (
+        ".lgcvf-configured-board-live-capsule-manifest.json",
+        (
+            "ipfs_accelerate_py.agent_supervisor."
+            "lgcvf-configured-board-live-capsule-manifest@1"
+        ),
+        8 * 1024 * 1024,
+    ),
+)
 RECONCILIATION_GUARDRAIL_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
 )
@@ -5278,6 +5300,142 @@ def is_retry_budget_repair_task(task: Any) -> bool:
     return bool(retry_budget_repair_source(task)[0])
 
 
+def _import_loader_control_plane_source_bytes(
+    relative_path: str,
+    *,
+    maximum_bytes: int = _CONTROL_PLANE_LOADER_SOURCE_MAX_BYTES,
+) -> bytes:
+    """Read one source member from the loader that imported this module.
+
+    A sealed zipapp is addressed through ``/proc/self/fd`` while it imports,
+    but resolving that path produces the kernel's deleted-memfd label.  Keep
+    the unresolved loader origin and ask the loader for the member directly;
+    this also returns the exact archive bytes rather than later checkout
+    contents.
+    """
+
+    relative = PurePosixPath(str(relative_path))
+    if (
+        relative.is_absolute()
+        or ".." in relative.parts
+        or not relative.parts
+        or relative.as_posix() != str(relative_path)
+    ):
+        raise OSError("control-plane loader source path is invalid")
+
+    specification = globals().get("__spec__")
+    loader = getattr(specification, "loader", None)
+    origin = str(
+        getattr(specification, "origin", None)
+        or globals().get("__file__")
+        or ""
+    )
+    get_data = getattr(loader, "get_data", None)
+    native_suffix = os.path.join(
+        *_IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH.split("/")
+    )
+    suffix = next(
+        (
+            candidate
+            for candidate in (
+                _IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH,
+                native_suffix,
+            )
+            if origin.endswith(candidate)
+        ),
+        "",
+    )
+    if not suffix or not callable(get_data):
+        raise OSError("control-plane import loader source is unavailable")
+
+    prefix = origin[: -len(suffix)]
+    member = (
+        os.path.join(*relative.parts)
+        if suffix == native_suffix
+        else relative.as_posix()
+    )
+    try:
+        raw = get_data(prefix + member)
+    except (ImportError, OSError) as exc:
+        raise OSError("control-plane import loader source is unavailable") from exc
+    if not isinstance(raw, bytes) or len(raw) > maximum_bytes:
+        raise OSError("control-plane import loader source is invalid")
+    return raw
+
+
+def _import_loader_control_plane_source_generation() -> tuple[str, str] | None:
+    """Return the sealed archive's exact source HEAD/tree when available."""
+
+    for filename, expected_schema, maximum_bytes in (
+        _CONTROL_PLANE_IMPORTED_GENERATION_MANIFESTS
+    ):
+        try:
+            raw = _import_loader_control_plane_source_bytes(
+                filename,
+                maximum_bytes=maximum_bytes,
+            )
+        except OSError:
+            continue
+
+        def reject_duplicate_keys(
+            pairs: Sequence[tuple[str, object]],
+        ) -> dict[str, object]:
+            result: dict[str, object] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(
+                        "imported control-plane generation manifest is invalid"
+                    )
+                result[key] = value
+            return result
+
+        try:
+            manifest = json.loads(raw, object_pairs_hook=reject_duplicate_keys)
+        except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            raise ValueError(
+                "imported control-plane generation manifest is invalid"
+            ) from exc
+        files = manifest.get("files") if isinstance(manifest, dict) else None
+        source_head = str(
+            manifest.get("source_head") if isinstance(manifest, dict) else ""
+        )
+        source_tree = str(
+            manifest.get("source_tree") if isinstance(manifest, dict) else ""
+        )
+        expected_implementation_digest = (
+            files.get(_IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH)
+            if isinstance(files, dict)
+            else None
+        )
+        imported_implementation = (
+            _import_loader_control_plane_source_bytes(
+                _IMPLEMENTATION_DAEMON_CONTROL_PLANE_RELATIVE_PATH
+            )
+        )
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("schema") != expected_schema
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", str(manifest.get("capsule_id")))
+            is None
+            or re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+            or not isinstance(files, dict)
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(expected_implementation_digest),
+            )
+            is None
+            or "sha256:"
+            + hashlib.sha256(imported_implementation).hexdigest()
+            != expected_implementation_digest
+        ):
+            raise ValueError(
+                "imported control-plane generation manifest is invalid"
+            )
+        return source_head, source_tree
+    return None
+
+
 def retry_budget_repair_runtime_revision(
     agent_supervisor_root: Path | None = None,
 ) -> str:
@@ -5292,16 +5450,22 @@ def retry_budget_repair_runtime_revision(
     root = (
         agent_supervisor_root.resolve()
         if agent_supervisor_root is not None
-        else Path(__file__).resolve().parents[1]
+        else None
     )
     digest = hashlib.sha256()
     digest.update(RETRY_BUDGET_REPAIR_REARM_POLICY_REVISION.encode("utf-8"))
     digest.update(b"\0")
     for relative in RETRY_BUDGET_REPAIR_RECOVERY_SOURCE_PATHS:
-        path = root / relative
+        raw = (
+            (root / relative).read_bytes()
+            if root is not None
+            else _import_loader_control_plane_source_bytes(
+                "ipfs_accelerate_py/agent_supervisor/" + relative
+            )
+        )
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        digest.update(raw)
         digest.update(b"\0")
     return "sha256:" + digest.hexdigest()
 
@@ -88540,24 +88704,265 @@ def main(argv: list[str] | None = None) -> None:
                 signal.signal(signal.SIGINT, previous_int)
 
 
-def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
-    """Seal the generation that finished importing this daemon module."""
+_IMPORTED_CONTROL_PLANE_MATERIALIZE_BOOTSTRAP = r"""
+import json
+import sys
+from pathlib import Path
 
-    source_root = Path(__file__).resolve(strict=True).parents[3]
-    head_before, tree_before = (
-        agent_implementation_control_plane_source_generation(source_root)
+source_root = Path(sys.argv[1])
+capsule_parent = Path(sys.argv[2])
+source_head = sys.argv[3]
+source_tree = sys.argv[4]
+sys.path.insert(0, str(source_root))
+from ipfs_accelerate_py import llm_router
+
+pin = llm_router.materialize_agent_implementation_control_plane_capsule(
+    source_root=source_root,
+    capsule_parent=capsule_parent,
+    source_head=source_head,
+    source_tree=source_tree,
+)
+print(json.dumps(pin.as_dict(), sort_keys=True))
+"""
+
+
+def _imported_control_plane_materializer_environment() -> dict[str, str]:
+    """Return the complete non-secret environment for the verifier child."""
+
+    git_executable = shutil.which("git")
+    if not git_executable:
+        raise OSError("accepted control-plane Git executable is unavailable")
+    try:
+        resolved_git = Path(git_executable).resolve(strict=True)
+        metadata = resolved_git.stat()
+    except OSError as exc:
+        raise OSError(
+            "accepted control-plane Git executable is unavailable"
+        ) from exc
+    if not stat_module.S_ISREG(metadata.st_mode) or not os.access(
+        resolved_git,
+        os.X_OK,
+    ):
+        raise OSError("accepted control-plane Git executable is unavailable")
+    return {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": str(resolved_git.parent),
+    }
+
+
+def _materialize_imported_control_plane_capsule(
+    *,
+    source_root: Path,
+    capsule_parent: Path,
+    source_head: str,
+    source_tree: str,
+) -> Any:
+    """Materialize HEAD in a disk-rooted verifier, then rebuild its pin.
+
+    The importing process may itself be running from a sealed zipapp.  The
+    route materializer intentionally rejects those deleted-memfd module
+    origins, so a fresh isolated interpreter performs its ordinary strict
+    origin, clean-tree, stable-file, and immutable-Git-blob checks.  This
+    process accepts only the resulting capsule after independently rebuilding
+    its pin.
+    """
+
+    environment = _imported_control_plane_materializer_environment()
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            _IMPORTED_CONTROL_PLANE_MATERIALIZE_BOOTSTRAP,
+            str(source_root),
+            str(capsule_parent),
+            source_head,
+            source_tree,
+        ],
+        cwd=source_root,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
     )
+    if completed.returncode != 0 or len(completed.stdout.encode("utf-8")) > 64 * 1024:
+        raise ValueError("accepted control-plane materializer subprocess failed")
+
+    def reject_duplicate_keys(
+        pairs: Sequence[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    "accepted control-plane materializer receipt is invalid"
+                )
+            result[key] = value
+        return result
+
+    try:
+        receipt = json.loads(
+            completed.stdout,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            "accepted control-plane materializer receipt is invalid"
+        ) from exc
+    expected_fields = {
+        "schema",
+        "runner_path",
+        "runner_sha256",
+        "capsule_root",
+        "capsule_id",
+        "source_head",
+        "source_tree",
+        "archive_sha256",
+    }
+    if (
+        not isinstance(receipt, dict)
+        or set(receipt) != expected_fields
+        or any(not isinstance(receipt[field], str) for field in expected_fields)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", receipt["capsule_id"])
+        is None
+    ):
+        raise ValueError("accepted control-plane materializer receipt is invalid")
+
+    capsule_root = (
+        capsule_parent / receipt["capsule_id"].removeprefix("sha256:")
+    )
+    runner_path = (
+        capsule_root
+        / "ipfs_accelerate_py"
+        / "agent_supervisor"
+        / "runtime"
+        / "grok_cli_runner.py"
+    )
+    pin = build_agent_implementation_control_plane_pin(
+        runner_path=runner_path,
+        capsule_root=capsule_root,
+    )
+    if (
+        pin.as_dict() != receipt
+        or pin.source_head != source_head
+        or pin.source_tree != source_tree
+    ):
+        raise ValueError("accepted control-plane materializer receipt drifted")
+    return pin
+
+
+def _verify_import_loader_control_plane_generation(pin: Any) -> None:
+    """Require every protected source byte to match this import's loader."""
+
+    verified = build_agent_implementation_control_plane_pin(
+        runner_path=pin.runner_path,
+        capsule_root=pin.capsule_root,
+    )
+    if verified != pin:
+        raise ValueError("accepted control-plane pin drifted before import binding")
+    capsule_root = Path(pin.capsule_root)
+    manifest_raw = (
+        capsule_root / _CONTROL_PLANE_MATERIALIZED_MANIFEST_FILENAME
+    ).read_bytes()
+    if len(manifest_raw) > _CONTROL_PLANE_MATERIALIZED_MANIFEST_MAX_BYTES:
+        raise ValueError("accepted control-plane import manifest is invalid")
+
+    def reject_duplicate_keys(
+        pairs: Sequence[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(
+                    "accepted control-plane import manifest is invalid"
+                )
+            result[key] = value
+        return result
+
+    try:
+        manifest = json.loads(
+            manifest_raw,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            "accepted control-plane import manifest is invalid"
+        ) from exc
+    files = manifest.get("files") if isinstance(manifest, dict) else None
+    if (
+        not isinstance(files, dict)
+        or not files
+        or manifest.get("capsule_id") != pin.capsule_id
+        or manifest.get("source_head") != pin.source_head
+        or manifest.get("source_tree") != pin.source_tree
+    ):
+        raise ValueError("accepted control-plane import manifest is invalid")
+    for relative, expected_digest in sorted(files.items()):
+        source_relative = PurePosixPath(str(relative))
+        if (
+            not isinstance(relative, str)
+            or source_relative.is_absolute()
+            or ".." in source_relative.parts
+            or source_relative.suffix != ".py"
+            or source_relative.as_posix() != relative
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(expected_digest),
+            )
+            is None
+        ):
+            raise ValueError("accepted control-plane import manifest is invalid")
+        imported_raw = _import_loader_control_plane_source_bytes(relative)
+        if (
+            "sha256:" + hashlib.sha256(imported_raw).hexdigest()
+            != expected_digest
+        ):
+            raise ValueError(
+                "accepted control-plane differs from imported loader generation"
+            )
+    if (
+        build_agent_implementation_control_plane_pin(
+            runner_path=pin.runner_path,
+            capsule_root=pin.capsule_root,
+        )
+        != pin
+    ):
+        raise ValueError("accepted control-plane pin drifted during import binding")
+
+
+def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
+    """Seal the exact loader generation that finished importing this module."""
+
+    unresolved_source_root = REPO_ROOT
+    head_before, tree_before = (
+        agent_implementation_control_plane_source_generation(
+            unresolved_source_root
+        )
+    )
+    imported_generation = _import_loader_control_plane_source_generation()
+    if (
+        imported_generation is not None
+        and imported_generation != (head_before, tree_before)
+    ):
+        raise ValueError(
+            "imported control-plane generation differs from verified source"
+        )
+    source_root = unresolved_source_root.resolve(strict=True)
     parent = Path(
         tempfile.mkdtemp(prefix="asref-imported-control-plane-")
     )
     try:
-        pin = materialize_agent_implementation_control_plane_capsule(
+        pin = _materialize_imported_control_plane_capsule(
             source_root=source_root,
             capsule_parent=parent,
             source_head=head_before,
             source_tree=tree_before,
         )
-        launch = seal_agent_implementation_control_plane_capsule(pin)
+        _verify_import_loader_control_plane_generation(pin)
         head_after, tree_after = (
             agent_implementation_control_plane_source_generation(source_root)
         )
@@ -88565,6 +88970,7 @@ def _capture_imported_control_plane_generation() -> tuple[Any, Any, Path]:
             raise ValueError(
                 "accepted control-plane changed while import was sealed"
             )
+        launch = seal_agent_implementation_control_plane_capsule(pin)
         return pin, launch, parent
     except Exception:
         try:

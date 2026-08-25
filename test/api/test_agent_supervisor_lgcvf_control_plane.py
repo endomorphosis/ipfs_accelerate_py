@@ -902,6 +902,37 @@ def test_population_preserves_formal_identities_dependencies_and_closed_gates() 
         assert projected[task_id]["is_schedulable"] is False
 
 
+def test_population_rejects_initial_ready_projection_drift() -> None:
+    config, population = _population()
+    formal = FormalWorkPlan.from_dict(
+        json.loads((ROOT / str(config["formal_plan_path"])).read_text(encoding="utf-8"))
+    )
+    todo_text = (ROOT / str(config["taskboard_path"])).read_text(encoding="utf-8")
+    drifted = copy.deepcopy(config)
+    drifted["initial_projection"]["ready_task_ids"] = [
+        "LGCVF-051",
+        "LGCVF-060",
+        "LGCVF-070",
+    ]
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="ready task projection differs",
+    ):
+        materializer.project_population(
+            drifted,
+            formal_plan=formal,
+            todo_text=todo_text,
+            source={
+                "accelerator_head": population["source_head"],
+                "accelerator_tree": str(population["repository_tree_id"]).removeprefix(
+                    "git-tree:"
+                ),
+                "source_forest_root": population["source_forest_root"],
+            },
+        )
+
+
 def test_typed_materialization_read_only_replay_and_overwrite_rejection(
     tmp_path: Path,
 ) -> None:

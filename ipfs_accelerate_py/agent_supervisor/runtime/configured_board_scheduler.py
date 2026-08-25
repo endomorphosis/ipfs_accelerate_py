@@ -4696,7 +4696,7 @@ def configured_board_launch_plan(
             or board.board_namespace != LGCVF_LIVE_BOARD_NAMESPACE
             or board.max_lanes != 4
             or not board.strict_task_sharding
-            or board.idle_lane_work_stealing
+            or board.idle_lane_work_stealing != "virgin-transfer"
             or board.configuration_root
             != _identity(
                 {

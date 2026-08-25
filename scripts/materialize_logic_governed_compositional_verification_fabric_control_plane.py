@@ -3586,8 +3586,23 @@ def project_population(
         raise MaterializationError("population count differs from initial_projection")
     observed_completed = [item["task_id"] for item in tasks if item["status"] == "completed"]
     observed_blocked = [item["task_id"] for item in tasks if item["status"] == "blocked"]
+    completed_task_cids = {
+        str(item["task_cid"])
+        for item in tasks
+        if item["status"] == "completed"
+    }
+    observed_ready = [
+        item["task_id"]
+        for item in tasks
+        if item["status"] == "todo"
+        and item["is_schedulable"] is True
+        and item["review_only"] is False
+        and set(map(str, item["dependencies"])).issubset(completed_task_cids)
+    ]
     if observed_completed != projection.get("completed_task_ids"):
         raise MaterializationError("completed task projection differs")
+    if observed_ready != projection.get("ready_task_ids"):
+        raise MaterializationError("ready task projection differs")
     if observed_blocked != projection.get("blocked_task_ids"):
         raise MaterializationError("blocked task projection differs")
 

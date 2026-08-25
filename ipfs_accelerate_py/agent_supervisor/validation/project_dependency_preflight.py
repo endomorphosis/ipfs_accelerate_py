@@ -3168,6 +3168,24 @@ def _run_bounded_probe_process(
         return returncode, bytes(output), {}
 
 
+def _active_module_source_bytes() -> bytes:
+    """Read this module through its import loader, including ZIP capsules."""
+
+    module_path = str(globals().get("__file__") or "")
+    if not module_path:
+        raise RuntimeError("dependency preflight module path is unavailable")
+    loader = globals().get("__loader__")
+    loader_get_data = getattr(loader, "get_data", None)
+    if callable(loader_get_data):
+        source = loader_get_data(module_path)
+        if type(source) is not bytes:
+            raise RuntimeError(
+                "dependency preflight loader returned non-byte source"
+            )
+        return source
+    return Path(module_path).resolve(strict=True).read_bytes()
+
+
 def _run_dependency_probe(
     payload: Mapping[str, Any],
     *,
@@ -3180,8 +3198,7 @@ def _run_dependency_probe(
         validation_environment,
         _run_dependency_probe,
     )
-    module_path = Path(__file__).resolve(strict=True)
-    source = module_path.read_bytes()
+    source = _active_module_source_bytes()
     source_sha256 = hashlib.sha256(source).hexdigest()
     if len(source) > MAX_PROBE_SOURCE_BYTES:
         return {

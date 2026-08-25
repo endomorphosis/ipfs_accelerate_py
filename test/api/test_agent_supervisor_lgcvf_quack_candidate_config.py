@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     configured_board_scheduler as scheduler_module,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    multi_supervisor_runner as multi_runner_module,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+    ConfiguredBoardError,
+    configured_board_common_args,
     configured_board_launch_plan,
     load_configured_board,
 )
@@ -20,8 +30,10 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     STATE_QUACK_MUTATION_DIR_ENV,
     STATE_STORE_GENERATION_ENV,
     TASK_SOURCE_KIND_ENV,
-    build_arg_parser as build_multi_supervisor_arg_parser,
     common_args_from_parsed_args,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    build_arg_parser as build_multi_supervisor_arg_parser,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,11 +51,11 @@ CANONICAL_PATH = ROOT / (
 BOARD_BRANCH = "agent/logic-governed-compositional-verification-fabric-v1"
 RUNTIME_ROOT = (
     "data/agent_supervisor/"
-    "logic_governed_compositional_verification_fabric/run-v23"
+    "logic_governed_compositional_verification_fabric/run-v24"
 )
 QUACK_OWNER = f"{RUNTIME_ROOT}/quack-owner"
 QUACK_HANDLE = "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
-QUACK_ENDPOINT = "quack:127.0.0.1:45685"
+QUACK_ENDPOINT = "quack:127.0.0.1:45686"
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -59,7 +71,7 @@ def _option_value(argv: list[str], option: str) -> str:
     return argv[argv.index(option) + 1]
 
 
-def test_lgcvf_quack_candidate_is_additive_run_v23_fail_closed_profile() -> None:
+def test_lgcvf_quack_candidate_is_additive_run_v24_fail_closed_profile() -> None:
     candidate = _load_json(CANDIDATE_PATH)
     canonical = _load_json(CANONICAL_PATH)
 
@@ -98,16 +110,18 @@ def test_lgcvf_quack_candidate_is_additive_run_v23_fail_closed_profile() -> None
     assert program["quack_endpoint"] == QUACK_ENDPOINT
     assert program["runtime_registry_path"] == runtime["quack_owner"]
     assert program["store_id"] == f"{RUNTIME_ROOT}/control.duckdb"
-    assert program["store_generation"] == "lgcvf-run-v23"
-    assert program["export_profile"] == "lgcvf-run-v23"
+    assert program["store_generation"] == "lgcvf-run-v24"
+    assert program["export_profile"] == "lgcvf-run-v24"
     assert program["failover_policy"] == "fail_closed"
     assert program["explicit_legacy"] is False
-    assert "run-v17" not in json.dumps(candidate, sort_keys=True)
+    rendered_candidate = json.dumps(candidate, sort_keys=True)
+    assert "run-v17" not in rendered_candidate
+    assert "run-v23" not in rendered_candidate
 
     lanes = candidate["lanes"]
     assert candidate["max_lanes"] == 4
     assert candidate["strict_task_sharding"] is True
-    assert candidate["idle_lane_work_stealing"] == ""
+    assert candidate["idle_lane_work_stealing"] == "virgin-transfer"
     provider = candidate["provider"]
     assert provider["max_concurrency"] == 4
     assert provider["primary_provider_id"] == "grok_cli"
@@ -122,7 +136,9 @@ def test_lgcvf_quack_candidate_is_additive_run_v23_fail_closed_profile() -> None
     assert len({lane["name"] for lane in lanes}) == 4
     assert candidate["bootstrap_writer_policy"] == {
         "maximum_processes": 1,
-        "quack_required": True,
+        "quack_required": False,
+        "offline_single_writer_materialization_permitted": True,
+        "quack_required_after_publish": True,
         "direct_multi_process_duckdb_permitted": False,
         "automatic_installation_permitted": False,
     }
@@ -185,7 +201,9 @@ def test_lgcvf_quack_candidate_loads_and_renders_detached_launch_plan(
     assert plan["implementation_branch"] == BOARD_BRANCH
     assert plan["lanes"] == 4
     assert plan["strict_task_sharding"] is True
+    assert plan["idle_lane_work_stealing"] == "virgin-transfer"
     assert plan["effective_strict_task_sharding"] is True
+    assert plan["effective_idle_lane_work_stealing"] == "virgin-transfer"
     assert plan["detach"] is True
     assert plan["plan_bound_dispatch"] is False
     assert "fresh_generation_recovery_admission" not in plan
@@ -196,8 +214,17 @@ def test_lgcvf_quack_candidate_loads_and_renders_detached_launch_plan(
     parsed = build_multi_supervisor_arg_parser().parse_args(argv)
     effective_common = common_args_from_parsed_args(parsed)
     assert effective_common.count("--strict-task-sharding") == 1
+    assert effective_common.count("--idle-lane-work-stealing") == 1
+    assert _option_value(
+        effective_common,
+        "--idle-lane-work-stealing",
+    ) == "virgin-transfer"
     assert _option_value(argv, "--implementation-supervisor-lanes-per-track") == "4"
     assert "--implementation-supervisor-strict-task-sharding" in argv
+    assert _option_value(
+        argv,
+        "--implementation-supervisor-idle-lane-work-stealing",
+    ) == "virgin-transfer"
     assert "--exit-when-all-tracks-terminal" in argv
     assert "--detach" in argv
     common = _common_args(argv)
@@ -208,6 +235,10 @@ def test_lgcvf_quack_candidate_loads_and_renders_detached_launch_plan(
     assert _option_value(common, "--quack-endpoint") == QUACK_ENDPOINT
     assert _option_value(common, "--runtime-registry-path") == QUACK_OWNER
     assert _option_value(common, "--merge-target-branch") == BOARD_BRANCH
+    assert _option_value(
+        common,
+        "--idle-lane-work-stealing",
+    ) == "virgin-transfer"
 
     environment = plan["environment"]
     assert environment[STATE_AUTHORITY_MODE_ENV] == "quack"
@@ -215,7 +246,7 @@ def test_lgcvf_quack_candidate_loads_and_renders_detached_launch_plan(
     assert environment[STATE_FAILOVER_POLICY_ENV] == "fail_closed"
     assert environment[STATE_ENDPOINT_SECRET_HANDLE_ENV] == QUACK_HANDLE
     assert environment[STATE_QUACK_ENDPOINT_ENV] == QUACK_ENDPOINT
-    assert environment[STATE_STORE_GENERATION_ENV] == "lgcvf-run-v23"
+    assert environment[STATE_STORE_GENERATION_ENV] == "lgcvf-run-v24"
     expected_owner = str((ROOT / QUACK_OWNER).resolve())
     assert environment[RUNTIME_REGISTRY_PATH_ENV] == expected_owner
     assert environment[STATE_QUACK_MUTATION_DIR_ENV] == (
@@ -225,3 +256,137 @@ def test_lgcvf_quack_candidate_loads_and_renders_detached_launch_plan(
     rendered_program = json.loads(environment[DATABASE_PROGRAM_JSON_ENV])
     assert rendered_program["runtime_registry_path"] == QUACK_OWNER
     assert rendered_program["endpoint_secret_handle"] == QUACK_HANDLE
+
+
+def _fake_lgcvf_live_context() -> SimpleNamespace:
+    candidate_sha256 = hashlib.sha256(CANDIDATE_PATH.read_bytes()).hexdigest()
+    return SimpleNamespace(
+        capsule_pin=SimpleNamespace(
+            candidate_config_sha256=f"sha256:{candidate_sha256}",
+        ),
+        capsule_descriptor=101,
+        capsule_pin_json="sealed-capsule-pin",
+        admission=SimpleNamespace(
+            lane_names=tuple(
+                f"lgcvf-quack-lane-{index}" for index in range(4)
+            ),
+        ),
+        admission_json="sealed-live-admission",
+        native_launch_json="sealed-native-launch",
+        native_descriptor=102,
+    )
+
+
+def test_lgcvf_live_scheduler_admits_exact_virgin_transfer_policy(
+    monkeypatch,
+) -> None:
+    board = load_configured_board(CANDIDATE_PATH, repo_root=ROOT)
+    context = _fake_lgcvf_live_context()
+    monkeypatch.setattr(
+        scheduler_module,
+        "verify_lgcvf_configured_board_live_context",
+        lambda **_kwargs: context,
+    )
+    live_arguments = {
+        "configured_board_live_capsule_pin_json": context.capsule_pin_json,
+        "configured_board_live_capsule_descriptor": context.capsule_descriptor,
+        "configured_board_live_admission_json": context.admission_json,
+        "configured_board_live_native_launch_json": context.native_launch_json,
+        "configured_board_live_native_descriptor": context.native_descriptor,
+    }
+
+    plan = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        duration_seconds=60,
+        stamp="20260825T000000Z",
+        **live_arguments,
+    )
+
+    assert plan["idle_lane_work_stealing"] == "virgin-transfer"
+    assert plan["effective_idle_lane_work_stealing"] == "virgin-transfer"
+    assert _option_value(
+        plan["argv"],
+        "--implementation-supervisor-idle-lane-work-stealing",
+    ) == "virgin-transfer"
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="does not match the exact foreground four-lane Quack board",
+    ):
+        configured_board_launch_plan(
+            replace(board, idle_lane_work_stealing=""),
+            implement=True,
+            detach=False,
+            duration_seconds=60,
+            stamp="20260825T000000Z",
+            **live_arguments,
+        )
+
+
+def test_lgcvf_live_runner_binds_policy_from_capsule_to_lane_argv(
+    monkeypatch,
+) -> None:
+    candidate = _load_json(CANDIDATE_PATH)
+    board = load_configured_board(CANDIDATE_PATH, repo_root=ROOT)
+    state_dir = board.path(board.runtime_paths["state"])
+    track_spec = multi_runner_module.implementation_supervisor_compact_track_spec(
+        name="lgcvf-quack-lane",
+        script_path=ROOT / multi_runner_module.PLAN_BOUND_ACCEPTED_ENTRY_PATH,
+        state_dir=state_dir,
+        state_prefix="lgcvf",
+    )
+    tracks = multi_runner_module.expand_implementation_track_lanes(
+        track_spec,
+        stamp="20260825T000000Z",
+        lanes_per_track=4,
+    )
+    common = configured_board_common_args(board, implement=True)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_lgcvf_configured_board_live_embedded_config",
+        lambda _context: candidate,
+    )
+
+    admitted = multi_runner_module._verify_lgcvf_configured_board_live_profile(
+        tracks=tracks,
+        repo_root=ROOT,
+        common_args=common,
+        context=object(),
+    )
+
+    assert tuple(track.name for track in admitted) == tuple(
+        f"lgcvf-quack-lane-{index}" for index in range(4)
+    )
+    assert common.count("--idle-lane-work-stealing") == 1
+    assert _option_value(common, "--idle-lane-work-stealing") == (
+        "virgin-transfer"
+    )
+    tampered_common = list(common)
+    policy_index = tampered_common.index("--idle-lane-work-stealing") + 1
+    tampered_common[policy_index] = ""
+    with pytest.raises(
+        ValueError,
+        match="--idle-lane-work-stealing differs from the capsule",
+    ):
+        multi_runner_module._verify_lgcvf_configured_board_live_profile(
+            tracks=tracks,
+            repo_root=ROOT,
+            common_args=tampered_common,
+            context=object(),
+        )
+
+    without_policy = dict(candidate)
+    without_policy["idle_lane_work_stealing"] = ""
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_lgcvf_configured_board_live_embedded_config",
+        lambda _context: without_policy,
+    )
+    with pytest.raises(ValueError, match="closed live profile"):
+        multi_runner_module._verify_lgcvf_configured_board_live_profile(
+            tracks=tracks,
+            repo_root=ROOT,
+            common_args=common,
+            context=object(),
+        )

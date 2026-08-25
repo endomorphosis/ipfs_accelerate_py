@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Run the additive LGCVF DuckDB + Quack successor controller.
 
-The canonical run-v16 database is forensic input and the sealed run-v17
-configuration remains an embedded, single-writer recovery target.  This
-operator therefore has two explicit stages:
+The canonical run-v16 database is forensic input and the sealed run-v17/run-v23
+generations remain preserved recovery history.  The active operator has two
+explicit stages:
 
-* ``bootstrap`` verifies the canonical run-v17 recovery and publishes one
-  no-overwrite run-v23 database clone with a provenance receipt;
+* ``bootstrap`` materializes the exact tracked candidate projection and
+  atomically publishes one no-overwrite run-v24 database with provenance;
 * ``bootstrap-sealed-continuity`` admits a separately preserved run-v17 only
-  through six explicit raw-byte pins, exact target-state reconstruction, and
-  an operational-continuity-only authority ceiling;
-* ``launch`` owns that clone in-process, starts exactly one foreground
+  into the legacy run-v23 boundary through six explicit raw-byte pins;
+* ``launch`` owns run-v24 in-process, starts exactly one foreground
   configured-board scheduler child, and services the closed mutation inbox.
 
 The Quack attach credential exists only in the controller's memory and in the
@@ -28,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 import ctypes
 import errno
 import fcntl
@@ -78,7 +78,8 @@ PROGRAM_ROOT_RELATIVE: Final = Path(
     "data/agent_supervisor/logic_governed_compositional_verification_fabric"
 )
 SOURCE_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v17"
-SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v23"
+LEGACY_SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v23"
+SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v24"
 SOURCE_DATABASE_RELATIVE: Final = SOURCE_RUN_RELATIVE / "control.duckdb"
 SUCCESSOR_DATABASE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "control.duckdb"
 OWNER_STATE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "quack-owner"
@@ -102,6 +103,9 @@ DEFAULT_SUCCESSOR_CONFIG_RELATIVE: Final = Path(
 PROVENANCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-quack-successor-provenance@2"
 )
+NATIVE_RESUME_ADMISSION_MODE: Final = "tracked_candidate_initial_projection_reset"
+NATIVE_RESUME_SOURCE_GENERATION: Final = "lgcvf-tracked-candidate-projection"
+SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v24"
 SEALED_CONTINUITY_VERIFICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "lgcvf-target-only-initial-continuity-verification@1"
@@ -116,6 +120,31 @@ FRESH_RECOVERY_MANIFEST_SCHEMA: Final = (
 )
 BOOTSTRAP_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-duckdb-materialization@1"
+)
+NATIVE_RESUME_STAGE_DIRECTORIES: Final = frozenset(
+    {
+        "evidence",
+        "evidence/bootstrap",
+    }
+)
+NATIVE_RESUME_STAGE_LOCK_FILES: Final = frozenset(
+    {
+        ".control.coordination.duckdb.lock",
+        ".control.duckdb.intent.lock",
+        ".control.duckdb.lock",
+        ".control.duckdb.migration.lock",
+        ".control.execution.duckdb.lock",
+        ".control.execution.duckdb.writer.lock",
+    }
+)
+NATIVE_RESUME_STAGE_DATA_FILES: Final = frozenset(
+    {
+        "control.coordination.duckdb",
+        "control.duckdb",
+        "control.execution.duckdb",
+        "evidence/bootstrap/materialization.json",
+        "evidence/quack-successor-provenance.json",
+    }
 )
 CONTROLLER_STATUS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-quack-successor-status@1"
@@ -2706,14 +2735,18 @@ def clone_verified_successor(
             )
 
 
-def _require_ignored_successor(root: Path) -> None:
+def _require_ignored_successor(
+    root: Path,
+    *,
+    run_relative: Path = SUCCESSOR_RUN_RELATIVE,
+) -> None:
     stage_lock = (
-        SUCCESSOR_RUN_RELATIVE.with_name(SUCCESSOR_RUN_RELATIVE.name + ".stage-probe")
+        run_relative.with_name(run_relative.name + ".stage-probe")
         / ".control.duckdb.lock"
     )
     for relative, noun in (
-        (SUCCESSOR_DATABASE_RELATIVE, "run-v23 successor Git-ignore policy"),
-        (stage_lock, "run-v23 staging Git-ignore policy"),
+        (run_relative / "control.duckdb", "successor Git-ignore policy"),
+        (stage_lock, "successor staging Git-ignore policy"),
     ):
         _git_quiet(
             root,
@@ -2722,16 +2755,881 @@ def _require_ignored_successor(root: Path) -> None:
         )
 
 
-def bootstrap_successor(root: Path = ROOT) -> dict[str, Any]:
+def _load_native_resume_config(root: Path) -> tuple[dict[str, Any], bytes]:
+    """Load the exact tracked run-v24 profile with duplicate-key rejection."""
+
+    path = _contained(root, DEFAULT_SUCCESSOR_CONFIG_RELATIVE)
+    raw = _read_bounded_regular_file(
+        path,
+        max_bytes=MAX_JSON_BYTES,
+        noun="LGCVF native-resume candidate config",
+    )
+
+    def reject_duplicates(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"duplicate candidate config key: {key}")
+            value[key] = item
+        return value
+
+    try:
+        config = json.loads(raw.decode("utf-8"), object_pairs_hook=reject_duplicates)
+    except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise SuccessorOperatorError(
+            "LGCVF native-resume candidate config is invalid"
+        ) from exc
+    if not isinstance(config, dict):
+        raise SuccessorOperatorError(
+            "LGCVF native-resume candidate config must be an object"
+        )
+    program = config.get("database_program")
+    runtime = config.get("runtime_paths")
+    projection = config.get("initial_projection")
+    bootstrap = config.get("bootstrap_writer_policy")
+    expected_projection = {
+        "task_count": 28,
+        "completed_task_ids": list(CONSTRUCTION_COMPLETED_TASK_IDS),
+        "ready_task_ids": ["LGCVF-051", "LGCVF-060", "LGCVF-070", "LGCVF-080"],
+        "blocked_task_ids": list(BLOCKED_TASK_IDS),
+        "terminal_task_id": "LGCVF-124",
+        "goal_count": 14,
+        "root_goal_id": "LGCVF-G000",
+    }
+    if (
+        config.get("schema")
+        != (
+            "ipfs_accelerate_py.agent_supervisor."
+            "logic_governed_compositional_verification_fabric.scheduler_config@1"
+        )
+        or config.get("board_namespace")
+        != "logic-governed-compositional-verification-fabric-v1"
+        or not isinstance(program, dict)
+        or not isinstance(runtime, dict)
+        or program.get("store_id") != SUCCESSOR_DATABASE_RELATIVE.as_posix()
+        or program.get("store_generation") != SUCCESSOR_STORE_GENERATION
+        or program.get("authority_mode") != "quack"
+        or runtime.get("root") != SUCCESSOR_RUN_RELATIVE.as_posix()
+        or projection != expected_projection
+        or bootstrap
+        != {
+            "maximum_processes": 1,
+            "quack_required": False,
+            "offline_single_writer_materialization_permitted": True,
+            "quack_required_after_publish": True,
+            "direct_multi_process_duckdb_permitted": False,
+            "automatic_installation_permitted": False,
+        }
+    ):
+        raise SuccessorOperatorError(
+            "LGCVF native-resume candidate projection or generation differs"
+        )
+    return config, raw
+
+
+def _native_resume_stage_config(
+    config: Mapping[str, Any],
+    *,
+    root: Path,
+    stage: Path,
+) -> dict[str, Any]:
+    """Retarget only unpublished materializer paths into the private stage."""
+
+    staged = copy.deepcopy(dict(config))
+    try:
+        relative = stage.relative_to(root.resolve(strict=True)).as_posix()
+        program = staged["database_program"]
+        runtime = staged["runtime_paths"]
+        program["store_id"] = f"{relative}/control.duckdb"
+        runtime["evidence"] = f"{relative}/evidence"
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SuccessorOperatorError(
+            "LGCVF native-resume staging paths are unavailable"
+        ) from exc
+    return staged
+
+
+def _verify_native_resume_projection(
+    database: Path,
+    *,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reconstruct the exact initial task frontier from the unpublished DB."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    projection = config.get("initial_projection")
+    if not isinstance(projection, Mapping):
+        raise SuccessorOperatorError("native-resume initial projection is unavailable")
+    with DatabaseTaskSource(database, install_schema=False) as source:
+        records = list(source.list_tasks(limit=100).tasks)
+        ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
+    completed = [item.task_alias for item in records if item.status == "completed"]
+    todo = [item.task_alias for item in records if item.status == "todo"]
+    blocked = [item.task_alias for item in records if item.status == "blocked"]
+    expected_completed = list(projection.get("completed_task_ids") or ())
+    expected_ready = list(projection.get("ready_task_ids") or ())
+    expected_blocked = list(projection.get("blocked_task_ids") or ())
+    expected_todo_count = (
+        int(projection.get("task_count") or 0)
+        - len(expected_completed)
+        - len(expected_blocked)
+    )
+    if (
+        len(records) != projection.get("task_count")
+        or completed != expected_completed
+        or ready != expected_ready
+        or blocked != expected_blocked
+        or len(todo) != expected_todo_count
+    ):
+        raise SuccessorOperatorError(
+            "materialized native-resume authority differs from initial_projection"
+        )
+    result = {
+        "task_count": len(records),
+        "completed_count": len(completed),
+        "todo_count": len(todo),
+        "blocked_count": len(blocked),
+        "completed_task_ids": completed,
+        "ready_task_ids": ready,
+        "blocked_task_ids": blocked,
+    }
+    result["projection_root"] = _content_id(result)
+    return result
+
+
+def _validate_native_bootstrap_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    config: Mapping[str, Any],
+    database_paths: Mapping[str, str],
+    source_head: str,
+    repository_tree_id: str,
+    population_root: str,
+    plan_root_cid: str,
+    schema_fingerprint: str,
+    catalog_fingerprint: str,
+) -> None:
+    """Replay the exact initial materializer receipt semantics."""
+
+    projection = config.get("initial_projection")
+    materialization = receipt.get("materialization")
+    verification = receipt.get("verification")
+    schema_install = receipt.get("schema_install")
+    if not all(
+        isinstance(item, Mapping)
+        for item in (projection, materialization, verification, schema_install)
+    ):
+        raise SuccessorOperatorError(
+            "native-resume bootstrap receipt structure differs"
+        )
+    assert isinstance(projection, Mapping)
+    assert isinstance(materialization, Mapping)
+    assert isinstance(verification, Mapping)
+    assert isinstance(schema_install, Mapping)
+    receipt_body = dict(receipt)
+    claimed_receipt_cid = str(receipt_body.pop("receipt_cid", ""))
+    verification_body = dict(verification)
+    claimed_verification_root = str(
+        verification_body.pop("verification_root", "")
+    )
+    task_source = materialization.get("task_source")
+    control = verification.get("control")
+    coordination = verification.get("coordination")
+    execution = verification.get("execution")
+    if not all(
+        isinstance(item, Mapping)
+        for item in (task_source, control, coordination, execution)
+    ):
+        raise SuccessorOperatorError(
+            "native-resume bootstrap receipt projection differs"
+        )
+    assert isinstance(task_source, Mapping)
+    assert isinstance(control, Mapping)
+    assert isinstance(coordination, Mapping)
+    assert isinstance(execution, Mapping)
+    registered = materialization.get("registered_task_cids")
+    completed = materialization.get("bootstrap_completed_task_cids")
+    task_cids = task_source.get("task_cids")
+    statuses = control.get("statuses")
+    ready = list(projection.get("ready_task_ids") or ())
+    completed_aliases = list(projection.get("completed_task_ids") or ())
+    blocked_aliases = list(projection.get("blocked_task_ids") or ())
+    task_count = int(projection.get("task_count") or 0)
+    goal_count = int(projection.get("goal_count") or 0)
+    expected_top_level_fields = {
+        "schema",
+        "authority_mode",
+        "task_source_kind",
+        "maximum_writer_processes",
+        "quack_qualified",
+        "schema_revision",
+        "schema_profile",
+        "semantic_truth_authority",
+        "operational_coordination_authority",
+        "population_root",
+        "plan_root_cid",
+        "repository_tree_id",
+        "source_head",
+        "database_paths",
+        "schema_install",
+        "materialization",
+        "verification",
+        "receipt_cid",
+    }
+    expected_verification_fields = {
+        "schema",
+        "valid",
+        "verification_mode",
+        "expected_stage",
+        "population_root",
+        "plan_root_cid",
+        "repository_tree_id",
+        "control",
+        "coordination",
+        "execution",
+        "stores_unchanged",
+        "maximum_writer_processes",
+        "quack_qualified",
+        "verification_root",
+    }
+    expected_coordination_counts = {
+        "active_fenced_leases": 0,
+        "active_maintenance_leases": 0,
+        "active_resource_claims": 0,
+        "active_task_attempts": 0,
+        "active_task_claims": 0,
+        "dependency_edges": 46,
+        "fenced_leases": 0,
+        "logical_completions": len(completed_aliases),
+        "maintenance_leases": 0,
+        "registered_tasks": task_count,
+        "resource_claims": 0,
+        "task_attempts": 0,
+        "task_claims": 0,
+    }
+    expected_execution_counts = {
+        "attempt_phases": 0,
+        "daemon_execution_events": 0,
+        "database_task_attempts": 0,
+        "effect_claims": 0,
+        "provider_invocations": 0,
+    }
+    expected_schema_install_fields = {
+        "catalog_fingerprint",
+        "changed",
+        "from_version",
+        "receipts",
+        "schema",
+        "schema_fingerprint",
+        "to_version",
+    }
+    expected_migration_receipt_fields = {
+        "application_version",
+        "checksum",
+        "error_text",
+        "finished_at",
+        "migration_id",
+        "outcome",
+        "receipt_cid",
+        "schema",
+        "schema_fingerprint",
+        "started_at",
+        "tool_version",
+        "version",
+    }
+    expected_task_source_fields = {
+        "event_watermark",
+        "goal_count",
+        "goal_edge_count",
+        "plan_count",
+        "plan_root_cid",
+        "projection_cid",
+        "repository_tree_id",
+        "schema",
+        "task_cids",
+        "task_count",
+    }
+    expected_control_fields = {
+        "catalog_projection",
+        "completion_receipts",
+        "dependency_count",
+        "event_stream_root",
+        "evidence",
+        "goal_count",
+        "objective_revision_history",
+        "plan_projection",
+        "plan_revision_history",
+        "ready_task_aliases",
+        "relation_count",
+        "relation_inventory",
+        "residual_content_projection",
+        "runtime_progress_observed",
+        "schema_verification",
+        "semantic_event_stream_root",
+        "semantic_events",
+        "statuses",
+        "table_counts",
+        "task_count",
+        "task_revision_histories",
+        "tasks",
+    }
+    expected_coordination_fields = {
+        "catalog_projection",
+        "counts",
+        "projection_root",
+    }
+    expected_execution_fields = {
+        "catalog_projection",
+        "metadata",
+        "row_counts",
+        "runtime_progress_observed",
+        "schema_inventory",
+    }
+
+    def exact_integer(value: Any, expected: int) -> bool:
+        return type(value) is int and value == expected
+
+    def exact_integer_mapping(value: Any, expected: Mapping[str, int]) -> bool:
+        return (
+            isinstance(value, Mapping)
+            and set(value) == set(expected)
+            and all(
+                exact_integer(value.get(key), item)
+                for key, item in expected.items()
+            )
+        )
+
+    def canonical_cid(value: Any) -> bool:
+        return (
+            isinstance(value, str)
+            and re.fullmatch(r"b[a-z2-7]{60}", value) is not None
+        )
+
+    migration_receipts = schema_install.get("receipts")
+    migration_receipt: Mapping[str, Any] = (
+        migration_receipts[0]
+        if isinstance(migration_receipts, list)
+        and len(migration_receipts) == 1
+        and isinstance(migration_receipts[0], Mapping)
+        else {}
+    )
+    semantic_difference = (
+        set(receipt) != expected_top_level_fields
+        or claimed_receipt_cid != _content_id(receipt_body)
+        or not exact_integer(projection.get("task_count"), 28)
+        or not exact_integer(projection.get("goal_count"), 14)
+        or receipt.get("schema") != BOOTSTRAP_RECEIPT_SCHEMA
+        or receipt.get("authority_mode") != "embedded"
+        or receipt.get("task_source_kind") != "duckdb"
+        or not exact_integer(receipt.get("maximum_writer_processes"), 1)
+        or receipt.get("quack_qualified") is not False
+        or receipt.get("schema_revision")
+        != "datasets-authoritative-operational-v1"
+        or receipt.get("schema_profile")
+        != "datasets-authoritative-operational"
+        or receipt.get("semantic_truth_authority") != "ipfs_datasets_py"
+        or receipt.get("operational_coordination_authority")
+        != "ipfs_accelerate_py"
+        or receipt.get("population_root") != population_root
+        or receipt.get("plan_root_cid") != plan_root_cid
+        or receipt.get("repository_tree_id") != repository_tree_id
+        or receipt.get("source_head") != source_head
+        or receipt.get("database_paths") != dict(database_paths)
+        or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in database_paths.items()
+        )
+        or set(schema_install) != expected_schema_install_fields
+        or schema_install.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/control-plane-migration-run@1"
+        or schema_install.get("changed") is not True
+        or not exact_integer(schema_install.get("from_version"), 0)
+        or not exact_integer(schema_install.get("to_version"), 1)
+        or schema_install.get("schema_fingerprint") != schema_fingerprint
+        or schema_install.get("catalog_fingerprint") != catalog_fingerprint
+        or set(migration_receipt) != expected_migration_receipt_fields
+        or migration_receipt.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "control-plane-migration-receipt@1"
+        )
+        or migration_receipt.get("schema_fingerprint") != schema_fingerprint
+        or migration_receipt.get("outcome") != "applied"
+        or migration_receipt.get("application_version") != "lgcvf-v1"
+        or not exact_integer(migration_receipt.get("version"), 1)
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(migration_receipt.get("checksum") or ""),
+        )
+        is None
+        or not canonical_cid(migration_receipt.get("receipt_cid"))
+        or set(materialization)
+        != {
+            "bootstrap_completed_task_cids",
+            "registered_task_cids",
+            "task_source",
+        }
+        or not isinstance(registered, list)
+        or len(registered) != task_count
+        or not all(canonical_cid(item) for item in registered)
+        or len(set(registered)) != task_count
+        or task_cids != registered
+        or not isinstance(completed, list)
+        or completed != registered[: len(completed_aliases)]
+        or set(task_source) != expected_task_source_fields
+        or task_source.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/database-task-source@1"
+        or not exact_integer(task_source.get("task_count"), task_count)
+        or not exact_integer(task_source.get("goal_count"), goal_count)
+        or not exact_integer(task_source.get("goal_edge_count"), 38)
+        or not exact_integer(task_source.get("plan_count"), 1)
+        or not exact_integer(task_source.get("event_watermark"), 82)
+        or not canonical_cid(task_source.get("projection_cid"))
+        or task_source.get("plan_root_cid") != plan_root_cid
+        or task_source.get("repository_tree_id") != repository_tree_id
+        or set(verification) != expected_verification_fields
+        or claimed_verification_root != _content_id(verification_body)
+        or verification.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "lgcvf-duckdb-read-only-verification@1"
+        )
+        or verification.get("valid") is not True
+        or verification.get("verification_mode") != "read_only"
+        or verification.get("expected_stage") != "initial"
+        or verification.get("population_root") != population_root
+        or verification.get("plan_root_cid") != plan_root_cid
+        or verification.get("repository_tree_id") != repository_tree_id
+        or verification.get("stores_unchanged") is not True
+        or not exact_integer(verification.get("maximum_writer_processes"), 1)
+        or verification.get("quack_qualified") is not False
+        or set(control) != expected_control_fields
+        or not exact_integer(control.get("task_count"), task_count)
+        or not exact_integer(control.get("goal_count"), goal_count)
+        or not exact_integer(control.get("dependency_count"), 46)
+        or control.get("ready_task_aliases") != ready
+        or control.get("runtime_progress_observed") is not False
+        or not isinstance(statuses, Mapping)
+        or not all(
+            isinstance(alias, str) and isinstance(status, str)
+            for alias, status in statuses.items()
+        )
+        or len(statuses) != task_count
+        or [alias for alias, status in statuses.items() if status == "completed"]
+        != completed_aliases
+        or [alias for alias, status in statuses.items() if status == "blocked"]
+        != blocked_aliases
+        or sum(status == "todo" for status in statuses.values())
+        != task_count - len(completed_aliases) - len(blocked_aliases)
+        or set(coordination) != expected_coordination_fields
+        or not exact_integer_mapping(
+            coordination.get("counts"), expected_coordination_counts
+        )
+        or set(execution) != expected_execution_fields
+        or not exact_integer_mapping(
+            execution.get("row_counts"), expected_execution_counts
+        )
+        or execution.get("runtime_progress_observed") is not False
+    )
+    if semantic_difference:
+        raise SuccessorOperatorError(
+            "native-resume bootstrap receipt semantics differ"
+        )
+
+
+def _verify_native_resume_stage_allowlist(
+    stage: Path,
+    *,
+    include_provenance: bool,
+) -> None:
+    """Require the materializer to leave only the declared initial objects."""
+
+    expected_files = set(NATIVE_RESUME_STAGE_DATA_FILES)
+    if not include_provenance:
+        expected_files.remove("evidence/quack-successor-provenance.json")
+    observed_directories: set[str] = set()
+    observed_files: set[str] = set()
+    for path in stage.rglob("*"):
+        relative = path.relative_to(stage).as_posix()
+        metadata = os.lstat(path)
+        if stat.S_ISDIR(metadata.st_mode):
+            if (
+                metadata.st_uid != os.geteuid()
+                or stat.S_IMODE(metadata.st_mode) != 0o700
+            ):
+                raise SuccessorOperatorError(
+                    "native-resume stage directory custody differs"
+                )
+            observed_directories.add(relative)
+        elif stat.S_ISREG(metadata.st_mode):
+            if (
+                metadata.st_uid != os.geteuid()
+                or stat.S_IMODE(metadata.st_mode) != 0o600
+                or metadata.st_nlink != 1
+            ):
+                raise SuccessorOperatorError(
+                    "native-resume stage file custody differs"
+                )
+            observed_files.add(relative)
+        else:
+            raise SuccessorOperatorError(
+                "native-resume stage contains an undeclared object"
+            )
+    if (
+        observed_directories != set(NATIVE_RESUME_STAGE_DIRECTORIES)
+        or observed_files
+        != expected_files | set(NATIVE_RESUME_STAGE_LOCK_FILES)
+        or any(
+            os.lstat(stage / relative).st_size != 0
+            for relative in NATIVE_RESUME_STAGE_LOCK_FILES
+        )
+    ):
+        raise SuccessorOperatorError(
+            "native-resume stage inventory differs from the exact allowlist"
+        )
+
+
+def _privatize_and_sync_native_resume_stage(stage: Path) -> None:
+    """Reject special/aliased stage members, privatize them, and fsync all."""
+
+    _privatize_owned_directory(stage, noun="native-resume stage root")
+    entries = sorted(stage.rglob("*"), key=lambda item: len(item.parts), reverse=True)
+    if len(entries) > 128:
+        raise SuccessorOperatorError("native-resume stage inventory exceeds its bound")
+    for path in entries:
+        metadata = os.lstat(path)
+        if stat.S_ISLNK(metadata.st_mode) or metadata.st_uid != os.geteuid():
+            raise SuccessorOperatorError("native-resume stage custody differs")
+        if stat.S_ISDIR(metadata.st_mode):
+            os.chmod(path, 0o700)
+        elif stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1:
+            os.chmod(path, 0o600)
+            descriptor = os.open(
+                path,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        else:
+            raise SuccessorOperatorError(
+                "native-resume stage contains a special or aliased object"
+            )
+    for directory in [
+        *[item for item in entries if item.is_dir()],
+        stage,
+    ]:
+        descriptor = os.open(
+            directory,
+            os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+
+def _native_resume_stage_inventory(stage: Path) -> tuple[tuple[Any, ...], ...]:
+    """Return an inode-bound inventory for final publication race checks."""
+
+    inventory: list[tuple[Any, ...]] = []
+    for path in sorted(stage.rglob("*")):
+        metadata = os.lstat(path)
+        kind = (
+            "directory"
+            if stat.S_ISDIR(metadata.st_mode)
+            else "file" if stat.S_ISREG(metadata.st_mode) else "special"
+        )
+        inventory.append(
+            (
+                path.relative_to(stage).as_posix(),
+                kind,
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mode,
+                metadata.st_nlink,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+                metadata.st_ctime_ns,
+            )
+        )
+    return tuple(inventory)
+
+
+def _cleanup_native_resume_stage(stage: Path, *, publish_parent: Path) -> None:
+    """Remove only an unpublished, owner-private stage created by this call."""
+
+    try:
+        metadata = os.lstat(stage)
+    except FileNotFoundError:
+        return
+    try:
+        valid_parent = stage.parent.resolve(strict=True) == publish_parent.resolve(
+            strict=True
+        )
+    except OSError:
+        valid_parent = False
+    if (
+        valid_parent
+        and stage.name.startswith(SUCCESSOR_RUN_RELATIVE.name + ".stage-")
+        and stat.S_ISDIR(metadata.st_mode)
+        and not stat.S_ISLNK(metadata.st_mode)
+        and metadata.st_uid == os.geteuid()
+    ):
+        shutil.rmtree(stage)
+
+
+def bootstrap_native_resume(root: Path = ROOT) -> dict[str, Any]:
+    """Atomically publish run-v24 from the tracked candidate projection."""
+
+    root = root.resolve(strict=True)
     paths = _paths(root)
     _require_ignored_successor(root)
-    recovery = _canonical_recovery_verification(root)
-    return clone_verified_successor(
-        paths["source_database"],
-        paths["successor_database"],
-        paths["provenance"],
-        recovery_verification=recovery,
+    config, config_raw = _load_native_resume_config(root)
+    continuity_before = _candidate_runtime_continuity(root)
+    final_run = paths["successor_database"].parent
+    try:
+        os.lstat(final_run)
+    except FileNotFoundError:
+        pass
+    else:
+        raise SuccessorOperatorError("refusing to overwrite an existing successor")
+    publish_parent = final_run.parent
+    publish_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _privatize_owned_directory(
+        publish_parent,
+        noun="native-resume publication parent",
     )
+    parent_descriptor = os.open(
+        publish_parent,
+        os.O_RDONLY
+        | os.O_DIRECTORY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    parent_before = os.fstat(parent_descriptor)
+    stage = publish_parent / (
+        f"{SUCCESSOR_RUN_RELATIVE.name}.stage-{uuid.uuid4().hex}"
+    )
+    os.mkdir(stage, mode=0o700)
+    published = False
+    try:
+        materializer = importlib.import_module(
+            "scripts."
+            "materialize_logic_governed_compositional_verification_fabric_control_plane"
+        )
+        population = materializer.build_population(config, root=root)
+        staged_config = _native_resume_stage_config(
+            config,
+            root=root,
+            stage=stage,
+        )
+        bootstrap = materializer._materialize_canonical(
+            staged_config,
+            population,
+            root=root,
+            recheck_source=True,
+        )
+        staged_database = stage / "control.duckdb"
+        staged_coordination = stage / "control.coordination.duckdb"
+        staged_execution = stage / "control.execution.duckdb"
+        staged_bootstrap = stage / "evidence" / "bootstrap" / "materialization.json"
+        staged_provenance = stage / "evidence" / paths["provenance"].name
+        for database in (staged_database, staged_coordination, staged_execution):
+            if os.path.lexists(database.with_name(database.name + ".wal")):
+                raise SuccessorOperatorError(
+                    "native-resume materialization retained a live WAL"
+                )
+        projection = _verify_native_resume_projection(
+            staged_database,
+            config=config,
+        )
+        final_database_paths = {
+            "control": SUCCESSOR_DATABASE_RELATIVE.as_posix(),
+            "coordination": SUCCESSOR_DATABASE_RELATIVE.with_name(
+                "control.coordination.duckdb"
+            ).as_posix(),
+            "execution": SUCCESSOR_DATABASE_RELATIVE.with_name(
+                "control.execution.duckdb"
+            ).as_posix(),
+        }
+        bootstrap = dict(bootstrap)
+        bootstrap["database_paths"] = final_database_paths
+        bootstrap.pop("receipt_cid", None)
+        bootstrap["receipt_cid"] = _content_id(bootstrap)
+        profile = _verify_profile(staged_database)
+        _validate_native_bootstrap_receipt(
+            bootstrap,
+            config=config,
+            database_paths=final_database_paths,
+            source_head=str(population["source_head"]),
+            repository_tree_id=str(population["repository_tree_id"]),
+            population_root=str(population["population_root"]),
+            plan_root_cid=str(population["plan_root_cid"]),
+            schema_fingerprint=str(profile.get("schema_fingerprint") or ""),
+            catalog_fingerprint=str(profile.get("catalog_fingerprint") or ""),
+        )
+        _atomic_json(staged_bootstrap, bootstrap, replace=True)
+
+        identity = _database_identity(staged_database)
+        config_after, config_raw_after = _load_native_resume_config(root)
+        continuity_after = _candidate_runtime_continuity(root)
+        if (
+            config_after != config
+            or config_raw_after != config_raw
+            or continuity_after != continuity_before
+            or population.get("source_head") != continuity_before.get("current_head")
+            or population.get("repository_tree_id")
+            != "git-tree:" + str(continuity_before.get("current_tree") or "")
+        ):
+            raise SuccessorOperatorError(
+                "candidate source changed during native-resume materialization"
+            )
+        target_digest = _sha256_regular_file(staged_database)
+        coordination_digest = _sha256_regular_file(staged_coordination)
+        execution_digest = _sha256_regular_file(staged_execution)
+        receipt = {
+            "schema": PROVENANCE_SCHEMA,
+            "issued_at": _utc_now(),
+            "admission_mode": NATIVE_RESUME_ADMISSION_MODE,
+            "source_generation": NATIVE_RESUME_SOURCE_GENERATION,
+            "target_generation": SUCCESSOR_STORE_GENERATION,
+            "source_database": "",
+            "target_database": str(paths["successor_database"]),
+            "source_head": str(population["source_head"]),
+            "source_tree": str(continuity_before["current_tree"]),
+            "source_forest_root": str(population["source_forest_root"]),
+            "datasets_head": str(continuity_before["datasets_head"]),
+            "datasets_tree": str(continuity_before["datasets_tree"]),
+            "candidate_config_path": DEFAULT_SUCCESSOR_CONFIG_RELATIVE.as_posix(),
+            "candidate_config_sha256": (
+                "sha256:" + hashlib.sha256(config_raw).hexdigest()
+            ),
+            "population_root": str(population["population_root"]),
+            "plan_root_cid": str(population["plan_root_cid"]),
+            "initial_projection": copy.deepcopy(config["initial_projection"]),
+            "materialized_projection": projection,
+            "bootstrap_receipt_cid": str(bootstrap["receipt_cid"]),
+            "bootstrap_verification_root": str(
+                (bootstrap.get("verification") or {}).get("verification_root") or ""
+            ),
+            "target_initial_sha256": target_digest,
+            "target_coordination_initial_sha256": coordination_digest,
+            "target_execution_initial_sha256": execution_digest,
+            "database_uuid": str(identity.get("database_uuid") or ""),
+            "schema_fingerprint": str(profile.get("schema_fingerprint") or ""),
+            "catalog_fingerprint": str(profile.get("catalog_fingerprint") or ""),
+            "initial_projection_reset": True,
+            "continuity_completion_records_imported": False,
+            "source_database_statuses_read": False,
+            "source_database_completion_records_imported": False,
+            "quack_required_after_publish": True,
+            "direct_multi_process_duckdb_permitted": False,
+            "ducklake_projection_authoritative": False,
+            "restart_requires_live_continuity_receipt": True,
+            "live_continuity_receipt_implemented": False,
+            "candidate_authored_validation": True,
+            "validation_self_authority": False,
+            "validation_completion_authoritative": False,
+            "network_isolation_enforced": True,
+            "model_provider_route": "none",
+            "task_implementation_complete": False,
+            "test_qualification_complete": False,
+            "objective_complete": False,
+            "release_qualified": False,
+            "authoritative_for_release": False,
+            "production_authorized": False,
+        }
+        receipt["receipt_cid"] = _content_id(receipt)
+        _atomic_json(staged_provenance, receipt, replace=False)
+        _privatize_and_sync_native_resume_stage(stage)
+        _verify_native_resume_stage_allowlist(stage, include_provenance=True)
+        if _strict_json(
+            staged_bootstrap,
+            expected_schema=BOOTSTRAP_RECEIPT_SCHEMA,
+            require_private_owner=True,
+        ) != bootstrap:
+            raise SuccessorOperatorError(
+                "native-resume bootstrap receipt replay differs"
+            )
+        stage_sealed = os.lstat(stage)
+        sealed_inventory = _native_resume_stage_inventory(stage)
+        if _strict_json(
+            staged_provenance,
+            expected_schema=PROVENANCE_SCHEMA,
+            require_private_owner=True,
+        ) != receipt:
+            raise SuccessorOperatorError("native-resume provenance replay differs")
+        _require_private_directory(stage, noun="native-resume stage root")
+        _verify_native_resume_stage_allowlist(stage, include_provenance=True)
+        parent_after = os.fstat(parent_descriptor)
+        stage_after = os.lstat(stage)
+        if (
+            (parent_before.st_dev, parent_before.st_ino)
+            != (parent_after.st_dev, parent_after.st_ino)
+            or (
+                stage_sealed.st_dev,
+                stage_sealed.st_ino,
+                stage_sealed.st_uid,
+                stage_sealed.st_mode,
+                stage_sealed.st_nlink,
+            )
+            != (
+                stage_after.st_dev,
+                stage_after.st_ino,
+                stage_after.st_uid,
+                stage_after.st_mode,
+                stage_after.st_nlink,
+            )
+            or os.path.lexists(final_run)
+            or _candidate_runtime_continuity(root) != continuity_before
+            or _native_resume_stage_inventory(stage) != sealed_inventory
+            or _sha256_regular_file(staged_database) != target_digest
+            or _sha256_regular_file(staged_coordination) != coordination_digest
+            or _sha256_regular_file(staged_execution) != execution_digest
+            or _strict_json(
+                staged_bootstrap,
+                expected_schema=BOOTSTRAP_RECEIPT_SCHEMA,
+                require_private_owner=True,
+            )
+            != bootstrap
+            or _strict_json(
+                staged_provenance,
+                expected_schema=PROVENANCE_SCHEMA,
+                require_private_owner=True,
+            )
+            != receipt
+        ):
+            raise SuccessorOperatorError(
+                "native-resume publication boundary changed before rename"
+            )
+        _rename_directory_noreplace(
+            parent_descriptor,
+            stage.name,
+            final_run.name,
+        )
+        published = True
+        try:
+            os.fsync(parent_descriptor)
+        except OSError as exc:
+            raise SuccessorOperatorError(
+                "native resume published completely but parent durability is uncertain"
+            ) from exc
+        return receipt
+    finally:
+        os.close(parent_descriptor)
+        if not published:
+            _cleanup_native_resume_stage(stage, publish_parent=publish_parent)
+
+
+def bootstrap_successor(root: Path = ROOT) -> dict[str, Any]:
+    return bootstrap_native_resume(root)
 
 
 def bootstrap_sealed_successor(
@@ -2745,8 +3643,7 @@ def bootstrap_sealed_successor(
     manifest_sha256: str,
     recovery_receipt_sha256: str,
 ) -> dict[str, Any]:
-    paths = _paths(root)
-    _require_ignored_successor(root)
+    _require_ignored_successor(root, run_relative=LEGACY_SUCCESSOR_RUN_RELATIVE)
     verification = verify_sealed_target_continuity(
         root=root,
         source_root=source_root,
@@ -2760,8 +3657,13 @@ def bootstrap_sealed_successor(
     source_paths = _sealed_source_paths(source_root)
     return clone_verified_successor(
         source_paths["control"],
-        paths["successor_database"],
-        paths["provenance"],
+        _contained(root, LEGACY_SUCCESSOR_RUN_RELATIVE / "control.duckdb"),
+        _contained(
+            root,
+            LEGACY_SUCCESSOR_RUN_RELATIVE
+            / "evidence"
+            / "quack-successor-provenance.json",
+        ),
         recovery_verification=verification,
     )
 
@@ -2773,12 +3675,21 @@ def _load_provenance(
     expected_receipt: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     database = paths["successor_database"]
+    coordination = database.with_name("control.coordination.duckdb")
+    execution = database.with_name("control.execution.duckdb")
     _require_private_directory(database.parent, noun="successor generation")
     _require_private_directory(
         paths["provenance"].parent, noun="successor evidence directory"
     )
-    if os.path.lexists(database.with_name(database.name + ".wal")):
-        raise SuccessorOperatorError("successor control database has a live WAL")
+    for noun, store in (
+        ("control", database),
+        ("coordination", coordination),
+        ("execution", execution),
+    ):
+        if os.path.lexists(store.with_name(store.name + ".wal")):
+            raise SuccessorOperatorError(
+                f"successor {noun} database has a live WAL"
+            )
     initial_receipt = _strict_json(
         paths["provenance"],
         expected_schema=PROVENANCE_SCHEMA,
@@ -2806,7 +3717,215 @@ def _load_provenance(
     admission_mode = str(receipt.get("admission_mode") or "")
     if receipt.get("target_database") != str(database):
         raise SuccessorOperatorError("successor provenance target differs")
-    if admission_mode == "canonical_fresh_generation_recovery":
+    source_database: Path | None = None
+    if admission_mode == NATIVE_RESUME_ADMISSION_MODE:
+        config, config_raw = _load_native_resume_config(root)
+        continuity = _candidate_runtime_continuity(root)
+        source_head_value = receipt.get("source_head")
+        source_tree_value = receipt.get("source_tree")
+        source_head = source_head_value if type(source_head_value) is str else ""
+        source_tree = source_tree_value if type(source_tree_value) is str else ""
+        native_fields = {
+            "schema",
+            "issued_at",
+            "admission_mode",
+            "source_generation",
+            "target_generation",
+            "source_database",
+            "target_database",
+            "source_head",
+            "source_tree",
+            "source_forest_root",
+            "datasets_head",
+            "datasets_tree",
+            "candidate_config_path",
+            "candidate_config_sha256",
+            "population_root",
+            "plan_root_cid",
+            "initial_projection",
+            "materialized_projection",
+            "bootstrap_receipt_cid",
+            "bootstrap_verification_root",
+            "target_initial_sha256",
+            "target_coordination_initial_sha256",
+            "target_execution_initial_sha256",
+            "database_uuid",
+            "schema_fingerprint",
+            "catalog_fingerprint",
+            "initial_projection_reset",
+            "continuity_completion_records_imported",
+            "source_database_statuses_read",
+            "source_database_completion_records_imported",
+            "quack_required_after_publish",
+            "direct_multi_process_duckdb_permitted",
+            "ducklake_projection_authoritative",
+            "restart_requires_live_continuity_receipt",
+            "live_continuity_receipt_implemented",
+            "candidate_authored_validation",
+            "validation_self_authority",
+            "validation_completion_authoritative",
+            "network_isolation_enforced",
+            "model_provider_route",
+            "task_implementation_complete",
+            "test_qualification_complete",
+            "objective_complete",
+            "release_qualified",
+            "authoritative_for_release",
+            "production_authorized",
+            "receipt_cid",
+        }
+
+        def native_content_cid(field: str) -> bool:
+            value = receipt.get(field)
+            return (
+                type(value) is str
+                and re.fullmatch(r"b[a-z2-7]{60}", value) is not None
+            )
+
+        def native_sha256(field: str) -> bool:
+            value = receipt.get(field)
+            return (
+                type(value) is str
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
+            )
+
+        if (
+            set(receipt) != native_fields
+            or receipt.get("source_generation") != NATIVE_RESUME_SOURCE_GENERATION
+            or receipt.get("target_generation") != SUCCESSOR_STORE_GENERATION
+            or receipt.get("source_database") != ""
+            or type(receipt.get("issued_at")) is not str
+            or re.fullmatch(
+                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z",
+                receipt["issued_at"],
+            )
+            is None
+            or source_head != continuity.get("current_head")
+            or source_tree != continuity.get("current_tree")
+            or receipt.get("datasets_head") != continuity.get("datasets_head")
+            or receipt.get("datasets_tree") != continuity.get("datasets_tree")
+            or receipt.get("candidate_config_path")
+            != DEFAULT_SUCCESSOR_CONFIG_RELATIVE.as_posix()
+            or receipt.get("candidate_config_sha256")
+            != "sha256:" + hashlib.sha256(config_raw).hexdigest()
+            or receipt.get("initial_projection") != config.get("initial_projection")
+            or not native_content_cid("source_forest_root")
+            or not native_content_cid("population_root")
+            or not native_content_cid("plan_root_cid")
+            or not native_content_cid("bootstrap_receipt_cid")
+            or not native_content_cid("bootstrap_verification_root")
+            or not native_content_cid("schema_fingerprint")
+            or not native_content_cid("catalog_fingerprint")
+            or not native_content_cid("receipt_cid")
+            or not native_sha256("target_initial_sha256")
+            or not native_sha256("target_coordination_initial_sha256")
+            or not native_sha256("target_execution_initial_sha256")
+            or type(receipt.get("database_uuid")) is not str
+            or not str(receipt.get("database_uuid") or "")
+            or receipt.get("initial_projection_reset") is not True
+            or receipt.get("continuity_completion_records_imported") is not False
+            or receipt.get("source_database_statuses_read") is not False
+            or receipt.get("source_database_completion_records_imported") is not False
+            or receipt.get("quack_required_after_publish") is not True
+            or receipt.get("direct_multi_process_duckdb_permitted") is not False
+            or receipt.get("ducklake_projection_authoritative") is not False
+            or receipt.get("restart_requires_live_continuity_receipt") is not True
+            or receipt.get("live_continuity_receipt_implemented") is not False
+            or receipt.get("candidate_authored_validation") is not True
+            or receipt.get("validation_self_authority") is not False
+            or receipt.get("validation_completion_authoritative") is not False
+            or receipt.get("network_isolation_enforced") is not True
+            or receipt.get("model_provider_route") != "none"
+            or receipt.get("task_implementation_complete") is not False
+            or receipt.get("test_qualification_complete") is not False
+            or receipt.get("objective_complete") is not False
+            or receipt.get("release_qualified") is not False
+            or receipt.get("authoritative_for_release") is not False
+            or receipt.get("production_authorized") is not False
+            or re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+            or _git_text(
+                root,
+                ("show", "-s", "--format=%T", source_head),
+                noun="native-resume source commit",
+            )
+            != source_tree
+        ):
+            raise SuccessorOperatorError("native-resume provenance binding differs")
+        _git_quiet(
+            root,
+            (
+                "merge-base",
+                "--is-ancestor",
+                source_head,
+                str(continuity.get("current_head") or ""),
+            ),
+            noun="native-resume source ancestry",
+        )
+        bootstrap_path = (
+            database.parent / "evidence" / "bootstrap" / "materialization.json"
+        )
+        bootstrap = _strict_json(
+            bootstrap_path,
+            expected_schema=BOOTSTRAP_RECEIPT_SCHEMA,
+            require_private_owner=True,
+        )
+        _validate_native_bootstrap_receipt(
+            bootstrap,
+            config=config,
+            database_paths={
+                "control": SUCCESSOR_DATABASE_RELATIVE.as_posix(),
+                "coordination": SUCCESSOR_DATABASE_RELATIVE.with_name(
+                    "control.coordination.duckdb"
+                ).as_posix(),
+                "execution": SUCCESSOR_DATABASE_RELATIVE.with_name(
+                    "control.execution.duckdb"
+                ).as_posix(),
+            },
+            source_head=source_head,
+            repository_tree_id="git-tree:" + source_tree,
+            population_root=receipt["population_root"],
+            plan_root_cid=receipt["plan_root_cid"],
+            schema_fingerprint=receipt["schema_fingerprint"],
+            catalog_fingerprint=receipt["catalog_fingerprint"],
+        )
+        bootstrap_verification = bootstrap["verification"]
+        assert isinstance(bootstrap_verification, Mapping)
+        if (
+            bootstrap.get("receipt_cid") != receipt.get("bootstrap_receipt_cid")
+            or bootstrap_verification.get("verification_root")
+            != receipt.get("bootstrap_verification_root")
+            or bootstrap.get("population_root") != receipt.get("population_root")
+            or bootstrap.get("plan_root_cid") != receipt.get("plan_root_cid")
+        ):
+            raise SuccessorOperatorError(
+                "native-resume bootstrap/provenance cross-binding differs"
+            )
+        if (
+            target_digest != receipt.get("target_initial_sha256")
+            or _sha256_regular_file(
+                coordination,
+                noun="native-resume coordination database",
+                require_private_owner=True,
+            )
+            != receipt.get("target_coordination_initial_sha256")
+            or _sha256_regular_file(
+                execution,
+                noun="native-resume execution database",
+                require_private_owner=True,
+            )
+            != receipt.get("target_execution_initial_sha256")
+        ):
+            raise SuccessorOperatorError(
+                "native-resume state changed after initial admission; restart "
+                "requires an unimplemented live-continuity receipt"
+            )
+        projection = _verify_native_resume_projection(database, config=config)
+        if projection != receipt.get("materialized_projection"):
+            raise SuccessorOperatorError(
+                "native-resume initial projection replay differs"
+            )
+    elif admission_mode == "canonical_fresh_generation_recovery":
         source_database = paths["source_database"]
         if receipt.get("source_database") != str(source_database):
             raise SuccessorOperatorError("successor provenance no longer binds run-v17")
@@ -2942,7 +4061,7 @@ def _load_provenance(
             )
     else:
         raise SuccessorOperatorError("successor provenance admission mode differs")
-    if _sha256_regular_file(
+    if source_database is not None and _sha256_regular_file(
         source_database,
         noun="successor provenance source database",
         require_private_owner=admission_mode == SEALED_CONTINUITY_MODE,
@@ -2980,10 +4099,18 @@ def _load_lgcvf_live_raw_provenance_receipt(
         type(receipt_cid) is not str
         or re.fullmatch(r"[a-z2-7]{32,256}", receipt_cid) is None
         or receipt.get("target_database") != str(paths["successor_database"])
-        or receipt.get("source_generation") != "lgcvf-run-v17"
-        or receipt.get("target_generation") != "lgcvf-run-v23"
-        or receipt.get("admission_mode")
-        not in {"canonical_fresh_generation_recovery", SEALED_CONTINUITY_MODE}
+        or (
+            receipt.get("source_generation"),
+            receipt.get("target_generation"),
+            receipt.get("admission_mode"),
+        )
+        not in {
+            (
+                NATIVE_RESUME_SOURCE_GENERATION,
+                SUCCESSOR_STORE_GENERATION,
+                NATIVE_RESUME_ADMISSION_MODE,
+            ),
+        }
     ):
         raise SuccessorOperatorError(
             "raw successor provenance is not the exact live generation receipt"
@@ -3032,7 +4159,7 @@ def _validate_successor_board(
         or program.endpoint_secret_handle != SECRET_HANDLE
         or program.store_id != expected_store
         or program.runtime_registry_path != expected_registry
-        or program.store_generation != "lgcvf-run-v23"
+        or program.store_generation != SUCCESSOR_STORE_GENERATION
         or program.schema_revision != "datasets-authoritative-operational-v1"
         or not isinstance(raw_program, Mapping)
         or raw_program.get("schema_profile") != "datasets-authoritative-operational"
@@ -3047,7 +4174,9 @@ def _validate_successor_board(
         or provider.get("max_concurrency") != 4
         or not isinstance(bootstrap, Mapping)
         or bootstrap.get("maximum_processes") != 1
-        or bootstrap.get("quack_required") is not True
+        or bootstrap.get("quack_required") is not False
+        or bootstrap.get("offline_single_writer_materialization_permitted") is not True
+        or bootstrap.get("quack_required_after_publish") is not True
         or bootstrap.get("direct_multi_process_duckdb_permitted") is not False
         or not isinstance(projection, Mapping)
         or projection.get("root") != PROJECTION_ROOT_RELATIVE.as_posix()
@@ -3342,7 +4471,7 @@ def _lgcvf_live_native_authorization_id(
         "board_namespace": (
             "logic-governed-compositional-verification-fabric-v1"
         ),
-        "target_generation": "lgcvf-run-v23",
+        "target_generation": SUCCESSOR_STORE_GENERATION,
         "source_head": source_head,
         "source_tree": source_tree,
         "candidate_config_path": DEFAULT_SUCCESSOR_CONFIG_RELATIVE.as_posix(),
@@ -4357,7 +5486,7 @@ def _run_locked_successor(
             BOARD_EXTENSION_INSTALL_POLICY_ENV: (
                 BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
             ),
-            STORE_GENERATION_ENV: "lgcvf-run-v23",
+            STORE_GENERATION_ENV: SUCCESSOR_STORE_GENERATION,
         }
         previous_extension_environment.update(
             {name: os.environ.get(name) for name in extension_environment}
