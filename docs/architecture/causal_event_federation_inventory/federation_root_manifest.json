@@ -1,6 +1,6 @@
 {
   "schema": "casf/release-manifest@1",
-  "manifest_id": "sha256:66283f80c82afafc554c0e1a32acf44424f2250bca1002ef6a0b3cb53fe13843",
+  "manifest_id": "sha256:b7703a1716e1101d24e67baa9644e9500cf859c520598caac5ecbab274319025",
   "artifact_type": "casf_federation_root_manifest",
   "artifact_version": 1,
   "program_id": "agent-supervisor-causal-event-federation-v1",
@@ -27,27 +27,27 @@
     "tree_id": "14b36ca1f21bfd03dd4b88a7866a0c1a40059249"
   },
   "qualification_report_projection": {
-    "revision": "e5f1b61b44732df63915578d7701e4df9ad724c3",
-    "tree_id": "71b72e2dc88da312e481081faf6275b411a8525d",
-    "report_id": "sha256:aef8c9036eb09c42e04269723265fb9fb869ffbec9091150fcd8ca12512c0237",
+    "revision": "e45c6fe6790f1110b061f8cbefb2ce1dce4d8544",
+    "tree_id": "aa9b3b6171795a5722c01a7182c327454cddb0c0",
+    "report_id": "sha256:d1525586b485407f0642d9155b97fa0eed8ac40f9e007cc1133798632642ad9e",
     "artifacts": [
       {
         "path": "docs/architecture/causal_event_federation_inventory/final_qualification_report.json",
-        "git_blob_oid": "3cf294cd0687cebf5220222d85c9cc6aa8ed724a",
-        "raw_sha256": "efbfe15e327ad44d2f6b97e351e5a190a1a5904b612aa7daf554dab71ba4fd46",
-        "byte_count": 27940
+        "git_blob_oid": "4dbf6c2e385295a59c4c0beaaadd6b09623d43de",
+        "raw_sha256": "4a0519e991263c09f08f51a9a07be04043ee7fba8a96c05eedb141e7a1332dff",
+        "byte_count": 31002
       },
       {
         "path": "docs/architecture/causal_event_federation_inventory/final_qualification_report.md",
-        "git_blob_oid": "9b42e846d45f847bee3e698a51c926213fe5e8ab",
-        "raw_sha256": "636542409baeb39a68f998aa5edcfc7fc0b426ab6d78fd169bae936347875cc0",
-        "byte_count": 12133
+        "git_blob_oid": "5d8388289e03e995078bfe75443ffc7730cd0492",
+        "raw_sha256": "2f53aea535133a041af840faeb4b670fdb1c675c8fc164050bcab1b60080f330",
+        "byte_count": 12835
       },
       {
         "path": "test/api/causal_federation/test_qualification_report.py",
-        "git_blob_oid": "3b93df54bceadafbb8fdcd2e1505bbd1942ee895",
-        "raw_sha256": "6b0d19a8b8f639b9fa7a4c2e29b1bd9717a87ae5b23477cee9633541a75ce0e0",
-        "byte_count": 62418
+        "git_blob_oid": "9abb3df6297a1d1565ff020be6e01b8f7a61efdb",
+        "raw_sha256": "332a3ee335e6358b83c7ff6cf11b8a499d87a9b82a2a636b38003d9f062713b0",
+        "byte_count": 75777
       }
     ]
   },
@@ -103,6 +103,7 @@
     "CASF-043-FINAL-TREE-ACCEPTANCE",
     "CASF-043-LIVE-TYPED-QUACK-STATE-OWNER",
     "CASF-043-CASF-030-PROVENANCE",
+    "CASF-043-CASF-031-DUCKLAKE-PROJECTION-ACCEPTANCE",
     "CASF-043-CASF-032-DUCKLAKE-PROVENANCE",
     "CASF-043-CASF-033-PROVENANCE",
     "CASF-043-CASF-034-STATE-OWNER-CAPABILITY",
@@ -130,8 +131,8 @@
       "docs/architecture/causal_event_federation_inventory/federation_root_manifest.json"
     ],
     "target": {
-      "revision": "e5f1b61b44732df63915578d7701e4df9ad724c3",
-      "tree_id": "71b72e2dc88da312e481081faf6275b411a8525d"
+      "revision": "e45c6fe6790f1110b061f8cbefb2ce1dce4d8544",
+      "tree_id": "aa9b3b6171795a5722c01a7182c327454cddb0c0"
     },
     "applied": false,
     "executable": false,
