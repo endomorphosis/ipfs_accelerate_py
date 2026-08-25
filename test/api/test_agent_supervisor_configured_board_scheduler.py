@@ -3658,13 +3658,78 @@ def test_receipt_coordinator_prepares_fresh_private_lane_directories(
         path=lambda relative: tmp_path / relative,
     )
 
-    scheduler_module._prepare_coordinator_lane_status_permissions(board)
+    previous_umask = os.umask(0o002)
+    try:
+        scheduler_module._prepare_coordinator_lane_status_permissions(board)
+    finally:
+        os.umask(previous_umask)
 
     for lane_index in range(4):
         lane_dir = tmp_path / "state" / f"lane-{lane_index}"
         assert lane_dir.is_dir()
         assert not lane_dir.is_symlink()
         assert stat.S_IMODE(os.lstat(lane_dir).st_mode) == 0o700
+
+
+def test_receipt_coordinator_rejects_peer_writable_lane_directory(
+    tmp_path: Path,
+) -> None:
+    board = SimpleNamespace(
+        repo_root=tmp_path,
+        runtime_paths={"state": "state"},
+        task_prefix="PCPC-",
+        max_lanes=4,
+        path=lambda relative: tmp_path / relative,
+    )
+    lane_dir = tmp_path / "state" / "lane-0"
+    lane_dir.mkdir(mode=0o700, parents=True)
+    lane_dir.chmod(0o775)
+
+    with pytest.raises(
+        scheduler_module.ConfiguredBoardError,
+        match="exact owner-private directory",
+    ):
+        scheduler_module._prepare_coordinator_lane_status_permissions(board)
+
+    assert stat.S_IMODE(os.lstat(lane_dir).st_mode) == 0o775
+
+
+def test_lgcvf_sealed_bootstrap_diagnostic_is_closed_bounded_and_secret_free() -> None:
+    bootstrap = multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP
+    sentinel = "must-not-cross-lgcvf-bootstrap-diagnostic"
+    secret_type = "MustNotCrossLGCVFMetaSecret1234567890"
+    injection_point = "try:\n    if not sys.flags.isolated"
+    injected = (
+        "try:\n"
+        f"    _phase={sentinel * 8!r}\n"
+        "    class DiagnosticTypeName(str):\n"
+        f"        def __str__(self): return {secret_type!r}\n"
+        "    class DiagnosticSentinelError(Exception): pass\n"
+        "    DiagnosticSentinelError.__name__=DiagnosticTypeName('RuntimeError')\n"
+        f"    raise DiagnosticSentinelError({sentinel!r})\n"
+        "    if not sys.flags.isolated"
+    )
+    assert bootstrap.count(injection_point) == 1
+    probe = bootstrap.replace(injection_point, injected, 1)
+
+    completed = subprocess.run(
+        [sys.executable, "-I", "-S", "-B", "-c", probe],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+    assert completed.returncode == 78
+    assert completed.stdout == ""
+    assert completed.stderr == (
+        "lgcvf-sealed-bootstrap@1 phase=unknown type=BaseException\n"
+    )
+    assert len(completed.stderr.encode("ascii")) <= 160
+    assert sentinel not in completed.stderr
+    assert secret_type not in completed.stderr
+    assert "str(sealed_exc)" not in bootstrap
 
 
 def test_receipt_coordinator_preidentity_failure_fences_exact_child_handle() -> None:

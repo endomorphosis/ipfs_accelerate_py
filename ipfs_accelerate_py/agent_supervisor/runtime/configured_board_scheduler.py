@@ -6295,10 +6295,45 @@ def _bind_foreground_wave_pid(plan: dict[str, Any], board: ConfiguredBoard) -> N
 
 
 def _prepare_coordinator_lane_status_permissions(board: ConfiguredBoard) -> None:
-    """Make only safe pre-existing lane projections owner-private before reuse."""
+    """Prepare exact owner-private lane directories and status projections."""
 
     for path in _coordinator_lane_status_paths(board):
-        _ensure_plan_bound_runtime_directory(board.repo_root, path.parent)
+        lane_directory = _ensure_plan_bound_runtime_directory(
+            board.repo_root,
+            path.parent,
+        )
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_DIRECTORY", 0)
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nofollow is None:
+            raise ConfiguredBoardError(
+                "private lane directory admission requires no-follow access"
+            )
+        flags |= nofollow
+        try:
+            directory_descriptor = os.open(lane_directory, flags)
+        except OSError as exc:
+            raise ConfiguredBoardError(
+                "cannot open configured lane directory safely"
+            ) from exc
+        try:
+            opened_directory = os.fstat(directory_descriptor)
+            observed_directory = os.lstat(lane_directory)
+            if (
+                not stat.S_ISDIR(opened_directory.st_mode)
+                or stat.S_ISLNK(observed_directory.st_mode)
+                or int(opened_directory.st_uid) != os.geteuid()
+                or int(observed_directory.st_uid) != os.geteuid()
+                or (int(opened_directory.st_dev), int(opened_directory.st_ino))
+                != (int(observed_directory.st_dev), int(observed_directory.st_ino))
+                or stat.S_IMODE(opened_directory.st_mode) != 0o700
+                or stat.S_IMODE(observed_directory.st_mode) != 0o700
+            ):
+                raise ConfiguredBoardError(
+                    "configured lane directory must be an exact owner-private directory"
+                )
+        finally:
+            os.close(directory_descriptor)
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
         try:
@@ -8175,11 +8210,13 @@ def _run_parsed_command(
     from .multi_supervisor_runner import main as multi_supervisor_main
 
     previous_umask: int | None = None
+    private_lane_runtime = has_coordinator_session or live_context is not None
     try:
-        if has_coordinator_session:
-            assert args.coordinator_status_path is not None
+        if private_lane_runtime:
             previous_umask = os.umask(0o077)
             _prepare_coordinator_lane_status_permissions(board)
+        if has_coordinator_session:
+            assert args.coordinator_status_path is not None
             _publish_coordinator_launch_attestation(
                 board,
                 launch_session_id=args.coordinator_launch_session,

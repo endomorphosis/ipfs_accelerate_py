@@ -323,6 +323,7 @@ def _sha(value): return 'sha256:'+hashlib.sha256(value).hexdigest()
 def _field(value,name):
     if type(value) is dict: return value.get(name)
     return getattr(value,name,None)
+_phase='birth_env'
 try:
     if not sys.flags.isolated or not sys.flags.no_site or not sys.flags.dont_write_bytecode or not sys.platform.startswith('linux') or any(name.startswith(('LD_','PYTHON')) or name=='GLIBC_TUNABLES' for name in os.environ): _deny()
     if os.environ.get('IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY','')!='load_only': _deny()
@@ -344,6 +345,7 @@ try:
         marker_payload=os.read(marker_fd,256); marker_after=os.fstat(marker_fd); os.close(marker_fd)
     except BaseException: _deny()
     if (marker_metadata.st_dev,marker_metadata.st_ino,marker_metadata.st_size,marker_metadata.st_mtime_ns,marker_metadata.st_ctime_ns)!=(marker_after.st_dev,marker_after.st_ino,marker_after.st_size,marker_after.st_mtime_ns,marker_after.st_ctime_ns) or not token_sink or '\x00' in token_sink or len(token_sink.encode('utf-8'))>4096 or not os.path.isabs(token_sink) or os.path.abspath(token_sink)!=token_sink or os.path.basename(token_sink)!='unavailable' or os.path.basename(token_marker)!='.ephemeral-token-persistence-disabled' or not stat.S_ISREG(marker_metadata.st_mode) or marker_metadata.st_uid!=os.geteuid() or marker_metadata.st_nlink!=1 or stat.S_IMODE(marker_metadata.st_mode)!=0o400 or marker_payload!=b'trusted controller keeps the Quack attach credential in memory\n': _deny()
+    _phase='capsule_fd'
     capsule_fd=int(sys.argv.pop(1)); pin_text=sys.argv.pop(1); admission_text=sys.argv.pop(1)
     native_fd=int(sys.argv.pop(1)); native_text=sys.argv.pop(1); module=sys.argv.pop(1)
     expected_bootstrap=sys.argv.pop(1); expected_python=sys.argv.pop(1)
@@ -399,6 +401,7 @@ try:
         if type(root) is not str or not root or root.startswith(('/', '\\')) or '\x00' in root or '..' in root.replace('\\','/').split('/'): _deny()
         projected=archive if root=='.' else archive+'/'+root.strip('/')
         if projected not in capsule_roots: capsule_roots.append(projected)
+    _phase='native_fd'
     from ipfs_accelerate_py import llm_router as router
     native=router.parse_agent_supervisor_native_dependency_launch(native_payload)
     if native.to_json()!=native_text or native.descriptor.descriptor!=native_fd: _deny()
@@ -434,6 +437,7 @@ try:
     if accepted_python is None: accepted_python=_field(python_identity,'executable_sha256')
     if accepted_python!=expected_python or native.pin.python_executable_sha256!=expected_python: _deny()
     router.preload_agent_supervisor_native_dependency(native)
+    _phase='module_import'
     dataset_prefix=archive+'/ipfs_datasets_py/'
     projected_roots=list(reversed(capsule_roots))
     sys.path[:]=[*projected_roots,*[entry for entry in sys.path if entry not in capsule_roots]]
@@ -448,6 +452,7 @@ try:
     if module in sys.modules: _deny()
     target_origin=namespace.get('__file__')
     if type(target_origin) is not str or not target_origin.startswith(prefix): _deny()
+    _phase='origin_audit'
     for name,loaded in tuple(sys.modules.items()):
         if name=='ipfs_accelerate_py' or name.startswith('ipfs_accelerate_py.'):
             origin=getattr(loaded,'__file__',None)
@@ -457,9 +462,20 @@ try:
             if type(origin) is not str or not origin.startswith(dataset_prefix): _deny()
     main=namespace.get('main')
     if not callable(main): _deny()
+    _phase='daemon_main' if daemon_bootstrap else 'role_main'
     raise SystemExit(main())
 except SystemExit: raise
-except BaseException: raise SystemExit(78)
+except BaseException as sealed_exc:
+    try:
+        sealed_phase=_phase if type(_phase) is str and _phase in ('birth_env','capsule_fd','native_fd','module_import','origin_audit','daemon_main','role_main') else 'unknown'
+        sealed_type=type(sealed_exc).__name__
+        if type(sealed_type) is not str or sealed_type not in ('ConfiguredBoardError','DatabaseImplementationAuthorityError','DatabaseProgramConfigError','ImportError','ModuleNotFoundError','OSError','PermissionError','QuackClientError','QuackClientIdentityError','QuackClientTransportError','RuntimeError','StateOwnerBootstrapError','SupervisorSchedulerConfigError','TimeoutError','TypedStateOwnerError','ValueError'): sealed_type='BaseException'
+        sealed_record=('lgcvf-sealed-bootstrap@1 phase=%s type=%s\n' % (sealed_phase,sealed_type)).encode('ascii')
+        if len(sealed_record)>160: sealed_record=b'lgcvf-sealed-bootstrap@1 phase=unknown type=BaseException\n'
+        os.write(2,sealed_record)
+    except BaseException:
+        pass
+    raise SystemExit(78)
 '''
 LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP_SHA256 = (
     "sha256:"
