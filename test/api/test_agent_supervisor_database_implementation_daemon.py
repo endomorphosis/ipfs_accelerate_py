@@ -8354,7 +8354,9 @@ def test_portal_builder_with_inherited_database_program_without_implement_is_obs
         daemon.close()
 
 
-def test_quack_runner_builders_use_lane_private_sidecars(tmp_path: Path) -> None:
+def test_quack_runner_builders_require_bound_typed_owner_for_lane_sidecars(
+    tmp_path: Path,
+) -> None:
     control = tmp_path / "control.duckdb"
 
     def lane_args(index: int):
@@ -8375,7 +8377,7 @@ def test_quack_runner_builders_use_lane_private_sidecars(tmp_path: Path) -> None
                 "--state-store-generation",
                 "test-generation",
                 "--state-schema-revision",
-                "datasets-authoritative-operational-v1",
+                "generic-typed-owner-v1",
                 "--todo-path",
                 str(tmp_path / "unused.md"),
                 "--state-dir",
@@ -8391,51 +8393,51 @@ def test_quack_runner_builders_use_lane_private_sidecars(tmp_path: Path) -> None
             ]
         )
 
-    first, _first_context = build_portal_implementation_daemon_from_args(
-        lane_args(0),
-        repo_root=tmp_path,
-    )
-    second, _second_context = build_portal_implementation_daemon_from_args(
-        lane_args(1),
-        repo_root=tmp_path,
-    )
-    third = build_database_implementation_daemon_from_args(
-        lane_args(2),
-        database_path=control,
-    )
-    try:
-        assert isinstance(first, DatabaseImplementationDaemon)
-        assert isinstance(second, DatabaseImplementationDaemon)
-        assert isinstance(third, DatabaseImplementationDaemon)
-        # Quack lanes keep a private control sidecar under state_dir so they
-        # never open the shared remote store as a writer.  An explicit
-        # database_path override still binds the canonical control plane.
-        assert first.database_path == tmp_path / "lane-0" / "quack-lane-control.duckdb"
-        assert second.database_path == tmp_path / "lane-1" / "quack-lane-control.duckdb"
-        assert third.database_path == control
-        assert first.execution_path != second.execution_path
-        assert first.coordination_path != second.coordination_path
-        assert third.execution_path not in {first.execution_path, second.execution_path}
-        assert third.coordination_path not in {
-            first.coordination_path,
-            second.coordination_path,
-        }
-        assert first.execution_path.parent == tmp_path / "lane-0"
-        assert second.execution_path.parent == tmp_path / "lane-1"
-        assert third.execution_path.parent == tmp_path / "lane-2"
-        assert first.coordination_path.parent == tmp_path / "lane-0"
-        assert second.coordination_path.parent == tmp_path / "lane-1"
-        assert third.coordination_path.parent == tmp_path / "lane-2"
-        assert first.strict_task_sharding is True
-        assert second.strict_task_sharding is True
-        assert third.strict_task_sharding is True
-        assert first.task_shard_index == 0
-        assert second.task_shard_index == 1
-        assert third.task_shard_index == 2
-    finally:
-        first.close()
-        second.close()
-        third.close()
+    resolved = [
+        resolve_database_implementation_paths(lane_args(index), authority_mode="quack")
+        for index in range(3)
+    ]
+    assert [item["database_path"] for item in resolved] == [
+        tmp_path / f"lane-{index}" / "quack-lane-control.duckdb"
+        for index in range(3)
+    ]
+    assert [item["coordination_path"].parent for item in resolved] == [
+        tmp_path / f"lane-{index}" for index in range(3)
+    ]
+    assert [item["execution_path"].parent for item in resolved] == [
+        tmp_path / f"lane-{index}" for index in range(3)
+    ]
+    assert len({item["coordination_path"] for item in resolved}) == 3
+    assert len({item["execution_path"] for item in resolved}) == 3
+
+    # Path derivation alone is not Quack authority.  These convenience
+    # builders cannot mint or infer a remote-owner credential from argv, so
+    # they must fail closed until the launcher injects the exact attached
+    # TypedDatabaseTaskSource and its process-bound bootstrap credentials.
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="exact attached TypedDatabaseTaskSource",
+    ):
+        build_portal_implementation_daemon_from_args(
+            lane_args(0),
+            repo_root=tmp_path,
+        )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="exact attached TypedDatabaseTaskSource",
+    ):
+        build_portal_implementation_daemon_from_args(
+            lane_args(1),
+            repo_root=tmp_path,
+        )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="exact attached TypedDatabaseTaskSource",
+    ):
+        build_database_implementation_daemon_from_args(
+            lane_args(2),
+            database_path=control,
+        )
 
 
 def test_database_lanes_register_disjoint_hash_shards(tmp_path: Path) -> None:
