@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -116,6 +117,11 @@ def test_production_parsers_preserve_goal_and_task_dags() -> None:
     assert graph.invalid_task_cids == []
     assert len(graph.nodes) == 44
     assert len(graph.edges) == 191
+    by_id = {task.task_id: task for task in tasks}
+    assert all(
+        by_id[f"CASF-{index:03d}"].metadata.get("no-change completion") == "allowed"
+        for index in range(44)
+    )
 
 
 def test_generic_scheduler_accepts_one_lane_quack_program() -> None:
@@ -132,7 +138,10 @@ def test_generic_scheduler_accepts_one_lane_quack_program() -> None:
     assert program.endpoint_secret_handle == "handle:casf-v1"
     assert program.quack_endpoint == "quack:127.0.0.1:41417"
     assert program.store_generation == "casf-v1"
-    assert program.schema_revision == "2"
+    assert program.schema_revision == "3"
+    assert args.count("--state-schema-revision") == 1
+    revision_index = args.index("--state-schema-revision")
+    assert args[revision_index + 1] == "3"
     assert program.failover_policy == "fail_closed"
 
 
@@ -207,10 +216,46 @@ def test_bootstrap_qualifies_only_exact_typed_wait_without_federation_claim() ->
     }
 
 
-def test_source_check_binds_branch_and_starting_tree() -> None:
-    report = _validator_module().validate_program(check_source=True)
-    assert report["valid"] is True, report["errors"]
+def test_standalone_source_policy_remains_protected_branch_strict() -> None:
+    validator = _validator_module()
+    report = validator.validate_program(check_source=True)
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     assert report["source_checks_performed"] is True
+    if branch == validator.BRANCH:
+        assert report["valid"] is True, report["errors"]
+    else:
+        assert report["valid"] is False
+        assert report["errors"] == [
+            "current Git source does not descend from the sealed branch/tree baseline"
+        ]
+
+    source_binding = json.loads(CONFIG.read_text(encoding="utf-8"))[
+        "source_binding"
+    ]
+    assert source_binding["accelerator_required_ancestor"] == validator.BASE_REVISION
+    assert source_binding["accelerator_planning_tree"] == validator.BASE_TREE
+    tree = subprocess.run(
+        ["git", "rev-parse", f"{validator.BASE_REVISION}^{{tree}}"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert tree == validator.BASE_TREE
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", validator.BASE_REVISION, "HEAD"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert ancestry.returncode == 0, ancestry.stderr
 
 
 def test_validator_rejects_missing_required_task_declaration(tmp_path, monkeypatch) -> None:
@@ -249,6 +294,66 @@ def test_validator_rejects_completed_task_with_pending_result_identity(
     )
 
 
+def test_validator_rejects_no_change_population_drift(tmp_path, monkeypatch) -> None:
+    validator = _validator_module()
+    original = TODO.read_text(encoding="utf-8")
+
+    missing = tmp_path / "missing-no-change.todo.md"
+    missing.write_text(
+        original.replace("- No-change completion: allowed\n", "", 1),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(validator, "BOARD", missing)
+    report = validator.validate_program()
+    assert report["valid"] is False
+    assert any(
+        "CASF-000: sealed landed task must allow exact validated no-change completion"
+        in error
+        for error in report["errors"]
+    )
+
+    invalid = tmp_path / "invalid-no-change.todo.md"
+    heading = "## CASF-043 Produce current-tree qualification and residual-gap report"
+    prefix, suffix = original.split(heading, 1)
+    suffix = suffix.replace(
+        "- No-change completion: allowed\n",
+        "- No-change completion: forbidden\n",
+        1,
+    )
+    invalid.write_text(prefix + heading + suffix, encoding="utf-8")
+    monkeypatch.setattr(validator, "BOARD", invalid)
+    report = validator.validate_program()
+    assert report["valid"] is False
+    assert any(
+        "CASF-043: sealed landed task must allow exact validated no-change completion"
+        in error
+        for error in report["errors"]
+    )
+
+
+def test_validator_rejects_noncanonical_directory_shaped_task_paths(
+    tmp_path, monkeypatch
+) -> None:
+    validator = _validator_module()
+    canonical = "ipfs_accelerate_py/agent_supervisor/federation/formal"
+    original = TODO.read_text(encoding="utf-8")
+    assert original.count(canonical) == 3
+    assert f"{canonical}/" not in original
+
+    corrupted = tmp_path / "trailing-slash.todo.md"
+    corrupted.write_text(original.replace(canonical, f"{canonical}/"), encoding="utf-8")
+    monkeypatch.setattr(validator, "BOARD", corrupted)
+    report = validator.validate_program()
+
+    assert report["valid"] is False
+    for field in ("Owned paths", "Predicted files", "Outputs"):
+        assert any(
+            error
+            == f"CASF-036: unsafe {field} path '{canonical}/'"
+            for error in report["errors"]
+        )
+
+
 def test_validator_rejects_ducklake_authority(tmp_path, monkeypatch) -> None:
     validator = _validator_module()
     payload = json.loads(CONFIG.read_text(encoding="utf-8"))
@@ -284,3 +389,41 @@ def test_required_inventory_artifacts_fail_if_they_disappear(tmp_path, monkeypat
     assert report["valid"] is False
     assert report["completed_task_ids"] == []
     assert any("starting_tree.json" in error for error in report["errors"])
+
+
+def test_inventory_only_rejects_baseline_drift_and_symlink_substitution(
+    tmp_path, monkeypatch
+) -> None:
+    source = REPO_ROOT / "docs/architecture/causal_event_federation_inventory"
+
+    drift_root = tmp_path / "drift-root"
+    drift_inventory = drift_root / "inventory"
+    shutil.copytree(source, drift_inventory)
+    authorities = drift_inventory / "authorities.json"
+    payload = json.loads(authorities.read_text(encoding="utf-8"))
+    payload["starting_commit"] = "0" * 40
+    authorities.write_text(json.dumps(payload), encoding="utf-8")
+
+    validator = _validator_module()
+    monkeypatch.setattr(validator, "ROOT", drift_root)
+    monkeypatch.setattr(validator, "INVENTORY", drift_inventory)
+    report = validator.validate_program(inventory_only=True)
+    assert report["valid"] is False
+    assert "authorities.json: sealed repository baseline mismatch" in report["errors"]
+
+    symlink_root = tmp_path / "symlink-root"
+    symlink_inventory = symlink_root / "inventory"
+    shutil.copytree(source, symlink_inventory)
+    capability = symlink_inventory / "capability_snapshot.json"
+    capability.unlink()
+    capability.symlink_to(source / "capability_snapshot.json")
+
+    validator = _validator_module()
+    monkeypatch.setattr(validator, "ROOT", symlink_root)
+    monkeypatch.setattr(validator, "INVENTORY", symlink_inventory)
+    report = validator.validate_program(inventory_only=True)
+    assert report["valid"] is False
+    assert (
+        "capability_snapshot.json: inventory artifact must be a regular file"
+        in report["errors"]
+    )

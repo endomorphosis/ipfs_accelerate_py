@@ -1,0 +1,6 @@
+# EAAEF-162 multi-container single-host. Remote multi-host disabled.
+profile: multi-container-single-host
+quack: loopback-only
+remote_multi_host: disabled
+docker_socket: false
+lanes: 4

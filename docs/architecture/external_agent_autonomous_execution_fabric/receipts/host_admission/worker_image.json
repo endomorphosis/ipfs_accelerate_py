@@ -1,0 +1,40 @@
+{
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "admitted",
+  "evidence": {
+    "artifact": "task_capable_worker_image_and_sbom",
+    "artifact_cid": "sha256:8543d722a2a08308a0789e266d2bd9e7f4c716973eceb16dc7f40d26392fa9f0",
+    "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/worker-image-qualification.json",
+    "configured_board_launch": false,
+    "decision": "admitted",
+    "docker_socket_mounted": false,
+    "engine_endpoint": "unix:///run/user/1000/docker.sock",
+    "image_digest": "sha256:3c2bec0ebd89f6427cc1e31ab650fa252d40d1f05f2c4a9f2ca52d1609e31b3b",
+    "independent_signature_present": true,
+    "live_dispatch_claimed": false,
+    "required_worker_slots": 5,
+    "sbom_digest": "sha256:58c9d30976a94ec8fa51ccde810042e44c9130f2f41ab4630c375d4eb6d8c16f",
+    "self_signed_rejected": true,
+    "signer_did": "did:key:z6Mkmff2BRjhv5Tx5L4XxKAcWeewEsVDgna3Y1UyGWJmoVin",
+    "slot_identities": [
+      "sha256:541559ce283ea1206db3a05addfbb39fe4adc9ec42d4158489ff4af9fdc2df4d",
+      "sha256:ca1753d92014fbd89ea401cc95ef4fbb3a9d277bf1775a4d779346246a13d928",
+      "sha256:70422808aea2254bac2ff914b88d778e885118dd4884f228f05dc43fdb8cc84b",
+      "sha256:f0b47b1492554bb13c9916b4474f8c61d1b45b3e643b98ba0063007e5b666681",
+      "sha256:edc4127ed7987aee28bf418096e040cb232381557823eb67443e0797d260c322"
+    ],
+    "source_only_factory_authority": false,
+    "supervisor_signed": false
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:60ade32d4c6a1e4593383d0dbf6f6628fa6eb0d18d1afe258ec6b501ea78ad22",
+  "receipt_name": "worker_image.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
+  "self_signed": false,
+  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
+  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-185"
+}

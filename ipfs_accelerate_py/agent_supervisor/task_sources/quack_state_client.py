@@ -55,6 +55,7 @@ from .control_plane_contracts import (
     StateCommand,
     StoreGeneration,
     canonical_json_bytes,
+    content_identity,
 )
 from .control_plane_transactions import (
     CASResult,
@@ -72,7 +73,17 @@ from .control_plane_transactions import (
 )
 from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
+    TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+    TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+    TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+    TYPED_DATABASE_CLAIM_RECOVERY_REASON,
+    TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
+    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
+    _process_birth_content_id,
+    _process_runtime_facts,
+    _validated_stored_retry_cooldown,
     open_typed_state_owner_connection,
 )
 
@@ -393,6 +404,201 @@ def _default_templates() -> dict[str, StatementTemplate]:
             kind=StatementKind.QUERY,
             description="Cursor page of tasks ordered by ordinal",
         ),
+        "executor_task_projection_page": StatementTemplate(
+            name="executor_task_projection_page",
+            sql=(
+                "SELECT t.task_cid, t.task_alias, t.goal_cid, t.plan_cid, "
+                "t.objective_id, t.ordinal, t.status, t.revision, t.priority, "
+                "t.identity_json, t.body_json, "
+                "COALESCE((SELECT to_json(list(d.dependency_task_cid ORDER BY "
+                "d.dependency_task_cid)) FROM task_dependencies AS d WHERE "
+                "d.task_cid = t.task_cid), '[]') AS dependencies_json, "
+                "COALESCE((SELECT to_json(list(struct_pack(ordinal := o.ordinal, "
+                "path := o.path, effect := o.effect_json) ORDER BY o.ordinal)) "
+                "FROM task_outputs AS o WHERE o.task_cid = t.task_cid), '[]') "
+                "AS outputs_json, COALESCE((SELECT to_json(list(struct_pack("
+                "ordinal := a.ordinal, criterion := a.criterion, evidence_policy "
+                ":= a.evidence_policy_json) ORDER BY a.ordinal)) FROM "
+                "task_acceptance AS a WHERE a.task_cid = t.task_cid), '[]') "
+                "AS acceptance_json, COALESCE((SELECT to_json(list(struct_pack("
+                "ordinal := v.ordinal, argv := v.argv_json, policy := "
+                "v.policy_json) ORDER BY v.ordinal)) FROM task_validations AS v "
+                "WHERE v.task_cid = t.task_cid), '[]') AS validations_json "
+                "FROM tasks AS t ORDER BY t.ordinal ASC, t.task_cid ASC "
+                "LIMIT ? OFFSET ?"
+            ),
+            parameter_names=("limit", "offset"),
+            kind=StatementKind.QUERY,
+            description=(
+                "Bounded full-fidelity task projection for an admitted executor"
+            ),
+        ),
+        "executor_task_projection_by_identity": StatementTemplate(
+            name="executor_task_projection_by_identity",
+            sql=(
+                "SELECT t.task_cid, t.task_alias, t.goal_cid, t.plan_cid, "
+                "t.objective_id, t.ordinal, t.status, t.revision, t.priority, "
+                "t.identity_json, t.body_json, "
+                "COALESCE((SELECT to_json(list(d.dependency_task_cid ORDER BY "
+                "d.dependency_task_cid)) FROM task_dependencies AS d WHERE "
+                "d.task_cid = t.task_cid), '[]') AS dependencies_json, "
+                "COALESCE((SELECT to_json(list(struct_pack(ordinal := o.ordinal, "
+                "path := o.path, effect := o.effect_json) ORDER BY o.ordinal)) "
+                "FROM task_outputs AS o WHERE o.task_cid = t.task_cid), '[]') "
+                "AS outputs_json, COALESCE((SELECT to_json(list(struct_pack("
+                "ordinal := a.ordinal, criterion := a.criterion, evidence_policy "
+                ":= a.evidence_policy_json) ORDER BY a.ordinal)) FROM "
+                "task_acceptance AS a WHERE a.task_cid = t.task_cid), '[]') "
+                "AS acceptance_json, COALESCE((SELECT to_json(list(struct_pack("
+                "ordinal := v.ordinal, argv := v.argv_json, policy := "
+                "v.policy_json) ORDER BY v.ordinal)) FROM task_validations AS v "
+                "WHERE v.task_cid = t.task_cid), '[]') AS validations_json "
+                "FROM tasks AS t WHERE t.task_cid = ? OR t.task_alias = ? "
+                "ORDER BY t.task_cid ASC LIMIT 2"
+            ),
+            parameter_names=("task_identity", "task_alias"),
+            kind=StatementKind.QUERY,
+            description=(
+                "Exact full-fidelity task projection for an admitted executor"
+            ),
+        ),
+        "executor_control_snapshot": StatementTemplate(
+            name="executor_control_snapshot",
+            sql=(
+                "SELECT (SELECT COUNT(*) FROM objectives) AS objective_count, "
+                "(SELECT COUNT(*) FROM goals) AS goal_count, "
+                "(SELECT COUNT(*) FROM plans) AS plan_count, "
+                "(SELECT COUNT(*) FROM tasks) AS task_count, "
+                "(SELECT COUNT(*) FROM task_dependencies) AS dependency_count, "
+                "(SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events) "
+                "AS event_watermark, COALESCE((SELECT to_json(list(struct_pack("
+                "goal_cid := g.goal_cid, status := g.status, revision := "
+                "g.revision) ORDER BY g.goal_cid)) FROM goals AS g), '[]') "
+                "AS goals_json, COALESCE((SELECT to_json(list(struct_pack("
+                "plan_cid := p.plan_cid, status := p.status, revision := "
+                "p.revision) ORDER BY p.plan_cid)) FROM plans AS p), '[]') "
+                "AS plans_json, COALESCE((SELECT to_json(list(struct_pack("
+                "task_cid := t.task_cid, status := t.status, revision := "
+                "t.revision) ORDER BY t.task_cid)) FROM tasks AS t), '[]') "
+                "AS tasks_json"
+            ),
+            parameter_names=(),
+            kind=StatementKind.QUERY,
+            description="Bounded authoritative executor control-plane snapshot",
+        ),
+        "executor_retry_cooldown_by_task": StatementTemplate(
+            name="executor_retry_cooldown_by_task",
+            sql=(
+                "SELECT task_cid, claim_cid, resolution_cid, claimant_did, "
+                "logical_epoch, fencing_token, expires_at_ms, attempt, state, "
+                "started_at_ms, release_reason, retry_not_before_ms, "
+                "owner_session_id, fence_epoch, revision, extension_schema, "
+                "extension_json FROM leases WHERE task_cid = ? LIMIT 2"
+            ),
+            parameter_names=("task_cid",),
+            kind=StatementKind.QUERY,
+            description=(
+                "Read one complete retry cooldown row for an admitted executor"
+            ),
+        ),
+        "executor_retry_cooldown_page": StatementTemplate(
+            name="executor_retry_cooldown_page",
+            sql=(
+                "SELECT task_cid, claim_cid, resolution_cid, claimant_did, "
+                "logical_epoch, fencing_token, expires_at_ms, attempt, state, "
+                "started_at_ms, release_reason, retry_not_before_ms, "
+                "owner_session_id, fence_epoch, revision, extension_schema, "
+                "extension_json FROM leases ORDER BY task_cid LIMIT ? OFFSET ?"
+            ),
+            parameter_names=("limit", "offset"),
+            kind=StatementKind.QUERY,
+            description=(
+                "Read every bounded lease row so foreign cooldowns fail closed"
+            ),
+        ),
+        "executor_insert_retry_cooldown": StatementTemplate(
+            name="executor_insert_retry_cooldown",
+            sql=(
+                "INSERT INTO leases (task_cid, claim_cid, resolution_cid, "
+                "claimant_did, logical_epoch, fencing_token, expires_at_ms, "
+                "attempt, state, started_at_ms, release_reason, "
+                "retry_not_before_ms, owner_session_id, fence_epoch, revision, "
+                "extension_schema, extension_json) SELECT ?, ?, ?, ?, ?, ?, ?, "
+                "?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ? = -1 RETURNING task_cid, "
+                "claim_cid, resolution_cid, claimant_did, logical_epoch, "
+                "fencing_token, expires_at_ms, attempt, state, started_at_ms, "
+                "release_reason, retry_not_before_ms, owner_session_id, "
+                "fence_epoch, revision, extension_schema, extension_json"
+            ),
+            parameter_names=(
+                "task_cid",
+                "claim_id",
+                "resolution_cid",
+                "claimant_did",
+                "logical_epoch",
+                "fencing_token",
+                "expires_at_ms",
+                "attempt_number",
+                "state",
+                "started_at_ms",
+                "reason",
+                "retry_not_before_ms",
+                "owner_session_id",
+                "fence_epoch",
+                "new_queue_revision",
+                "extension_schema",
+                "extension_json",
+                "expected_queue_revision_for_insert",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Insert one claim-bound executor cooldown with expected absence"
+            ),
+        ),
+        "executor_update_retry_cooldown": StatementTemplate(
+            name="executor_update_retry_cooldown",
+            sql=(
+                "UPDATE leases SET claim_cid = ?, resolution_cid = ?, "
+                "claimant_did = ?, logical_epoch = ?, fencing_token = ?, "
+                "expires_at_ms = ?, attempt = ?, state = ?, started_at_ms = ?, "
+                "release_reason = ?, retry_not_before_ms = ?, owner_session_id "
+                "= ?, fence_epoch = ?, revision = ?, extension_schema = ?, "
+                "extension_json = ? WHERE task_cid = ? AND revision = ? AND "
+                "attempt = ? AND attempt < ? AND extension_schema = ? RETURNING "
+                "task_cid, claim_cid, resolution_cid, claimant_did, "
+                "logical_epoch, fencing_token, expires_at_ms, attempt, state, "
+                "started_at_ms, release_reason, retry_not_before_ms, "
+                "owner_session_id, fence_epoch, revision, extension_schema, "
+                "extension_json"
+            ),
+            parameter_names=(
+                "claim_id",
+                "resolution_cid",
+                "claimant_did",
+                "logical_epoch",
+                "fencing_token",
+                "expires_at_ms",
+                "attempt_number",
+                "state",
+                "started_at_ms",
+                "reason",
+                "retry_not_before_ms",
+                "owner_session_id",
+                "fence_epoch",
+                "new_queue_revision",
+                "extension_schema",
+                "extension_json",
+                "task_cid",
+                "expected_queue_revision",
+                "expected_queue_attempt",
+                "new_attempt_guard",
+                "expected_existing_extension_schema",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Replace one older typed cooldown by exact lease revision"
+            ),
+        ),
         "insert_task": StatementTemplate(
             name="insert_task",
             sql=(
@@ -435,6 +641,84 @@ def _default_templates() -> dict[str, StatementTemplate]:
             ),
             kind=StatementKind.MUTATION,
             description="CAS update task status by expected revision",
+        ),
+        "executor_insert_validation_run": StatementTemplate(
+            name="executor_insert_validation_run",
+            sql=(
+                "INSERT INTO validation_runs (run_id, task_cid, attempt_id, "
+                "started_at, finished_at, status, command_digest, body_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            ),
+            parameter_names=(
+                "run_id",
+                "task_cid",
+                "attempt_id",
+                "started_at",
+                "finished_at",
+                "status",
+                "command_digest",
+                "body_json",
+            ),
+            kind=StatementKind.MUTATION,
+            description="Insert one executor validation run",
+        ),
+        "executor_insert_validation_result": StatementTemplate(
+            name="executor_insert_validation_result",
+            sql=(
+                "INSERT INTO validation_results (result_id, run_id, task_cid, "
+                "ordinal, outcome, evidence_digest, body_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)"
+            ),
+            parameter_names=(
+                "result_id",
+                "run_id",
+                "task_cid",
+                "ordinal",
+                "outcome",
+                "evidence_digest",
+                "body_json",
+            ),
+            kind=StatementKind.MUTATION,
+            description="Insert one executor validation result",
+        ),
+        "executor_insert_validation_evidence": StatementTemplate(
+            name="executor_insert_validation_evidence",
+            sql=(
+                "INSERT INTO evidence_nodes (evidence_id, parent_evidence_id, "
+                "task_cid, evidence_kind, digest, created_at, body_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)"
+            ),
+            parameter_names=(
+                "evidence_id",
+                "parent_evidence_id",
+                "task_cid",
+                "evidence_kind",
+                "digest",
+                "created_at",
+                "body_json",
+            ),
+            kind=StatementKind.MUTATION,
+            description="Insert passing executor validation evidence",
+        ),
+        "executor_cas_task_status_receipt": StatementTemplate(
+            name="executor_cas_task_status_receipt",
+            sql=(
+                "UPDATE tasks SET status = ?, revision = ?, updated_at = ?, "
+                "body_json = ? WHERE task_cid = ? AND revision = ? "
+                "RETURNING revision"
+            ),
+            parameter_names=(
+                "status",
+                "new_revision",
+                "updated_at",
+                "body_json",
+                "task_cid",
+                "expected_task_revision",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "CAS task status while retaining its authoritative transition receipt"
+            ),
         ),
         "insert_goal": StatementTemplate(
             name="insert_goal",
@@ -799,6 +1083,7 @@ class QuackStateClient:
         process_birth_id: str | None = None,
         clock: Callable[[], str] | None = None,
         connection_factory: Callable[[QuackEndpoint], Any] | None = None,
+        secret_resolver: Callable[[str], str] | None = None,
     ) -> None:
         owner = str(owner_id or "").strip()
         if not owner:
@@ -812,6 +1097,7 @@ class QuackStateClient:
         self.process_birth_id = process_birth_id or _new_birth_id()
         self._clock = clock or _utc_now
         self._connection_factory = connection_factory
+        self._secret_resolver = secret_resolver
         self._templates: dict[str, StatementTemplate] = dict(
             templates or DEFAULT_STATEMENT_TEMPLATES
         )
@@ -1543,6 +1829,51 @@ class QuackStateClient:
 
         return run_with_retry(_operation, policy=self.retry_policy)
 
+    def apply_command_in_transaction(
+        self,
+        transaction: StateTransaction,
+        command: StateCommand,
+        live: StoreGeneration,
+    ) -> Mapping[str, Any]:
+        """Apply the built-in mutation inside a caller-owned transaction.
+
+        This narrow seam lets the command fabric atomically couple authority
+        consumption and its private receipt to the existing domain CAS and
+        idempotency record.  It exposes no caller-supplied SQL or mutation
+        callback.
+        """
+
+        if not isinstance(transaction, StateTransaction):
+            raise QuackClientError("transaction must be StateTransaction@1")
+        if not isinstance(command, StateCommand):
+            raise QuackClientError("command must be StateCommand@1")
+        if not isinstance(live, StoreGeneration):
+            raise QuackClientError("live generation must be StoreGeneration@1")
+        # This compatibility seam is one exact operation, not a generic
+        # ``StateCommand`` interpreter.  In particular, an independently
+        # authorized OBSERVE/MIGRATE effect must never become a task mutation
+        # merely because its signed parameters happen to contain ``status``.
+        # Broader lifecycle transitions belong to their dedicated owner
+        # operations and contracts.
+        parameters = dict(command.parameters)
+        if command.command_kind is not CommandKind.CLAIM:
+            raise QuackClientError(
+                "built-in owner task mutation requires command_kind=claim"
+            )
+        if set(parameters) != {
+            "task_cid",
+            "expected_task_revision",
+            "status",
+        }:
+            raise QuackClientError(
+                "built-in owner task claim requires the exact closed parameter set"
+            )
+        if parameters.get("status") != "claimed":
+            raise QuackClientError(
+                "command_kind=claim authorizes only status=claimed"
+            )
+        return self._default_task_status_apply(transaction, command, live)
+
     def cas_task_status(
         self,
         *,
@@ -1551,13 +1882,25 @@ class QuackStateClient:
         new_status: str,
         idempotency_key: str,
         command_id: str | None = None,
+        body: Mapping[str, Any] | None = None,
     ) -> CASResult:
         """Convenience CAS for task status using the closed template set."""
 
         session = self._require_session()
         live = self.load_generation()
+        body_json = (
+            canonical_json_bytes(dict(body)).decode("utf-8")
+            if body is not None
+            else ""
+        )
+        operation = "task.status.cas.receipt" if body is not None else "task.status.cas"
         command = StateCommand(
-            command_id=command_id or f"cmd:cas-status:{task_cid}:{expected_task_revision}",
+            command_id=command_id
+            or (
+                f"cmd:cas-status-receipt:{task_cid}:{expected_task_revision}"
+                if body is not None
+                else f"cmd:cas-status:{task_cid}:{expected_task_revision}"
+            ),
             command_kind=CommandKind.CLAIM,
             store_id=self.store_id,
             session_id=session.session_id,
@@ -1567,13 +1910,863 @@ class QuackStateClient:
             idempotency_key=idempotency_key,
             authority_class=StateAuthorityClass.AUTHORITATIVE,
             parameters={
-                "operation": "task.status.cas",
+                "operation": operation,
                 "task_cid": task_cid,
                 "expected_task_revision": expected_task_revision,
                 "status": new_status,
+                **({"body_json": body_json} if body is not None else {}),
             },
         )
-        return self.submit_command(command)
+        if body is None:
+            return self.submit_command(command)
+
+        def apply_receipt(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            parameters = dict(active.parameters)
+            expected = int(parameters["expected_task_revision"])
+            result = txn.execute_named_operation(
+                "executor_cas_task_status_receipt",
+                (
+                    str(parameters["status"]),
+                    expected + 1,
+                    self._clock(),
+                    str(parameters["body_json"]),
+                    str(parameters["task_cid"]),
+                    expected,
+                ),
+            )
+            row = _fetch_one(result)
+            if row is None:
+                raise OptimisticConflictError(
+                    "task status receipt CAS failed",
+                    details={
+                        "task_cid": str(parameters["task_cid"]),
+                        "expected_task_revision": expected,
+                    },
+                )
+            return {
+                "task_cid": str(parameters["task_cid"]),
+                "status": str(parameters["status"]),
+                "task_revision": expected + 1,
+                "store_revision_before": generation.revision,
+                "command_id": active.command_id,
+                "receipt_persisted": True,
+            }
+
+        return self.submit_command(command, apply=apply_receipt)
+
+    def claim_process_attestation(self) -> Mapping[str, Any]:
+        """Return the active owner-grant birth tuple for a typed claim.
+
+        The caller merely reproduces the handshake material in its receipt;
+        the exclusive owner independently re-reads procfs and validates every
+        field against the active kernel-bound grant before admitting a claim.
+        """
+
+        adapter = self._require_adapter()
+        grant = getattr(adapter.raw, "grant", None)
+        if not isinstance(grant, Mapping):
+            raise QuackClientError(
+                "database claim process attestation requires a typed owner grant"
+            )
+        required = {
+            "grant_id",
+            "client_id",
+            "process_birth_id",
+            "peer_pid",
+            "peer_uid",
+            "peer_start_time_ticks",
+        }
+        if any(name not in grant for name in required):
+            raise QuackClientError(
+                "typed owner grant omits database claim process identity"
+            )
+        try:
+            peer_pid = grant["peer_pid"]
+            peer_uid = grant["peer_uid"]
+            peer_start = grant["peer_start_time_ticks"]
+            if (
+                type(peer_pid) is not int
+                or peer_pid < 1
+                or type(peer_uid) is not int
+                or peer_uid < 0
+                or type(peer_start) is not int
+                or peer_start < 0
+            ):
+                raise ValueError("invalid typed owner grant process scalar")
+            start_time, parent_pid, boot_id = _process_runtime_facts(peer_pid)
+        except (TypedStateOwnerError, TypeError, ValueError) as exc:
+            raise QuackClientError(
+                "typed owner grant process identity is unavailable"
+            ) from exc
+        birth_id = _process_birth_content_id(
+            peer_pid,
+            start_time,
+            boot_id,
+            parent_pid,
+        )
+        if (
+            start_time != peer_start
+            or grant.get("process_birth_id") != birth_id
+            or grant.get("client_id") != self.owner_id
+            or grant.get("process_birth_id") != self.process_birth_id
+        ):
+            raise QuackClientError(
+                "typed owner grant differs from the active process birth"
+            )
+        return MappingProxyType(
+            {
+                "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+                "grant_id": str(grant["grant_id"]),
+                "client_id": str(grant["client_id"]),
+                "process_birth_id": birth_id,
+                "pid": peer_pid,
+                "uid": peer_uid,
+                "start_time_ticks": start_time,
+                "boot_id": boot_id,
+                "parent_pid": parent_pid,
+            }
+        )
+
+    def recover_dead_claim_reservation(
+        self,
+        *,
+        task_cid: str,
+        expected_task_revision: int,
+        task_body: Mapping[str, Any],
+        reservation_receipt: Mapping[str, Any],
+        now_ms: int | None = None,
+    ) -> CASResult:
+        """Atomically reopen one reservation whose attested process is dead."""
+
+        task = str(task_cid or "").strip()
+        if (
+            not task
+            or isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 1
+        ):
+            raise QuackClientError(
+                "dead claim recovery task revision is invalid"
+            )
+        body = dict(task_body)
+        prior = dict(reservation_receipt)
+        if (
+            body.get("completion_receipt") != prior
+            or prior.get("operation") != "database_claim"
+            or prior.get("claim_phase_schema")
+            != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        ):
+            raise QuackClientError(
+                "dead claim recovery requires an exact typed reservation"
+            )
+        text_identity: dict[str, str] = {}
+        for name in (
+            "claim_id",
+            "attempt_id",
+            "lease_id",
+            "owner_session_id",
+        ):
+            value = prior.get(name)
+            if (
+                type(value) is not str
+                or not value.strip()
+                or value != value.strip()
+                or len(value.encode("utf-8")) > 1_024
+                or any(marker in value for marker in ("\x00", "\n", "\r"))
+            ):
+                raise QuackClientError(
+                    f"dead claim recovery {name} is invalid"
+                )
+            text_identity[name] = value
+        integer_identity: dict[str, int] = {}
+        for name in ("attempt_number", "fencing_token", "fence_epoch"):
+            value = prior.get(name)
+            if type(value) is not int or value < 1:
+                raise QuackClientError(
+                    f"dead claim recovery {name} is invalid"
+                )
+            integer_identity[name] = value
+        claimed_from_revision = prior.get("claimed_from_revision")
+        historic_attestation = prior.get("claim_process_attestation")
+        execution_route = prior.get("execution_route_binding")
+        if (
+            type(claimed_from_revision) is not int
+            or claimed_from_revision != expected_task_revision - 1
+            or not isinstance(historic_attestation, Mapping)
+            or not isinstance(execution_route, Mapping)
+            or prior.get("execution_route_policy_id")
+            != execution_route.get("policy_id")
+            or prior.get("execution_route_origin_revision")
+            != execution_route.get("task_revision")
+            or execution_route.get("task_cid") != task
+        ):
+            raise QuackClientError(
+                "dead claim recovery reservation lineage is invalid"
+            )
+        current_attestation = dict(self.claim_process_attestation())
+        exact_identity = {**text_identity, **integer_identity}
+        reason = TYPED_DATABASE_CLAIM_RECOVERY_REASON
+        started_at_ms = int(time.time() * 1_000) if now_ms is None else now_ms
+        if (
+            isinstance(started_at_ms, bool)
+            or not isinstance(started_at_ms, int)
+            or started_at_ms < 0
+        ):
+            raise QuackClientError("dead claim recovery now_ms is invalid")
+        reservation_cid = content_identity(
+            {"typed_database_claim_reservation": prior}
+        )
+        recovery_receipt = {
+            "schema": TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
+            "operation": TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+            **exact_identity,
+            "recovered_claim_phase_schema": (
+                TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            ),
+            "recovered_claimed_from_revision": claimed_from_revision,
+            "recovered_reservation_cid": reservation_cid,
+            "recovered_claim_process_attestation": dict(
+                historic_attestation
+            ),
+            "recovery_process_attestation": current_attestation,
+            "recovered_from_revision": expected_task_revision,
+            "queue_reason": reason,
+            "backoff_ms": 0,
+            "retry_not_before_ms": started_at_ms,
+            "control_expected_revision": expected_task_revision,
+            "execution_route_binding": dict(execution_route),
+            "execution_route_policy_id": execution_route["policy_id"],
+            "execution_route_origin_revision": int(
+                execution_route["task_revision"]
+            ),
+        }
+        body["completion_receipt"] = recovery_receipt
+        body_json = canonical_json_bytes(body).decode("utf-8")
+        extension = {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": task,
+            "expected_task_revision": expected_task_revision,
+            **exact_identity,
+            "delay_ms": 0,
+            "started_at_ms": started_at_ms,
+            "retry_not_before_ms": started_at_ms,
+            "selection_penalty": 0,
+            "consecutive_failures": integer_identity["attempt_number"],
+            "reason": reason,
+            "expected_queue_revision": -1,
+            "expected_queue_attempt": 0,
+        }
+        extension_json = canonical_json_bytes(extension).decode("utf-8")
+        resolution_cid = content_identity(
+            {
+                "typed_retry_cooldown": extension,
+                "started_at_ms": started_at_ms,
+            }
+        )
+        parameters = {
+            **extension,
+            "operation": TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+            "expected_task_status": "in_progress",
+            "resolution_cid": resolution_cid,
+            "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "extension_json": extension_json,
+            "status": "retrying",
+            "body_json": body_json,
+        }
+        command_digest = hashlib.sha256(
+            canonical_json_bytes(parameters)
+        ).hexdigest()
+        session = self._require_session()
+        live = self.load_generation()
+        command = StateCommand(
+            command_id=f"cmd:dead-claim-recovery:{command_digest}",
+            command_kind=CommandKind.CLAIM,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=(
+                f"executor-dead-claim-recovery:{command_digest}"
+            ),
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters=parameters,
+        )
+
+        def apply_recovery(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            observed = _fetch_all(
+                txn.execute_named_operation(
+                    "executor_retry_cooldown_by_task",
+                    (values["task_cid"],),
+                )
+            )
+            if observed:
+                raise OptimisticConflictError(
+                    "dead claim recovery cooldown absence became stale"
+                )
+            queue_result = txn.execute_named_operation(
+                "executor_insert_retry_cooldown",
+                (
+                    values["task_cid"],
+                    values["claim_id"],
+                    values["resolution_cid"],
+                    values["owner_session_id"],
+                    values["fence_epoch"],
+                    values["fencing_token"],
+                    0,
+                    values["attempt_number"],
+                    "released",
+                    values["started_at_ms"],
+                    values["reason"],
+                    values["retry_not_before_ms"],
+                    values["owner_session_id"],
+                    values["fence_epoch"],
+                    1,
+                    values["extension_schema"],
+                    values["extension_json"],
+                    -1,
+                ),
+            )
+            if _fetch_one(queue_result) is None:
+                raise OptimisticConflictError(
+                    "dead claim recovery cooldown absence CAS failed"
+                )
+            expected = int(values["expected_task_revision"])
+            task_result = txn.execute_named_operation(
+                "executor_cas_task_status_receipt",
+                (
+                    "retrying",
+                    expected + 1,
+                    self._clock(),
+                    values["body_json"],
+                    values["task_cid"],
+                    expected,
+                ),
+            )
+            if _fetch_one(task_result) is None:
+                raise OptimisticConflictError(
+                    "dead claim recovery task CAS failed"
+                )
+            return {
+                "schema": TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
+                "operation": TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+                "task_cid": values["task_cid"],
+                "attempt_id": values["attempt_id"],
+                "attempt_number": values["attempt_number"],
+                "task_revision": expected + 1,
+                "queue_revision": 1,
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "historic_liveness": "dead",
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_recovery)
+
+    def record_task_retry_cooldown(
+        self,
+        *,
+        task_cid: str,
+        expected_task_revision: int,
+        expected_task_status: str,
+        attempt_id: str,
+        claim_id: str,
+        lease_id: str,
+        owner_session_id: str,
+        attempt_number: int,
+        fencing_token: int,
+        fence_epoch: int,
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        now_ms: int | None = None,
+    ) -> CASResult:
+        """Record one task-revision and claim-bound retry cooldown.
+
+        The queue row is written only by the exclusive typed owner.  Both an
+        expected absence and a replacement of an older typed row are explicit
+        CAS states; an untyped or newer row is never overwritten, while an
+        exact same-attempt replay reproduces the original command identity.
+        """
+
+        text_fields = {
+            "task_cid": task_cid,
+            "attempt_id": attempt_id,
+            "claim_id": claim_id,
+            "lease_id": lease_id,
+            "owner_session_id": owner_session_id,
+            "reason": reason,
+        }
+        normalized: dict[str, str] = {}
+        for name, value in text_fields.items():
+            selected = str(value or "").strip()
+            maximum = 2_048 if name == "reason" else 1_024
+            if (
+                not selected
+                or len(selected.encode("utf-8")) > maximum
+                or any(marker in selected for marker in ("\x00", "\n", "\r"))
+            ):
+                raise QuackClientError(f"retry cooldown {name} is invalid")
+            normalized[name] = selected
+        expected_status = str(expected_task_status or "").strip().lower()
+        if expected_status not in {"blocked", "in_progress", "retrying"}:
+            raise QuackClientError(
+                "retry cooldown requires an exact claimed control state"
+            )
+
+        positive_values = {
+            "attempt_number": attempt_number,
+            "fencing_token": fencing_token,
+            "fence_epoch": fence_epoch,
+        }
+        if (
+            isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 0
+        ):
+            raise QuackClientError(
+                "retry cooldown expected_task_revision is invalid"
+            )
+        normalized_ints: dict[str, int] = {
+            "expected_task_revision": int(expected_task_revision)
+        }
+        for name, value in positive_values.items():
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise QuackClientError(f"retry cooldown {name} is invalid")
+            normalized_ints[name] = int(value)
+        if (
+            isinstance(delay_ms, bool)
+            or not isinstance(delay_ms, int)
+            or not 0 <= delay_ms <= 86_400_000
+        ):
+            raise QuackClientError("retry cooldown delay_ms is outside its bound")
+        if (
+            isinstance(selection_penalty, bool)
+            or not isinstance(selection_penalty, int)
+            or not 0 <= selection_penalty <= 1_000_000
+        ):
+            raise QuackClientError(
+                "retry cooldown selection_penalty is outside its bound"
+            )
+        started_at_ms = int(time.time() * 1_000) if now_ms is None else now_ms
+        if (
+            isinstance(started_at_ms, bool)
+            or not isinstance(started_at_ms, int)
+            or started_at_ms < 0
+        ):
+            raise QuackClientError("retry cooldown now_ms is invalid")
+        retry_not_before_ms = int(started_at_ms) + int(delay_ms)
+
+        prior_rows = self.execute(
+            "executor_retry_cooldown_by_task",
+            {"task_cid": normalized["task_cid"]},
+        )
+        if len(prior_rows) > 1:
+            raise QuackClientError("retry cooldown queue identity is ambiguous")
+        prior: dict[str, Any] = {}
+        if prior_rows:
+            try:
+                prior = _validated_stored_retry_cooldown(
+                    prior_rows[0],
+                    task_cid=normalized["task_cid"],
+                )
+            except TypedStateOwnerError as exc:
+                raise QuackClientError(
+                    "retry cooldown prior queue state is malformed"
+                ) from exc
+        expected_queue_revision = -1
+        expected_queue_attempt = 0
+        if prior:
+            prior_revision = int(prior["revision"])
+            prior_attempt = int(prior["attempt"])
+            prior_extension = dict(prior["extension"])
+            if prior_attempt == normalized_ints["attempt_number"]:
+                replay_identity = {
+                    "task_cid": normalized["task_cid"],
+                    "expected_task_revision": normalized_ints[
+                        "expected_task_revision"
+                    ],
+                    "attempt_id": normalized["attempt_id"],
+                    "claim_id": normalized["claim_id"],
+                    "lease_id": normalized["lease_id"],
+                    "owner_session_id": normalized["owner_session_id"],
+                    "attempt_number": normalized_ints["attempt_number"],
+                    "fencing_token": normalized_ints["fencing_token"],
+                    "fence_epoch": normalized_ints["fence_epoch"],
+                    "selection_penalty": int(selection_penalty),
+                    "consecutive_failures": normalized_ints["attempt_number"],
+                    "reason": normalized["reason"],
+                    "delay_ms": int(delay_ms),
+                }
+                if any(
+                    prior_extension.get(name) != expected
+                    for name, expected in replay_identity.items()
+                ):
+                    raise QuackClientError(
+                        "retry cooldown same-attempt replay identity differs"
+                    )
+                try:
+                    started_at_ms = int(prior_extension["started_at_ms"])
+                    retry_not_before_ms = int(
+                        prior_extension["retry_not_before_ms"]
+                    )
+                    expected_queue_revision = int(
+                        prior_extension["expected_queue_revision"]
+                    )
+                    expected_queue_attempt = int(
+                        prior_extension["expected_queue_attempt"]
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise QuackClientError(
+                        "retry cooldown replay receipt is malformed"
+                    ) from exc
+            elif prior_attempt < normalized_ints["attempt_number"]:
+                expected_queue_revision = prior_revision
+                expected_queue_attempt = prior_attempt
+            else:
+                raise QuackClientError(
+                    "retry cooldown refuses a newer queue row"
+                )
+
+        extension = {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": normalized["task_cid"],
+            "expected_task_revision": normalized_ints["expected_task_revision"],
+            "attempt_id": normalized["attempt_id"],
+            "claim_id": normalized["claim_id"],
+            "lease_id": normalized["lease_id"],
+            "owner_session_id": normalized["owner_session_id"],
+            "attempt_number": normalized_ints["attempt_number"],
+            "fencing_token": normalized_ints["fencing_token"],
+            "fence_epoch": normalized_ints["fence_epoch"],
+            "delay_ms": int(delay_ms),
+            "started_at_ms": int(started_at_ms),
+            "retry_not_before_ms": retry_not_before_ms,
+            "selection_penalty": int(selection_penalty),
+            "consecutive_failures": normalized_ints["attempt_number"],
+            "reason": normalized["reason"],
+            "expected_queue_revision": expected_queue_revision,
+            "expected_queue_attempt": expected_queue_attempt,
+        }
+        extension_json = canonical_json_bytes(extension).decode("utf-8")
+        resolution_cid = content_identity(
+            {
+                "typed_retry_cooldown": extension,
+                "started_at_ms": int(started_at_ms),
+            }
+        )
+        material = {
+            **extension,
+            "operation": "task.retry.cooldown.record",
+            "expected_task_status": expected_status,
+            "resolution_cid": resolution_cid,
+        }
+        command_digest = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+        session = self._require_session()
+        live = self.load_generation()
+        command = StateCommand(
+            command_id=f"cmd:retry-cooldown:{command_digest}",
+            command_kind=CommandKind.APPEND,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=f"executor-retry-cooldown:{command_digest}",
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters={
+                **material,
+                "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                "extension_json": extension_json,
+            },
+        )
+
+        def apply_retry_cooldown(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            observed_result = txn.execute_named_operation(
+                "executor_retry_cooldown_by_task",
+                (values["task_cid"],),
+            )
+            observed_rows = _fetch_all(observed_result)
+            if len(observed_rows) > 1:
+                raise OptimisticConflictError(
+                    "retry cooldown queue identity became ambiguous"
+                )
+            observed = (
+                _row_mapping(_result_columns(observed_result), observed_rows[0])
+                if observed_rows
+                else {}
+            )
+            expected_revision = int(values["expected_queue_revision"])
+            expected_attempt = int(values["expected_queue_attempt"])
+            if (
+                (expected_revision == -1 and observed)
+                or (expected_revision >= 0 and not observed)
+                or (
+                    observed
+                    and (
+                        int(observed.get("revision") or -1) != expected_revision
+                        or int(observed.get("attempt") or -1) != expected_attempt
+                        or str(observed.get("extension_schema") or "")
+                        != TYPED_RETRY_COOLDOWN_SCHEMA
+                    )
+                )
+            ):
+                raise OptimisticConflictError(
+                    "retry cooldown expected queue revision is stale"
+                )
+            new_queue_revision = 1 if expected_revision == -1 else expected_revision + 1
+            common_values = (
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                new_queue_revision,
+                values["extension_schema"],
+                values["extension_json"],
+            )
+            if expected_revision == -1:
+                operation = "executor_insert_retry_cooldown"
+                mutation_parameters = (
+                    values["task_cid"],
+                    *common_values,
+                    expected_revision,
+                )
+            else:
+                operation = "executor_update_retry_cooldown"
+                mutation_parameters = (
+                    *common_values,
+                    values["task_cid"],
+                    expected_revision,
+                    expected_attempt,
+                    values["attempt_number"],
+                    TYPED_RETRY_COOLDOWN_SCHEMA,
+                )
+            result = txn.execute_named_operation(
+                operation,
+                mutation_parameters,
+            )
+            row = _fetch_one(result)
+            if row is None:
+                raise OptimisticConflictError(
+                    "retry cooldown absence/revision CAS failed"
+                )
+            written = _row_mapping(_result_columns(result), row)
+            expected_written = {
+                "task_cid": values["task_cid"],
+                "claim_cid": values["claim_id"],
+                "resolution_cid": values["resolution_cid"],
+                "claimant_did": values["owner_session_id"],
+                "logical_epoch": values["fence_epoch"],
+                "fencing_token": values["fencing_token"],
+                "expires_at_ms": 0,
+                "attempt": values["attempt_number"],
+                "state": "released",
+                "started_at_ms": values["started_at_ms"],
+                "release_reason": values["reason"],
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "owner_session_id": values["owner_session_id"],
+                "fence_epoch": values["fence_epoch"],
+                "revision": new_queue_revision,
+                "extension_schema": values["extension_schema"],
+                "extension_json": values["extension_json"],
+            }
+            if any(
+                written.get(name) != expected
+                for name, expected in expected_written.items()
+            ):
+                raise OptimisticConflictError(
+                    "retry cooldown mutation returned inconsistent state"
+                )
+            return {
+                "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                "operation": "task.retry.cooldown.record",
+                "task_cid": str(values["task_cid"]),
+                "expected_task_revision": int(values["expected_task_revision"]),
+                "attempt_id": str(values["attempt_id"]),
+                "claim_id": str(values["claim_id"]),
+                "attempt_number": int(values["attempt_number"]),
+                "queue_revision": new_queue_revision,
+                "retry_not_before_ms": int(values["retry_not_before_ms"]),
+                "reason": str(values["reason"]),
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_retry_cooldown)
+
+    def record_task_validation(
+        self,
+        *,
+        task_cid: str,
+        outcome: str,
+        evidence_digest: str,
+        argv: Sequence[str] | None = None,
+        attempt_id: str = "",
+        body: Mapping[str, Any] | None = None,
+        idempotency_key: str,
+        command_id: str | None = None,
+    ) -> CASResult:
+        """Record one bounded validation result through an admitted command."""
+
+        task = str(task_cid or "").strip()
+        selected_outcome = str(outcome or "").strip().lower()
+        digest = str(evidence_digest or "").strip().lower()
+        if not task:
+            raise QuackClientError("validation task_cid is required")
+        if selected_outcome not in {"passed", "failed", "error", "skipped"}:
+            raise QuackClientError("validation outcome is outside the closed vocabulary")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+            raise QuackClientError("validation evidence_digest must be sha256")
+        command_argv = tuple(str(item) for item in (argv or ("database-validation",)))
+        if not command_argv or len(command_argv) > 128:
+            raise QuackClientError("validation argv is empty or exceeds its bound")
+        if any(len(item.encode("utf-8")) > 8_192 for item in command_argv):
+            raise QuackClientError("validation argv item exceeds its byte bound")
+        result_body = dict(body or {})
+        now = self._clock()
+        material = {
+            "task_cid": task,
+            "attempt_id": str(attempt_id or ""),
+            "outcome": selected_outcome,
+            "evidence_digest": digest,
+            "argv": list(command_argv),
+            "body": result_body,
+            "idempotency_key": str(idempotency_key),
+        }
+        run_id = content_identity({"validation_run": material})
+        result_id = content_identity({"validation_result": material})
+        evidence_id = content_identity({"validation_evidence": material})
+        effective_attempt_id = str(attempt_id or f"validation:{run_id}")
+        command_digest = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(list(command_argv))
+        ).hexdigest()
+        run_body_json = canonical_json_bytes(
+            {"argv": list(command_argv), "body": result_body}
+        ).decode("utf-8")
+        result_body_json = canonical_json_bytes(result_body).decode("utf-8")
+        evidence_body_json = canonical_json_bytes(
+            {
+                "outcome": selected_outcome,
+                "run_id": run_id,
+                "result_id": result_id,
+                "body": result_body,
+            }
+        ).decode("utf-8")
+        operation = (
+            "task.validation.record.passed"
+            if selected_outcome == "passed"
+            else "task.validation.record.nonpassing"
+        )
+        session = self._require_session()
+        live = self.load_generation()
+        parameters = {
+            "operation": operation,
+            "task_cid": task,
+            "run_id": run_id,
+            "result_id": result_id,
+            "evidence_id": evidence_id,
+            "attempt_id": effective_attempt_id,
+            "outcome": selected_outcome,
+            "evidence_digest": digest,
+            "started_at": now,
+            "finished_at": now,
+            "command_digest": command_digest,
+            "run_body_json": run_body_json,
+            "result_body_json": result_body_json,
+            "evidence_body_json": evidence_body_json,
+        }
+        command = StateCommand(
+            command_id=command_id or f"cmd:validation:{result_id}",
+            command_kind=CommandKind.APPEND,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=idempotency_key,
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters=parameters,
+        )
+
+        def apply_validation(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            txn.execute_named_operation(
+                "executor_insert_validation_run",
+                (
+                    values["run_id"],
+                    values["task_cid"],
+                    values["attempt_id"],
+                    values["started_at"],
+                    values["finished_at"],
+                    values["outcome"],
+                    values["command_digest"],
+                    values["run_body_json"],
+                ),
+            )
+            txn.execute_named_operation(
+                "executor_insert_validation_result",
+                (
+                    values["result_id"],
+                    values["run_id"],
+                    values["task_cid"],
+                    0,
+                    values["outcome"],
+                    values["evidence_digest"],
+                    values["result_body_json"],
+                ),
+            )
+            if values["outcome"] == "passed":
+                txn.execute_named_operation(
+                    "executor_insert_validation_evidence",
+                    (
+                        values["evidence_id"],
+                        "",
+                        values["task_cid"],
+                        "validation",
+                        values["evidence_digest"],
+                        values["finished_at"],
+                        values["evidence_body_json"],
+                    ),
+                )
+            return {
+                "task_cid": str(values["task_cid"]),
+                "run_id": str(values["run_id"]),
+                "result_id": str(values["result_id"]),
+                "evidence_id": (
+                    str(values["evidence_id"])
+                    if values["outcome"] == "passed"
+                    else ""
+                ),
+                "outcome": str(values["outcome"]),
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_validation)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -25,6 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     RESOURCE_CLAIM_INTERFACE,
     TASK_CLAIM_INTERFACE,
     TASK_DEPENDENCY_AMENDMENT_SCHEMA,
+    TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE,
     AttemptStatus,
     DatabaseCoordinationBoundsError,
     DatabaseCoordinationConflictError,
@@ -784,6 +785,55 @@ def test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepare
                     authoritative_completed=False,
                 )
 
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="typed strict-requeue ready status",
+        ):
+            coordinator.synchronize_authoritative_task(
+                task_cid="task:ready-floor-unsealed",
+                task_id="READY-FLOOR-UNSEALED",
+                authoritative_status="ready",
+                authoritative_revision=2,
+                authoritative_ready=True,
+                authoritative_completed=False,
+                authoritative_attempt_floor=3,
+            )
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="source requires its exact ready floor",
+        ):
+            coordinator.synchronize_authoritative_task(
+                task_cid="task:ready-floor-empty",
+                task_id="READY-FLOOR-EMPTY",
+                authoritative_status="ready",
+                authoritative_revision=2,
+                authoritative_ready=True,
+                authoritative_completed=False,
+                authoritative_attempt_floor_source=(
+                    TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE
+                ),
+            )
+        ready_floor = coordinator.synchronize_authoritative_task(
+            task_cid="task:ready-floor",
+            task_id="READY-FLOOR",
+            authoritative_status="ready",
+            authoritative_revision=2,
+            authoritative_ready=True,
+            authoritative_completed=False,
+            authoritative_attempt_floor=3,
+            authoritative_attempt_floor_source=(
+                TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE
+            ),
+            now_ms=1_000_175,
+        )
+        assert ready_floor["authoritative_attempt_floor"] == 3
+        floor_claim = coordinator.claim_task(
+            task_cid="task:ready-floor",
+            owner_session_id="session:ready-floor",
+            now_ms=1_000_176,
+        )
+        assert floor_claim.attempt_number == 4
+
         coordinator.synchronize_authoritative_task(
             task_cid="task:child",
             task_id="CHILD",
@@ -848,6 +898,7 @@ def test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepare
                     "attempt_id": "attempt:forged",
                     "lease_id": "lease:forged",
                     "owner_session_id": "session:forged-retry",
+                    "attempt_number": 1,
                     "fencing_token": 1,
                     "fence_epoch": 1,
                 },
@@ -873,6 +924,7 @@ def test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepare
             "attempt_id": recovery_claim.attempt_id,
             "lease_id": recovery_claim.lease_id,
             "owner_session_id": recovery_claim.owner_session_id,
+            "attempt_number": recovery_claim.attempt_number,
             "fencing_token": recovery_claim.fencing_token,
             "fence_epoch": recovery_claim.fence_epoch,
         }

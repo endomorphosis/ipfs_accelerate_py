@@ -2562,10 +2562,18 @@ def validation_shell_command(command: str) -> list[str]:
         # leave ``python -c`` script bodies intact: they contain spaces
         # without being a second launcher invocation.
         flattened: list[str] = []
-        previous = ""
+        command_word_expected = True
         for token in leading:
-            flatten = False
-            if any(character.isspace() for character in token):
+            if _SHELL_CONTROL_TOKEN.fullmatch(token):
+                flattened.append(token)
+                command_word_expected = True
+                continue
+            if command_word_expected and _SHELL_ASSIGNMENT.fullmatch(token):
+                flattened.append(token)
+                continue
+            if command_word_expected and any(
+                character.isspace() for character in token
+            ):
                 try:
                     nested = shlex.split(token, posix=True)
                 except ValueError:
@@ -2583,14 +2591,12 @@ def validation_shell_command(command: str) -> list[str]:
                 if (
                     len(nested) > 1
                     and nested_command in {"python", "python3", "pytest"}
-                    and previous not in {"-c", "-ec", "-lc", "--command"}
-                    and not previous.startswith("--command=")
                 ):
-                    flatten = True
                     flattened.extend(nested)
-            if not flatten:
-                flattened.append(token)
-            previous = token
+                    command_word_expected = False
+                    continue
+            flattened.append(token)
+            command_word_expected = False
         if flattened != leading:
             rebuilt: list[str] = []
             for token in flattened:

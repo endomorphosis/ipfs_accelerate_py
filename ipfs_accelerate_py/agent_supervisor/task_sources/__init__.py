@@ -19,6 +19,7 @@ Modules owned by this package:
 * ``task_identity``
 * ``task_source`` (protocol / dual-projection boundary)
 * ``taskboard_store``
+* ``taskboard_ingest``
 * ``todo_vector_index``
 
 Import them via::
@@ -67,6 +68,7 @@ TASK_SOURCES_OWNED_MODULES: Final[tuple[str, ...]] = (
     "task_identity",
     "task_source",
     "taskboard_store",
+    "taskboard_ingest",
     "todo_vector_index",
 )
 

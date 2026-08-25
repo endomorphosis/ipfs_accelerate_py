@@ -1814,6 +1814,7 @@ class PlanBoundRecoveryLaunch:
             "proposal_ready",
             "merge_enqueue_prepared",
             "merge_enqueue_confirmed",
+            "merge_completed",
         }:
             raise ExecutionPlanError("recovery-launch phase is not adoptable")
         for name in (
@@ -1846,7 +1847,10 @@ class PlanBoundRecoveryLaunch:
             raise ExecutionPlanError(
                 "prepared recovery-launch handoff is partial"
             )
-        if self.execution_phase == "merge_enqueue_confirmed" and (
+        if self.execution_phase in {
+            "merge_enqueue_confirmed",
+            "merge_completed",
+        } and (
             not all(merge_fields) or not all(confirmed_fields)
         ):
             raise ExecutionPlanError(
@@ -4764,6 +4768,7 @@ def _validate_plan_bound_process_birth_exhausted_locked(
             "proposal_ready",
             "merge_enqueue_prepared",
             "merge_enqueue_confirmed",
+            "merge_completed",
         }
         or lease[1].active_task_id != exhausted.task_id
         or lease[1].active_task_cid != exhausted.task_cid

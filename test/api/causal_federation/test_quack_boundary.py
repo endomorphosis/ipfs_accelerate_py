@@ -525,6 +525,15 @@ def test_operator_uses_default_owner_transport_connection_and_blocking_event() -
         and node.func.value.id == "server"
         and node.func.attr == "ready"
     )
+    route_seal_calls = [
+        node
+        for node in ast.walk(state_owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_seal_quiescent_execution_route_policy"
+    ]
+    assert len(route_seal_calls) == 1
+    route_seal_call = route_seal_calls[0]
     worker_call = next(
         node
         for node in ast.walk(state_owner)
@@ -541,6 +550,13 @@ def test_operator_uses_default_owner_transport_connection_and_blocking_event() -
         and isinstance(node.func, ast.Name)
         and node.func.id == "_spawn_event_supervisor"
     )
+    executor_spawn_call = next(
+        node
+        for node in ast.walk(state_owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_spawn_configured_executor"
+    )
     health_calls = sorted(
         (
             node
@@ -552,6 +568,47 @@ def test_operator_uses_default_owner_transport_connection_and_blocking_event() -
         key=lambda node: node.lineno,
     )
     assert len(health_calls) >= 3
-    assert ready_call.lineno < worker_call.lineno < spawn_call.lineno
+    assert (
+        ready_call.lineno
+        < worker_call.lineno
+        < spawn_call.lineno
+        < route_seal_call.lineno
+        < executor_spawn_call.lineno
+    )
     assert worker_call.lineno < health_calls[0].lineno < spawn_call.lineno
     assert spawn_call.lineno < health_calls[1].lineno
+
+
+def test_operator_state_owner_grant_never_uses_default_lifetime() -> None:
+    tree = ast.parse(OPERATOR.read_text(encoding="utf-8"))
+    ttl_constant = next(
+        item
+        for item in tree.body
+        if isinstance(item, ast.AnnAssign)
+        and isinstance(item.target, ast.Name)
+        and item.target.id == "INTERNAL_CLIENT_GRANT_TTL_SECONDS"
+    )
+    assert ast.literal_eval(ttl_constant.value) == 86_400.0
+
+    state_owner = next(
+        item
+        for item in tree.body
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and item.name == "state_owner"
+    )
+    grant_calls = [
+        node
+        for node in ast.walk(state_owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "server"
+        and node.func.attr == "issue_typed_client_grant"
+    ]
+    assert len(grant_calls) == 1
+    keywords = {item.arg: item.value for item in grant_calls[0].keywords}
+    assert set(keywords) >= {"process_birth_id", "ttl_seconds"}
+    assert isinstance(keywords["ttl_seconds"], ast.Name)
+    assert keywords["ttl_seconds"].id == "INTERNAL_CLIENT_GRANT_TTL_SECONDS"
+    assert isinstance(keywords["process_birth_id"], ast.Attribute)
+    assert keywords["process_birth_id"].attr == "process_birth_id"

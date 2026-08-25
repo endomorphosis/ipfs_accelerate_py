@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 import re
+import select
 import stat
 import subprocess
 import sys
@@ -57,6 +58,10 @@ CONFIG_RELATIVE = "config/agent_supervisor_proof_carrying_procedure_compiler_sch
 CONTROL_DATABASE_RELATIVE = (
     "state/agent_supervisor_proof_carrying_procedure_compiler/control/control.duckdb"
 )
+READ_REPLICA_DATABASE_RELATIVE = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/control/"
+    "control.read-replica.duckdb"
+)
 QUACK_OWNER_STATE_RELATIVE = (
     "state/agent_supervisor_proof_carrying_procedure_compiler/control/quack-owner"
 )
@@ -70,6 +75,7 @@ DUCKLAKE_CATALOG_RELATIVE = (
 DUCKLAKE_DATA_RELATIVE = (
     "state/agent_supervisor_proof_carrying_procedure_compiler/history/data"
 )
+DUCKLAKE_HISTORY_RECEIPT_NAME = "ducklake-history-projection.json"
 DUCKLAKE_EXTENSION_HASHES = {
     "ducklake.duckdb_extension": (
         "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
@@ -110,6 +116,7 @@ SEALED_DUCKDB_CONNECTION_SETTINGS = {
 MAX_CONTROL_DATABASE_BYTES = 512 * 1024 * 1024
 CONTROL_DATABASE_COPY_CHUNK_BYTES = 1024 * 1024
 MAX_OWNER_EVIDENCE_BYTES = 1024 * 1024
+MAX_PREREQUISITE_DOCUMENT_BYTES = 1024 * 1024
 MAX_CAPTURE_BYTES = 64_000
 MAX_PREREQUISITE_PRODUCERS = 64
 PREREQUISITE_PRODUCER_TIMEOUT_SECONDS = 900
@@ -162,6 +169,10 @@ REQUIRED_PREREQUISITE_PRODUCER_IDS = frozenset(
         "TP-LEASE-COORDINATION",
         "TP-MERGE-TRAIN",
         "TP-FENCE-REGISTRY-QUEUE",
+        "TP-AUTONOMY-CONTRACTS",
+        "TP-AUTONOMY-RUNTIME",
+        "TP-COGNITIVE-SCHEDULER",
+        "TP-EXPERIENCE-LEDGER",
     }
 )
 
@@ -215,6 +226,21 @@ PREREQUISITE_BINDING_FIELDS = (
     "package_bindings",
     "submodule_bindings",
     "test_producer_bindings",
+)
+CURRENT_DISPOSITION_REQUIRED_FIELDS = frozenset(
+    {
+        *PREREQUISITE_BINDING_FIELDS,
+        "admitted_as_comparison_baseline",
+        "negative_probes",
+        "positive_probes",
+        "qualification_mode",
+        "related_non_equivalent_bindings",
+        "status",
+    }
+)
+CURRENT_DISPOSITION_OPTIONAL_FIELDS = frozenset({"caveat"})
+CURRENT_DISPOSITION_QUALIFICATION_MODES = frozenset(
+    {"exact_authority_bindings", "source_presence_with_typed_interface_gap"}
 )
 QUALIFICATION_COMMANDS = (
     (
@@ -287,6 +313,234 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _historical_git(*args: str) -> bytes:
+    """Run one read-only Git query with object replacements disabled."""
+
+    environment = {
+        **os.environ,
+        "GIT_NO_LAZY_FETCH": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    try:
+        result = subprocess.run(
+            ("git", "--no-replace-objects", *args),
+            cwd=REPO_ROOT,
+            env=environment,
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise MaterializationError("historical repository query failed") from exc
+    if result.returncode:
+        raise MaterializationError(
+            result.stderr.decode("utf-8", errors="replace").strip()
+            or "historical repository query failed"
+        )
+    return result.stdout
+
+
+def _historical_object_bytes(
+    object_id: str, *, object_type: str, maximum_bytes: int
+) -> bytes:
+    """Stream and re-hash one Git object through a hard byte ceiling."""
+
+    if (
+        not _valid_blob_id(object_id)
+        or object_type not in {"blob", "commit", "tree"}
+        or type(maximum_bytes) is not int
+        or maximum_bytes < 1
+    ):
+        raise MaterializationError("historical repository object request is invalid")
+    try:
+        size = int(
+            _historical_git("cat-file", "-s", object_id).decode("ascii").strip()
+        )
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise MaterializationError("historical repository object size is invalid") from exc
+    if size < 0 or size > maximum_bytes:
+        raise MaterializationError("historical repository object is out of bounds")
+
+    environment = {
+        **os.environ,
+        "GIT_NO_LAZY_FETCH": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    process: subprocess.Popen[bytes] | None = None
+    try:
+        process = subprocess.Popen(
+            ("git", "--no-replace-objects", "cat-file", object_type, object_id),
+            cwd=REPO_ROOT,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        assert process.stdout is not None
+        descriptor = process.stdout.fileno()
+        chunks: list[bytes] = []
+        remaining = size + 1
+        deadline = time.monotonic() + 60
+        while remaining:
+            wait_seconds = deadline - time.monotonic()
+            if wait_seconds <= 0:
+                raise MaterializationError("historical repository object read timed out")
+            readable, _, _ = select.select([descriptor], [], [], wait_seconds)
+            if not readable:
+                raise MaterializationError("historical repository object read timed out")
+            chunk = os.read(
+                descriptor, min(CONTROL_DATABASE_COPY_CHUNK_BYTES, remaining)
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if len(raw) != size:
+            raise MaterializationError("historical repository object violated its size bound")
+        try:
+            returncode = process.wait(timeout=max(0.001, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired as exc:
+            raise MaterializationError("historical repository object read timed out") from exc
+        if returncode:
+            raise MaterializationError("historical repository object could not be read exactly")
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise MaterializationError("historical repository object read failed") from exc
+    finally:
+        if process is not None:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+    identity = hashlib.sha1(usedforsecurity=False)
+    identity.update(f"{object_type} {size}\0".encode("ascii"))
+    identity.update(raw)
+    if identity.hexdigest() != object_id:
+        raise MaterializationError("historical repository object identity does not match Git")
+    return raw
+
+
+def _historical_commit_tree(commit_id: str) -> str:
+    raw = _historical_object_bytes(
+        commit_id,
+        object_type="commit",
+        maximum_bytes=MAX_OWNER_EVIDENCE_BYTES,
+    )
+    first_line = raw.split(b"\n", 1)[0]
+    if not first_line.startswith(b"tree "):
+        raise MaterializationError("historical commit lacks one root tree")
+    try:
+        tree_id = first_line.removeprefix(b"tree ").decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise MaterializationError("historical commit tree identity is invalid") from exc
+    if not _valid_blob_id(tree_id):
+        raise MaterializationError("historical commit tree identity is invalid")
+    return tree_id
+
+
+def _tree_entry(raw: bytes, *, name: bytes) -> tuple[bytes, str]:
+    matches: list[tuple[bytes, str]] = []
+    offset = 0
+    while offset < len(raw):
+        space = raw.find(b" ", offset)
+        terminator = raw.find(b"\0", space + 1) if space >= 0 else -1
+        object_end = terminator + 21
+        if space <= offset or terminator <= space + 1 or object_end > len(raw):
+            raise MaterializationError("historical repository tree is malformed")
+        mode = raw[offset:space]
+        entry_name = raw[space + 1 : terminator]
+        object_id = raw[terminator + 1 : object_end].hex()
+        if entry_name == name:
+            matches.append((mode, object_id))
+        offset = object_end
+    if offset != len(raw) or len(matches) != 1:
+        raise MaterializationError("historical repository tree entry is not exact")
+    mode, object_id = matches[0]
+    if not _valid_blob_id(object_id):
+        raise MaterializationError("historical repository tree object identity is invalid")
+    return mode, object_id
+
+
+def _repository_blob_bytes(
+    revision: str, path: str, *, expected_tree: str = ""
+) -> bytes:
+    """Walk and re-hash an exact commit/tree path to one bounded blob."""
+
+    if not _valid_blob_id(revision):
+        raise MaterializationError("historical repository revision is not exact")
+    canonical_path = _relative_repository_path(path, field="historical repository path")
+    tree_id = _historical_commit_tree(revision)
+    if expected_tree and tree_id != expected_tree:
+        raise MaterializationError("historical commit root tree does not match owner")
+    components = canonical_path.encode("utf-8").split(b"/")
+    for index, component in enumerate(components):
+        tree_raw = _historical_object_bytes(
+            tree_id,
+            object_type="tree",
+            maximum_bytes=MAX_PREREQUISITE_DOCUMENT_BYTES,
+        )
+        mode, object_id = _tree_entry(tree_raw, name=component)
+        if index < len(components) - 1:
+            if mode != b"40000":
+                raise MaterializationError("historical prerequisite parent is not a tree")
+            tree_id = object_id
+            continue
+        if mode != b"100644":
+            raise MaterializationError("historical prerequisite is not a regular blob")
+        raw = _historical_object_bytes(
+            object_id,
+            object_type="blob",
+            maximum_bytes=MAX_PREREQUISITE_DOCUMENT_BYTES,
+        )
+        if not raw:
+            raise MaterializationError("historical prerequisite blob is empty")
+        return raw
+    raise MaterializationError("historical prerequisite path is empty")
+
+
+def _repository_json(
+    revision: str, path: str, *, expected_tree: str = ""
+) -> tuple[dict[str, Any], bytes]:
+    raw = _repository_blob_bytes(revision, path, expected_tree=expected_tree)
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MaterializationError("historical prerequisite document is not valid JSON") from exc
+    if not isinstance(value, dict):
+        raise MaterializationError("historical prerequisite document is not one JSON object")
+    return value, raw
+
+
+def _repository_identity_is_exact(*, head: str, tree: str) -> bool:
+    if (
+        not _valid_blob_id(head)
+        or not _valid_blob_id(tree)
+        or not _valid_blob_id(BASE_COMMIT)
+    ):
+        return False
+    try:
+        return (
+            _historical_commit_tree(head) == tree
+            and bool(
+                _historical_object_bytes(
+                    tree,
+                    object_type="tree",
+                    maximum_bytes=MAX_PREREQUISITE_DOCUMENT_BYTES,
+                )
+            )
+            and _historical_git("merge-base", "--is-ancestor", BASE_COMMIT, head) == b""
+        )
+    except MaterializationError:
+        return False
 
 
 def _database_file_identity(value: os.stat_result) -> tuple[int, ...]:
@@ -542,6 +796,168 @@ def _disposable_control_database_copy(database_path: Path) -> Iterator[Path]:
         os.close(lock_descriptor)
 
 
+def _validated_projection_owner_status(
+    launcher_module: Any, program_config: Any
+) -> tuple[dict[str, Any], str, str]:
+    """Read and validate the exact owner-published replica observation."""
+
+    expected_status_path = (
+        REPO_ROOT.resolve()
+        / QUACK_OWNER_STATE_RELATIVE
+        / "quack-state-server.status.json"
+    )
+    if program_config.state_dir / expected_status_path.name != expected_status_path:
+        raise MaterializationError("Quack owner status path is not exact")
+    status = _read_owner_evidence(expected_status_path)
+    identity = status.get("identity") if isinstance(status, Mapping) else None
+    repository_id = (
+        str(identity.get("repository_id") or "")
+        if isinstance(identity, Mapping)
+        else ""
+    )
+    repository_match = re.fullmatch(
+        re.escape(f"{program_config.repository_id_prefix}:commit:")
+        + r"([0-9a-f]{40}):tree:([0-9a-f]{40})",
+        repository_id,
+    )
+    if not isinstance(status, Mapping) or repository_match is None:
+        raise MaterializationError("Quack owner status lacks an exact repository binding")
+    head, tree = repository_match.groups()
+    try:
+        launcher_module.validate_owner_status_payload(
+            status,
+            config=program_config,
+            head=head,
+            tree=tree,
+        )
+    except Exception as exc:  # noqa: BLE001 - typed cross-script validation adapter
+        raise MaterializationError("Quack read-replica observation is invalid") from exc
+    return dict(status), head, tree
+
+
+@contextmanager
+def _validated_read_replica_snapshot() -> Iterator[tuple[Path, dict[str, Any]]]:
+    """Yield a private, digest-bound copy of Quack's read-only replica.
+
+    The authoritative ``control.duckdb`` is never opened.  Quack publishes the
+    replica atomically and binds its digest in the closed owner-status payload;
+    this helper copies that file through a no-follow descriptor, verifies the
+    published digest and size, and re-observes the same publication before the
+    private snapshot is admitted.
+    """
+
+    launcher = _load_program_launcher_module()
+    try:
+        program_config = launcher.load_program_config(REPO_ROOT)
+    except Exception as exc:  # noqa: BLE001 - typed cross-script validation adapter
+        raise MaterializationError("PCPC program configuration is invalid") from exc
+    status, head, tree = _validated_projection_owner_status(launcher, program_config)
+    replica = status.get("read_replica")
+    if not isinstance(replica, Mapping):  # already closed by launcher; keep local typing exact
+        raise MaterializationError("Quack read-replica observation is absent")
+    replica_path = REPO_ROOT.resolve() / READ_REPLICA_DATABASE_RELATIVE
+    if (
+        replica_path != program_config.database_path.with_name(replica_path.name)
+        or replica.get("path") != str(replica_path)
+    ):
+        raise MaterializationError("Quack read-replica path is not exact")
+    expected_sha256 = str(replica.get("sha256") or "")
+    expected_size = replica.get("size_bytes")
+    try:
+        observed = os.lstat(replica_path)
+        source_descriptor = os.open(
+            replica_path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise MaterializationError("Quack read replica cannot be opened safely") from exc
+    try:
+        opened = os.fstat(source_descriptor)
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or observed.st_nlink != 1
+            or stat.S_IMODE(observed.st_mode) & 0o077
+            or type(expected_size) is not int
+            or not 0 < expected_size <= MAX_CONTROL_DATABASE_BYTES
+            or observed.st_size != expected_size
+            or _database_file_identity(observed) != _database_file_identity(opened)
+            or replica_path.resolve(strict=True) != replica_path
+        ):
+            raise MaterializationError("Quack read-replica identity is unsafe or out of bounds")
+        with tempfile.TemporaryDirectory(prefix="pcpc-history-snapshot-") as raw_directory:
+            directory = Path(raw_directory)
+            directory.chmod(0o700)
+            snapshot_path = directory / "control.read-replica.duckdb"
+            destination_descriptor = os.open(
+                snapshot_path,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0),
+                0o600,
+            )
+            digest = hashlib.sha256()
+            total = 0
+            try:
+                while True:
+                    chunk = os.read(source_descriptor, CONTROL_DATABASE_COPY_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_CONTROL_DATABASE_BYTES:
+                        raise MaterializationError("Quack read replica exceeded its copy bound")
+                    digest.update(chunk)
+                    pending = memoryview(chunk)
+                    while pending:
+                        written = os.write(destination_descriptor, pending)
+                        if written < 1:
+                            raise MaterializationError("Quack read-replica copy made no progress")
+                        pending = pending[written:]
+                os.fsync(destination_descriptor)
+            finally:
+                os.close(destination_descriptor)
+            closed_over = os.fstat(source_descriptor)
+            if (
+                total != opened.st_size
+                or _database_file_identity(opened) != _database_file_identity(closed_over)
+                or digest.hexdigest() != expected_sha256.removeprefix("sha256:")
+                or snapshot_path.stat().st_size != total
+            ):
+                raise MaterializationError("Quack read replica changed or failed its digest binding")
+            status_after, head_after, tree_after = _validated_projection_owner_status(
+                launcher, program_config
+            )
+            if (
+                status_after.get("identity") != status.get("identity")
+                or status_after.get("read_replica") != replica
+                or head_after != head
+                or tree_after != tree
+            ):
+                raise MaterializationError("Quack read-replica publication changed during copy")
+            observation = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/pcpc-history-source@1",
+                "authority": False,
+                "source": "quack_read_replica",
+                "repository_commit": head,
+                "repository_tree": tree,
+                "server_id": str(replica.get("server_id") or ""),
+                "database_uuid": str(replica.get("database_uuid") or ""),
+                "generation": int(replica.get("generation") or 0),
+                "schema_revision": int(replica.get("schema_revision") or 0),
+                "refresh_sequence": int(replica.get("refresh_sequence") or 0),
+                "refreshed_at_ms": int(replica.get("refreshed_at_ms") or 0),
+                "sha256": expected_sha256,
+                "size_bytes": expected_size,
+            }
+            yield snapshot_path, observation
+    finally:
+        os.close(source_descriptor)
+
+
 def _projection_matches_events_on_disposable_copy(
     database_path: Path, *, repository_tree_id: str, plan_root_cid: str
 ) -> bool:
@@ -581,6 +997,15 @@ def _current_bound_blob_id(binding: Mapping[str, Any]) -> str:
     if not _valid_blob_id(value):
         raise MaterializationError(
             f"invalid current blob binding for {binding.get('path')!r}"
+        )
+    return value
+
+
+def _current_bound_gitlink_commit(binding: Mapping[str, Any]) -> str:
+    value = binding.get("current_gitlink_commit", binding.get("gitlink_commit"))
+    if not _valid_blob_id(value):
+        raise MaterializationError(
+            f"invalid current gitlink binding for {binding.get('path')!r}"
         )
     return value
 
@@ -709,6 +1134,68 @@ def _require_mapping_list(value: object, *, field: str) -> list[Mapping[str, Any
     return value
 
 
+def _effective_prerequisite_disposition(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    current = row.get("current_disposition")
+    if current is None:
+        return row
+    if not isinstance(current, Mapping):
+        raise MaterializationError("current_disposition must be an object")
+    fields = set(current)
+    if (
+        not CURRENT_DISPOSITION_REQUIRED_FIELDS <= fields
+        or not fields
+        <= CURRENT_DISPOSITION_REQUIRED_FIELDS | CURRENT_DISPOSITION_OPTIONAL_FIELDS
+    ):
+        raise MaterializationError("current disposition has an open or incomplete schema")
+    mode = current.get("qualification_mode")
+    if mode not in CURRENT_DISPOSITION_QUALIFICATION_MODES:
+        raise MaterializationError("current disposition qualification mode is unsupported")
+    if current.get("admitted_as_comparison_baseline") is not False:
+        raise MaterializationError(
+            "current authority cannot become the historical comparison baseline"
+        )
+    return {"authority": row.get("authority"), **current}
+
+
+def _validate_negative_probes(
+    row: Mapping[str, Any], *, authority: str, revisions: Sequence[str]
+) -> list[Mapping[str, Any]]:
+    negative_rows = _require_mapping_list(
+        row.get("negative_probes", []), field=f"{authority}.negative_probes"
+    )
+    for probe in negative_rows:
+        kind = probe.get("kind")
+        if kind == "git_path_absent":
+            if set(probe) != {"kind", "path"}:
+                raise MaterializationError(
+                    f"negative path probe has an open schema for {authority!r}"
+                )
+            path = _relative_repository_path(probe.get("path"), field="negative path")
+            if any(_git_path_exists(revision, path) for revision in revisions):
+                raise MaterializationError(
+                    f"negative path probe no longer holds for {authority!r}: {path}"
+                )
+        elif kind == "python_class_absent":
+            if set(probe) != {"kind", "scope", "symbol"}:
+                raise MaterializationError(
+                    f"negative class probe has an open schema for {authority!r}"
+                )
+            scope = _relative_repository_path(probe.get("scope"), field="probe scope")
+            symbol = probe.get("symbol")
+            if not isinstance(symbol, str) or not symbol.isidentifier():
+                raise MaterializationError(f"invalid negative symbol probe for {authority!r}")
+            if any(
+                _git_class_exists(revision, scope=scope, symbol=symbol)
+                for revision in revisions
+            ):
+                raise MaterializationError(
+                    f"negative class probe no longer holds for {authority!r}: {symbol}"
+                )
+        else:
+            raise MaterializationError(f"unknown negative probe kind for {authority!r}")
+    return negative_rows
+
+
 def _validate_prerequisite_payloads(
     baseline: Mapping[str, Any], inventory: Mapping[str, Any]
 ) -> list[dict[str, Any]]:
@@ -743,6 +1230,18 @@ def _validate_prerequisite_payloads(
         raise MaterializationError("baseline.package_bindings must not be empty")
     packages: dict[str, Mapping[str, Any]] = {}
     for row in package_rows:
+        package_fields = {
+            "binding_id",
+            "manifest_blob_id",
+            "manifest_path",
+            "name",
+            "version",
+        }
+        if set(row) not in (
+            package_fields,
+            package_fields | {"current_blob_id"},
+        ):
+            raise MaterializationError("package binding has an open or incomplete schema")
         binding_id = row.get("binding_id")
         if not isinstance(binding_id, str) or not binding_id or binding_id in packages:
             raise MaterializationError("package binding IDs must be non-empty and unique")
@@ -751,6 +1250,7 @@ def _validate_prerequisite_payloads(
             path=path,
             blob_id=row.get("manifest_blob_id"),
             baseline_commit=BASE_COMMIT,
+            current_blob_id=row.get("current_blob_id"),
         )
         if row.get("name") != "ipfs_accelerate_py" or row.get("version") != "0.0.45":
             raise MaterializationError(f"unsupported package binding {binding_id!r}")
@@ -762,18 +1262,29 @@ def _validate_prerequisite_payloads(
     )
     siblings: dict[str, Mapping[str, Any]] = {}
     for row in sibling_rows:
+        sibling_fields = {"binding_id", "gitlink_commit", "path"}
+        if set(row) not in (
+            sibling_fields,
+            sibling_fields | {"current_gitlink_commit"},
+        ):
+            raise MaterializationError(
+                "sibling release binding has an open or incomplete schema"
+            )
         binding_id = row.get("binding_id")
         commit = row.get("gitlink_commit")
+        current_commit = _current_bound_gitlink_commit(row)
         if (
             not isinstance(binding_id, str)
             or not binding_id
             or binding_id in siblings
-            or not isinstance(commit, str)
-            or len(commit) != 40
+            or not _valid_blob_id(commit)
         ):
             raise MaterializationError("sibling release bindings are malformed")
         path = _relative_repository_path(row.get("path"), field="sibling path")
-        if _object_id(BASE_COMMIT, path) != commit or _object_id("HEAD", path) != commit:
+        if (
+            _object_id(BASE_COMMIT, path) != commit
+            or _object_id("HEAD", path) != current_commit
+        ):
             raise MaterializationError(f"sibling release drift for {path}")
         siblings[binding_id] = row
 
@@ -889,17 +1400,85 @@ def _validate_prerequisite_payloads(
     seen_authorities: set[str] = set()
     referenced_producers: set[str] = set()
     python_cache: dict[str, tuple[set[tuple[str, str]], dict[str, object]]] = {}
-    for row in rows:
-        authority = row.get("authority")
-        status = row.get("status")
+    for stored_row in rows:
+        authority = stored_row.get("authority")
+        historical_status = stored_row.get("status")
         if (
             not isinstance(authority, str)
             or not authority
             or authority in seen_authorities
-            or status not in PREREQUISITE_STATUSES
+            or historical_status not in PREREQUISITE_STATUSES
         ):
             raise MaterializationError("prerequisite authority/status is invalid or duplicated")
         seen_authorities.add(authority)
+        for field in PREREQUISITE_BINDING_FIELDS:
+            if not isinstance(stored_row.get(field), list):
+                raise MaterializationError(f"{authority}.{field} binding is missing")
+        if not stored_row["package_bindings"]:
+            raise MaterializationError(f"{authority}.package_bindings must not be empty")
+        historical_source_rows = _require_mapping_list(
+            stored_row["source_bindings"], field=f"{authority}.source_bindings"
+        )
+        historical_symbol_rows = _require_mapping_list(
+            stored_row["symbol_bindings"], field=f"{authority}.symbol_bindings"
+        )
+        historical_interface_rows = _require_mapping_list(
+            stored_row["interface_bindings"], field=f"{authority}.interface_bindings"
+        )
+        historical_schema_rows = _require_mapping_list(
+            stored_row["schema_bindings"], field=f"{authority}.schema_bindings"
+        )
+        if historical_status == "missing":
+            if (
+                historical_source_rows
+                or historical_symbol_rows
+                or historical_interface_rows
+                or historical_schema_rows
+                or stored_row["test_producer_bindings"]
+            ):
+                raise MaterializationError(
+                    f"missing authority {authority!r} cannot carry positive authority bindings"
+                )
+            if not isinstance(stored_row.get("blocker"), str) or not stored_row.get(
+                "negative_probes"
+            ):
+                raise MaterializationError(
+                    f"missing authority {authority!r} lacks blocker/negative probe"
+                )
+        current_override = stored_row.get("current_disposition")
+        if current_override is not None:
+            if historical_status != "missing":
+                raise MaterializationError(
+                    "current disposition may only qualify a historically missing authority"
+                )
+            historical_related_rows = _require_mapping_list(
+                stored_row.get("related_non_equivalent_bindings", []),
+                field=f"{authority}.related_non_equivalent_bindings",
+            )
+            for binding in historical_related_rows:
+                path = _relative_repository_path(binding.get("path"), field="related path")
+                blob_id = binding.get("blob_id")
+                kind = binding.get("kind")
+                symbol = binding.get("symbol")
+                if (
+                    not _valid_blob_id(blob_id)
+                    or _object_id(BASE_COMMIT, path) != blob_id
+                    or kind != "class"
+                    or not isinstance(symbol, str)
+                    or not symbol.isidentifier()
+                    or not _git_class_exists(BASE_COMMIT, scope=path, symbol=symbol)
+                ):
+                    raise MaterializationError(
+                        f"historical related binding is stale for {authority!r}"
+                    )
+            _validate_negative_probes(
+                stored_row, authority=authority, revisions=(BASE_COMMIT,)
+            )
+
+        row = _effective_prerequisite_disposition(stored_row)
+        status = row.get("status")
+        if status not in PREREQUISITE_STATUSES:
+            raise MaterializationError(f"invalid current status for {authority!r}")
         for field in PREREQUISITE_BINDING_FIELDS:
             if not isinstance(row.get(field), list):
                 raise MaterializationError(f"{authority}.{field} binding is missing")
@@ -917,7 +1496,14 @@ def _validate_prerequisite_payloads(
         schema_rows = _require_mapping_list(
             row["schema_bindings"], field=f"{authority}.schema_bindings"
         )
+        qualification_mode = (
+            row.get("qualification_mode") if current_override is not None else None
+        )
         if status == "missing":
+            if current_override is not None:
+                raise MaterializationError(
+                    f"current disposition for {authority!r} must advance its historical absence"
+                )
             if (
                 source_rows
                 or symbol_rows
@@ -928,18 +1514,25 @@ def _validate_prerequisite_payloads(
                 raise MaterializationError(
                     f"missing authority {authority!r} cannot carry positive authority bindings"
                 )
-            if not isinstance(row.get("blocker"), str) or not row.get("negative_probes"):
-                raise MaterializationError(
-                    f"missing authority {authority!r} lacks blocker/negative probe"
-                )
         else:
-            if not source_rows or not symbol_rows or not interface_rows or not schema_rows:
+            if not source_rows or not symbol_rows or not row["test_producer_bindings"]:
                 raise MaterializationError(
-                    f"non-missing authority {authority!r} lacks source/interface/schema bindings"
+                    f"non-missing authority {authority!r} lacks source/symbol/test bindings"
                 )
-            if not row["test_producer_bindings"]:
+            if qualification_mode == "source_presence_with_typed_interface_gap":
+                if (
+                    status != "available_with_caveats"
+                    or interface_rows
+                    or schema_rows
+                    or not isinstance(row.get("caveat"), str)
+                    or not row.get("caveat")
+                ):
+                    raise MaterializationError(
+                        f"typed interface-gap disposition is malformed for {authority!r}"
+                    )
+            elif not interface_rows or not schema_rows:
                 raise MaterializationError(
-                    f"non-missing authority {authority!r} lacks test producer bindings"
+                    f"non-missing authority {authority!r} lacks interface/schema bindings"
                 )
         if status in {"available_with_caveats", "incompatible", "stale"} and not isinstance(
             row.get("caveat"), str
@@ -1031,37 +1624,75 @@ def _validate_prerequisite_payloads(
                     f"related non-equivalent binding is stale for {authority!r}"
                 )
 
-        negative_rows = _require_mapping_list(
-            row.get("negative_probes", []), field=f"{authority}.negative_probes"
+        negative_rows = _validate_negative_probes(
+            row,
+            authority=authority,
+            revisions=(("HEAD",) if current_override is not None else (BASE_COMMIT, "HEAD")),
         )
-        for probe in negative_rows:
+        positive_rows = _require_mapping_list(
+            row.get("positive_probes", []), field=f"{authority}.positive_probes"
+        )
+        if current_override is not None and not positive_rows:
+            raise MaterializationError(f"current disposition lacks probes for {authority!r}")
+        for probe in positive_rows:
             kind = probe.get("kind")
-            if kind == "git_path_absent":
-                path = _relative_repository_path(probe.get("path"), field="negative path")
-                if _git_path_exists(BASE_COMMIT, path) or _git_path_exists("HEAD", path):
+            if kind == "git_path_present":
+                if set(probe) != {"kind", "path"}:
                     raise MaterializationError(
-                        f"negative path probe no longer holds for {authority!r}: {path}"
+                        f"positive path probe has an open schema for {authority!r}"
                     )
-            elif kind == "python_class_absent":
-                scope = _relative_repository_path(probe.get("scope"), field="probe scope")
+                path = _relative_repository_path(probe.get("path"), field="positive path")
+                if path not in bound_paths or not _git_path_exists("HEAD", path):
+                    raise MaterializationError(
+                        f"positive path probe does not hold for {authority!r}: {path}"
+                    )
+            elif kind == "python_class_present":
+                if set(probe) != {"kind", "path", "symbol"}:
+                    raise MaterializationError(
+                        f"positive class probe has an open schema for {authority!r}"
+                    )
+                path = _relative_repository_path(probe.get("path"), field="positive path")
                 symbol = probe.get("symbol")
-                if not isinstance(symbol, str) or not symbol.isidentifier():
-                    raise MaterializationError(f"invalid negative symbol probe for {authority!r}")
-                if _git_class_exists(BASE_COMMIT, scope=scope, symbol=symbol) or _git_class_exists(
-                    "HEAD", scope=scope, symbol=symbol
+                if (
+                    path not in bound_paths
+                    or not isinstance(symbol, str)
+                    or ("class", symbol) not in _python_declarations(path, python_cache)[0]
+                    or not _git_class_exists("HEAD", scope=path, symbol=symbol)
                 ):
                     raise MaterializationError(
-                        f"negative class probe no longer holds for {authority!r}: {symbol}"
+                        f"positive class probe does not hold for {authority!r}: {symbol}"
+                    )
+            elif kind == "test_producer_passes":
+                if set(probe) != {"kind", "producer_id"}:
+                    raise MaterializationError(
+                        f"positive producer probe has an open schema for {authority!r}"
+                    )
+                producer_id = probe.get("producer_id")
+                producer = producers.get(producer_id) if isinstance(producer_id, str) else None
+                if (
+                    not isinstance(producer_id, str)
+                    or producer_id not in row["test_producer_bindings"]
+                    or producer is None
+                    or producer.get("expected", {}).get("returncode") != 0
+                ):
+                    raise MaterializationError(
+                        f"positive producer probe does not hold for {authority!r}: {producer_id}"
                     )
             else:
-                raise MaterializationError(f"unknown negative probe kind for {authority!r}")
+                raise MaterializationError(f"unknown positive probe kind for {authority!r}")
         observations.append(
             {
                 "authority": authority,
+                "admitted_as_comparison_baseline": (
+                    False if current_override is not None else None
+                ),
                 "status": status,
+                "historical_status": historical_status,
+                "qualification_mode": qualification_mode or "historical_and_current_exact",
                 "source_blob_ids": sorted(source_blob_ids),
                 "test_producer_ids": sorted(row["test_producer_bindings"]),
                 "negative_probe_count": len(negative_rows),
+                "positive_probe_count": len(positive_rows),
             }
         )
     if seen_authorities != REQUIRED_PREREQUISITE_AUTHORITIES:
@@ -1107,7 +1738,7 @@ def _verify_exact_gitlink_checkouts(
     observations: list[dict[str, Any]] = []
     for row in rows:
         path = _relative_repository_path(row.get("path"), field="sibling path")
-        expected_commit = row.get("gitlink_commit")
+        expected_commit = _current_bound_gitlink_commit(row)
         if _object_id("HEAD", path) != expected_commit:
             raise MaterializationError(f"current-tree gitlink drift for {path}")
         status = _git("submodule", "status", "--", path)
@@ -1295,14 +1926,23 @@ def _execute_prerequisite_test_producers(
         receipt_cids[producer_id] = str(receipt["producer_receipt_cid"])
 
     authority_receipts: list[dict[str, Any]] = []
-    for row in _require_mapping_list(inventory.get("dispositions"), field="dispositions"):
+    for stored_row in _require_mapping_list(
+        inventory.get("dispositions"), field="dispositions"
+    ):
+        row = _effective_prerequisite_disposition(stored_row)
         producer_ids = sorted(str(item) for item in row["test_producer_bindings"])
+        admitted_as_comparison_baseline = (
+            row.get("admitted_as_comparison_baseline")
+            if stored_row.get("current_disposition") is not None
+            else None
+        )
         authority_receipt = {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/procedure-compiler-authority-test-evidence@1"
             ),
             "authority": row["authority"],
             "status": row["status"],
+            "admitted_as_comparison_baseline": admitted_as_comparison_baseline,
             "repository_commit": head,
             "repository_tree": tree,
             "producer_ids": producer_ids,
@@ -1364,11 +2004,16 @@ def _probe_prerequisite_inventory() -> dict[str, Any]:
     return payload
 
 
-def _stored_prerequisite_probe_is_intact(probe: object, *, head: str, tree: str) -> bool:
+def _stored_prerequisite_probe_matches_digests(
+    probe: object,
+    *,
+    head: str,
+    tree: str,
+    baseline_sha256: str,
+    prerequisites_sha256: str,
+) -> bool:
     if not isinstance(probe, Mapping):
         return False
-    baseline_path = REPO_ROOT / BASELINE_RELATIVE
-    prerequisites_path = REPO_ROOT / PREREQUISITES_RELATIVE
     return (
         probe.get("schema")
         == "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-probe@1"
@@ -1376,8 +2021,8 @@ def _stored_prerequisite_probe_is_intact(probe: object, *, head: str, tree: str)
         and probe.get("baseline_commit") == BASE_COMMIT
         and probe.get("repository_commit") == head
         and probe.get("repository_tree") == tree
-        and probe.get("baseline_sha256") == _sha256_file(baseline_path)
-        and probe.get("prerequisites_sha256") == _sha256_file(prerequisites_path)
+        and probe.get("baseline_sha256") == baseline_sha256
+        and probe.get("prerequisites_sha256") == prerequisites_sha256
         and type(probe.get("authority_count")) is int
         and probe.get("authority_count", 0) > 0
         and type(probe.get("test_producer_count")) is int
@@ -1387,6 +2032,18 @@ def _stored_prerequisite_probe_is_intact(probe: object, *, head: str, tree: str)
         and probe.get("source_drift_permitted") is False
         and probe.get("simulated") is False
         and _has_valid_embedded_identity(probe, identity_field="probe_cid")
+    )
+
+
+def _stored_prerequisite_probe_is_intact(probe: object, *, head: str, tree: str) -> bool:
+    baseline_path = REPO_ROOT / BASELINE_RELATIVE
+    prerequisites_path = REPO_ROOT / PREREQUISITES_RELATIVE
+    return _stored_prerequisite_probe_matches_digests(
+        probe,
+        head=head,
+        tree=tree,
+        baseline_sha256=_sha256_file(baseline_path),
+        prerequisites_sha256=_sha256_file(prerequisites_path),
     )
 
 
@@ -1453,6 +2110,28 @@ def _valid_command_receipt(receipt: object, *, argv: Sequence[str], returncode: 
 
 
 def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tree: str) -> bool:
+    try:
+        baseline = _read_json(REPO_ROOT / BASELINE_RELATIVE)
+        inventory = _read_json(REPO_ROOT / PREREQUISITES_RELATIVE)
+    except (OSError, ValueError, MaterializationError):
+        return False
+    return _stored_prerequisite_execution_matches_documents(
+        execution,
+        head=head,
+        tree=tree,
+        baseline=baseline,
+        inventory=inventory,
+    )
+
+
+def _stored_prerequisite_execution_matches_documents(
+    execution: object,
+    *,
+    head: str,
+    tree: str,
+    baseline: Mapping[str, Any],
+    inventory: Mapping[str, Any],
+) -> bool:
     if not isinstance(execution, Mapping):
         return False
     if set(execution) != {
@@ -1470,11 +2149,6 @@ def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tr
         "simulated",
         "execution_cid",
     }:
-        return False
-    try:
-        baseline = _read_json(REPO_ROOT / BASELINE_RELATIVE)
-        inventory = _read_json(REPO_ROOT / PREREQUISITES_RELATIVE)
-    except (OSError, ValueError, MaterializationError):
         return False
     producers = baseline.get("test_producers")
     dispositions = inventory.get("dispositions")
@@ -1495,7 +2169,7 @@ def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tr
         {
             "binding_id": row["binding_id"],
             "path": row["path"],
-            "gitlink_commit": row["gitlink_commit"],
+            "gitlink_commit": _current_bound_gitlink_commit(row),
         }
         for row in sibling_rows
         if isinstance(row, Mapping)
@@ -1648,11 +2322,20 @@ def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tr
         return False
     if execution.get("typed_expected_failure_count") != typed_failure_count:
         return False
-    authority_by_name = {
+    stored_authority_by_name = {
         str(row.get("authority")): row
         for row in dispositions
         if isinstance(row, Mapping) and isinstance(row.get("authority"), str)
     }
+    if len(stored_authority_by_name) != len(dispositions):
+        return False
+    try:
+        authority_by_name = {
+            authority: _effective_prerequisite_disposition(stored_row)
+            for authority, stored_row in stored_authority_by_name.items()
+        }
+    except MaterializationError:
+        return False
     seen_authorities: set[str] = set()
     for receipt in authority_receipts:
         if not isinstance(receipt, Mapping):
@@ -1662,6 +2345,11 @@ def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tr
         if row is None or authority in seen_authorities:
             return False
         producer_ids = sorted(str(item) for item in row["test_producer_bindings"])
+        admitted_as_comparison_baseline = (
+            row.get("admitted_as_comparison_baseline")
+            if stored_authority_by_name[authority].get("current_disposition") is not None
+            else None
+        )
         evidence_disposition = (
             "current_execution" if producer_ids else "not_applicable_missing_authority"
         )
@@ -1671,6 +2359,7 @@ def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tr
                 "schema",
                 "authority",
                 "status",
+                "admitted_as_comparison_baseline",
                 "repository_commit",
                 "repository_tree",
                 "producer_ids",
@@ -1689,6 +2378,8 @@ def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tr
             or receipt.get("repository_commit") != head
             or receipt.get("repository_tree") != tree
             or receipt.get("status") != row["status"]
+            or receipt.get("admitted_as_comparison_baseline")
+            is not admitted_as_comparison_baseline
             or receipt.get("evidence_disposition") != evidence_disposition
             or receipt.get("accepted") is not True
             or receipt.get("simulated") is not False
@@ -1732,6 +2423,118 @@ def _stored_qualification_receipt_is_intact(
         ) and _stored_prerequisite_execution_is_intact(
             qualification.get("prerequisite_execution"), head=head, tree=tree
         )
+    return True
+
+
+def _stored_owner_bound_qualification_receipt_is_intact(
+    qualification: Mapping[str, Any], *, head: str, tree: str
+) -> bool:
+    """Validate stored qualification evidence at Quack's exact owner commit.
+
+    A completed campaign may legitimately update its tracked prerequisite
+    inventory after the owner was launched.  History projection therefore
+    verifies the qualification documents from the immutable owner commit,
+    while fresh launch/verification paths continue to require current-tree
+    documents through :func:`_stored_qualification_receipt_is_intact`.
+    """
+
+    if not _repository_identity_is_exact(head=head, tree=tree):
+        return False
+    if not _stored_qualification_receipt_is_intact(
+        qualification,
+        head=head,
+        tree=tree,
+        require_prerequisite_probe=False,
+    ):
+        return False
+    try:
+        baseline, baseline_raw = _repository_json(
+            head, BASELINE_RELATIVE, expected_tree=tree
+        )
+        inventory, prerequisites_raw = _repository_json(
+            head, PREREQUISITES_RELATIVE, expected_tree=tree
+        )
+    except (OSError, ValueError, MaterializationError):
+        return False
+    return _stored_prerequisite_probe_matches_digests(
+        qualification.get("prerequisite_probe"),
+        head=head,
+        tree=tree,
+        baseline_sha256=hashlib.sha256(baseline_raw).hexdigest(),
+        prerequisites_sha256=hashlib.sha256(prerequisites_raw).hexdigest(),
+    ) and _stored_prerequisite_execution_matches_documents(
+        qualification.get("prerequisite_execution"),
+        head=head,
+        tree=tree,
+        baseline=baseline,
+        inventory=inventory,
+    )
+
+
+def _qualification_is_bound_to_p0_history(
+    qualification: Mapping[str, Any],
+    *,
+    task_history: Mapping[str, tuple[str, Mapping[str, Any]]],
+    acceptance_rows: Sequence[tuple[Any, ...]],
+    head: str,
+    tree: str,
+) -> bool:
+    """Bind a stored qualification CID to sealed P0 task history."""
+
+    qualification_cid = qualification.get("qualification_cid")
+    if (
+        not isinstance(qualification_cid, str)
+        or not qualification_cid
+        or set(task_history) != set(P0_TASKS)
+        or len(acceptance_rows) != len(P0_TASKS)
+    ):
+        return False
+    for expected_alias, row in zip(P0_TASKS, acceptance_rows, strict=True):
+        if not isinstance(row, Sequence) or len(row) != 4:
+            return False
+        task_alias, acceptance_ordinal, criterion, evidence_policy_json = row
+        if (
+            task_alias != expected_alias
+            or type(acceptance_ordinal) is not int
+            or acceptance_ordinal != 0
+            or not isinstance(criterion, str)
+            or not criterion
+            or not isinstance(evidence_policy_json, str)
+        ):
+            return False
+        try:
+            evidence_policy = json.loads(evidence_policy_json)
+        except json.JSONDecodeError:
+            return False
+        if (
+            not isinstance(evidence_policy, Mapping)
+            or set(evidence_policy) != {"criterion", "evidence_kind", "required_digest"}
+            or evidence_policy.get("criterion") != criterion
+            or evidence_policy.get("evidence_kind") != "validation"
+            or evidence_policy.get("required_digest") != qualification_cid
+        ):
+            return False
+        status, body = task_history[expected_alias]
+        completion = body.get("completion_receipt")
+        if (
+            status != "completed"
+            or not isinstance(completion, Mapping)
+            or set(completion)
+            != {
+                "schema",
+                "task_id",
+                "qualification_cid",
+                "repository_commit",
+                "repository_tree",
+            }
+            or completion.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/procedure-compiler-p0-completion@1"
+            or completion.get("task_id") != expected_alias
+            or completion.get("qualification_cid") != qualification_cid
+            or completion.get("repository_commit") != head
+            or completion.get("repository_tree") != tree
+        ):
+            return False
     return True
 
 
@@ -2107,6 +2910,12 @@ def _project_ducklake(
     tasks: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     catalog, data = _validated_ducklake_projection_paths(config)
+    if len(tasks) > 4096:
+        return {
+            "projected": False,
+            "authority": False,
+            "reason": "MaterializationError: DuckLake projection row bound exceeded",
+        }
     try:
         catalog.parent.mkdir(parents=True, exist_ok=True)
         data.mkdir(parents=True, exist_ok=True)
@@ -2118,7 +2927,14 @@ def _project_ducklake(
             connection.execute("LOAD httpfs")
             _seal_external_access(
                 connection,
-                allowed_paths=(catalog, Path(f"{catalog}.wal")),
+                # DuckLake's SQLite metadata backend may use both the normal
+                # WAL and its transient checkpoint sidecar while attaching.
+                # Admit those exact files, not the containing directory.
+                allowed_paths=(
+                    catalog,
+                    Path(f"{catalog}.wal"),
+                    Path(f"{catalog}.wal.checkpoint"),
+                ),
                 allowed_directories=(data,),
             )
             connection.execute(f"ATTACH 'ducklake:{catalog}' AS pcpc_history (DATA_PATH '{data}')")
@@ -2162,53 +2978,77 @@ def _project_ducklake(
                 """
             )
             run_id = str(run["run_id"])
-            connection.execute("DELETE FROM pcpc_history.program_runs WHERE run_id = ?", [run_id])
-            connection.execute("DELETE FROM pcpc_history.task_history WHERE run_id = ?", [run_id])
-            connection.execute("DELETE FROM pcpc_history.qualification WHERE run_id = ?", [run_id])
-            connection.execute(
-                "INSERT INTO pcpc_history.program_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    run_id,
-                    run["repository_commit"],
-                    run["repository_tree"],
-                    run["plan_root_cid"],
-                    run["qualification_cid"],
-                    int(run["task_count"]),
-                    int(run["ready_count"]),
-                    int(time.time() * 1000),
-                ],
-            )
-            for task in tasks[:4096]:
+            connection.execute("BEGIN TRANSACTION")
+            try:
                 connection.execute(
-                    "INSERT INTO pcpc_history.task_history VALUES (?, ?, ?, ?, ?, ?)",
+                    "DELETE FROM pcpc_history.program_runs WHERE run_id = ?", [run_id]
+                )
+                connection.execute(
+                    "DELETE FROM pcpc_history.task_history WHERE run_id = ?", [run_id]
+                )
+                connection.execute(
+                    "DELETE FROM pcpc_history.qualification WHERE run_id = ?", [run_id]
+                )
+                connection.execute(
+                    "INSERT INTO pcpc_history.program_runs "
+                    "(run_id, repository_commit, repository_tree, plan_root_cid, "
+                    "qualification_cid, task_count, ready_count, projected_at_epoch_ms) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     [
                         run_id,
-                        task["task_cid"],
-                        task["task_alias"],
-                        task["status"],
-                        int(task["revision"]),
-                        task["goal_cid"],
+                        run["repository_commit"],
+                        run["repository_tree"],
+                        run["plan_root_cid"],
+                        run["qualification_cid"],
+                        int(run["task_count"]),
+                        int(run["ready_count"]),
+                        int(time.time() * 1000),
                     ],
                 )
-            connection.execute(
-                "INSERT INTO pcpc_history.qualification VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    run_id,
-                    qualification["qualification_cid"],
-                    qualification["repository_commit"],
-                    qualification["repository_tree"],
-                    qualification["test_evidence_class"],
-                    bool(qualification["simulated"]),
-                    int(time.time() * 1000),
-                ],
-            )
-            observed = connection.execute(
-                "SELECT COUNT(*) FROM pcpc_history.task_history WHERE run_id = ?", [run_id]
-            ).fetchone()
-            qualification_rows = connection.execute(
-                "SELECT COUNT(*) FROM pcpc_history.qualification WHERE run_id = ?",
-                [run_id],
-            ).fetchone()
+                for task in tasks:
+                    connection.execute(
+                        "INSERT INTO pcpc_history.task_history "
+                        "(run_id, task_cid, task_alias, status, revision, goal_cid) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        [
+                            run_id,
+                            task["task_cid"],
+                            task["task_alias"],
+                            task["status"],
+                            int(task["revision"]),
+                            task["goal_cid"],
+                        ],
+                    )
+                connection.execute(
+                    "INSERT INTO pcpc_history.qualification "
+                    "(run_id, qualification_cid, repository_commit, repository_tree, "
+                    "test_evidence_class, simulated, projected_at_epoch_ms) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        run_id,
+                        qualification["qualification_cid"],
+                        qualification["repository_commit"],
+                        qualification["repository_tree"],
+                        qualification["test_evidence_class"],
+                        bool(qualification["simulated"]),
+                        int(time.time() * 1000),
+                    ],
+                )
+                observed = connection.execute(
+                    "SELECT COUNT(*) FROM pcpc_history.task_history WHERE run_id = ?",
+                    [run_id],
+                ).fetchone()
+                qualification_rows = connection.execute(
+                    "SELECT COUNT(*) FROM pcpc_history.qualification WHERE run_id = ?",
+                    [run_id],
+                ).fetchone()
+                connection.execute("COMMIT")
+            except BaseException:
+                try:
+                    connection.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
             return {
                 "projected": True,
                 "authority": False,
@@ -2222,6 +3062,167 @@ def _project_ducklake(
             connection.close()
     except Exception as exc:  # noqa: BLE001 - non-authoritative projection receipt
         return {"projected": False, "authority": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+
+def _live_history_projection_source(
+    *, config: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+    """Build a bounded history payload solely from a sealed Quack replica."""
+
+    projection = config.get("ducklake_projection_program")
+    maximum_rows = (
+        projection.get("maximum_rows_per_projection")
+        if isinstance(projection, Mapping)
+        else None
+    )
+    if type(maximum_rows) is not int or maximum_rows != 4096:
+        raise MaterializationError("DuckLake history row bound is invalid")
+    with _validated_read_replica_snapshot() as (snapshot_path, observation):
+        try:
+            import duckdb
+
+            connection = connect_duckdb_with_policy(
+                duckdb,
+                snapshot_path,
+                read_only=True,
+                configuration={"threads": 1, "memory_limit": "256MB"},
+            )
+        except Exception as exc:  # noqa: BLE001 - typed sealed-snapshot refusal
+            raise MaterializationError("sealed Quack read replica cannot be queried") from exc
+        try:
+            task_rows = connection.execute(
+                "SELECT task_cid, task_alias, status, revision, goal_cid, body_json "
+                "FROM tasks ORDER BY ordinal, task_cid LIMIT ?",
+                [maximum_rows + 1],
+            ).fetchall()
+            plan_rows = connection.execute(
+                "SELECT plan_cid, plan_alias, status, body_json "
+                "FROM plans ORDER BY plan_cid LIMIT 2"
+            ).fetchall()
+            placeholders = ", ".join("?" for _ in P0_TASKS)
+            acceptance_rows = connection.execute(
+                "SELECT tasks.task_alias, task_acceptance.ordinal, "
+                "task_acceptance.criterion, task_acceptance.evidence_policy_json "
+                "FROM task_acceptance JOIN tasks USING (task_cid) "
+                f"WHERE tasks.task_alias IN ({placeholders}) "
+                "ORDER BY tasks.task_alias, task_acceptance.ordinal LIMIT ?",
+                [*P0_TASKS, len(P0_TASKS) + 1],
+            ).fetchall()
+        except Exception as exc:  # noqa: BLE001 - typed schema/source refusal
+            raise MaterializationError("sealed Quack read replica lacks the PCPC projection") from exc
+        finally:
+            connection.close()
+    if len(task_rows) > maximum_rows:
+        raise MaterializationError("Quack read replica exceeds the DuckLake history row bound")
+    expected_aliases = [f"PCPC-{index:03d}" for index in range(32)]
+    if [str(row[1]) for row in task_rows] != expected_aliases or len(plan_rows) != 1:
+        raise MaterializationError("Quack read replica is not the exact PCPC board")
+    plan_cid, plan_alias, plan_status, body_json = plan_rows[0]
+    try:
+        plan_body = json.loads(str(body_json))
+    except json.JSONDecodeError as exc:
+        raise MaterializationError("PCPC plan binding is not valid JSON") from exc
+    repository_commit = str(plan_body.get("repository_commit") or "") if isinstance(plan_body, Mapping) else ""
+    repository_tree = str(plan_body.get("repository_tree") or "") if isinstance(plan_body, Mapping) else ""
+    if (
+        str(plan_alias) != PROGRAM
+        or str(plan_status) != "active"
+        or not str(plan_cid)
+        or repository_commit != observation["repository_commit"]
+        or repository_tree != observation["repository_tree"]
+    ):
+        raise MaterializationError("PCPC plan and Quack owner repository bindings disagree")
+    evidence_root = REPO_ROOT / str(config.get("runtime_paths", {}).get("evidence") or "")
+    qualification = _read_json(evidence_root / "p0-qualification.json")
+    tasks: list[dict[str, Any]] = []
+    p0_task_history: dict[str, tuple[str, Mapping[str, Any]]] = {}
+    for task_cid, task_alias, status, revision, goal_cid, body_json in task_rows:
+        if (
+            not str(task_cid)
+            or not str(goal_cid)
+            or not str(status)
+            or type(revision) is not int
+            or revision < 1
+        ):
+            raise MaterializationError("Quack task history row is malformed")
+        try:
+            body = json.loads(str(body_json))
+        except json.JSONDecodeError as exc:
+            raise MaterializationError("Quack task history body is not valid JSON") from exc
+        if not isinstance(body, Mapping):
+            raise MaterializationError("Quack task history body is not one JSON object")
+        alias = str(task_alias)
+        if alias in P0_TASKS:
+            p0_task_history[alias] = (str(status), body)
+        tasks.append(
+            {
+                "task_cid": str(task_cid),
+                "task_alias": alias,
+                "status": str(status),
+                "revision": revision,
+                "goal_cid": str(goal_cid),
+            }
+        )
+    if not _stored_owner_bound_qualification_receipt_is_intact(
+        qualification, head=repository_commit, tree=repository_tree
+    ) or not _qualification_is_bound_to_p0_history(
+        qualification,
+        task_history=p0_task_history,
+        acceptance_rows=acceptance_rows,
+        head=repository_commit,
+        tree=repository_tree,
+    ):
+        raise MaterializationError("stored PCPC qualification is not intact")
+    run_binding = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/pcpc-history-run@1",
+        "program": PROGRAM,
+        "plan_root_cid": str(plan_cid),
+        "qualification_cid": str(qualification["qualification_cid"]),
+        "source": observation,
+    }
+    run = {
+        "run_id": content_identity(run_binding),
+        "repository_commit": repository_commit,
+        "repository_tree": repository_tree,
+        "plan_root_cid": str(plan_cid),
+        "qualification_cid": str(qualification["qualification_cid"]),
+        "task_count": len(tasks),
+        "ready_count": sum(item["status"] == "ready" for item in tasks),
+    }
+    return run, qualification, tasks, observation
+
+
+def project_live_history() -> dict[str, Any]:
+    """Project live PCPC history without opening or mutating its authority."""
+
+    _require_trusted_duckdb_home()
+    config = _read_json(REPO_ROOT / CONFIG_RELATIVE)
+    _validated_ducklake_projection_paths(config)
+    run, qualification, tasks, source = _live_history_projection_source(config=config)
+    projected = _project_ducklake(
+        config=config,
+        run=run,
+        qualification=qualification,
+        tasks=tasks,
+    )
+    unsigned = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/pcpc-ducklake-history-projection@1",
+        "program": PROGRAM,
+        "valid": projected.get("projected") is True,
+        "authority": False,
+        "control_database_opened": False,
+        "source": source,
+        "run": run,
+        "status_counts": {
+            status: sum(item["status"] == status for item in tasks)
+            for status in sorted({item["status"] for item in tasks})
+        },
+        "ducklake_projection": projected,
+    }
+    receipt = {**unsigned, "receipt_cid": content_identity(unsigned)}
+    evidence_root = REPO_ROOT / str(config.get("runtime_paths", {}).get("evidence") or "")
+    _atomic_json(evidence_root / DUCKLAKE_HISTORY_RECEIPT_NAME, receipt)
+    return receipt
 
 
 def materialize() -> dict[str, Any]:
@@ -2481,9 +3482,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--materialize", action="store_true")
     mode.add_argument("--verify", action="store_true")
+    mode.add_argument("--project-history", action="store_true")
     args = parser.parse_args(argv)
     try:
-        result = materialize() if args.materialize else verify_existing()
+        if args.materialize:
+            result = materialize()
+        elif args.project_history:
+            result = project_live_history()
+        else:
+            result = verify_existing()
         valid = result.get("valid", True) is True
     except Exception as exc:  # noqa: BLE001 - CLI must return typed failure
         result = {

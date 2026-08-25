@@ -188,10 +188,7 @@ def test_cross_lane_completion_is_projected_before_successor_claim(
             successor_lane.coordinator.coordination_registry_projection()
         )
 
-        assert first == second == [
-            "task:cid:pcar-001",
-            "task:cid:pcar-002",
-        ]
+        assert first == second == ["task:cid:pcar-002"]
         assert first_projection["projection_root"] == second_projection[
             "projection_root"
         ]
@@ -211,6 +208,8 @@ def test_cross_lane_completion_is_projected_before_successor_claim(
             "restart_recovery_ready": False,
             "restart_recovery_owner_session_id": "",
             "restart_recovery_binding": {},
+            "authoritative_attempt_floor": 0,
+            "authoritative_attempt_floor_source": "",
         }
         readiness = successor_lane.coordinator.claimability(
             "task:cid:pcar-002"
@@ -254,7 +253,6 @@ def test_skipped_canonical_prerequisite_satisfies_lane_local_dependency(
     successor_lane = _open_lane(tmp_path, lane=0)
     try:
         assert successor_lane.sync_ready_tasks_into_coordination() == [
-            "task:cid:pcar-001",
             "task:cid:pcar-002",
         ]
         projection = successor_lane.coordinator.coordination_registry_projection()

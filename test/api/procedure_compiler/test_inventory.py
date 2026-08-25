@@ -41,6 +41,19 @@ def _load_materializer() -> ModuleType:
     return module
 
 
+def _treat_index_as_head(
+    module: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_object_id = module._object_id
+
+    def index_object_id(revision: str, path: str) -> str:
+        if revision == "HEAD":
+            return module._git("rev-parse", f":{path}")
+        return original_object_id(revision, path)
+
+    monkeypatch.setattr(module, "_object_id", index_object_id)
+
+
 def test_baseline_binds_exact_committed_tree_and_releases() -> None:
     baseline = _object("baseline.json")
     repository = baseline["repository"]
@@ -53,6 +66,7 @@ def test_baseline_binds_exact_committed_tree_and_releases() -> None:
     assert baseline["package_bindings"] == [
         {
             "binding_id": "package:ipfs_accelerate_py@0.0.45",
+            "current_blob_id": "d607a6e93c19f9fe0c0c9b0adf875db04a7c29a3",
             "manifest_blob_id": "179882cc1254039920c5a1ab755f383dcb70842d",
             "manifest_path": "pyproject.toml",
             "name": "ipfs_accelerate_py",
@@ -70,8 +84,16 @@ def test_baseline_binds_exact_committed_tree_and_releases() -> None:
         isinstance(row, dict)
         and row["binding_id"].startswith("gitlink:")
         and len(row["gitlink_commit"]) == 40
+        and len(row["current_gitlink_commit"]) == 40
         for row in sibling_rows
     )
+    assert {
+        row["path"]: row["current_gitlink_commit"] for row in sibling_rows
+    } == {
+        "ipfs_accelerate_py/mcplusplus": "c1f826e4d9750ac061b4062a1c01ae6d37971a78",
+        "ipfs_datasets_py": "dd898fe669ca9d4740fafe5123bf5f6ac91c7bb0",
+        "ipfs_kit_py": "80bbdc3443e560b9bf40339c864a32689ccad8ef",
+    }
     assert baseline["excluded_sources"] == [
         "planning_document_status",
         "receipt_shaped_unadmitted_json",
@@ -84,7 +106,7 @@ def test_baseline_binds_exact_committed_tree_and_releases() -> None:
 def test_baseline_binds_every_exact_test_producer_and_expected_failure() -> None:
     baseline = _object("baseline.json")
     producers = baseline["test_producers"]
-    assert isinstance(producers, list) and len(producers) == 18
+    assert isinstance(producers, list) and len(producers) == 22
     by_id = {str(row["producer_id"]): row for row in producers}
     assert len(by_id) == len(producers)
     module = _load_materializer()
@@ -140,7 +162,7 @@ def test_baseline_binds_every_exact_test_producer_and_expected_failure() -> None
     assert by_id["TP-WORKTREE-LIFECYCLE"]["source_bindings"] == [
         {
             "blob_id": "4cf5c39ff1e9dfc97f533e1d036e1b9256d15e52",
-            "current_blob_id": "472daae1adaf2d41bdb09df087dbf410bef8420c",
+            "current_blob_id": "f2f7144c34c0b4169aaa174e7d894845fa736164",
             "path": "test/api/test_agent_supervisor_worktree_lifecycle.py",
         }
     ]
@@ -202,6 +224,108 @@ def test_prerequisites_have_one_closed_honest_disposition() -> None:
     assert by_name["IncrementalProofSealer"]["status"] == "available_with_caveats"
 
 
+def test_current_authority_qualification_preserves_historical_absence() -> None:
+    inventory = _object("prerequisites.json")
+    by_name = {str(row["authority"]): row for row in inventory["dispositions"]}
+    current_statuses = {
+        "AutonomousMetaController": "available",
+        "autonomy package": "available_with_caveats",
+        "cognitive scheduler": "available_with_caveats",
+        "experience ledger": "available",
+    }
+    for authority, current_status in current_statuses.items():
+        historical = by_name[authority]
+        assert historical["status"] == "missing"
+        assert historical["blocker"].endswith("absent_at_baseline_commit")
+        assert historical["negative_probes"]
+        assert not historical["source_bindings"]
+        current = historical["current_disposition"]
+        assert current["status"] == current_status
+        assert current["admitted_as_comparison_baseline"] is False
+        assert current["source_bindings"]
+        assert current["symbol_bindings"]
+        assert current["test_producer_bindings"]
+        assert current["positive_probes"]
+        assert not current["negative_probes"]
+    for authority in ("autonomy package", "cognitive scheduler"):
+        current = by_name[authority]["current_disposition"]
+        assert current["qualification_mode"] == "source_presence_with_typed_interface_gap"
+        assert not current["interface_bindings"]
+        assert not current["schema_bindings"]
+        assert "no standalone versioned interface or schema identity" in current["caveat"]
+
+
+def test_index_bound_current_authority_qualification_is_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_materializer()
+    _treat_index_as_head(module, monkeypatch)
+    observations = module._validate_prerequisite_payloads(
+        _object("baseline.json"), _object("prerequisites.json")
+    )
+    by_name = {str(row["authority"]): row for row in observations}
+    assert by_name["AutonomousMetaController"]["status"] == "available"
+    assert by_name["experience ledger"]["status"] == "available"
+    assert by_name["autonomy package"]["qualification_mode"].endswith("interface_gap")
+    assert by_name["cognitive scheduler"]["qualification_mode"].endswith("interface_gap")
+    for authority in (
+        "AutonomousMetaController",
+        "autonomy package",
+        "cognitive scheduler",
+        "experience ledger",
+    ):
+        assert by_name[authority]["historical_status"] == "missing"
+        assert by_name[authority]["admitted_as_comparison_baseline"] is False
+        assert by_name[authority]["positive_probe_count"] >= 2
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("unsealed_extension", True, "open or incomplete schema"),
+        ("admitted_as_comparison_baseline", True, "historical comparison baseline"),
+    ],
+)
+def test_current_authority_qualification_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    module = _load_materializer()
+    _treat_index_as_head(module, monkeypatch)
+    inventory = copy.deepcopy(_object("prerequisites.json"))
+    authority = next(
+        row
+        for row in inventory["dispositions"]
+        if row["authority"] == "AutonomousMetaController"
+    )
+    authority["current_disposition"][field] = value
+    with pytest.raises(module.MaterializationError, match=message):
+        module._validate_prerequisite_payloads(_object("baseline.json"), inventory)
+
+
+def test_current_qualification_does_not_erase_historical_absence_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_materializer()
+    _treat_index_as_head(module, monkeypatch)
+    original_class_exists = module._git_class_exists
+
+    def baseline_drift(
+        revision: str, *, scope: str, symbol: str
+    ) -> bool:
+        if revision == START_COMMIT and symbol == "AutonomousMetaController":
+            return True
+        return original_class_exists(revision, scope=scope, symbol=symbol)
+
+    monkeypatch.setattr(module, "_git_class_exists", baseline_drift)
+    with pytest.raises(module.MaterializationError, match="negative class probe no longer holds"):
+        module._validate_prerequisite_payloads(
+            _object("baseline.json"), _object("prerequisites.json")
+        )
+
+
 def test_deterministic_per_authority_probe_binds_current_tree() -> None:
     module = _load_materializer()
     probe = module._probe_prerequisite_inventory()
@@ -223,6 +347,15 @@ def test_prerequisite_validation_rejects_missing_per_authority_binding() -> None
     inventory = copy.deepcopy(_object("prerequisites.json"))
     inventory["dispositions"][0].pop("schema_bindings")
     with pytest.raises(module.MaterializationError, match="schema_bindings binding is missing"):
+        module._validate_prerequisite_payloads(baseline, inventory)
+
+
+def test_prerequisite_validation_rejects_open_sibling_binding_schema() -> None:
+    module = _load_materializer()
+    baseline = copy.deepcopy(_object("baseline.json"))
+    inventory = _object("prerequisites.json")
+    baseline["sibling_release_bindings"][0]["unsealed_extension"] = True
+    with pytest.raises(module.MaterializationError, match="open or incomplete schema"):
         module._validate_prerequisite_payloads(baseline, inventory)
 
 

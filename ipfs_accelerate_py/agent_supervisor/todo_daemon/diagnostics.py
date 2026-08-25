@@ -145,7 +145,7 @@ def summarize_test_failure(stdout: Any) -> dict[str, Any]:
     Empty banner-only heads previously starved automatic rescue guidance.
     """
 
-    output = command_output_text(stdout)
+    output = _ANSI_CONTROL_SEQUENCE_RE.sub("", command_output_text(stdout))
     failed_tests: list[str] = []
     failed_test_paths: list[str] = []
     for match in re.finditer(r"FAILED\s+([^\s]+)", output):

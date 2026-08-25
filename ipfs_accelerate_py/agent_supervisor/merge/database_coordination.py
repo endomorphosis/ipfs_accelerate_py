@@ -107,6 +107,9 @@ TASK_COMPLETION_PREPARATION_SCHEMA: Final[str] = (
 TASK_DEPENDENCY_AMENDMENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-dependency-amendment@1"
 )
+TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE: Final[str] = (
+    "typed-strict-resume-requeue@1"
+)
 CROSS_STORE_FENCE_GUARD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/cross-store-fence-guard@1"
 )
@@ -1895,6 +1898,8 @@ class DatabaseCoordinator:
         restart_recovery_ready: bool = False,
         restart_recovery_owner_session_id: str = "",
         restart_recovery_binding: Mapping[str, Any] | None = None,
+        authoritative_attempt_floor: int = 0,
+        authoritative_attempt_floor_source: str = "",
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         """Project one authoritative task into lane-local coordination.
@@ -1962,6 +1967,36 @@ class DatabaseCoordinator:
             raise DatabaseCoordinationConflictError(
                 "restart recovery owner requires restart recovery readiness"
             )
+        attempt_floor = _nonneg_int(
+            authoritative_attempt_floor,
+            "authoritative_attempt_floor",
+        )
+        attempt_floor_source = _text(
+            authoritative_attempt_floor_source,
+            "authoritative_attempt_floor_source",
+            required=False,
+        )
+        ready_floor = bool(
+            attempt_floor
+            and status == "ready"
+            and authoritative_ready
+            and attempt_floor_source
+            == TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE
+        )
+        if attempt_floor and not (
+            status in {"in_progress", "retrying"} or ready_floor
+        ):
+            raise DatabaseCoordinationConflictError(
+                "authoritative attempt floor requires claimed, retrying, or "
+                "typed strict-requeue ready status"
+            )
+        if (
+            attempt_floor_source
+            and not ready_floor
+        ):
+            raise DatabaseCoordinationConflictError(
+                "authoritative attempt floor source requires its exact ready floor"
+            )
         recovery_binding = _bounded_mapping(
             restart_recovery_binding,
             name="restart_recovery_binding",
@@ -1972,6 +2007,7 @@ class DatabaseCoordinator:
                 "attempt_id",
                 "lease_id",
                 "owner_session_id",
+                "attempt_number",
                 "fencing_token",
                 "fence_epoch",
             }
@@ -1989,6 +2025,10 @@ class DatabaseCoordinator:
             recovery_binding["owner_session_id"] = _text(
                 recovery_binding["owner_session_id"],
                 "owner_session_id",
+            )
+            recovery_binding["attempt_number"] = _positive_int(
+                recovery_binding["attempt_number"],
+                "attempt_number",
             )
             recovery_binding["fencing_token"] = _positive_int(
                 recovery_binding["fencing_token"],
@@ -2018,6 +2058,8 @@ class DatabaseCoordinator:
                 "restart_recovery_ready": bool(restart_recovery_ready),
                 "restart_recovery_owner_session_id": recovery_owner,
                 "restart_recovery_binding": recovery_binding,
+                "authoritative_attempt_floor": attempt_floor,
+                "authoritative_attempt_floor_source": attempt_floor_source,
             },
             name="authoritative_task_projection",
         )
@@ -2183,6 +2225,10 @@ class DatabaseCoordinator:
                             f"restart recovery binding does not match latest claim for {cid}"
                         )
                     _positive_int(prior[7], "prior_attempt_number")
+                    if int(prior[7]) != int(recovery_binding["attempt_number"]):
+                        raise DatabaseCoordinationConflictError(
+                            f"restart recovery attempt differs for {cid}"
+                        )
                     attempt_identity = (
                         str(prior[9]),
                         str(prior[10]),
@@ -2395,6 +2441,8 @@ class DatabaseCoordinator:
                     "restart_recovery_ready": bool(restart_recovery_ready),
                     "restart_recovery_owner_session_id": recovery_owner,
                     "restart_recovery_binding": recovery_binding,
+                    "authoritative_attempt_floor": attempt_floor,
+                    "authoritative_attempt_floor_source": attempt_floor_source,
                     "ready": ready,
                     "changed": changed,
                     "active_claim_preserved": active,
@@ -6184,14 +6232,24 @@ class DatabaseCoordinator:
                     """,
                     [cid],
                 ).fetchone()
-                attempt_number = (
-                    int(
-                        _row_get(
-                            _row_mapping(attempt_row), "max_attempt", "0", default=0
-                        )
+                local_attempt_floor = int(
+                    _row_get(
+                        _row_mapping(attempt_row),
+                        "max_attempt",
+                        "0",
+                        default=0,
                     )
-                    + 1
                 )
+                shared_attempt_floor = (
+                    self._authoritative_attempt_floor_unlocked(
+                        connection,
+                        cid,
+                    )
+                )
+                attempt_number = max(
+                    local_attempt_floor,
+                    shared_attempt_floor,
+                ) + 1
                 token, epoch = self._next_fence(connection, scope_key)
                 claim_id = _new_id("claim")
                 attempt_id = _new_id("attempt")
@@ -6474,6 +6532,52 @@ class DatabaseCoordinator:
             )
         return owner
 
+    def _authoritative_attempt_floor_unlocked(
+        self,
+        connection: Any,
+        task_cid: str,
+    ) -> int:
+        """Read the shared attempt floor without reconstructing a local claim."""
+
+        row = connection.execute(
+            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"unknown task CID: {task_cid}")
+        body = _decode_coordination_body(
+            row[1],
+            table="coordination_tasks",
+            identity=task_cid,
+        )
+        if body.get("authority") != "task_source":
+            return 0
+        attempt_floor = _nonneg_int(
+            body.get("authoritative_attempt_floor", 0),
+            "authoritative_attempt_floor",
+        )
+        status = str(body.get("authoritative_status") or "").strip().lower()
+        source = _text(
+            body.get("authoritative_attempt_floor_source"),
+            "authoritative_attempt_floor_source",
+            required=False,
+        )
+        if source:
+            if (
+                source != TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE
+                or status != "ready"
+                or attempt_floor < 1
+                or not bool(row[0])
+            ):
+                raise DatabaseCoordinationStaleFenceError(
+                    f"authoritative attempt floor marker differs for {task_cid}"
+                )
+        elif attempt_floor and status not in {"in_progress", "retrying"}:
+            raise DatabaseCoordinationStaleFenceError(
+                f"authoritative attempt floor status differs for {task_cid}"
+            )
+        return attempt_floor
+
     def _claimability_unlocked(
         self,
         connection: Any,
@@ -6615,9 +6719,22 @@ class DatabaseCoordinator:
             """,
             [task_cid],
         ).fetchone()
-        attempt_number = (
-            int(_row_get(_row_mapping(attempt_row), "max_attempt", "0", default=0)) + 1
+        local_attempt_floor = int(
+            _row_get(
+                _row_mapping(attempt_row),
+                "max_attempt",
+                "0",
+                default=0,
+            )
         )
+        shared_attempt_floor = self._authoritative_attempt_floor_unlocked(
+            connection,
+            task_cid,
+        )
+        attempt_number = max(
+            local_attempt_floor,
+            shared_attempt_floor,
+        ) + 1
         token, epoch = self._next_fence(connection, scope_key)
         claim_id = _new_id("claim")
         attempt_id = _new_id("attempt")

@@ -10,8 +10,9 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    MAX_COMMAND_BYTES,
+    MAX_TEXT_BYTES,
     REDACTION_MARKER,
     CommandKind,
     ControlPlaneAuthorityError,
@@ -184,6 +185,34 @@ def test_non_finite_and_float_bounds_rejected() -> None:
         _store_identity(metadata={"score": 1.5})
     with pytest.raises(ControlPlaneBoundsError):
         _command(parameters={"limit": float("nan")})
+
+
+def test_only_closed_command_json_fields_receive_the_command_byte_bound() -> None:
+    body_json = '{"payload":"' + ("x" * MAX_TEXT_BYTES) + '"}'
+    command = _command(
+        parameters={
+            "operation": "task.status.cas.receipt",
+            "body_json": body_json,
+        }
+    )
+    assert command.parameters["body_json"] == body_json
+
+    with pytest.raises(ControlPlaneBoundsError, match="byte bound"):
+        _command(parameters={"payload": body_json})
+    with pytest.raises(ControlPlaneBoundsError, match="byte bound"):
+        _command(
+            parameters={
+                "operation": "unrelated.operation",
+                "body_json": body_json,
+            }
+        )
+    with pytest.raises(ControlPlaneBoundsError, match="byte bound"):
+        _command(
+            parameters={
+                "operation": "task.status.cas.receipt",
+                "body_json": "x" * (MAX_COMMAND_BYTES + 1),
+            }
+        )
 
 
 def test_generation_revision_mismatch_rejected() -> None:

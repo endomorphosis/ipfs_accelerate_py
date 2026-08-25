@@ -1,0 +1,37 @@
+{
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "bound_unadmitted",
+  "evidence": {
+    "admitted_authority": false,
+    "principals": [
+      {
+        "admitted_authority": false,
+        "did": "did:key:z6Mkoee8u2Um7nA3xeGuVf4RhUDfKoBcBiNW83V1CKpfyLEB",
+        "role": "worker"
+      },
+      {
+        "admitted_authority": false,
+        "did": "did:key:z6Mkt4Zfw3xDeBrN7rRuAM1DbEMuRBowWrRdzz7Guooz6yor",
+        "role": "provider"
+      },
+      {
+        "admitted_authority": false,
+        "did": "did:key:z6MkvuzpEL3XDUm2nzQSnAXSoDnG4LeRS3FsP3KiSnbCkdyv",
+        "role": "quack_owner"
+      }
+    ],
+    "secret_material_exported": false,
+    "secret_store": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/runtime-principals"
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:bd188d386fd988ce67a97a267ffc5624287f683fba90ec52e47f5f1147c9bc98",
+  "receipt_name": "runtime_principals.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
+  "self_signed": false,
+  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
+  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-181"
+}

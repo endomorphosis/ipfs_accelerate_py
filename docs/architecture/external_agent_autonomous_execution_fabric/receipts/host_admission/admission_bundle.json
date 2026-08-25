@@ -1,0 +1,50 @@
+{
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "no_go",
+  "evidence": {
+    "bootstrap_admission_statement_cid": "sha256:f1c111eb8c68d152a14cb4b34c44391d4d9f09aeaf6ae14115f7da830fd0403b",
+    "child_receipt_cids": {
+      "EAAEF-180": "sha256:b9a7c9eb784bc398d4518379e1d5992b78c778b90040cd3e1224377277f626c3",
+      "EAAEF-181": "sha256:bd188d386fd988ce67a97a267ffc5624287f683fba90ec52e47f5f1147c9bc98",
+      "EAAEF-182": "sha256:fff99b4ec1cd0205cde4650486a91ca6c0bd69d4c20aa0c4caf62e32a0630655",
+      "EAAEF-183": "sha256:1c1f95846b14ead97c49a93fe3ba33fd8aa32e2c26dbe81eb17cd40ec5ec099d",
+      "EAAEF-184": "sha256:2e643b4f9c4b7881ab5d84d6b3bd77cd7b7ae447d33be228baa22ae4b4f1ef6d",
+      "EAAEF-185": "sha256:60ade32d4c6a1e4593383d0dbf6f6628fa6eb0d18d1afe258ec6b501ea78ad22",
+      "EAAEF-186": "sha256:5b786b4788db1face10794bcadce7ce8c7cc536e12460a45e50cdd9d0bb720b6",
+      "EAAEF-187": "sha256:1e1afb713f9d3b4ceecca2b85ffebac20d58d2afd08d1fd361724a2efb1180eb",
+      "EAAEF-188": "sha256:448cc3b97f764ce1b3e0f4e027b3f8a1bac01d1adfdc9a45c75e4582b0035174",
+      "EAAEF-189": "sha256:f5058932690665820ffd16d2b583dfc33f1da9f10f2be4af09ffe2ff7fe450c9",
+      "EAAEF-190": "sha256:a65ed4e8a0540b84bec2b5db3a8fe1990c0e932ddb04e1a93418973241c58e93"
+    },
+    "independent_operator_signature": "",
+    "independent_security_reviewer_signature": "",
+    "independent_signature_present": false,
+    "inventory_open_host_gated": [
+      "board validation has not admitted live launch",
+      "container_policy.live_dispatch_allowed is not true",
+      "configured-board launch admission rejected: bootstrap admission receipt is unavailable",
+      "worker_network_runtime_principals_unavailable",
+      "eaaef_scoped_provider_authorization_missing",
+      "oci_image_qualification_missing",
+      "container_profile_missing",
+      "provider_container_qualification_missing",
+      "quack_owner_qualification_missing"
+    ],
+    "launch_plan_allowed": false,
+    "materialization_receipt_cid": "",
+    "operator_did": "",
+    "prospective_supervisor_signature_rejected": true,
+    "security_reviewer_did": ""
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:a39ef11522899c07407bd5e452a57c27b192d8a9a4bbcf67013dca1515749521",
+  "receipt_name": "admission_bundle.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-bundle@1",
+  "self_signed": false,
+  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
+  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-191"
+}

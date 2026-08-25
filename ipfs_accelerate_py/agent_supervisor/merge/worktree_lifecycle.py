@@ -647,7 +647,9 @@ class WorktreeLifecycleStore:
 
         The preparing record is cleanup-visible.  Callers must invoke this
         before ``git worktree add`` so peer lanes never treat the checkout as
-        an unclaimed already-merged orphan.
+        an unclaimed already-merged orphan.  With ``allow_replace_stale``
+        false, every existing nonterminal task-attempt claim remains fenced
+        even when its owner is dead and its lease has expired.
         """
 
         workspace = normalize_workspace_path(workspace_path)
@@ -681,6 +683,10 @@ class WorktreeLifecycleStore:
                 raise DuplicateAttemptError(
                     "task/attempt already has a nonterminal workspace claim"
                 )
+            if not allow_replace_stale:
+                raise DuplicateAttemptError(
+                    "task/attempt nonterminal claim replacement disabled"
+                )
             if now < float(other.expires_at):
                 raise DuplicateAttemptError("task/attempt claim lease has not expired")
 
@@ -702,9 +708,9 @@ class WorktreeLifecycleStore:
                         raise DuplicateAttemptError(
                             "workspace claim exists and process inspection is unavailable"
                         )
-                    if not expired and not allow_replace_stale:
+                    if not allow_replace_stale:
                         raise DuplicateAttemptError(
-                            "workspace claim exists and lease has not expired"
+                            "workspace nonterminal claim replacement disabled"
                         )
                     if not expired:
                         # Owner is dead but lease still valid: only reclaim
@@ -1857,7 +1863,9 @@ class WorktreeLifecycleStore:
             # workspace differs from the stable pooled path supplied by the
             # caller. Reclaim the authoritative record, never the lookup hint.
             reclaim_workspace = (
-                decision.record.workspace_path if decision.record is not None else workspace_path
+                decision.record.workspace_path
+                if decision.record is not None
+                else workspace_path
             )
             reclaimer = caller_lease_id or new_lease_id(seed="reclaim")
             reclaimed: WorkspaceLifecycleRecord | None = None

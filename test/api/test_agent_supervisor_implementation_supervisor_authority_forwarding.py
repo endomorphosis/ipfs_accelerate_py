@@ -14,6 +14,10 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     TASK_SOURCE_KIND_ENV,
     DatabaseProgramConfigError,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    LEGACY_BOARD_UNSTALL_DISABLED,
+    LEGACY_BOARD_UNSTALL_POLICY_ENV,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as daemon_module,
 )
@@ -37,6 +41,33 @@ _LEGACY_AUTHORITY_ARGS = (
     "fail_closed",
     "--explicit-legacy-task-source",
 )
+
+
+def test_supervisor_rejects_invalid_accepted_control_plane_pin(
+    tmp_path: Path,
+) -> None:
+    args = supervisor_module.parse_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+            "--accepted-control-plane-pin-json",
+            "{}",
+            *_LEGACY_AUTHORITY_ARGS,
+        ]
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="accepted control-plane pin fields are not exact",
+    ):
+        supervisor_module.supervisor_config_from_args(
+            args,
+            repo_root=tmp_path,
+        )
 
 
 def test_supervisor_accepts_and_forwards_explicit_legacy_authority(
@@ -105,7 +136,12 @@ def test_supervisor_accepts_and_forwards_explicit_legacy_authority(
 
 def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(
+        LEGACY_BOARD_UNSTALL_POLICY_ENV,
+        LEGACY_BOARD_UNSTALL_DISABLED,
+    )
     args = supervisor_module.parse_args(
         [
             "--todo-path",
@@ -163,6 +199,10 @@ def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
     )
     assert child_env[STATE_QUACK_MUTATION_DIR_ENV] == str(
         (tmp_path / "state" / "registry" / "mutations").resolve()
+    )
+    assert (
+        child_env[LEGACY_BOARD_UNSTALL_POLICY_ENV]
+        == LEGACY_BOARD_UNSTALL_DISABLED
     )
     assert "QUACK_TOKEN" not in child_env
 

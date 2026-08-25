@@ -1,0 +1,40 @@
+{
+  "canonical_branch": "codex/causal-event-supervisor-federation-v1",
+  "canonical_program_id": "agent-supervisor-causal-event-federation-v1",
+  "canonical_tip": "4030ab14cbe084ee4716a904fc37677aafd168d3",
+  "canonical_tree": "7aa6f3c7c2bd90a046bb1514d7b3a92c7af55714",
+  "current_eaaef_forest_required": true,
+  "eaaef_import_overrides": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "cc8c5f27a0e0d7430b1cee1c152df2914aa18f7f",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "31c918fb5173c992f008ac818810207a97e6a5f9",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "5d28102a8b4b5d95810c37a537e5fcf93d29c613"
+  },
+  "fresh_signed_plan_r2_authority_required": true,
+  "import_mode": "typed_code_only",
+  "manifest_cid": "sha256:ec49bc2493014bfe56ff617cd93ce5f25f2793f25659570237d620717fad6ea1",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-casf-import-manifest@1",
+  "sealed_predecessor": "22f657a07ed699ef90466fbdf6a61f908f776c54",
+  "sealed_predecessor_tree": "99ddd30a0c653800659d92dd9b47c7c0971f3bf2",
+  "selected_blobs": {
+    "config/agent_supervisor_causal_event_federation_scheduler.json": "1ee6f72095ab171f37b655fc6bd89dd7f41d354a",
+    "docs/architecture/AGENT_SUPERVISOR_CAUSAL_EVENT_FEDERATION_PLAN.md": "4fa0c108e3bccaadffc0c28d08cd882fdfe95ba2",
+    "docs/architecture/agent_supervisor_causal_event_federation.objectives.md": "b4adc69f3f3dae288ae102daf6efbaeafd8a642f",
+    "docs/architecture/agent_supervisor_causal_event_federation.todo.md": "39d8a77e5664a0ffb1650a92d3338e4d0de12c0d",
+    "docs/architecture/causal_event_federation_inventory/README.md": "581bc6f9ed59fad19d900fcc030d8dcbd129f0b8",
+    "docs/architecture/causal_event_federation_inventory/authorities.json": "949044ab598f07ec11a0416dca8f5739f8e975fb",
+    "docs/architecture/causal_event_federation_inventory/capability_snapshot.json": "0f8012a9dfb77bf9630df925b672f5a61a04eab3",
+    "docs/architecture/causal_event_federation_inventory/starting_tree.json": "6f41ac8b1933b120cd3222bbd29668e48eb67194",
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "43db499e4090f1961c25cc99d2f9834c96d13dcd",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py": "38572ebf42547b90b51506d95f32a85c2fb52030",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py": "e9adc7f3b079186f27d0dbdc085771b1598b0393",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/task_execution_route_policy.py": "98eddbf2d14b8187dc9facaee48111e64e5180a2",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "7678d9c014490cf5ac0103b0cdd84dd9a245ad82",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "facaad5758155fc415cc08b69b148965d5ca74dd",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "03d68a5315a342d92603914ee35d8a926a4de6ab",
+    "scripts/run_agent_supervisor_causal_event_federation.py": "b46f5ea2634a4a24cba5cb826d13cfeb5796325e",
+    "scripts/validate_agent_supervisor_causal_event_federation_board.py": "ae25600a5a3cc866b8b94d262b60df5f62f60a78"
+  },
+  "standalone_operator_launch_in_eaaef_permitted": false,
+  "standalone_operator_source_policy": "protected_branch_strict",
+  "structural_validation_report_cid": "sha256:ed81aec7bad2b030325fe998d187f32e757c3514d35eef01a7d1a91ba4d98c67"
+}

@@ -765,6 +765,42 @@ def test_no_change_policy_gate_is_universal_across_execution_modes() -> None:
     ) is True
 
 
+def test_no_change_completion_mode_accepts_exact_boundary_keys() -> None:
+    markdown_task = _task(metadata={"No-change completion": "allowed"})
+    database_task = _task(metadata={"no_change_completion": "allowed"})
+    projection_task = _task(metadata={"No Change Completion": "allowed"})
+
+    assert (
+        PortalImplementationDaemon._no_change_completion_mode(markdown_task)
+        == "allowed"
+    )
+    assert (
+        PortalImplementationDaemon._no_change_completion_mode(database_task)
+        == "allowed"
+    )
+    assert (
+        PortalImplementationDaemon._no_change_completion_mode(projection_task)
+        == "allowed"
+    )
+
+
+def test_no_change_completion_mode_rejects_ambiguous_or_broadened_keys() -> None:
+    duplicate_task = _task(
+        metadata={
+            "No-change completion": "allowed",
+            "no_change_completion": "allowed",
+        }
+    )
+    broadened_task = _task(metadata={"no-change_completion": "allowed"})
+
+    assert (
+        PortalImplementationDaemon._no_change_completion_mode(duplicate_task) == ""
+    )
+    assert (
+        PortalImplementationDaemon._no_change_completion_mode(broadened_task) == ""
+    )
+
+
 def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

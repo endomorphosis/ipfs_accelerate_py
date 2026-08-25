@@ -1,0 +1,160 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/token-benchmark-manifest@1",
+  "benchmark_id": "casf-token-cross-supervisor-v1",
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "objective_id": "CASF-041",
+  "measurement_scope": "one_baseline_and_twelve_independent_supervisor_processes_qualified_live_token_comparison",
+  "frozen": true,
+  "state": "capability_unavailable",
+  "authoritative": false,
+  "promotion_eligible": false,
+  "matrix_binding": {
+    "relative_path": "benchmarks/agent_supervisor/causal_event_federation/matrix.yaml",
+    "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation-benchmark-matrix@1",
+    "sha256": "b23681a8c811f2020ef97e1b1b0172c15c87577d7882a4323f67e072dd7dfd9f"
+  },
+  "scheduler_binding": {
+    "relative_path": "config/agent_supervisor_causal_event_federation_scheduler.json",
+    "schema": "ipfs_accelerate_py.agent_supervisor.causal-event-supervisor-federation.scheduler_config@1",
+    "sha256": "708f8b00fbd5343fc7e1ca9eaf668e553992ebe89f9d6e8cbe2f1bdb58cf426f"
+  },
+  "execution": {
+    "measurement_scope": "one_baseline_and_twelve_independent_supervisor_processes_qualified_live_token_comparison",
+    "baseline_required_supervisor_processes": 1,
+    "candidate_required_supervisor_processes": 12,
+    "target_registered_logical_agents": 256,
+    "target_maximum_active_subagents": 64,
+    "subprocess_budget": 12,
+    "real_independent_processes_required": true,
+    "arms_execute_sequentially": true,
+    "cross_arm_concurrency_permitted": false,
+    "in_process_simulation_qualifies": false,
+    "admitted_execution_interface": "CASFTokenAdmittedExecution@1",
+    "admitted_execution_available": false,
+    "network_permitted": false,
+    "authenticated_typed_quack_required": true,
+    "direct_database_access_permitted": false,
+    "ducklake_scheduling_authority_permitted": false,
+    "launch_permitted": false
+  },
+  "capacity_preflight": {
+    "schema": "casf/token-capacity-preflight@1",
+    "current_supervisor_processes": 1,
+    "current_registered_logical_agents": 1,
+    "current_maximum_active_subagents": 1,
+    "current_lanes": 1,
+    "current_provider_concurrency": 1,
+    "required_baseline_supervisor_processes": 1,
+    "required_candidate_supervisor_processes": 12,
+    "target_registered_logical_agents": 256,
+    "target_maximum_active_subagents": 64,
+    "authenticated_typed_quack_live_capacity": false,
+    "high_concurrency_enabled": false,
+    "availability": "unavailable",
+    "reason_code": "qualified_cross_supervisor_token_live_capacity_not_admitted"
+  },
+  "comparison": {
+    "comparison_identity": "same-host-tasks-providers-tests-proofs-budgets",
+    "arms_execute_sequentially": true,
+    "cross_arm_concurrency_permitted": false,
+    "same_population_bindings": [
+      "host_ref",
+      "workload_ref",
+      "task_population_ref",
+      "criteria_ref",
+      "provider_ref",
+      "model_ref",
+      "tokenizer_ref",
+      "budget_ref",
+      "tests_ref",
+      "proofs_ref",
+      "assurance_ref"
+    ],
+    "provider_or_model_variants_are_not_arms": true,
+    "baseline_arm": {
+      "arm_id": "baseline",
+      "required_supervisor_processes": 1,
+      "availability": "unavailable",
+      "execution_status": "not_run",
+      "qualified": false
+    },
+    "candidate_arm": {
+      "arm_id": "candidate",
+      "required_supervisor_processes": 12,
+      "availability": "unavailable",
+      "execution_status": "not_run",
+      "qualified": false
+    },
+    "measurement_status": "not_run",
+    "lower_assurance_permitted": false
+  },
+  "token_gates": {
+    "minimum_repeated_context_token_reduction_percent": 50,
+    "minimum_input_tokens_per_accepted_criterion_reduction_percent": 40,
+    "minimum_duplicate_model_call_reduction_percent": 60,
+    "minimum_eligible_semantic_capsule_reuse_percent": 70,
+    "minimum_complete_board_scan_reduction_percent": 80
+  },
+  "zero_tolerance_gates": [
+    "lost_deliveries",
+    "duplicate_committed_effects",
+    "stale_fence_completion",
+    "unauthorized_creation",
+    "tenant_leakage",
+    "agent_sql",
+    "secret_leaks",
+    "causal_notification_loss",
+    "stale_abstraction_suppression",
+    "model_created_authority_or_completion",
+    "ducklake_authority_promotion",
+    "reduced_assurance"
+  ],
+  "future_identity_requirements": [
+    "repository_commit",
+    "repository_tree",
+    "control_plane_generation",
+    "schema_fingerprint",
+    "policy_ref",
+    "policy_revision",
+    "capability_ref",
+    "federation_id",
+    "task_id",
+    "attempt_id",
+    "worktree_id",
+    "assignment_revision",
+    "fencing_epoch",
+    "baseline_supervisor_process_birth_refs",
+    "candidate_supervisor_process_birth_refs"
+  ],
+  "source_modules": [
+    "benchmarks/agent_supervisor/causal_event_federation/token_manifest.json",
+    "benchmarks/agent_supervisor/causal_event_federation/run_token.py",
+    "config/agent_supervisor_causal_event_federation_scheduler.json"
+  ],
+  "live_capability": {
+    "availability": "unavailable",
+    "execution_status": "not_run",
+    "ran": false,
+    "qualified": false,
+    "reason_code": "qualified_cross_supervisor_token_live_capacity_not_admitted",
+    "required_attestation": "casf/token-live-capacity-attestation@2",
+    "required_observation": "casf/token-live-observation@2",
+    "required_receipt_verifier": "registered_state_owner_receipt_verifier",
+    "registered_receipt_verifier_available": false,
+    "caller_supplied_references_qualify": false,
+    "required_evidence": "current_generation_receipt_backed_raw_populations_current_fences_and_live_host_provider_token_telemetry",
+    "metrics_omitted": true
+  },
+  "result_storage": "Emit one canonical content-addressed unavailable/not-run artifact bound to the twice-observed repository commit and tree and exact tracked HEAD blobs for the manifest, matrix, runner, and authoritative scheduler; it grants no scheduling, completion, acceptance, release, or promotion authority.",
+  "nonclaims": [
+    "This frozen recipe and its unavailable artifact are not benchmark measurements.",
+    "Neither the one-supervisor baseline arm nor the twelve-supervisor candidate arm ran or qualified.",
+    "The token-reduction and semantic-capsule-reuse thresholds are future acceptance thresholds, not observed metric values.",
+    "No caller-authored percentage, synthetic population, in-process simulation, object graph, or provider/model substitution can qualify this benchmark.",
+    "No direct database access, file fallback, network access, credential use, provider call, or DuckLake scheduling authority occurred.",
+    "Any future live authority requires an authenticated typed Quack admission and can never come from direct DuckDB access or DuckLake.",
+    "Unavailable and not-run evidence contains no metrics and cannot establish completion, release, acceptance, promotion, or token efficiency.",
+    "Git porcelain is not treated as proof of a clean tree; every measured path must independently equal its tracked HEAD blob.",
+    "This benchmark does not qualify load, multihost behavior, production behavior, or any capability outside its separately admitted live profile."
+  ]
+}

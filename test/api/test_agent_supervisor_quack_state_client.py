@@ -51,6 +51,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions
     StateTransaction,
     StaleGenerationError,
     TransactionConflictKind,
+    TransactionError,
     classify_exception,
     default_retry_policy,
     is_retryable_exception,
@@ -63,6 +64,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
     DEFAULT_STATEMENT_TEMPLATES,
     QUACK_STATE_CLIENT_INTERFACE,
+    QuackClientError,
     QuackClientIdentityError,
     QuackClientSQLError,
     QuackStateClient,
@@ -190,6 +192,35 @@ def test_interface_identity_and_template_registry() -> None:
     assert template.parameter_names == ("task_cid",)
 
 
+def test_rejected_commit_cannot_be_masked_by_a_second_commit_fallback() -> None:
+    class _RejectedCommitConnection:
+        def __init__(self) -> None:
+            self.executed: list[str] = []
+            self.rollback_count = 0
+
+        def execute(self, sql: str, _parameters: Any = None) -> None:
+            self.executed.append(sql)
+
+        @staticmethod
+        def commit() -> None:
+            raise RuntimeError("typed state-owner authorization_denied")
+
+        def rollback(self) -> None:
+            self.rollback_count += 1
+
+    connection = _RejectedCommitConnection()
+    transaction = StateTransaction(connection, store_id="control.duckdb")
+    transaction.begin()
+
+    with pytest.raises(TransactionError, match="authorization_denied") as raised:
+        transaction.commit()
+
+    assert raised.value.retryable is False
+    assert connection.executed == ["BEGIN TRANSACTION"]
+    assert connection.rollback_count == 1
+    assert transaction.active is False
+
+
 def test_parameter_binding_and_raw_sql_rejection(tmp_path: Path) -> None:
     db = tmp_path / "control.duckdb"
     _install(db)
@@ -262,6 +293,47 @@ def test_cursor_pagination(tmp_path: Path) -> None:
         assert third.next_cursor is None
         seen = [item["task_cid"] for item in first.items + second.items + third.items]
         assert len(seen) == len(set(seen)) == 5
+
+
+def test_owner_transaction_seam_rejects_command_kind_status_mismatch(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    task_cid = _seed_goal_and_tasks(db, count=1)[0]
+
+    with _client(db) as client:
+        live = client.load_generation()
+        transaction = client.transaction(expected_generation=live)
+        mismatches = (
+            (CommandKind.OBSERVE, "claimed", "command_kind=claim"),
+            (CommandKind.MIGRATE, "claimed", "command_kind=claim"),
+            (CommandKind.CLAIM, "ready", "only status=claimed"),
+        )
+        for index, (command_kind, status, expected_error) in enumerate(mismatches):
+            command = StateCommand(
+                command_id=f"cmd:owner-seam:mismatch:{index}",
+                command_kind=command_kind,
+                store_id=live.store_id,
+                session_id="session:owner-seam",
+                expected_generation=live.generation,
+                expected_revision=live.revision,
+                fence_epoch=live.fence_epoch,
+                idempotency_key=f"idem:owner-seam:mismatch:{index}",
+                parameters={
+                    "task_cid": task_cid,
+                    "expected_task_revision": 0,
+                    "status": status,
+                },
+            )
+            with pytest.raises(QuackClientError, match=expected_error):
+                client.apply_command_in_transaction(transaction, command, live)
+
+        rows = client.execute("select_task_by_cid", {"task_cid": task_cid})
+        assert rows[0]["status"] == "ready"
+        assert int(rows[0]["revision"]) == 0
+        assert client.load_generation().revision == live.revision
 
 
 def test_optimistic_conflict_and_retry(tmp_path: Path) -> None:

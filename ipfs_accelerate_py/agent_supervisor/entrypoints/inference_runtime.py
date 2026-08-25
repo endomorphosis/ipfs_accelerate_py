@@ -471,7 +471,7 @@ class ProductionCanonicalResolverFactory:
 
     @staticmethod
     def _cid(label: str, value: Any) -> str:
-        from ipfs_accelerate_py.agent_supervisor.multiformats_identity import cid_for_dag_json
+        from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_dag_json
 
         return cid_for_dag_json({"kind": label, "value": value})
 
@@ -832,7 +832,7 @@ class ProductionCanonicalResolverFactory:
 
     def _resolvers(self, prompt_cid: str) -> Mapping[str, LeafResolver]:
         if not prompt_cid:
-            from ipfs_accelerate_py.agent_supervisor.multiformats_identity import cid_for_bytes
+            from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_bytes
 
             prompt_cid = cid_for_bytes(b"")
         cache: dict[str, Any] = {}
@@ -1101,7 +1101,7 @@ class SupervisorResolutionService:
         if not isinstance(context, InvocationContext):
             raise TypeError("resolution requires a frozen InvocationContext")
         trusted = dict(trusted_bindings or {})
-        from ipfs_accelerate_py.agent_supervisor.multiformats_identity import cid_for_bytes
+        from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_bytes
 
         fields, continuation = self.pipeline.resolve_fields(
             context,

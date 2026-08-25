@@ -69,6 +69,12 @@ _ED25519_PUB_MULTICODEC = b"\xed\x01"
 DEFAULT_SCOPED_ROUTE_ID = (
     "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
 )
+EAAEF_SCOPED_ROUTE_ID = (
+    "agent-supervisor-eaaef-v1-grok46-terra56-high-auth-or-hard-quota-v1"
+)
+ALLOWED_SCOPED_ROUTE_IDS = frozenset(
+    {DEFAULT_SCOPED_ROUTE_ID, EAAEF_SCOPED_ROUTE_ID}
+)
 DEFAULT_REVIEWER_PROVIDER = "local_operator"
 DEFAULT_FALLBACK_PROVIDER_ID = "codex"
 DEFAULT_FALLBACK_MODEL_ID = "gpt-5.6-terra"
@@ -1472,7 +1478,7 @@ def _profile_from_raw(raw: Mapping[str, Any]) -> SignedSupervisorProfile:
         or profile.reviewer_identity != profile.identity_did
         or profile.reviewer_provider.casefold()
         in {"", "codex", "openai"}
-        or profile.route_id != DEFAULT_SCOPED_ROUTE_ID
+        or profile.route_id not in ALLOWED_SCOPED_ROUTE_IDS
         or profile.fallback_provider_id != DEFAULT_FALLBACK_PROVIDER_ID
         or profile.fallback_model_id != DEFAULT_FALLBACK_MODEL_ID
         or profile.fallback_reasoning_effort

@@ -34,6 +34,7 @@ TODO_PATH = REPO_ROOT / "docs/architecture/agent_supervisor_procedure_compiler.t
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_proof_carrying_procedure_compiler_scheduler.json"
 INVENTORY_ROOT = REPO_ROOT / "docs/architecture/procedure_compiler_inventory"
 BENCHMARK_MANIFEST = REPO_ROOT / "benchmarks/agent_supervisor/procedure_compiler/manifest.json"
+BENCHMARK_RECIPE_PATH = BENCHMARK_MANIFEST.with_name("case_recipes.fixture")
 RUNTIME_IMAGE_MANIFEST = (
     REPO_ROOT
     / "scripts/ops/agent_supervisor/pcpc_external_runtime_image_v3.manifest.json"
@@ -49,6 +50,133 @@ P0_COMPLETED = tuple(f"PCPC-{index:03d}" for index in range(9))
 INITIAL_READY = ("PCPC-009", "PCPC-011", "PCPC-013")
 TERMINAL_TASK = "PCPC-031"
 LANE_COUNT = 4
+BENCHMARK_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/procedure-compiler-benchmark-manifest@1"
+)
+BENCHMARK_RECIPE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/procedure-compiler-benchmark-recipes@1"
+)
+BENCHMARK_CASE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/procedure-compiler-benchmark-case@1"
+)
+BENCHMARK_PARTITIONS = (
+    "synthesis",
+    "development",
+    "held_out",
+    "negative",
+    "boundary",
+    "adversarial",
+)
+BENCHMARK_TASK_FAMILIES = (
+    "IMPORT_PURITY_REPAIR",
+    "FALSE_SUCCESS_TO_TYPED_OUTCOME",
+    "PSEUDO_CID_REPLACEMENT",
+    "MUTABLE_DEPENDENCY_PIN",
+    "SCHEMA_REGENERATION",
+    "API_ADAPTER_MIGRATION",
+    "CACHE_KEY_DEPENDENCY_REPAIR",
+    "STALE_RECEIPT_INVALIDATION",
+    "MISSING_ADMISSION_GATE",
+    "CONFIRMATION_BINDING_REPAIR",
+    "TEST_SELECTION_REPAIR",
+    "PROOF_SELECTION_REPAIR",
+    "DOCUMENTATION_CLAIM_NARROWING",
+    "MECHANICAL_RENAME",
+    "GENERATED_PROJECTION_REFRESH",
+    "POST_MERGE_REQUALIFICATION",
+    "MERGE_CONFLICT_CLASSIFICATION",
+    "PROVIDER_UNAVAILABLE_RECOVERY",
+    "CONTEXT_OMISSION_REPAIR",
+    "KNOWN_FLAKY_FAILURE",
+    "UNKNOWN_TASK_FAMILY",
+    "UNSAFE_NEAR_MATCH_TASK",
+    "CROSS_REPOSITORY_TRANSFER",
+)
+BENCHMARK_FAMILY_COUNT = 23
+BENCHMARK_CASE_COUNT = 138
+BENCHMARK_PARTITION_COUNTS = {
+    partition: BENCHMARK_FAMILY_COUNT for partition in BENCHMARK_PARTITIONS
+}
+BENCHMARK_ZERO_PARTITION_COUNTS = {
+    partition: 0 for partition in BENCHMARK_PARTITIONS
+}
+BENCHMARK_BOUNDS = {"max_case_count": 256, "max_recipe_bytes": 32_768}
+BENCHMARK_RECIPE_SHA256 = (
+    "65be6eeb01fc1fcf6b8ca2d61de0284fbfba45d7f0fb586ec30435dd7a81584d"
+)
+BENCHMARK_CORPUS_SHA256 = (
+    "2f22bef626d0ab2257953a97f96771e9915f05264faec44b20af5e5bd5221618"
+)
+BENCHMARK_REQUIRED_COVERAGE = frozenset(
+    {"recurring", "recovery", "unknown", "unsafe", "transfer"}
+)
+BENCHMARK_PARTITION_ACCESS = {
+    "synthesis": ["synthesis", "development", "negative", "boundary", "adversarial"],
+    "development": ["synthesis", "development", "negative", "boundary", "adversarial"],
+    "held_out": ["held_out"],
+    "evaluation": list(BENCHMARK_PARTITIONS),
+}
+BENCHMARK_PRIVACY_POLICY = {
+    "allowed_data": [
+        "synthetic identifiers",
+        "reviewed expected decisions",
+        "cryptographic digests",
+    ],
+    "forbidden_data": [
+        "private prompts",
+        "production source snapshots",
+        "chain of thought",
+        "bulk trajectories",
+    ],
+}
+BENCHMARK_SCAFFOLD_FIELDS = frozenset(
+    {
+        "schema",
+        "program",
+        "status",
+        "frozen",
+        "frozen_scope",
+        "case_corpus_qualified",
+        "partition_coverage_established",
+        "held_out_disjoint",
+        "partition_case_counts",
+        "partitions",
+        "task_families",
+        "case_manifest_refs",
+        "pcpc_029_obligation",
+        "large_bodies_in_git",
+        "private_prompts_included",
+        "chain_of_thought_included",
+        "synthesis_can_read_held_out",
+        "qualification_blocker",
+    }
+)
+BENCHMARK_QUALIFIED_FIELDS = BENCHMARK_SCAFFOLD_FIELDS | frozenset(
+    {
+        "case_schema",
+        "corpus_schema",
+        "corpus_case_count",
+        "bounds",
+        "corpus_sha256",
+        "case_identity_algorithm",
+        "partition_access",
+        "privacy_policy",
+    }
+)
+BENCHMARK_RECIPE_FIELDS = frozenset(
+    {
+        "schema",
+        "corpus_id",
+        "recipe_version",
+        "synthetic_only",
+        "partitions",
+        "families",
+        "adversarial_metadata",
+    }
+)
+BENCHMARK_FAMILY_RECIPE_FIELDS = frozenset(
+    {"coverage", "expected", "family", "operation"}
+)
 DUCKLAKE_PROJECTION_FIELDS = frozenset(
     {
         "mode",
@@ -421,6 +549,228 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{path} must contain one object")
     return value
+
+
+def _canonical_json_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _benchmark_common_is_valid(benchmark: Mapping[str, Any]) -> bool:
+    families = benchmark.get("task_families")
+    partitions = benchmark.get("partitions")
+    return (
+        benchmark.get("schema") == BENCHMARK_MANIFEST_SCHEMA
+        and benchmark.get("program") == PROGRAM
+        and benchmark.get("frozen") is True
+        and benchmark.get("held_out_disjoint") is True
+        and benchmark.get("large_bodies_in_git") is False
+        and benchmark.get("private_prompts_included") is False
+        and benchmark.get("chain_of_thought_included") is False
+        and benchmark.get("synthesis_can_read_held_out") is False
+        and partitions == list(BENCHMARK_PARTITIONS)
+        and families == list(BENCHMARK_TASK_FAMILIES)
+        and len(families) == BENCHMARK_FAMILY_COUNT
+        and len(set(families)) == BENCHMARK_FAMILY_COUNT
+    )
+
+
+def _benchmark_scaffold_is_valid(benchmark: Mapping[str, Any]) -> bool:
+    return (
+        set(benchmark) == BENCHMARK_SCAFFOLD_FIELDS
+        and _benchmark_common_is_valid(benchmark)
+        and benchmark.get("status") == "scaffold_only"
+        and benchmark.get("frozen_scope") == "family_and_partition_vocabulary"
+        and benchmark.get("case_corpus_qualified") is False
+        and benchmark.get("partition_coverage_established") is False
+        and benchmark.get("partition_case_counts") == BENCHMARK_ZERO_PARTITION_COUNTS
+        and benchmark.get("case_manifest_refs") == []
+        and benchmark.get("pcpc_029_obligation")
+        == (
+            "populate every task family with disjoint synthesis, development, "
+            "held_out, negative, boundary, and adversarial cases before qualification"
+        )
+        and benchmark.get("qualification_blocker")
+        == "PCPC-029 has not populated or independently qualified the case corpus"
+    )
+
+
+def _expanded_benchmark_cases(
+    recipes: Mapping[str, Any],
+) -> tuple[dict[str, Any], ...] | None:
+    family_recipes = recipes.get("families")
+    if not isinstance(family_recipes, list):
+        return None
+    cases: list[dict[str, Any]] = []
+    for row in family_recipes:
+        if not isinstance(row, Mapping) or set(row) != BENCHMARK_FAMILY_RECIPE_FIELDS:
+            return None
+        if (
+            not all(isinstance(row.get(key), str) for key in row)
+            or row.get("coverage") not in BENCHMARK_REQUIRED_COVERAGE
+            or row.get("expected") not in {"accept", "refuse"}
+            or row.get("operation")
+            not in {"repair", "recovery", "classify", "refuse", "transfer"}
+        ):
+            return None
+        for partition in BENCHMARK_PARTITIONS:
+            case = {
+                "schema": BENCHMARK_CASE_SCHEMA,
+                "case_id": f"pcpc-v1/{row['family']}/{partition}",
+                "family": row["family"],
+                "partition": partition,
+                "coverage": row["coverage"],
+                "operation": row["operation"],
+                "expected_decision": (
+                    "refuse" if partition == "adversarial" else row["expected"]
+                ),
+                "synthetic": True,
+                "input_digest": _canonical_json_sha256(
+                    {"family": row["family"], "partition": partition, "version": 1}
+                ),
+            }
+            if partition == "adversarial":
+                case["adversarial"] = {
+                    "attack_class": "fixture-shortcut",
+                    "mandatory_decision": "refuse",
+                    "requires_refusal_reason": True,
+                }
+            case["content_sha256"] = _canonical_json_sha256(case)
+            cases.append(case)
+    return tuple(cases)
+
+
+def _benchmark_qualified_is_valid(
+    benchmark: Mapping[str, Any], recipe_path: Path
+) -> bool:
+    if (
+        set(benchmark) != BENCHMARK_QUALIFIED_FIELDS
+        or not _benchmark_common_is_valid(benchmark)
+        or benchmark.get("status") != "qualified_frozen"
+        or benchmark.get("frozen_scope") != "manifest_and_recipe_corpus"
+        or benchmark.get("case_corpus_qualified") is not True
+        or benchmark.get("partition_coverage_established") is not True
+        or benchmark.get("partition_case_counts") != BENCHMARK_PARTITION_COUNTS
+        or benchmark.get("corpus_case_count") != BENCHMARK_CASE_COUNT
+        or benchmark.get("bounds") != BENCHMARK_BOUNDS
+        or benchmark.get("case_schema") != BENCHMARK_CASE_SCHEMA
+        or benchmark.get("corpus_schema") != BENCHMARK_RECIPE_SCHEMA
+        or benchmark.get("case_identity_algorithm")
+        != "sha256(canonical-json(case-without-content_sha256))"
+        or benchmark.get("partition_access") != BENCHMARK_PARTITION_ACCESS
+        or benchmark.get("privacy_policy") != BENCHMARK_PRIVACY_POLICY
+        or benchmark.get("pcpc_029_obligation") != "satisfied_by_case_recipes_json"
+        or benchmark.get("qualification_blocker") is not None
+        or recipe_path.name != "case_recipes.fixture"
+        or recipe_path.is_symlink()
+        or not recipe_path.is_file()
+        or recipe_path.parent.resolve() != BENCHMARK_MANIFEST.parent.resolve()
+    ):
+        return False
+
+    recipe_size = recipe_path.stat().st_size
+    recipe_digest = hashlib.sha256(recipe_path.read_bytes()).hexdigest()
+    if (
+        recipe_size <= 0
+        or recipe_size > BENCHMARK_BOUNDS["max_recipe_bytes"]
+        or recipe_digest != BENCHMARK_RECIPE_SHA256
+        or benchmark.get("case_manifest_refs")
+        != [{"path": "case_recipes.fixture", "sha256": recipe_digest}]
+    ):
+        return False
+
+    recipes = _load_json(recipe_path)
+    family_recipes = recipes.get("families")
+    if (
+        set(recipes) != BENCHMARK_RECIPE_FIELDS
+        or recipes.get("schema") != BENCHMARK_RECIPE_SCHEMA
+        or recipes.get("corpus_id") != "pcpc-frozen-benchmark-corpus-v1"
+        or recipes.get("recipe_version") != 1
+        or recipes.get("synthetic_only") is not True
+        or recipes.get("partitions") != list(BENCHMARK_PARTITIONS)
+        or recipes.get("adversarial_metadata")
+        != {
+            "attack_classes": [
+                "fixture-shortcut",
+                "held-out-leak",
+                "metadata-poisoning",
+                "unsafe-transfer",
+            ],
+            "mandatory_decision": "refuse",
+            "requires_refusal_reason": True,
+        }
+        or not isinstance(family_recipes, list)
+    ):
+        return False
+    recipe_families = [
+        row.get("family") for row in family_recipes if isinstance(row, Mapping)
+    ]
+    if (
+        recipe_families != list(BENCHMARK_TASK_FAMILIES)
+        or len(recipe_families) != BENCHMARK_FAMILY_COUNT
+        or len(set(recipe_families)) != BENCHMARK_FAMILY_COUNT
+        or {row.get("coverage") for row in family_recipes if isinstance(row, Mapping)}
+        != BENCHMARK_REQUIRED_COVERAGE
+    ):
+        return False
+
+    cases = _expanded_benchmark_cases(recipes)
+    if cases is None or len(cases) != BENCHMARK_CASE_COUNT:
+        return False
+    case_ids = [case["case_id"] for case in cases]
+    case_digests = [case["content_sha256"] for case in cases]
+    counts = {
+        partition: sum(case["partition"] == partition for case in cases)
+        for partition in BENCHMARK_PARTITIONS
+    }
+    corpus_digest = _canonical_json_sha256(list(cases))
+    return (
+        len(case_ids) == len(set(case_ids))
+        and len(case_digests) == len(set(case_digests))
+        and counts == BENCHMARK_PARTITION_COUNTS
+        and benchmark.get("partition_case_counts") == counts
+        and benchmark.get("corpus_sha256") == BENCHMARK_CORPUS_SHA256
+        and benchmark.get("corpus_sha256") == corpus_digest
+        and BENCHMARK_CASE_COUNT <= BENCHMARK_BOUNDS["max_case_count"]
+    )
+
+
+def _benchmark_frozen_state() -> tuple[bool, dict[str, Any]]:
+    try:
+        benchmark = _load_json(BENCHMARK_MANIFEST)
+        scaffold_valid = _benchmark_scaffold_is_valid(benchmark)
+        qualified_valid = _benchmark_qualified_is_valid(
+            benchmark, BENCHMARK_RECIPE_PATH
+        )
+        error = ""
+    except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        benchmark = {}
+        scaffold_valid = False
+        qualified_valid = False
+        error = f"{type(exc).__name__}: {exc}"
+    passed = scaffold_valid or qualified_valid
+    families = benchmark.get("task_families")
+    partitions = benchmark.get("partitions")
+    return passed, {
+        "error": error,
+        "status": benchmark.get("status"),
+        "accepted_state": (
+            "scaffold_only"
+            if scaffold_valid
+            else "qualified_frozen"
+            if qualified_valid
+            else None
+        ),
+        "families": len(families) if isinstance(families, list) else None,
+        "partitions": partitions if isinstance(partitions, list) else [],
+        "corpus_case_count": benchmark.get("corpus_case_count"),
+        "recipe_path": BENCHMARK_RECIPE_PATH.name,
+    }
 
 
 def _safe_relative(value: str) -> bool:
@@ -866,35 +1216,13 @@ def validate_program() -> dict[str, Any]:
     _append(checks, errors, name="baseline_binding", passed=not inventory_error and repository.get("commit") == BASE_COMMIT and repository.get("tree") == BASE_TREE and baseline.get("package", {}).get("version") == "0.0.45", detail=inventory_error or repository)
     _append(checks, errors, name="prerequisite_gate", passed=set(disposition_map) == REQUIRED_AUTHORITIES and set(disposition_map.values()) <= DISPOSITIONS and disposition_map.get("AdaptivePlanner") == "incompatible" and disposition_map.get("AutonomousMetaController") == "missing", detail=disposition_map)
 
-    try:
-        benchmark = _load_json(BENCHMARK_MANIFEST)
-        benchmark_error = ""
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
-        benchmark = {}
-        benchmark_error = f"{type(exc).__name__}: {exc}"
-    partitions = benchmark.get("partitions") if isinstance(benchmark.get("partitions"), list) else []
+    benchmark_valid, benchmark_detail = _benchmark_frozen_state()
     _append(
         checks,
         errors,
-        name="benchmark_scaffold",
-        passed=(
-            not benchmark_error
-            and benchmark.get("frozen") is True
-            and benchmark.get("status") == "scaffold_only"
-            and benchmark.get("case_corpus_qualified") is False
-            and benchmark.get("partition_coverage_established") is False
-            and not (benchmark.get("case_manifest_refs") or ())
-            and not any((benchmark.get("partition_case_counts") or {}).values())
-            and set(partitions)
-            == {"synthesis", "development", "held_out", "negative", "boundary", "adversarial"}
-            and benchmark.get("held_out_disjoint") is True
-        ),
-        detail=benchmark_error
-        or {
-            "status": benchmark.get("status"),
-            "families": len(benchmark.get("task_families") or ()),
-            "partitions": partitions,
-        },
+        name="benchmark_frozen_state",
+        passed=benchmark_valid,
+        detail=benchmark_detail,
     )
 
     return {

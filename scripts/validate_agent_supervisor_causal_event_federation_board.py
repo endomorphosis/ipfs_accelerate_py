@@ -11,7 +11,7 @@ import subprocess
 import sys
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 SCHEMA = "ipfs_accelerate_py.agent_supervisor.causal-event-federation-board-validation@1"
@@ -78,6 +78,9 @@ EXPECTED_TITLES = (
     "Produce current-tree qualification and residual-gap report",
 )
 EXPECTED_TASK_IDS = tuple(f"CASF-{index:03d}" for index in range(44))
+EXPECTED_LANDED_NO_CHANGE_TASK_IDS = frozenset(
+    f"CASF-{index:03d}" for index in range(44)
+)
 if len(EXPECTED_TASK_IDS) != len(EXPECTED_TITLES):
     raise RuntimeError("sealed CASF task identities and titles differ in length")
 EXPECTED_TASK_TITLES = {
@@ -410,7 +413,11 @@ def _safe_paths(value: str, task_id: str, field: str, errors: list[str]) -> list
             path.is_absolute()
             or ".." in path.parts
             or raw in {".", ".."}
+            or "\\" in raw
+            or bool(PureWindowsPath(raw).drive)
+            or path.as_posix() != raw
             or any(ch in raw for ch in "*?[]\x00")
+            or any(ord(ch) < 32 for ch in raw)
         ):
             errors.append(f"{task_id}: unsafe {field} path {raw!r}")
         for prefix in READ_ONLY_PREFIXES:
@@ -499,6 +506,8 @@ def _inventory(errors: list[str]) -> dict[str, str]:
     for name, artifact_type in expected.items():
         path = INVENTORY / name
         payload = _read_json(path, errors)
+        if not path.is_file() or path.is_symlink():
+            errors.append(f"{name}: inventory artifact must be a regular file")
         if payload.get("artifact_type") != artifact_type:
             errors.append(f"{name}: artifact_type mismatch")
         if payload.get("artifact_version") != 1:
@@ -507,10 +516,45 @@ def _inventory(errors: list[str]) -> dict[str, str]:
             errors.append(f"{name}: program identity mismatch")
         if payload.get("root_objective_id") != "CASF-G000":
             errors.append(f"{name}: root objective mismatch")
+        if name == "starting_tree.json":
+            repository = payload.get("repository")
+            if not isinstance(repository, Mapping):
+                errors.append("starting_tree.json: repository must be an object")
+                repository = {}
+            if payload.get("inventory_tasks") != ["CASF-000", "CASF-001"]:
+                errors.append("starting_tree.json: inventory task population mismatch")
+            if (
+                repository.get("starting_commit") != BASE_REVISION
+                or repository.get("starting_tree") != BASE_TREE
+                or repository.get("branch") != BRANCH
+                or repository.get("baseline_kind") != "committed_git_tree"
+                or repository.get("starting_worktree_was_clean") is not True
+            ):
+                errors.append("starting_tree.json: sealed repository baseline mismatch")
+            if payload.get("inventory_refs") != {
+                "human_readable": (
+                    "docs/architecture/causal_event_federation_inventory/README.md"
+                ),
+                "authorities": (
+                    "docs/architecture/causal_event_federation_inventory/authorities.json"
+                ),
+                "capabilities": (
+                    "docs/architecture/causal_event_federation_inventory/"
+                    "capability_snapshot.json"
+                ),
+            }:
+                errors.append("starting_tree.json: inventory reference set mismatch")
+        elif (
+            payload.get("starting_commit") != BASE_REVISION
+            or payload.get("starting_tree") != BASE_TREE
+        ):
+            errors.append(f"{name}: sealed repository baseline mismatch")
         if path.is_file() and not path.is_symlink():
             identities[path.relative_to(ROOT).as_posix()] = _identity(path.read_bytes())
     readme = INVENTORY / "README.md"
     text = _read_text(readme, errors)
+    if not readme.is_file() or readme.is_symlink():
+        errors.append("README.md: inventory artifact must be a regular file")
     for phrase in (
         "available_with_caveats",
         "typed blockers",
@@ -640,6 +684,16 @@ def validate_program(
             or metadata.get("Review only") != "false"
         ):
             errors.append(f"{task_id}: task must be automatic and schedulable")
+        no_change_completion = metadata.get("No-change completion")
+        if task_id in EXPECTED_LANDED_NO_CHANGE_TASK_IDS:
+            if no_change_completion != "allowed":
+                errors.append(
+                    f"{task_id}: sealed landed task must allow exact validated no-change completion"
+                )
+        elif no_change_completion is not None:
+            errors.append(
+                f"{task_id}: unlanded task must remain outside no-change completion"
+            )
         if metadata.get("Board namespace") != BOARD_NAMESPACE:
             errors.append(f"{task_id}: board namespace mismatch")
         if metadata.get("Owning repository") != "ipfs_accelerate_py":

@@ -750,6 +750,11 @@ class WorktreePool:
     ) -> tuple[Optional[Path], str]:
         """Claim one entry only while its external lifecycle permits reuse."""
 
+        # A leased or initializing checkout may contain recoverable crash
+        # output.  Dead ownership permits a dedicated recovery/discard path;
+        # it never makes that checkout a warm cache candidate.
+        if state.get("state") != "idle":
+            return None, "non_idle_entry_reserved"
         if authorize_reuse is not None:
             admitted, reason = self._authorize_entry_reuse(
                 state,
@@ -759,7 +764,7 @@ class WorktreePool:
             if not admitted:
                 self._record_rejection(reason)
                 return None, reason
-        lock_path = self._try_claim(state)
+        lock_path = self._try_claim(state, require_idle=True)
         if lock_path is None:
             return None, ""
         if authorize_reuse is not None:
@@ -1298,6 +1303,8 @@ class WorktreePool:
         )
 
     def _validate_idle_entry(self, state: Mapping[str, Any]) -> tuple[bool, str]:
+        if state.get("state") != "idle":
+            return False, "non_idle_entry_reserved"
         path = Path(str(state.get("path") or ""))
         if not path.is_dir():
             return False, "workspace_missing"
@@ -1425,9 +1432,23 @@ class WorktreePool:
         entry_id = str(state["lease_token"])
         path = self._state_path(entry_id)
         temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-        temporary.write_text(
-            json.dumps(dict(state), indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+        encoded = (
+            json.dumps(dict(state), indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(temporary, flags, 0o600)
+        try:
+            view = memoryview(encoded)
+            while view:
+                written = os.write(descriptor, view)
+                if written <= 0:
+                    raise OSError("worktree pool state write made no progress")
+                view = view[written:]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
         temporary.replace(path)
 
     def _create_lock(self, lock_path: Path) -> None:
@@ -1438,7 +1459,12 @@ class WorktreePool:
         finally:
             os.close(descriptor)
 
-    def _try_claim(self, state: Mapping[str, Any]) -> Optional[Path]:
+    def _try_claim(
+        self,
+        state: Mapping[str, Any],
+        *,
+        require_idle: bool = False,
+    ) -> Optional[Path]:
         # Import locally so the lower-level worktree module does not eagerly
         # load the merge/proof stack merely to construct a pool.
         from ..merge.checkout_lock import serialized_lock_update
@@ -1449,6 +1475,12 @@ class WorktreePool:
         # the stale record before either removes it; the loser can then unlink
         # the winner's newly-created live ownership record.
         with serialized_lock_update(lock_path):
+            if require_idle:
+                current = self._read_state(
+                    str(state.get("lease_token") or "")
+                )
+                if current != dict(state) or current.get("state") != "idle":
+                    return None
             if state.get("state") != "idle":
                 try:
                     state_owner_pid = int(state.get("lease_pid") or 0)
@@ -1458,6 +1490,16 @@ class WorktreePool:
                     return None
             try:
                 self._create_lock(lock_path)
+                if require_idle:
+                    current = self._read_state(
+                        str(state.get("lease_token") or "")
+                    )
+                    if (
+                        current != dict(state)
+                        or current.get("state") != "idle"
+                    ):
+                        self._remove_lock(lock_path)
+                        return None
                 return lock_path
             except FileExistsError:
                 lock = read_json_object(lock_path)
@@ -1473,6 +1515,16 @@ class WorktreePool:
                 self._remove_lock(lock_path)
                 try:
                     self._create_lock(lock_path)
+                    if require_idle:
+                        current = self._read_state(
+                            str(state.get("lease_token") or "")
+                        )
+                        if (
+                            current != dict(state)
+                            or current.get("state") != "idle"
+                        ):
+                            self._remove_lock(lock_path)
+                            return None
                     return lock_path
                 except FileExistsError:
                     return None

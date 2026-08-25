@@ -10,7 +10,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -25,6 +25,96 @@ def _operator() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _execution_route_summary(
+    *,
+    deterministic_task_count: int = 44,
+    model_task_count: int = 0,
+    policy_id: str = "route-policy:test",
+) -> dict:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA,
+    )
+
+    return {
+        "schema": TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA,
+        "policy_id": policy_id,
+        "plan_root_cid": "plan:test",
+        "repository_tree_id": "tree:test",
+        "source_revision": 7,
+        "task_count": 44,
+        "deterministic_task_count": deterministic_task_count,
+        "model_task_count": model_task_count,
+    }
+
+
+def _install_admitted_generation(
+    operator: ModuleType,
+    paths: dict[str, Path],
+    *,
+    launch_route: dict,
+    current_route: dict | None = None,
+) -> dict[str, dict]:
+    births = {
+        "master": {
+            "pid": 777_101,
+            "start_time_ticks": 11,
+            "boot_id": "boot:test",
+            "parent_pid": 1,
+        },
+        "owner": {
+            "pid": 777_102,
+            "start_time_ticks": 12,
+            "boot_id": "boot:test",
+            "parent_pid": 1,
+        },
+        "executor_supervisor": {
+            "pid": 777_103,
+            "start_time_ticks": 13,
+            "boot_id": "boot:test",
+            "parent_pid": 777_102,
+        },
+        "executor": {
+            "pid": 777_104,
+            "start_time_ticks": 14,
+            "boot_id": "boot:test",
+            "parent_pid": 777_103,
+        },
+    }
+    operator._persist_receipt(
+        paths,
+        "launch",
+        {
+            "schema": operator.LAUNCH_SCHEMA,
+            "program_id": operator.PROGRAM_ID,
+            "launched_at_ns": 1,
+            "source_head": "source:test",
+            "repository_tree_id": "tree:test",
+            "master_process_birth": births["master"],
+            "supervisor_process_birth": births["master"],
+            "owner_identity": {"process_birth": births["owner"]},
+            "executor_supervisor_process_birth": births["executor_supervisor"],
+            "executor_process_birth_at_launch": births["executor"],
+            "task_execution_admitted": True,
+            "execution_route_policy": launch_route,
+        },
+    )
+    sealed_current_route = current_route or launch_route
+    operator._atomic_json(
+        paths["executor_current"],
+        {
+            "supervisor_process_birth": births["executor_supervisor"],
+            "executor_process_birth": births["executor"],
+            "execution_route_policy": sealed_current_route,
+            "execution_route_policy_id": sealed_current_route["policy_id"],
+            "execution_route_plan_root_cid": sealed_current_route["plan_root_cid"],
+            "execution_route_source_revision": sealed_current_route[
+                "source_revision"
+            ],
+        },
+    )
+    return births
 
 
 def _authority(**updates):
@@ -79,6 +169,102 @@ def _runtime(**updates):
 BOOTSTRAP_EVENT_ID = "event:casf-bootstrap"
 BOOTSTRAP_ACKNOWLEDGEMENT_ID = "ack:casf-bootstrap"
 BOOTSTRAP_DELIVERY_ATTEMPT_ID = "delivery-attempt:casf-bootstrap"
+
+
+class _QuiescenceClock:
+    def __init__(self) -> None:
+        self.value = 0.0
+        self.sleeps: list[float] = []
+
+    def __call__(self) -> float:
+        return self.value
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(float(seconds))
+        self.value += float(seconds)
+
+
+class _GenerationObservation:
+    def __init__(self, content_id: str) -> None:
+        self.content_id = content_id
+
+
+class _QuiescenceClient:
+    def __init__(self, *, generations: list[str], rows: list[list[dict]]) -> None:
+        self._generations = list(generations)
+        self._rows = list(rows)
+        self.generation_calls = 0
+        self.routing_calls: list[dict] = []
+
+    @staticmethod
+    def _next(values: list):
+        assert values
+        return values.pop(0) if len(values) > 1 else values[0]
+
+    def load_generation(self) -> _GenerationObservation:
+        self.generation_calls += 1
+        return _GenerationObservation(self._next(self._generations))
+
+    def execute(self, operation: str, parameters: dict) -> list[dict]:
+        assert operation == "casf_select_subscription_routing_state"
+        assert parameters["tenant_id"] == "tenant:test"
+        assert parameters["federation_id"] == "federation:test"
+        assert parameters["subscription_id"] == "subscription:test"
+        assert parameters["observed_at"]
+        self.routing_calls.append(dict(parameters))
+        return self._next(self._rows)
+
+
+class _RouteProjectionFactory:
+    def __init__(self, outcomes: list[object]) -> None:
+        self._outcomes = list(outcomes)
+        self.calls = 0
+        self.closes = 0
+
+    def __call__(self, _client, *, owns_client: bool):
+        assert owns_client is False
+        factory = self
+        self.calls += 1
+
+        class _Projection:
+            def seal_execution_route_policy(self, modes: dict[str, str]):
+                assert len(modes) == 44
+                outcome = _QuiescenceClient._next(factory._outcomes)
+                if isinstance(outcome, BaseException):
+                    raise outcome
+                return outcome
+
+            def close(self) -> None:
+                factory.closes += 1
+
+        return _Projection()
+
+
+def _quiescence_admission() -> SimpleNamespace:
+    return SimpleNamespace(
+        federation_identity=SimpleNamespace(
+            record_id="federation:test",
+            binding=SimpleNamespace(tenant_id="tenant:test"),
+        ),
+        subscription=SimpleNamespace(
+            subscription_id="subscription:test",
+            tenant_id="tenant:test",
+            federation_id="federation:test",
+            revision=3,
+            maximum_pending=64,
+            maximum_fanout=16,
+        ),
+    )
+
+
+def _routing_row(*, pending_deliveries: int) -> dict:
+    return {
+        "subscription_id": "subscription:test",
+        "revision": 3,
+        "maximum_pending": 64,
+        "maximum_fanout": 16,
+        "pending_deliveries": pending_deliveries,
+    }
 
 
 def _first_tranche_authority(**runtime_health_updates):
@@ -154,6 +340,59 @@ def test_native_launch_plan_admits_only_one_event_wait_coordinator(
     assert operator.STATE_TOKEN_ENV not in json.dumps(plan)
     assert "argv" not in plan
     assert "environment" not in plan
+
+
+def test_admitted_launch_route_remains_current_44_to_0_population(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    monkeypatch.setenv(operator.STATE_TOKEN_ENV, "raw-token-material-for-test")
+
+    plan = operator._launch_plan(board, admit_task_execution=True)
+    modes = operator._casf_mixed_execution_modes()
+    current = _execution_route_summary()
+    preceding = _execution_route_summary(
+        deterministic_task_count=43,
+        model_task_count=1,
+    )
+    historical = _execution_route_summary(
+        deterministic_task_count=41,
+        model_task_count=3,
+    )
+
+    assert plan["execution_route_expected_counts"] == {
+        "task_count": 44,
+        "deterministic_task_count": 44,
+        "model_task_count": 0,
+    }
+    assert len(operator.CASF_DETERMINISTIC_TASK_ALIASES) == 44
+    assert sum(mode == "deterministic-only" for mode in modes.values()) == 44
+    assert sum(mode != "deterministic-only" for mode in modes.values()) == 0
+    assert (
+        operator._validated_execution_route_summary(
+            current,
+            require_casf_population=True,
+        )
+        == current
+    )
+    for obsolete in (preceding, historical):
+        with pytest.raises(operator.OperatorError, match="exact CASF population"):
+            operator._validated_execution_route_summary(
+                obsolete,
+                require_casf_population=True,
+            )
+
+
+def test_scheduler_schema_revision_must_match_canonical_migration_head() -> None:
+    operator = _operator()
+
+    assert operator._require_canonical_schema_revision("3") == 3
+    with pytest.raises(
+        operator.OperatorError,
+        match=r"canonical migration head \(configured=2, latest=3\)",
+    ):
+        operator._require_canonical_schema_revision("2")
 
 
 def test_population_uses_production_parser_and_current_configured_frontier(
@@ -294,6 +533,37 @@ def test_state_owner_socket_is_short_server_derived_and_private(
         operator._prepare_private_socket_parent(linked_parent / "owner.sock")
 
 
+def test_executor_state_directory_is_private_and_fails_closed(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    private_state = tmp_path / "runtime" / "state" / "executor"
+    operator._prepare_private_executor_state(private_state)
+    metadata = os.lstat(private_state)
+    assert stat.S_ISDIR(metadata.st_mode)
+    assert stat.S_IMODE(metadata.st_mode) == 0o700
+    assert metadata.st_uid == os.geteuid()
+
+    unsafe_state = tmp_path / "unsafe-executor"
+    unsafe_state.mkdir(mode=0o770)
+    unsafe_state.chmod(0o770)
+    with pytest.raises(operator.OperatorError, match="custody is unsafe"):
+        operator._prepare_private_executor_state(unsafe_state)
+
+    inaccessible_state = tmp_path / "inaccessible-executor"
+    inaccessible_state.mkdir(mode=0o600)
+    inaccessible_state.chmod(0o600)
+    with pytest.raises(operator.OperatorError, match="custody is unsafe"):
+        operator._prepare_private_executor_state(inaccessible_state)
+
+    target = tmp_path / "executor-target"
+    target.mkdir(mode=0o700)
+    linked_state = tmp_path / "linked-executor"
+    linked_state.symlink_to(target, target_is_directory=True)
+    with pytest.raises(operator.OperatorError, match="custody is unsafe"):
+        operator._prepare_private_executor_state(linked_state)
+
+
 def test_receipts_are_private_content_addressed_and_tamper_evident(
     tmp_path: Path,
 ) -> None:
@@ -334,8 +604,140 @@ def test_owner_argv_and_environment_exclude_raw_credentials(
     assert "raw-password-test" not in json.dumps(environment)
     assert operator.STATE_TOKEN_ENV not in environment
     assert "SOME_PASSWORD" not in environment
+    assert environment[operator.LEGACY_BOARD_UNSTALL_POLICY_ENV] == "disabled"
     assert supervisor_argv[-2:] == ["--credential-fd", "7"]
     assert "supervisor-runtime" in supervisor_argv
+
+
+def test_executor_environment_disables_legacy_board_unstall() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        LEGACY_BOARD_UNSTALL_POLICY_ENV,
+    )
+
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    route = operator._route_preflight(board)
+
+    environment = operator._executor_environment(
+        board,
+        route,
+        owner_identity={"generation": 3, "schema_revision": 3},
+    )
+
+    assert (
+        operator.LEGACY_BOARD_UNSTALL_POLICY_ENV
+        == LEGACY_BOARD_UNSTALL_POLICY_ENV
+    )
+    assert environment[operator.LEGACY_BOARD_UNSTALL_POLICY_ENV] == "disabled"
+
+
+def test_state_owner_build_disables_legacy_board_unstall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        quack_state_server as server_module,
+    )
+
+    operator = _operator()
+    board, config = operator._load_config(CONFIG)
+    paths = {
+        "database": tmp_path / "control.duckdb",
+        "bootstrap_receipt": tmp_path / "bootstrap.json",
+        "owner": tmp_path / "owner",
+        "owner_socket": tmp_path / "owner" / "typed-owner.sock",
+    }
+    paths["database"].write_bytes(b"sealed-test-placeholder")
+    paths["bootstrap_receipt"].write_text("{}\n", encoding="utf-8")
+    bootstrap = {
+        "schema": operator.BOOTSTRAP_SCHEMA,
+        "program_id": operator.PROGRAM_ID,
+    }
+    observed: dict[str, object] = {}
+
+    class _BuildObserved(Exception):
+        pass
+
+    def observe_build(**kwargs):
+        observed.update(kwargs)
+        raise _BuildObserved
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, config))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(operator, "_json_object", lambda _path: bootstrap)
+    monkeypatch.setattr(operator, "_verify_receipt", lambda *_a, **_k: None)
+    monkeypatch.setattr(operator, "_require_free_port", lambda *_a, **_k: None)
+    monkeypatch.setattr(operator, "_quack_capability", lambda: None)
+    monkeypatch.setattr(operator, "_prepare_private_socket_parent", lambda _p: None)
+    monkeypatch.setattr(server_module, "build_server", observe_build)
+    monkeypatch.setenv(operator.LEGACY_BOARD_UNSTALL_POLICY_ENV, "enabled")
+
+    with pytest.raises(_BuildObserved):
+        operator.state_owner(CONFIG)
+
+    assert observed["allow_legacy_board_unstall"] is False
+    assert os.environ[operator.LEGACY_BOARD_UNSTALL_POLICY_ENV] == "disabled"
+
+
+def test_state_owner_internal_grant_uses_maximum_bounded_lifetime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        quack_state_server as server_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        DEFAULT_GRANT_TTL_SECONDS,
+        MAX_GRANT_TTL_SECONDS,
+    )
+
+    operator = _operator()
+    board, config = operator._load_config(CONFIG)
+    paths = {
+        "database": tmp_path / "control.duckdb",
+        "bootstrap_receipt": tmp_path / "bootstrap.json",
+        "owner": tmp_path / "owner",
+        "owner_socket": tmp_path / "owner" / "typed-owner.sock",
+    }
+    paths["database"].write_bytes(b"sealed-test-placeholder")
+    paths["bootstrap_receipt"].write_text("{}\n", encoding="utf-8")
+    bootstrap = {
+        "schema": operator.BOOTSTRAP_SCHEMA,
+        "program_id": operator.PROGRAM_ID,
+    }
+    captured: dict[str, object] = {}
+
+    class _GrantCaptured(Exception):
+        pass
+
+    class _Server:
+        def typed_command_socket_path(self):
+            return paths["owner_socket"]
+
+        def start(self):
+            return SimpleNamespace(process_birth_id="process-birth:state-owner")
+
+        def issue_typed_client_grant(self, **kwargs):
+            captured.update(kwargs)
+            raise _GrantCaptured
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, config))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(operator, "_json_object", lambda _path: bootstrap)
+    monkeypatch.setattr(operator, "_verify_receipt", lambda *_a, **_k: None)
+    monkeypatch.setattr(operator, "_require_free_port", lambda *_a, **_k: None)
+    monkeypatch.setattr(operator, "_quack_capability", lambda: None)
+    monkeypatch.setattr(operator, "_prepare_private_socket_parent", lambda _p: None)
+    monkeypatch.setattr(server_module, "build_server", lambda **_kwargs: _Server())
+
+    with pytest.raises(_GrantCaptured):
+        operator.state_owner(CONFIG)
+
+    assert operator.INTERNAL_CLIENT_GRANT_TTL_SECONDS == MAX_GRANT_TTL_SECONDS
+    assert captured["ttl_seconds"] == MAX_GRANT_TTL_SECONDS
+    assert captured["ttl_seconds"] != DEFAULT_GRANT_TTL_SECONDS
+    assert captured["process_birth_id"] == "process-birth:state-owner"
+    assert captured["client_id"] == "casf-state-owner:federation-runtime"
 
 
 def test_route_preflight_uses_complete_configured_tuple_without_self_authority() -> None:
@@ -775,6 +1177,9 @@ def test_terminal_quiescence_rejects_later_pending_delivery_or_outbox_lag() -> N
     )
     assert lagging_result["classification"] == "stuck"
     assert lagging_result["healthy"] is False
+    assert lagging_result["reason_codes"] == [
+        "state_owner_outbox_catching_up"
+    ]
 
 
 def test_health_fails_closed_when_owner_outbox_worker_exits() -> None:
@@ -863,6 +1268,314 @@ def test_outbox_worker_health_rejects_missing_malformed_or_polling_status() -> N
     assert suppressed_observer_failure["healthy"] is False
 
 
+def test_quiescent_route_seal_returns_one_generation_stable_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    policy = object()
+    client = _QuiescenceClient(
+        generations=["generation:a", "generation:a"],
+        rows=[[_routing_row(pending_deliveries=0)]],
+    )
+    factory = _RouteProjectionFactory([policy])
+    clock = _QuiescenceClock()
+
+    result = operator._seal_quiescent_execution_route_policy(
+        server=object(),
+        owner_client=client,
+        admission=_quiescence_admission(),
+        timeout_seconds=1.0,
+        monotonic=clock,
+        sleeper=clock.sleep,
+        task_source_factory=factory,
+    )
+
+    assert result is policy
+    assert client.generation_calls == 2
+    assert len(client.routing_calls) == 1
+    assert factory.calls == factory.closes == 1
+    assert clock.sleeps == []
+
+
+def test_quiescent_route_seal_waits_for_pending_delivery_acknowledgement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    policy = object()
+    client = _QuiescenceClient(
+        generations=["generation:a", "generation:a", "generation:a"],
+        rows=[
+            [_routing_row(pending_deliveries=1)],
+            [_routing_row(pending_deliveries=0)],
+        ],
+    )
+    factory = _RouteProjectionFactory([policy])
+    clock = _QuiescenceClock()
+
+    result = operator._seal_quiescent_execution_route_policy(
+        server=object(),
+        owner_client=client,
+        admission=_quiescence_admission(),
+        timeout_seconds=1.0,
+        monotonic=clock,
+        sleeper=clock.sleep,
+        task_source_factory=factory,
+    )
+
+    assert result is policy
+    assert client.generation_calls == 3
+    assert len(client.routing_calls) == 2
+    assert factory.calls == factory.closes == 1
+    assert clock.sleeps == [operator.EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS]
+
+
+def test_quiescent_route_seal_retries_a_generation_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    stale_policy = object()
+    stable_policy = object()
+    client = _QuiescenceClient(
+        generations=[
+            "generation:a",
+            "generation:b",
+            "generation:b",
+            "generation:b",
+        ],
+        rows=[
+            [_routing_row(pending_deliveries=0)],
+            [_routing_row(pending_deliveries=0)],
+        ],
+    )
+    factory = _RouteProjectionFactory([stale_policy, stable_policy])
+    clock = _QuiescenceClock()
+
+    result = operator._seal_quiescent_execution_route_policy(
+        server=object(),
+        owner_client=client,
+        admission=_quiescence_admission(),
+        timeout_seconds=1.0,
+        monotonic=clock,
+        sleeper=clock.sleep,
+        task_source_factory=factory,
+    )
+
+    assert result is stable_policy
+    assert client.generation_calls == 4
+    assert factory.calls == factory.closes == 2
+    assert clock.sleeps == [operator.EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS]
+
+
+def test_quiescent_route_seal_retries_only_a_typed_snapshot_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceConflictError,
+    )
+
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    policy = object()
+    client = _QuiescenceClient(
+        generations=["generation:a", "generation:a", "generation:a"],
+        rows=[
+            [_routing_row(pending_deliveries=0)],
+            [_routing_row(pending_deliveries=0)],
+        ],
+    )
+    factory = _RouteProjectionFactory(
+        [TaskSourceConflictError("snapshot raced"), policy]
+    )
+    clock = _QuiescenceClock()
+
+    result = operator._seal_quiescent_execution_route_policy(
+        server=object(),
+        owner_client=client,
+        admission=_quiescence_admission(),
+        timeout_seconds=1.0,
+        monotonic=clock,
+        sleeper=clock.sleep,
+        task_source_factory=factory,
+    )
+
+    assert result is policy
+    assert client.generation_calls == 3
+    assert factory.calls == factory.closes == 2
+    assert clock.sleeps == [operator.EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS]
+
+
+def test_quiescent_route_seal_times_out_while_deliveries_remain_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    client = _QuiescenceClient(
+        generations=["generation:a"],
+        rows=[[_routing_row(pending_deliveries=1)]],
+    )
+    factory = _RouteProjectionFactory([object()])
+    clock = _QuiescenceClock()
+
+    with pytest.raises(
+        operator.OperatorError,
+        match="execution-route quiescence timed out: subscription_deliveries_pending",
+    ):
+        operator._seal_quiescent_execution_route_policy(
+            server=object(),
+            owner_client=client,
+            admission=_quiescence_admission(),
+            timeout_seconds=0.1,
+            monotonic=clock,
+            sleeper=clock.sleep,
+            task_source_factory=factory,
+        )
+
+    assert client.generation_calls == 3
+    assert len(client.routing_calls) == 3
+    assert factory.calls == factory.closes == 0
+    assert clock.sleeps == [0.05, 0.05]
+
+
+def test_quiescent_route_seal_propagates_a_non_conflict_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    client = _QuiescenceClient(
+        generations=["generation:a"],
+        rows=[[_routing_row(pending_deliveries=0)]],
+    )
+    failure = PermissionError("typed transport denied")
+    factory = _RouteProjectionFactory([failure])
+    clock = _QuiescenceClock()
+
+    with pytest.raises(PermissionError) as observed:
+        operator._seal_quiescent_execution_route_policy(
+            server=object(),
+            owner_client=client,
+            admission=_quiescence_admission(),
+            timeout_seconds=1.0,
+            monotonic=clock,
+            sleeper=clock.sleep,
+            task_source_factory=factory,
+        )
+
+    assert observed.value is failure
+    assert factory.calls == factory.closes == 1
+    assert clock.sleeps == []
+
+
+@pytest.mark.parametrize(
+    "routing_rows",
+    [
+        [],
+        [
+            _routing_row(pending_deliveries=0),
+            _routing_row(pending_deliveries=0),
+        ],
+    ],
+    ids=("absent", "ambiguous"),
+)
+def test_quiescent_route_seal_rejects_noncanonical_subscription_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    routing_rows: list[dict],
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    client = _QuiescenceClient(
+        generations=["generation:a"],
+        rows=[routing_rows],
+    )
+    factory = _RouteProjectionFactory([object()])
+    clock = _QuiescenceClock()
+
+    with pytest.raises(
+        operator.OperatorError,
+        match="quiescence requires one active subscription",
+    ):
+        operator._seal_quiescent_execution_route_policy(
+            server=object(),
+            owner_client=client,
+            admission=_quiescence_admission(),
+            timeout_seconds=1.0,
+            monotonic=clock,
+            sleeper=clock.sleep,
+            task_source_factory=factory,
+        )
+
+    assert client.generation_calls == 1
+    assert len(client.routing_calls) == 1
+    assert factory.calls == factory.closes == 0
+    assert clock.sleeps == []
+
+
+def test_quiescent_route_seal_rejects_admitted_fanout_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setattr(
+        operator,
+        "_state_owner_outbox_health",
+        lambda _server: {"healthy": True},
+    )
+    row = _routing_row(pending_deliveries=0)
+    row["maximum_fanout"] = 17
+    client = _QuiescenceClient(
+        generations=["generation:a"],
+        rows=[[row]],
+    )
+    factory = _RouteProjectionFactory([object()])
+    clock = _QuiescenceClock()
+
+    with pytest.raises(
+        operator.OperatorError,
+        match="subscription fanout authority drifted",
+    ):
+        operator._seal_quiescent_execution_route_policy(
+            server=object(),
+            owner_client=client,
+            admission=_quiescence_admission(),
+            timeout_seconds=1.0,
+            monotonic=clock,
+            sleeper=clock.sleep,
+            task_source_factory=factory,
+        )
+
+    assert factory.calls == factory.closes == 0
+    assert clock.sleeps == []
+
+
 def test_state_owner_outbox_health_uses_full_canonical_status() -> None:
     operator = _operator()
 
@@ -898,6 +1611,152 @@ def test_state_owner_outbox_health_uses_full_canonical_status() -> None:
     assert health["caught_up"] is True
     assert health["commit_observer_bound"] is True
     assert server.status_calls == 1
+
+
+def test_steady_state_outbox_guard_survives_gated_drain_and_resets_on_catchup() -> None:
+    operator = _operator()
+    clock = {"now": 100.0}
+    guard = operator._SteadyStateOutboxHealth(
+        grace_seconds=30.0,
+        monotonic=lambda: clock["now"],
+    )
+    owner_status = {
+        "outbox_worker": {
+            "available": True,
+            "thread_alive": True,
+            "server_owned": True,
+            "polling": False,
+            "watermark": 126,
+            "committed_sequence": 127,
+            "drain_count": 59,
+            "last_error_type": "",
+        },
+        "typed_command_gateway": {
+            "commit_observer_bound": True,
+            "last_observer_error_type": "",
+        },
+    }
+    gated = operator._outbox_worker_health(owner_status)
+    assert gated["structural_healthy"] is True
+    assert gated["caught_up"] is False
+    assert gated["healthy"] is False
+    assert gated["classification"] == "state_owner_outbox_catching_up"
+
+    first = guard.observe(gated)
+    assert first["continue_running"] is True
+    assert first["classification"] == "state_owner_outbox_catching_up"
+    clock["now"] = 129.999
+    assert guard.observe(gated)["continue_running"] is True
+
+    owner_status["outbox_worker"]["watermark"] = 127
+    caught_up = operator._outbox_worker_health(owner_status)
+    recovered = guard.observe(caught_up)
+    assert recovered["continue_running"] is True
+    assert recovered["classification"] == "state_owner_outbox_healthy"
+
+    # A later independent gap receives a fresh bounded grace window.
+    clock["now"] = 200.0
+    owner_status["outbox_worker"]["committed_sequence"] = 128
+    later_gap = operator._outbox_worker_health(owner_status)
+    restarted = guard.observe(later_gap)
+    assert restarted["continue_running"] is True
+    assert restarted["lag_seconds"] == 0.0
+
+
+def test_steady_state_outbox_guard_fails_closed_after_persistent_lag() -> None:
+    operator = _operator()
+    clock = {"now": 500.0}
+    guard = operator._SteadyStateOutboxHealth(
+        grace_seconds=30.0,
+        monotonic=lambda: clock["now"],
+    )
+    lagging = operator._outbox_worker_health(
+        {
+            "outbox_worker": {
+                "available": True,
+                "thread_alive": True,
+                "server_owned": True,
+                "polling": False,
+                "watermark": 40,
+                "committed_sequence": 41,
+                "drain_count": 2,
+                "last_error_type": "",
+            },
+            "typed_command_gateway": {
+                "commit_observer_bound": True,
+                "last_observer_error_type": "",
+            },
+        }
+    )
+
+    assert guard.observe(lagging)["continue_running"] is True
+    clock["now"] = 529.999
+    assert guard.observe(lagging)["continue_running"] is True
+    clock["now"] = 530.0
+    expired = guard.observe(lagging)
+    assert expired["continue_running"] is False
+    assert expired["classification"] == "state_owner_outbox_lag_timeout"
+    assert expired["reason_code"] == "state_owner_outbox_lag_timeout"
+    assert expired["lag_seconds"] == 30.0
+
+
+def test_steady_state_outbox_guard_rejects_structural_failure_immediately() -> None:
+    operator = _operator()
+    guard = operator._SteadyStateOutboxHealth(monotonic=lambda: 1.0)
+    failed = operator._outbox_worker_health(
+        {
+            "outbox_worker": {
+                "available": False,
+                "thread_alive": False,
+                "server_owned": True,
+                "polling": False,
+                "watermark": 127,
+                "committed_sequence": 127,
+                "drain_count": 59,
+                "last_error_type": "",
+            },
+            "typed_command_gateway": {
+                "commit_observer_bound": True,
+                "last_observer_error_type": "",
+            },
+        }
+    )
+
+    decision = guard.observe(failed)
+    assert decision["continue_running"] is False
+    assert decision["classification"] == "state_owner_outbox_unavailable"
+    assert decision["reason_code"] == "state_owner_outbox_unavailable"
+
+
+def test_steady_state_outbox_guard_retains_bounded_transport_reason() -> None:
+    operator = _operator()
+    guard = operator._SteadyStateOutboxHealth(monotonic=lambda: 1.0)
+    failed = operator._outbox_worker_health(
+        {
+            "outbox_worker": {
+                "available": False,
+                "thread_alive": False,
+                "server_owned": True,
+                "polling": False,
+                "watermark": 127,
+                "committed_sequence": 127,
+                "drain_count": 59,
+                "last_error_type": "QuackClientTransportError",
+                "last_error_message": "must-not-escape",
+            },
+            "typed_command_gateway": {
+                "commit_observer_bound": True,
+                "last_observer_error_type": "",
+            },
+        }
+    )
+
+    decision = guard.observe(failed)
+
+    assert decision["continue_running"] is False
+    assert decision["reason_code"] == "state_owner_outbox_transport_failure"
+    assert "QuackClientTransportError" not in json.dumps(decision)
+    assert "must-not-escape" not in json.dumps(decision)
 
 
 @pytest.mark.parametrize(
@@ -1152,6 +2011,207 @@ def test_stop_ignores_stale_pid_observations_and_signals_only_sealed_births(
     assert all(item["birth"]["pid"] != stale_pid for item in receipt["process_results"])
 
 
+@pytest.mark.parametrize(
+    ("deterministic_task_count", "model_task_count"),
+    [(41, 3), (43, 1)],
+)
+def test_stop_retires_exact_historical_execution_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    deterministic_task_count: int,
+    model_task_count: int,
+) -> None:
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    paths = {
+        "operator_evidence": tmp_path / "evidence",
+        "launch_receipt": tmp_path / "launch.json",
+        "stop_receipt": tmp_path / "stop.json",
+        "executor_current": tmp_path / "executor-current.json",
+        "owner_status": tmp_path / "owner-status.json",
+        "owner": tmp_path / "owner",
+    }
+    historical_route = _execution_route_summary(
+        deterministic_task_count=deterministic_task_count,
+        model_task_count=model_task_count,
+        policy_id=f"route-policy:historical-{deterministic_task_count}-{model_task_count}",
+    )
+    births = _install_admitted_generation(
+        operator,
+        paths,
+        launch_route=historical_route,
+    )
+    retired: list[dict] = []
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, {}))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(operator, "_owner_liveness", lambda _status: "dead")
+    monkeypatch.setattr(operator, "_birth_liveness", lambda _birth: "dead")
+    monkeypatch.setattr(operator, "_port_is_free", lambda _host, _port: True)
+
+    def retire_executor(*, paths, supervisor_birth, fallback_executor_birth, grace_seconds):
+        del paths, grace_seconds
+        retired.extend([dict(supervisor_birth), dict(fallback_executor_birth)])
+        return (
+            [
+                {
+                    "role": "executor_supervisor",
+                    "birth": dict(supervisor_birth),
+                    "result": "already_dead",
+                },
+                {
+                    "role": "executor_daemon",
+                    "birth": dict(fallback_executor_birth),
+                    "result": "already_dead",
+                },
+            ],
+            [],
+        )
+
+    monkeypatch.setattr(operator, "_retire_configured_executor", retire_executor)
+    monkeypatch.setattr(
+        operator,
+        "_terminate_birth",
+        lambda _birth, *, grace_seconds: "already_dead",
+    )
+
+    receipt = operator.stop(CONFIG)
+
+    assert receipt["complete"] is True
+    assert receipt["execution_route_policy"] == historical_route
+    assert retired == [births["executor_supervisor"], births["executor"]]
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ["executor_route_mismatch", "executor_binding_mismatch", "launch_receipt"],
+)
+def test_historical_stop_rejects_mismatched_or_tampered_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    paths = {
+        "operator_evidence": tmp_path / "evidence",
+        "launch_receipt": tmp_path / "launch.json",
+        "stop_receipt": tmp_path / "stop.json",
+        "executor_current": tmp_path / "executor-current.json",
+        "owner_status": tmp_path / "owner-status.json",
+        "owner": tmp_path / "owner",
+    }
+    historical_route = _execution_route_summary(
+        deterministic_task_count=41,
+        model_task_count=3,
+        policy_id="route-policy:historical",
+    )
+    current_route = (
+        {**historical_route, "policy_id": "route-policy:foreign"}
+        if tamper == "executor_route_mismatch"
+        else historical_route
+    )
+    _install_admitted_generation(
+        operator,
+        paths,
+        launch_route=historical_route,
+        current_route=current_route,
+    )
+    if tamper == "executor_binding_mismatch":
+        executor_current = operator._json_object(paths["executor_current"])
+        executor_current["execution_route_policy_id"] = "route-policy:foreign"
+        operator._atomic_json(paths["executor_current"], executor_current)
+    elif tamper == "launch_receipt":
+        launch = operator._json_object(paths["launch_receipt"])
+        launch["execution_route_policy"]["policy_id"] = "route-policy:tampered"
+        operator._atomic_json(paths["launch_receipt"], launch)
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, {}))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(
+        operator,
+        "_retire_configured_executor",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("mismatched route reached executor retirement")
+        ),
+    )
+
+    expected = (
+        "identity is absent or invalid"
+        if tamper == "launch_receipt"
+        else "executor runtime is not bound"
+    )
+    with pytest.raises(operator.OperatorError, match=expected):
+        operator.stop(CONFIG)
+
+
+def test_status_reports_obsolete_route_only_for_fully_dead_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    paths = {
+        "operator_evidence": tmp_path / "evidence",
+        "launch_receipt": tmp_path / "launch.json",
+        "status_receipt": tmp_path / "status.json",
+        "executor_current": tmp_path / "executor-current.json",
+        "owner_status": tmp_path / "owner-status.json",
+    }
+    historical_route = _execution_route_summary(
+        deterministic_task_count=41,
+        model_task_count=3,
+        policy_id="route-policy:historical",
+    )
+    births = _install_admitted_generation(
+        operator,
+        paths,
+        launch_route=historical_route,
+    )
+    executor_current = operator._json_object(paths["executor_current"])
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, {}))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(operator, "_owner_liveness", lambda _status: "dead")
+    monkeypatch.setattr(operator, "_birth_liveness", lambda _birth: "dead")
+    monkeypatch.setattr(
+        operator,
+        "_runtime_projection",
+        lambda _paths, *, launched_at_ns, expected_supervisor_birth: {
+            "supervisor_status": {},
+            "task_state": {},
+        },
+    )
+    monkeypatch.setattr(
+        operator,
+        "_executor_runtime_projection",
+        lambda _paths, *, expected_supervisor_birth: {
+            "current": executor_current,
+            "execution_route_policy": historical_route,
+            "supervisor_liveness": "dead",
+            "executor_liveness": "dead",
+        },
+    )
+
+    snapshot = operator._status_snapshot(CONFIG, persist=False)
+
+    assert snapshot["execution_route_policy"] == historical_route
+    assert snapshot["execution_route_population"] == "obsolete"
+    assert snapshot["classification"] == "unavailable"
+    assert snapshot["healthy"] is False
+    assert snapshot["blocked_or_stuck"] is True
+
+    monkeypatch.setattr(
+        operator,
+        "_birth_liveness",
+        lambda birth: (
+            "alive" if dict(birth) == births["master"] else "dead"
+        ),
+    )
+    with pytest.raises(operator.OperatorError, match="runtime that is not fully dead"):
+        operator._status_snapshot(CONFIG, persist=False)
+
+
 def test_stale_owner_identity_is_rejected_before_any_stop() -> None:
     from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
         current_process_birth,
@@ -1166,7 +2226,7 @@ def test_stale_owner_identity_is_rejected_before_any_stop() -> None:
         server_id="server:test",
         store_id="foreign/control.duckdb",
         database_uuid="db-test",
-        schema_revision=2,
+        schema_revision=3,
         schema_fingerprint="sha256:" + "0" * 64,
         generation=1,
         fence_epoch=1,

@@ -12,6 +12,15 @@ import os
 def main():
     """Main entry point for the ipfs-accelerate command."""
     try:
+        # PCPC-028 has a direct, typed adapter.  Route it before importing the
+        # broad historical CLI so ``agent procedures`` remains provider-free
+        # and cannot accidentally acquire shell-dispatch compatibility paths.
+        if len(sys.argv) >= 3 and sys.argv[1:3] == ["agent", "procedures"]:
+            from ipfs_accelerate_py.agent_supervisor.procedure_compiler.cli import (
+                main as procedure_main,
+            )
+
+            return procedure_main(sys.argv[3:])
         # Add the current directory and parent directory to the path
         current_dir = os.path.dirname(os.path.abspath(__file__))
         parent_dir = os.path.dirname(current_dir)

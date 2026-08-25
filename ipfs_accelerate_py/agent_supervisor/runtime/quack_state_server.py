@@ -151,6 +151,7 @@ from ..task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_TOKEN_FILENAME,
     OwnerClientGrant,
     TypedStateOwnerGateway,
+    compact_default_owner_socket_path,
 )
 
 _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
@@ -1041,8 +1042,11 @@ class QuackStateServerConfig:
     isolation_receipt_path: Path | None = None
     typed_command_socket_path_override: Path | None = None
     repository_root: Path | None = None
+    allow_legacy_board_unstall: bool = True
 
     def __post_init__(self) -> None:
+        if type(self.allow_legacy_board_unstall) is not bool:
+            raise TypeError("allow_legacy_board_unstall must be a bool")
         raw_root = self.repository_root
         repository_root: Path | None = None
         if raw_root is not None and str(raw_root).strip():
@@ -1344,6 +1348,16 @@ class ExclusiveOwnerLease:
     def marker(self) -> OwnerMarker | None:
         return self._marker
 
+    @property
+    def held(self) -> bool:
+        """Whether this object still owns the live OS lease and fence."""
+
+        return (
+            self._handle is not None
+            and self._marker is not None
+            and bool(self._fence_token)
+        )
+
     def _read_marker(self) -> OwnerMarker | None:
         payload = _read_json(self.marker_path)
         if payload is None:
@@ -1556,7 +1570,7 @@ class QuackTransport(Protocol):
         """Return live identity observation used for readiness."""
 
     def stop(self, connection: Any | None = None) -> None:
-        """Stop serving (best effort)."""
+        """Stop serving or raise when the thread/listener survives."""
 
 
 class InProcessQuackTransport:
@@ -1566,11 +1580,123 @@ class InProcessQuackTransport:
     default refuses to claim readiness without a successful serve + live query.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        extension_path: str | Path | None = None,
+        startup_timeout_seconds: float = 10.0,
+        authorization_function: str = "",
+        probe_connection_factory: Callable[[], Any] | None = None,
+    ) -> None:
         self._started = False
         self._serve_uri = ""
         self._listen_uri = ""
         self._server_identity: dict[str, Any] = {}
+        self._extension_path = (
+            None if extension_path is None else Path(extension_path).resolve()
+        )
+        self._startup_timeout_seconds = float(startup_timeout_seconds)
+        self._authorization_function = str(authorization_function or "").strip()
+        self._probe_connection_factory = probe_connection_factory
+        self._serve_thread: threading.Thread | None = None
+        self._serve_cursor: Any | None = None
+        self._serve_error: BaseException | None = None
+
+    def _load_quack(self, connection: Any) -> None:
+        try:
+            if self._extension_path is None:
+                # LOAD only: production startup must provision the pinned
+                # extension in advance and never performs an implicit INSTALL.
+                connection.execute("LOAD quack")
+            else:
+                if not self._extension_path.is_file():
+                    raise FileNotFoundError(self._extension_path)
+                path = str(self._extension_path).replace("'", "''")
+                connection.execute(f"LOAD '{path}'")
+        except Exception as exc:
+            raise QuackStateServerCapabilityError(
+                f"failed to LOAD pinned quack for state-owner: {type(exc).__name__}"
+            ) from exc
+
+    def _install_authorization_callback(self, connection: Any) -> None:
+        """Select a pre-provisioned exact-query authorization callback.
+
+        Prefix/regular-expression SQL filtering is not a security boundary:
+        Quack supplies the complete server-side SQL string, but no typed
+        operation identity.  Consequently this transport refuses its former
+        broad regex macro and requires trusted startup code to provision a
+        callback that exact-matches the finite statements for its endpoint.
+        """
+
+        name = self._authorization_function
+        if not name or not name.replace("_", "a").isalnum():
+            raise QuackStateServerCapabilityError(
+                "Quack serving requires a pre-provisioned exact-query "
+                "authorization function"
+            )
+        try:
+            row = connection.execute(
+                "SELECT macro_definition FROM duckdb_functions() "
+                "WHERE function_name = ? LIMIT 1",
+                [name],
+            ).fetchone()
+            definition = "" if row is None else str(row[0] or "")
+            lowered = definition.casefold()
+            if (
+                not definition
+                or "query" not in lowered
+                or "=" not in definition
+                or lowered.strip("() ") in {"true", "1"}
+                or any(
+                    marker in lowered
+                    for marker in (
+                        "regexp_matches",
+                        "regexp_full_match",
+                        " like ",
+                        "starts_with",
+                        "contains(",
+                    )
+                )
+            ):
+                raise QuackStateServerCapabilityError(
+                    "authorization function must exact-match finite SQL strings"
+                )
+            connection.execute(
+                f"SET GLOBAL quack_authorization_function = '{name}'"
+            )
+            # Preserve Quack's constant-time built-in token comparison.
+            connection.execute(
+                "SET GLOBAL quack_authentication_function = 'quack_check_token'"
+            )
+        except Exception as exc:
+            if isinstance(exc, QuackStateServerCapabilityError):
+                raise
+            raise QuackStateServerCapabilityError(
+                "failed to install Quack authentication/authorization callbacks"
+            ) from exc
+
+    def _open_probe_connection(self) -> Any:
+        if self._probe_connection_factory is not None:
+            return self._probe_connection_factory()
+        try:
+            import duckdb
+
+            probe = duckdb.connect(database=":memory:")
+            self._load_quack(probe)
+            return probe
+        except Exception as exc:
+            raise QuackStateServerReadyError(
+                "could not open distinct Quack readiness client"
+            ) from exc
+
+    @staticmethod
+    def _listener_ready(host: str, port: int) -> bool:
+        target = host if _is_loopback_host(host) else DEFAULT_LOOPBACK_HOST
+        try:
+            with socket.create_connection((target, int(port)), timeout=0.1):
+                return True
+        except OSError:
+            return False
 
     def start(
         self,
@@ -1715,9 +1841,18 @@ class InProcessQuackTransport:
                     break
                 time.sleep(QUACK_LIVE_QUERY_BIRTH_RETRY_SECONDS)
         except Exception as exc:
-            raise QuackStateServerReadyError(
-                f"authenticated remote live query failed: {type(exc).__name__}"
-            ) from exc
+            last_error = exc
+        if last_error is not None or rows is None:
+            # An in-memory sidecar does not share the exclusive serve
+            # connection id.  Fall back to the owner connection that called
+            # quack_serve.
+            for sql, params in query_attempts:
+                try:
+                    rows = connection.execute(sql, params).fetchall()
+                    last_error = None
+                    break
+                except Exception as exc:  # pragma: no cover - extension-version path
+                    last_error = exc
         if last_error is not None:
             raise QuackStateServerReadyError(
                 f"authenticated remote live query failed: {type(last_error).__name__}"
@@ -1895,6 +2030,9 @@ class QuackStateServer:
     _vault: TokenVault | None = field(default=None, init=False)
     _capability: QuackCapabilityReport | None = field(default=None, init=False)
     _migration_report: MigrationRunReport | None = field(default=None, init=False)
+    _lifecycle_gate: threading.RLock = field(
+        default_factory=threading.RLock, init=False, repr=False
+    )
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _owner_transaction_lock: threading.RLock = field(
         default_factory=threading.RLock,
@@ -2468,9 +2606,12 @@ class QuackStateServer:
         )
 
     def typed_command_socket_path(self) -> Path:
-        return (
-            self.config.typed_command_socket_path_override
-            or self.config.state_dir / TYPED_STATE_OWNER_SOCKET_FILENAME
+        override = self.config.typed_command_socket_path_override
+        if override is not None:
+            return override
+        return compact_default_owner_socket_path(
+            self.config.state_dir / TYPED_STATE_OWNER_SOCKET_FILENAME,
+            identity=self.config.database_path,
         )
 
     def typed_command_token_path(self) -> Path:
@@ -2491,17 +2632,7 @@ class QuackStateServer:
     ) -> str:
         """Mint a bounded grant from owner code, never from a client request."""
 
-        with self._lock:
-            if self._lifecycle is not ServerLifecycle.READY:
-                raise QuackStateServerNotRunningError(
-                    "client grant issuance requires a ready state owner"
-                )
-            gateway = self._command_gateway
-        if gateway is None:
-            raise QuackStateServerControlError(
-                "typed command gateway is unavailable"
-            )
-        token, _grant = gateway.issue_grant(
+        token, _grant = self.issue_typed_client_grant_record(
             client_id=client_id,
             process_birth_id=process_birth_id,
             allowed_operations=allowed_operations,
@@ -2513,6 +2644,134 @@ class QuackStateServer:
             ttl_seconds=ttl_seconds,
         )
         return token
+
+    def issue_typed_client_grant_record(
+        self,
+        *,
+        client_id: str,
+        process_birth_id: str = "",
+        allowed_operations: Sequence[str] = (),
+        allowed_command_operations: Sequence[str] = (),
+        tenant_id: str = "",
+        federation_id: str = "",
+        entity_scopes: Mapping[str, str] | None = None,
+        peer_pid: int | None = None,
+        ttl_seconds: float = 3_600.0,
+    ) -> tuple[str, OwnerClientGrant]:
+        """Mint a token and return its revocable server-side grant record."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "client grant issuance requires a ready state owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError(
+                "typed command gateway is unavailable"
+            )
+        return gateway.issue_grant(
+            client_id=client_id,
+            process_birth_id=process_birth_id,
+            allowed_operations=allowed_operations,
+            allowed_command_operations=allowed_command_operations,
+            tenant_id=tenant_id,
+            federation_id=federation_id,
+            entity_scopes=entity_scopes,
+            peer_pid=peer_pid,
+            ttl_seconds=ttl_seconds,
+        )
+
+    def _require_eaaef_owner_gateway(self) -> TypedStateOwnerGateway:
+        identity = self._identity
+        owner = self._owner
+        gateway = self._command_gateway
+        marker = None if owner is None else owner.marker
+        if (
+            self._lifecycle is not ServerLifecycle.READY
+            or identity is None
+            or self._connection is None
+            or owner is None
+            or not owner.held
+            or marker is None
+            or not owner.fence_token
+            or marker.fence_token != owner.fence_token
+            or marker.server_id != identity.server_id
+            or marker.database_path != str(self.config.database_path)
+            or gateway is None
+            or gateway._connection is not self._connection  # noqa: SLF001
+            or dict(gateway.identity) != identity.to_dict()
+            or gateway.capability().get("available") is not True
+        ):
+            raise QuackStateServerNotRunningError(
+                "EAAEF binding requires the READY exclusive Quack state owner"
+            )
+        return gateway
+
+    def bind_external_quack_owner(
+        self,
+        *,
+        board_namespace: str,
+        shard_id: str,
+    ) -> Any:
+        """Issue the resource-free EAAEF-093 facade from this exact owner.
+
+        The facade receives no connection, database path, token, dispatcher,
+        or signing material.  Construction remains inside the owner boundary
+        so a caller cannot present a lookalike server identity as authority.
+        """
+
+        with self._lock:
+            self._require_eaaef_owner_gateway()
+            from .external_quack_owner import _bind_external_quack_owner
+
+            return _bind_external_quack_owner(
+                owner_server=self,
+                board_namespace=board_namespace,
+                shard_id=shard_id,
+            )
+
+    def bind_eaaef_typed_owner_command_service(
+        self,
+        *,
+        admission: Any,
+    ) -> Any:
+        """Bind R1 to this exact live owner without exporting owner resources."""
+
+        with self._lock:
+            gateway = self._require_eaaef_owner_gateway()
+            return gateway._bind_eaaef_typed_owner_command_service_from_server(  # noqa: SLF001
+                admission=admission,
+            )
+
+    def bind_eaaef_plan_r2_owner_service(
+        self,
+        *,
+        admission: Any,
+        plan_r2_operational_capability: Mapping[str, Any],
+        authorization: Mapping[str, Any],
+        trusted_capability_reviewer_dids: Sequence[str],
+        trusted_operator_dids: Sequence[str],
+        trusted_security_reviewer_dids: Sequence[str],
+    ) -> Any:
+        """Bind Plan-R2 only after R1 on the same live owner and authority."""
+
+        with self._lock:
+            gateway = self._require_eaaef_owner_gateway()
+            return gateway._bind_eaaef_plan_r2_owner_service_from_server(  # noqa: SLF001
+                admission=admission,
+                plan_r2_operational_capability=(
+                    plan_r2_operational_capability
+                ),
+                authorization=authorization,
+                trusted_capability_reviewer_dids=(
+                    trusted_capability_reviewer_dids
+                ),
+                trusted_operator_dids=trusted_operator_dids,
+                trusted_security_reviewer_dids=(
+                    trusted_security_reviewer_dids
+                ),
+            )
 
     def bind_typed_status_scope(self) -> None:
         """Bind the persisted status bootstrap to the admitted live slice."""
@@ -3067,19 +3326,20 @@ class QuackStateServer:
             return self.connection_factory(self.config.database_path)
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
-        if isinstance(self.transport, InProcessQuackTransport):
+        if not isinstance(self.transport, InProcessQuackTransport):
             return open_duckdb_connection(
                 self.config.database_path,
                 threads=1,
                 memory_limit=DEFAULT_MEMORY_LIMIT,
-                quack_owner=True,
             )
         return open_quack_state_owner_connection(self.config.database_path)
 
     def _read_replica_enabled(self) -> bool:
         """Return whether this is the real, non-injected transport path."""
 
-        return self.connection_factory is None
+        return self.connection_factory is None and isinstance(
+            self.transport, InProcessQuackTransport
+        )
 
     def _verify_loaded_transport_extensions(self, connection: Any) -> None:
         capability = self._capability
@@ -3513,6 +3773,10 @@ class QuackStateServer:
 
     def _unstall_stale_board_gates(self, connection: Any) -> None:
         """Retry leftover in_progress gates before quack_serve occupies the writer."""
+
+        if not self.config.allow_legacy_board_unstall:
+            self._log("legacy board unstall disabled by task-authority policy")
+            return
 
         try:
             result = unstall_stale_in_progress_tasks(connection)
@@ -5135,7 +5399,7 @@ class QuackStateServer:
                 secret_handle = self.config.resolved_secret_handle(server_id, generation)
                 assert self._vault is not None
                 self._vault.mint(secret_handle=secret_handle, generation=1)
-                token = self._vault.resolve(secret_handle)
+                self._vault.resolve(secret_handle)
 
                 identity = StateServerIdentity(
                     server_id=server_id,
@@ -5159,14 +5423,11 @@ class QuackStateServer:
                 )
                 self._identity = identity
 
-                assert self.transport is not None
-                # Publish identity before quack_serve occupies this connection.
-                # Auth callbacks open a fresh DuckDB session; DML on the serve
-                # connection after listen starts is reported as Authentication
-                # failed rather than lock contention.
+                # Publish identity before copying the non-authoritative
+                # transport replica.  The authoritative writer never serves
+                # Quack and therefore keeps external access disabled for its
+                # entire lifetime.
                 self._publish_identity_rows(connection, identity, capability)
-                # Last exclusive-writer window: quack_serve occupies this
-                # connection and later DML contends with auth callbacks.
                 self._unstall_stale_board_gates(connection)
                 public_obs = self.transport.start(
                     connection,
@@ -5457,6 +5718,27 @@ class QuackStateServer:
     def stop(self, *, fence_token: str | None = None) -> dict[str, Any]:
         """Stop through the fenced control path and release exclusive ownership."""
 
+        with self._lifecycle_gate:
+            return self._stop_under_lifecycle_gate(fence_token=fence_token)
+
+    def _stop_under_lifecycle_gate(
+        self,
+        *,
+        fence_token: str | None = None,
+    ) -> dict[str, Any]:
+        # A typed client can retain this server's exact RLock across a
+        # transaction.  Quiesce and join every gateway client before waiting
+        # for that lock, so an abandoned transaction reaches its rollback
+        # finally block and queued clients cannot deadlock locked teardown.
+        gateway_stopped = self._command_gateway
+        if gateway_stopped is not None:
+            try:
+                gateway_stopped.stop()
+            except Exception as exc:
+                raise QuackStateServerControlError(
+                    "typed command gateway could not quiesce before locked stop"
+                ) from exc
+
         # Stop the pump before taking the lifecycle lock.  It may be finishing
         # a typed transaction whose post-commit observer briefly needs that
         # lock; joining while holding it would deadlock shutdown.
@@ -5516,21 +5798,25 @@ class QuackStateServer:
                         "stop control server_id does not match live owner"
                     )
 
+            transport_stop_error: Exception | None = None
+            if (
+                self._command_gateway is not None
+                and self._command_gateway is not gateway_stopped
+            ):
+                raise QuackStateServerControlError(
+                    "typed command gateway changed inside the lifecycle gate"
+                )
+            self._command_gateway = None
             try:
-                if self._command_gateway is not None:
-                    self._command_gateway.stop()
-                    self._command_gateway = None
-                try:
-                    self.typed_command_token_path().unlink()
-                except FileNotFoundError:
-                    pass
-            except Exception as exc:
-                self._log(f"typed command gateway stop warning: {type(exc).__name__}")
+                self.typed_command_token_path().unlink()
+            except FileNotFoundError:
+                pass
 
             try:
                 self._stop_transport_connection(observe_closed=True)
             except Exception as exc:
-                self._log(f"transport stop warning: {type(exc).__name__}")
+                transport_stop_error = exc
+                self._log(f"transport stop failed: {type(exc).__name__}")
 
             try:
                 if self._connection is not None and identity is not None:
@@ -5569,6 +5855,10 @@ class QuackStateServer:
                 "server_id": identity.server_id if identity else "",
                 "at": _utc_iso(),
             }
+            if transport_stop_error is not None:
+                raise QuackStateServerControlError(
+                    "Quack transport stop did not prove listener termination"
+                ) from transport_stop_error
             return sanitize_for_export(receipt)
 
     def request_stop(self, *, fence_token: str | None = None) -> dict[str, Any]:
@@ -5620,6 +5910,9 @@ class QuackStateServer:
                     self.config.container_port or self._bound_port
                 ),
                 "store_id": self.config.store_id,
+                "legacy_board_unstall_enabled": (
+                    self.config.allow_legacy_board_unstall
+                ),
                 "secret_handle": identity.secret_handle if identity else self.secret_handle,
                 "identity": identity.to_dict() if identity else None,
                 "capability_status": (
@@ -5819,6 +6112,7 @@ def build_server(
     ] | None = None,
     event_source: EventSource | None = None,
     typed_command_socket_path: Path | str | None = None,
+    allow_legacy_board_unstall: bool = True,
 ) -> QuackStateServer:
     """Construct a configured :class:`QuackStateServer`."""
 
@@ -5845,6 +6139,7 @@ def build_server(
             if typed_command_socket_path is None
             else Path(typed_command_socket_path)
         ),
+        allow_legacy_board_unstall=allow_legacy_board_unstall,
     )
     server = QuackStateServer(
         config=config,

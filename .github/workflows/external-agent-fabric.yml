@@ -1,0 +1,37 @@
+name: external-agent-fabric
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+jobs:
+  qualification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: fail-closed focused matrix
+        run: |
+          set -euo pipefail
+          python3 -m pytest -q \
+            test/api/test_external_agent_handoff_contracts.py \
+            test/api/test_external_agent_codex_adapter.py \
+            test/api/test_external_agent_claude_adapter.py \
+            test/api/test_external_agent_generic_adapters.py \
+            test/api/test_external_agent_handoff_admission.py \
+            test/api/test_repository_handoff_contracts.py \
+            test/api/test_external_agent_principal.py \
+            test/api/test_source_disclosure_policy.py \
+            test/api/test_external_agent_approvals.py \
+            test/api/test_project_adapter_generic.py \
+            test/api/test_container_execution_contracts.py \
+            test/api/test_external_goal_contract.py \
+            test/api/test_external_composite_graph.py \
+            test/api/test_external_agent_control_schema.py \
+            test/security/test_external_prompt_injection.py \
+            test/api/test_external_agent_events.py \
+            test/api/test_external_agent_fixture_manifest.py
+        env:
+          PYTEST_ADDOPTS: "-o cache_dir=.pytest_cache"

@@ -19,7 +19,7 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,6 +41,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    canonical_json_bytes as task_body_canonical_json_bytes,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
     install_control_plane_schema,
@@ -64,6 +67,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    MAX_BODY_BYTES as MAX_TASK_BODY_BYTES,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon_runner as daemon_runner,
 )
@@ -74,6 +83,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalCandidateRetry,
+    DatabasePortalExecutionBridge,
     DatabasePortalValidationRetry,
     database_portal_consumed_no_progress_fingerprint,
     database_portal_task_contract_digest,
@@ -221,6 +231,12 @@ def _open_daemon(
     repo_root: Path | None = None,
     merge_target_ref: str = "HEAD",
     task_prefix: str = "",
+    process_instance_id: str | None = None,
+    validation_retry_successor_recovery_fn: Callable[
+        [DatabaseTaskAttempt, object, Mapping[str, object]],
+        Mapping[str, object],
+    ]
+    | None = None,
 ) -> DatabaseImplementationDaemon:
     database_path = control_path or (tmp_path / "control.duckdb")
     coordination_path = tmp_path / "coordination.duckdb"
@@ -261,6 +277,7 @@ def _open_daemon(
         coordination_path=coordination_path,
         execution_path=execution_path,
         owner_session_id=session,
+        process_instance_id=process_instance_id,
         authority_mode="embedded",
         task_source_kind="duckdb",
         markdown_path=markdown_path,
@@ -279,13 +296,15 @@ def _open_daemon(
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
         validation_fn=validation,
+        validation_retry_successor_recovery_fn=(
+            validation_retry_successor_recovery_fn
+        ),
         require_real_execution=True,
         clock_ms=clock_ms,
         repo_root=repo_root,
         merge_target_ref=merge_target_ref,
         task_prefix=task_prefix,
     )
-
 
 
 def _alias_home(task_alias: str, shard_count: int) -> int:
@@ -565,6 +584,127 @@ def test_strict_restart_requeues_pre_provider_out_of_home_attempt(
         assert admitted.task_alias == "DQP-T001"
     finally:
         home.close()
+
+
+def test_strict_restart_quarantines_pre_provider_attempt_at_configured_cap(
+    tmp_path: Path,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane-0"
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:strict-attempt-cap",
+        max_task_attempts=4,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=False,
+    )
+    try:
+        first.materialize_population(_population(1))
+        first.sync_ready_tasks_into_coordination()
+        for expected_attempt_number in range(1, 4):
+            prior = first.coordinator.claim_ready_task(
+                owner_session_id="session:strict-attempt-cap",
+            )
+            assert prior is not None
+            assert prior.attempt_number == expected_attempt_number
+            first.coordinator.release(
+                prior.as_fenced_lease(),
+                reason="seed configured strict attempt cap",
+            )
+        attempt = first.claim_next()
+        assert attempt is not None
+        assert attempt.attempt_number == 4
+        assert _alias_home(attempt.task_alias, 2) == 1
+    finally:
+        first.close()
+
+    provider_calls: list[str] = []
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:strict-attempt-cap",
+        provider_calls=provider_calls,
+        max_task_attempts=4,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    try:
+        implementation = restarted.run_once()["implementation_result"]
+        assert implementation["reason"] == "strict_resume_not_admitted"
+        assert implementation["task_requeued"] is False
+        assert implementation["task_quarantined"] is True
+        assert provider_calls == []
+        task = restarted.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "quarantined"
+        receipt = task.body["completion_receipt"]
+        assert receipt["operation"] == "database_strict_resume_quarantine"
+        assert receipt["max_task_attempts"] == 4
+        assert receipt["attempt_budget_exhausted"] is True
+        assert restarted.claim_next() is None
+        attempts = restarted.coordinator.coordination_registry_projection()[
+            "task_attempts"
+        ]
+        assert len(attempts) == 4
+        assert max(int(row["attempt_number"]) for row in attempts) == 4
+    finally:
+        restarted.close()
+
+
+def test_strict_resume_accepts_exact_legacy_fenced_retry(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:strict-rotated-retry",
+        provider_calls=provider_calls,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.claim_next()
+        assert first is not None and first.attempt_number == 1
+        assert provider_calls == []
+
+        now["ms"] = 7_000
+        second = daemon.claim_next()
+        assert second is not None and second.attempt_number == 2
+        assert provider_calls == []
+
+        task = daemon.task_source.get(second.task_cid)
+        assert task is not None and task.status == "in_progress"
+        receipt = task.body["completion_receipt"]
+        assert receipt["claim_id"] == first.claim_id
+        assert receipt.get("claim_phase_schema", "") == ""
+        assert receipt["claimed_from_revision"] + 1 == task.revision
+        projection = daemon.coordinator.coordination_registry_projection()
+        local_task = next(
+            row for row in projection["tasks"] if row["task_cid"] == task.task_cid
+        )
+        assert local_task["body"]["authoritative_revision"] == receipt[
+            "claimed_from_revision"
+        ] + 1
+        assert local_task["body"]["authoritative_status"] == "in_progress"
+        assert daemon._shared_retry_binding_matches_attempt(
+            task,
+            second,
+            local_task_body=local_task["body"],
+            local_projection=projection,
+        ) is True
+        assert daemon._strict_resume_admission_result(second) is None
+
+        result = daemon.resume_attempt(second)
+        assert result["resumed"] is True
+        assert result["status"] == "succeeded"
+        assert provider_calls == [second.task_cid]
+    finally:
+        daemon.close()
 
 
 def test_strict_restart_quarantines_effect_committed_out_of_home_attempt(
@@ -988,10 +1128,14 @@ def test_fresh_strict_lane_seeds_completed_dependency_before_claim(
                 "task_cid": "task:cid:001",
                 "status": "succeeded",
                 "body": {
-                    "authority": "database_task_source",
-                    "source_status": "skipped",
-                    "task_alias": "DQP-COMPLETE",
-                    "task_revision": 1,
+                    "authority": "task_source",
+                    "authoritative_status": "skipped",
+                    "authoritative_revision": 1,
+                    "restart_recovery_ready": False,
+                    "restart_recovery_owner_session_id": "",
+                    "restart_recovery_binding": {},
+                    "authoritative_attempt_floor": 0,
+                    "authoritative_attempt_floor_source": "",
                 },
             }
         ]
@@ -1316,6 +1460,122 @@ def test_landed_quarantined_task_with_outputs_is_completed(
         assert completed is not None
         assert completed.status == "completed"
         assert result["selection_idle_reason"] == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+
+def test_declared_output_paths_split_database_body_csv_fields() -> None:
+    task = SimpleNamespace(
+        outputs=(),
+        body={
+            "predicted_files": "first.py, nested/second.py",
+            "outputs": "third.py",
+        },
+    )
+
+    assert DatabaseImplementationDaemon._task_declared_output_paths(task) == (
+        "first.py",
+        "nested/second.py",
+        "third.py",
+    )
+
+
+def test_landed_quarantine_rejects_csv_with_unsafe_segment(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["predicted_files"] = "landed.py, ../missing.py"
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_unknown_callback_quarantine_receipt(),
+        )
+        quarantined = daemon.task_source.get("task:cid:001")
+        assert quarantined is not None
+        assert daemon._task_declared_output_paths(quarantined) == ()
+        assert daemon._task_outputs_landed_on_target(quarantined) is False
+
+        result = daemon.run_once()
+
+        assert result["landed_merge_reconciliations"] == []
+        assert result["unknown_callback_reopens"] == []
+        unchanged = daemon.task_source.get("task:cid:001")
+        assert unchanged is not None
+        assert unchanged.status == "quarantined"
+    finally:
+        daemon.close()
+
+
+def test_landed_quarantine_repairs_comma_separated_predicted_files(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path, "pkg/a.py")
+    for relative in ("pkg/b.py", "test/test_a.py"):
+        output = repo / relative
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("landed\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "pkg/b.py", "test/test_a.py"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "land remaining outputs"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["predicted_files"] = "pkg/a.py, pkg/b.py, test/test_a.py"
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_unknown_callback_quarantine_receipt(),
+        )
+        quarantined = daemon.task_source.get("task:cid:001")
+        assert quarantined is not None
+        assert quarantined.status == "quarantined"
+        assert daemon._task_declared_output_paths(quarantined) == (
+            "pkg/a.py",
+            "pkg/b.py",
+            "test/test_a.py",
+        )
+        assert daemon._task_outputs_landed_on_target(quarantined) is True
+
+        result = daemon.run_once()
+
+        repaired = result["landed_merge_reconciliations"]
+        assert len(repaired) == 1
+        assert repaired[0]["completed"] is True
+        assert repaired[0]["landed_outputs"] == [
+            "pkg/a.py",
+            "pkg/b.py",
+            "test/test_a.py",
+        ]
+        assert result["unknown_callback_reopens"] == []
+        completed = daemon.task_source.get("task:cid:001")
+        assert completed is not None
+        assert completed.status == "completed"
     finally:
         daemon.close()
 
@@ -3197,6 +3457,7 @@ def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim(
         session="session:fenced-retry-dependency",
         lease_ms=5_000,
         clock_ms=lambda: now["ms"],
+        strict_task_sharding=True,
     )
     dependency_cid = "task:cid:retry-dependency"
     dependent_cid = "task:cid:retry-dependent"
@@ -3307,14 +3568,81 @@ def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim(
             status="completed",
             evidence_digests=(evidence_digest,),
         )
+        fenced_receipts: list[dict[str, object]] = []
+        shared_cas = daemon._cas_task_status_database
+
+        def capture_fenced_receipt(
+            task_cid: str,
+            *,
+            expected_revision: int,
+            new_status: str,
+            receipt: object,
+            evidence_digests: object = None,
+        ) -> object:
+            assert isinstance(receipt, dict)
+            fenced_receipts.append(dict(receipt))
+            return shared_cas(
+                task_cid,
+                expected_revision=expected_revision,
+                new_status=new_status,
+                receipt=receipt,
+                evidence_digests=evidence_digests,
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            capture_fenced_receipt,
+        )
         converged_retry = daemon.claim_next(exclude_task_cids=(dependency_cid,))
         if converged_retry is not None:
             assert converged_retry.task_cid == dependent_cid
-            assert converged_retry.attempt_number >= 2
+            assert converged_retry.attempt_number == (
+                3 if retry_claims else 2
+            )
+            assert len(fenced_receipts) == 1
+            refreshed_receipt = fenced_receipts[0]
+            assert {
+                name: refreshed_receipt[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "attempt_number",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            } == {
+                "attempt_id": converged_retry.attempt_id,
+                "claim_id": converged_retry.claim_id,
+                "attempt_number": converged_retry.attempt_number,
+                "lease_id": converged_retry.lease_id,
+                "owner_session_id": converged_retry.owner_session_id,
+                "fencing_token": converged_retry.fencing_token,
+                "fence_epoch": converged_retry.fence_epoch,
+            }
+            assert refreshed_receipt["claimed_from_revision"] == 2
+            current = daemon.task_source.get(converged_retry.task_cid)
+            assert current is not None
+            projection = daemon.coordinator.coordination_registry_projection()
+            local_task = next(
+                row
+                for row in projection["tasks"]
+                if row["task_cid"] == converged_retry.task_cid
+            )
+            assert daemon._shared_retry_binding_matches_attempt(
+                current,
+                converged_retry,
+                local_task_body=local_task["body"],
+                local_projection=projection,
+            ) is True
+            assert daemon._strict_resume_admission_result(converged_retry) is None
         else:
             # Lease expiry without a replacement claim still fails closed:
             # the original in-progress cursor is the only live attempt.
             assert unchanged.status == "in_progress"
+            assert fenced_receipts == []
     finally:
         daemon.close()
 
@@ -5019,7 +5347,684 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         daemon.close()
 
 
-def test_unusable_candidate_retries_instead_of_blocking(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "path_count",
+    (2, 192),
+    ids=("ordinary", "bounded-large-receipt"),
+)
+def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_count: int,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "tests@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Tests"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "inventory").mkdir()
+    if path_count == 2:
+        changed_paths = [
+            "inventory/result.json",
+            "inventory/summary.json",
+        ]
+    else:
+        long_directory = "a" * 240
+        changed_paths = [
+            (
+                f"inventory/{long_directory}/{index:03d}-"
+                + "b" * 238
+                + ".json"
+            )
+            for index in range(path_count)
+        ]
+        assert all(
+            490 <= len(path.encode("utf-8")) <= 500
+            for path in changed_paths
+        )
+    changed_paths = sorted(changed_paths)
+    declared_paths = list(reversed(changed_paths))
+    for relative in changed_paths:
+        output_path = repo / relative
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"result":true}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "--", "inventory"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "candidate"], cwd=repo, check=True)
+    candidate_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    rescue_branch = "rescue/dqp-t001-attempt-1-failed-validation"
+    subprocess.run(
+        ["git", "branch", rescue_branch, candidate_commit],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-qm", "target advances"],
+        cwd=repo,
+        check=True,
+    )
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    holder: dict[str, object] = {}
+    now = {"ms": 1_000}
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        if attempt.attempt_number == 1:
+            daemon = holder["daemon"]
+            assert isinstance(daemon, DatabaseImplementationDaemon)
+            receipt = _validation_retry_receipt(daemon, attempt)
+            receipt.update(
+                {
+                    "implementation_commit": candidate_commit,
+                    "rescue_branch": rescue_branch,
+                    "changed_paths": changed_paths,
+                }
+            )
+            receipt.pop("receipt_id")
+            receipt["receipt_id"] = daemon._database_portal_evidence_digest(
+                receipt
+            )
+            raise DatabasePortalValidationRetry(receipt)
+        if attempt.attempt_number == 2:
+            raise DatabasePortalBridgeError(
+                "database claim validation retry seed failed verification"
+            )
+        return {
+            "status": "succeeded",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
+
+    def replay(
+        attempt: DatabaseTaskAttempt,
+        record: object,
+        historical_claim_body: Mapping[str, object],
+    ) -> Mapping[str, object]:
+        bridge = holder["bridge"]
+        assert isinstance(bridge, DatabasePortalExecutionBridge)
+        return bridge.verify_validation_retry_successor_recovery(
+            attempt,
+            record,
+            historical_claim_body,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:seed-order-successor-recovery",
+        provider_fn=provider,
+        max_task_attempts=4,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+        validation_retry_successor_recovery_fn=replay,
+    )
+    holder["daemon"] = daemon
+    try:
+        population = _population(1)
+        population["tasks"][0]["outputs"] = [
+            {"path": path}
+            for path in declared_paths
+        ]
+        daemon.materialize_population(population)
+        initial_task = daemon.task_source.get("task:cid:001")
+        assert initial_task is not None
+        route_binding = {
+            "policy_id": "policy:successor-route-test",
+            "task_revision": int(initial_task.revision),
+            "task_cid": initial_task.task_cid,
+            "task_alias": initial_task.task_alias,
+        }
+
+        def bind_test_route(_source: object, task: object) -> Mapping[str, object]:
+            assert getattr(task, "task_cid", "") == initial_task.task_cid
+            return dict(route_binding)
+
+        def validate_test_route(
+            _source: object,
+            value: Mapping[str, object],
+            *,
+            task: object,
+            allow_claim_revision: bool = False,
+        ) -> Mapping[str, object]:
+            if dict(value) != route_binding:
+                raise ValueError("rotated test execution route")
+            task_revision = int(getattr(task, "revision", 0) or 0)
+            if task_revision != route_binding["task_revision"]:
+                if not allow_claim_revision:
+                    raise ValueError("advanced test route was not admitted")
+                task_body = getattr(task, "body", None)
+                receipt = (
+                    task_body.get("completion_receipt")
+                    if isinstance(task_body, Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(receipt, Mapping)
+                    or dict(
+                        receipt.get("execution_route_binding") or {}
+                    )
+                    != route_binding
+                ):
+                    raise ValueError("advanced test task lost its route")
+            return dict(route_binding)
+
+        monkeypatch.setattr(
+            type(daemon.task_source),
+            "execution_route_binding_for_task",
+            bind_test_route,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            type(daemon.task_source),
+            "validate_execution_route_binding",
+            validate_test_route,
+            raising=False,
+        )
+        holder["bridge"] = DatabasePortalExecutionBridge(
+            task_source=daemon.task_source,
+            attempt_root=tmp_path / "portal-attempts",
+            portal_factory=lambda _paths, _alias: SimpleNamespace(),
+            repository_root=repo,
+            max_task_attempts=4,
+        )
+
+        source_result = daemon.run_once()
+        source = daemon.get_attempt(source_result["attempt_id"])
+        assert source is not None and source.attempt_number == 1
+        assert daemon.task_source.get(source.task_cid).status == "retrying"
+
+        now["ms"] = 7_000
+        target_result = daemon.run_once()
+        assert "attempt_id" in target_result, target_result
+        target = daemon.get_attempt(target_result["attempt_id"])
+        assert target is not None and target.attempt_number == 2
+        blocked = daemon.task_source.get(target.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        # A moved rescue ref makes the repository replay fail closed without
+        # changing the task or queue.  Restoring the exact preserved ref then
+        # admits the one typed successor recovery.
+        subprocess.run(
+            ["git", "branch", "-f", rescue_branch, target_commit],
+            cwd=repo,
+            check=True,
+        )
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert daemon.task_source.get(target.task_cid).status == "blocked"
+        subprocess.run(
+            ["git", "branch", "-f", rescue_branch, candidate_commit],
+            cwd=repo,
+            check=True,
+        )
+
+        if path_count == 2:
+            history_projection = (
+                daemon.task_source.task_revision_history_projection(
+                    target.task_cid
+                )
+            )
+            history_receipts = [
+                revision["body"]["completion_receipt"]
+                for revision in history_projection["revisions"]
+                if isinstance(revision.get("body"), Mapping)
+                and isinstance(
+                    revision["body"].get("completion_receipt"),
+                    Mapping,
+                )
+            ]
+            route_fields = {
+                "execution_route_binding",
+                "execution_route_policy_id",
+                "execution_route_origin_revision",
+            }
+            routed_receipts = [
+                receipt
+                for receipt in history_receipts
+                if receipt.get("attempt_id")
+                in {source.attempt_id, target.attempt_id}
+                and set(receipt) & route_fields
+            ]
+            assert len(routed_receipts) >= 3
+            assert all(
+                set(receipt) & route_fields == route_fields
+                for receipt in routed_receipts
+            )
+            assert all(
+                {
+                    field: receipt[field]
+                    for field in route_fields
+                }
+                == {
+                    field: routed_receipts[0][field]
+                    for field in route_fields
+                }
+                for receipt in routed_receipts[1:]
+            )
+
+            revisions = json.loads(
+                json.dumps(history_projection["revisions"])
+            )
+            source_retry_index = next(
+                index
+                for index, revision in enumerate(revisions)
+                if isinstance(revision.get("body"), Mapping)
+                and isinstance(
+                    revision["body"].get("completion_receipt"),
+                    Mapping,
+                )
+                and revision["body"]["completion_receipt"].get("operation")
+                in {
+                    "database_portal_validation_retry",
+                    "database_portal_validation_retry_recovery",
+                }
+            )
+            claim_index = next(
+                index
+                for index, revision in enumerate(revisions)
+                if isinstance(revision.get("body"), Mapping)
+                and isinstance(
+                    revision["body"].get("completion_receipt"),
+                    Mapping,
+                )
+                and revision["body"]["completion_receipt"].get("operation")
+                == "database_claim"
+                and revision["body"]["completion_receipt"].get("attempt_id")
+                == target.attempt_id
+            )
+            terminal_index = next(
+                index
+                for index, revision in enumerate(revisions)
+                if isinstance(revision.get("body"), Mapping)
+                and isinstance(
+                    revision["body"].get("completion_receipt"),
+                    Mapping,
+                )
+                and revision["body"]["completion_receipt"].get("operation")
+                == "database_portal_terminal_failure"
+                and revision["body"]["completion_receipt"].get("attempt_id")
+                == target.attempt_id
+            )
+            source_retry_revision = revisions[source_retry_index][
+                "revision"
+            ]
+            claim_revision = revisions[claim_index]["revision"]
+            terminal_revision = revisions[terminal_index]["revision"]
+            assert claim_revision == source_retry_revision + 1
+            assert terminal_revision == claim_revision + 1
+
+            reservation = json.loads(json.dumps(revisions[claim_index]))
+            reservation_receipt = reservation["body"][
+                "completion_receipt"
+            ]
+            reservation_receipt.update(
+                {
+                    "operation": "database_claim",
+                    "claimed_from_revision": source_retry_revision,
+                    "claim_phase_schema": (
+                        implementation_daemon_module
+                        .TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                    ),
+                    "claim_process_attestation": {
+                        "schema": "typed-claim-process@test",
+                        "grant_id": "grant:test",
+                        "client_id": "client:test",
+                        "process_birth_id": "birth:test",
+                        "pid": 1,
+                        "uid": 0,
+                        "start_time_ticks": 1,
+                        "boot_id": "boot:test",
+                        "parent_pid": 0,
+                    },
+                }
+            )
+            reservation["revision"] = source_retry_revision + 1
+
+            admission = json.loads(json.dumps(reservation))
+            admission_receipt = admission["body"]["completion_receipt"]
+            admission_receipt.update(
+                {
+                    "operation": "database_attempt_admitted",
+                    "claim_phase_schema": (
+                        implementation_daemon_module
+                        .TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                    ),
+                    "admitted_from_revision": source_retry_revision + 1,
+                    "attempt_execution_phase": "claimed",
+                    "attempt_execution_revision": 1,
+                }
+            )
+            admission["revision"] = source_retry_revision + 2
+
+            typed_terminal = json.loads(
+                json.dumps(revisions[terminal_index])
+            )
+            typed_terminal["revision"] = source_retry_revision + 3
+            typed_terminal["body"]["completion_receipt"][
+                "control_expected_revision"
+            ] = source_retry_revision + 2
+            typed_revisions = (
+                revisions[:claim_index]
+                + [reservation, admission, typed_terminal]
+                + revisions[terminal_index + 1 :]
+            )
+
+            def history_projection_for(
+                projected_revisions: list[dict[str, object]],
+            ) -> dict[str, object]:
+                projection = {
+                    "schema": history_projection["schema"],
+                    "task_cid": history_projection["task_cid"],
+                    "revisions": projected_revisions,
+                }
+                projection["projection_cid"] = content_identity(projection)
+                return projection
+
+            typed_projection = history_projection_for(typed_revisions)
+            typed_blocked = replace(
+                blocked,
+                revision=source_retry_revision + 3,
+                body=dict(typed_terminal["body"]),
+            )
+            with monkeypatch.context() as typed_patch:
+                typed_patch.setattr(
+                    type(daemon.task_source),
+                    "task_revision_history_projection",
+                    lambda _source, _task_cid: typed_projection,
+                )
+                verified_typed = (
+                    daemon._verified_validation_retry_successor_authority(
+                        target,
+                        typed_blocked,
+                    )
+                )
+            assert verified_typed["recovery_receipt"][
+                "target_claim_control_revision"
+            ] == source_retry_revision + 2
+
+            for corrupt in ("partial", "rotated"):
+                corrupted_revisions = json.loads(
+                    json.dumps(typed_revisions)
+                )
+                corrupted_receipt = corrupted_revisions[
+                    source_retry_index
+                ]["body"]["completion_receipt"]
+                if corrupt == "partial":
+                    corrupted_receipt.pop("execution_route_policy_id")
+                else:
+                    corrupted_receipt[
+                        "execution_route_origin_revision"
+                    ] += 1
+                corrupted_projection = history_projection_for(
+                    corrupted_revisions
+                )
+                with monkeypatch.context() as route_patch:
+                    route_patch.setattr(
+                        type(daemon.task_source),
+                        "task_revision_history_projection",
+                        lambda _source, _task_cid, value=corrupted_projection: value,
+                    )
+                    with pytest.raises(
+                        (
+                            DatabaseImplementationAuthorityError,
+                            DatabaseImplementationConflictError,
+                        )
+                    ):
+                        daemon._verified_validation_retry_successor_authority(
+                            target,
+                            typed_blocked,
+                        )
+
+        if path_count == 192:
+            # A rejected size admission must happen before the predecessor
+            # queue is rewritten.  Use a deliberately tiny bound to exercise
+            # that ordering, then restore the production bound for recovery.
+            task_before_preflight = daemon.task_source.get(target.task_cid)
+            queue_before_preflight = daemon.task_source.get_queue_entry(
+                target.task_cid
+            )
+            assert task_before_preflight is not None
+            assert queue_before_preflight is not None
+            monkeypatch.setattr(
+                implementation_daemon_module,
+                "_MAX_TASK_BODY_BYTES",
+                1,
+            )
+            assert daemon.reconcile_terminal_portal_failures() == []
+            task_after_preflight = daemon.task_source.get(target.task_cid)
+            queue_after_preflight = daemon.task_source.get_queue_entry(
+                target.task_cid
+            )
+            assert task_after_preflight is not None
+            assert queue_after_preflight is not None
+            assert task_after_preflight.revision == task_before_preflight.revision
+            assert task_body_canonical_json_bytes(
+                dict(task_after_preflight.body)
+            ) == task_body_canonical_json_bytes(
+                dict(task_before_preflight.body)
+            )
+            assert queue_after_preflight.to_dict() == (
+                queue_before_preflight.to_dict()
+            )
+            monkeypatch.setattr(
+                implementation_daemon_module,
+                "_MAX_TASK_BODY_BYTES",
+                MAX_TASK_BODY_BYTES,
+            )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        recovered = daemon.task_source.get(target.task_cid)
+        assert recovered is not None and recovered.status == "retrying"
+        recovery_receipt = recovered.body["completion_receipt"]
+        assert (
+            len(task_body_canonical_json_bytes(dict(recovered.body)))
+            < MAX_TASK_BODY_BYTES
+        )
+        assert recovery_receipt["operation"] == (
+            "database_portal_validation_retry_successor_recovery"
+        )
+        assert recovery_receipt["queue_receipt"] == {}
+        recovery = recovery_receipt[
+            "validation_retry_successor_recovery"
+        ]
+        assert recovery["source_attempt_id"] == source.attempt_id
+        assert recovery["target_attempt_id"] == target.attempt_id
+        compact_proof = recovery["bridge_order_repair_proof"]
+        assert compact_proof["preserved_commit_verified"] is True
+        assert "scoped_outputs" not in compact_proof
+        assert "changed_paths" not in compact_proof
+        assert compact_proof["path_count"] == path_count
+
+        def ordered_path_digest(paths: list[str]) -> str:
+            return "sha256:" + hashlib.sha256(
+                task_body_canonical_json_bytes(paths)
+            ).hexdigest()
+
+        assert compact_proof["scoped_outputs_ordered_digest"] == (
+            ordered_path_digest(declared_paths)
+        )
+        assert compact_proof["changed_paths_ordered_digest"] == (
+            ordered_path_digest(changed_paths)
+        )
+        assert compact_proof["exact_output_set_digest"] == (
+            ordered_path_digest(sorted(changed_paths))
+        )
+
+        # Reconstruct the former full proof exactly: its retained proof_id
+        # still commits to both ordered arrays even though persistence now
+        # carries only bounded digest/count evidence.
+        legacy_proof = {
+            key: value
+            for key, value in compact_proof.items()
+            if key
+            not in {
+                "path_count",
+                "scoped_outputs_ordered_digest",
+                "changed_paths_ordered_digest",
+                "exact_output_set_digest",
+            }
+        }
+        legacy_proof["scoped_outputs"] = declared_paths
+        legacy_proof["changed_paths"] = changed_paths
+        legacy_proof_body = dict(legacy_proof)
+        legacy_proof_id = legacy_proof_body.pop("proof_id")
+        assert legacy_proof_id == "sha256:" + hashlib.sha256(
+            task_body_canonical_json_bytes(legacy_proof_body)
+        ).hexdigest()
+        if path_count == 192:
+            legacy_receipt = json.loads(json.dumps(recovery_receipt))
+            legacy_receipt[
+                "validation_retry_successor_recovery"
+            ]["bridge_order_repair_proof"] = legacy_proof
+            legacy_task_body = dict(recovered.body)
+            legacy_task_body["completion_receipt"] = legacy_receipt
+            assert (
+                len(task_body_canonical_json_bytes(legacy_task_body))
+                > MAX_TASK_BODY_BYTES
+            )
+        assert daemon.reconcile_terminal_portal_failures() == []
+
+        now["ms"] = 13_000
+        successor = daemon.claim_next()
+        assert successor is not None and successor.attempt_number == 3
+        claimed = daemon.task_source.get(successor.task_cid)
+        assert claimed is not None and claimed.status == "in_progress"
+        claim_receipt = claimed.body["completion_receipt"]
+        assert claim_receipt["validation_retry_source_attempt_id"] == (
+            source.attempt_id
+        )
+        assert claim_receipt["validation_retry_seed"] == (
+            recovery_receipt["validation_retry_seed"]
+        )
+        assert successor.fencing_token > target.fencing_token
+    finally:
+        daemon.close()
+
+
+def test_transition_invalid_replay_rejects_a_foreign_database_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A losing claim cannot replace a concurrent same-status receipt."""
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-replay",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        original_cas = daemon.task_source.compare_and_set_status
+        foreign_receipt = {
+            "operation": "database_claim",
+            "attempt_id": "attempt:foreign",
+            "claim_id": "claim:foreign",
+            "owner_session_id": "session:foreign",
+            "attempt_number": 2,
+            "fencing_token": 11,
+            "fence_epoch": 3,
+            "lease_id": "lease:foreign",
+        }
+        admitted = original_cas(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            status="in_progress",
+            receipt=foreign_receipt,
+        )
+        assert admitted.changed is True
+        admitted_revision = int(admitted.task.revision)
+
+        losing_receipt = {
+            **foreign_receipt,
+            "attempt_id": "attempt:losing",
+            "claim_id": "claim:losing",
+            "owner_session_id": "session:losing",
+            "attempt_number": 1,
+            "fencing_token": 10,
+            "fence_epoch": 2,
+            "lease_id": "lease:losing",
+        }
+        calls = {"count": 0}
+
+        def transition_invalid(*args: object, **kwargs: object) -> object:
+            calls["count"] += 1
+            raise RuntimeError("transition_invalid: status already in_progress")
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "compare_and_set_status",
+            transition_invalid,
+        )
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="foreign durable receipt",
+        ):
+            daemon._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(task.revision),
+                new_status="in_progress",
+                receipt=losing_receipt,
+            )
+        assert calls["count"] == 1
+        current = daemon.task_source.get(task.task_cid)
+        assert current is not None
+        assert current.revision == admitted_revision
+        assert current.body["completion_receipt"] == foreign_receipt
+
+        exact_calls = {"count": 0}
+
+        def transition_invalid_once(*args: object, **kwargs: object) -> object:
+            exact_calls["count"] += 1
+            if exact_calls["count"] == 1:
+                raise RuntimeError(
+                    "transition_invalid: status already in_progress"
+                )
+            return original_cas(*args, **kwargs)
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "compare_and_set_status",
+            transition_invalid_once,
+        )
+        replayed = daemon._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="in_progress",
+            receipt=foreign_receipt,
+        )
+        assert replayed.changed is False
+        assert exact_calls["count"] == 2
+        current = daemon.task_source.get(task.task_cid)
+        assert current is not None
+        assert current.revision == admitted_revision
+        assert current.body["completion_receipt"] == foreign_receipt
+    finally:
+        daemon.close()
+
+
+def test_unusable_candidate_reaches_retry_handler_without_generic_requeue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
         raise DatabasePortalCandidateRetry("no_change_completion_not_allowed")
 
@@ -5030,6 +6035,19 @@ def test_unusable_candidate_retries_instead_of_blocking(tmp_path: Path) -> None:
         max_task_attempts=4,
     )
     try:
+        def reject_generic_requeue(*_args: object, **_kwargs: object) -> None:
+            pytest.fail("candidate retry entered generic stale-attempt requeue")
+
+        monkeypatch.setattr(
+            daemon,
+            "_retire_stale_running_attempt",
+            reject_generic_requeue,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_requeue_unimplemented_control_task",
+            reject_generic_requeue,
+        )
         daemon.materialize_population(_population(1))
         result = daemon.run_once()
         implementation = result["implementation_result"]
@@ -5046,6 +6064,10 @@ def test_unusable_candidate_retries_instead_of_blocking(tmp_path: Path) -> None:
         failed = daemon.phase_history(attempt.attempt_id)[-1]["body"]
         assert failed["reason"] == "no_change_completion_not_allowed"
         assert failed["portal_retryable_failure"] is True
+        assert failed["attempt_consumed"] is True
+        assert failed["provider_dispatched"] is True
+        receipt = task.body["completion_receipt"]
+        assert receipt["operation"] != "requeue_unimplemented_stale_attempt"
     finally:
         daemon.close()
 
@@ -5075,6 +6097,36 @@ def test_reconcile_rearms_blocked_portal_provider_failed(tmp_path: Path) -> None
         assert task is not None
         assert task.status == "retrying"
         assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+def test_reconcile_skips_stale_terminal_after_control_rearm(tmp_path: Path) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-ready-after-terminal-portal",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "blocked"
+        daemon.task_source.compare_and_set_status(
+            attempt.task_cid,
+            task.revision,
+            "ready",
+        )
+        assert daemon.task_source.get(attempt.task_cid).status == "ready"
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert daemon.task_source.get(attempt.task_cid).status == "ready"
     finally:
         daemon.close()
 
@@ -5525,6 +6577,18 @@ def test_reconcile_reopens_inflight_deferral_budget_block(
     )
     try:
         daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, "context")
+        attempt = daemon.commit_phase(
+            attempt,
+            "failed",
+            body={
+                "reason": "inflight_process",
+                "portal_retryable_failure": True,
+                "portal_terminal_failure": False,
+            },
+        )
         task = daemon.task_source.get("task:cid:001")
         assert task is not None
         daemon.task_source.compare_and_set_status(
@@ -5533,6 +6597,13 @@ def test_reconcile_reopens_inflight_deferral_budget_block(
             status="blocked",
             receipt={
                 "operation": "database_portal_typed_deferral_budget_exhausted",
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
                 "retry_budget": {
                     "matching_attempts": [
                         {"reason": "inflight_process"},
@@ -5547,9 +6618,55 @@ def test_reconcile_reopens_inflight_deferral_budget_block(
         assert blocked.status == "blocked"
         outcomes = daemon.reconcile_inflight_deferral_blocks()
         assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        assert outcomes[0]["changed"] is True
         retried = daemon.task_source.get("task:cid:001")
         assert retried is not None
         assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_reconcile_refuses_unbound_inflight_deferral_budget_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:inflight-deferral-unbound",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            status="blocked",
+            receipt={
+                "operation": "database_portal_typed_deferral_budget_exhausted",
+                "retry_budget": {
+                    "matching_attempts": [{"reason": "inflight_process"}],
+                },
+            },
+        )
+
+        result = daemon.run_once()
+
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["inflight_deferral_unstalls"] == [
+            {
+                "task_cid": "task:cid:001",
+                "task_alias": "DQP-T001",
+                "previous_status": "blocked",
+                "status": "blocked",
+                "changed": False,
+                "reason": "inflight_deferral_exact_attempt_unavailable",
+            }
+        ]
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
     finally:
         daemon.close()
 
@@ -5868,6 +6985,412 @@ def test_typed_portal_deferral_budget_blocks_before_fourth_dispatch(
         assert idle["implementation_result"] is None
         assert idle["selection_idle_reason"] == "no_ready_tasks"
         assert len(provider_attempts) == 3
+    finally:
+        daemon.close()
+
+
+def test_mixed_leftover_wait_deferrals_do_not_consume_typed_budget(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    observed_reasons: list[str] = []
+    reasons = [
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+        "inflight_process",
+    ]
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        reason = reasons[len(observed_reasons)]
+        observed_reasons.append(reason)
+        raise DatabasePortalBridgeDeferred(
+            reason,
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:mixed-leftover-wait-budget",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        task_cid = str(first["claimed_task_cid"])
+        assert first["implementation_result"]["retry_budget_exhausted"] is False
+
+        for timestamp in (31_001, 61_002):
+            now["ms"] = timestamp
+            retried = daemon.run_once()
+            assert (
+                retried["implementation_result"]["retry_budget_exhausted"]
+                is False
+            )
+
+        task = daemon.task_source.get(task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert observed_reasons == reasons
+    finally:
+        daemon.close()
+
+
+def test_run_once_rearms_identity_bound_mixed_leftover_wait_exhaustion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    reasons = [
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+    ]
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            reasons[len(observed_attempts) - 1],
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:mixed-leftover-wait-rearm",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        attempts = [
+            daemon.get_attempt(item.attempt_id) for item in observed_attempts
+        ]
+        assert all(item is not None for item in attempts)
+        exact_attempts = [item for item in attempts if item is not None]
+        _rewrite_as_legacy_typed_deferrals(
+            daemon,
+            exact_attempts,
+            reasons,
+        )
+        attempt, budget = _block_with_legacy_leftover_wait_budget(
+            daemon,
+            exact_attempts,
+        )
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        # Keep the test at the reconciliation boundary so the just-rearmed
+        # task is not immediately claimed and its recovery receipt remains
+        # independently inspectable.
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        now["ms"] = 100_000
+        repaired = daemon.run_once()
+        recovery = repaired[
+            "leftover_wait_deferral_budget_recovery_reconciliations"
+        ]
+        assert len(recovery) == 1
+        assert recovery[0]["changed"] is True
+        assert repaired["terminal_retry_reconciliations"] == []
+
+        rearmed = daemon.task_source.get(attempt.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        receipt = rearmed.body["completion_receipt"]
+        seed = receipt["leftover_wait_deferral_budget_recovery_seed"]
+        assert receipt["attempt_id"] == attempt.attempt_id
+        assert receipt["claim_id"] == attempt.claim_id
+        assert receipt["fencing_token"] == attempt.fencing_token
+        assert seed["attempt_id"] == attempt.attempt_id
+        assert seed["blocked_retry_budget"] == budget
+        assert seed["blocked_retry_budget_observation_id"] == budget[
+            "observation_id"
+        ]
+        assert seed["blocked_retry_budget_digest"] == (
+            daemon._database_portal_evidence_digest(budget)
+        )
+        assert seed["exhausting_reasons"] == sorted(
+            {
+                "inflight_process",
+                "external_protected_checkout_recovery_required",
+            }
+        )
+        daemon._verified_leftover_wait_deferral_budget_recovery_state(
+            attempt,
+            rearmed,
+        )
+    finally:
+        daemon.close()
+
+
+def test_leftover_wait_budget_recovery_rejects_mixed_non_wait_reason(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    reasons = ["inflight_process", "provider_capacity_backoff"]
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            reasons[len(observed_attempts) - 1],
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:leftover-wait-rearm-fail-closed",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        attempts = [
+            daemon.get_attempt(item.attempt_id) for item in observed_attempts
+        ]
+        assert all(item is not None for item in attempts)
+        exact_attempts = [item for item in attempts if item is not None]
+        _rewrite_as_legacy_typed_deferrals(
+            daemon,
+            exact_attempts,
+            reasons,
+        )
+        attempt, _budget = _block_with_legacy_leftover_wait_budget(
+            daemon,
+            exact_attempts,
+        )
+
+        outcomes = (
+            daemon.reconcile_blocked_leftover_wait_deferral_budget_recoveries()
+        )
+        assert outcomes == []
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("drift_surface", ("direct_seed", "reconciler_budget"))
+def test_leftover_wait_recovery_rejects_self_hashed_reason_drift(
+    tmp_path: Path,
+    drift_surface: str,
+) -> None:
+    now = {"ms": 1_000}
+    reasons = [
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+    ]
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            reasons[len(observed_attempts) - 1],
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:leftover-wait-rearm-reason-drift",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        attempts = [
+            daemon.get_attempt(item.attempt_id) for item in observed_attempts
+        ]
+        assert all(item is not None for item in attempts)
+        exact_attempts = [item for item in attempts if item is not None]
+        _rewrite_as_legacy_typed_deferrals(
+            daemon,
+            exact_attempts,
+            reasons,
+        )
+        budget = _legacy_leftover_wait_budget(daemon, exact_attempts)
+        if drift_surface == "reconciler_budget":
+            forged_budget = json.loads(json.dumps(budget))
+            forged_budget["matching_attempts"][0]["reason"] = (
+                "inflight_process"
+            )
+            matching_digest = hashlib.sha256()
+            for identity in forged_budget["matching_attempts"]:
+                encoded = json.dumps(
+                    identity,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+                matching_digest.update(len(encoded).to_bytes(8, "big"))
+                matching_digest.update(encoded)
+            forged_budget["matching_attempts_digest"] = (
+                "sha256:" + matching_digest.hexdigest()
+            )
+            forged_budget.pop("observation_id")
+            forged_budget["observation_id"] = (
+                daemon._database_portal_evidence_digest(forged_budget)
+            )
+            attempt, _ = _block_with_legacy_leftover_wait_budget(
+                daemon,
+                exact_attempts,
+                budget_override=forged_budget,
+            )
+            outcomes = (
+                daemon.reconcile_blocked_leftover_wait_deferral_budget_recoveries()
+            )
+            assert len(outcomes) == 1
+            assert outcomes[0]["changed"] is False
+            assert outcomes[0]["reason"] == (
+                "leftover_wait_deferral_budget_recovery_not_admitted"
+            )
+        else:
+            attempt, budget = _block_with_legacy_leftover_wait_budget(
+                daemon,
+                exact_attempts,
+            )
+            legitimate = (
+                daemon._finalize_leftover_wait_deferral_budget_recovery_receipt(
+                    attempt=attempt,
+                    blocked_retry_budget=budget,
+                )
+            )
+            forged = json.loads(json.dumps(legitimate))
+            forged["exhausting_reasons"] = ["inflight_process"]
+            forged_body = dict(forged)
+            forged_body.pop("receipt_id")
+            forged["receipt_id"] = daemon._database_portal_evidence_digest(
+                forged_body
+            )
+
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="failed independent verification",
+            ):
+                daemon.recover_blocked_leftover_wait_deferral_budget_retry(
+                    attempt,
+                    recovery_evidence=forged,
+                )
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("leftover_wait_count", (17, 65))
+def test_typed_deferral_budget_paginates_past_leftover_wait_history(
+    tmp_path: Path,
+    leftover_wait_count: int,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:typed-history-pagination:{leftover_wait_count}",
+        max_task_attempts=3,
+    )
+    try:
+        task_cid = "task:cid:001"
+        reasons = [
+            "validation_project_dependency_preflight_failed",
+            "validation_project_dependency_preflight_failed",
+            *(["inflight_process"] * leftover_wait_count),
+            "validation_project_dependency_preflight_failed",
+        ]
+        attempts: list[DatabaseTaskAttempt] = []
+        connection = daemon._require_connection()
+        for index, reason in enumerate(reasons, start=1):
+            attempt = DatabaseTaskAttempt(
+                attempt_id=f"attempt:pagination:{index:03d}",
+                claim_id=f"claim:pagination:{index:03d}",
+                task_cid=task_cid,
+                task_alias="DQP-T001",
+                attempt_number=index,
+                owner_session_id=daemon.owner_session_id,
+                fencing_token=index,
+                fence_epoch=1,
+                lease_id=f"lease:pagination:{index:03d}",
+                committed_phase="failed",
+                status="failed",
+                started_at_ms=index,
+                finished_at_ms=index + 1,
+                revision=2,
+                body={},
+            )
+            typed = daemon._typed_deferral_receipt(attempt, reason=reason)
+            phase_body = {
+                "reason": reason,
+                "portal_retryable_failure": True,
+                "deferred": True,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "typed_deferral_slot_consumed": True,
+                "typed_deferral": typed,
+            }
+            connection.execute(
+                """
+                INSERT INTO database_task_attempts(
+                    attempt_id, claim_id, task_cid, task_alias,
+                    attempt_number, owner_session_id, fencing_token,
+                    fence_epoch, lease_id, committed_phase, status,
+                    started_at_ms, finished_at_ms, revision, body_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    attempt.attempt_id,
+                    attempt.claim_id,
+                    attempt.task_cid,
+                    attempt.task_alias,
+                    attempt.attempt_number,
+                    attempt.owner_session_id,
+                    attempt.fencing_token,
+                    attempt.fence_epoch,
+                    attempt.lease_id,
+                    attempt.committed_phase,
+                    attempt.status,
+                    attempt.started_at_ms,
+                    attempt.finished_at_ms,
+                    attempt.revision,
+                    "{}",
+                ],
+            )
+            connection.execute(
+                """
+                INSERT INTO attempt_phases(
+                    attempt_id, phase, committed_at_ms, fencing_token,
+                    fence_epoch, revision, body_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    attempt.attempt_id,
+                    "failed",
+                    attempt.finished_at_ms,
+                    attempt.fencing_token,
+                    attempt.fence_epoch,
+                    attempt.revision,
+                    json.dumps(phase_body, separators=(",", ":"), sort_keys=True),
+                ],
+            )
+            attempts.append(attempt)
+
+        budget = daemon._typed_deferral_budget_observation(attempts[-1])
+
+        assert budget is not None
+        assert budget["exhausted"] is True
+        assert budget["typed_deferral_count"] == 3
+        assert budget["verified_typed_deferral_count"] == 3
+        assert budget["verified_count_complete"] is True
+        assert budget["typed_deferral_count_is_lower_bound"] is False
+        assert len(budget["matching_attempts"]) == 3
     finally:
         daemon.close()
 
@@ -6249,6 +7772,197 @@ def test_retry_reconciliation_reuses_attempt_bound_queue_after_cas_crash(
         daemon.close()
 
 
+def test_typed_blocked_recovery_persists_cooldown_before_control_cas() -> None:
+    writes: list[str] = []
+    captured: dict[str, object] = {}
+
+    class _TypedRecoverySource:
+        def __init__(self) -> None:
+            self.entry: SimpleNamespace | None = None
+            self.task = SimpleNamespace(
+                task_cid="task:typed-blocked-recovery",
+                status="blocked",
+                revision=3,
+                body={
+                    "completion_receipt": {
+                        "operation": "database_portal_terminal_failure"
+                    }
+                },
+            )
+
+        def get(self, _task_cid: str) -> SimpleNamespace:
+            return self.task
+
+        def get_queue_entry(self, _task_cid: str) -> SimpleNamespace | None:
+            return self.entry
+
+        def record_task_retry_cooldown(self, **kwargs: object) -> SimpleNamespace:
+            writes.append("cooldown")
+            captured.update(kwargs)
+            self.entry = SimpleNamespace(
+                retry_not_before_ms=1_000,
+                reason=kwargs["reason"],
+            )
+            return SimpleNamespace(
+                changed=True,
+                to_dict=lambda: {"changed": True},
+            )
+
+    source = _TypedRecoverySource()
+    daemon = SimpleNamespace(
+        task_source=source,
+        _database_portal_backoff_ms=lambda value: int(value),
+        _now_ms=lambda: 1_000,
+        _protect_retry_transition_authority=(
+            lambda _attempt, _coordination: None
+        ),
+    )
+
+    def control_cas(
+        _task_cid: str,
+        *,
+        expected_revision: int,
+        new_status: str,
+        receipt: object,
+        evidence_digests: object = None,
+    ) -> SimpleNamespace:
+        writes.append("cas")
+        assert expected_revision == 3
+        assert new_status == "retrying"
+        assert isinstance(receipt, dict)
+        return SimpleNamespace(
+            revision=4,
+            to_dict=lambda: {"changed": True},
+        )
+
+    daemon._cas_task_status_database = control_cas
+    attempt = DatabaseTaskAttempt(
+        attempt_id="attempt:typed-blocked-recovery",
+        claim_id="claim:typed-blocked-recovery",
+        task_cid=source.task.task_cid,
+        task_alias="CASF-TYPED-BLOCKED-RECOVERY",
+        attempt_number=2,
+        owner_session_id="session:typed-blocked-recovery",
+        fencing_token=31,
+        fence_epoch=17,
+        lease_id="lease:typed-blocked-recovery",
+        committed_phase=ATTEMPT_PHASE_FAILED,
+        status="failed",
+        started_at_ms=100,
+        finished_at_ms=900,
+        revision=5,
+    )
+
+    result = DatabaseImplementationDaemon._persist_task_retry_state(
+        daemon,
+        attempt,
+        reason="portal\r\ncandidate\x00retry",
+        backoff_ms=0,
+        evidence_source="portal_provider_failed_reclassified",
+        allow_blocked_recovery=True,
+    )
+
+    assert writes == ["cooldown", "cas"]
+    assert captured["expected_task_status"] == "blocked"
+    assert captured["expected_task_revision"] == 3
+    assert captured["attempt_number"] == 2
+    assert captured["now_ms"] == 1_000
+    assert captured["reason"] == (
+        "database_portal_retry:attempt:typed-blocked-recovery:"
+        "portal candidate retry"
+    )
+    assert result["status"] == "retrying"
+    assert result["control_previous_status"] == "blocked"
+
+
+def test_typed_retrying_reuse_requires_exact_task_queue_validation() -> None:
+    calls: list[str] = []
+
+    class _TypedRetryingSource:
+        task = SimpleNamespace(
+            task_cid="task:typed-retrying-exact-reuse",
+            status="retrying",
+            revision=4,
+            body={"completion_receipt": {"operation": "database_portal_retry"}},
+        )
+        entry = SimpleNamespace(
+            retry_not_before_ms=5_000,
+            reason=(
+                "database_portal_retry:attempt:typed-retrying-exact-reuse:"
+                "typed_deferral"
+            ),
+        )
+
+        def get(self, _task_cid: str) -> SimpleNamespace:
+            return self.task
+
+        def get_queue_entry(self, _task_cid: str) -> SimpleNamespace:
+            return self.entry
+
+        @staticmethod
+        def record_task_retry_cooldown(**_kwargs: object) -> None:
+            raise AssertionError("already-retrying path must not write a new digest")
+
+        @staticmethod
+        def validate_retrying_task_cooldown(
+            _task_cid: str,
+            **kwargs: object,
+        ) -> None:
+            calls.append("validate")
+            assert kwargs["expected_attempt_identity"] == {
+                "attempt_id": "attempt:typed-retrying-exact-reuse",
+                "claim_id": "claim:typed-retrying-exact-reuse",
+                "lease_id": "lease:typed-retrying-exact-reuse",
+                "owner_session_id": "session:typed-retrying-exact-reuse",
+                "attempt_number": 1,
+                "fencing_token": 7,
+                "fence_epoch": 3,
+            }
+            raise DatabaseImplementationAuthorityError(
+                "retrying task receipt differs from its typed cooldown"
+            )
+
+    source = _TypedRetryingSource()
+    daemon = SimpleNamespace(
+        task_source=source,
+        _database_portal_backoff_ms=lambda value: int(value),
+        _now_ms=lambda: 5_000,
+        _protect_retry_transition_authority=(
+            lambda _attempt, _coordination: None
+        ),
+    )
+    attempt = DatabaseTaskAttempt(
+        attempt_id="attempt:typed-retrying-exact-reuse",
+        claim_id="claim:typed-retrying-exact-reuse",
+        task_cid=source.task.task_cid,
+        task_alias="CASF-TYPED-RETRYING-EXACT-REUSE",
+        attempt_number=1,
+        owner_session_id="session:typed-retrying-exact-reuse",
+        fencing_token=7,
+        fence_epoch=3,
+        lease_id="lease:typed-retrying-exact-reuse",
+        committed_phase=ATTEMPT_PHASE_FAILED,
+        status="failed",
+        started_at_ms=100,
+        finished_at_ms=900,
+        revision=5,
+    )
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="differs from its typed cooldown",
+    ):
+        DatabaseImplementationDaemon._persist_task_retry_state(
+            daemon,
+            attempt,
+            reason="typed_deferral",
+            backoff_ms=0,
+            evidence_source="portal_provider_failed",
+        )
+
+    assert calls == ["validate"]
+
+
 def test_retry_reconciliation_repairs_retrying_without_queue(
     tmp_path: Path,
 ) -> None:
@@ -6530,7 +8244,9 @@ def test_portal_builder_with_inherited_database_program_without_implement_is_obs
         daemon.close()
 
 
-def test_quack_runner_builders_use_lane_private_sidecars(tmp_path: Path) -> None:
+def test_quack_runner_builders_require_bound_typed_owner_for_lane_sidecars(
+    tmp_path: Path,
+) -> None:
     control = tmp_path / "control.duckdb"
 
     def lane_args(index: int):
@@ -6551,7 +8267,7 @@ def test_quack_runner_builders_use_lane_private_sidecars(tmp_path: Path) -> None
                 "--state-store-generation",
                 "test-generation",
                 "--state-schema-revision",
-                "datasets-authoritative-operational-v1",
+                "generic-typed-owner-v1",
                 "--todo-path",
                 str(tmp_path / "unused.md"),
                 "--state-dir",
@@ -6567,51 +8283,51 @@ def test_quack_runner_builders_use_lane_private_sidecars(tmp_path: Path) -> None
             ]
         )
 
-    first, _first_context = build_portal_implementation_daemon_from_args(
-        lane_args(0),
-        repo_root=tmp_path,
-    )
-    second, _second_context = build_portal_implementation_daemon_from_args(
-        lane_args(1),
-        repo_root=tmp_path,
-    )
-    third = build_database_implementation_daemon_from_args(
-        lane_args(2),
-        database_path=control,
-    )
-    try:
-        assert isinstance(first, DatabaseImplementationDaemon)
-        assert isinstance(second, DatabaseImplementationDaemon)
-        assert isinstance(third, DatabaseImplementationDaemon)
-        # Quack lanes keep a private control sidecar under state_dir so they
-        # never open the shared remote store as a writer.  An explicit
-        # database_path override still binds the canonical control plane.
-        assert first.database_path == tmp_path / "lane-0" / "quack-lane-control.duckdb"
-        assert second.database_path == tmp_path / "lane-1" / "quack-lane-control.duckdb"
-        assert third.database_path == control
-        assert first.execution_path != second.execution_path
-        assert first.coordination_path != second.coordination_path
-        assert third.execution_path not in {first.execution_path, second.execution_path}
-        assert third.coordination_path not in {
-            first.coordination_path,
-            second.coordination_path,
-        }
-        assert first.execution_path.parent == tmp_path / "lane-0"
-        assert second.execution_path.parent == tmp_path / "lane-1"
-        assert third.execution_path.parent == tmp_path / "lane-2"
-        assert first.coordination_path.parent == tmp_path / "lane-0"
-        assert second.coordination_path.parent == tmp_path / "lane-1"
-        assert third.coordination_path.parent == tmp_path / "lane-2"
-        assert first.strict_task_sharding is True
-        assert second.strict_task_sharding is True
-        assert third.strict_task_sharding is True
-        assert first.task_shard_index == 0
-        assert second.task_shard_index == 1
-        assert third.task_shard_index == 2
-    finally:
-        first.close()
-        second.close()
-        third.close()
+    resolved = [
+        resolve_database_implementation_paths(lane_args(index), authority_mode="quack")
+        for index in range(3)
+    ]
+    assert [item["database_path"] for item in resolved] == [
+        tmp_path / f"lane-{index}" / "quack-lane-control.duckdb"
+        for index in range(3)
+    ]
+    assert [item["coordination_path"].parent for item in resolved] == [
+        tmp_path / f"lane-{index}" for index in range(3)
+    ]
+    assert [item["execution_path"].parent for item in resolved] == [
+        tmp_path / f"lane-{index}" for index in range(3)
+    ]
+    assert len({item["coordination_path"] for item in resolved}) == 3
+    assert len({item["execution_path"] for item in resolved}) == 3
+
+    # Path derivation alone is not Quack authority.  These convenience
+    # builders cannot mint or infer a remote-owner credential from argv, so
+    # they must fail closed until the launcher injects the exact attached
+    # TypedDatabaseTaskSource and its process-bound bootstrap credentials.
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="exact attached TypedDatabaseTaskSource",
+    ):
+        build_portal_implementation_daemon_from_args(
+            lane_args(0),
+            repo_root=tmp_path,
+        )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="exact attached TypedDatabaseTaskSource",
+    ):
+        build_portal_implementation_daemon_from_args(
+            lane_args(1),
+            repo_root=tmp_path,
+        )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="exact attached TypedDatabaseTaskSource",
+    ):
+        build_database_implementation_daemon_from_args(
+            lane_args(2),
+            database_path=control,
+        )
 
 
 def test_database_lanes_register_disjoint_hash_shards(tmp_path: Path) -> None:

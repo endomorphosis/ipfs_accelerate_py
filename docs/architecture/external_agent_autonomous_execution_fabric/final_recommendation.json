@@ -1,0 +1,11 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/external-agent-final-recommendation@1",
+  "recommendation": "preview_only",
+  "supervised_external_pilot": false,
+  "unsupervised_autonomy": false,
+  "live_eight_container_qualification": false,
+  "live_runtime_invoked": false,
+  "evidence_mode": "contract_fail_closed",
+  "unsupported_codebases": "preview_only_or_human_configured",
+  "reason": "Live isolated containers and real external clients were not qualified; contract fail-closed evidence is not a go for autonomy."
+}

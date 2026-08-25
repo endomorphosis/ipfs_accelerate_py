@@ -236,7 +236,7 @@ def test_store_rejects_database_path(tmp_path: Path) -> None:
 def test_store_persists_compiled_frontier(tmp_path: Path) -> None:
     database = tmp_path / "control.duckdb"
     report = install_control_plane_schema(database, owner_id="owner:frontier-migration")
-    assert report.to_version == 2
+    assert report.to_version == 3
     client = open_embedded_client(
         database,
         owner_id="owner:frontier",

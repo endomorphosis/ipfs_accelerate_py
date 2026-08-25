@@ -37,6 +37,7 @@ from ..analysis.analyzer_health import (
 )
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
 )
@@ -1956,18 +1957,17 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
             )
         except (TypeError, ValueError):
             lock_pid = 0
-        lock_repo_root = (
-            str(lock_metadata.get("repo_root") or "").strip()
+        repository_matches = (
+            checkout_lock_repository_matches(lock_metadata, repo)
             if isinstance(lock_metadata, Mapping)
-            else ""
+            else None
         )
         owned_generated_repair = (
             isinstance(lock_metadata, Mapping)
             and str(lock_metadata.get("kind") or "") == "merge"
             and str(lock_metadata.get("operation") or "") == "generated_dirty_repair"
             and lock_pid == os.getpid()
-            and bool(lock_repo_root)
-            and Path(lock_repo_root).resolve() == repo.resolve()
+            and repository_matches is True
         )
         if owned_generated_repair:
             return None

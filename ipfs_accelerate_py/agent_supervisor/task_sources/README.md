@@ -25,6 +25,7 @@ Task projection and storage: Markdown/DuckDB taskboards, queues, indexes, and ta
 | `task_identity` | `task_sources/task_identity.py` |
 | `task_source` | `task_sources/task_source.py` |
 | `taskboard_store` | `task_sources/taskboard_store.py` |
+| `taskboard_ingest` | `task_sources/taskboard_ingest.py` |
 | `todo_vector_index` | `task_sources/todo_vector_index.py` |
 
 ## Preferred imports

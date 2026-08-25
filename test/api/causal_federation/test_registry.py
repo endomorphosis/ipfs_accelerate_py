@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from ipfs_accelerate_py.agent_supervisor.federation import contracts
+from ipfs_accelerate_py.agent_supervisor.federation import cli, contracts
 from ipfs_accelerate_py.agent_supervisor.federation.budgets import (
     AuthoritativeBudgetAuthority,
 )
@@ -77,6 +77,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import 
 from test.api.causal_federation.test_contracts import EXPIRY, NOW, sample_binding
 from test.api.causal_federation.test_trigger import (
     resolved_for,
+    sample_authentication,
     sample_policy,
     sample_request,
 )
@@ -113,7 +114,7 @@ def _open_repository(
 ]:
     database = tmp_path / "control.duckdb"
     report = install_control_plane_schema(database, owner_id="owner:registry-migration")
-    assert report.to_version == 2
+    assert report.to_version == 3
     client = open_embedded_client(
         database,
         owner_id="owner:registry",
@@ -790,10 +791,10 @@ def test_repository_seals_typed_catalog_and_rejects_raw_sql(tmp_path: Path) -> N
         client.close()
 
 
-def test_every_casf_template_prepares_against_migration_two(tmp_path: Path) -> None:
+def test_every_casf_template_prepares_against_canonical_schema(tmp_path: Path) -> None:
     database = tmp_path / "control.duckdb"
     report = install_control_plane_schema(database, owner_id="owner:prepare")
-    assert report.to_version == 2
+    assert report.to_version == 3
     templates = _casf_templates()
 
     assert len(templates) >= 26
@@ -804,6 +805,31 @@ def test_every_casf_template_prepares_against_migration_two(tmp_path: Path) -> N
             prepared_name = f"casf_template_probe_{ordinal}"
             connection.execute(f"PREPARE {prepared_name} AS {template.sql}")
             connection.execute(f"DEALLOCATE {prepared_name}")
+
+
+def test_transport_serializes_production_repository_create_receipt(
+    tmp_path: Path,
+) -> None:
+    _, client, repository, _, request, policy = _open_repository(tmp_path)
+    authentication = replace(
+        sample_authentication(request),
+        evidence_id=request.binding.authorization_evidence_ref,
+    )
+    transport = cli.FederationCreateTransport(
+        request=request,
+        authentication=authentication,
+    )
+    try:
+        response = _create(repository, request=request, policy=policy)
+        assert response[1].outcome == "accepted"
+
+        record = cli.federation_create_response_record(transport, response)
+    finally:
+        client.close()
+
+    assert record["identity"] == response[0].to_dict()
+    assert record["receipt"] == response[1].to_dict()
+    assert record["authentication_evidence_ref"] == authentication.cid
 
 
 def test_global_event_head_reconciles_preexisting_control_plane_events(

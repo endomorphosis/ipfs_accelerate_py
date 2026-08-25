@@ -1129,6 +1129,56 @@ def test_external_isolation_contract_rejects_unknown_fields(
         daemon_module.ExternalProviderIsolationConfig.parse(payload)
 
 
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        "tcp://127.0.0.1:2375",
+        "unix:///tmp/docker.sock",
+        "unix:///run/user/01000/docker.sock",
+    ),
+)
+def test_external_isolation_contract_rejects_noncanonical_local_endpoints(
+    tmp_path: Path,
+    endpoint: str,
+) -> None:
+    payload = _isolation_payload(_credential(tmp_path))
+    payload["runtime_endpoint"] = endpoint
+
+    with pytest.raises(ValueError, match="canonical local socket"):
+        daemon_module.validate_external_provider_isolation_config(
+            payload,
+            verify_host=False,
+        )
+
+
+def test_external_isolation_host_admission_remains_uid_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _isolation_payload(_credential(tmp_path))
+    monkeypatch.setattr(
+        daemon_module,
+        "_DOCKER_LOCAL_ENDPOINTS",
+        frozenset(
+            {
+                "unix:///var/run/docker.sock",
+                "unix:///run/user/0/docker.sock",
+            }
+        ),
+    )
+
+    parsed = daemon_module.validate_external_provider_isolation_config(
+        payload,
+        verify_host=False,
+    )
+    assert parsed.runtime_endpoint == "unix:///run/user/1000/docker.sock"
+    with pytest.raises(ValueError, match="not admitted for the current runtime"):
+        daemon_module.validate_external_provider_isolation_config(
+            payload,
+            verify_host=True,
+        )
+
+
 def test_host_validation_rejects_image_codex_digest_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

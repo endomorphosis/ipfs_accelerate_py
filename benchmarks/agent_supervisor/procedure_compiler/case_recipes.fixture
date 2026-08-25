@@ -1,0 +1,37 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-benchmark-recipes@1",
+  "corpus_id": "pcpc-frozen-benchmark-corpus-v1",
+  "recipe_version": 1,
+  "partitions": ["synthesis", "development", "held_out", "negative", "boundary", "adversarial"],
+  "families": [
+    {"family": "IMPORT_PURITY_REPAIR", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "FALSE_SUCCESS_TO_TYPED_OUTCOME", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "PSEUDO_CID_REPLACEMENT", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "MUTABLE_DEPENDENCY_PIN", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "SCHEMA_REGENERATION", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "API_ADAPTER_MIGRATION", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "CACHE_KEY_DEPENDENCY_REPAIR", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "STALE_RECEIPT_INVALIDATION", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "MISSING_ADMISSION_GATE", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "CONFIRMATION_BINDING_REPAIR", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "TEST_SELECTION_REPAIR", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "PROOF_SELECTION_REPAIR", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "DOCUMENTATION_CLAIM_NARROWING", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "MECHANICAL_RENAME", "coverage": "recurring", "expected": "accept", "operation": "repair"},
+    {"family": "GENERATED_PROJECTION_REFRESH", "coverage": "recovery", "expected": "accept", "operation": "recovery"},
+    {"family": "POST_MERGE_REQUALIFICATION", "coverage": "recovery", "expected": "accept", "operation": "recovery"},
+    {"family": "MERGE_CONFLICT_CLASSIFICATION", "coverage": "recovery", "expected": "refuse", "operation": "classify"},
+    {"family": "PROVIDER_UNAVAILABLE_RECOVERY", "coverage": "recovery", "expected": "accept", "operation": "recovery"},
+    {"family": "CONTEXT_OMISSION_REPAIR", "coverage": "recovery", "expected": "accept", "operation": "recovery"},
+    {"family": "KNOWN_FLAKY_FAILURE", "coverage": "recovery", "expected": "refuse", "operation": "classify"},
+    {"family": "UNKNOWN_TASK_FAMILY", "coverage": "unknown", "expected": "refuse", "operation": "classify"},
+    {"family": "UNSAFE_NEAR_MATCH_TASK", "coverage": "unsafe", "expected": "refuse", "operation": "refuse"},
+    {"family": "CROSS_REPOSITORY_TRANSFER", "coverage": "transfer", "expected": "refuse", "operation": "transfer"}
+  ],
+  "adversarial_metadata": {
+    "attack_classes": ["fixture-shortcut", "held-out-leak", "metadata-poisoning", "unsafe-transfer"],
+    "mandatory_decision": "refuse",
+    "requires_refusal_reason": true
+  },
+  "synthetic_only": true
+}

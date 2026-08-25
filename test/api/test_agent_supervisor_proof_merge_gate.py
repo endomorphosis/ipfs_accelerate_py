@@ -37,6 +37,10 @@ PROTECTED_PATH = "protected/lease.py"
 INVARIANT = "lease_safety"
 
 
+def test_merge_train_gate_receipt_type_uses_canonical_proof_module() -> None:
+    assert MergeTrain._gate_receipt_type() is MergeProofGateReceipt
+
+
 def _git(repo: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", *args],

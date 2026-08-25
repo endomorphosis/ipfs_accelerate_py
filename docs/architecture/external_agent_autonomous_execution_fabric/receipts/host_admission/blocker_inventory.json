@@ -1,0 +1,98 @@
+{
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "inventory",
+  "evidence": {
+    "auto_recoverable_action": "host_bootstrap_recovery",
+    "bootstrap_admission_decision": "no_go",
+    "items": [
+      {
+        "blocker": "ipfs_datasets_py nested checkout differs from its reviewed root",
+        "class": "unclassified",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "board validation has not admitted live launch",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "container_policy.live_dispatch_allowed is not true",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-185",
+          "EAAEF-186",
+          "EAAEF-191",
+          "EAAEF-183"
+        ]
+      },
+      {
+        "blocker": "configured-board launch admission rejected: bootstrap admission receipt is unavailable",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "worker_network_runtime_principals_unavailable",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-181"
+        ]
+      },
+      {
+        "blocker": "eaaef_scoped_provider_authorization_missing",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-184"
+        ]
+      },
+      {
+        "blocker": "oci_image_qualification_missing",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-185"
+        ]
+      },
+      {
+        "blocker": "container_profile_missing",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-186"
+        ]
+      },
+      {
+        "blocker": "provider_container_qualification_missing",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "quack_owner_qualification_missing",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-181",
+          "EAAEF-182"
+        ]
+      }
+    ],
+    "launch_plan_allowed": false,
+    "launch_plan_schema": "ipfs_accelerate_py/agent-supervisor/eaaef-launch-plan@2",
+    "materialization_receipt_cid": ""
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:b9a7c9eb784bc398d4518379e1d5992b78c778b90040cd3e1224377277f626c3",
+  "receipt_name": "blocker_inventory.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
+  "self_signed": false,
+  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
+  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-180"
+}

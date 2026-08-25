@@ -3223,7 +3223,36 @@ class MergeTrain:
         self,
         request: MergeRequest,
     ) -> bool:
-        """Return whether every declared output blob exists on the target."""
+        """Prove every declared candidate output is identical on the target.
+
+        Path existence alone is not integration evidence: a candidate can
+        modify an output that already existed at the target.  An ancestor is
+        already integrated by definition; otherwise compare the exact Git
+        tree entries so blob/tree identity and file mode must all agree.
+        """
+
+        candidate = str(request.commit_sha or "").strip().casefold()
+        if (
+            len(candidate) not in {40, 64}
+            or any(
+                character not in "0123456789abcdef"
+                for character in candidate
+            )
+        ):
+            return False
+        resolved = self._git(
+            "rev-parse", "--verify", f"{candidate}^{{commit}}"
+        )
+        if (
+            resolved.returncode != 0
+            or resolved.stdout.strip().casefold() != candidate
+        ):
+            return False
+        target = self._target_commit()
+        if not target:
+            return False
+        if self._is_ancestor(candidate, target):
+            return True
 
         metadata = (
             request.metadata if isinstance(request.metadata, Mapping) else {}
@@ -3238,12 +3267,37 @@ class MergeTrain:
         ]
         if not outputs:
             return False
-        target = self._target_commit()
-        if not target:
-            return False
+
+        def tree_entry_identity(
+            ref: str,
+            path: str,
+        ) -> tuple[str, str, str] | None:
+            result = self._git("ls-tree", "-z", ref, "--", path)
+            if result.returncode != 0:
+                return None
+            records = [
+                record for record in result.stdout.split("\0") if record
+            ]
+            if len(records) != 1:
+                return None
+            header, separator, observed_path = records[0].partition("\t")
+            fields = header.split()
+            if (
+                not separator
+                or observed_path != path
+                or len(fields) != 3
+                or fields[1] not in {"blob", "tree"}
+            ):
+                return None
+            mode, object_type, object_id = fields
+            return mode, object_type, object_id.casefold()
+
         for path in outputs:
-            probe = self._git("cat-file", "-e", f"{target}:{path}")
-            if probe.returncode != 0:
+            candidate_entry = tree_entry_identity(candidate, path)
+            if (
+                candidate_entry is None
+                or tree_entry_identity(target, path) != candidate_entry
+            ):
                 return False
         return True
 
@@ -4496,7 +4550,7 @@ class MergeTrain:
     def _gate_receipt_type() -> Any:
         # Kept lazy so older installations which only use the ungated train
         # can still import this module during a rolling deployment.
-        from . import formal_verification_policy as policy_module
+        from ..proof import formal_verification_policy as policy_module
 
         receipt_type = getattr(policy_module, "MergeProofGateReceipt", None)
         if receipt_type is None:

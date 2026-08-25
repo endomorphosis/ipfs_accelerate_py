@@ -326,4 +326,11 @@ def test_database_portal_attempts_share_dependency_preflight_artifact_store(
         "provider_fn",
         "effect_fn",
         "validation_fn",
+        "protected_path_recovery_fn",
+        "external_protected_checkout_recovery_fn",
+        "inflight_process_recovery_fn",
+        "validation_retry_seed_conflict_recovery_fn",
+        "pooled_worktree_create_recovery_fn",
+        "landed_completion_recovery_fn",
+        "validation_retry_successor_recovery_fn",
     }

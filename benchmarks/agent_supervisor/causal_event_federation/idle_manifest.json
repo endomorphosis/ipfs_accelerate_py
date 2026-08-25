@@ -1,0 +1,129 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/idle-benchmark-manifest@2",
+  "benchmark_id": "casf-idle-event-driven-v2",
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "objective_id": "CASF-038",
+  "frozen": true,
+  "state": "specification_only",
+  "authoritative": false,
+  "promotion_eligible": false,
+  "matrix_binding": {
+    "relative_path": "benchmarks/agent_supervisor/causal_event_federation/matrix.yaml",
+    "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation-benchmark-matrix@1",
+    "sha256": "b23681a8c811f2020ef97e1b1b0172c15c87577d7882a4323f67e072dd7dfd9f"
+  },
+  "execution": {
+    "measurement_scope": "single_supervisor_population_hermetic_real_process_probe",
+    "child_role": "state_owner_event_wait_probe",
+    "configured_supervisor_population": 1,
+    "idle_duration_seconds": 1,
+    "wake_timeout_seconds": 5,
+    "wait_interface": "StateOwnerEventWait@1",
+    "network_permitted": false,
+    "direct_database_access_permitted": false,
+    "ducklake_scheduling_authority_permitted": false
+  },
+  "identity_requirements": [
+    "repository_commit",
+    "repository_tree",
+    "control_plane_generation",
+    "schema_fingerprint",
+    "policy_ref",
+    "policy_revision",
+    "capability_ref",
+    "federation_id",
+    "supervisor_id",
+    "task_id",
+    "attempt_id",
+    "worktree_id",
+    "assignment_revision",
+    "fencing_epoch"
+  ],
+  "source_modules": [
+    "benchmarks/agent_supervisor/causal_event_federation/run_idle.py",
+    "ipfs_accelerate_py/__init__.py",
+    "ipfs_accelerate_py/agent_supervisor/__init__.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+    "ipfs_accelerate_py/agent_supervisor/federation/__init__.py",
+    "ipfs_accelerate_py/agent_supervisor/federation/contracts.py",
+    "ipfs_accelerate_py/agent_supervisor/federation/event_wait.py",
+    "ipfs_accelerate_py/agent_supervisor/federation/events.py",
+    "ipfs_accelerate_py/agent_supervisor/federation/outbox.py"
+  ],
+  "required_idle_zero_metrics": [
+    "task_board_scans",
+    "model_calls",
+    "context_recompilations",
+    "unchanged_state_writes",
+    "wakeup_count",
+    "event_deliveries",
+    "duplicate_committed_effects",
+    "lost_deliveries"
+  ],
+  "activity_sensors": [
+    {
+      "metric": "task_board_scans",
+      "sensor_id": "casf.idle.child.task-board-scans@1",
+      "source": "closed_child_activity_counter:task_board_scan"
+    },
+    {
+      "metric": "model_calls",
+      "sensor_id": "casf.idle.child.model-calls@1",
+      "source": "closed_child_activity_counter:model_call"
+    },
+    {
+      "metric": "context_recompilations",
+      "sensor_id": "casf.idle.child.context-recompilations@1",
+      "source": "closed_child_activity_counter:context_recompile"
+    },
+    {
+      "metric": "unchanged_state_writes",
+      "sensor_id": "casf.idle.child.unchanged-state-writes@1",
+      "source": "closed_child_activity_counter:unchanged_state_write"
+    },
+    {
+      "metric": "wakeup_count",
+      "sensor_id": "casf.idle.child.wakeup-count@1",
+      "source": "closed_child_activity_counter:event_wait_wakeup"
+    },
+    {
+      "metric": "event_deliveries",
+      "sensor_id": "casf.idle.child.event-deliveries@1",
+      "source": "closed_child_activity_counter:event_batch_delivery"
+    },
+    {
+      "metric": "duplicate_committed_effects",
+      "sensor_id": "casf.idle.child.duplicate-committed-effects@1",
+      "source": "closed_child_activity_counter:duplicate_committed_effect"
+    },
+    {
+      "metric": "lost_deliveries",
+      "sensor_id": "casf.idle.child.lost-deliveries@1",
+      "source": "closed_child_activity_counter:lost_delivery"
+    }
+  ],
+  "permitted_idle_activity": [
+    "one_bounded_owner_local_event_wait",
+    "one_initial_in_memory_event_source_query",
+    "parent_process_sensor_observation"
+  ],
+  "typed_quack_live": {
+    "availability": "unavailable",
+    "execution_status": "not_run",
+    "reason_code": "typed_quack_live_endpoint_not_supplied",
+    "required_interface": "TypedStateOwnerEventWait@1",
+    "required_client_interface": "QuackStateClientEventWait@1",
+    "metrics_omitted": true
+  },
+  "result_storage": "Content-addressed non-authoritative artifact; no database, lease, scheduling, acceptance, completion, or promotion authority is granted.",
+  "nonclaims": [
+    "This frozen recipe is not itself a benchmark result.",
+    "The measured child is a hermetic single-process probe, not a production supervisor launch.",
+    "Owner-local event-wait evidence does not establish typed Quack live availability.",
+    "This result does not qualify multi-supervisor, parallel, high-concurrency, load, token, or production behavior.",
+    "Caller-supplied control-plane identities are context bindings, not state-owner attestations.",
+    "The sensor hash chain is tamper-evident and content-addressed, not externally signed; offline replay alone cannot authenticate a wholly re-forged artifact.",
+    "A passing observation does not grant promotion, acceptance, completion, lease, policy, or scheduling authority."
+  ]
+}

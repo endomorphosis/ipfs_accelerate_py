@@ -1,0 +1,82 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-final-qualification-report@1",
+  "program": "agent-supervisor-proof-carrying-procedure-compiler-v1",
+  "task_id": "PCPC-031",
+  "report_kind": "current_tree_qualification_and_residual_gap",
+  "source_identity": {
+    "commit": "c9987d104d2344e07bbbe936d1bcaadd3df19d1b",
+    "tree": "1e63a5a25a0eb32c261baac21dfa6fd65310c8c3",
+    "working_tree_at_observation": "clean",
+    "baseline_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "baseline_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58"
+  },
+  "scope": {
+    "implemented_surface": ["bounded contracts, ProcedureIR, interpreter, world and transition models", "trajectory mining, anti-unification, CEGIS, typed holes, verification, certificates, registry, drift and recovery", "typed control-service, CLI, and MCP adapters", "frozen synthetic benchmark manifest and recipe corpus", "fail-closed promotion metric evaluator"],
+    "not_an_operational_release_receipt": true,
+    "board_status_is_not_completion_evidence": true
+  },
+  "current_tree_evidence": {
+    "board_validation": {
+      "command": "python scripts/validate_agent_supervisor_procedure_compiler_board.py --check-all",
+      "result": "passed",
+      "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-board-validation@1",
+      "task_count": 32,
+      "goal_count": 5,
+      "dependency_count": 75,
+      "completed_task_ids": ["PCPC-000", "PCPC-001", "PCPC-002", "PCPC-003", "PCPC-004", "PCPC-005", "PCPC-006", "PCPC-007", "PCPC-008"],
+      "ready_task_ids": ["PCPC-009", "PCPC-011", "PCPC-013"],
+      "terminal_task_id": "PCPC-031",
+      "blocked_task_ids": [],
+      "warnings": []
+    },
+    "test_evidence": {
+      "command": "python -m pytest -q test/api/procedure_compiler",
+      "result": "not_qualified",
+      "reason": "A complete result was not obtained in the report-producing execution window; partial output is not evidence of a passing suite.",
+      "observed_collection": 625,
+      "pass_fail_error_counts": null,
+      "omission": "No current-tree full-suite receipt, per-producer receipt set, or post-merge qualification receipt is present in the checkout state."
+    },
+    "benchmark": {
+      "manifest_path": "benchmarks/agent_supervisor/procedure_compiler/manifest.json",
+      "status": "qualified_frozen",
+      "frozen": true,
+      "case_count": 138,
+      "family_count": 23,
+      "partitions": ["synthesis", "development", "held_out", "negative", "boundary", "adversarial"],
+      "held_out_disjoint": true,
+      "corpus_sha256": "2f22bef626d0ab2257953a97f96771e9915f05264faec44b20af5e5bd5221618",
+      "recipe_sha256": "65be6eeb01fc1fcf6b8ca2d61de0284fbfba45d7f0fb586ec30435dd7a81584d"
+    },
+    "surface_contract": {
+      "read_operations": ["procedures.capabilities", "procedures.list", "procedures.get", "procedures.explain", "procedures.match", "procedures.registry_status", "procedures.task_families", "procedures.counterexamples", "procedures.drift", "procedures.metrics", "procedures.shadow_results", "procedures.synthesis_status", "procedures.world_model_status"],
+      "mutation_operations": ["procedures.synthesize", "procedures.evaluate", "procedures.promote", "procedures.rollback", "procedures.revoke", "procedures.quarantine", "procedures.run_shadow", "procedures.cancel", "procedures.request_review"],
+      "availability": "implemented_and_tested_in_source; not independently operationally qualified by this report"
+    }
+  },
+  "prerequisite_dispositions": {
+    "available": ["SemanticCompressionHarness", "SemanticCompressionGovernor", "IncrementalVerificationPlanner", "ContextCompiler", "ValueOfInformation evidence selection", "SupervisorControlService"],
+    "available_with_caveats": ["AdversarialAssuranceEngine", "IncrementalProofSealer", "Delta retry contexts", "Provider capacity and route policy", "Worktree lease fencing and merge controls"],
+    "incompatible": ["AdaptivePlanner"],
+    "missing": ["AutonomousMetaController", "autonomy package", "cognitive scheduler", "experience ledger", "policy-distillation subsystem"]
+  },
+  "safety_and_release_gates": {
+    "promotion_evaluator": "ProcedurePromotionGate@1",
+    "non_compensable_requirements": ["zero closed-vocabulary safety violations", "100% postcondition coverage", "100% validation retention", "100% boundary rejection", "no proof/test coverage degradation", "zero unsafe cross-repository transfers"],
+    "token_thresholds": {"median_planning_tokens_at_most_baseline_percent": 50, "total_model_input_tokens_at_most_baseline_percent": 60, "remote_model_calls_at_most_baseline_percent": 40, "retry_tokens_at_most_baseline_percent": 30},
+    "autonomy_thresholds": {"recurring_without_remote_model_at_least_percent": 60, "deterministic_repairs_without_model_at_least_percent": 80, "accepted_benchmark_work_via_verified_procedures_at_least_percent": 30, "human_interventions_at_most_baseline_percent": 75},
+    "measurement_status": "unevaluable",
+    "measurement_reason": "No qualified autonomous-meta-controller comparison baseline, complete denominator-bound metrics, held-out operational result receipt, or observed cost ledger was admitted for this tree."
+  },
+  "residual_gaps": [
+    {"id": "missing-qualified-autonomous-meta-controller-baseline", "severity": "release-blocking", "effect": "Token, model-call, retry-token, and human-intervention gates are unevaluable and cannot pass."},
+    {"id": "missing-current-materialization-and-post-merge-qualification", "severity": "release-blocking", "effect": "There is no exact current-tree admitted producer-receipt set or post-merge qualification receipt."},
+    {"id": "missing-independent-release-review", "severity": "release-blocking", "effect": "This task may report evidence but cannot authorize promotion, release, or self-review."},
+    {"id": "incomplete-full-suite-result", "severity": "release-blocking", "effect": "The requested complete pytest result is not claimed; partial execution is intentionally excluded from passing evidence."},
+    {"id": "inventory-caveats-and-missing-authorities", "severity": "capability-blocking", "effect": "AdaptivePlanner remains incompatible and the listed autonomy authorities remain unavailable; their neighboring implementations are non-equivalent."}
+  ],
+  "feature_availability": {"bounded_local_components": "source-present; operational qualification not established", "benchmark_corpus": "frozen-and-qualified-as-a-corpus", "promotion": "unavailable", "release": "unavailable", "autonomous_meta_controller_comparison": "unavailable", "automatic_completion_or_self_promotion": "unavailable"},
+  "promotion_eligibility": {"eligible": false, "authorized": false, "reasons": ["missing-qualified-autonomous-meta-controller-baseline", "missing-current-materialization-and-post-merge-qualification", "missing-independent-release-review", "incomplete-full-suite-result"]},
+  "rollback": {"status": "not_applicable_no_promotion", "target": null, "reason": "No promotion or release action was performed or authorized by PCPC-031."},
+  "next_required_evidence": ["Run and retain the complete declared suite in the authoritative validation environment.", "Materialize fresh exact-tree qualification receipts and retain all bound producer receipts.", "Obtain a qualified autonomous-meta-controller comparison baseline and complete denominator-bound metric/cost/intervention observations.", "Obtain independent authorized release review; only then evaluate promotion and an exact rollback target."]
+}

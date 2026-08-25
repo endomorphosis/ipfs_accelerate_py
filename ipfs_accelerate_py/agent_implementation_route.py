@@ -76,6 +76,37 @@ _V3_AGENT_LIFECYCLE_ROOT_PIN_PATH = (
     "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
     "local_profile_lifecycle_root_pin_20260808.json"
 )
+_V3_AGENT_LIFECYCLE_WITNESS_PREFIX = (
+    "data/agent_supervisor/prompt_only_self_improvement_v3/convergence/"
+)
+_VGO_AGENT_ROUTE_BOARD_NAMESPACE = "verified-gui-optimizer-v1"
+_VGO_AGENT_ROUTE_AUTHORIZATION_PATH = (
+    "implementation_plan/evidence/verified_gui_optimizer/provider_route/"
+    "provider_fallback_policy_authorization_20260812.json"
+)
+_VGO_AGENT_LIFECYCLE_ROOT_PIN_PATH = (
+    "implementation_plan/evidence/verified_gui_optimizer/provider_route/"
+    "local_profile_lifecycle_root_pin_20260812.json"
+)
+_VGO_AGENT_LIFECYCLE_WITNESS_PREFIX = (
+    "implementation_plan/evidence/verified_gui_optimizer/provider_route/"
+)
+_EAAEF_AGENT_ROUTE_BOARD_NAMESPACE = (
+    "external-agent-autonomous-execution-fabric-v1"
+)
+_EAAEF_AGENT_ROUTE_AUTHORIZATION_PATH_PREFIX = (
+    "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
+    "authority/provider-route-authorization-"
+)
+_EAAEF_AGENT_LIFECYCLE_ROOT_PIN_PATH_PREFIX = (
+    "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
+    "authority/provider-route-lifecycle-root-pin-"
+)
+_EAAEF_AGENT_LIFECYCLE_WITNESS_PREFIX = (
+    "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
+    "authority/provider-route-lifecycle-witness-"
+)
+_GIT_OBJECT_ID_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 _AGENT_ROUTE_AUTHORIZATION_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "provider-fallback-policy-authorization@2"
@@ -217,10 +248,188 @@ _LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
 _QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-grok45-terra56-high-hard-quota-v1"
 )
+_GROK46_QUOTA_MEDIUM_AGENT_IMPLEMENTATION_ROUTE_ID = (
+    "agent-supervisor-grok46-terra56-medium-hard-quota-v1"
+)
+_GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE_ID = (
+    "agent-supervisor-grok46-terra56-high-hard-quota-v1"
+)
 _V3_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
 )
+_EAAEF_AGENT_IMPLEMENTATION_ROUTE_ID = (
+    "agent-supervisor-eaaef-v1-grok46-terra56-high-auth-or-hard-quota-v1"
+)
 AGENT_IMPLEMENTATION_PRIMARY_MODEL_ID = "grok-4.6"
+
+
+@dataclass(frozen=True, slots=True)
+class _AgentRouteAuthorizationPolicy:
+    board_namespace: str
+    authorization_path: str
+    lifecycle_root_pin_path: str
+    lifecycle_witness_prefix: str
+    route_id: str
+    primary_model_id: str
+    source_addressed: bool = False
+
+
+_V3_AGENT_ROUTE_AUTHORIZATION_POLICY = _AgentRouteAuthorizationPolicy(
+    board_namespace=_V3_AGENT_ROUTE_BOARD_NAMESPACE,
+    authorization_path=_V3_AGENT_ROUTE_AUTHORIZATION_PATH,
+    lifecycle_root_pin_path=_V3_AGENT_LIFECYCLE_ROOT_PIN_PATH,
+    lifecycle_witness_prefix=_V3_AGENT_LIFECYCLE_WITNESS_PREFIX,
+    route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
+    primary_model_id="grok-4.5",
+)
+_VGO_AGENT_ROUTE_AUTHORIZATION_POLICY = _AgentRouteAuthorizationPolicy(
+    board_namespace=_VGO_AGENT_ROUTE_BOARD_NAMESPACE,
+    authorization_path=_VGO_AGENT_ROUTE_AUTHORIZATION_PATH,
+    lifecycle_root_pin_path=_VGO_AGENT_LIFECYCLE_ROOT_PIN_PATH,
+    lifecycle_witness_prefix=_VGO_AGENT_LIFECYCLE_WITNESS_PREFIX,
+    route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
+    primary_model_id="grok-4.5",
+)
+_EAAEF_AGENT_ROUTE_AUTHORIZATION_POLICY = _AgentRouteAuthorizationPolicy(
+    board_namespace=_EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
+    authorization_path=_EAAEF_AGENT_ROUTE_AUTHORIZATION_PATH_PREFIX,
+    lifecycle_root_pin_path=_EAAEF_AGENT_LIFECYCLE_ROOT_PIN_PATH_PREFIX,
+    lifecycle_witness_prefix=_EAAEF_AGENT_LIFECYCLE_WITNESS_PREFIX,
+    route_id=_EAAEF_AGENT_IMPLEMENTATION_ROUTE_ID,
+    primary_model_id="grok-4.6",
+    source_addressed=True,
+)
+_AGENT_ROUTE_AUTHORIZATION_POLICIES = (
+    _V3_AGENT_ROUTE_AUTHORIZATION_POLICY,
+    _VGO_AGENT_ROUTE_AUTHORIZATION_POLICY,
+    _EAAEF_AGENT_ROUTE_AUTHORIZATION_POLICY,
+)
+
+
+def _agent_route_authorization_policy(
+    *,
+    board_namespace: str,
+    authorization_path: str,
+) -> _AgentRouteAuthorizationPolicy | None:
+    for policy in _AGENT_ROUTE_AUTHORIZATION_POLICIES:
+        if (
+            policy.board_namespace == board_namespace
+            and _agent_route_authorization_path_matches(
+                policy,
+                authorization_path,
+            )
+        ):
+            return policy
+    return None
+
+
+def _source_addressed_json_path(*, prefix: str, source_tree: str) -> str:
+    if _GIT_OBJECT_ID_RE.fullmatch(str(source_tree or "")) is None:
+        raise ValueError("source tree identity is invalid")
+    return f"{prefix}{source_tree}.json"
+
+
+def eaaef_agent_route_authorization_path(source_tree: str) -> str:
+    """Return the create-once EAAEF route artifact path for one source tree."""
+
+    return _source_addressed_json_path(
+        prefix=_EAAEF_AGENT_ROUTE_AUTHORIZATION_PATH_PREFIX,
+        source_tree=source_tree,
+    )
+
+
+def eaaef_agent_lifecycle_root_pin_path(source_tree: str) -> str:
+    """Return the create-once EAAEF lifecycle-root path for one source tree."""
+
+    return _source_addressed_json_path(
+        prefix=_EAAEF_AGENT_LIFECYCLE_ROOT_PIN_PATH_PREFIX,
+        source_tree=source_tree,
+    )
+
+
+def _agent_route_authorization_path_matches(
+    policy: _AgentRouteAuthorizationPolicy,
+    authorization_path: str,
+    *,
+    source_tree: str = "",
+) -> bool:
+    if not policy.source_addressed:
+        return authorization_path == policy.authorization_path
+    try:
+        if source_tree:
+            return authorization_path == _source_addressed_json_path(
+                prefix=policy.authorization_path,
+                source_tree=source_tree,
+            )
+        if not authorization_path.startswith(policy.authorization_path):
+            return False
+        suffix = authorization_path[len(policy.authorization_path) :]
+        return bool(
+            suffix.endswith(".json")
+            and _GIT_OBJECT_ID_RE.fullmatch(suffix[:-5]) is not None
+        )
+    except ValueError:
+        return False
+
+
+def _agent_route_lifecycle_root_pin_path_matches(
+    policy: _AgentRouteAuthorizationPolicy,
+    lifecycle_root_pin_path: str,
+    *,
+    source_tree: str,
+) -> bool:
+    if not policy.source_addressed:
+        return lifecycle_root_pin_path == policy.lifecycle_root_pin_path
+    try:
+        return lifecycle_root_pin_path == _source_addressed_json_path(
+            prefix=policy.lifecycle_root_pin_path,
+            source_tree=source_tree,
+        )
+    except ValueError:
+        return False
+
+
+def _agent_route_lifecycle_witness_path_matches(
+    policy: _AgentRouteAuthorizationPolicy,
+    witness_path: str,
+    *,
+    source_tree: str,
+) -> bool:
+    if not witness_path.endswith(".json"):
+        return False
+    if not policy.source_addressed:
+        return witness_path.startswith(policy.lifecycle_witness_prefix)
+    expected_prefix = f"{policy.lifecycle_witness_prefix}{source_tree}-"
+    suffix = witness_path[len(expected_prefix) : -5]
+    return bool(
+        witness_path.startswith(expected_prefix)
+        and re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?", suffix)
+    )
+
+
+def _agent_route_authorization_policy_for_route(
+    route_id: str,
+    *,
+    authorization: AgentImplementationRouteAuthorization | None = None,
+) -> _AgentRouteAuthorizationPolicy | None:
+    matches = tuple(
+        policy
+        for policy in _AGENT_ROUTE_AUTHORIZATION_POLICIES
+        if policy.route_id == route_id
+    )
+    if authorization is not None:
+        matches = tuple(
+            policy
+            for policy in matches
+            if policy.board_namespace == authorization.board_namespace
+            and _agent_route_authorization_path_matches(
+                policy,
+                authorization.artifact_path,
+                source_tree=authorization.source_tree,
+            )
+        )
+    return matches[0] if len(matches) == 1 else None
+
 # Runner and scheduler code import these projections instead of maintaining
 # another provider/model/reasoning tuple.
 AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_MODEL_ID = "gpt-5.6-terra"
@@ -270,33 +479,60 @@ _AGENT_IMPLEMENTATION_PROBE_PROMPT = (
 _AGENT_IMPLEMENTATION_TRANSIENT_MAX_TURNS_EVIDENCE = (
     b"Error: max turns reached\n"
 )
-_AGENT_IMPLEMENTATION_PROBE_CONTRACT = {
-    "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
-    "model": "grok-4.6",
-    "mode": "chat",
-    "max_turns": 1,
-    "permission_mode": "dontAsk",
-    "tools": "",
-    "no_plan": True,
-    "no_subagents": True,
-    "disable_web_search": True,
-    "no_memory": True,
-    "isolated_workspace": True,
-    "task_context": False,
-    "prompt": _AGENT_IMPLEMENTATION_PROBE_PROMPT,
-    "timeout_seconds": 60,
+def _agent_implementation_probe_contract(model: str) -> dict[str, object]:
+    """Return the exact no-tools probe contract for one admitted route model."""
+
+    return {
+        "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
+        "model": model,
+        "mode": "chat",
+        "max_turns": 1,
+        "permission_mode": "dontAsk",
+        "tools": "",
+        "no_plan": True,
+        "no_subagents": True,
+        "disable_web_search": True,
+        "no_memory": True,
+        "isolated_workspace": True,
+        "task_context": False,
+        "prompt": _AGENT_IMPLEMENTATION_PROBE_PROMPT,
+        "timeout_seconds": 60,
+    }
+
+
+_AGENT_IMPLEMENTATION_PROBE_CONTRACTS = {
+    model: _agent_implementation_probe_contract(model)
+    for model in ("grok-4.5", "grok-4.6")
 }
-_AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID = (
-    "sha256:"
+_AGENT_IMPLEMENTATION_PROBE_CONTRACT_IDS = {
+    model: "sha256:"
     + hashlib.sha256(
         json.dumps(
-            _AGENT_IMPLEMENTATION_PROBE_CONTRACT,
+            contract,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,
             allow_nan=False,
         ).encode("utf-8")
     ).hexdigest()
+    for model, contract in _AGENT_IMPLEMENTATION_PROBE_CONTRACTS.items()
+}
+
+
+def _agent_implementation_probe_contract_id(model: object) -> str:
+    """Resolve an exact model-bound probe identity, or fail closed."""
+
+    return _AGENT_IMPLEMENTATION_PROBE_CONTRACT_IDS.get(str(model or ""), "")
+
+
+# Compatibility exports remain the frozen V3/Grok-4.5 contract.  Grok-4.6
+# callers resolve their distinct identity through the model-indexed mapping;
+# the two receipt families therefore cannot be replayed across routes.
+_AGENT_IMPLEMENTATION_PROBE_CONTRACT = (
+    _AGENT_IMPLEMENTATION_PROBE_CONTRACTS["grok-4.5"]
+)
+_AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID = (
+    _AGENT_IMPLEMENTATION_PROBE_CONTRACT_IDS["grok-4.5"]
 )
 _AGENT_HARD_QUOTA_PATTERN = re.compile(
     r"(?:"
@@ -430,6 +666,10 @@ def build_agent_implementation_failure_receipt(
     observed_at_ms: int | None = None,
     freshness_ms: int = 60 * 1000,
 ) -> dict[str, object]:
+    primary_model = str(model or "")
+    probe_contract_id = _agent_implementation_probe_contract_id(primary_model)
+    if not probe_contract_id:
+        raise ValueError("failure receipt model has no admitted probe contract")
     observed = (
         int(time.time() * 1000)
         if observed_at_ms is None
@@ -458,10 +698,10 @@ def build_agent_implementation_failure_receipt(
     receipt: dict[str, object] = {
         "schema": _AGENT_IMPLEMENTATION_FAILURE_RECEIPT_SCHEMA,
         "source": _AGENT_IMPLEMENTATION_FAILURE_SOURCE,
-        "probe_contract_id": _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID,
+        "probe_contract_id": probe_contract_id,
         "nonce": str(nonce),
         "primary_provider": "grok",
-        "primary_model": str(model),
+        "primary_model": primary_model,
         "primary_dispatched": bool(primary_dispatched),
         "probe_returncode": int(probe_returncode),
         "evidence_size": measured_size,
@@ -486,6 +726,10 @@ def valid_agent_implementation_failure_receipt(
     now_ms: int | None = None,
     max_age_ms: int | None = None,
 ) -> bool:
+    expected_model = str(model or "")
+    expected_probe_contract_id = _agent_implementation_probe_contract_id(
+        expected_model
+    )
     expected_fields = {
         "schema",
         "source",
@@ -537,12 +781,12 @@ def valid_agent_implementation_failure_receipt(
         and receipt.get("schema")
         == _AGENT_IMPLEMENTATION_FAILURE_RECEIPT_SCHEMA
         and receipt.get("source") == _AGENT_IMPLEMENTATION_FAILURE_SOURCE
-        and receipt.get("probe_contract_id")
-        == _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID
+        and bool(expected_probe_contract_id)
+        and receipt.get("probe_contract_id") == expected_probe_contract_id
         and re.fullmatch(r"[0-9a-f]{64}", str(nonce or ""))
         and receipt.get("nonce") == nonce
         and receipt.get("primary_provider") == "grok"
-        and receipt.get("primary_model") == model == "grok-4.6"
+        and receipt.get("primary_model") == expected_model
         and receipt.get("primary_dispatched") is False
         and isinstance(evidence_size, int)
         and not isinstance(evidence_size, bool)
@@ -1340,6 +1584,23 @@ def project_agent_implementation_route_capacity(
         raise ValueError("route capacity observations require positive timestamps")
     if route.primary_provider_id != "grok_cli":
         raise ValueError("route capacity primary identity drifted")
+    route_policy = _agent_route_authorization_policy_for_route(
+        route.route_id,
+        authorization=route.authorization,
+    )
+    if route.permits_authentication_unavailable and (
+        route_policy is None
+        or route.primary_model_id != route_policy.primary_model_id
+        or route.authorization is None
+        or route.authorization.board_namespace
+        != route_policy.board_namespace
+        or not _agent_route_authorization_path_matches(
+            route_policy,
+            route.authorization.artifact_path,
+            source_tree=route.authorization.source_tree,
+        )
+    ):
+        raise ValueError("route capacity authorization scope drifted")
 
     def usable(
         item: AgentImplementationProviderCapacityObservation,
@@ -1359,10 +1620,19 @@ def project_agent_implementation_route_capacity(
     sealed_fallback = bool(
         route.permits_authentication_unavailable
         and _agent_route_authorization_is_sealed(route.authorization)
+        and route_policy is not None
+        and route.primary_model_id == route_policy.primary_model_id
+        and route.authorization is not None
+        and route.authorization.board_namespace
+        == route_policy.board_namespace
+        and _agent_route_authorization_path_matches(
+            route_policy,
+            route.authorization.artifact_path,
+            source_tree=route.authorization.source_tree,
+        )
         and route.fallback_provider_id == "codex"
         and route.fallback_model_id == "gpt-5.6-terra"
         and route.fallback_reasoning_effort == "high"
-        and route.route_id == _V3_AGENT_IMPLEMENTATION_ROUTE_ID
     )
     fallback_ready = sealed_fallback and usable(fallback)
     lane_values = (
@@ -1722,10 +1992,536 @@ def _agent_effect_detail_id(value: object) -> str:
     ).hexdigest()
 
 
+_EAAEF_WORKER_EFFECT_IMAGE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "eaaef-worker-effect-image-receipt@1"
+)
+_EAAEF_QUALIFIED_CODEX_PATH = "/opt/eaaef/bin/codex"
+_EAAEF_QUALIFIED_CONTAINER_ENV = {
+    "BASH_ENV": "",
+    "CODEX_HOME": "/opt/codex-home",
+    "ENV": "",
+    "HOME": "/opt/codex-home",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "PATH": "/opt/eaaef/bin:/usr/bin:/bin",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONNOUSERSITE": "1",
+    "TERM": "dumb",
+}
+
+
+def _agent_eaaef_effect_launch_details_valid(
+    value: Mapping[str, object],
+    *,
+    workspace_path: str,
+    invocation_binding: AgentImplementationInvocationBinding | None,
+) -> bool:
+    """Validate the additive EAAEF image/network receipt variant.
+
+    Legacy Codex receipts continue through the byte-for-byte legacy rules
+    below.  This branch is admitted only when its canonical label embeds the
+    source-addressed launch authority and binds the exact invocation control
+    plane, immutable image/profile, network authorization CID, and principals.
+    """
+
+    if invocation_binding is None:
+        return False
+    image = value.get("image_receipt")
+    command = value.get("command_receipt")
+    runtime = value.get("runtime_receipt")
+    mounts = value.get("mount_receipt")
+    environment = value.get("environment_receipt")
+    cleanup = value.get("cleanup_receipt")
+    if (
+        not isinstance(image, Mapping)
+        or set(image) != {"image_id", "image_label"}
+        or not isinstance(image.get("image_label"), str)
+        or len(str(image["image_label"]).encode("utf-8")) > 64 * 1024
+        or not isinstance(command, Mapping)
+        or set(command) != {"create_argv", "start_argv", "provider_argv"}
+        or not isinstance(runtime, Mapping)
+        or set(runtime)
+        != {
+            "path",
+            "device",
+            "inode",
+            "mode",
+            "uid",
+            "size",
+            "mtime_ns",
+            "ctime_ns",
+        }
+        or any(
+            isinstance(runtime.get(name), bool)
+            or not isinstance(runtime.get(name), int)
+            or int(runtime.get(name) or 0) < 0
+            for name in (
+                "device",
+                "inode",
+                "mode",
+                "uid",
+                "size",
+                "mtime_ns",
+                "ctime_ns",
+            )
+        )
+        or runtime.get("uid") != 0
+        or not isinstance(mounts, list)
+        or not mounts
+        or any(not isinstance(item, str) or not item for item in mounts)
+        or not isinstance(environment, Mapping)
+        or set(environment) != {"docker_cli", "container"}
+        or not isinstance(cleanup, Mapping)
+        or set(cleanup)
+        != {
+            "schema",
+            "lease_root",
+            "docker_config",
+            "cidfile",
+            "provider_home",
+            "prompt_path",
+            "watchdog_pid",
+            "watchdog_start_ticks",
+            "receipt_id",
+        }
+    ):
+        return False
+
+    def unique(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError("duplicate EAAEF image receipt key")
+            result[key] = item
+        return result
+
+    try:
+        receipt = json.loads(str(image["image_label"]), object_pairs_hook=unique)
+        from ipfs_accelerate_py.agent_supervisor.runtime.worker_network_dispatch import (
+            parse_worker_network_launch_authority,
+        )
+
+        if not isinstance(receipt, Mapping) or set(receipt) != {
+            "schema",
+            "launch_authority",
+            "network_authorization_artifact_cid",
+            "network_authorization_id",
+            "network_approval_cid",
+            "worker_principal_did",
+            "provider_principal_did",
+        }:
+            return False
+        launch = parse_worker_network_launch_authority(
+            receipt.get("launch_authority"),
+            accepted_control_plane_pin=invocation_binding.control_plane,
+            require_admitted=True,
+        )
+    except (ImportError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+    sha_cid = re.compile(r"sha256:[0-9a-f]{64}")
+    image_digest = str(launch["qualified_worker_image_digest"])
+    profile_cid = str(launch["qualified_worker_container_profile_cid"])
+    network_artifact_cid = str(
+        receipt.get("network_authorization_artifact_cid") or ""
+    )
+    network_authorization_id = str(receipt.get("network_authorization_id") or "")
+    network_approval_cid = str(receipt.get("network_approval_cid") or "")
+    if (
+        receipt.get("schema") != _EAAEF_WORKER_EFFECT_IMAGE_RECEIPT_SCHEMA
+        or any(
+            sha_cid.fullmatch(item) is None
+            for item in (
+                image_digest,
+                profile_cid,
+                network_artifact_cid,
+                network_authorization_id,
+                network_approval_cid,
+            )
+        )
+        or receipt.get("worker_principal_did")
+        != launch["worker_principal_did"]
+        or receipt.get("provider_principal_did")
+        != launch["provider_principal_did"]
+        or value.get("image_id") != image_digest
+        or image.get("image_id") != image_digest
+    ):
+        return False
+
+    argv_values: dict[str, list[str]] = {}
+    for name in ("create_argv", "start_argv", "provider_argv"):
+        raw = command.get(name)
+        if (
+            not isinstance(raw, list)
+            or not raw
+            or any(not isinstance(item, str) for item in raw)
+        ):
+            return False
+        argv_values[name] = raw
+    create_argv = argv_values["create_argv"]
+    provider_argv = argv_values["provider_argv"]
+    start_argv = argv_values["start_argv"]
+    docker_cli = environment.get("docker_cli")
+    container_environment = environment.get("container")
+    if (
+        not isinstance(docker_cli, Mapping)
+        or not isinstance(container_environment, Mapping)
+        or dict(docker_cli) != _EAAEF_QUALIFIED_CONTAINER_ENV
+        or dict(container_environment) != _EAAEF_QUALIFIED_CONTAINER_ENV
+        or len(provider_argv) != 14
+    ):
+        return False
+    provider_workspace = provider_argv[8]
+    expected_provider_tail = [
+        "exec",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--ephemeral",
+        "-s",
+        "workspace-write",
+        "-C",
+        provider_workspace,
+        "-m",
+        "gpt-5.6-terra",
+        "-c",
+        'model_reasoning_effort="high"',
+        "-",
+    ]
+    if (
+        provider_argv[0] != _EAAEF_QUALIFIED_CODEX_PATH
+        or provider_argv[1:] != expected_provider_tail
+        or provider_workspace != workspace_path
+    ):
+        return False
+    docker_path = str(runtime.get("path") or "")
+    if (
+        docker_path not in {"/usr/bin/docker", "/usr/local/bin/docker"}
+        or create_argv[:5]
+        != [
+            docker_path,
+            "--host=unix:///var/run/docker.sock",
+            "--config",
+            create_argv[3] if len(create_argv) > 3 else "",
+            "create",
+        ]
+        or create_argv.count(image_digest) != 1
+    ):
+        return False
+    try:
+        image_index = create_argv.index(image_digest, 5)
+        config_path = Path(create_argv[3])
+        cidfile = Path(create_argv[create_argv.index("--cidfile", 5, image_index) + 1])
+        container_name = str(value.get("container_name") or "")
+        raw_container_id = str(value.get("container_id") or "").removeprefix(
+            "sha256:"
+        )
+        workdir = create_argv[create_argv.index("--workdir", 5, image_index) + 1]
+        user = create_argv[create_argv.index("--user", 5, image_index) + 1]
+    except (IndexError, ValueError):
+        return False
+    if (
+        not config_path.is_absolute()
+        or config_path.name != "docker-config"
+        or not config_path.parent.name.startswith("asref-codex-container-")
+        or cidfile != config_path.parent / "container.cid"
+        or workdir != workspace_path
+        or re.fullmatch(r"[1-9][0-9]*:[1-9][0-9]*", user) is None
+        or re.fullmatch(r"[0-9a-f]{64}", raw_container_id) is None
+    ):
+        return False
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.worker_network import (
+            PROVIDER_HOSTNAME_ALLOWLISTS,
+            load_worker_network_authorization,
+            worker_network_approval_cid,
+        )
+
+        authorization = load_worker_network_authorization(
+            invocation_binding=invocation_binding,
+            provider="codex",
+            workspace=Path(workspace_path),
+            expected_artifact_cid=network_artifact_cid,
+            expected_container_name=container_name,
+            expected_lease_root=config_path.parent,
+            expected_worker_principal_did=str(launch["worker_principal_did"]),
+            expected_provider_principal_did=str(
+                launch["provider_principal_did"]
+            ),
+        )
+        approval_values = {
+            "provider": "codex",
+            "docker_network": authorization.docker_network,
+            "proxy_endpoint": authorization.proxy_endpoint,
+            "approval_identity": "eaaef-network-approval:signed",
+            "effect_cid": authorization.effect_cid,
+            "workspace": authorization.workspace,
+            "container_name": authorization.container_name,
+            "lease_id": authorization.lease_id,
+            "lease_root": authorization.lease_root,
+        }
+        expected_network_approval_cid = worker_network_approval_cid(
+            **approval_values
+        )
+    except (ImportError, OSError, TypeError, ValueError):
+        return False
+    if (
+        authorization.authorization_id != network_authorization_id
+        or authorization.artifact_cid != network_artifact_cid
+        or authorization.worker_principal_did != launch["worker_principal_did"]
+        or authorization.provider_principal_did
+        != launch["provider_principal_did"]
+        or authorization.allowed_hostnames
+        != PROVIDER_HOSTNAME_ALLOWLISTS["codex"]
+        or network_approval_cid != expected_network_approval_cid
+    ):
+        return False
+    docker_args = create_argv[5:image_index]
+    exact_flags = {
+        "--pull=never",
+        "--interactive",
+        "--read-only",
+        "--dns=127.0.0.1",
+        "--runtime=runc",
+        "--entrypoint=/usr/bin/env",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--pids-limit=1024",
+        "--cpus=4",
+        "--memory=16g",
+        "--memory-swap=16g",
+    }
+    if any(docker_args.count(flag) != 1 for flag in exact_flags):
+        return False
+    networks = [item for item in docker_args if item.startswith("--network=")]
+    if len(networks) != 1 or networks[0] == "--network=none":
+        return False
+    labels: list[str] = []
+    for index, item in enumerate(docker_args[:-1]):
+        if item == "--label":
+            labels.append(docker_args[index + 1])
+    expected_labels = {
+        "ipfs_accelerate.codex_fallback_isolation=true",
+        f"ipfs_accelerate.worker_network_binding={network_approval_cid}",
+        (
+            "ipfs_accelerate.worker_network_effect="
+            + invocation_binding.content_id
+        ),
+        (
+            "ipfs_accelerate.worker_network_authorization="
+            + network_authorization_id
+        ),
+        (
+            "ipfs_accelerate.eaaef.qualified_worker_image_digest="
+            + image_digest
+        ),
+        (
+            "ipfs_accelerate.eaaef.qualified_worker_container_profile_cid="
+            + profile_cid
+        ),
+    }
+    if len(labels) != len(expected_labels) or set(labels) != expected_labels:
+        return False
+    expected_overrides = [
+        "BASH_ENV=",
+        "CUDA_VISIBLE_DEVICES=-1",
+        "ENV=",
+        "LD_LIBRARY_PATH=",
+        "LD_PRELOAD=",
+        "LIBRARY_PATH=",
+        "NVIDIA_DRIVER_CAPABILITIES=",
+        "NVIDIA_REQUIRE_CUDA=",
+        "NVIDIA_REQUIRE_JETPACK_HOST_MOUNTS=",
+        "NVIDIA_VISIBLE_DEVICES=void",
+    ]
+    if any(
+        item in {"--privileged", "-P", "--network", "--dns"}
+        or item.startswith(
+            (
+                "--publish",
+                "--volume",
+                "--device",
+                "--cap-add",
+                "--pid=",
+                "--ipc=",
+            )
+        )
+        for item in docker_args
+    ):
+        return False
+    parsed_mounts = [
+        docker_args[index + 1]
+        for index, item in enumerate(docker_args[:-1])
+        if item == "--mount"
+    ]
+    if parsed_mounts != mounts or any(
+        ".sock" in item.lower()
+        or "containerd" in item.lower()
+        or "podman" in item.lower()
+        or "src=/usr" in item
+        or "dst=/usr" in item
+        or "src=/etc/ssl" in item
+        or "dst=/etc/ssl" in item
+        or "ipfs-task-tools" in item
+        for item in parsed_mounts
+    ):
+        return False
+    writable_mounts: list[tuple[str, str]] = []
+    for mount in parsed_mounts:
+        fields = mount.split(",")
+        if (
+            len(fields) not in {3, 4}
+            or fields[0] != "type=bind"
+            or not fields[1].startswith("src=")
+            or not fields[2].startswith("dst=")
+            or (len(fields) == 4 and fields[3] != "readonly")
+        ):
+            return False
+        source = fields[1].removeprefix("src=")
+        destination = fields[2].removeprefix("dst=")
+        if not Path(source).is_absolute() or not Path(destination).is_absolute():
+            return False
+        if len(fields) == 3:
+            writable_mounts.append((source, destination))
+    if writable_mounts != [(workspace_path, workspace_path)]:
+        return False
+    observed_destinations = {
+        mount.split(",")[2].removeprefix("dst="): mount.split(",")[1].removeprefix(
+            "src="
+        )
+        for mount in parsed_mounts
+    }
+    auth_source = observed_destinations.get("/opt/codex-home/auth.json")
+    if (
+        not auth_source
+        or Path(auth_source).name != "auth.json"
+        or Path(auth_source).is_relative_to(Path(workspace_path))
+    ):
+        return False
+    for destination, source in observed_destinations.items():
+        if destination in {workspace_path, "/opt/codex-home/auth.json"}:
+            continue
+        if source != destination or not (
+            destination.endswith("/.git")
+            or "/.git/worktrees/" in destination
+            or destination.endswith("/worktrees")
+        ):
+            return False
+
+    expected_assignments = [
+        f"{name}={item}"
+        for name, item in sorted(_EAAEF_QUALIFIED_CONTAINER_ENV.items())
+    ]
+    inner = list(provider_argv)
+    inner[6] = "danger-full-access"
+    try:
+        inner_index = create_argv.index(_EAAEF_QUALIFIED_CODEX_PATH, image_index + 1)
+    except ValueError:
+        return False
+    assignments = create_argv[image_index + 2 : inner_index]
+    if (
+        create_argv[image_index + 1] != "-i"
+        or create_argv[inner_index:] != inner
+        or any(item not in assignments for item in expected_assignments)
+        or len(assignments) != len(expected_assignments) + 6
+        or len(assignments) != len(set(assignments))
+    ):
+        return False
+    proxy_assignments = {
+        item.partition("=")[0]: item.partition("=")[2]
+        for item in assignments
+        if item not in expected_assignments
+    }
+    if set(proxy_assignments) != {
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+    }:
+        return False
+    proxy_endpoint = proxy_assignments["HTTP_PROXY"]
+    if (
+        not re.fullmatch(
+            r"http://(?:10(?:\.[0-9]{1,3}){3}|"
+            r"172\.(?:1[6-9]|2[0-9]|3[01])(?:\.[0-9]{1,3}){2}|"
+            r"192\.168(?:\.[0-9]{1,3}){2}):[1-9][0-9]{0,4}",
+            proxy_endpoint,
+        )
+        or proxy_assignments["HTTPS_PROXY"] != proxy_endpoint
+        or proxy_assignments["http_proxy"] != proxy_endpoint
+        or proxy_assignments["https_proxy"] != proxy_endpoint
+        or proxy_assignments["NO_PROXY"] != ""
+        or proxy_assignments["no_proxy"] != ""
+    ):
+        return False
+    docker_environment_flags = [
+        docker_args[index + 1]
+        for index, item in enumerate(docker_args[:-1])
+        if item == "--env"
+    ]
+    expected_proxy_flags = [
+        f"{name}={proxy_assignments[name]}" for name in sorted(proxy_assignments)
+    ]
+    if docker_environment_flags != [*expected_overrides, *expected_proxy_flags]:
+        return False
+    expected_start = [
+        docker_path,
+        "--host=unix:///var/run/docker.sock",
+        "--config",
+        str(config_path),
+        "start",
+        "--attach",
+        "--interactive",
+        raw_container_id,
+    ]
+    cleanup_body = {
+        key: item for key, item in cleanup.items() if key != "receipt_id"
+    }
+    lease_root = config_path.parent
+    provider_home = Path(str(cleanup.get("provider_home") or ""))
+    prompt_path = Path(str(cleanup.get("prompt_path") or ""))
+    watchdog_pid = cleanup.get("watchdog_pid")
+    watchdog_start_ticks = cleanup.get("watchdog_start_ticks")
+    if (
+        cleanup.get("schema")
+        != "ipfs_accelerate_py.agent_supervisor.provider-effect-cleanup@1"
+        or cleanup.get("lease_root") != str(lease_root)
+        or cleanup.get("docker_config") != str(config_path)
+        or cleanup.get("cidfile") != str(cidfile)
+        or lease_root.parent != Path(tempfile.gettempdir()).resolve()
+        or not provider_home.is_absolute()
+        or provider_home.parent != lease_root.parent
+        or not provider_home.name.startswith("asref-codex-home-")
+        or not prompt_path.is_absolute()
+        or prompt_path.parent != lease_root.parent
+        or not prompt_path.name.startswith("asref-grok-prompt-")
+        or provider_home.is_relative_to(Path(workspace_path))
+        or prompt_path.is_relative_to(Path(workspace_path))
+        or isinstance(watchdog_pid, bool)
+        or not isinstance(watchdog_pid, int)
+        or watchdog_pid <= 0
+        or isinstance(watchdog_start_ticks, bool)
+        or not isinstance(watchdog_start_ticks, int)
+        or watchdog_start_ticks < 0
+    ):
+        return False
+    return bool(
+        start_argv == expected_start
+        and value.get("runtime_id") == _agent_effect_detail_id(runtime)
+        and value.get("command_id") == _agent_effect_detail_id(command)
+        and value.get("mount_id") == _agent_effect_detail_id(mounts)
+        and value.get("environment_id") == _agent_effect_detail_id(environment)
+        and cleanup.get("receipt_id") == _agent_effect_detail_id(cleanup_body)
+        and value.get("cleanup_id") == cleanup.get("receipt_id")
+    )
+
+
 def _agent_effect_launch_details_valid(
     value: Mapping[str, object],
     *,
     workspace_path: str = "",
+    invocation_binding: AgentImplementationInvocationBinding | None = None,
 ) -> bool:
     runtime = value.get("runtime_receipt")
     image = value.get("image_receipt")
@@ -1733,6 +2529,15 @@ def _agent_effect_launch_details_valid(
     mounts = value.get("mount_receipt")
     environment = value.get("environment_receipt")
     cleanup = value.get("cleanup_receipt")
+    if (
+        isinstance(image, Mapping)
+        and image.get("image_label") != AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL
+    ):
+        return _agent_eaaef_effect_launch_details_valid(
+            value,
+            workspace_path=workspace_path,
+            invocation_binding=invocation_binding,
+        )
     if (
         not isinstance(runtime, Mapping)
         or set(runtime)
@@ -2075,6 +2880,7 @@ def _agent_effect_receipt_valid(
     logical_attempt_id: str,
     reservation_id: str,
     workspace_path: str = "",
+    invocation_binding: AgentImplementationInvocationBinding | None = None,
 ) -> bool:
     expected = {
         "schema",
@@ -2162,6 +2968,7 @@ def _agent_effect_receipt_valid(
         and _agent_effect_launch_details_valid(
             value,
             workspace_path=workspace_path,
+            invocation_binding=invocation_binding,
         )
     )
 
@@ -2823,6 +3630,7 @@ def valid_agent_implementation_route_outcome(
             logical_attempt_id=invocation.logical_attempt_id,
             reservation_id=reservation_id,
             workspace_path=invocation.workspace_path,
+            invocation_binding=invocation,
         )
     ):
         return False
@@ -3219,6 +4027,7 @@ def _agent_native_failure_type(line: str) -> str:
 def _canonical_agent_quota_verifier_command(
     command: object,
     *,
+    expected_model: str,
     expected_session_id: str,
     workspace: Path | str | None,
     prompt_path: Path | str | None,
@@ -3227,7 +4036,8 @@ def _canonical_agent_quota_verifier_command(
     """Validate the exact isolated, tool-free native verifier invocation."""
 
     if (
-        not isinstance(command, list)
+        not _agent_implementation_probe_contract_id(expected_model)
+        or not isinstance(command, list)
         or workspace is None
         or prompt_path is None
         or not command
@@ -3270,7 +4080,7 @@ def _canonical_agent_quota_verifier_command(
     expected = [
         str(executable),
         "--model",
-        "grok-4.6",
+        expected_model,
         "--max-turns",
         "1",
         "--cwd",
@@ -3375,6 +4185,9 @@ def validate_agent_implementation_quota_evidence(
     preflight_receipt_id = failure_receipt.get("receipt_id")
     preflight_nonce = failure_receipt.get("nonce")
     probe_contract_id = failure_receipt.get("probe_contract_id")
+    expected_probe_contract_id = _agent_implementation_probe_contract_id(
+        expected_model
+    )
     protected = invocation_binding is not None
     timestamp = (
         int(time.time() * 1000)
@@ -3384,6 +4197,9 @@ def validate_agent_implementation_quota_evidence(
     canonical_command = (
         _canonical_agent_quota_verifier_command(
             verifier_command,
+            expected_model=(
+                expected_model if isinstance(expected_model, str) else ""
+            ),
             expected_session_id=expected_session_id,
             workspace=verifier_workspace,
             prompt_path=verifier_prompt_path,
@@ -3392,12 +4208,17 @@ def validate_agent_implementation_quota_evidence(
         else ()
     )
     if (
-        expected_model != "grok-4.6"
+        not isinstance(expected_model, str)
+        or not expected_probe_contract_id
         or not isinstance(preflight_receipt_id, str)
         or re.fullmatch(r"sha256:[0-9a-f]{64}", preflight_receipt_id) is None
         or not isinstance(preflight_nonce, str)
         or re.fullmatch(r"[0-9a-f]{64}", preflight_nonce) is None
-        or probe_contract_id != _AGENT_IMPLEMENTATION_PROBE_CONTRACT_ID
+        or probe_contract_id != expected_probe_contract_id
+        or (
+            protected
+            and invocation_binding.primary_model_id != expected_model
+        )
         or not isinstance(verifier_returncode, int)
         or isinstance(verifier_returncode, bool)
         or verifier_returncode == 0
@@ -3749,6 +4570,9 @@ def _valid_agent_implementation_quota_evidence(
     if not isinstance(evidence, AgentImplementationQuotaEvidence):
         return False
     audit = evidence.audit_dict()
+    expected_probe_contract_id = _agent_implementation_probe_contract_id(
+        evidence.primary_model
+    )
     if (
         evidence.schema != _AGENT_IMPLEMENTATION_QUOTA_EVIDENCE_SCHEMA
         or evidence._validation_seal
@@ -3762,7 +4586,7 @@ def _valid_agent_implementation_quota_evidence(
         != failure_receipt.get("primary_provider")
         or evidence.primary_model
         != failure_receipt.get("primary_model")
-        or evidence.primary_model != "grok-4.6"
+        or not expected_probe_contract_id
         or evidence.verifier_provider != "grok_cli"
         or evidence.verifier_model != evidence.primary_model
         or isinstance(evidence.verifier_returncode, bool)
@@ -3770,6 +4594,7 @@ def _valid_agent_implementation_quota_evidence(
         or evidence.verifier_returncode == 0
         or evidence.probe_contract_id
         != failure_receipt.get("probe_contract_id")
+        or evidence.probe_contract_id != expected_probe_contract_id
         or evidence.verifier_result
         not in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS
         or any(
@@ -3814,6 +4639,7 @@ def _valid_agent_implementation_quota_evidence(
         or evidence.invocation_id != invocation.invocation_id
         or evidence.logical_attempt_id != invocation.logical_attempt_id
         or evidence.route_id != invocation.route_id
+        or evidence.primary_model != invocation.primary_model_id
         or evidence.signer_identity_did != invocation.profile_identity_did
         or evidence.signer_key_id != evidence.signer_identity_did
         or evidence.signer_profile_id != invocation.profile_id
@@ -3860,6 +4686,7 @@ def _valid_agent_implementation_quota_evidence(
         prompt_index = command.index("--prompt-file") + 1
         canonical_command = _canonical_agent_quota_verifier_command(
             command,
+            expected_model=evidence.primary_model,
             expected_session_id=evidence.verifier_session_id,
             workspace=command[workspace_index],
             prompt_path=command[prompt_index],
@@ -4213,6 +5040,32 @@ def _agent_verify_historical_authority_snapshot(
     bounds = authorization.authority_bounds
     if bounds is None:
         raise ValueError("historical authority bounds are unavailable")
+    route_policy = _agent_route_authorization_policy(
+        board_namespace=authorization.board_namespace,
+        authorization_path=authorization.artifact_path,
+    )
+    if route_policy is None:
+        raise ValueError(
+            "historical authority is not authorized for this board scope"
+        )
+    if (
+        not _agent_route_authorization_path_matches(
+            route_policy,
+            authorization.artifact_path,
+            source_tree=authorization.source_tree,
+        )
+        or not _agent_route_lifecycle_root_pin_path_matches(
+            route_policy,
+            authorization.lifecycle_root_pin_path,
+            source_tree=authorization.source_tree,
+        )
+        or not _agent_route_lifecycle_witness_path_matches(
+            route_policy,
+            authorization.reviewer_witness_path,
+            source_tree=authorization.source_tree,
+        )
+    ):
+        raise ValueError("historical authority source-addressed paths drifted")
     expected_top = {
         "schema",
         "board_namespace",
@@ -4284,9 +5137,9 @@ def _agent_verify_historical_authority_snapshot(
     ):
         raise ValueError("historical authorization artifact is noncanonical")
     expected_route = {
-        "route_id": _V3_AGENT_IMPLEMENTATION_ROUTE_ID,
+        "route_id": route_policy.route_id,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": route_policy.primary_model_id,
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -4406,7 +5259,7 @@ def _agent_verify_historical_authority_snapshot(
         or profile.budget_cid != bounds.budget_cid
         or profile.resource_cid != bounds.resource_cid
         or profile.content_id != bounds.authority_cid
-        or profile.route_id != _V3_AGENT_IMPLEMENTATION_ROUTE_ID
+        or profile.route_id != route_policy.route_id
         or profile.fallback_provider_id != "codex"
         or profile.fallback_model_id != "gpt-5.6-terra"
         or profile.fallback_reasoning_effort != "high"
@@ -4706,10 +5559,11 @@ def _agent_implementation_route_plan(
     fallback_trigger: str,
     fallback_reasoning_effort: str,
     route_id: str,
+    primary_model_id: str = "grok-4.5",
 ) -> AgentImplementationRoutePlan:
     values = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": primary_model_id,
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": fallback_trigger,
@@ -4798,10 +5652,11 @@ def load_agent_implementation_route_authorization(
         raise ValueError("agent route authorization repository contains a symlink")
     relative = str(artifact_path or "").strip()
     namespace = str(board_namespace or "").strip()
-    if (
-        relative != _V3_AGENT_ROUTE_AUTHORIZATION_PATH
-        or namespace != _V3_AGENT_ROUTE_BOARD_NAMESPACE
-    ):
+    route_policy = _agent_route_authorization_policy(
+        board_namespace=namespace,
+        authorization_path=relative,
+    )
+    if route_policy is None:
         raise ValueError(
             "auth-or-quota/high route is not authorized for this board scope"
         )
@@ -5023,7 +5878,7 @@ def load_agent_implementation_route_authorization(
         raise ValueError("agent route authorization bounds are invalid") from exc
     expected_route = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": route_policy.primary_model_id,
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -5032,7 +5887,7 @@ def load_agent_implementation_route_authorization(
         payload.get("schema") != _AGENT_ROUTE_AUTHORIZATION_SCHEMA
         or payload.get("board_namespace") != namespace
         or {key: route.get(key) for key in expected_route} != expected_route
-        or route.get("route_id") != _V3_AGENT_IMPLEMENTATION_ROUTE_ID
+        or route.get("route_id") != route_policy.route_id
         or route.get("allowed_trigger_classes")
         != [
             "grok_authentication_unavailable",
@@ -5041,8 +5896,13 @@ def load_agent_implementation_route_authorization(
         or authorization_kind != "explicit_operator_override"
         or source.get("prospective_only") is not True
         or source.get("requires_descendant_tree") is not True
-        or re.fullmatch(r"[0-9a-f]{40}", source_head) is None
-        or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+        or _GIT_OBJECT_ID_RE.fullmatch(source_head) is None
+        or _GIT_OBJECT_ID_RE.fullmatch(source_tree) is None
+        or not _agent_route_authorization_path_matches(
+            route_policy,
+            relative,
+            source_tree=source_tree,
+        )
         or ownership.get("canonical_route_plan_owner")
         != "ipfs_accelerate_py.llm_router"
         or ownership.get("typed_fallback_decision_owner")
@@ -5086,7 +5946,11 @@ def load_agent_implementation_route_authorization(
         raise ValueError(
             "agent route authorization does not grant the exact scoped route"
         )
-    if lifecycle_root_pin_path != _V3_AGENT_LIFECYCLE_ROOT_PIN_PATH:
+    if not _agent_route_lifecycle_root_pin_path_matches(
+        route_policy,
+        lifecycle_root_pin_path,
+        source_tree=source_tree,
+    ):
         raise ValueError("agent route lifecycle root pin path is invalid")
     unresolved_root_pin = resolve_agent_implementation_private_state_path(
         root / lifecycle_root_pin_path
@@ -5156,9 +6020,10 @@ def load_agent_implementation_route_authorization(
         or ".." in witness_relative_path.parts
         or witness_relative_path.as_posix() != reviewer_witness_path
         or witness_relative_path.suffix != ".json"
-        or not reviewer_witness_path.startswith(
-            "data/agent_supervisor/prompt_only_self_improvement_v3/"
-            "convergence/"
+        or not _agent_route_lifecycle_witness_path_matches(
+            route_policy,
+            reviewer_witness_path,
+            source_tree=source_tree,
         )
         or reviewer_witness_path == relative
     ):
@@ -5227,7 +6092,7 @@ def load_agent_implementation_route_authorization(
         or witness_profile.budget_cid != authority_bounds.budget_cid
         or witness_profile.resource_cid != authority_bounds.resource_cid
         or witness_profile.content_id != authority_bounds.authority_cid
-        or witness_profile.route_id != _V3_AGENT_IMPLEMENTATION_ROUTE_ID
+        or witness_profile.route_id != route_policy.route_id
         or witness_profile.fallback_provider_id != "codex"
         or witness_profile.fallback_model_id != "gpt-5.6-terra"
         or witness_profile.fallback_reasoning_effort != "high"
@@ -5489,6 +6354,22 @@ _QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE = _agent_implementation_route_plan(
     fallback_reasoning_effort="high",
     route_id=_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE_ID,
 )
+_GROK46_QUOTA_MEDIUM_AGENT_IMPLEMENTATION_ROUTE = (
+    _agent_implementation_route_plan(
+        fallback_trigger="primary_quota_exhausted",
+        fallback_reasoning_effort="medium",
+        route_id=_GROK46_QUOTA_MEDIUM_AGENT_IMPLEMENTATION_ROUTE_ID,
+        primary_model_id="grok-4.6",
+    )
+)
+_GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE = (
+    _agent_implementation_route_plan(
+        fallback_trigger="primary_quota_exhausted",
+        fallback_reasoning_effort="high",
+        route_id=_GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE_ID,
+        primary_model_id="grok-4.6",
+    )
+)
 _AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE = (
     _agent_implementation_route_plan(
         fallback_trigger="primary_quota_or_auth_unavailable",
@@ -5496,10 +6377,21 @@ _AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE = (
         route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
     )
 )
+_EAAEF_AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE = (
+    _agent_implementation_route_plan(
+        fallback_trigger="primary_quota_or_auth_unavailable",
+        fallback_reasoning_effort="high",
+        route_id=_EAAEF_AGENT_IMPLEMENTATION_ROUTE_ID,
+        primary_model_id="grok-4.6",
+    )
+)
 _AGENT_IMPLEMENTATION_ROUTES = (
     _LEGACY_AGENT_IMPLEMENTATION_ROUTE,
     _QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE,
+    _GROK46_QUOTA_MEDIUM_AGENT_IMPLEMENTATION_ROUTE,
+    _GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE,
     _AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE,
+    _EAAEF_AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE,
 )
 
 
@@ -5563,8 +6455,20 @@ def resolve_agent_implementation_route(
     for route in _AGENT_IMPLEMENTATION_ROUTES:
         if values == route.as_dict():
             if route.permits_authentication_unavailable:
+                route_policy = _agent_route_authorization_policy_for_route(
+                    route.route_id,
+                    authorization=authorization,
+                )
                 if (
                     authorization is None
+                    or route_policy is None
+                    or authorization.board_namespace
+                    != route_policy.board_namespace
+                    or not _agent_route_authorization_path_matches(
+                        route_policy,
+                        authorization.artifact_path,
+                        source_tree=authorization.source_tree,
+                    )
                     or authorization._validation_seal
                     != _agent_implementation_private_seal(
                         {
@@ -5633,7 +6537,7 @@ def resolve_agent_implementation_route(
                     )
                 return AgentImplementationRoutePlan(
                     **values,
-                    route_id=_V3_AGENT_IMPLEMENTATION_ROUTE_ID,
+                    route_id=route.route_id,
                     authorization=authorization,
                     fallback_implementer_identity=(
                         authorization.fallback_implementer_identity
@@ -5650,8 +6554,9 @@ def resolve_agent_implementation_route(
     )
     raise ValueError(
         "agent implementation route must be exactly the reviewed legacy "
-        "quota/medium tuple, quota/high tuple, or auth-or-quota/high "
-        "tuple; " + details
+        "quota/medium tuple, quota/high tuple, or a reviewed scoped "
+        "auth-or-quota/high tuple; "
+        + details
     )
 
 
@@ -5660,6 +6565,7 @@ def _agent_read_stable_file(
     *,
     maximum_bytes: int = _AGENT_CONTROL_PLANE_MAX_FILE_BYTES,
     exact_mode: int | None = None,
+    allow_group_writable: bool = False,
 ) -> bytes:
     """Read a bounded stable file through exactly one no-follow descriptor."""
 
@@ -5696,6 +6602,7 @@ def _agent_read_stable_file(
         raise ValueError("accepted control-plane file is unavailable") from exc
     try:
         before = os.fstat(descriptor)
+        write_mask = 0o002 if allow_group_writable else 0o022
         if (
             not stat_module.S_ISREG(before.st_mode)
             or before.st_nlink != 1
@@ -5703,7 +6610,7 @@ def _agent_read_stable_file(
             or (
                 stat_module.S_IMODE(before.st_mode) != exact_mode
                 if exact_mode is not None
-                else bool(stat_module.S_IMODE(before.st_mode) & 0o022)
+                else bool(stat_module.S_IMODE(before.st_mode) & write_mask)
             )
             or before.st_size > maximum_bytes
         ):
@@ -5747,7 +6654,7 @@ def _agent_read_stable_file(
         or (
             stat_module.S_IMODE(after.st_mode) != exact_mode
             if exact_mode is not None
-            else bool(stat_module.S_IMODE(after.st_mode) & 0o022)
+            else bool(stat_module.S_IMODE(after.st_mode) & write_mask)
         )
         or len(raw) > maximum_bytes
         or len(raw) != after.st_size
@@ -6025,8 +6932,15 @@ def _agent_control_plane_git_state(
     *,
     expected_head: str,
     expected_tree: str,
+    allow_dirty_worktree: bool = False,
 ) -> tuple[str, str]:
-    """Require one exact, clean repository generation at ``root``."""
+    """Require one exact repository generation at ``root``.
+
+    The default path still requires a porcelain-clean worktree.  Independently
+    signed EAAEF-191 host-bundle admission may overlay host-evidence and
+    nested worktree dirt after HEAD is frozen; the capsule still binds only
+    HEAD blobs for control-plane Python.
+    """
 
     top_level = Path(
         os.fsdecode(
@@ -6043,15 +6957,17 @@ def _agent_control_plane_git_state(
     tree = os.fsdecode(
         _agent_git_output(root, ("rev-parse", "--verify", "HEAD^{tree}"))
     ).strip()
-    status = _agent_git_output(
-        root,
-        (
-            "status",
-            "--porcelain=v1",
-            "-z",
-            "--untracked-files=all",
-        ),
-    )
+    status = b""
+    if not allow_dirty_worktree:
+        status = _agent_git_output(
+            root,
+            (
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            ),
+        )
     if (
         exact_top_level != root
         or head != expected_head
@@ -6147,6 +7063,7 @@ def materialize_agent_implementation_control_plane_capsule(
     capsule_parent: Path | str,
     source_head: str,
     source_tree: str,
+    allow_dirty_worktree: bool = False,
 ) -> AgentImplementationControlPlanePin:
     """Snapshot the daemon's loaded source generation into a private capsule."""
 
@@ -6162,6 +7079,7 @@ def materialize_agent_implementation_control_plane_capsule(
         root,
         expected_head=source_head,
         expected_tree=source_tree,
+        allow_dirty_worktree=allow_dirty_worktree,
     )
     files = _agent_control_plane_source_files(root, verify_loaded_origins=True)
     payloads = _agent_control_plane_head_payloads(
@@ -6173,12 +7091,16 @@ def materialize_agent_implementation_control_plane_capsule(
         raise ValueError("accepted control-plane package differs from HEAD")
     for path in files:
         relative = str(path.relative_to(root))
-        if _agent_read_stable_file(path) != payloads[relative]:
+        if _agent_read_stable_file(
+            path,
+            allow_group_writable=allow_dirty_worktree,
+        ) != payloads[relative]:
             raise ValueError("loaded control-plane module differs from HEAD")
     _agent_control_plane_git_state(
         root,
         expected_head=source_head,
         expected_tree=source_tree,
+        allow_dirty_worktree=allow_dirty_worktree,
     )
     digests = {
         relative: "sha256:" + hashlib.sha256(raw).hexdigest()
@@ -9576,6 +10498,13 @@ def decide_agent_implementation_fallback(
             control_plane_id=(
                 invocation.control_plane.capsule_id if invocation else ""
             ),
+        )
+    if expected_model != canonical_route.primary_model_id:
+        return decision(
+            authorized=False,
+            requires_independent_quota_verification=False,
+            reason_code="route_primary_model_mismatch",
+            verifier_status="not_run",
         )
     if reviewer is not None:
         if invocation is None or expected_invocation_binding is None:

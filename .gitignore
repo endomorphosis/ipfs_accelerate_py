@@ -12,6 +12,9 @@ state/*
 *model_functionality_report*
 *model_functionality*
 *.json
+!config/external_agent_autonomous_execution_fabric_bootstrap.json
+!docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/
+!docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/*.json
 !test/fixtures/agent_supervisor_prompt_entrypoints/manifest.json
 !data/agent_supervisor/prompt_only_self_improvement_v3/convergence/*.json
 .venv-test
@@ -184,6 +187,7 @@ data/**/*.db.wal
 # Local state leftovers (state/* already ignored; explicit WAL/out patterns)
 state/**/*.wal
 state/**/*.out
+/test/*.db.wal
 
 # ---------------------------------------------------------------------------
 # Misplaced root one-off tests (prefer test/ — ASREF-G090 / ASREF-013 / ASREF-014)
@@ -269,6 +273,7 @@ state/**/*.out
 
 # Adversarial Assurance Engine operator controls and generated runtime state.
 /data/agent_supervisor/adversarial_assurance_engine/
+/data/agent_supervisor/external_agent_autonomous_execution_fabric/
 !config/adversarial_assurance_engine_scheduler.json
 !config/adversarial_assurance_prerequisites.json
 !docs/architecture/adversarial_assurance_inventory/*.json

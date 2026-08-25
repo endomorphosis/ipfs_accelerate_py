@@ -10,6 +10,18 @@ from pathlib import Path
 
 import ipfs_accelerate_py.agent_supervisor.worktree_lifecycle as lifecycle_module
 import pytest
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import EventCursor
+from ipfs_accelerate_py.agent_supervisor.merge.campaign_leases import (
+    CampaignLeaseCoordinator,
+)
+from ipfs_accelerate_py.agent_supervisor.rescue.learning_recovery import (
+    LearningCheckpointAdapter,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import (
+    L3ResourceKind,
+    LearningCheckpointBinding,
+    StaleFenceError,
+)
 from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
     FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
@@ -289,6 +301,55 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
     assert terminal.terminal_reason == "controlled_restart_dead_owner"
     assert store.load_workspace(other_workspace).is_nonterminal
     assert store.load_workspace(live_workspace).is_nonterminal
+
+
+def test_same_lane_cleanup_reclaims_dead_owner_before_lease_expiry(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-1"
+    peer_state = tmp_path / "state" / "lane-2"
+    workspace = tmp_path / "dead-same-lane-cleanup"
+    original = store.begin_preparing(
+        task_id="RESTART-CLEANUP",
+        canonical_task_cid="cid:restart-cleanup",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=workspace,
+        branch="implementation/restart-cleanup",
+        merge_target="main",
+        state_dir=str(lane_state),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 13,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+
+    peer = store.authorize_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=peer_state,
+    )
+    assert not peer.allowed
+    assert peer.reason == "owner_dead_lease_unexpired"
+
+    decision = store.authorize_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=lane_state,
+        caller_lease_id="lane-reclaimer",
+    )
+    assert decision.allowed
+    assert decision.reason == "reclaimed_dead_same_lane_owner"
+    assert decision.record is not None
+    assert decision.record.state is WorkspaceLifecycleState.TERMINAL
+    assert decision.record.fence == original.fence + 1
+    assert decision.record.terminal_reason == "owner_dead_same_lane_reclaim"
 
 
 def test_exact_dead_owner_adoption_does_not_wait_for_lease_expiry(
@@ -1047,6 +1108,158 @@ def test_duplicate_attempt_rejected_while_owner_alive(tmp_path: Path) -> None:
             branch="implementation/dup",
             merge_target="main",
         )
+
+
+@pytest.mark.parametrize("same_workspace", [False, True])
+def test_replace_stale_false_fences_expired_dead_nonterminal_claim(
+    tmp_path: Path,
+    same_workspace: bool,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=60.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    original_workspace = tmp_path / "worktrees" / "original"
+    original = store.begin_preparing(
+        task_id="NO-STALE-REPLACE",
+        canonical_task_cid="cid:no-stale-replace",
+        attempt=1,
+        lane_id="dead-lane",
+        workspace_path=original_workspace,
+        branch="implementation/no-stale-replace-old",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 41,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    record_path = store.workspace_path_for(original_workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=original.canonical_task_cid,
+        task_id=original.task_id,
+        attempt=original.attempt,
+    )
+    record_before = record_path.read_bytes()
+    index_before = index_path.read_bytes()
+    clock.advance(61.0)
+    candidate = (
+        original_workspace
+        if same_workspace
+        else tmp_path / "worktrees" / "replacement"
+    )
+
+    with pytest.raises(
+        DuplicateAttemptError,
+        match="nonterminal claim replacement disabled",
+    ):
+        store.begin_preparing(
+            task_id=original.task_id,
+            canonical_task_cid=original.canonical_task_cid,
+            attempt=original.attempt,
+            lane_id="retry-lane",
+            workspace_path=candidate,
+            branch="implementation/no-stale-replace-new",
+            merge_target="main",
+            allow_replace_stale=False,
+        )
+
+    assert record_path.read_bytes() == record_before
+    assert index_path.read_bytes() == index_before
+    assert store.load_workspace(original_workspace) == original
+    if not same_workspace:
+        assert store.load_workspace(candidate) is None
+
+
+def test_replace_stale_false_allows_terminal_prior_claim(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    original_workspace = tmp_path / "worktrees" / "terminal"
+    original = store.begin_preparing(
+        task_id="TERMINAL-REPLACE",
+        canonical_task_cid="cid:terminal-replace",
+        attempt=1,
+        lane_id="old-lane",
+        workspace_path=original_workspace,
+        branch="implementation/terminal-replace-old",
+        merge_target="main",
+    )
+    terminal = store.mark_terminal(
+        original_workspace,
+        lease_id=original.lease_id,
+        expected_fence=original.fence,
+        reason="finished",
+    )
+    replacement_workspace = tmp_path / "worktrees" / "replacement"
+
+    replacement = store.begin_preparing(
+        task_id=terminal.task_id,
+        canonical_task_cid=terminal.canonical_task_cid,
+        attempt=terminal.attempt,
+        lane_id="new-lane",
+        workspace_path=replacement_workspace,
+        branch="implementation/terminal-replace-new",
+        merge_target="main",
+        allow_replace_stale=False,
+    )
+
+    assert replacement.state is WorkspaceLifecycleState.PREPARING
+    assert store.load_workspace(original_workspace) == terminal
+    assert store.load_task_attempt(
+        canonical_task_cid=replacement.canonical_task_cid,
+        task_id=replacement.task_id,
+        attempt=replacement.attempt,
+    ) == replacement
+
+
+def test_replace_stale_true_preserves_legacy_expired_replacement(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=60.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    original_workspace = tmp_path / "worktrees" / "legacy-original"
+    original = store.begin_preparing(
+        task_id="LEGACY-STALE-REPLACE",
+        canonical_task_cid="cid:legacy-stale-replace",
+        attempt=1,
+        lane_id="old-lane",
+        workspace_path=original_workspace,
+        branch="implementation/legacy-stale-replace-old",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 43,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    clock.advance(61.0)
+    replacement_workspace = tmp_path / "worktrees" / "legacy-replacement"
+
+    replacement = store.begin_preparing(
+        task_id=original.task_id,
+        canonical_task_cid=original.canonical_task_cid,
+        attempt=original.attempt,
+        lane_id="new-lane",
+        workspace_path=replacement_workspace,
+        branch="implementation/legacy-stale-replace-new",
+        merge_target="main",
+        allow_replace_stale=True,
+    )
+
+    assert replacement.state is WorkspaceLifecycleState.PREPARING
+    assert store.load_workspace(original_workspace) == original
+    assert store.load_task_attempt(
+        canonical_task_cid=replacement.canonical_task_cid,
+        task_id=replacement.task_id,
+        attempt=replacement.attempt,
+    ) == replacement
 
 
 def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(

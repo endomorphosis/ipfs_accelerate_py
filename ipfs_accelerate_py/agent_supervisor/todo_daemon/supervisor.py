@@ -61,7 +61,9 @@ _PYTHON_EXECUTABLE_RE = re.compile(
     r"python(?:[0-9]+(?:\.[0-9]+)*)?(?:\.exe)?",
     re.IGNORECASE,
 )
-_SEALED_RUNNER_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+# This verifier must admit the same bounded supervisor capsule size as
+# ``agent_implementation_route`` permits during archive construction.
+_SEALED_RUNNER_MAX_ARCHIVE_BYTES = 80 * 1024 * 1024
 _PROTECTED_ATTEMPT_LATCH_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "protected-implementation-attempt-latch@1"
@@ -854,13 +856,22 @@ def build_supervisor_status_payload(
 ) -> JsonDict:
     """Build the common supervisor JSON status payload."""
 
+    reported_supervisor_pid = os.getpid() if supervisor_pid is None else supervisor_pid
+    try:
+        reported_daemon_pid = int(daemon_pid or 0)
+    except (TypeError, ValueError):
+        reported_daemon_pid = 0
     payload: JsonDict = {
         "schema": schema or f"{spec.schema}.supervisor",
         "status": status,
         "updated_at": now_utc().isoformat(),
         "repo_root": str(spec.repo_root),
-        "supervisor_pid": os.getpid() if supervisor_pid is None else supervisor_pid,
+        "supervisor_pid": reported_supervisor_pid,
+        "supervisor_pid_alive": pid_alive(int(reported_supervisor_pid)),
         "daemon_pid": daemon_pid,
+        "daemon_pid_alive": bool(
+            reported_daemon_pid > 1 and pid_alive(reported_daemon_pid)
+        ),
         "restart_count": int(restart_count),
         "run_id": run_id,
         "log_path": log_path,

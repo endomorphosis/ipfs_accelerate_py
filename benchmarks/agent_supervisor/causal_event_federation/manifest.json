@@ -1,0 +1,136 @@
+{
+  "schema": "casf/benchmark-suite@1",
+  "suite_id": "sha256:aa916a4418b4345e90c75b7955f5d0bdefde657158c5fb4f2834ae6cfea3eb0b",
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "root_goal_id": "CASF-G000",
+  "tranche_goal_id": "CASF-G040",
+  "goal_id": "CASF-G043",
+  "component_snapshot": {
+    "revision": "75f9487ff051ce5defd6171d7b41dd8127a0d59f",
+    "tree_id": "4e31236de005816686e68a336adb1a7fe679e6fa"
+  },
+  "matrix_binding": {
+    "path": "benchmarks/agent_supervisor/causal_event_federation/matrix.yaml",
+    "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation-benchmark-matrix@1",
+    "git_blob_oid": "ab0482d40968e1ae238923225d76bbcb9ca3551e",
+    "raw_sha256": "b23681a8c811f2020ef97e1b1b0172c15c87577d7882a4323f67e072dd7dfd9f"
+  },
+  "components": [
+    {
+      "task_id": "CASF-038",
+      "benchmark_id": "casf-idle-event-driven-v2",
+      "manifest_state": "specification_only",
+      "manifest_binding": {
+        "path": "benchmarks/agent_supervisor/causal_event_federation/idle_manifest.json",
+        "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/idle-benchmark-manifest@2",
+        "git_blob_oid": "f5a43c848a969cd8cd1a8815f4154e7bc5a51a34",
+        "raw_sha256": "4a9d80d5905202433b145b1b5b0ff809e7137962f3fccedc725699f0701a3bd0"
+      },
+      "runner_binding": {
+        "path": "benchmarks/agent_supervisor/causal_event_federation/run_idle.py",
+        "git_blob_oid": "ba14e4cb0feb8c2687d13fa9b56fceecc9df5975",
+        "raw_sha256": "56a29287e2e0d2d63f19d6ac777a5a962c79a45052ec70f9f487222597159287"
+      },
+      "result_schema": "casf/idle-benchmark@1",
+      "availability": "unavailable",
+      "execution_status": "not_run",
+      "reason_code": "typed_quack_live_endpoint_not_supplied",
+      "result_ref": null,
+      "metrics_omitted": true,
+      "qualified": false,
+      "promotion_eligible": false
+    },
+    {
+      "task_id": "CASF-039",
+      "benchmark_id": "casf-parallel-twelve-supervisor-v1",
+      "manifest_state": "capability_unavailable",
+      "manifest_binding": {
+        "path": "benchmarks/agent_supervisor/causal_event_federation/parallel_manifest.json",
+        "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/parallel-benchmark-manifest@1",
+        "git_blob_oid": "9f438387fc30e0fd451c5eed6069ccebdb9d49a7",
+        "raw_sha256": "2d2c506f6fb2a68074449b50e09ac0748f373ea357642176d4e27fc7c1c7bae6"
+      },
+      "runner_binding": {
+        "path": "benchmarks/agent_supervisor/causal_event_federation/run_parallel.py",
+        "git_blob_oid": "476fca00c099b1ba6c054a9f0c370e0cfa8d6478",
+        "raw_sha256": "25b7a286ee4e7113847045dc4184bb7b61336a2ed2e899e7196e9e283b6e29af"
+      },
+      "result_schema": "casf/parallel-benchmark@1",
+      "availability": "unavailable",
+      "execution_status": "not_run",
+      "reason_code": "qualified_twelve_supervisor_live_capacity_not_admitted",
+      "result_ref": null,
+      "metrics_omitted": true,
+      "qualified": false,
+      "promotion_eligible": false
+    },
+    {
+      "task_id": "CASF-040",
+      "benchmark_id": "casf-load-256-agent-bounded-v1",
+      "manifest_state": "capability_unavailable",
+      "manifest_binding": {
+        "path": "benchmarks/agent_supervisor/causal_event_federation/load_manifest.json",
+        "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/load-benchmark-manifest@1",
+        "git_blob_oid": "07033204492131adb125be108857f8115d2aae9b",
+        "raw_sha256": "0585e25bb98036edb1941477db43780d46ebb736a2f826b90d3ce6e12539b357"
+      },
+      "runner_binding": {
+        "path": "benchmarks/agent_supervisor/causal_event_federation/run_load.py",
+        "git_blob_oid": "e7796dc33ba6c38894ea3286ffe124aac193fc41",
+        "raw_sha256": "2e3f037486d6067029333518d690e696b17af624f7bb60f31001ba3cefb18808"
+      },
+      "result_schema": "casf/load-benchmark@1",
+      "availability": "unavailable",
+      "execution_status": "not_run",
+      "reason_code": "qualified_256_agent_bounded_load_live_capacity_not_admitted",
+      "result_ref": null,
+      "metrics_omitted": true,
+      "qualified": false,
+      "promotion_eligible": false
+    },
+    {
+      "task_id": "CASF-041",
+      "benchmark_id": "casf-token-cross-supervisor-v1",
+      "manifest_state": "capability_unavailable",
+      "manifest_binding": {
+        "path": "benchmarks/agent_supervisor/causal_event_federation/token_manifest.json",
+        "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/token-benchmark-manifest@1",
+        "git_blob_oid": "3aff1d97497f6ef66c0a0a239d158f7366cb0e67",
+        "raw_sha256": "34cbda396f72dc5bdee7eda5ec6639bdfbf7574e9da132bea01536c5d0cd924e"
+      },
+      "runner_binding": {
+        "path": "benchmarks/agent_supervisor/causal_event_federation/run_token.py",
+        "git_blob_oid": "6ae63feb3a7570a235cf64d7bc1597f2983bf2dd",
+        "raw_sha256": "b14b2531a8b13876bd9240b96b1e17992abd2ccb8ceaa40f79f1ccae247c8604"
+      },
+      "result_schema": "casf/token-benchmark@1",
+      "availability": "unavailable",
+      "execution_status": "not_run",
+      "reason_code": "qualified_cross_supervisor_token_live_capacity_not_admitted",
+      "result_ref": null,
+      "metrics_omitted": true,
+      "qualified": false,
+      "promotion_eligible": false
+    }
+  ],
+  "result_artifacts": [],
+  "suite_status": "not_run",
+  "authoritative": false,
+  "scheduling_authority": false,
+  "qualification_authority": false,
+  "completion_authority": false,
+  "ducklake_authoritative": false,
+  "promotion_eligible": false,
+  "release_eligible": false,
+  "blockers": [
+    "unavailable:casf_038_live_not_run",
+    "unavailable:casf_039_live_not_run",
+    "unavailable:casf_040_live_not_run",
+    "unavailable:casf_041_live_not_run"
+  ],
+  "nonclaims": [
+    "Frozen specifications and thresholds are not observations.",
+    "No benchmark metrics or qualification are asserted.",
+    "DuckLake grants no scheduling, acceptance, completion, or promotion authority."
+  ]
+}

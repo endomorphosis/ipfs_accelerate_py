@@ -35,6 +35,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    ControlPlaneIdentityError,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DATABASE_TASK_SOURCE_INTERFACE,
     DATABASE_TASK_SOURCE_SCHEMA,
@@ -161,6 +164,50 @@ def _seed_graph(repo: IntentRepository) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Interface identities
 # ---------------------------------------------------------------------------
+
+
+def test_task_outputs_accept_dotfile_repo_paths_and_reject_escape(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _seed_graph(repo)
+    repo.upsert_task(
+        task_cid="task:cid:gitignore",
+        task_alias="EAAEF-002-gitignore",
+        goal_cid="goal:cid:root",
+        plan_cid="plan:cid:v1",
+        objective_id="objective:dqp-012",
+        ordinal=3,
+        status="ready",
+        outputs=[
+            {"path": ".gitignore", "effect_id": "effect:gitignore"},
+            {"path": "ipfs_accelerate_py/llm_router.py", "effect_id": "effect:router"},
+            {
+                "path": "ipfs_accelerate_py/agent_supervisor/formal/",
+                "effect_id": "effect:formal-directory",
+            },
+        ],
+    )
+    stored = repo.get_task("task:cid:gitignore")
+    assert stored is not None
+    paths = [item["path"] for item in stored["outputs"]]
+    assert paths == [
+        ".gitignore",
+        "ipfs_accelerate_py/llm_router.py",
+        "ipfs_accelerate_py/agent_supervisor/formal",
+    ]
+    for unsafe in ("../secret", "/etc/passwd", "foo/../bar", "foo//bar", "/"):
+        with pytest.raises(ControlPlaneIdentityError, match="output path"):
+            repo.upsert_task(
+                task_cid="task:cid:unsafe-output",
+                task_alias="EAAEF-unsafe-output",
+                goal_cid="goal:cid:root",
+                plan_cid="plan:cid:v1",
+                objective_id="objective:dqp-012",
+                ordinal=4,
+                status="ready",
+                outputs=[{"path": unsafe}],
+            )
 
 
 def test_interface_identities() -> None:
