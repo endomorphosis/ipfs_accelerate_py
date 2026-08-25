@@ -124,6 +124,7 @@ MAX_FILE_BYTES: Final[int] = 1_048_576
 MAX_REASON_CODES: Final[int] = 64
 MAX_THEORY_RULES: Final[int] = 64
 MAX_EGRAPH_NODES: Final[int] = 2_048
+MAX_EGRAPH_MATCHES: Final[int] = 4_096
 MAX_REPLAY_STEPS: Final[int] = 128
 MAX_SIDE_CONDITIONS: Final[int] = 16
 DEFAULT_MAX_ENUMERATIVE_CANDIDATES: Final[int] = 8
@@ -218,7 +219,7 @@ _UNAVAILABLE_EQUALITY_FEATURES: Final[tuple[tuple[str, str], ...]] = (
     ),
     (
         "external_egg_runtime",
-        "validation_path_has_no_egg_or_egglog",
+        "external_egg_or_egglog_runtime_not_integrated",
     ),
 )
 
@@ -860,28 +861,33 @@ def _unbound_rhs_pattern_vars(
     return tuple(sorted(extra))
 
 
-def _rewrite_equality_term_once(
+def _rewrite_equality_term_all(
     term: EqualityTerm, lhs: EqualityTerm, rhs: EqualityTerm
-) -> tuple[EqualityTerm, bool]:
+) -> tuple[EqualityTerm, int]:
+    """Rewrite every non-overlapping occurrence of a ground redex.
+
+    E-graph applications are class-level: one recorded application can stand
+    for several identical AST redexes.  Replay must therefore rewrite all
+    occurrences in one deterministic pass, rather than arbitrarily choosing
+    the first one.
+    """
+
     subst: dict[str, EqualityTerm] = {}
     if _match_equality_term(lhs, term, subst):
         if _unbound_rhs_pattern_vars(lhs, rhs, subst):
-            return term, False
-        return _instantiate_equality_term(rhs, subst), True
+            return term, 0
+        return _instantiate_equality_term(rhs, subst), 1
     if not term.children:
-        return term, False
+        return term, 0
     children: list[EqualityTerm] = []
-    changed = False
+    applications = 0
     for child in term.children:
-        if changed:
-            children.append(child)
-            continue
-        rewritten, applied = _rewrite_equality_term_once(child, lhs, rhs)
+        rewritten, applied = _rewrite_equality_term_all(child, lhs, rhs)
         children.append(rewritten)
-        changed = applied
-    if not changed:
-        return term, False
-    return EqualityTerm(op=term.op, children=tuple(children)), True
+        applications += applied
+    if not applications:
+        return term, 0
+    return EqualityTerm(op=term.op, children=tuple(children)), applications
 
 
 def _collect_term_effects(
@@ -1155,6 +1161,7 @@ class DeclaredEqualityTheory(CanonicalContract):
         )
         object.__setattr__(self, "leaf_sorts", _normalize_leaf_sorts(self.leaf_sorts))
         normalized: list[EqualityRule] = []
+        seen_rule_ids: set[str] = set()
         for rule in self.rules:
             if isinstance(rule, EqualityRule):
                 item = rule
@@ -1162,6 +1169,9 @@ class DeclaredEqualityTheory(CanonicalContract):
                 item = EqualityRule.from_dict(rule)
             else:
                 raise ProgramRepairSynthesisError("rules must be EqualityRule or mapping")
+            if item.rule_id in seen_rule_ids:
+                raise ProgramRepairSynthesisError("equality theory rule_ids must be unique")
+            seen_rule_ids.add(item.rule_id)
             if item.theory_id and item.theory_id != self.theory_id:
                 raise ProgramRepairSynthesisError(
                     "rule theory_id must match declared theory"
@@ -1333,6 +1343,7 @@ class EqualityRewriteStep:
         object.__setattr__(self, "lhs", _text(self.lhs, "lhs", limit=MAX_SPAN_BYTES))
         object.__setattr__(self, "rhs", _text(self.rhs, "rhs", limit=MAX_SPAN_BYTES))
         pairs: list[tuple[str, str]] = []
+        seen_vars: set[str] = set()
         for item in self.substitution or ():
             if (
                 not isinstance(item, Sequence)
@@ -1340,7 +1351,15 @@ class EqualityRewriteStep:
                 or len(item) != 2
             ):
                 raise ProgramRepairSynthesisError("substitution entries must be pairs")
-            pairs.append((_text(item[0], "subst_var"), _text(item[1], "subst_term", limit=MAX_SPAN_BYTES)))
+            name = _text(item[0], "subst_var")
+            if name in seen_vars:
+                raise ProgramRepairSynthesisError("substitution variables must be unique")
+            seen_vars.add(name)
+            term = _text(item[1], "subst_term", limit=MAX_SPAN_BYTES)
+            parsed = parse_equality_term(term, name="subst_term")
+            if parsed.is_var:
+                raise ProgramRepairSynthesisError("substitution terms must be ground")
+            pairs.append((name, parsed.render()))
         object.__setattr__(self, "substitution", tuple(pairs))
 
     def to_dict(self) -> dict[str, Any]:
@@ -1362,8 +1381,14 @@ class EqualityRewriteStep:
         for item in raw_subst:
             if isinstance(item, Mapping):
                 pairs.append((str(item.get("var") or ""), str(item.get("term") or "")))
-            elif isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
+            elif (
+                isinstance(item, Sequence)
+                and not isinstance(item, (str, bytes))
+                and len(item) == 2
+            ):
                 pairs.append((str(item[0]), str(item[1])))
+            else:
+                raise ProgramRepairSynthesisError("substitution entries must be pairs")
         return cls(
             rule_id=str(payload.get("rule_id") or ""),
             review_ref=str(payload.get("review_ref") or ""),
@@ -1528,6 +1553,29 @@ class EqualityRewriteReceipt(CanonicalContract):
         object.__setattr__(self, "proposal_only", True)
         object.__setattr__(self, "grants_write_authority", False)
         object.__setattr__(self, "grants_semantic_authority", False)
+        expected_capabilities = {
+            item.feature: (item.status, item.note)
+            for item in equality_saturation_capabilities()
+        }
+        actual_capabilities = {
+            item.feature: (item.status, item.note)
+            for item in self.capabilities
+        }
+        if (
+            len(self.capabilities) != len(expected_capabilities)
+            or actual_capabilities != expected_capabilities
+        ):
+            raise ProgramRepairSynthesisError(
+                "equality receipt capabilities must match the implementation inventory"
+            )
+        if self.proved and (
+            not self.independent_equivalence.startswith("passed")
+            or not self.independent_effect.startswith("passed")
+        ):
+            raise ProgramRepairSynthesisError(
+                "proved equality receipt requires independent equivalence and effect checks",
+                reason_code=ProgramRepairReason.EQUALITY_INDEPENDENT_REJECT,
+            )
 
     @property
     def proved(self) -> bool:
@@ -1606,6 +1654,7 @@ class EqualityEGraph:
         self._side_results: list[str] = []
         self._rebuild_count = 0
         self._congruence_merges = 0
+        self._depth_budget_exhausted = False
         self._seen_apps: set[tuple[str, int, tuple[tuple[str, int], ...]]] = set()
 
     @property
@@ -1639,7 +1688,18 @@ class EqualityEGraph:
             if len(unique) == 1:
                 return next(iter(unique))
             return self.theory.default_sort
-        _args, result = signature
+        args, result = signature
+        if len(args) != len(child_sorts):
+            raise ProgramRepairSynthesisError(
+                f"operator arity mismatch for {op}",
+                reason_code=ProgramRepairReason.EQUALITY_TYPE_MISMATCH,
+            )
+        for expected, actual in zip(args, child_sorts):
+            if self._compatible_sorts(expected, actual) is None:
+                raise ProgramRepairSynthesisError(
+                    f"argument sort mismatch for {op}",
+                    reason_code=ProgramRepairReason.EQUALITY_TYPE_MISMATCH,
+                )
         return result
 
     def _compatible_sorts(self, left: str, right: str) -> str | None:
@@ -1686,6 +1746,11 @@ class EqualityEGraph:
         if rule_id == "congruence":
             self._congruence_merges += 1
         elif rule_id:
+            if len(self._steps) >= MAX_REPLAY_STEPS:
+                raise ProgramRepairBoundsError(
+                    "equality replay-step budget exhausted",
+                    reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+                )
             self._applied.append(rule_id)
             if step is not None:
                 self._steps.append(step)
@@ -1743,20 +1808,22 @@ class EqualityEGraph:
         child_ids = [self.add_term(child) for child in parsed.children]
         child_sorts = [self._sorts[self._find(cid)] for cid in child_ids]
         signature = self.theory.operator_signature(parsed.op)
-        if signature is not None and parsed.children:
+        if signature is not None:
             args, result = signature
-            if len(args) == len(child_sorts):
-                for expected, actual, child_id in zip(args, child_sorts, child_ids):
-                    merged = self._compatible_sorts(expected, actual)
-                    if merged is None:
-                        raise ProgramRepairSynthesisError(
-                            f"argument sort mismatch for {parsed.op}",
-                            reason_code=ProgramRepairReason.EQUALITY_TYPE_MISMATCH,
-                        )
-                    self._sorts[self._find(child_id)] = merged
-                sort = result
-            else:
-                sort = self._enode_sort(parsed.op, child_sorts)
+            if len(args) != len(child_sorts):
+                raise ProgramRepairSynthesisError(
+                    f"operator arity mismatch for {parsed.op}",
+                    reason_code=ProgramRepairReason.EQUALITY_TYPE_MISMATCH,
+                )
+            for expected, actual, child_id in zip(args, child_sorts, child_ids):
+                merged = self._compatible_sorts(expected, actual)
+                if merged is None:
+                    raise ProgramRepairSynthesisError(
+                        f"argument sort mismatch for {parsed.op}",
+                        reason_code=ProgramRepairReason.EQUALITY_TYPE_MISMATCH,
+                    )
+                self._sorts[self._find(child_id)] = merged
+            sort = result
         else:
             sort = self._enode_sort(parsed.op, child_sorts)
         cid = self._add_enode(parsed.op, child_ids, sort=sort)
@@ -1770,7 +1837,10 @@ class EqualityEGraph:
             progressed = False
             self._rebuild_count += 1
             if self._rebuild_count > self.max_depth * 8:
-                break
+                raise ProgramRepairBoundsError(
+                    "e-graph rebuild budget exhausted",
+                    reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+                )
             buckets: dict[tuple[str, tuple[int, ...]], list[int]] = {}
             for nid, node in enumerate(self._enodes):
                 canon_children = tuple(self._find(child) for child in node.children)
@@ -1791,47 +1861,79 @@ class EqualityEGraph:
                         root = self._find(root)
         return merges
 
-    def _match_pattern(
-        self, pattern: EqualityTerm, eclass: int, subst: dict[str, int]
-    ) -> bool:
+    def _match_pattern_all(
+        self, pattern: EqualityTerm, eclass: int, subst: Mapping[str, int]
+    ) -> list[dict[str, int]]:
+        """Return every e-match for ``pattern`` in one e-class.
+
+        An e-class may hold several enodes after a union.  Returning only the
+        first match loses legal rewrite opportunities and can make saturation
+        incomplete.  Each result is canonicalized and deduplicated so the
+        caller can safely snapshot applications before mutating the graph.
+        """
+
         eclass = self._find(eclass)
         if pattern.is_var:
             bound = subst.get(pattern.op)
             if bound is None:
-                subst[pattern.op] = eclass
-                return True
-            return self._find(bound) == eclass
+                return [{**subst, pattern.op: eclass}]
+            return [dict(subst)] if self._find(bound) == eclass else []
+        matches: list[dict[str, int]] = []
         for nid in self._nodes_of[eclass]:
             node = self._enodes[nid]
             if node.op != pattern.op or len(node.children) != len(pattern.children):
                 continue
-            local = dict(subst)
-            if all(
-                self._match_pattern(child_pat, child_id, local)
-                for child_pat, child_id in zip(pattern.children, node.children)
-            ):
-                subst.clear()
-                subst.update(local)
-                return True
-        return False
+            partials = [dict(subst)]
+            for child_pat, child_id in zip(pattern.children, node.children):
+                next_partials: list[dict[str, int]] = []
+                for partial in partials:
+                    next_partials.extend(
+                        self._match_pattern_all(child_pat, child_id, partial)
+                    )
+                    if len(next_partials) > MAX_EGRAPH_MATCHES:
+                        raise ProgramRepairBoundsError(
+                            "e-graph match budget exhausted",
+                            reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+                        )
+                partials = next_partials
+                if not partials:
+                    break
+            matches.extend(partials)
+            if len(matches) > MAX_EGRAPH_MATCHES:
+                raise ProgramRepairBoundsError(
+                    "e-graph match budget exhausted",
+                    reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+                )
+        unique: dict[tuple[tuple[str, int], ...], dict[str, int]] = {}
+        for match in matches:
+            canonical = {
+                name: self._find(cid)
+                for name, cid in match.items()
+            }
+            key = tuple(sorted(canonical.items()))
+            unique.setdefault(key, canonical)
+        return list(unique.values())
 
     def _ematch(self, pattern: EqualityTerm) -> list[tuple[int, dict[str, int]]]:
         matches: list[tuple[int, dict[str, int]]] = []
         seen: set[tuple[int, tuple[tuple[str, int], ...]]] = set()
         for eclass in self._canonical_classes():
-            subst: dict[str, int] = {}
-            if not self._match_pattern(pattern, eclass, subst):
-                continue
-            key = (
-                eclass,
-                tuple(sorted((name, self._find(cid)) for name, cid in subst.items())),
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            matches.append(
-                (eclass, {name: self._find(cid) for name, cid in subst.items()})
-            )
+            for subst in self._match_pattern_all(pattern, eclass, {}):
+                key = (
+                    eclass,
+                    tuple(sorted((name, self._find(cid)) for name, cid in subst.items())),
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append(
+                    (eclass, {name: self._find(cid) for name, cid in subst.items()})
+                )
+                if len(matches) > MAX_EGRAPH_MATCHES:
+                    raise ProgramRepairBoundsError(
+                        "e-graph match budget exhausted",
+                        reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+                    )
         return matches
 
     def _instantiate(self, pattern: EqualityTerm, subst: Mapping[str, int]) -> int:
@@ -1895,6 +1997,11 @@ class EqualityEGraph:
                 actual = self._sort_of_term(rhs_term, subst)
                 if self._compatible_sorts(expected, actual) is None:
                     failed = f"{expected}!={actual}"
+                elif rule.sort and (
+                    self._compatible_sorts(rule.sort, expected) is None
+                    or self._compatible_sorts(rule.sort, actual) is None
+                ):
+                    failed = f"declared:{rule.sort}!={expected}/{actual}"
             elif condition == "no_authority":
                 if any(label in _FORBIDDEN_EFFECT_LABELS for label in rule.effects):
                     failed = "authority_effect"
@@ -2035,6 +2142,7 @@ class EqualityEGraph:
 
         depth = 0
         changed = True
+        self._depth_budget_exhausted = False
         while changed and depth < self.max_depth:
             changed = False
             depth += 1
@@ -2046,6 +2154,7 @@ class EqualityEGraph:
                     changed = True
             if self._rebuild():
                 changed = True
+        self._depth_budget_exhausted = changed and depth >= self.max_depth
         return depth
 
     def extract_eclass(self, eclass: int) -> tuple[EqualityTerm, int]:
@@ -2252,7 +2361,7 @@ class EqualityEGraph:
             )
 
         if not united:
-            if depth >= self.max_depth:
+            if self._depth_budget_exhausted:
                 status = EqualityRewriteStatus.BUDGET_EXHAUSTED
                 reason = ProgramRepairReason.BOUNDS_EXCEEDED.value
             else:
@@ -2332,8 +2441,10 @@ def _independent_effect_check(
 ) -> tuple[str, str]:
     source_effects = _collect_term_effects(source, theory.operator_effects)
     target_effects = _collect_term_effects(target, theory.operator_effects)
-    allowed = set(theory.allowed_effects)
-    extra = set(target_effects) - set(source_effects) - allowed
+    # An equality proof may retain effects already present in its context,
+    # but it may not introduce one.  ``allowed_effects`` controls theory
+    # declaration review; it is not an exemption from semantic preservation.
+    extra = set(target_effects) - set(source_effects)
     if extra & _FORBIDDEN_EFFECT_LABELS:
         reason = "forbidden_effect:" + ",".join(sorted(extra & _FORBIDDEN_EFFECT_LABELS))
         return "failed", reason
@@ -2352,36 +2463,48 @@ def _ast_replay(
 ) -> EqualityTerm:
     rules = theory.rule_map()
     term = source
-    applications = 0
     for step in steps:
         rule = rules.get(step.rule_id)
         if rule is None:
-            continue
-        lhs = rule.parsed_lhs()
-        rhs = rule.parsed_rhs()
-        rewritten, applied = _rewrite_equality_term_once(term, lhs, rhs)
-        if applied:
-            term = rewritten
-            applications += 1
-        if applications >= max_depth:
-            break
-    if term == source and steps:
-        # Fall back to applying the recorded rule set to a bounded fixpoint.
-        depth = 0
-        changed = True
-        while changed and depth < max_depth:
-            changed = False
-            depth += 1
-            for step in steps:
-                rule = rules.get(step.rule_id)
-                if rule is None:
-                    continue
-                rewritten, applied = _rewrite_equality_term_once(
-                    term, rule.parsed_lhs(), rule.parsed_rhs()
-                )
-                if applied:
-                    term = rewritten
-                    changed = True
+            raise ProgramRepairSynthesisError(
+                f"replay step references unknown rule {step.rule_id}",
+                reason_code=ProgramRepairReason.EQUALITY_REPLAY_FAILED,
+            )
+        if step.review_ref != rule.review_ref:
+            raise ProgramRepairSynthesisError(
+                f"replay step review provenance does not match {step.rule_id}",
+                reason_code=ProgramRepairReason.EQUALITY_REPLAY_FAILED,
+            )
+        if rule.review_ref not in theory.review_refs or not rule.oriented:
+            raise ProgramRepairSynthesisError(
+                f"replay step is not reviewed and oriented for {step.rule_id}",
+                reason_code=ProgramRepairReason.EQUALITY_REPLAY_FAILED,
+            )
+        lhs_pattern = rule.parsed_lhs()
+        rhs_pattern = rule.parsed_rhs()
+        if step.lhs != rule.lhs or step.rhs != rule.rhs:
+            raise ProgramRepairSynthesisError(
+                f"replay step terms do not match rule {step.rule_id}",
+                reason_code=ProgramRepairReason.EQUALITY_REPLAY_FAILED,
+            )
+        substitution = {
+            name: parse_equality_term(value, name="subst_term")
+            for name, value in step.substitution
+        }
+        expected_vars = lhs_pattern.pattern_vars()
+        if set(substitution) != expected_vars:
+            raise ProgramRepairSynthesisError(
+                f"replay substitution does not bind rule variables for {step.rule_id}",
+                reason_code=ProgramRepairReason.EQUALITY_REPLAY_FAILED,
+            )
+        if _unbound_rhs_pattern_vars(lhs_pattern, rhs_pattern, substitution):
+            raise ProgramRepairSynthesisError(
+                f"replay step has an unbound RHS variable for {step.rule_id}",
+                reason_code=ProgramRepairReason.EQUALITY_REPLAY_FAILED,
+            )
+        lhs = _instantiate_equality_term(lhs_pattern, substitution)
+        rhs = _instantiate_equality_term(rhs_pattern, substitution)
+        term, _applications = _rewrite_equality_term_all(term, lhs, rhs)
     return term
 
 
@@ -2396,7 +2519,10 @@ def _independent_equivalence_check(
     max_nodes: int,
 ) -> tuple[str, str]:
     del applied_rule_ids
-    replayed = _ast_replay(source, steps, theory, max_depth=max_depth)
+    try:
+        replayed = _ast_replay(source, steps, theory, max_depth=max_depth)
+    except ProgramRepairSynthesisError as exc:
+        return "failed", getattr(exc, "reason_code", ProgramRepairReason.EQUALITY_REPLAY_FAILED.value)
     if replayed == target:
         return "passed:replay", "passed:replay"
     fresh = EqualityEGraph(theory, max_depth=max_depth, max_nodes=max_nodes)
