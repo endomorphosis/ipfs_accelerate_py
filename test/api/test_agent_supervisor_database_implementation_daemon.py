@@ -862,6 +862,115 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
         idle.close()
 
 
+def test_post_merge_completion_crash_fence_excludes_proven_stale_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:completion-recovery-stale-snapshot",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        semantic_body = {
+            key: value
+            for key, value in dict(task.body).items()
+            if key != "completion_receipt"
+        }
+        stale_body = {
+            **semantic_body,
+            "completion_receipt": {
+                "operation": "database_portal_retry",
+            },
+        }
+        current_body = {
+            **semantic_body,
+            "completion_receipt": {
+                "operation": "database_claim",
+            },
+        }
+        projection_body = {
+            "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+            "task_cid": task.task_cid,
+            "revisions": [
+                {
+                    "revision": revision,
+                    "status": (
+                        "retrying"
+                        if revision == 6
+                        else "in_progress"
+                        if revision == 7
+                        else "ready"
+                    ),
+                    "body": (
+                        stale_body
+                        if revision == 6
+                        else current_body
+                        if revision == 7
+                        else semantic_body
+                    ),
+                }
+                for revision in range(1, 8)
+            ],
+        }
+        projection = {
+            **projection_body,
+            "projection_cid": content_identity(projection_body),
+        }
+        stale_task = replace(
+            task,
+            status="retrying",
+            revision=6,
+            body=stale_body,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: projection,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "ready_tasks",
+            lambda *, limit: SimpleNamespace(tasks=(stale_task,)),
+        )
+
+        context = daemon._post_merge_completion_crash_recovery_context(
+            stale_task,
+            require_current_blocked=False,
+        )
+
+        assert context is not None
+        assert context["stale_task_snapshot"] is True
+        assert context["task_revision"] == 6
+        assert context["canonical_task_revision"] == 7
+        assert daemon._automatic_claim_exclusions() == {task.task_cid}
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="malformed or stale canonical history",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                stale_task,
+                require_current_blocked=True,
+            )
+        forged_task = replace(
+            stale_task,
+            body={**stale_body, "fixture_tamper": True},
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="malformed or stale canonical history",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                forged_task,
+                require_current_blocked=False,
+            )
+    finally:
+        daemon.close()
+
+
 def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
