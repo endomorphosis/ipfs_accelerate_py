@@ -1,0 +1,113 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.proof_grounded_ir_learning_successor.scheduler_config@1",
+  "taskboard_path": "docs/architecture/proof_grounded_ir_learning/successor.todo.md",
+  "objectives_path": "docs/architecture/proof_grounded_ir_learning.objectives.md",
+  "plan_path": "docs/architecture/PROOF_GROUNDED_IR_LEARNING_SUCCESSOR_PLAN.md",
+  "validator_path": "scripts/validate_proof_grounded_ir_learning_successor_board.py",
+  "task_prefix": "## PGIR-",
+  "goal_prefix": "PGIR-G",
+  "board_namespace": "proof-grounded-ir-learning-successor-v1",
+  "merge_target_branch": "agent/pgir-successor-current-supervisor-20260825",
+  "source_binding": {
+    "accelerator_required_ancestor": "22173f9cf4f357ab20040024f87af53c1cd89c9a",
+    "accelerator_required_branch": "agent/pgir-successor-current-supervisor-20260825",
+    "bootstrap_task_source": "legacy-markdown",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "c30ccbec997868b061c4cadac38d30468c46ea2d",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 12,
+    "completed_task_ids": [
+      "PGIR-072",
+      "PGIR-090",
+      "PGIR-100",
+      "PGIR-111"
+    ],
+    "ready_task_ids": [
+      "PGIR-200"
+    ],
+    "terminal_task_id": "PGIR-207",
+    "goal_count": 12,
+    "root_goal_id": "PGIR-G000"
+  },
+  "max_lanes": 2,
+  "strict_task_sharding": false,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "retry_budget_guardrail_enabled": true,
+  "dependency_guardrail_enabled": true,
+  "reconciliation_guardrail_enabled": true,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 30,
+  "check_interval_seconds": 15,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 4,
+  "max_task_attempts": 3,
+  "implementation_retry_budget": 3,
+  "validation_retry_budget": 3,
+  "merge_retry_budget": 3,
+  "implementation_timeout_seconds": 7200,
+  "implementation_max_timeout_seconds": 28800,
+  "implementation_log_stall_seconds": 1800,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    ".gitignore",
+    "config/agent_supervisor_proof_grounded_ir_learning_successor_scheduler.json",
+    "docs/architecture/PROOF_GROUNDED_IR_LEARNING_SUCCESSOR_PLAN.md",
+    "docs/architecture/proof_grounded_ir_learning.objectives.md",
+    "docs/architecture/proof_grounded_ir_learning.todo.md",
+    "docs/architecture/proof_grounded_ir_learning/final_report.md",
+    "docs/architecture/proof_grounded_ir_learning/next.todo.md",
+    "docs/architecture/proof_grounded_ir_learning/successor.todo.md",
+    "scripts/validate_proof_grounded_ir_learning_successor_board.py",
+    "scripts/verify_proof_grounded_ir_learning_predecessor.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime",
+    "state": "data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/state",
+    "worktrees": "data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees",
+    "merge_queue": "data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/merge-queue",
+    "logs": "data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/logs",
+    "evidence": "data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "database_program": {
+    "authority_mode": "legacy_markdown",
+    "task_source_kind": "legacy-markdown",
+    "failover_policy": "fail_closed",
+    "explicit_legacy": true
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "pgir-successor-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "PGIR-200"
+      ],
+      "initial_focus": "rights-and-corpus-critical-path"
+    },
+    {
+      "index": 1,
+      "name": "pgir-successor-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [],
+      "initial_focus": "tokenizer-and-baseline-parallel-frontier"
+    }
+  ],
+  "provider": {
+    "provider_id": "codex",
+    "model_id": "gpt-5.6-terra",
+    "max_concurrency": 2
+  }
+}
