@@ -2742,6 +2742,26 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
             "refusing to overwrite existing bootstrap namespace: "
             + ", ".join(path.relative_to(ROOT).as_posix() for path in existing)
         )
+    # The embedded daemon opens its writer lock through a no-follow directory
+    # walk and requires the lock's immediate parent to be owner-private.  Make
+    # the fresh database generation root explicit before publishing the claim;
+    # creating the deeper registry path first would otherwise leave this
+    # intermediate directory at the process umask's usual 0755 mode.
+    database_parent = paths["control"].parent
+    try:
+        database_parent.mkdir(parents=True, mode=0o700, exist_ok=False)
+    except OSError as exc:
+        raise MaterializationError(
+            "unable to create the private bootstrap database namespace"
+        ) from exc
+    database_parent_info = database_parent.stat()
+    if (
+        database_parent_info.st_uid != os.geteuid()
+        or database_parent_info.st_mode & 0o077
+    ):
+        raise MaterializationError(
+            "bootstrap database namespace is not owned and private"
+        )
     namespace_claim: dict[str, Any] = {
         "schema": NAMESPACE_CLAIM_SCHEMA,
         "population_cid": population["population_cid"],
