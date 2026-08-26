@@ -86638,6 +86638,10 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
     }
 )
 _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
+_DUCKDB_UNCERTAIN_TRANSACTION_UNUSABLE = (
+    "DuckDB connection is unusable after an uncertain transaction"
+)
+_MAX_CONSECUTIVE_EMBEDDED_SIDECAR_REOPENS = 2
 DATABASE_DECLARED_OUTPUT_REARM_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-declared-output-rearm@1"
 )
@@ -88040,6 +88044,8 @@ def _is_quack_attach_error(exc: BaseException) -> bool:
     sibling-lane wait that used to traceback and kill the daemon.
     """
 
+    if _is_duckdb_uncertain_transaction_unusable(exc):
+        return False
     detail = str(exc)
     name = type(exc).__name__
     lowered = detail.lower()
@@ -88061,6 +88067,31 @@ def _is_quack_attach_error(exc: BaseException) -> bool:
             )
         )
     )
+
+
+def _is_duckdb_uncertain_transaction_unusable(exc: BaseException) -> bool:
+    """Return whether a bounded cause chain contains the exact poison marker."""
+
+    from ..task_sources.duckdb_state import DuckDBConnectionPolicyError
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    for _depth in range(8):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        if (
+            isinstance(current, DuckDBConnectionPolicyError)
+            and str(current) == _DUCKDB_UNCERTAIN_TRANSACTION_UNUSABLE
+        ):
+            return True
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif not current.__suppress_context__:
+            current = current.__context__
+        else:
+            current = None
+    return False
 
 
 class DatabaseImplementationDaemon:
@@ -88548,6 +88579,7 @@ class DatabaseImplementationDaemon:
         self.merge_queue = merge_queue
         self._quack_attach_blocked_until = 0.0
         self._idle_recovery_prefix: dict[str, Any] | None = None
+        self._consecutive_embedded_sidecar_reopens = 0
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
         # weakening the production lease duration.
@@ -96869,6 +96901,8 @@ class DatabaseImplementationDaemon:
             quack_attach_error_is_contention,
         )
 
+        if _is_duckdb_uncertain_transaction_unusable(exc):
+            return False
         current: BaseException | None = exc
         seen: set[int] = set()
         for _depth in range(8):
@@ -96908,6 +96942,158 @@ class DatabaseImplementationDaemon:
             else:
                 current = None
         return False
+
+    def _poisoned_embedded_sidecars_unlocked(self) -> tuple[str, ...]:
+        """Return exact unusable local handles after read-only liveness probes."""
+
+        coordinator = self._coordinator
+        execution = self._connection
+        if coordinator is None or execution is None:
+            return ()
+        poisoned: list[str] = []
+        projection = getattr(coordinator, "coordination_registry_projection", None)
+        if not callable(projection):
+            raise DatabaseImplementationAuthorityError(
+                "lane-sidecar recovery requires an owned coordination projection"
+            )
+        try:
+            projection()
+        except Exception as probe_error:
+            if not _is_duckdb_uncertain_transaction_unusable(probe_error):
+                raise DatabaseImplementationAuthorityError(
+                    "coordination sidecar failed its recovery liveness probe"
+                ) from probe_error
+            poisoned.append("coordination")
+        try:
+            execution.execute("SELECT 1")
+        except Exception as probe_error:
+            if not _is_duckdb_uncertain_transaction_unusable(probe_error):
+                raise DatabaseImplementationAuthorityError(
+                    "execution sidecar failed its recovery liveness probe"
+                ) from probe_error
+            poisoned.append("execution")
+
+        coordination_connection = getattr(coordinator, "_connection", None)
+        for name, connection in (
+            ("coordination", coordination_connection),
+            ("execution", execution),
+        ):
+            if name in poisoned:
+                continue
+            if getattr(connection, "in_transaction", None) is not False:
+                raise DatabaseImplementationAuthorityError(
+                    f"{name} sidecar is not idle for lane-local recovery"
+                )
+        return tuple(poisoned)
+
+    def _reopen_unusable_embedded_sidecars(
+        self,
+        exc: BaseException,
+    ) -> dict[str, Any] | None:
+        """Reopen only the owned lane sidecars while retaining typed authority."""
+
+        if not _is_duckdb_uncertain_transaction_unusable(exc):
+            return None
+        with self._lock:
+            if (
+                self._uses_quack_command_gateway()
+                or not self._owns_coordinator
+                or self._execution_repository is not None
+                or self._coordinator is None
+                or self._connection is None
+            ):
+                return None
+            expected_lock_paths = {
+                self._coordination_writer_lock_path,
+                self._embedded_writer_lock_path,
+            }
+            if (
+                set(self._embedded_writer_lock_handles) != expected_lock_paths
+                or set(self._embedded_writer_lock_bindings) != expected_lock_paths
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "lane-sidecar recovery requires both held writer locks"
+                )
+            self._require_typed_quack_authority_binding()
+            self._inspect_embedded_sidecars(require_exists=True)
+            poisoned = self._poisoned_embedded_sidecars_unlocked()
+            if not poisoned:
+                return None
+            if (
+                self._consecutive_embedded_sidecar_reopens
+                >= _MAX_CONSECUTIVE_EMBEDDED_SIDECAR_REOPENS
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "consecutive embedded lane-sidecar reopen bound exhausted"
+                ) from exc
+
+            writer_handles = dict(self._embedded_writer_lock_handles)
+            writer_bindings = dict(self._embedded_writer_lock_bindings)
+            for lock_path, handle in writer_handles.items():
+                if handle.closed or (
+                    _read_database_writer_lock_binding(handle)
+                    != writer_bindings[lock_path]
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "lane-sidecar recovery writer-lock custody changed"
+                    )
+            task_source = self._task_source
+            typed_binding = self._typed_quack_authority_binding
+            owner_session_id = self.owner_session_id
+            process_instance_id = self.process_instance_id
+            coordinator = self._coordinator
+            execution = self._connection
+
+            # Do not call close(): it would close task authority and release
+            # both writer locks.  Detach only the two lane-local handles while
+            # this daemon lock and their independent writer locks remain held.
+            self._coordinator = None
+            self._connection = None
+            self._closed = True
+            close_coordinator = getattr(coordinator, "close", None)
+            if callable(close_coordinator):
+                close_coordinator()
+            close_execution = getattr(execution, "close", None)
+            if callable(close_execution):
+                close_execution()
+
+            self.open()
+            if (
+                self._task_source is not task_source
+                or self._typed_quack_authority_binding is not typed_binding
+                or self.owner_session_id != owner_session_id
+                or self.process_instance_id != process_instance_id
+                or self._coordinator is None
+                or self._coordinator is coordinator
+                or self._connection is None
+                or self._connection is execution
+                or set(self._embedded_writer_lock_handles) != expected_lock_paths
+                or any(
+                    self._embedded_writer_lock_handles[path] is not handle
+                    for path, handle in writer_handles.items()
+                )
+                or self._embedded_writer_lock_bindings != writer_bindings
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "lane-sidecar recovery changed stable daemon authority"
+                )
+            self._require_typed_quack_authority_binding()
+            self._inspect_embedded_sidecars(require_exists=True)
+            if self._poisoned_embedded_sidecars_unlocked():
+                raise DatabaseImplementationAuthorityError(
+                    "lane-sidecar recovery returned an unusable connection"
+                )
+            self._consecutive_embedded_sidecar_reopens += 1
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "lane-sidecar-uncertain-transaction-recovery@1"
+                ),
+                "reason": "duckdb_uncertain_transaction_sidecar_reopened",
+                "poisoned_sidecars": list(poisoned),
+                "reopened_sidecars": ["coordination", "execution"],
+                "recovery_attempt": self._consecutive_embedded_sidecar_reopens,
+            }
 
     def _run_reconciliation_step(
         self,
@@ -117047,8 +117233,68 @@ class DatabaseImplementationDaemon:
             self._require_typed_quack_authority_binding()
             if self._embedded_writer_lock_handles:
                 self._inspect_embedded_sidecars(require_exists=True)
-            return self._run_once_impl()
+            result = self._run_once_impl()
+            with self._lock:
+                self._consecutive_embedded_sidecar_reopens = 0
+            return result
         except Exception as exc:
+            recovered = self._reopen_unusable_embedded_sidecars(exc)
+            if recovered is not None:
+                # A poisoned connection proves that a prior transaction's
+                # outcome is uncertain.  Re-entering _run_once_impl here could
+                # repeat provider/effect work before durable replay state is
+                # reread.  Yield this tick; the next tick starts from freshly
+                # opened lane sidecars and reconciles the durable journals.
+                prefix = self._idle_recovery_prefix or {}
+                result: dict[str, Any] = {
+                    "unchanged": False,
+                    "write_count": max(
+                        1,
+                        int((prefix.get("output_rearm") or {}).get("write_count") or 0)
+                        + int(
+                            (prefix.get("merge_quarantine_settlement") or {}).get(
+                                "write_count"
+                            )
+                            or 0
+                        )
+                        + int(
+                            (prefix.get("post_merge_recovery") or {}).get(
+                                "write_count"
+                            )
+                            or 0
+                        ),
+                    ),
+                    "deferred": True,
+                    "skipped": True,
+                    "reason": "embedded_sidecar_reopened",
+                    "selection_idle_reason": "embedded_sidecar_reopened",
+                    "implementation_result": None,
+                    "active_task_id": "",
+                    "attempt_consumed": "unknown",
+                    "provider_dispatched": "unknown",
+                    "recovery_attempt_consumed": False,
+                    "recovery_provider_dispatched": False,
+                    "backoff_seconds": 0,
+                    "portal_retryable_failure": True,
+                    "portal_terminal_failure": False,
+                    "durable_state_uncertain": True,
+                    "authority_mode": self.authority_mode,
+                    "task_source_kind": self.task_source_kind,
+                    "lane_sidecar_recovery": dict(recovered),
+                }
+                if prefix.get("output_rearm") is not None:
+                    result["declared_output_rearm"] = dict(
+                        prefix["output_rearm"]
+                    )
+                if prefix.get("merge_quarantine_settlement") is not None:
+                    result["merge_quarantine_settlement"] = dict(
+                        prefix["merge_quarantine_settlement"]
+                    )
+                if prefix.get("post_merge_recovery") is not None:
+                    result["post_merge_recovery"] = dict(
+                        prefix["post_merge_recovery"]
+                    )
+                return result
             if self._is_quack_attach_contention(exc):
                 prefix = self._idle_recovery_prefix or {}
                 return self._quack_attach_contention_deferral(

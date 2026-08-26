@@ -10987,7 +10987,42 @@ def test_quack_attach_contention_defers_instead_of_crashing(
         daemon.close()
 
 
-def test_wrapped_quack_authority_revalidation_contention_defers(
+def test_wrapped_quack_attach_contention_still_defers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QuackTransportContentionError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:wrapped-quack-attach-defer",
+        max_task_attempts=3,
+    )
+
+    def boom(*_args: object, **_kwargs: object) -> dict[str, object]:
+        try:
+            raise QuackTransportContentionError(
+                "quack control-plane attach contended: Authentication failed"
+            )
+        except QuackTransportContentionError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack authority binding is no longer live"
+            ) from exc
+
+    try:
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
+        result = daemon.run_once()
+        assert result["reason"] == "quack_attach_contended"
+        assert result["attempt_consumed"] is False
+        assert result["provider_dispatched"] is False
+        assert "lane_sidecar_recovery" not in result
+    finally:
+        daemon.close()
+
+
+def test_wrapped_uncertain_transaction_authority_error_is_not_attach_contention(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -11013,12 +11048,191 @@ def test_wrapped_quack_authority_revalidation_contention_defers(
             "_require_typed_quack_authority_binding",
             boom,
         )
+        poison = DuckDBConnectionPolicyError(
+            "DuckDB connection is unusable after an uncertain transaction"
+        )
+        assert implementation_daemon_module._is_quack_attach_error(poison) is False
+        assert daemon._is_quack_attach_contention(poison) is False
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="typed Quack authority binding is no longer live",
+        ):
+            daemon.run_once()
+    finally:
+        daemon.close()
+
+
+def test_uncertain_transaction_reopens_only_owned_lane_sidecars(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:uncertain-sidecar-reopen",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task_source = daemon.task_source
+        coordinator = daemon.coordinator
+        coordination_connection = coordinator._require()
+        execution_connection = daemon._connection
+        writer_handles = dict(daemon._embedded_writer_lock_handles)
+        writer_bindings = dict(daemon._embedded_writer_lock_bindings)
+        owner_session_id = daemon.owner_session_id
+        process_instance_id = daemon.process_instance_id
+
+        with coordination_connection._execution_condition:
+            coordination_connection._poison_locked()
+
         result = daemon.run_once()
-        assert result.get("deferred") is True
-        assert result.get("selection_idle_reason") == "quack_attach_failed"
-        assert result.get("portal_retryable_failure") is True
-        assert result.get("attempt_consumed") is False
-        assert result.get("provider_dispatched") is False
+        assert result["deferred"] is True
+        assert result["skipped"] is True
+        assert result["reason"] == "embedded_sidecar_reopened"
+        assert result["attempt_consumed"] == "unknown"
+        assert result["provider_dispatched"] == "unknown"
+        assert result["recovery_attempt_consumed"] is False
+        assert result["recovery_provider_dispatched"] is False
+        assert result["durable_state_uncertain"] is True
+        recovery = result.get("lane_sidecar_recovery") or {}
+        assert recovery == {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "lane-sidecar-uncertain-transaction-recovery@1"
+            ),
+            "reason": "duckdb_uncertain_transaction_sidecar_reopened",
+            "poisoned_sidecars": ["coordination"],
+            "reopened_sidecars": ["coordination", "execution"],
+            "recovery_attempt": 1,
+        }
+        assert result["implementation_result"] is None
+        assert provider_calls == []
+        assert effect_calls == []
+        assert daemon.task_source is task_source
+        assert daemon.coordinator is not coordinator
+        assert daemon._connection is not execution_connection
+        assert daemon.owner_session_id == owner_session_id
+        assert daemon.process_instance_id == process_instance_id
+        assert daemon._embedded_writer_lock_bindings == writer_bindings
+        assert all(
+            daemon._embedded_writer_lock_handles[path] is handle
+            for path, handle in writer_handles.items()
+        )
+        assert coordinator.is_open is False
+        assert execution_connection._closed is True
+    finally:
+        daemon.close()
+
+
+def test_uncertain_transaction_sidecar_reopen_does_not_retry_same_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:uncertain-sidecar-reopen-bound",
+    )
+    poisoned_connections: list[object] = []
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    writer_handles = dict(daemon._embedded_writer_lock_handles)
+
+    def poison_current_coordination() -> dict[str, object]:
+        provider_calls.append("provider")
+        effect_calls.append("effect")
+        coordinator = daemon.coordinator
+        connection = coordinator._require()
+        with connection._execution_condition:
+            connection._poison_locked()
+        poisoned_connections.append(connection)
+        return coordinator.coordination_registry_projection()
+
+    try:
+        monkeypatch.setattr(daemon, "_run_once_impl", poison_current_coordination)
+        result = daemon.run_once()
+        assert result["reason"] == "embedded_sidecar_reopened"
+        assert result["recovery_attempt_consumed"] is False
+        assert result["recovery_provider_dispatched"] is False
+        assert provider_calls == ["provider"]
+        assert effect_calls == ["effect"]
+        assert len(poisoned_connections) == 1
+        assert daemon.coordinator._require() is not poisoned_connections[0]
+        assert all(
+            daemon._embedded_writer_lock_handles[path] is handle
+            for path, handle in writer_handles.items()
+        )
+    finally:
+        daemon.close()
+
+
+def test_uncertain_transaction_sidecar_reopen_is_consecutively_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:uncertain-sidecar-consecutive-bound",
+    )
+    opened_connections: list[object] = []
+
+    def poison_current_coordination() -> dict[str, object]:
+        coordinator = daemon.coordinator
+        connection = coordinator._require()
+        opened_connections.append(connection)
+        with connection._execution_condition:
+            connection._poison_locked()
+        return coordinator.coordination_registry_projection()
+
+    try:
+        monkeypatch.setattr(daemon, "_run_once_impl", poison_current_coordination)
+        first = daemon.run_once()
+        second = daemon.run_once()
+        assert first["lane_sidecar_recovery"]["recovery_attempt"] == 1
+        assert second["lane_sidecar_recovery"]["recovery_attempt"] == 2
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="consecutive embedded lane-sidecar reopen bound exhausted",
+        ):
+            daemon.run_once()
+        assert len(opened_connections) == 3
+        assert len({id(connection) for connection in opened_connections}) == 3
+    finally:
+        daemon.close()
+
+
+def test_successful_pass_resets_consecutive_sidecar_reopen_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:uncertain-sidecar-bound-reset",
+    )
+
+    def poison_current_coordination() -> dict[str, object]:
+        coordinator = daemon.coordinator
+        connection = coordinator._require()
+        with connection._execution_condition:
+            connection._poison_locked()
+        return coordinator.coordination_registry_projection()
+
+    try:
+        monkeypatch.setattr(daemon, "_run_once_impl", poison_current_coordination)
+        first = daemon.run_once()
+        assert first["lane_sidecar_recovery"]["recovery_attempt"] == 1
+
+        monkeypatch.setattr(
+            daemon,
+            "_run_once_impl",
+            lambda: {"unchanged": True, "write_count": 0},
+        )
+        assert daemon.run_once() == {"unchanged": True, "write_count": 0}
+
+        monkeypatch.setattr(daemon, "_run_once_impl", poison_current_coordination)
+        after_success = daemon.run_once()
+        assert after_success["lane_sidecar_recovery"]["recovery_attempt"] == 1
     finally:
         daemon.close()
 

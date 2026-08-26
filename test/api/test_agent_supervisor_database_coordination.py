@@ -1137,6 +1137,213 @@ def test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepare
         coordinator.close()
 
 
+def test_authoritative_task_sync_rebuilds_checkpointed_registry_without_update(
+    tmp_path: Path,
+) -> None:
+    import duckdb  # type: ignore
+
+    coordinator, clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        connection = coordinator._require()  # noqa: SLF001
+        connection.execute(
+            """
+            INSERT INTO coordination_tasks(
+                task_cid, task_id, worktree_id, registered_at_ms,
+                ready, body_json
+            )
+            SELECT 'task:sync-bulk-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
+                   'SYNC-BULK-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
+                   '', 900000 + i, TRUE, '{}'
+            FROM range(256) AS generated(i)
+            """
+        )
+        coordinator._commit_if_idle(connection)  # noqa: SLF001
+        coordinator.synchronize_authoritative_task(
+            task_cid="task:sync-persisted",
+            task_id="SYNC-PERSISTED",
+            authoritative_status="pending",
+            authoritative_revision=1,
+            authoritative_ready=False,
+            authoritative_completed=False,
+        )
+    finally:
+        coordinator.close()
+
+    checkpoint = duckdb.connect(str(database_path))
+    try:
+        checkpoint.execute("CHECKPOINT")
+        assert checkpoint.execute(
+            "SELECT COUNT(*) FROM coordination_tasks"
+        ).fetchone()[0] == 257
+    finally:
+        checkpoint.close()
+
+    coordinator = open_database_coordinator(database_path, clock_ms=clock)
+    raw_connection = coordinator._require()  # noqa: SLF001
+
+    class RejectCoordinationTaskUpdate:
+        def __init__(self, raw: object) -> None:
+            self.raw = raw
+
+        @property
+        def in_transaction(self) -> bool:
+            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
+
+        def execute(
+            self,
+            statement: str,
+            parameters: object | None = None,
+        ) -> object:
+            normalized = " ".join(str(statement).upper().split())
+            if normalized.startswith("UPDATE COORDINATION_TASKS"):
+                raise AssertionError(
+                    "persisted coordination_tasks rows must not be updated"
+                )
+            if parameters is None:
+                return self.raw.execute(statement)  # type: ignore[attr-defined]
+            return self.raw.execute(  # type: ignore[attr-defined]
+                statement,
+                parameters,
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.raw, name)
+
+    coordinator._connection = RejectCoordinationTaskUpdate(  # noqa: SLF001
+        raw_connection
+    )
+    try:
+        synchronized = coordinator.synchronize_authoritative_task(
+            task_cid="task:sync-persisted",
+            task_id="SYNC-PERSISTED",
+            authoritative_status="pending",
+            authoritative_revision=2,
+            authoritative_ready=False,
+            authoritative_completed=False,
+        )
+        assert synchronized["changed"] is True
+        assert synchronized["ready"] is False
+    finally:
+        coordinator.close()
+
+    landed = duckdb.connect(str(database_path))
+    try:
+        landed.execute("CHECKPOINT")
+        assert landed.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT task_cid) FROM coordination_tasks"
+        ).fetchone() == (257, 257)
+        ready, body_json = landed.execute(
+            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
+            ["task:sync-persisted"],
+        ).fetchone()
+        assert ready is False
+        assert json.loads(body_json) == {
+            "authority": "task_source",
+            "authoritative_attempt_floor": 0,
+            "authoritative_attempt_floor_source": "",
+            "authoritative_revision": 2,
+            "authoritative_status": "pending",
+            "restart_recovery_binding": {},
+            "restart_recovery_owner_session_id": "",
+            "restart_recovery_ready": False,
+        }
+        assert landed.execute(
+            """
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = 'main'
+              AND table_name = 'coordination_tasks_rearm_staging'
+            """
+        ).fetchone()[0] == 0
+        assert landed.execute(
+            """
+            SELECT COUNT(*) FROM duckdb_indexes()
+            WHERE schema_name = 'main'
+              AND index_name = 'coordination_tasks_ready_idx'
+              AND table_name = 'coordination_tasks'
+            """
+        ).fetchone()[0] == 1
+    finally:
+        landed.close()
+
+
+@pytest.mark.parametrize("failure_point", ["begin", "commit"])
+def test_authoritative_task_sync_transaction_boundaries_fail_closed(
+    tmp_path: Path,
+    failure_point: str,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    coordinator.synchronize_authoritative_task(
+        task_cid="task:sync-transaction",
+        task_id="SYNC-TRANSACTION",
+        authoritative_status="pending",
+        authoritative_revision=1,
+        authoritative_ready=False,
+        authoritative_completed=False,
+    )
+    raw_connection = coordinator._require()  # noqa: SLF001
+
+    class TransactionFault:
+        def __init__(self, raw: object) -> None:
+            self.raw = raw
+
+        @property
+        def in_transaction(self) -> bool:
+            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
+
+        def execute(
+            self,
+            statement: str,
+            parameters: object | None = None,
+        ) -> object:
+            normalized = " ".join(str(statement).upper().split())
+            if failure_point == "begin" and normalized == "BEGIN TRANSACTION":
+                return self.raw.execute("SELECT 1")  # type: ignore[attr-defined]
+            if failure_point == "commit" and normalized == "COMMIT":
+                raise RuntimeError("injected authoritative-sync commit failure")
+            if parameters is None:
+                return self.raw.execute(statement)  # type: ignore[attr-defined]
+            return self.raw.execute(  # type: ignore[attr-defined]
+                statement,
+                parameters,
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.raw, name)
+
+    coordinator._connection = TransactionFault(raw_connection)  # noqa: SLF001
+    expected_error = (
+        DatabaseCoordinationError if failure_point == "begin" else RuntimeError
+    )
+    try:
+        with pytest.raises(expected_error):
+            coordinator.synchronize_authoritative_task(
+                task_cid="task:sync-transaction",
+                task_id="SYNC-TRANSACTION",
+                authoritative_status="pending",
+                authoritative_revision=2,
+                authoritative_ready=False,
+                authoritative_completed=False,
+            )
+        assert coordinator._require().in_transaction is False  # noqa: SLF001
+        task_row = coordinator._require().execute(  # noqa: SLF001
+            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
+            ["task:sync-transaction"],
+        ).fetchone()
+        assert task_row is not None
+        assert task_row[0] is False
+        assert json.loads(task_row[1])["authoritative_revision"] == 1
+        assert coordinator._require().execute(  # noqa: SLF001
+            """
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = 'main'
+              AND table_name = 'coordination_tasks_rearm_staging'
+            """
+        ).fetchone()[0] == 0
+    finally:
+        coordinator.close()
+
+
 def test_coordination_registry_projection_exposes_exact_claim_and_lease_counts(
     tmp_path: Path,
 ) -> None:
