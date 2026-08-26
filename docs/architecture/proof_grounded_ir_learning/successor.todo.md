@@ -446,7 +446,7 @@ evidence.
 
 ## PGIR-211 Seal the integrated successor evidence before freeze admission
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
