@@ -3218,19 +3218,20 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
             "database_portal_retry:attempt:typed-blocked-recovery:"
             "portal_candidate_retry"
         )
-        blocked_receipt = adapter.record_task_retry_cooldown(
-            task_cid=blocked.task_cid,
-            expected_task_revision=blocked.revision,
-            expected_task_status="blocked",
-            delay_ms=0,
-            reason=blocked_reason,
-            now_ms=clock["now_ms"],
-            **blocked_claim,
-        )
-        assert blocked_receipt.changed is True
-        blocked_entry = adapter.get_queue_entry(blocked.task_cid)
-        assert blocked_entry is not None
-        assert blocked_entry.reason == blocked_reason
+        with pytest.raises(
+            TaskSourceConflictError,
+            match="coordination-coupled owner authority",
+        ):
+            adapter.record_task_retry_cooldown(
+                task_cid=blocked.task_cid,
+                expected_task_revision=blocked.revision,
+                expected_task_status="blocked",
+                delay_ms=0,
+                reason=blocked_reason,
+                now_ms=clock["now_ms"],
+                **blocked_claim,
+            )
+        assert adapter.get_queue_entry(blocked.task_cid) is None
 
         ready = adapter.get("CASF-TYPED-RETRY")
         assert ready is not None
@@ -3606,6 +3607,7 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
             started_at_ms=500,
             finished_at_ms=900,
             revision=4,
+            body={},
             **post_merge_claim,
         )
         repair_receipt_body = {
@@ -3674,6 +3676,9 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
             ),
             _automatic_claim_forbidden=lambda _task: False,
             _latest_failed_attempts=lambda: [post_merge_attempt],
+            _post_merge_completion_crash_recovery_context=(
+                lambda _task, **_kwargs: None
+            ),
             _post_merge_source_admitted=(
                 lambda _raw, _attempt, _task: True
             ),
@@ -3703,39 +3708,20 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
                 )
             )
         )
-        post_merge_result = (
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="atomic retry authority|coordination-coupled owner authority",
+        ):
             DatabaseImplementationDaemon.recover_blocked_post_merge_declared_outputs(
                 post_merge_daemon,
                 post_merge_evidence,
             )
-        )
-        assert post_merge_result["changed"] is True
         post_merge_entry = adapter.get_queue_entry(post_merge_task.task_cid)
-        assert post_merge_entry is not None
+        assert post_merge_entry is None
         post_merge_updated = adapter.get(post_merge_task.task_cid)
         assert post_merge_updated is not None
-        assert post_merge_updated.status == "retrying"
-        post_merge_control_receipt = post_merge_updated.body["completion_receipt"]
-        assert post_merge_control_receipt["operation"] == (
-            "database_post_merge_declared_outputs_repair_recovery"
-        )
-        assert post_merge_control_receipt["attempt_id"] == (
-            post_merge_attempt.attempt_id
-        )
-        assert post_merge_control_receipt["queue_reason"] == (
-            post_merge_entry.reason
-        )
-        assert post_merge_control_receipt["retry_not_before_ms"] == (
-            post_merge_entry.retry_not_before_ms
-        )
-        post_merge_replay = (
-            DatabaseImplementationDaemon.recover_blocked_post_merge_declared_outputs(
-                post_merge_daemon,
-                post_merge_evidence,
-            )
-        )
-        assert post_merge_replay["changed"] is False
-        assert post_merge_replay["status"] == "retrying"
+        assert post_merge_updated.status == "blocked"
+        assert post_merge_updated.revision == post_merge_task.revision
 
         # An exact idempotency replay must validate the durable row before
         # the owner can reproduce its prior receipt.  Simulate corruption

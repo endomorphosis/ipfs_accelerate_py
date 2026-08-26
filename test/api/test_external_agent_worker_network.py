@@ -180,6 +180,7 @@ def _fallback_command(codex: Path, workspace: Path) -> list[str]:
         "--ignore-user-config",
         "--ignore-rules",
         "--ephemeral",
+        "--json",
         "-s",
         "workspace-write",
         "-C",

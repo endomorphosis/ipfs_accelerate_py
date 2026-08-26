@@ -16,6 +16,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -189,8 +190,15 @@ def _write_native_session_home(
     *,
     session_id: str = _NATIVE_SESSION_ID,
     model: str = "grok-4.6",
+    workspace: Path | None = None,
+    encoded_workspace: bool = True,
 ) -> Path:
-    session = grok_home / "sessions" / session_id
+    session_root = grok_home / "sessions"
+    if workspace is not None:
+        workspace = workspace.resolve(strict=True)
+    if workspace is not None and encoded_workspace:
+        session_root /= quote(str(workspace), safe="")
+    session = session_root / session_id
     session.mkdir(parents=True)
     (session / "updates.jsonl").write_text(
         "".join(json.dumps(item, sort_keys=True) + "\n" for item in updates),
@@ -199,7 +207,14 @@ def _write_native_session_home(
     (session / "summary.json").write_text(
         json.dumps(
             {
-                "info": {"id": session_id},
+                "info": {
+                    "id": session_id,
+                    **(
+                        {"cwd": str(workspace)}
+                        if workspace is not None
+                        else {}
+                    ),
+                },
                 "current_model_id": model,
                 "grok_home": str(grok_home),
             },
@@ -277,6 +292,7 @@ def _terra_fallback_command(
         "--ignore-user-config",
         "--ignore-rules",
         "--ephemeral",
+        "--json",
         "-s",
         "workspace-write",
         "-C",
@@ -287,6 +303,21 @@ def _terra_fallback_command(
         f'model_reasoning_effort="{reasoning_effort}"',
         "-",
     ]
+
+
+def _codex_capacity_log_start(nonce: str) -> str:
+    return json.dumps(
+        {
+            "schema": (
+                grok_cli_runner.
+                AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA
+            ),
+            "type": "runner.capacity.start",
+            "log_nonce": nonce,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def _seal_auth_or_quota_route(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1117,6 +1148,7 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
                 _spending_limit_terminal(session_id=session_id),
             ],
             session_id=session_id,
+            workspace=kwargs["cwd"],
         )
         return subprocess.CompletedProcess(command, 23)
 
@@ -1143,6 +1175,134 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
     assert evidence is not None
     assert captured["env"]["PWD"] == str(captured["cwd"])
     assert "OLDPWD" not in captured["env"]
+
+
+def test_native_quota_verifier_rejects_foreign_workspace_session(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    foreign_workspace = tmp_path / "foreign-workspace"
+    workspace.mkdir()
+    foreign_workspace.mkdir()
+    verifier_home = tmp_path / "grok-home"
+    _write_native_session_home(
+        verifier_home,
+        [_spending_limit_retry(), _spending_limit_terminal()],
+        workspace=foreign_workspace,
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="2" * 64,
+        model="grok-4.6",
+        probe_returncode=1,
+        primary_dispatched=False,
+    )
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=verifier_home,
+        expected_session_id=_NATIVE_SESSION_ID,
+        verifier_returncode=1,
+        failure_receipt=receipt,
+        verifier_workspace=workspace,
+    )
+
+    assert evidence is None
+
+
+def test_native_quota_verifier_rejects_direct_session_wrong_cwd(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    foreign_workspace = tmp_path / "foreign-workspace"
+    workspace.mkdir()
+    foreign_workspace.mkdir()
+    verifier_home = tmp_path / "grok-home"
+    _write_native_session_home(
+        verifier_home,
+        [_spending_limit_retry(), _spending_limit_terminal()],
+        workspace=foreign_workspace,
+        encoded_workspace=False,
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="5" * 64,
+        model="grok-4.6",
+        probe_returncode=1,
+        primary_dispatched=False,
+    )
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=verifier_home,
+        expected_session_id=_NATIVE_SESSION_ID,
+        verifier_returncode=1,
+        failure_receipt=receipt,
+        verifier_workspace=workspace,
+    )
+
+    assert evidence is None
+
+
+def test_native_quota_verifier_rejects_ambiguous_session_layouts(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    verifier_home = tmp_path / "grok-home"
+    updates = [_spending_limit_retry(), _spending_limit_terminal()]
+    _write_native_session_home(verifier_home, updates)
+    _write_native_session_home(
+        verifier_home,
+        updates,
+        workspace=workspace,
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="3" * 64,
+        model="grok-4.6",
+        probe_returncode=1,
+        primary_dispatched=False,
+    )
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=verifier_home,
+        expected_session_id=_NATIVE_SESSION_ID,
+        verifier_returncode=1,
+        failure_receipt=receipt,
+        verifier_workspace=workspace,
+    )
+
+    assert evidence is None
+
+
+def test_native_quota_verifier_rejects_workspace_traversal_alias(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    verifier_home = tmp_path / "grok-home"
+    _write_native_session_home(
+        verifier_home,
+        [_spending_limit_retry(), _spending_limit_terminal()],
+        workspace=workspace,
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="4" * 64,
+        model="grok-4.6",
+        probe_returncode=1,
+        primary_dispatched=False,
+    )
+    traversal_alias = tmp_path / "missing" / ".." / workspace.name
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=verifier_home,
+        expected_session_id=_NATIVE_SESSION_ID,
+        verifier_returncode=1,
+        failure_receipt=receipt,
+        verifier_workspace=traversal_alias,
+    )
+
+    assert evidence is None
 
 
 def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:
@@ -1367,6 +1527,9 @@ def test_merge_resolver_marker_mints_fresh_legacy_preflight_route(
 
     def fake_fallback(command, **kwargs) -> int:
         fallback_calls.append(list(command))
+        assert kwargs["effect_claim"] is None
+        assert kwargs["effect_terminal"] is None
+        assert kwargs["capacity_evidence"] is None
         kwargs["pre_effect_validator"]()
         return 0
 
@@ -2384,6 +2547,20 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     assert "--network=bridge" not in command
     assert "--runtime=runc" in command
     assert "--entrypoint=/usr/bin/env" in command
+    assert "--log-driver=json-file" in command
+    assert command.count("--log-opt") == 2
+    assert "max-size=16m" in command
+    assert "max-file=2" in command
+    unbounded_log_command = list(command)
+    unbounded_log_command[unbounded_log_command.index("max-size=16m")] = (
+        "max-size=1g"
+    )
+    with pytest.raises(ValueError, match="bounded Docker logging"):
+        grok_cli_runner.validate_provider_worker_command(
+            unbounded_log_command,
+            profile=network_profile,
+            expected_image=image,
+        )
     assert "--cap-drop=ALL" in command
     assert "--security-opt=no-new-privileges" in command
     assert "--device" not in command
@@ -2434,15 +2611,17 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     assert not any("/home/" in mount for mount in mounts)
 
     inner = command[command.index(image) + 1 :]
-    expected_inner = list(fallback)
-    expected_inner[expected_inner.index("-s") + 1] = "danger-full-access"
+    expected_provider = list(fallback)
+    expected_provider[expected_provider.index("-s") + 1] = (
+        "danger-full-access"
+    )
     try:
         from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
             _host_codex_vendor_binaries,
         )
 
         if _host_codex_vendor_binaries() is not None:
-            expected_inner[0] = "/usr/local/bin/codex"
+            expected_provider[0] = "/usr/local/bin/codex"
     except Exception:
         pass
     expected_environment = [
@@ -2452,9 +2631,112 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         f"{name}={value}"
         for name, value in sorted(network_profile.proxy_environment().items())
     )
-    assert inner == ["-i", *expected_environment, *expected_inner]
+    assert inner[: 2 + len(expected_environment)] == [
+        "-i",
+        *expected_environment,
+        str(grok_cli_runner._CODEX_TASK_TOOLCHAIN_PYTHON),
+    ]
+    assert inner[2 + len(expected_environment) : 5 + len(expected_environment)] == [
+        "-I",
+        "-c",
+        grok_cli_runner.AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER,
+    ]
+    assert inner[5 + len(expected_environment)] == (
+        grok_cli_runner.AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA
+    )
+    assert re.fullmatch(
+        r"sha256:[0-9a-f]{64}",
+        inner[6 + len(expected_environment)],
+    )
+    capacity_log_nonce = inner[6 + len(expected_environment)]
+    assert grok_cli_runner._recorded_codex_capacity_log_nonce(
+        {"command_receipt": {"create_argv": command}}
+    ) == capacity_log_nonce
+    assert inner[7 + len(expected_environment) :] == expected_provider
     assert not any("/home/barberb" in item for item in command)
     assert "--dangerously-bypass-approvals-and-sandbox" not in inner
+
+
+def test_codex_capacity_capture_accepts_complete_no_candidate_jsonl() -> None:
+    nonce = "sha256:" + "8" * 64
+    terminal = json.dumps(
+        {
+            "type": "error",
+            "message": (
+                "You've hit your usage limit. Try again at "
+                "Aug 31st, 2026 12:42 AM."
+            ),
+        },
+        separators=(",", ":"),
+    )
+    stream = "\n".join(
+        (
+            _codex_capacity_log_start(nonce),
+            '{"type":"thread.started","thread_id":"thread:1"}',
+            '{"type":"turn.started"}',
+            terminal,
+            '{"type":"turn.failed","error":{"message":"usage limit"}}',
+            "",
+        )
+    )
+    capture = grok_cli_runner._CodexTerminalCapacityCapture(
+        expected_log_nonce=nonce
+    )
+    for chunk in (stream[:17], stream[17:103], stream[103:]):
+        capture.feed(chunk)
+
+    assert capture.finish() == terminal
+
+
+@pytest.mark.parametrize(
+    "records",
+    (
+        (lambda nonce: ['{"type":"error","message":"usage limit"}']),
+        (
+            lambda nonce: [
+                _codex_capacity_log_start("sha256:" + "9" * 64),
+                '{"type":"error","message":"usage limit"}',
+            ]
+        ),
+        (
+            lambda nonce: [
+                _codex_capacity_log_start(nonce),
+                '{"type":"item.completed","item":{"type":"command_execution"}}',
+                '{"type":"error","message":"usage limit"}',
+            ]
+        ),
+        (
+            lambda nonce: [
+                _codex_capacity_log_start(nonce),
+                '{"type":"error","message":"usage limit"}',
+                '{"type":"error","message":"usage limit"}',
+            ]
+        ),
+        (
+            lambda nonce: [
+                _codex_capacity_log_start(nonce),
+                '{"type":"error","type":"error","message":"usage limit"}',
+            ]
+        ),
+    ),
+    ids=(
+        "missing-stream-start",
+        "foreign-stream-start",
+        "candidate-activity",
+        "duplicate-terminal",
+        "duplicate-json-key",
+    ),
+)
+def test_codex_capacity_capture_fails_closed_for_incomplete_or_active_stream(
+    records,
+) -> None:
+    nonce = "sha256:" + "8" * 64
+    capture = grok_cli_runner._CodexTerminalCapacityCapture(
+        expected_log_nonce=nonce
+    )
+    capture.feed("\n".join(records(nonce)) + "\n")
+
+    assert capture.finish() == ""
 
 
 def test_docker_grok_create_is_followed_by_attached_exact_container_start(
@@ -3147,6 +3429,33 @@ def test_docker_codex_boundary_rejects_unpinned_or_mismatched_authority(
             cidfile=tmp_path / "container.cid",
             docker_bin="/usr/bin/docker",
             isolation_image=image,
+        )
+
+
+@pytest.mark.parametrize(
+    ("effect_claim", "capacity_evidence", "effect_terminal"),
+    (
+        (lambda _context: None, None, None),
+        (None, None, lambda _returncode: None),
+        (None, lambda _returncode, _record: None, None),
+    ),
+)
+def test_docker_codex_fallback_rejects_partial_effect_lifecycle(
+    tmp_path: Path,
+    effect_claim,
+    capacity_evidence,
+    effect_terminal,
+) -> None:
+    with pytest.raises(ValueError):
+        grok_cli_runner._run_codex_quota_fallback_in_docker(
+            ["codex"],
+            workspace=tmp_path,
+            prompt="repair",
+            prompt_path=tmp_path / "prompt.txt",
+            base_env={},
+            effect_claim=effect_claim,
+            capacity_evidence=capacity_evidence,
+            effect_terminal=effect_terminal,
         )
 
 

@@ -145,6 +145,41 @@ DIRECT_CONTROL_SERVICE_DISPATCHER_ID: Final[str] = (
     "ipfs_accelerate_py.agent_supervisor.control.control_plane:"
     "SupervisorControlService.execute"
 )
+# The residual-intelligence operations are a separately versioned extension of
+# the closed generic ``Operation`` vocabulary.  Keeping the names here makes
+# the control service, CLI, and MCP adapters negotiate one catalog without
+# loosening the long-lived supervisor operation enum in control_contracts.
+EXPERT_READ_OPERATIONS: Final[tuple[str, ...]] = (
+    "experts.capabilities",
+    "experts.list",
+    "experts.get",
+    "experts.status",
+    "experts.task_families",
+    "experts.calibration",
+    "experts.drift",
+    "experts.metrics",
+    "experts.routing",
+    "experts.training_corpus",
+    "experts.training_epochs",
+    "experts.active_learning",
+    "experts.disagreements",
+    "experts.shadow_results",
+)
+EXPERT_MUTATION_OPERATIONS: Final[tuple[str, ...]] = (
+    "experts.plan_training",
+    "experts.start_training",
+    "experts.cancel_training",
+    "experts.evaluate",
+    "experts.promote",
+    "experts.demote",
+    "experts.revoke",
+    "experts.rollback",
+    "experts.set_shadow",
+    "experts.request_review",
+)
+EXPERT_CONTROL_OPERATIONS: Final[tuple[str, ...]] = (
+    EXPERT_READ_OPERATIONS + EXPERT_MUTATION_OPERATIONS
+)
 DEFAULT_QUERY_LIMIT: Final[int] = 50
 DEFAULT_MAX_QUERY_ITEMS: Final[int] = 256
 DEFAULT_MAX_OFFSET: Final[int] = 1_000_000
@@ -4380,6 +4415,90 @@ class SupervisorTarget:
         )
 
 
+@dataclass
+class ExpertControlStateStore:
+    """Durable-injection-friendly state for residual expert controls.
+
+    The owner may retain this object when a service is reconstructed after a
+    restart.  It deliberately stores only expert dispositions, idempotency
+    fingerprints, fences, and audit summaries; it never stores corpus bodies
+    or other private training material.
+    """
+
+    experts: dict[str, str] = field(default_factory=dict)
+    idempotency: dict[str, tuple[str, Mapping[str, Any]]] = field(
+        default_factory=dict
+    )
+    fences: dict[str, int] = field(default_factory=dict)
+    audits: list[Mapping[str, Any]] = field(default_factory=list)
+
+    def persist(self) -> None:
+        """Persist a state transition when the selected store is durable."""
+
+
+class JsonExpertControlStateStore(ExpertControlStateStore):
+    """Small atomic JSON state store for expert-control restart recovery."""
+
+    def __init__(self, path: Union[str, Path]) -> None:
+        super().__init__()
+        self._path = Path(path).resolve(strict=False)
+        if self._path.exists():
+            if not self._path.is_file():
+                raise ValueError("expert control state path must be a file")
+            if self._path.stat().st_size > 1_048_576:
+                raise ControlBoundsError("expert control state exceeds 1048576 bytes")
+            try:
+                payload = json.loads(self._path.read_text(encoding="utf-8"))
+                self.experts = {
+                    _expert_control_text(key, "stored expert id"): _expert_control_text(value, "stored expert state")
+                    for key, value in dict(payload.get("experts") or {}).items()
+                }
+                self.idempotency = {
+                    _expert_control_text(key, "stored idempotency key"): (str(value[0]), dict(value[1]))
+                    for key, value in dict(payload.get("idempotency") or {}).items()
+                    if isinstance(value, list) and len(value) == 2 and isinstance(value[1], Mapping)
+                }
+                self.fences = {
+                    _expert_control_text(key, "stored fence key"): int(value)
+                    for key, value in dict(payload.get("fences") or {}).items()
+                    if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                }
+                self.audits = [dict(item) for item in payload.get("audits") or () if isinstance(item, Mapping)][-DEFAULT_MAX_CONTROL_EVENTS:]
+            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError("invalid expert control state store") from exc
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    def persist(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/expert-control-state@1",
+            "experts": self.experts,
+            "idempotency": {key: [fingerprint, result] for key, (fingerprint, result) in self.idempotency.items()},
+            "fences": self.fences,
+            "audits": self.audits[-DEFAULT_MAX_CONTROL_EVENTS:],
+        }
+        body = canonical_control_json_bytes(payload)
+        if len(body) > 1_048_576:
+            raise ControlBoundsError("expert control state exceeds 1048576 bytes")
+        temporary = self._path.with_name(self._path.name + ".tmp")
+        temporary.write_bytes(body)
+        os.replace(temporary, self._path)
+
+
+def _expert_control_text(value: Any, name: str, *, required: bool = True) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"expert control {name} must be text")
+    result = value.strip()
+    if required and not result:
+        raise ValueError(f"expert control {name} must not be empty")
+    if len(result.encode("utf-8")) > 2048:
+        raise ControlBoundsError(f"expert control {name} exceeds 2048 bytes")
+    return result
+
+
 class SupervisorControlService:
     """Typed policy and dispatch boundary shared by Python, CLI, and MCP."""
 
@@ -4410,6 +4529,7 @@ class SupervisorControlService:
         clock_ms: Callable[[], int] = _now_ms,
         usage_control: Union["ProviderUsageControl", None] = None,
         usage_coordinator: Any = None,
+        expert_state_store: Union[ExpertControlStateStore, None] = None,
     ) -> None:
         repositories = (
             repository_allowlist
@@ -4485,6 +4605,15 @@ class SupervisorControlService:
                 f"supervisor:{self._service_id}:{self._service_version}"
             ),
         )
+        if expert_state_store is not None and not isinstance(
+            expert_state_store, ExpertControlStateStore
+        ):
+            raise TypeError("expert_state_store must be an ExpertControlStateStore")
+        # This state is intentionally injected rather than silently persisted
+        # to an arbitrary path.  Deployments can retain it in their approved
+        # control store across restarts; tests can exercise recovery without a
+        # filesystem side channel.
+        self._expert_state_store = expert_state_store or ExpertControlStateStore()
         registered = getattr(self._backend, "registered_operations", None)
         if registered is None:
             self._registered_operations = frozenset(Operation)
@@ -4561,6 +4690,243 @@ class SupervisorControlService:
         """Return the side-effect-free capability handshake."""
 
         return self._capability_report
+
+    def expert_operation_catalog(self) -> Mapping[str, tuple[str, ...]]:
+        """Return the exact residual-expert read/mutation vocabulary.
+
+        It is intentionally independent from the generic ``Operation`` enum:
+        callers must not smuggle an expert mutation through an unrelated
+        supervisor lifecycle operation.
+        """
+
+        return MappingProxyType(
+            {"read": EXPERT_READ_OPERATIONS, "mutation": EXPERT_MUTATION_OPERATIONS}
+        )
+
+    def execute_expert(self, request: Any) -> Mapping[str, Any]:
+        """Execute a typed residual-expert request at the canonical boundary.
+
+        The request type lives with the residual domain to avoid a dependency
+        from the generic control contracts back into optional expert modules.
+        This method nevertheless owns every security-relevant decision:
+        catalog admission, authorization, idempotency, lease/fence monotonicity,
+        dry-run isolation, resource-budget accounting, and audit receipts.
+        CLI and MCP adapters are required to call this method directly.
+        """
+
+        operation = _expert_control_text(getattr(request, "operation", None), "operation")
+        if operation not in EXPERT_CONTROL_OPERATIONS:
+            raise ValueError(f"unknown expert control operation: {operation}")
+        mutation = operation in EXPERT_MUTATION_OPERATIONS
+        dry_run = getattr(request, "dry_run", False)
+        if type(dry_run) is not bool:
+            raise ValueError("expert control dry_run must be boolean")
+        expert_id = _expert_control_text(
+            getattr(request, "expert_id", ""), "expert_id", required=False
+        ) or "expert-control"
+
+        def response(
+            *,
+            ok: bool,
+            status: str,
+            payload: Mapping[str, Any],
+            replay: bool = False,
+        ) -> Mapping[str, Any]:
+            canonical_payload = json.loads(
+                json.dumps(redact_control_data(dict(payload)), sort_keys=True)
+            )
+            receipt_body = {
+                "operation": operation,
+                "expert_id": expert_id,
+                "status": status,
+                "dry_run": dry_run,
+                "idempotent_replay": replay,
+                "payload": canonical_payload,
+            }
+            audit_id = "audit:expert:" + hashlib.sha256(
+                canonical_control_json_bytes(receipt_body)
+            ).hexdigest()
+            result = {
+                "operation": operation,
+                "ok": ok,
+                "status": status,
+                "audit_id": audit_id,
+                "payload": dict(receipt_body["payload"]),
+                "idempotent_replay": replay,
+            }
+            # Reads have no audit obligation. Every mutation attempt, including
+            # denied and dry-run attempts, is auditable without retaining raw
+            # request bodies.
+            if mutation:
+                self._expert_state_store.audits.append(
+                    {
+                        "audit_id": audit_id,
+                        "operation": operation,
+                        "expert_id": expert_id,
+                        "status": status,
+                        "dry_run": dry_run,
+                        "idempotent_replay": replay,
+                    }
+                )
+                del self._expert_state_store.audits[:-DEFAULT_MAX_CONTROL_EVENTS]
+                self._expert_state_store.persist()
+            return result
+
+        with self._lock:
+            if not mutation:
+                state = self._expert_state_store.experts.get(expert_id, "candidate")
+                experts = tuple(
+                    {
+                        "expert_id": key,
+                        "state": value,
+                        "routable": value not in {"stale", "revoked", "rejected"},
+                    }
+                    for key, value in sorted(self._expert_state_store.experts.items())
+                )
+                if operation == "experts.capabilities":
+                    payload: Mapping[str, Any] = {
+                        "read_operations": EXPERT_READ_OPERATIONS,
+                        "mutation_operations": EXPERT_MUTATION_OPERATIONS,
+                        "dispatch": "SupervisorControlService.execute_expert",
+                    }
+                elif operation == "experts.list":
+                    payload = {"experts": experts, "count": len(experts)}
+                elif operation in {"experts.get", "experts.status"}:
+                    payload = {
+                        "expert_id": expert_id,
+                        "state": state,
+                        "routable": state not in {"stale", "revoked", "rejected"},
+                    }
+                elif operation == "experts.training_corpus":
+                    # Data-rights boundary: identities/summaries only, never
+                    # raw corpus records or private source bodies.
+                    payload = {"admissions": (), "raw_bodies_exposed": False}
+                elif operation == "experts.training_epochs":
+                    payload = {"epochs": (), "raw_bodies_exposed": False}
+                else:
+                    payload = {"expert_id": expert_id, "items": (), "count": 0}
+                return response(ok=True, status="succeeded", payload=payload)
+
+            authorization = getattr(request, "authorization", None)
+            allowed = bool(getattr(authorization, "permitted", False)) and bool(
+                getattr(authorization, "allows_mutation", False)
+            )
+            if not allowed:
+                return response(
+                    ok=False,
+                    status="denied",
+                    payload={"reason_code": "expert_mutation_unauthorized"},
+                )
+            budget = getattr(request, "budget", None)
+            max_units = getattr(budget, "max_units", None)
+            requested_units = getattr(budget, "requested_units", None)
+            if (
+                isinstance(max_units, bool)
+                or not isinstance(max_units, int)
+                or isinstance(requested_units, bool)
+                or not isinstance(requested_units, int)
+                or max_units < 0
+                or requested_units < 0
+                or requested_units > max_units
+            ):
+                return response(
+                    ok=False,
+                    status="denied",
+                    payload={"reason_code": "expert_budget_exceeded"},
+                )
+            idempotency_key = _expert_control_text(
+                getattr(request, "idempotency_key", ""), "idempotency_key"
+            )
+            lease_id = _expert_control_text(getattr(request, "lease_id", ""), "lease_id")
+            fence = getattr(request, "fencing_epoch", None)
+            if isinstance(fence, bool) or not isinstance(fence, int) or fence < 0:
+                return response(
+                    ok=False,
+                    status="denied",
+                    payload={"reason_code": "expert_fence_invalid"},
+                )
+            fingerprint = _expert_control_text(
+                getattr(request, "fingerprint", ""), "fingerprint"
+            )
+            idempotency_slot = f"{operation}:{idempotency_key}"
+            previous = self._expert_state_store.idempotency.get(idempotency_slot)
+            if previous is not None:
+                previous_fingerprint, previous_result = previous
+                if previous_fingerprint != fingerprint:
+                    return response(
+                        ok=False,
+                        status="conflict",
+                        payload={"reason_code": "expert_idempotency_conflict"},
+                    )
+                replayed = dict(previous_result)
+                replayed["idempotent_replay"] = True
+                self._expert_state_store.audits.append(
+                    {
+                        "audit_id": str(replayed.get("audit_id") or ""),
+                        "operation": operation,
+                        "expert_id": expert_id,
+                        "status": str(replayed.get("status") or "succeeded"),
+                        "dry_run": dry_run,
+                        "idempotent_replay": True,
+                    }
+                )
+                del self._expert_state_store.audits[:-DEFAULT_MAX_CONTROL_EVENTS]
+                self._expert_state_store.persist()
+                return replayed
+            fence_slot = f"{expert_id}:{lease_id}"
+            prior_fence = self._expert_state_store.fences.get(fence_slot)
+            if prior_fence is not None and fence <= prior_fence:
+                return response(
+                    ok=False,
+                    status="conflict",
+                    payload={"reason_code": "expert_stale_fence", "current_fence": prior_fence},
+                )
+            admission = getattr(request, "admission", None)
+            if operation == "experts.start_training" and not bool(
+                getattr(admission, "can_train", False)
+            ):
+                result = response(
+                    ok=False,
+                    status="training_unavailable",
+                    payload={"candidate_only": True, "reason_code": "training_admission_required"},
+                )
+                self._expert_state_store.idempotency[idempotency_slot] = (fingerprint, result)
+                self._expert_state_store.persist()
+                return result
+            if dry_run:
+                return response(
+                    ok=True,
+                    status="dry_run",
+                    payload={
+                        "candidate_only": True,
+                        "applied": False,
+                        "requested_units": requested_units,
+                        "expert_id": expert_id,
+                    },
+                )
+            state_by_operation = {
+                "experts.promote": "promoted",
+                "experts.demote": "degraded",
+                "experts.revoke": "revoked",
+                "experts.rollback": "candidate",
+                "experts.set_shadow": "shadow",
+            }
+            if operation in state_by_operation:
+                self._expert_state_store.experts[expert_id] = state_by_operation[operation]
+            self._expert_state_store.fences[fence_slot] = fence
+            result = response(
+                ok=True,
+                status="succeeded",
+                payload={
+                    "expert_id": expert_id,
+                    "state": self._expert_state_store.experts.get(expert_id, "candidate"),
+                    "requested_units": requested_units,
+                    "applied": True,
+                },
+            )
+            self._expert_state_store.idempotency[idempotency_slot] = (fingerprint, result)
+            self._expert_state_store.persist()
+            return result
 
     def mutation_runtime_state(self) -> ControlMutationRuntimeState:
         """Return the observed dispatch/audit population for mutation proof.
@@ -8212,6 +8578,9 @@ __all__ = [
     "CONTROL_SURFACE_PUBLICATION_SCHEMA",
     "DEFAULT_MAX_CONTROL_EVENTS",
     "DIRECT_CONTROL_SERVICE_DISPATCHER_ID",
+    "EXPERT_CONTROL_OPERATIONS",
+    "EXPERT_MUTATION_OPERATIONS",
+    "EXPERT_READ_OPERATIONS",
     "LEGAL_LIFECYCLE_TRANSITIONS",
     "LIFECYCLE_EVENT_SCHEMA",
     "LIFECYCLE_STATUS_SCHEMA",
@@ -8226,6 +8595,7 @@ __all__ = [
     "ControlAuditReceipt",
     "ControlService",
     "ControlStateStore",
+    "ExpertControlStateStore",
     "ControlSurfacePublication",
     "ControlOperationConformanceCase",
     "IdempotencyConflictError",
@@ -8233,6 +8603,7 @@ __all__ = [
     "InMemoryLifecycleStore",
     "InvalidLifecycleTransitionError",
     "JsonLifecycleStore",
+    "JsonExpertControlStateStore",
     "JsonlControlStateStore",
     "LifecycleEvent",
     "LifecycleStatus",

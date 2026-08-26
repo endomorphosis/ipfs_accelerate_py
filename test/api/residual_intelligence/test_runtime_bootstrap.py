@@ -108,6 +108,12 @@ def _owner_restart_fixture(
             "evidence": "runtime/evidence",
             "quack_owner": "runtime/quack-owner",
         },
+        "protected_paths": [
+            "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+            "scripts/run_agent_supervisor_residual_intelligence.py",
+            "test/api/residual_intelligence/test_board.py",
+            "test/api/residual_intelligence/test_runtime_bootstrap.py",
+        ],
         "taskboard_path": board.taskboard_path,
         "objectives_path": board.objectives_path,
         "plan_path": board.plan_path,
@@ -175,6 +181,37 @@ def _owner_restart_fixture(
         bootstrap=bootstrap,
         bootstrap_path=bootstrap_path,
     )
+
+
+def _seal_runtime_hardening_transition(
+    operator: object,
+    fixture: SimpleNamespace,
+    root: Path,
+) -> dict[str, object]:
+    config = json.loads(json.dumps(fixture.config))
+    production = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    config["runtime_settlement"] = production["runtime_settlement"]
+    protected_paths = list(config["protected_paths"])
+    for anchor, additions in operator.VRIF_RUNTIME_HARDENING_PROTECTED_INSERTIONS:
+        offset = protected_paths.index(anchor) + 1
+        protected_paths[offset:offset] = list(additions)
+    config["protected_paths"] = protected_paths
+    _write_fixture_json(fixture.board.config_path, config)
+    _run_fixture_git(root, "add", "config/restart.json")
+    _run_fixture_git(root, "commit", "-m", "seal exact runtime hardening")
+    planning_revision = _run_fixture_git(root, "rev-parse", "HEAD")
+    planning_tree = _run_fixture_git(root, "rev-parse", "HEAD^{tree}")
+    config["source_binding"].update(
+        {
+            "accelerator_required_ancestor": planning_revision,
+            "accelerator_planning_revision": planning_revision,
+            "accelerator_planning_tree": planning_tree,
+        }
+    )
+    _write_fixture_json(fixture.board.config_path, config)
+    _run_fixture_git(root, "add", "config/restart.json")
+    _run_fixture_git(root, "commit", "-m", "advance runtime hardening binding")
+    return json.loads(fixture.board.config_path.read_text(encoding="utf-8"))
 
 
 def _absent_prior_owner() -> dict[str, object]:
@@ -261,22 +298,9 @@ def test_runtime_config_closes_authority_and_training_fallbacks() -> None:
     assert config["reconciliation_guardrail_enabled"] is False
 
 
-def _quack_owner_commands_available() -> bool:
-    try:
-        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (  # noqa: F401
-            validate_quack_owner_command,
-        )
-    except ImportError:
-        return False
-    return True
-
-
-@pytest.mark.skipif(
-    not _quack_owner_commands_available(),
-    reason="typed Quack owner commands are not on this origin/main supervisor yet",
-)
 def test_owner_command_vocabulary_has_no_raw_sql_surface() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
         DuckDBConnectionPolicyError,
         validate_quack_owner_command,
     )
@@ -293,12 +317,25 @@ def test_owner_command_vocabulary_has_no_raw_sql_surface() -> None:
             "record_queue_retry",
             {"task_cid": "task-cid", "sql": "DELETE FROM tasks"},
         )
+    recovery = {
+        "task_cid_or_alias": "VRIF-029",
+        "repair_head": "1" * 40,
+        "repair_tree": "2" * 40,
+    }
+    assert validate_quack_owner_command(
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        recovery,
+    ) == recovery
+    with pytest.raises(DuckDBConnectionPolicyError, match="closed schema"):
+        validate_quack_owner_command(
+            QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+            {
+                **recovery,
+                "quota_probe_receipt": {"source": "caller"},
+            },
+        )
 
 
-@pytest.mark.skipif(
-    not _quack_owner_commands_available(),
-    reason="typed Quack owner commands are not on this origin/main supervisor yet",
-)
 def test_owner_command_inbox_requires_signed_store_bound_envelope(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -365,10 +402,80 @@ def test_owner_command_inbox_requires_signed_store_bound_envelope(
     assert result["result"] == {"schema": "test-result@1", "changed": True}
 
 
-@pytest.mark.skipif(
-    not _quack_owner_commands_available(),
-    reason="typed Quack owner commands are not on this origin/main supervisor yet",
-)
+def test_typed_deferral_owner_command_injects_private_provider_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import database_task_source
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
+        quack_owner_command_signature,
+    )
+
+    operator = _operator()
+    request_id = "e" * 32
+    token = "vrif_test_token_0123456789"
+    store_id = "data/agent_supervisor/residual_intelligence_foundry/control.duckdb"
+    payload = {
+        "schema": QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
+        "request_id": request_id,
+        "issued_at_ms": int(time.time() * 1000),
+        "writer_identity": "supervisor-process:1234",
+        "store_id": store_id,
+        "store_generation": "vrif-v1",
+        "command": QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        "payload": {
+            "task_cid_or_alias": "VRIF-029",
+            "repair_head": "1" * 40,
+            "repair_tree": "2" * 40,
+        },
+    }
+    payload["signature"] = quack_owner_command_signature(payload, token=token)
+    (tmp_path / f"{request_id}.request.json").write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+    provider_boundary = lambda **_context: {  # noqa: E731
+        "quota_probe_receipt": {"receipt_id": "real"},
+        "route_outcome": {"outcome_id": "real"},
+    }
+    observed: dict[str, object] = {}
+
+    def execute(
+        _repository: object,
+        command: str,
+        command_payload: object,
+        **bindings: object,
+    ) -> dict[str, object]:
+        observed.update(
+            {
+                "command": command,
+                "payload": command_payload,
+                "bindings": bindings,
+            }
+        )
+        return {"schema": "typed-recovery-result@1", "changed": True}
+
+    monkeypatch.setattr(database_task_source, "execute_quack_owner_command", execute)
+    operator._process_owner_commands(
+        object(),
+        tmp_path,
+        token=token,
+        expected_store_id=store_id,
+        expected_store_generation="vrif-v1",
+        typed_deferral_provider_evidence_factory=provider_boundary,
+    )
+    assert observed["command"] == (
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET
+    )
+    assert observed["payload"] == payload["payload"]
+    bindings = observed["bindings"]
+    assert isinstance(bindings, dict)
+    assert bindings["request_id"] == request_id
+    assert bindings["typed_deferral_provider_evidence_factory"] is provider_boundary
+
+
 def test_owner_command_inbox_rejects_raw_sql_envelopes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -637,6 +744,117 @@ def test_owner_restart_admits_only_monotonic_source_binding_on_descendant(
     )
 
 
+def test_owner_restart_admits_exact_sealed_runtime_hardening_transition(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    fixture = _owner_restart_fixture(
+        operator,
+        monkeypatch,
+        tmp_path,
+        descendant=True,
+    )
+    config = _seal_runtime_hardening_transition(operator, fixture, tmp_path)
+    admission = operator._owner_restart_admission(
+        fixture.board,
+        config,
+        fixture.paths,
+    )
+    transition = admission["config_transition"]
+    assert transition["mode"] == "exact_runtime_settlement_hardening"
+    assert (
+        transition["runtime_settlement_identity"]
+        == operator.VRIF_RUNTIME_HARDENING_CONFIG_IDENTITY
+    )
+    assert transition["planning_revision"] == config["source_binding"][
+        "accelerator_planning_revision"
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "runtime_schema",
+        "runtime_extra_field",
+        "archive_hash",
+        "protected_missing",
+        "protected_reordered",
+        "protected_extra",
+        "database_program",
+        "runtime_paths",
+    ],
+)
+def test_owner_restart_rejects_any_delta_from_exact_runtime_hardening(
+    mutation: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    fixture = _owner_restart_fixture(
+        operator,
+        monkeypatch,
+        tmp_path,
+        descendant=True,
+    )
+    config = _seal_runtime_hardening_transition(operator, fixture, tmp_path)
+    changed = json.loads(json.dumps(config))
+    if mutation == "runtime_schema":
+        changed["runtime_settlement"]["schema"] = "foreign-schema"
+    elif mutation == "runtime_extra_field":
+        changed["runtime_settlement"]["extra"] = True
+    elif mutation == "archive_hash":
+        changed["runtime_settlement"]["retired_coordination_snapshots"][0][
+            "database_sha256"
+        ] = "sha256:" + ("0" * 64)
+    elif mutation == "protected_missing":
+        changed["protected_paths"].remove(
+            "test/api/residual_intelligence/test_runtime_settlement.py"
+        )
+    elif mutation == "protected_reordered":
+        first = changed["protected_paths"].index(
+            "test/api/residual_intelligence/test_goal_authority.py"
+        )
+        second = changed["protected_paths"].index(
+            "test/api/residual_intelligence/test_runtime_settlement.py"
+        )
+        changed["protected_paths"][first], changed["protected_paths"][second] = (
+            changed["protected_paths"][second],
+            changed["protected_paths"][first],
+        )
+    elif mutation == "protected_extra":
+        changed["protected_paths"].append("unexpected/authority.py")
+    elif mutation == "database_program":
+        changed["database_program"]["store_generation"] = "foreign-generation"
+    elif mutation == "runtime_paths":
+        changed["runtime_paths"]["root"] = "foreign-runtime"
+    else:  # pragma: no cover - the parameter set above is closed
+        raise AssertionError(mutation)
+    _write_fixture_json(fixture.board.config_path, changed)
+    _run_fixture_git(tmp_path, "add", "config/restart.json")
+    _run_fixture_git(tmp_path, "commit", "-m", f"mutate hardening {mutation}")
+    with pytest.raises(operator.OperatorError, match="outside the admitted|not sealed"):
+        operator._owner_restart_admission(
+            fixture.board,
+            changed,
+            fixture.paths,
+        )
+
+
+def test_owner_restart_rejects_duplicate_json_keys() -> None:
+    operator = _operator()
+    with pytest.raises(operator.OperatorError, match="must be a JSON object"):
+        operator._json_mapping_bytes(
+            b'{"runtime_paths": {}, "runtime_paths": {"root": "foreign"}}',
+            field="duplicate config",
+        )
+    with pytest.raises(operator.OperatorError, match="must be a JSON object"):
+        operator._json_mapping_bytes(
+            b'{"runtime_settlement": {"schema": "one", "schema": "two"}}',
+            field="nested duplicate config",
+        )
+
+
 def test_owner_restart_rejects_tampered_bootstrap_receipt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -799,9 +1017,6 @@ def test_provider_environment_removes_state_authority_credentials() -> None:
     assert cleaned == {"PATH": "/usr/bin"}
 
 
-@pytest.mark.skip(
-    reason="requires VRIF implementation_daemon credential scrubbing not yet on origin/main",
-)
 def test_implementation_provider_receives_scrubbed_parent_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -819,6 +1034,10 @@ def test_implementation_provider_receives_scrubbed_parent_environment(
     monkeypatch.setenv("VRIF_TEST_PROVIDER_API_KEY", "preserved-provider-key")
 
     class _Daemon:
+        @staticmethod
+        def _implementation_untrusted_process_environment() -> dict[str, str]:
+            return PortalImplementationDaemon._implementation_untrusted_process_environment()
+
         @staticmethod
         def _canonical_ref(_task: object) -> str:
             return "task-cid:vrif-test"
@@ -850,9 +1069,6 @@ def test_implementation_provider_receives_scrubbed_parent_environment(
     assert stdout.strip() == "absent"
 
 
-@pytest.mark.skip(
-    reason="requires VRIF implementation_daemon credential scrubbing not yet on origin/main",
-)
 def test_auto_rescue_worktree_command_receives_no_state_credential(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -867,6 +1083,10 @@ def test_auto_rescue_worktree_command_receives_no_state_credential(
 
     class _Daemon:
         implementation_timeout = 5
+
+        @staticmethod
+        def _implementation_untrusted_process_environment() -> dict[str, str]:
+            return PortalImplementationDaemon._implementation_untrusted_process_environment()
 
         @staticmethod
         def _record_event(_event: str, _payload: object) -> None:

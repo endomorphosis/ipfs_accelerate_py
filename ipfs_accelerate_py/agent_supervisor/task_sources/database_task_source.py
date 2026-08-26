@@ -20,8 +20,11 @@ intent-repository completion gate is enforced on every complete transition.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import re
 import tempfile
+import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,14 +34,17 @@ from typing import Any, ClassVar, Final
 from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
 from .duckdb_state import (
+    QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
     QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
     QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
-    QuackOwnerCommandRemoteError,
+    QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
     STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    QuackOwnerCommandRemoteError,
     is_quack_transport_target,
     quack_transport_uri,
     submit_quack_owner_command,
@@ -78,6 +84,276 @@ DATABASE_TASK_CAS_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/data
 
 DEFAULT_QUERY_LIMIT: Final[int] = DEFAULT_PAGE_LIMIT
 MAX_QUERY_LIMIT: Final[int] = MAX_PAGE_LIMIT
+_REARM_IMMUTABLE_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "completed",
+        "skipped",
+        "complete",
+        "done",
+        "cancelled",
+        "failed",
+        "quarantined",
+        "rejected",
+    }
+)
+_REOPENED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "proposed",
+        "admitted",
+        "pending",
+        "ready",
+        "todo",
+        "queued",
+        "retrying",
+        "claimed",
+        "in_progress",
+        "running",
+    }
+)
+TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION: Final[str] = (
+    "database_portal_typed_deferral_budget_exhausted"
+)
+TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION: Final[str] = (
+    "database_portal_typed_deferral_budget_supersession"
+)
+TYPED_DEFERRAL_BUDGET_SUPERSESSION_REQUEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-typed-deferral-budget-supersession-request@2"
+)
+TYPED_DEFERRAL_BUDGET_SUPERSESSION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-typed-deferral-budget-supersession@2"
+)
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-typed-deferral-provider-evidence-admission@1"
+)
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS: Final[int] = 5 * 60 * 1000
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_BYTES: Final[int] = 16 * 1024
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL: Final[object] = object()
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_SEAL: Final[object] = object()
+_TYPED_DEFERRAL_BUDGET_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-typed-deferral-budget@1"
+)
+_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-leftover-wait-deferral-budget-recovery@1"
+)
+_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION: Final[str] = (
+    "database_portal_leftover_wait_deferral_budget_retry_recovery"
+)
+_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_REASON: Final[str] = (
+    "leftover_wait_deferral_budget_cleared"
+)
+_LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "worktree_lifecycle_claim_exists",
+        "worktree_lifecycle_active_transition_failed",
+        "worktree_lifecycle_transition_failed",
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+    }
+)
+_MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW: Final[int] = 16
+_TYPED_DEFERRAL_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
+_TYPED_DEFERRAL_GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
+_TYPED_DEFERRAL_OWNER_REQUEST_ID_RE = re.compile(r"[0-9a-f]{32}")
+_TYPED_DEFERRAL_ROUTE_TUPLE_FIELDS = (
+    "primary_provider_id",
+    "primary_model_id",
+    "fallback_provider_id",
+    "fallback_model_id",
+    "fallback_trigger",
+    "fallback_reasoning_effort",
+)
+_TYPED_DEFERRAL_SUPERSESSION_REQUEST_FIELDS = frozenset(
+    {
+        "schema",
+        "operation",
+        "task_cid",
+        "attempt_id",
+        "exhausted_observation_id",
+        "exhausted_receipt_id",
+        "source_head",
+        "source_tree",
+        "repair_head",
+        "repair_tree",
+        "provider_evidence_admission",
+    }
+)
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_FIELDS = frozenset(
+    {
+        "schema",
+        "task_cid",
+        "task_revision",
+        "attempt_id",
+        "exhausted_observation_id",
+        "exhausted_receipt_id",
+        "exhausted_finished_at_ms",
+        "source_head",
+        "source_tree",
+        "repair_head",
+        "repair_tree",
+        "quota_probe_receipt_id",
+        "quota_probe_observed_at_ms",
+        "route_outcome_id",
+        "route_id",
+        "quota_evidence_id",
+        "admitted_at_ms",
+        "max_age_ms",
+        "owner_command",
+        "owner_command_request_id",
+        "owner_store_id",
+        "owner_store_generation",
+    }
+)
+_TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS = frozenset(
+    {
+        "operation",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "execution_phase",
+        "execution_revision",
+        "execution_finished_at_ms",
+        "reason",
+        "retryable",
+        "attempt_consumed",
+        "typed_deferral_slot_consumed",
+        "retry_budget",
+        "prior_queue_entry_preserved_inactive",
+        "coordination",
+        "control_expected_status",
+        "control_expected_revision",
+    }
+)
+_TYPED_DEFERRAL_BUDGET_FIELDS = frozenset(
+    {
+        "schema",
+        "task_cid",
+        "task_generation",
+        "generation_fingerprint",
+        "current_deferral_fingerprint",
+        "typed_deferral_candidate_count",
+        "typed_deferral_count",
+        "typed_deferral_count_is_lower_bound",
+        "verified_typed_deferral_count",
+        "verified_count_complete",
+        "max_task_attempts",
+        "exhausted",
+        "attempt_consumed",
+        "typed_deferral_slot_consumed",
+        "matching_attempts",
+        "matching_attempts_digest",
+        "matching_attempts_truncated",
+        "omitted_matching_attempt_count",
+        "observation_id",
+    }
+)
+_TYPED_DEFERRAL_MATCHING_ATTEMPT_FIELDS = frozenset(
+    {
+        "attempt_id",
+        "attempt_number",
+        "reason",
+        "deferral_fingerprint",
+    }
+)
+_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SEED_FIELDS = frozenset(
+    {
+        "schema",
+        "disposition",
+        "reason",
+        "source_reason",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "exhausting_reasons",
+        "blocked_retry_budget",
+        "blocked_retry_budget_observation_id",
+        "blocked_retry_budget_digest",
+        "blocked_matching_attempts_digest",
+        "identity_bound",
+        "backoff_seconds",
+        "attempt_consumed",
+        "receipt_id",
+    }
+)
+_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_FIELDS = frozenset(
+    {
+        "operation",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "attempt_number",
+        "execution_phase",
+        "execution_revision",
+        "execution_finished_at_ms",
+        "reason",
+        "backoff_seconds",
+        "backoff_ms",
+        "retry_not_before_ms",
+        "evidence_source",
+        "queue_reason",
+        "queue_reused",
+        "queue_receipt",
+        "coordination",
+        "leftover_wait_deferral_budget_recovery_seed",
+        "control_expected_status",
+        "control_expected_revision",
+    }
+)
+_TYPED_DEFERRAL_SUPERSESSION_FIELDS = frozenset(
+    {
+        "schema",
+        "operation",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "exhausted_observation_id",
+        "exhausted_generation_fingerprint",
+        "exhausted_receipt_id",
+        "exhausted_receipt",
+        "source_head",
+        "source_tree",
+        "repair_head",
+        "repair_tree",
+        "quota_probe_receipt_id",
+        "quota_probe_receipt",
+        "route_outcome_id",
+        "route_outcome",
+        "route_id",
+        "quota_evidence_id",
+        "provider_evidence_admission_id",
+        "provider_evidence_admitted_at_ms",
+        "provider_evidence_max_age_ms",
+        "provider_evidence_owner_command",
+        "provider_evidence_owner_command_request_id",
+        "provider_evidence_owner_store_id",
+        "provider_evidence_owner_store_generation",
+        "control_expected_status",
+        "control_expected_revision",
+        "supersession_id",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +389,42 @@ class TaskSourceBoundsError(DatabaseTaskSourceError, IntentRepositoryBoundsError
 
 class TaskSourceCompletionError(DatabaseTaskSourceError, IntentCompletionError):
     """Completion refused without current required evidence."""
+
+
+class TypedDeferralRecoveryError(ValueError):
+    """An exhausted-budget recovery receipt is absent, stale, or invalid."""
+
+
+@dataclass(frozen=True)
+class _TypedDeferralProviderEvidenceAdmission:
+    """Process-local capability minted only after an owner-run fresh canary."""
+
+    admission_json: str = field(repr=False)
+    quota_probe_receipt_json: str = field(repr=False)
+    route_outcome_json: str = field(repr=False)
+    admission_id: str
+    seal: object = field(repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class _PostMergeQueueAdmission:
+    """One-shot embedded authority for an exact post-merge crash repair."""
+
+    source_id: int
+    task_cid: str
+    expected_status: str
+    expected_revision: int
+    expected_control_receipt_id: str
+    new_status: str
+    transition_receipt_id: str
+    queue_reason: str
+    delay_ms: int
+    selection_penalty: int
+    exact_retry_not_before_ms: int | None
+    operation: str
+    evidence_id: str
+    qualification_receipt_id: str
+    seal: object = field(repr=False, compare=False)
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +608,1208 @@ def _task_key(value: str | TaskRecord | Mapping[str, Any]) -> str:
     return text
 
 
+def _sha256_identity(value: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        dict(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _mapping(value: Any, *, noun: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TypedDeferralRecoveryError(f"{noun} must be a mapping")
+    return dict(value)
+
+
+def _positive_integer(value: Any, *, noun: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise TypedDeferralRecoveryError(f"{noun} must be a positive integer")
+    return int(value)
+
+
+def _source_generation(task_body: Mapping[str, Any]) -> tuple[str, str]:
+    source_head = str(task_body.get("base_revision") or "")
+    source_tree = str(task_body.get("base_repository_tree_id") or "")
+    if _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(source_head) is None:
+        raise TypedDeferralRecoveryError(
+            "typed-deferral recovery task has no exact source HEAD"
+        )
+    if _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(source_tree) is None:
+        raise TypedDeferralRecoveryError(
+            "typed-deferral recovery task has no exact source tree"
+        )
+    return source_head, source_tree
+
+
+def _blocked_context(
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], str, str, str]:
+    body = _mapping(task_body, noun="typed-deferral task body")
+    receipt = _mapping(
+        body.get("completion_receipt"),
+        noun="typed-deferral exhausted receipt",
+    )
+    if (
+        set(receipt) != _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS
+        or receipt.get("operation") != TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+        or receipt.get("reason") != "typed_portal_deferral_budget_exhausted"
+        or receipt.get("retryable") is not False
+        or receipt.get("attempt_consumed") is not False
+        or receipt.get("typed_deferral_slot_consumed") is not True
+        or not isinstance(
+            receipt.get("prior_queue_entry_preserved_inactive"), bool
+        )
+        or receipt.get("execution_phase") != "failed"
+        or receipt.get("control_expected_status")
+        not in {"in_progress", "retrying"}
+    ):
+        raise TypedDeferralRecoveryError(
+            "task is not bound to an exact exhausted typed-deferral receipt"
+        )
+    revision = _positive_integer(task_revision, noun="task revision")
+    if receipt.get("control_expected_revision") != revision - 1:
+        raise TypedDeferralRecoveryError(
+            "typed-deferral exhausted receipt is stale for the task revision"
+        )
+    _positive_integer(
+        receipt.get("attempt_number"), noun="exhausted attempt number"
+    )
+    _positive_integer(
+        receipt.get("execution_revision"), noun="exhausted execution revision"
+    )
+    _positive_integer(
+        receipt.get("execution_finished_at_ms"),
+        noun="exhausted execution finish time",
+    )
+    for receipt_field in (
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+    ):
+        if (
+            not isinstance(receipt.get(receipt_field), str)
+            or not receipt[receipt_field]
+        ):
+            raise TypedDeferralRecoveryError(
+                f"typed-deferral exhausted receipt has no {receipt_field}"
+            )
+    for receipt_field in ("fencing_token", "fence_epoch"):
+        _positive_integer(
+            receipt.get(receipt_field), noun=f"exhausted {receipt_field}"
+        )
+
+    budget = _mapping(receipt.get("retry_budget"), noun="exhausted retry budget")
+    observation_id = str(budget.get("observation_id") or "")
+    budget_body = dict(budget)
+    budget_body.pop("observation_id", None)
+    if (
+        budget.get("schema") != _TYPED_DEFERRAL_BUDGET_SCHEMA
+        or budget.get("task_cid") != task_cid
+        or budget.get("task_generation") != task_cid
+        or budget.get("exhausted") is not True
+        or budget.get("attempt_consumed") is not False
+        or budget.get("typed_deferral_slot_consumed") is not True
+        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(observation_id) is None
+        or observation_id != _sha256_identity(budget_body)
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral exhausted observation is invalid"
+        )
+    if not isinstance(receipt.get("coordination"), Mapping):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral exhausted coordination is malformed"
+        )
+    source_head, source_tree = _source_generation(body)
+    # The local binding includes the complete original receipt because the
+    # retrying CAS replaces body.completion_receipt.  Restart reconciliation
+    # can therefore reproduce, rather than trust, the overwritten authority.
+    return (
+        receipt,
+        budget,
+        observation_id,
+        source_head,
+        source_tree,
+    )
+
+
+def _leftover_wait_evidence_digest(value: Mapping[str, Any]) -> str:
+    """Reproduce the Portal daemon's UTF-8 canonical evidence identity."""
+
+    encoded = json.dumps(
+        dict(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _validated_leftover_wait_budget(
+    *,
+    task_cid: str,
+    blocked_receipt: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    budget = _mapping(
+        blocked_receipt.get("retry_budget"),
+        noun="leftover-wait exhausted retry budget",
+    )
+    if set(budget) != _TYPED_DEFERRAL_BUDGET_FIELDS:
+        raise TypedDeferralRecoveryError(
+            "leftover-wait exhausted budget has unknown or missing fields"
+        )
+    matching_raw = budget.get("matching_attempts")
+    if (
+        not isinstance(matching_raw, list)
+        or not matching_raw
+        or len(matching_raw) > _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW
+    ):
+        raise TypedDeferralRecoveryError(
+            "leftover-wait exhausted budget has no bounded attempt history"
+        )
+    matching: list[dict[str, Any]] = []
+    seen_attempt_ids: set[str] = set()
+    for raw in matching_raw:
+        item = _mapping(raw, noun="leftover-wait matching attempt")
+        if set(item) != _TYPED_DEFERRAL_MATCHING_ATTEMPT_FIELDS:
+            raise TypedDeferralRecoveryError(
+                "leftover-wait matching attempt has unknown or missing fields"
+            )
+        attempt_id = item.get("attempt_id")
+        reason = item.get("reason")
+        fingerprint = item.get("deferral_fingerprint")
+        if (
+            not isinstance(attempt_id, str)
+            or not attempt_id
+            or attempt_id != attempt_id.strip()
+            or attempt_id in seen_attempt_ids
+            or type(reason) is not str
+            or reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+            or not isinstance(fingerprint, str)
+            or _TYPED_DEFERRAL_SHA256_RE.fullmatch(fingerprint) is None
+        ):
+            raise TypedDeferralRecoveryError(
+                "leftover-wait matching attempt is foreign or malformed"
+            )
+        _positive_integer(
+            item.get("attempt_number"),
+            noun="leftover-wait matching attempt number",
+        )
+        seen_attempt_ids.add(attempt_id)
+        matching.append(item)
+
+    count_values = (
+        budget.get("typed_deferral_candidate_count"),
+        budget.get("typed_deferral_count"),
+        budget.get("verified_typed_deferral_count"),
+    )
+    max_task_attempts = budget.get("max_task_attempts")
+    omitted_count = budget.get("omitted_matching_attempt_count")
+    generation_fingerprint = budget.get("generation_fingerprint")
+    current_fingerprint = budget.get("current_deferral_fingerprint")
+    observation_id = budget.get("observation_id")
+    matching_digest = budget.get("matching_attempts_digest")
+    if (
+        budget.get("schema") != _TYPED_DEFERRAL_BUDGET_SCHEMA
+        or budget.get("task_cid") != task_cid
+        or budget.get("task_generation") != task_cid
+        or any(type(value) is not int for value in count_values)
+        or any(value != len(matching) for value in count_values)
+        or type(max_task_attempts) is not int
+        or max_task_attempts <= 0
+        or len(matching) < max_task_attempts
+        or budget.get("typed_deferral_count_is_lower_bound") is not False
+        or budget.get("verified_count_complete") is not True
+        or budget.get("exhausted") is not True
+        or budget.get("attempt_consumed") is not False
+        or budget.get("typed_deferral_slot_consumed") is not True
+        or budget.get("matching_attempts_truncated") is not False
+        or type(omitted_count) is not int
+        or omitted_count != 0
+        or not isinstance(generation_fingerprint, str)
+        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(generation_fingerprint) is None
+        or not isinstance(current_fingerprint, str)
+        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(current_fingerprint) is None
+        or not isinstance(observation_id, str)
+        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(observation_id) is None
+        or not isinstance(matching_digest, str)
+        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(matching_digest) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "leftover-wait exhausted budget failed closed-field verification"
+        )
+
+    observation_body = dict(budget)
+    observation_body.pop("observation_id")
+    if observation_id != _leftover_wait_evidence_digest(observation_body):
+        raise TypedDeferralRecoveryError(
+            "leftover-wait exhausted budget observation identity is invalid"
+        )
+    digest = hashlib.sha256()
+    for item in matching:
+        encoded = json.dumps(
+            item,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    if matching_digest != "sha256:" + digest.hexdigest():
+        raise TypedDeferralRecoveryError(
+            "leftover-wait exhausted budget attempt digest is invalid"
+        )
+
+    blocked_attempt_id = blocked_receipt["attempt_id"]
+    blocked_attempt_number = blocked_receipt["attempt_number"]
+    current = [
+        item
+        for item in matching
+        if item["attempt_id"] == blocked_attempt_id
+        and item["attempt_number"] == blocked_attempt_number
+    ]
+    if (
+        len(current) != 1
+        or current[0]["deferral_fingerprint"] != current_fingerprint
+    ):
+        raise TypedDeferralRecoveryError(
+            "leftover-wait exhausted budget is not bound to its current attempt"
+        )
+    reasons = sorted({str(item["reason"]) for item in matching})
+    return budget, reasons
+
+
+def _validated_leftover_wait_blocked_context(
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    body = _mapping(task_body, noun="leftover-wait exhausted task body")
+    blocked_receipt = _mapping(
+        body.get("completion_receipt"),
+        noun="leftover-wait exhausted control receipt",
+    )
+    revision = _positive_integer(task_revision, noun="leftover-wait task revision")
+    coordination = blocked_receipt.get("coordination")
+    if (
+        set(blocked_receipt) != _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS
+        or blocked_receipt.get("operation")
+        != TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+        or blocked_receipt.get("reason")
+        != "typed_portal_deferral_budget_exhausted"
+        or blocked_receipt.get("execution_phase") != "failed"
+        or blocked_receipt.get("retryable") is not False
+        or blocked_receipt.get("attempt_consumed") is not False
+        or blocked_receipt.get("typed_deferral_slot_consumed") is not True
+        or not isinstance(
+            blocked_receipt.get("prior_queue_entry_preserved_inactive"), bool
+        )
+        or blocked_receipt.get("control_expected_status")
+        not in {"in_progress", "retrying"}
+        or type(blocked_receipt.get("control_expected_revision")) is not int
+        or blocked_receipt.get("control_expected_revision") != revision - 1
+        or not isinstance(coordination, Mapping)
+    ):
+        raise TypedDeferralRecoveryError(
+            "task is not bound to an exact leftover-wait exhausted receipt"
+        )
+    for receipt_field in (
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+    ):
+        value = blocked_receipt.get(receipt_field)
+        if (
+            not isinstance(value, str)
+            or not value
+            or value != value.strip()
+        ):
+            raise TypedDeferralRecoveryError(
+                "leftover-wait exhausted receipt has no exact "
+                + receipt_field
+            )
+    for receipt_field in (
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "execution_revision",
+        "execution_finished_at_ms",
+    ):
+        _positive_integer(
+            blocked_receipt.get(receipt_field),
+            noun=f"leftover-wait exhausted {receipt_field}",
+        )
+    if (
+        coordination.get("attempt_id") != blocked_receipt["attempt_id"]
+        or coordination.get("claim_id") != blocked_receipt["claim_id"]
+        or type(coordination.get("attempt_number")) is not int
+        or coordination.get("attempt_number")
+        != blocked_receipt["attempt_number"]
+    ):
+        raise TypedDeferralRecoveryError(
+            "leftover-wait exhausted coordination has a foreign identity"
+        )
+    budget, reasons = _validated_leftover_wait_budget(
+        task_cid=task_cid,
+        blocked_receipt=blocked_receipt,
+    )
+    return blocked_receipt, budget, reasons
+
+
+def admit_leftover_wait_deferral_budget_recovery(
+    *,
+    task_cid: str,
+    task_alias: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    request: Mapping[str, Any] | None,
+    expected_control_receipt: Mapping[str, Any] | None,
+    evidence_digests: Sequence[str] | None,
+) -> dict[str, Any]:
+    """Admit the one deterministic legacy leftover-wait budget rearm."""
+
+    blocked_receipt, budget, reproduced_reasons = (
+        _validated_leftover_wait_blocked_context(
+            task_cid=task_cid,
+            task_revision=task_revision,
+            task_body=task_body,
+        )
+    )
+    recovery = _mapping(request, noun="leftover-wait recovery control receipt")
+    if set(recovery) != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_FIELDS:
+        raise TypedDeferralRecoveryError(
+            "leftover-wait recovery control receipt has unknown or missing fields"
+        )
+    seed = _mapping(
+        recovery.get("leftover_wait_deferral_budget_recovery_seed"),
+        noun="leftover-wait recovery seed",
+    )
+    if set(seed) != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SEED_FIELDS:
+        raise TypedDeferralRecoveryError(
+            "leftover-wait recovery seed has unknown or missing fields"
+        )
+    seed_body = dict(seed)
+    seed_receipt_id = seed_body.pop("receipt_id", None)
+    seed_reasons = seed.get("exhausting_reasons")
+    if (
+        seed.get("schema") != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA
+        or seed.get("disposition") != "retry"
+        or seed.get("reason")
+        != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_REASON
+        or seed.get("source_reason")
+        != "typed_portal_deferral_budget_exhausted"
+        or seed.get("task_cid") != task_cid
+        or seed.get("task_alias") != task_alias
+        or seed.get("attempt_id") != blocked_receipt["attempt_id"]
+        or seed.get("claim_id") != blocked_receipt["claim_id"]
+        or seed.get("lease_id") != blocked_receipt["lease_id"]
+        or type(seed.get("attempt_number")) is not int
+        or seed.get("attempt_number") != blocked_receipt["attempt_number"]
+        or type(seed.get("fencing_token")) is not int
+        or seed.get("fencing_token") != blocked_receipt["fencing_token"]
+        or type(seed.get("fence_epoch")) is not int
+        or seed.get("fence_epoch") != blocked_receipt["fence_epoch"]
+        or not isinstance(seed_reasons, list)
+        or not seed_reasons
+        or any(type(reason) is not str for reason in seed_reasons)
+        or seed_reasons != sorted(set(seed_reasons))
+        or seed_reasons != reproduced_reasons
+        or seed.get("blocked_retry_budget") != budget
+        or seed.get("blocked_retry_budget_observation_id")
+        != budget["observation_id"]
+        or seed.get("blocked_retry_budget_digest")
+        != _leftover_wait_evidence_digest(budget)
+        or seed.get("blocked_matching_attempts_digest")
+        != budget["matching_attempts_digest"]
+        or seed.get("identity_bound") is not True
+        or type(seed.get("backoff_seconds")) is not int
+        or seed.get("backoff_seconds") != 0
+        or seed.get("attempt_consumed") is not False
+        or not isinstance(seed_receipt_id, str)
+        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(seed_receipt_id) is None
+        or seed_receipt_id != _leftover_wait_evidence_digest(seed_body)
+    ):
+        raise TypedDeferralRecoveryError(
+            "leftover-wait recovery seed failed identity verification"
+        )
+
+    coordination = recovery.get("coordination")
+    retry_not_before_ms = recovery.get("retry_not_before_ms")
+    queue_reason = (
+        "database_portal_retry:"
+        + str(blocked_receipt["attempt_id"])
+        + ":"
+        + _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_REASON
+    )[:2048]
+    if (
+        recovery.get("operation")
+        != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
+        or recovery.get("attempt_id") != blocked_receipt["attempt_id"]
+        or recovery.get("claim_id") != blocked_receipt["claim_id"]
+        or recovery.get("lease_id") != blocked_receipt["lease_id"]
+        or recovery.get("owner_session_id")
+        != blocked_receipt["owner_session_id"]
+        or type(recovery.get("fencing_token")) is not int
+        or recovery.get("fencing_token") != blocked_receipt["fencing_token"]
+        or type(recovery.get("fence_epoch")) is not int
+        or recovery.get("fence_epoch") != blocked_receipt["fence_epoch"]
+        or type(recovery.get("attempt_number")) is not int
+        or recovery.get("attempt_number") != blocked_receipt["attempt_number"]
+        or recovery.get("execution_phase") != "failed"
+        or type(recovery.get("execution_revision")) is not int
+        or recovery.get("execution_revision")
+        != blocked_receipt["execution_revision"]
+        or type(recovery.get("execution_finished_at_ms")) is not int
+        or recovery.get("execution_finished_at_ms")
+        != blocked_receipt["execution_finished_at_ms"]
+        or recovery.get("reason")
+        != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_REASON
+        or type(recovery.get("backoff_seconds")) is not int
+        or recovery.get("backoff_seconds") != 0
+        or type(recovery.get("backoff_ms")) is not int
+        or recovery.get("backoff_ms") != 0
+        or type(retry_not_before_ms) is not int
+        or retry_not_before_ms < 0
+        or recovery.get("evidence_source")
+        != "typed_portal_leftover_wait_deferral_budget_recovery:"
+        + seed_receipt_id
+        or recovery.get("queue_reason") != queue_reason
+        or type(recovery.get("queue_reused")) is not bool
+        or not isinstance(recovery.get("queue_receipt"), Mapping)
+        or not isinstance(coordination, Mapping)
+        or coordination.get("attempt_id") != blocked_receipt["attempt_id"]
+        or coordination.get("claim_id") != blocked_receipt["claim_id"]
+        or type(coordination.get("attempt_number")) is not int
+        or coordination.get("attempt_number")
+        != blocked_receipt["attempt_number"]
+        or recovery.get("control_expected_status") != "blocked"
+        or type(recovery.get("control_expected_revision")) is not int
+        or recovery.get("control_expected_revision") != task_revision
+    ):
+        raise TypedDeferralRecoveryError(
+            "leftover-wait recovery control receipt has a foreign identity"
+        )
+    if expected_control_receipt is not None and (
+        not isinstance(expected_control_receipt, Mapping)
+        or dict(expected_control_receipt) != blocked_receipt
+    ):
+        raise TypedDeferralRecoveryError(
+            "leftover-wait recovery expected a foreign control receipt"
+        )
+    if (
+        not isinstance(evidence_digests, Sequence)
+        or isinstance(evidence_digests, (str, bytes, bytearray))
+        or list(evidence_digests) != [seed_receipt_id]
+    ):
+        raise TypedDeferralRecoveryError(
+            "leftover-wait recovery evidence digest is absent or foreign"
+        )
+    return recovery
+
+
+def _canonical_typed_deferral_mapping_json(
+    value: Mapping[str, Any], *, noun: str
+) -> str:
+    try:
+        encoded = json.dumps(
+            dict(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as exc:
+        raise TypedDeferralRecoveryError(f"{noun} is not canonical JSON") from exc
+    if len(encoded.encode("utf-8")) > _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_BYTES:
+        raise TypedDeferralRecoveryError(f"{noun} exceeds the closed size bound")
+    return encoded
+
+
+def _decode_typed_deferral_mapping_json(value: Any, *, noun: str) -> dict[str, Any]:
+    if not isinstance(value, str):
+        raise TypedDeferralRecoveryError(f"{noun} is not sealed JSON")
+    try:
+        decoded = json.loads(value)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise TypedDeferralRecoveryError(f"{noun} is not sealed JSON") from exc
+    if not isinstance(decoded, dict) or (
+        _canonical_typed_deferral_mapping_json(decoded, noun=noun) != value
+    ):
+        raise TypedDeferralRecoveryError(f"{noun} is not canonical sealed JSON")
+    return decoded
+
+
+def _typed_deferral_owner_binding(value: Any, *, noun: str) -> str:
+    if (
+        not isinstance(value, str)
+        or value != value.strip()
+        or not value
+        or len(value.encode("utf-8")) > 512
+        or any(ord(character) < 32 for character in value)
+    ):
+        raise TypedDeferralRecoveryError(f"{noun} is invalid")
+    return value
+
+
+def _validated_provider_pair(
+    failure_receipt: Mapping[str, Any],
+    route_outcome: Mapping[str, Any],
+    *,
+    exhausted_finished_at_ms: int,
+    admission_now_ms: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    from ...agent_implementation_route import (
+        resolve_agent_implementation_route,
+        valid_agent_implementation_failure_receipt,
+    )
+    from ..runtime.provider_failure_policy import (
+        valid_grok_hard_quota_receipt,
+        valid_grok_route_outcome,
+    )
+
+    failure = _mapping(failure_receipt, noun="quota probe receipt")
+    outcome = _mapping(route_outcome, noun="provider route outcome")
+    nonce = str(failure.get("nonce") or "")
+    model = str(failure.get("primary_model") or "")
+    probe_returncode = failure.get("probe_returncode")
+    observed_at_ms = failure.get("observed_at_ms")
+    if (
+        isinstance(admission_now_ms, bool)
+        or not isinstance(admission_now_ms, int)
+        or admission_now_ms <= 0
+        or isinstance(probe_returncode, bool)
+        or not isinstance(probe_returncode, int)
+        or isinstance(observed_at_ms, bool)
+        or not isinstance(observed_at_ms, int)
+        or observed_at_ms < exhausted_finished_at_ms
+        or not valid_agent_implementation_failure_receipt(
+            failure,
+            nonce=nonce,
+            model=model,
+            probe_returncode=probe_returncode,
+            now_ms=admission_now_ms,
+            max_age_ms=_TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS,
+        )
+        or not valid_grok_hard_quota_receipt(
+            failure,
+            nonce=nonce,
+            model=model,
+            returncode=probe_returncode,
+        )
+    ):
+        raise TypedDeferralRecoveryError(
+            "quota probe is not fresh, post-exhaustion hard-quota evidence"
+        )
+
+    route_plan = _mapping(outcome.get("route_plan"), noun="provider route plan")
+    try:
+        resolved = resolve_agent_implementation_route(
+            **{
+                field: route_plan.get(field)
+                for field in _TYPED_DEFERRAL_ROUTE_TUPLE_FIELDS
+            }
+        )
+    except (TypeError, ValueError) as exc:
+        raise TypedDeferralRecoveryError(
+            "provider route is not a reviewed canonical tuple"
+        ) from exc
+    canonical_route = resolved.as_outcome_dict()
+    quota_evidence_id = str(outcome.get("quota_evidence_id") or "")
+    if (
+        resolved.fallback_trigger != "primary_quota_exhausted"
+        or resolved.fallback_reasoning_effort != "high"
+        or route_plan != canonical_route
+        or outcome.get("decision") != "fallback_succeeded"
+        or outcome.get("verifier_status") != "confirmed_quota"
+        or outcome.get("fallback_dispatched") is not True
+        or outcome.get("fallback_returncode") != 0
+        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(quota_evidence_id) is None
+        or not valid_grok_route_outcome(
+            outcome,
+            receipt=failure,
+            route_plan=canonical_route,
+            runner_returncode=0,
+        )
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider route is not a confirmed successful quota/high fallback"
+        )
+    return failure, outcome, canonical_route
+
+
+def _validated_provider_evidence_admission(
+    admission: object,
+    *,
+    task_cid: str,
+    task_revision: int,
+    exhausted_receipt: Mapping[str, Any],
+    exhausted_observation_id: str,
+    source_head: str,
+    source_tree: str,
+    repair_head: str,
+    repair_tree: str,
+) -> tuple[
+    _TypedDeferralProviderEvidenceAdmission,
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+]:
+    if (
+        not isinstance(admission, _TypedDeferralProviderEvidenceAdmission)
+        or admission.seal is not _TYPED_DEFERRAL_PROVIDER_EVIDENCE_SEAL
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider evidence was not admitted by the state owner"
+        )
+    body = _decode_typed_deferral_mapping_json(
+        admission.admission_json,
+        noun="provider evidence admission",
+    )
+    failure = _decode_typed_deferral_mapping_json(
+        admission.quota_probe_receipt_json,
+        noun="quota probe receipt",
+    )
+    outcome = _decode_typed_deferral_mapping_json(
+        admission.route_outcome_json,
+        noun="provider route outcome",
+    )
+    admitted_at_ms = body.get("admitted_at_ms")
+    owner_request_id = body.get("owner_command_request_id")
+    if (
+        set(body) != _TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_FIELDS
+        or body.get("schema")
+        != _TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_SCHEMA
+        or admission.admission_id != content_identity(body)
+        or body.get("task_cid") != task_cid
+        or body.get("task_revision") != task_revision
+        or body.get("attempt_id") != exhausted_receipt.get("attempt_id")
+        or body.get("exhausted_observation_id") != exhausted_observation_id
+        or body.get("exhausted_receipt_id") != content_identity(exhausted_receipt)
+        or body.get("exhausted_finished_at_ms")
+        != exhausted_receipt.get("execution_finished_at_ms")
+        or body.get("source_head") != source_head
+        or body.get("source_tree") != source_tree
+        or body.get("repair_head") != repair_head
+        or body.get("repair_tree") != repair_tree
+        or body.get("max_age_ms")
+        != _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS
+        or body.get("owner_command")
+        != QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET
+        or isinstance(admitted_at_ms, bool)
+        or not isinstance(admitted_at_ms, int)
+        or admitted_at_ms <= 0
+        or not isinstance(owner_request_id, str)
+        or _TYPED_DEFERRAL_OWNER_REQUEST_ID_RE.fullmatch(owner_request_id) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider evidence admission is stale or mismatched"
+        )
+    _typed_deferral_owner_binding(
+        body.get("owner_store_id"), noun="owner store identity"
+    )
+    _typed_deferral_owner_binding(
+        body.get("owner_store_generation"), noun="owner store generation"
+    )
+    failure, outcome, route = _validated_provider_pair(
+        failure,
+        outcome,
+        exhausted_finished_at_ms=int(exhausted_receipt["execution_finished_at_ms"]),
+        admission_now_ms=admitted_at_ms,
+    )
+    if (
+        body.get("quota_probe_receipt_id") != failure.get("receipt_id")
+        or body.get("quota_probe_observed_at_ms") != failure.get("observed_at_ms")
+        or body.get("route_outcome_id") != outcome.get("outcome_id")
+        or body.get("route_id") != route.get("route_id")
+        or body.get("quota_evidence_id") != outcome.get("quota_evidence_id")
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider evidence admission identities do not reproduce"
+        )
+    return admission, body, failure, outcome, route
+
+
+def _admit_owner_typed_deferral_provider_evidence(
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    repair_head: str,
+    repair_tree: str,
+    quota_probe_receipt: Mapping[str, Any],
+    route_outcome: Mapping[str, Any],
+    owner_command_request_id: str,
+    owner_store_id: str,
+    owner_store_generation: str,
+    admitted_at_ms: int | None = None,
+    _owner_admission_sentinel: object,
+) -> _TypedDeferralProviderEvidenceAdmission:
+    """Mint a process-local capability after the owner runs one fresh canary."""
+
+    if (
+        _owner_admission_sentinel
+        is not _TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider evidence admission requires state-owner authority"
+        )
+    (
+        exhausted_receipt,
+        _budget,
+        observation_id,
+        source_head,
+        source_tree,
+    ) = _blocked_context(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+    )
+    repair_head_text = str(repair_head or "")
+    repair_tree_text = str(repair_tree or "")
+    if (
+        _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_head_text) is None
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_tree_text) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral repair requires an exact commit and tree"
+        )
+    request_id = _typed_deferral_owner_binding(
+        owner_command_request_id, noun="owner command request identity"
+    )
+    if _TYPED_DEFERRAL_OWNER_REQUEST_ID_RE.fullmatch(request_id) is None:
+        raise TypedDeferralRecoveryError("owner command request identity is invalid")
+    store_id = _typed_deferral_owner_binding(
+        owner_store_id, noun="owner store identity"
+    )
+    store_generation = _typed_deferral_owner_binding(
+        owner_store_generation, noun="owner store generation"
+    )
+    observed_now = (
+        int(time.time() * 1000) if admitted_at_ms is None else admitted_at_ms
+    )
+    failure, outcome, route = _validated_provider_pair(
+        quota_probe_receipt,
+        route_outcome,
+        exhausted_finished_at_ms=int(exhausted_receipt["execution_finished_at_ms"]),
+        admission_now_ms=observed_now,
+    )
+    body = {
+        "schema": _TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_SCHEMA,
+        "task_cid": task_cid,
+        "task_revision": int(task_revision),
+        "attempt_id": str(exhausted_receipt["attempt_id"]),
+        "exhausted_observation_id": observation_id,
+        "exhausted_receipt_id": content_identity(exhausted_receipt),
+        "exhausted_finished_at_ms": int(
+            exhausted_receipt["execution_finished_at_ms"]
+        ),
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "repair_head": repair_head_text,
+        "repair_tree": repair_tree_text,
+        "quota_probe_receipt_id": str(failure.get("receipt_id") or ""),
+        "quota_probe_observed_at_ms": int(failure["observed_at_ms"]),
+        "route_outcome_id": str(outcome.get("outcome_id") or ""),
+        "route_id": str(route.get("route_id") or ""),
+        "quota_evidence_id": str(outcome.get("quota_evidence_id") or ""),
+        "admitted_at_ms": observed_now,
+        "max_age_ms": _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS,
+        "owner_command": QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        "owner_command_request_id": request_id,
+        "owner_store_id": store_id,
+        "owner_store_generation": store_generation,
+    }
+    return _TypedDeferralProviderEvidenceAdmission(
+        admission_json=_canonical_typed_deferral_mapping_json(
+            body, noun="provider evidence admission"
+        ),
+        quota_probe_receipt_json=_canonical_typed_deferral_mapping_json(
+            failure, noun="quota probe receipt"
+        ),
+        route_outcome_json=_canonical_typed_deferral_mapping_json(
+            outcome, noun="provider route outcome"
+        ),
+        admission_id=content_identity(body),
+        seal=_TYPED_DEFERRAL_PROVIDER_EVIDENCE_SEAL,
+    )
+
+
+def build_typed_deferral_budget_supersession_request(
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    repair_head: str,
+    repair_tree: str,
+    provider_evidence_admission: object,
+) -> dict[str, Any]:
+    """Build a closed request around one state-owner-minted capability."""
+
+    receipt, _budget, observation_id, source_head, source_tree = _blocked_context(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+    )
+    repair_head_text = str(repair_head or "")
+    repair_tree_text = str(repair_tree or "")
+    if (
+        _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_head_text) is None
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_tree_text) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral repair requires an exact commit and tree"
+        )
+    _validated_provider_evidence_admission(
+        provider_evidence_admission,
+        task_cid=task_cid,
+        task_revision=task_revision,
+        exhausted_receipt=receipt,
+        exhausted_observation_id=observation_id,
+        source_head=source_head,
+        source_tree=source_tree,
+        repair_head=repair_head_text,
+        repair_tree=repair_tree_text,
+    )
+    return {
+        "schema": TYPED_DEFERRAL_BUDGET_SUPERSESSION_REQUEST_SCHEMA,
+        "operation": TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
+        "task_cid": task_cid,
+        "attempt_id": str(receipt["attempt_id"]),
+        "exhausted_observation_id": observation_id,
+        "exhausted_receipt_id": content_identity(receipt),
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "repair_head": repair_head_text,
+        "repair_tree": repair_tree_text,
+        "provider_evidence_admission": provider_evidence_admission,
+    }
+
+
+def _build_owner_typed_deferral_budget_supersession_request(
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    repair_head: str,
+    repair_tree: str,
+    quota_probe_receipt: Mapping[str, Any],
+    route_outcome: Mapping[str, Any],
+    owner_command_request_id: str,
+    owner_store_id: str,
+    owner_store_generation: str,
+    admitted_at_ms: int | None = None,
+    _owner_admission_sentinel: object,
+) -> dict[str, Any]:
+    """Owner callback API: seal one fresh pair and bind its exact repair."""
+
+    admission = _admit_owner_typed_deferral_provider_evidence(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+        repair_head=repair_head,
+        repair_tree=repair_tree,
+        quota_probe_receipt=quota_probe_receipt,
+        route_outcome=route_outcome,
+        owner_command_request_id=owner_command_request_id,
+        owner_store_id=owner_store_id,
+        owner_store_generation=owner_store_generation,
+        admitted_at_ms=admitted_at_ms,
+        _owner_admission_sentinel=_owner_admission_sentinel,
+    )
+    return build_typed_deferral_budget_supersession_request(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+        repair_head=repair_head,
+        repair_tree=repair_tree,
+        provider_evidence_admission=admission,
+    )
+
+
+def admit_typed_deferral_budget_supersession(
+    *,
+    task_cid: str,
+    task_alias: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    request: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Validate a request and return the owner-authored durable CAS receipt."""
+
+    raw = _mapping(request, noun="typed-deferral supersession request")
+    (
+        exhausted_receipt,
+        budget,
+        observation_id,
+        source_head,
+        source_tree,
+    ) = _blocked_context(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+    )
+    if (
+        set(raw) != _TYPED_DEFERRAL_SUPERSESSION_REQUEST_FIELDS
+        or raw.get("schema")
+        != TYPED_DEFERRAL_BUDGET_SUPERSESSION_REQUEST_SCHEMA
+        or raw.get("operation")
+        != TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION
+        or raw.get("task_cid") != task_cid
+        or raw.get("attempt_id") != exhausted_receipt.get("attempt_id")
+        or raw.get("exhausted_observation_id") != observation_id
+        or raw.get("exhausted_receipt_id")
+        != content_identity(exhausted_receipt)
+        or raw.get("source_head") != source_head
+        or raw.get("source_tree") != source_tree
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(str(raw.get("repair_head") or "")) is None
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(str(raw.get("repair_tree") or "")) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession request is stale or mismatched"
+        )
+    _admission, admission_body, failure, outcome, route = (
+        _validated_provider_evidence_admission(
+            raw.get("provider_evidence_admission"),
+            task_cid=task_cid,
+            task_revision=task_revision,
+            exhausted_receipt=exhausted_receipt,
+            exhausted_observation_id=observation_id,
+            source_head=source_head,
+            source_tree=source_tree,
+            repair_head=str(raw["repair_head"]),
+            repair_tree=str(raw["repair_tree"]),
+        )
+    )
+    durable = {
+        "schema": TYPED_DEFERRAL_BUDGET_SUPERSESSION_SCHEMA,
+        "operation": TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
+        "task_cid": task_cid,
+        "task_alias": str(task_alias or ""),
+        "attempt_id": str(exhausted_receipt["attempt_id"]),
+        "attempt_number": int(exhausted_receipt["attempt_number"]),
+        "claim_id": str(exhausted_receipt["claim_id"]),
+        "lease_id": str(exhausted_receipt["lease_id"]),
+        "owner_session_id": str(exhausted_receipt["owner_session_id"]),
+        "fencing_token": int(exhausted_receipt["fencing_token"]),
+        "fence_epoch": int(exhausted_receipt["fence_epoch"]),
+        "exhausted_observation_id": observation_id,
+        "exhausted_generation_fingerprint": str(
+            budget.get("generation_fingerprint") or ""
+        ),
+        "exhausted_receipt_id": content_identity(exhausted_receipt),
+        "exhausted_receipt": exhausted_receipt,
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "repair_head": str(raw["repair_head"]),
+        "repair_tree": str(raw["repair_tree"]),
+        "quota_probe_receipt_id": str(failure.get("receipt_id") or ""),
+        "quota_probe_receipt": failure,
+        "route_outcome_id": str(outcome.get("outcome_id") or ""),
+        "route_outcome": outcome,
+        "route_id": str(route.get("route_id") or ""),
+        "quota_evidence_id": str(outcome.get("quota_evidence_id") or ""),
+        "provider_evidence_admission_id": _admission.admission_id,
+        "provider_evidence_admitted_at_ms": int(
+            admission_body["admitted_at_ms"]
+        ),
+        "provider_evidence_max_age_ms": int(admission_body["max_age_ms"]),
+        "provider_evidence_owner_command": str(
+            admission_body["owner_command"]
+        ),
+        "provider_evidence_owner_command_request_id": str(
+            admission_body["owner_command_request_id"]
+        ),
+        "provider_evidence_owner_store_id": str(
+            admission_body["owner_store_id"]
+        ),
+        "provider_evidence_owner_store_generation": str(
+            admission_body["owner_store_generation"]
+        ),
+        "control_expected_status": "blocked",
+        "control_expected_revision": int(task_revision),
+    }
+    durable["supersession_id"] = content_identity(durable)
+    return durable
+
+
+def validate_typed_deferral_budget_supersession(
+    receipt: Mapping[str, Any],
+    *,
+    task_cid: str,
+    task_alias: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    attempt: Mapping[str, Any],
+    exhausted_budget: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reproduce one durable supersession against restart-time authority."""
+
+    raw = _mapping(receipt, noun="typed-deferral supersession receipt")
+    identity_body = dict(raw)
+    supersession_id = identity_body.pop("supersession_id", None)
+    if (
+        set(raw) != _TYPED_DEFERRAL_SUPERSESSION_FIELDS
+        or raw.get("schema") != TYPED_DEFERRAL_BUDGET_SUPERSESSION_SCHEMA
+        or raw.get("operation")
+        != TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION
+        or supersession_id != content_identity(identity_body)
+        or raw.get("task_cid") != task_cid
+        or raw.get("task_alias") != str(task_alias or "")
+        or raw.get("control_expected_status") != "blocked"
+        or raw.get("control_expected_revision") != int(task_revision) - 1
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(str(raw.get("repair_head") or "")) is None
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(str(raw.get("repair_tree") or "")) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession identity is invalid or stale"
+        )
+    current_body = _mapping(task_body, noun="retrying task body")
+    source_head, source_tree = _source_generation(current_body)
+    if raw.get("source_head") != source_head or raw.get("source_tree") != source_tree:
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession source generation changed"
+        )
+
+    exhausted_receipt = _mapping(
+        raw.get("exhausted_receipt"), noun="superseded exhausted receipt"
+    )
+    original_body = dict(current_body)
+    original_body["completion_receipt"] = exhausted_receipt
+    (
+        reproduced_receipt,
+        reproduced_budget,
+        observation_id,
+        _original_head,
+        _original_tree,
+    ) = _blocked_context(
+        task_cid=task_cid,
+        task_revision=int(raw["control_expected_revision"]),
+        task_body=original_body,
+    )
+    if (
+        raw.get("exhausted_receipt_id") != content_identity(reproduced_receipt)
+        or raw.get("exhausted_observation_id") != observation_id
+        or reproduced_budget != dict(exhausted_budget)
+        or raw.get("exhausted_generation_fingerprint")
+        != exhausted_budget.get("generation_fingerprint")
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession does not match the exhausted observation"
+        )
+
+    attempt_raw = _mapping(attempt, noun="latest failed attempt")
+    expected_attempt = {
+        "task_cid": task_cid,
+        "attempt_id": raw.get("attempt_id"),
+        "attempt_number": raw.get("attempt_number"),
+        "claim_id": raw.get("claim_id"),
+        "lease_id": raw.get("lease_id"),
+        "owner_session_id": raw.get("owner_session_id"),
+        "fencing_token": raw.get("fencing_token"),
+        "fence_epoch": raw.get("fence_epoch"),
+    }
+    if any(attempt_raw.get(key) != value for key, value in expected_attempt.items()):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession does not match the latest failed attempt"
+        )
+
+    admitted_at_ms = raw.get("provider_evidence_admitted_at_ms")
+    owner_request_id = raw.get("provider_evidence_owner_command_request_id")
+    if (
+        raw.get("provider_evidence_max_age_ms")
+        != _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS
+        or raw.get("provider_evidence_owner_command")
+        != QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET
+        or not isinstance(owner_request_id, str)
+        or _TYPED_DEFERRAL_OWNER_REQUEST_ID_RE.fullmatch(owner_request_id) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral provider admission policy does not reproduce"
+        )
+    owner_store_id = _typed_deferral_owner_binding(
+        raw.get("provider_evidence_owner_store_id"),
+        noun="owner store identity",
+    )
+    owner_store_generation = _typed_deferral_owner_binding(
+        raw.get("provider_evidence_owner_store_generation"),
+        noun="owner store generation",
+    )
+    failure, outcome, route = _validated_provider_pair(
+        _mapping(raw.get("quota_probe_receipt"), noun="quota probe receipt"),
+        _mapping(raw.get("route_outcome"), noun="provider route outcome"),
+        exhausted_finished_at_ms=int(
+            exhausted_receipt["execution_finished_at_ms"]
+        ),
+        admission_now_ms=admitted_at_ms,
+    )
+    if (
+        raw.get("quota_probe_receipt_id") != failure.get("receipt_id")
+        or raw.get("route_outcome_id") != outcome.get("outcome_id")
+        or raw.get("route_id") != route.get("route_id")
+        or raw.get("quota_evidence_id") != outcome.get("quota_evidence_id")
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession provider identities do not reproduce"
+        )
+    admission_body = {
+        "schema": _TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_SCHEMA,
+        "task_cid": task_cid,
+        "task_revision": int(raw["control_expected_revision"]),
+        "attempt_id": str(raw["attempt_id"]),
+        "exhausted_observation_id": observation_id,
+        "exhausted_receipt_id": content_identity(exhausted_receipt),
+        "exhausted_finished_at_ms": int(
+            exhausted_receipt["execution_finished_at_ms"]
+        ),
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "repair_head": str(raw["repair_head"]),
+        "repair_tree": str(raw["repair_tree"]),
+        "quota_probe_receipt_id": str(failure.get("receipt_id") or ""),
+        "quota_probe_observed_at_ms": int(failure["observed_at_ms"]),
+        "route_outcome_id": str(outcome.get("outcome_id") or ""),
+        "route_id": str(route.get("route_id") or ""),
+        "quota_evidence_id": str(outcome.get("quota_evidence_id") or ""),
+        "admitted_at_ms": admitted_at_ms,
+        "max_age_ms": _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS,
+        "owner_command": QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        "owner_command_request_id": owner_request_id,
+        "owner_store_id": owner_store_id,
+        "owner_store_generation": owner_store_generation,
+    }
+    if raw.get("provider_evidence_admission_id") != content_identity(admission_body):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral provider admission identity does not reproduce"
+        )
+    return raw
+
+
+def typed_deferral_budget_supersession_matches(
+    receipt: Mapping[str, Any] | None,
+    **current: Any,
+) -> bool:
+    """Return false for every absent/forged/stale restart-time receipt."""
+
+    try:
+        validate_typed_deferral_budget_supersession(receipt or {}, **current)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+
+
 def _as_task_record(row: Mapping[str, Any]) -> TaskRecord:
     body = row.get("body") if isinstance(row.get("body"), Mapping) else {}
     deps = row.get("dependencies") or ()
@@ -434,6 +1948,7 @@ def execute_quack_owner_command(
     request_id: str = "",
     store_id: str = "",
     store_generation: str = "",
+    typed_deferral_provider_evidence_factory: Any = None,
 ) -> Mapping[str, Any]:
     """Execute one admitted command through canonical repository methods.
 
@@ -458,15 +1973,122 @@ def execute_quack_owner_command(
                 args["expected_revision"],
                 args["status"],
                 args.get("receipt"),
+                expected_control_receipt=args.get(
+                    "expected_control_receipt"
+                ),
                 evidence_digests=args.get("evidence_digests"),
             )
             return result.to_dict()
+        if command == QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS:
+            receipt = source.compare_and_set_goal_status(
+                args["goal_cid_or_alias"],
+                args["expected_revision"],
+                args["status"],
+                args.get("receipt"),
+            )
+            return receipt.to_dict()
         if command == QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK:
             result = source.rearm_blocked_task(
                 args["task_cid_or_alias"],
                 receipt=args.get("receipt"),
             )
             return result.to_dict()
+        if command == QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET:
+            task = source.get_task(args["task_cid_or_alias"])
+            if task is None:
+                raise KeyError(args["task_cid_or_alias"])
+            status = str(task.status or "").strip().lower()
+            if status != "blocked":
+                # A replay under a different request identity cannot rerun a
+                # provider effect after the first recovery or a later
+                # terminal CAS. Preserve the ordinary idempotent no-op rules.
+                result = source.rearm_blocked_task(task.task_cid)
+                return result.to_dict()
+            if not all((request_id, store_id, store_generation)):
+                raise TaskSourceIntegrityError(
+                    "typed-deferral recovery requires exact owner-command bindings"
+                )
+            if not callable(typed_deferral_provider_evidence_factory):
+                raise TaskSourceIntegrityError(
+                    "typed-deferral recovery requires the owner provider boundary"
+                )
+            # Reject ordinary/stale blocked tasks before crossing the paid
+            # provider boundary. The sealed request repeats this check after
+            # the canary so a concurrent generation change also fails closed.
+            _blocked_context(
+                task_cid=task.task_cid,
+                task_revision=int(task.revision),
+                task_body=task.body,
+            )
+            evidence = typed_deferral_provider_evidence_factory(
+                task_cid=task.task_cid,
+                task_revision=int(task.revision),
+                task_body=dict(task.body),
+                repair_head=args["repair_head"],
+                repair_tree=args["repair_tree"],
+            )
+            if not isinstance(evidence, Mapping) or set(evidence) != {
+                "quota_probe_receipt",
+                "route_outcome",
+            }:
+                raise TaskSourceIntegrityError(
+                    "owner provider boundary returned malformed recovery evidence"
+                )
+            request = _build_owner_typed_deferral_budget_supersession_request(
+                task_cid=task.task_cid,
+                task_revision=int(task.revision),
+                task_body=task.body,
+                repair_head=args["repair_head"],
+                repair_tree=args["repair_tree"],
+                quota_probe_receipt=_mapping(
+                    evidence.get("quota_probe_receipt"),
+                    noun="owner quota probe receipt",
+                ),
+                route_outcome=_mapping(
+                    evidence.get("route_outcome"),
+                    noun="owner provider route outcome",
+                ),
+                owner_command_request_id=request_id,
+                owner_store_id=store_id,
+                owner_store_generation=store_generation,
+                _owner_admission_sentinel=(
+                    _TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL
+                ),
+            )
+            result = source.rearm_blocked_task(task.task_cid, receipt=request)
+            return result.to_dict()
+        if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS:
+            if (
+                str(args["status"] or "").strip().lower()
+                in _REOPENED_TASK_STATUSES
+                and args["receipt"].get("operation")
+                == _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
+            ):
+                raise TaskSourceConflictError(
+                    "leftover-wait recovery is unavailable through the generic "
+                    "remote queue/status command"
+                )
+            result = source.record_queue_backoff_and_cas_status(
+                task_cid=args["task_cid"],
+                expected_revision=args["expected_revision"],
+                expected_control_receipt=args["expected_control_receipt"],
+                status=args["status"],
+                receipt=args["receipt"],
+                delay_ms=args["delay_ms"],
+                reason=args["reason"],
+                selection_penalty=args.get("selection_penalty", 0),
+                exact_retry_not_before_ms=args.get(
+                    "exact_retry_not_before_ms"
+                ),
+            )
+            return {
+                **{
+                    key: value
+                    for key, value in result.items()
+                    if key != "cas_result"
+                },
+                "cas_result": result["cas_result"].to_dict(),
+            }
         if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF:
             receipt = source.record_queue_backoff(
                 task_cid=args["task_cid"],
@@ -538,6 +2160,7 @@ class DatabaseTaskSource:
         install_schema: bool = True,
         evidence_freshness_seconds: int = 3600,
         clock_ms: Any | None = None,
+        _post_merge_queue_authority: object | None = None,
     ) -> None:
         if intent is not None:
             self._intent = intent
@@ -562,6 +2185,9 @@ class DatabaseTaskSource:
         self.repository_tree_id = str(repository_tree_id or "")
         self.plan_root_cid = str(plan_root_cid or "")
         self.owner_id = owner_id
+        self.__post_merge_queue_seal = object()
+        self.__post_merge_queue_admissions: set[int] = set()
+        self.__post_merge_queue_authority = _post_merge_queue_authority
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -951,6 +2577,39 @@ class DatabaseTaskSource:
         """Forward exact completion receipts without creating new authority."""
 
         return self._intent.completion_evidence_projection(task_cids=task_cids)
+
+    def goal_authority_projection(
+        self,
+        specification: Mapping[str, Any],
+        *,
+        root_gate_context: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        """Return the exact read-only goal authority projection.
+
+        ``specification`` is constructed from the sealed board by the VRIF
+        operator.  Supplying it here grants no mutation authority; Quack
+        clients remain read-only and population mismatches fail closed.
+        """
+
+        return self._intent.goal_authority_projection(
+            specification,
+            root_gate_context=root_gate_context,
+        )
+
+    def reconcile_goal_completion_authority(
+        self,
+        specification: Mapping[str, Any],
+        *,
+        root_completion_gate: Mapping[str, Any] | None = None,
+        root_gate_current_validator: Any = None,
+    ) -> Mapping[str, Any]:
+        """Run the owner-only atomic goal reconciliation surface."""
+
+        return self._intent.reconcile_goal_completion_authority(
+            specification,
+            root_completion_gate=root_completion_gate,
+            root_gate_current_validator=root_gate_current_validator,
+        )
 
     def plan_revision_projection_cid(self) -> str:
         """Return the full plan projection CID used for revision verification."""
@@ -1461,6 +3120,7 @@ class DatabaseTaskSource:
         status: str,
         receipt: Mapping[str, Any] | None = None,
         *,
+        expected_control_receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
     ) -> CASResult:
         key = _task_key(task_cid_or_alias)
@@ -1473,6 +3133,11 @@ class DatabaseTaskSource:
                         "expected_revision": expected_revision,
                         "status": status,
                         "receipt": dict(receipt) if receipt is not None else None,
+                        "expected_control_receipt": (
+                            dict(expected_control_receipt)
+                            if expected_control_receipt is not None
+                            else None
+                        ),
                         "evidence_digests": (
                             list(evidence_digests) if evidence_digests is not None else None
                         ),
@@ -1485,12 +3150,58 @@ class DatabaseTaskSource:
         if prior is None:
             raise KeyError(key)
         previous_status = str(prior["status"])
+        transition_receipt = receipt
+        if (
+            previous_status.strip().lower() == "blocked"
+            and str(status or "").strip().lower() in _REOPENED_TASK_STATUSES
+        ):
+            body = prior.get("body")
+            completion_receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if (
+                isinstance(completion_receipt, Mapping)
+                and completion_receipt.get("operation")
+                == "database_portal_typed_deferral_budget_exhausted"
+            ):
+                try:
+                    request_operation = (
+                        receipt.get("operation")
+                        if isinstance(receipt, Mapping)
+                        else None
+                    )
+                    if (
+                        request_operation
+                        == _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
+                    ):
+                        raise TypedDeferralRecoveryError(
+                            "leftover-wait recovery requires the task-fenced "
+                            "atomic queue/status transition"
+                        )
+                    else:
+                        transition_receipt = (
+                            admit_typed_deferral_budget_supersession(
+                                task_cid=str(prior["task_cid"]),
+                                task_alias=str(prior.get("task_alias") or ""),
+                                task_revision=int(prior["revision"]),
+                                task_body=body,
+                                request=receipt,
+                            )
+                        )
+                except TypedDeferralRecoveryError as exc:
+                    raise TaskSourceConflictError(
+                        "exhausted typed-deferral task remains blocked: "
+                        + str(exc)
+                    ) from exc
         try:
             intent_receipt = self._intent.cas_task_status(
                 task_cid=str(prior["task_cid"]),
                 expected_revision=int(expected_revision),
                 new_status=status,
-                receipt=receipt,
+                receipt=transition_receipt,
+                expected_control_receipt=expected_control_receipt,
                 evidence_digests=evidence_digests,
             )
         except IntentCompletionError as exc:
@@ -1534,6 +3245,51 @@ class DatabaseTaskSource:
             now=now, stale_seconds=stale_seconds
         )
 
+    def compare_and_set_goal_status(
+        self,
+        goal_cid_or_alias: str | Mapping[str, Any],
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> IntentReceipt:
+        """CAS a goal after child tasks and child goals are complete."""
+
+        if isinstance(goal_cid_or_alias, Mapping):
+            key = str(
+                goal_cid_or_alias.get("goal_cid")
+                or goal_cid_or_alias.get("goal_alias")
+                or ""
+            ).strip()
+        else:
+            key = str(goal_cid_or_alias or "").strip()
+        if not key:
+            raise TaskSourceIntegrityError("goal CAS requires a goal CID or alias")
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
+                    {
+                        "goal_cid_or_alias": key,
+                        "expected_revision": expected_revision,
+                        "status": status,
+                        "receipt": dict(receipt) if receipt is not None else None,
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _intent_receipt_from_dict(result)
+        try:
+            return self._intent.cas_goal_status(
+                goal_cid=key,
+                expected_revision=int(expected_revision),
+                new_status=status,
+                receipt=receipt,
+            )
+        except IntentCompletionError as exc:
+            raise TaskSourceCompletionError(str(exc)) from exc
+        except IntentRepositoryConflictError as exc:
+            raise TaskSourceConflictError(str(exc)) from exc
+
     def rearm_blocked_task(
         self,
         task_cid_or_alias: str | TaskRecord | Mapping[str, Any],
@@ -1573,6 +3329,18 @@ class DatabaseTaskSource:
                 event_cursor=0,
                 changed=False,
             )
+        if status in _REARM_IMMUTABLE_TASK_STATUSES:
+            # A completed repair receipt is durable history and can be replayed
+            # by every lane after the task has subsequently reached a terminal
+            # state.  Treat that replay as an idempotent no-op: terminal task
+            # authority is immutable and must never be reopened by recovery.
+            return CASResult(
+                task=record,
+                previous_status=status,
+                revision=int(record.revision),
+                event_cursor=0,
+                changed=False,
+            )
         if status != "blocked":
             raise TaskSourceConflictError(
                 f"rearm requires blocked status, observed {status!r}"
@@ -1583,6 +3351,49 @@ class DatabaseTaskSource:
             "retrying",
             compact,
         )
+
+    def recover_typed_deferral_budget(
+        self,
+        task_cid_or_alias: str | TaskRecord | Mapping[str, Any],
+        *,
+        repair_head: str,
+        repair_tree: str,
+        timeout_seconds: float = 660.0,
+    ) -> CASResult:
+        """Ask the fenced owner to run the real canary and rearm one block.
+
+        Provider receipts are intentionally absent from this client API.  The
+        credential-bearing state owner executes the inert quota/high canary,
+        admits its fresh output in process, and performs the revision CAS.
+        """
+
+        key = _task_key(task_cid_or_alias)
+        repair_head_text = str(repair_head or "")
+        repair_tree_text = str(repair_tree or "")
+        if (
+            _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_head_text) is None
+            or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_tree_text) is None
+        ):
+            raise TaskSourceBoundsError(
+                "typed-deferral recovery requires an exact repair commit/tree"
+            )
+        if not self._intent.uses_quack_transport:
+            raise TaskSourceIntegrityError(
+                "typed-deferral provider recovery requires the fenced state owner"
+            )
+        try:
+            result = submit_quack_owner_command(
+                QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+                {
+                    "task_cid_or_alias": key,
+                    "repair_head": repair_head_text,
+                    "repair_tree": repair_tree_text,
+                },
+                timeout_seconds=timeout_seconds,
+            )
+        except QuackOwnerCommandRemoteError as exc:
+            _raise_typed_owner_error(exc)
+        return _cas_result_from_dict(result)
 
     def record_queue_backoff(
         self,
@@ -1620,6 +3431,419 @@ class DatabaseTaskSource:
             delay_ms=delay_ms,
             reason=reason,
             selection_penalty=selection_penalty,
+        )
+
+    @staticmethod
+    def _guarded_queue_status_result(
+        payload: Mapping[str, Any],
+        *,
+        cas_result: CASResult,
+    ) -> Mapping[str, Any]:
+        expected = {
+            "previous_status",
+            "queue_receipt",
+            "queue_reused",
+            "retry_not_before_ms",
+            "transition_receipt",
+        }
+        if set(payload) != expected:
+            raise TaskSourceIntegrityError(
+                "guarded queue/status result fields are malformed"
+            )
+        queue_receipt = payload.get("queue_receipt")
+        transition_receipt = payload.get("transition_receipt")
+        if (
+            not isinstance(queue_receipt, Mapping)
+            or not isinstance(transition_receipt, Mapping)
+            or type(payload.get("queue_reused")) is not bool
+            or type(payload.get("retry_not_before_ms")) is not int
+            or int(payload["retry_not_before_ms"]) < 0
+        ):
+            raise TaskSourceIntegrityError(
+                "guarded queue/status result values are malformed"
+            )
+        return MappingProxyType(
+            {
+                "previous_status": str(payload["previous_status"]),
+                "queue_receipt": dict(queue_receipt),
+                "queue_reused": bool(payload["queue_reused"]),
+                "retry_not_before_ms": int(payload["retry_not_before_ms"]),
+                "transition_receipt": dict(transition_receipt),
+                "cas_result": cas_result,
+            }
+        )
+
+    def _mint_post_merge_queue_admission(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+        _portable_authority: object | None = None,
+    ) -> _PostMergeQueueAdmission:
+        """Seal one already-verified embedded post-merge crash transition."""
+
+        if self._intent.uses_quack_transport:
+            raise TaskSourceConflictError(
+                "process-local post-merge recovery admission cannot cross Quack"
+            )
+        if (
+            self.__post_merge_queue_authority is None
+            or _portable_authority is not self.__post_merge_queue_authority
+        ):
+            raise TaskSourceConflictError(
+                "post-merge queue/status admission has no portable authority"
+            )
+        prior = self._intent.get_task(task_cid)
+        prior_body = prior.get("body") if isinstance(prior, Mapping) else None
+        prior_receipt = (
+            prior_body.get("completion_receipt")
+            if isinstance(prior_body, Mapping)
+            else None
+        )
+        transition = dict(receipt)
+        operation = str(transition.get("operation") or "")
+        operation_fields = {
+            "database_post_merge_declared_outputs_repair_recovery": (
+                "repair_evidence_id",
+                "repair_receipt_id",
+                "repair_commit",
+                "repair",
+            ),
+            "database_post_merge_declared_outputs_requalification_recovery": (
+                "requalification_evidence_id",
+                "requalification_receipt_id",
+                "qualified_target_commit",
+                "requalification",
+            ),
+            "database_post_merge_declared_outputs_callback_integration_recovery": (
+                "callback_reconciliation_evidence_id",
+                "callback_requalification_receipt_id",
+                "qualified_target_commit",
+                "callback_integration",
+            ),
+        }
+        selected = operation_fields.get(operation)
+        seed = transition.get("post_merge_completion_recovery_seed")
+        seed_body = dict(seed) if isinstance(seed, Mapping) else {}
+        seed_id = seed_body.pop("seed_id", None)
+        normalized_status = str(status or "").strip().lower()
+        if (
+            prior is None
+            or str(prior.get("status") or "").strip().lower() != "blocked"
+            or int(prior.get("revision") or 0) != expected_revision
+            or not isinstance(prior_receipt, Mapping)
+            or prior_receipt.get("operation")
+            != TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+            or dict(prior_receipt) != dict(expected_control_receipt)
+            or selected is None
+            or not isinstance(seed, Mapping)
+            or seed.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-post-merge-completion-recovery-seed@2"
+            )
+            or seed.get("task_cid") != str(prior["task_cid"])
+            or seed.get("recovery_control_revision") != expected_revision
+            or seed.get("qualification_kind") != selected[3]
+            or seed.get("qualification_receipt_id")
+            != transition.get(selected[1])
+            or seed.get("recovery_evidence_id") != transition.get(selected[0])
+            or seed.get("qualified_target_commit")
+            != transition.get(selected[2])
+            or seed_id != _leftover_wait_evidence_digest(seed_body)
+            or normalized_status != "retrying"
+            or type(delay_ms) is not int
+            or delay_ms < 0
+            or type(selection_penalty) is not int
+            or (
+                exact_retry_not_before_ms is not None
+                and type(exact_retry_not_before_ms) is not int
+            )
+            or transition.get("queue_reason") != str(reason)
+            or not str(transition.get(selected[0]) or "")
+            or not str(transition.get(selected[1]) or "")
+        ):
+            raise TaskSourceConflictError(
+                "post-merge queue/status admission does not reproduce"
+            )
+        admission = _PostMergeQueueAdmission(
+            source_id=id(self),
+            task_cid=str(prior["task_cid"]),
+            expected_status="blocked",
+            expected_revision=expected_revision,
+            expected_control_receipt_id=content_identity(
+                dict(expected_control_receipt)
+            ),
+            new_status=normalized_status,
+            transition_receipt_id=content_identity(transition),
+            queue_reason=str(reason),
+            delay_ms=delay_ms,
+            selection_penalty=selection_penalty,
+            exact_retry_not_before_ms=exact_retry_not_before_ms,
+            operation=operation,
+            evidence_id=str(transition[selected[0]]),
+            qualification_receipt_id=str(transition[selected[1]]),
+            seal=self.__post_merge_queue_seal,
+        )
+        self.__post_merge_queue_admissions.add(id(admission))
+        return admission
+
+    def record_queue_backoff_and_cas_status(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+        _post_merge_recovery_admission: object | None = None,
+    ) -> Mapping[str, Any]:
+        """Atomically guard, cool, and transition one shared control row."""
+
+        if self._intent.uses_quack_transport:
+            if _post_merge_recovery_admission is not None:
+                raise TaskSourceConflictError(
+                    "process-local post-merge recovery admission cannot cross Quack"
+                )
+            if (
+                str(status or "").strip().lower() in _REOPENED_TASK_STATUSES
+                and receipt.get("operation")
+                == _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
+            ):
+                raise TaskSourceConflictError(
+                    "leftover-wait recovery is unavailable through the generic "
+                    "remote queue/status command"
+                )
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+                    {
+                        "task_cid": task_cid,
+                        "expected_revision": expected_revision,
+                        "expected_control_receipt": dict(
+                            expected_control_receipt
+                        ),
+                        "status": status,
+                        "receipt": dict(receipt),
+                        "delay_ms": delay_ms,
+                        "reason": reason,
+                        "selection_penalty": selection_penalty,
+                        **(
+                            {
+                                "exact_retry_not_before_ms": (
+                                    exact_retry_not_before_ms
+                                )
+                            }
+                            if exact_retry_not_before_ms is not None
+                            else {}
+                        ),
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            if not isinstance(result, Mapping) or "cas_result" not in result:
+                raise TaskSourceIntegrityError(
+                    "guarded queue/status owner response is malformed"
+                )
+            result_map = dict(result)
+            cas_payload = result_map.pop("cas_result")
+            if not isinstance(cas_payload, Mapping):
+                raise TaskSourceIntegrityError(
+                    "guarded queue/status owner CAS response is malformed"
+                )
+            return self._guarded_queue_status_result(
+                result_map,
+                cas_result=_cas_result_from_dict(cas_payload),
+            )
+
+        prior = self._intent.get_task(task_cid)
+        if prior is None:
+            raise KeyError(task_cid)
+        transition_receipt = dict(receipt)
+        prior_body = prior.get("body")
+        prior_control_receipt = (
+            prior_body.get("completion_receipt")
+            if isinstance(prior_body, Mapping)
+            else None
+        )
+        post_merge_admitted = False
+        if _post_merge_recovery_admission is not None:
+            admission = _post_merge_recovery_admission
+            admission_key = id(admission)
+            if admission_key not in self.__post_merge_queue_admissions:
+                raise TaskSourceConflictError(
+                    "post-merge queue/status admission is absent or already consumed"
+                )
+            self.__post_merge_queue_admissions.discard(admission_key)
+            operation_fields = {
+                "database_post_merge_declared_outputs_repair_recovery": (
+                    "repair_evidence_id",
+                    "repair_receipt_id",
+                ),
+                "database_post_merge_declared_outputs_requalification_recovery": (
+                    "requalification_evidence_id",
+                    "requalification_receipt_id",
+                ),
+                "database_post_merge_declared_outputs_callback_integration_recovery": (
+                    "callback_reconciliation_evidence_id",
+                    "callback_requalification_receipt_id",
+                ),
+            }
+            operation = str(transition_receipt.get("operation") or "")
+            selected = operation_fields.get(operation)
+            post_merge_admitted = bool(
+                isinstance(admission, _PostMergeQueueAdmission)
+                and admission.seal is self.__post_merge_queue_seal
+                and admission.source_id == id(self)
+                and admission.task_cid == str(prior["task_cid"])
+                and admission.expected_status
+                == str(prior.get("status") or "").strip().lower()
+                and admission.expected_revision == expected_revision
+                and int(prior.get("revision") or 0) == expected_revision
+                and isinstance(prior_control_receipt, Mapping)
+                and admission.expected_control_receipt_id
+                == content_identity(dict(expected_control_receipt))
+                and admission.expected_control_receipt_id
+                == content_identity(dict(prior_control_receipt))
+                and admission.new_status
+                == str(status or "").strip().lower()
+                and admission.transition_receipt_id
+                == content_identity(transition_receipt)
+                and admission.queue_reason == str(reason)
+                and type(delay_ms) is int
+                and admission.delay_ms == delay_ms
+                and type(selection_penalty) is int
+                and admission.selection_penalty == selection_penalty
+                and admission.exact_retry_not_before_ms
+                == exact_retry_not_before_ms
+                and (
+                    exact_retry_not_before_ms is None
+                    or type(exact_retry_not_before_ms) is int
+                )
+                and admission.operation == operation
+                and selected is not None
+                and admission.evidence_id
+                == str(transition_receipt.get(selected[0]) or "")
+                and admission.qualification_receipt_id
+                == str(transition_receipt.get(selected[1]) or "")
+            )
+            if not post_merge_admitted:
+                raise TaskSourceConflictError(
+                    "post-merge queue/status admission does not match the mutation"
+                )
+        if (
+            str(prior.get("status") or "").strip().lower() == "blocked"
+            and isinstance(prior_control_receipt, Mapping)
+            and prior_control_receipt.get("operation")
+            == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+        ):
+            # The guarded queue/status surface must not become a second,
+            # weaker blocked-task rearm API.  In particular, an exact prior
+            # receipt is a CAS predicate rather than a capability: every
+            # authenticated client can observe it.  Admit only the closed
+            # deterministic leftover-wait repair here; provider supersession
+            # continues through the owner-only sealed admission path above.
+            if post_merge_admitted:
+                expected_control_receipt = dict(prior_control_receipt)
+            elif (
+                str(status or "").strip().lower() != "retrying"
+                or transition_receipt.get("operation")
+                != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
+            ):
+                raise TaskSourceConflictError(
+                    "exhausted typed-deferral task remains blocked: guarded "
+                    "queue/status transition has no admitted recovery"
+                )
+            if not post_merge_admitted:
+                recovery_seed = transition_receipt.get(
+                    "leftover_wait_deferral_budget_recovery_seed"
+                )
+                seed_receipt_id = (
+                    recovery_seed.get("receipt_id")
+                    if isinstance(recovery_seed, Mapping)
+                    else ""
+                )
+                try:
+                    transition_receipt = (
+                        admit_leftover_wait_deferral_budget_recovery(
+                            task_cid=str(prior["task_cid"]),
+                            task_alias=str(prior.get("task_alias") or ""),
+                            task_revision=int(prior["revision"]),
+                            task_body=(
+                                prior_body
+                                if isinstance(prior_body, Mapping)
+                                else {}
+                            ),
+                            request=transition_receipt,
+                            expected_control_receipt=expected_control_receipt,
+                            # The deterministic seed is the only admitted
+                            # evidence for this legacy recovery.  Reproduce its
+                            # exact digest from the closed request instead of
+                            # adding a second, unauthenticated command argument.
+                            evidence_digests=[str(seed_receipt_id or "")],
+                        )
+                    )
+                except TypedDeferralRecoveryError as exc:
+                    raise TaskSourceConflictError(
+                        "exhausted typed-deferral task remains blocked: " + str(exc)
+                    ) from exc
+                # Admission proves the recovery request; the complete blocked
+                # receipt remains the transaction predicate.  Pin the reproduced
+                # receipt rather than trusting the caller to carry it forward.
+                expected_control_receipt = dict(prior_control_receipt)
+        elif post_merge_admitted:
+            raise TaskSourceConflictError(
+                "post-merge queue/status admission has no exhausted deferral"
+            )
+        try:
+            result = self._intent.record_queue_backoff_and_cas_task_status(
+                task_cid=task_cid,
+                expected_revision=expected_revision,
+                expected_control_receipt=expected_control_receipt,
+                new_status=status,
+                receipt=transition_receipt,
+                delay_ms=delay_ms,
+                reason=reason,
+                selection_penalty=selection_penalty,
+                exact_retry_not_before_ms=exact_retry_not_before_ms,
+            )
+        except IntentRepositoryConflictError as exc:
+            raise TaskSourceConflictError(str(exc)) from exc
+        result_map = dict(result)
+        status_payload = result_map.pop("status_receipt", None)
+        if not isinstance(status_payload, Mapping):
+            raise TaskSourceIntegrityError(
+                "guarded queue/status repository receipt is malformed"
+            )
+        status_receipt = _intent_receipt_from_dict(status_payload)
+        updated = self._intent.get_task(str(prior["task_cid"]))
+        if updated is None:
+            raise TaskSourceIntegrityError(
+                "task disappeared after guarded queue/status transition"
+            )
+        task = _as_task_record(updated)
+        receipt_cid = status_receipt.event_id if status_receipt.changed else ""
+        return self._guarded_queue_status_result(
+            result_map,
+            cas_result=CASResult(
+                task=task,
+                previous_status=str(result_map.get("previous_status") or ""),
+                revision=int(status_receipt.revision or task.revision),
+                event_cursor=int(status_receipt.global_sequence),
+                changed=bool(status_receipt.changed),
+                receipt_cid=receipt_cid,
+            ),
         )
 
     def record_queue_retry(self, *, task_cid: str) -> IntentReceipt:
@@ -1753,6 +3977,15 @@ __all__ = (
     "TaskSourceUnknownOutcomeError",
     "TaskSourceBoundsError",
     "TaskSourceCompletionError",
+    "TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION",
+    "TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION",
+    "TYPED_DEFERRAL_BUDGET_SUPERSESSION_REQUEST_SCHEMA",
+    "TYPED_DEFERRAL_BUDGET_SUPERSESSION_SCHEMA",
+    "TypedDeferralRecoveryError",
+    "admit_typed_deferral_budget_supersession",
+    "build_typed_deferral_budget_supersession_request",
+    "typed_deferral_budget_supersession_matches",
+    "validate_typed_deferral_budget_supersession",
     "TaskRecord",
     "TaskPage",
     "CASResult",

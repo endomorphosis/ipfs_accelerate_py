@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
+    CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
     COORDINATION_HISTORY_PROJECTION_SCHEMA,
     COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     DATABASE_COORDINATOR_INTERFACE,
@@ -24,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     MAINTENANCE_LEASE_INTERFACE,
     RESOURCE_CLAIM_INTERFACE,
     TASK_CLAIM_INTERFACE,
+    TASK_COMPLETION_REARM_SCHEMA,
     TASK_DEPENDENCY_AMENDMENT_SCHEMA,
     TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE,
     AttemptStatus,
@@ -112,6 +115,95 @@ def _incomplete_control_task(prepared: dict[str, object]) -> dict[str, object]:
         "status": prepared["control_expected_status"],
         "revision": prepared["control_expected_revision"],
         "body": {},
+    }
+
+
+def _settled_control_completion(
+    coordinator: DatabaseCoordinator,
+    task_cid: str,
+    *,
+    expected_revision: int = 2,
+) -> tuple[TaskClaim, dict[str, object]]:
+    claim = coordinator.claim_task(
+        task_cid=task_cid,
+        owner_session_id=f"session:{task_cid}",
+    )
+    prepared = coordinator.prepare_task_completion(
+        claim,
+        control_expected_revision=expected_revision,
+        evidence_digest=f"sha256:{task_cid}",
+    )
+    control_task = _completed_control_task(prepared)
+    coordinator.complete_task_claim(
+        claim,
+        control_completion_receipt=control_task,
+    )
+    coordinator.settle_task_claim(claim)
+    return claim, control_task
+
+
+def _control_rearm_observation(
+    *,
+    task_cid: str,
+    task_alias: str,
+    revision: int = 4,
+    status: str = "retrying",
+    nested: bool = True,
+) -> dict[str, object]:
+    task: dict[str, object] = {
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "status": status,
+        "revision": revision,
+        "body": {},
+    }
+    if not nested:
+        return task
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-task-cas@1",
+        "task": task,
+        "previous_status": "completed",
+        "revision": revision,
+        "event_cursor": 9,
+        "changed": True,
+        "receipt_cid": "cid:control-rearm",
+    }
+
+
+def _control_task_projection(
+    *,
+    task_cid: str,
+    task_alias: str,
+    status: str,
+    revision: int,
+) -> dict[str, object]:
+    return {
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "goal_cid": "goal:control",
+        "plan_cid": "plan:control",
+        "objective_id": "objective:control",
+        "ordinal": 1,
+        "status": status,
+        "revision": revision,
+        "priority": "P0",
+        "body": {"authority": "canonical-control"},
+        "dependencies": [],
+        "outputs": [],
+        "acceptance": [],
+        "validations": [],
+    }
+
+
+def _control_ready_frontier(
+    *tasks: dict[str, object],
+    revision: int = 50,
+) -> dict[str, object]:
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-task-page@1",
+        "tasks": list(tasks),
+        "revision": revision,
+        "next_cursor": "",
     }
 
 
@@ -1994,6 +2086,889 @@ def test_claim_aware_completion_and_successful_settlement_are_ordered(
             coordinator.protect_task_claim(
                 claim,
                 allow_logically_completed=True,
+            )
+    finally:
+        coordinator.close()
+
+
+def test_control_rearm_removes_exact_completion_and_is_replay_safe(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:rearm", task_id="REARM")
+        first_claim, _control_task = _settled_control_completion(
+            coordinator,
+            "task:rearm",
+        )
+        observation = _control_rearm_observation(
+            task_cid="task:rearm",
+            task_alias="REARM",
+            nested=True,
+        )
+
+        rearmed = coordinator.rearm_task_from_control(
+            "task:rearm",
+            control_task_observation=observation,
+        )
+        assert rearmed == {
+            "schema": TASK_COMPLETION_REARM_SCHEMA,
+            "task_cid": "task:rearm",
+            "previous_control_revision": 3,
+            "control_revision": 4,
+            "control_status": "retrying",
+            "ready": True,
+            "replayed": False,
+        }
+        assert coordinator.claimability("task:rearm")["claimable"] is True
+        projection = coordinator.coordination_registry_projection()
+        assert projection["logical_completions"] == []
+        assert projection["tasks"][0]["ready"] is True
+
+        # Response-loss replay requires the same exact typed CAS receipt.
+        replay = coordinator.rearm_task_from_control(
+            "task:rearm",
+            control_task_observation=observation,
+        )
+        assert replay == {**rearmed, "replayed": True}
+
+        replacement = coordinator.claim_task(
+            task_cid="task:rearm",
+            owner_session_id="session:replacement",
+        )
+        assert replacement.attempt_number == first_claim.attempt_number + 1
+        assert replacement.fencing_token > first_claim.fencing_token
+    finally:
+        coordinator.close()
+
+
+def test_control_ready_frontier_reconciliation_demotes_with_art_safe_replay(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    coordinator.register_task(
+        task_cid="task:frontier-stale",
+        task_id="FRONTIER-STALE",
+        body={"preserve": "exactly"},
+    )
+    raw_connection = coordinator._require()  # noqa: SLF001
+
+    class RejectCoordinationTaskUpdate:
+        def __init__(self, raw: object) -> None:
+            self.raw = raw
+
+        @property
+        def in_transaction(self) -> bool:
+            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
+
+        def execute(
+            self,
+            statement: str,
+            parameters: object | None = None,
+        ) -> object:
+            normalized = " ".join(str(statement).upper().split())
+            if normalized.startswith("UPDATE COORDINATION_TASKS"):
+                raise AssertionError(
+                    "ready-frontier reconciliation must rebuild the ART table"
+                )
+            if parameters is None:
+                return self.raw.execute(statement)  # type: ignore[attr-defined]
+            return self.raw.execute(  # type: ignore[attr-defined]
+                statement,
+                parameters,
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.raw, name)
+
+    coordinator._connection = RejectCoordinationTaskUpdate(  # noqa: SLF001
+        raw_connection
+    )
+    terminal = _control_task_projection(
+        task_cid="task:frontier-stale",
+        task_alias="FRONTIER-STALE",
+        status="completed",
+        revision=14,
+    )
+    inventory = _control_ready_frontier(terminal, revision=77)
+    frontier = _control_ready_frontier(revision=77)
+    try:
+        reconciled = coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-stale",
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-reconciler",
+        )
+        assert reconciled == {
+            "schema": CONTROL_READY_FRONTIER_RECONCILIATION_SCHEMA,
+            "task_cid": "task:frontier-stale",
+            "task_alias": "FRONTIER-STALE",
+            "control_task_status": "completed",
+            "control_task_revision": 14,
+            "control_snapshot_revision": 77,
+            "direction": "demote",
+            "ready_before": True,
+            "ready_after": False,
+            "changed": True,
+            "receipt_cid": reconciled["receipt_cid"],
+            "replayed": False,
+        }
+        assert str(reconciled["receipt_cid"]).startswith("sha256:")
+        projection = coordinator.coordination_registry_projection()
+        assert projection["tasks"] == [
+            {
+                "task_cid": "task:frontier-stale",
+                "task_id": "FRONTIER-STALE",
+                "worktree_id": "",
+                "ready": False,
+                "body": {"preserve": "exactly"},
+            }
+        ]
+        events = coordinator.lease_events(limit=20)
+        reconciliation_events = [
+            event
+            for event in events
+            if event["event_type"]
+            == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+        ]
+        assert len(reconciliation_events) == 1
+        assert reconciliation_events[0]["body"]["receipt_cid"] == reconciled[
+            "receipt_cid"
+        ]
+        assert {
+            event["event_type"] for event in events
+        } == {
+            "acquired",
+            "released",
+            CONTROL_READY_FRONTIER_RECONCILIATION_EVENT,
+        }
+
+        replay = coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-stale",
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-reconciler",
+        )
+        assert replay == {**reconciled, "replayed": True}
+        assert len(
+            [
+                event
+                for event in coordinator.lease_events(limit=20)
+                if event["event_type"]
+                == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+            ]
+        ) == 1
+
+        reopened = {
+            **terminal,
+            "status": "retrying",
+            "revision": 15,
+        }
+        reopened_inventory = _control_ready_frontier(reopened, revision=78)
+        reopened_frontier = _control_ready_frontier(reopened, revision=78)
+        promoted = coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-stale",
+            control_task_inventory_observation=reopened_inventory,
+            control_ready_frontier_observation=reopened_frontier,
+            owner_session_id="session:frontier-reconciler",
+        )
+        assert promoted["direction"] == "promote"
+        assert promoted["ready_before"] is False
+        assert promoted["ready_after"] is True
+        assert promoted["changed"] is True
+        assert coordinator.claimability("task:frontier-stale")["claimable"] is True
+    finally:
+        coordinator.close()
+
+
+@pytest.mark.parametrize(
+    "tampered_projection",
+    ("fenced_lease_body", "maintenance_process_birth"),
+)
+def test_control_ready_frontier_replay_rejects_tampered_maintenance_projection(
+    tmp_path: Path,
+    tampered_projection: str,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        task_cid = "task:frontier-tampered-replay"
+        task_alias = "FRONTIER-TAMPERED-REPLAY"
+        coordinator.register_task(task_cid=task_cid, task_id=task_alias)
+        terminal = _control_task_projection(
+            task_cid=task_cid,
+            task_alias=task_alias,
+            status="completed",
+            revision=14,
+        )
+        inventory = _control_ready_frontier(terminal, revision=77)
+        frontier = _control_ready_frontier(revision=77)
+        reconciled = coordinator.reconcile_task_from_control_ready_frontier(
+            task_cid,
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-tampered-replay",
+        )
+        event = next(
+            item
+            for item in coordinator.lease_events(limit=20)
+            if item["event_type"]
+            == CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+        )
+        lease_id = str(event["lease_id"])
+        connection = coordinator._require()  # noqa: SLF001
+        if tampered_projection == "fenced_lease_body":
+            connection.execute(
+                "UPDATE fenced_leases SET body_json = ? WHERE lease_id = ?",
+                [json.dumps({"tampered": True}), lease_id],
+            )
+        else:
+            connection.execute(
+                "UPDATE maintenance_leases SET process_birth_id = ? "
+                "WHERE lease_id = ?",
+                ["birth:forged", lease_id],
+            )
+
+        with pytest.raises(
+            DatabaseCoordinationStaleFenceError,
+            match="durable receipt: maintenance_lease",
+        ):
+            coordinator.reconcile_task_from_control_ready_frontier(
+                task_cid,
+                control_task_inventory_observation=inventory,
+                control_ready_frontier_observation=frontier,
+                owner_session_id="session:frontier-tampered-replay",
+            )
+        ready_row = connection.execute(
+            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone()
+        assert ready_row is not None and bool(ready_row[0]) is False
+        assert reconciled["ready_after"] is False
+    finally:
+        coordinator.close()
+
+
+def test_control_ready_frontier_reconciliation_preserves_promoted_history(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:frontier-completed",
+            task_id="FRONTIER-COMPLETED",
+        )
+        _settled_control_completion(coordinator, "task:frontier-completed")
+        connection = coordinator._require()  # noqa: SLF001
+
+        def task_history() -> tuple[list[object], list[object], list[object]]:
+            return (
+                list(
+                    connection.execute(
+                        "SELECT * FROM task_completions WHERE task_cid = ?",
+                        ["task:frontier-completed"],
+                    ).fetchall()
+                ),
+                list(
+                    connection.execute(
+                        "SELECT * FROM task_claims WHERE task_cid = ?",
+                        ["task:frontier-completed"],
+                    ).fetchall()
+                ),
+                list(
+                    connection.execute(
+                        "SELECT * FROM task_attempts WHERE task_cid = ?",
+                        ["task:frontier-completed"],
+                    ).fetchall()
+                ),
+            )
+
+        before = task_history()
+        reopened = _control_task_projection(
+            task_cid="task:frontier-completed",
+            task_alias="FRONTIER-COMPLETED",
+            status="retrying",
+            revision=14,
+        )
+        inventory = _control_ready_frontier(reopened, revision=81)
+        frontier = _control_ready_frontier(reopened, revision=81)
+        receipt = coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-completed",
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-history",
+        )
+        assert receipt["changed"] is False
+        assert receipt["direction"] == ""
+        assert receipt["ready_before"] is False
+        assert receipt["ready_after"] is False
+        assert receipt["receipt_cid"] == ""
+        assert task_history() == before
+        assert coordinator.claimability("task:frontier-completed")[
+            "completion_status"
+        ] == AttemptStatus.SUCCEEDED.value
+        assert coordinator.reconcile_task_from_control_ready_frontier(
+            "task:frontier-completed",
+            control_task_inventory_observation=inventory,
+            control_ready_frontier_observation=frontier,
+            owner_session_id="session:frontier-history",
+        ) == receipt
+        assert task_history() == before
+        assert all(
+            event["event_type"] != CONTROL_READY_FRONTIER_RECONCILIATION_EVENT
+            for event in coordinator.lease_events(limit=100)
+        )
+    finally:
+        coordinator.close()
+
+
+def test_control_ready_frontier_reconciliation_fails_closed(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:frontier-closed",
+            task_id="FRONTIER-CLOSED",
+        )
+        terminal = _control_task_projection(
+            task_cid="task:frontier-closed",
+            task_alias="FRONTIER-CLOSED",
+            status="completed",
+            revision=4,
+        )
+        ready_version = {
+            **terminal,
+            "status": "retrying",
+        }
+        invalid_pairs = [
+            (
+                _control_ready_frontier(
+                    {**terminal, "task_alias": "WRONG"}, revision=50
+                ),
+                _control_ready_frontier(revision=50),
+            ),
+            (
+                _control_ready_frontier(
+                    {**terminal, "revision": "4"}, revision=50
+                ),
+                _control_ready_frontier(revision=50),
+            ),
+            (
+                _control_ready_frontier(terminal, revision=50),
+                _control_ready_frontier(ready_version, revision=50),
+            ),
+            (
+                _control_ready_frontier(terminal, revision=50),
+                _control_ready_frontier(
+                    _control_task_projection(
+                        task_cid="task:frontier-not-in-inventory",
+                        task_alias="FRONTIER-NOT-IN-INVENTORY",
+                        status="retrying",
+                        revision=4,
+                    ),
+                    revision=50,
+                ),
+            ),
+            (
+                _control_ready_frontier(terminal, revision=50),
+                _control_ready_frontier(revision=51),
+            ),
+            (
+                _control_ready_frontier(terminal, revision=50),
+                {
+                    **_control_ready_frontier(revision=50),
+                    "next_cursor": "cursor:not-complete",
+                },
+            ),
+        ]
+        for inventory_observation, frontier_observation in invalid_pairs:
+            with pytest.raises(
+                (DatabaseCoordinationError, DatabaseCoordinationNotReadyError)
+            ):
+                coordinator.reconcile_task_from_control_ready_frontier(
+                    "task:frontier-closed",
+                    control_task_inventory_observation=inventory_observation,
+                    control_ready_frontier_observation=frontier_observation,
+                    owner_session_id="session:frontier-closed",
+                )
+            assert coordinator.claimability("task:frontier-closed")[
+                "claimable"
+            ] is True
+
+        claim = coordinator.claim_task(
+            task_cid="task:frontier-closed",
+            owner_session_id="session:active-frontier",
+        )
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="requires a quiescent sidecar",
+        ):
+            coordinator.reconcile_task_from_control_ready_frontier(
+                "task:frontier-closed",
+                control_task_inventory_observation=_control_ready_frontier(
+                    terminal, revision=50
+                ),
+                control_ready_frontier_observation=_control_ready_frontier(
+                    revision=50
+                ),
+                owner_session_id="session:frontier-closed",
+            )
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+    finally:
+        coordinator.close()
+
+
+def test_control_rearm_recomputes_blocked_dependency_readiness(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:rearm-dep", task_id="REARM-DEP")
+        coordinator.register_task(
+            task_cid="task:rearm-child",
+            task_id="REARM-CHILD",
+            dependency_task_cids=("task:rearm-dep",),
+        )
+        _settled_control_completion(coordinator, "task:rearm-dep")
+        _settled_control_completion(coordinator, "task:rearm-child")
+
+        dependency = coordinator.rearm_task_from_control(
+            "task:rearm-dep",
+            control_task_observation=_control_rearm_observation(
+                task_cid="task:rearm-dep",
+                task_alias="REARM-DEP",
+            ),
+        )
+        assert dependency["ready"] is True
+        child = coordinator.rearm_task_from_control(
+            "task:rearm-child",
+            control_task_observation=_control_rearm_observation(
+                task_cid="task:rearm-child",
+                task_alias="REARM-CHILD",
+            ),
+        )
+        assert child["ready"] is False
+        readiness = coordinator.claimability("task:rearm-child")
+        assert readiness["claimable"] is False
+        assert readiness["blocked_dependency_task_cids"] == ["task:rearm-dep"]
+
+        # Projection validation also proves the exact required ready index was
+        # recreated after both indexed boolean updates.
+        projection = coordinator.coordination_registry_projection()
+        tasks = {item["task_cid"]: item for item in projection["tasks"]}
+        assert tasks["task:rearm-dep"]["ready"] is True
+        assert tasks["task:rearm-child"]["ready"] is False
+    finally:
+        coordinator.close()
+
+
+def test_control_rearm_rebuilds_checkpointed_many_row_registry_without_update(
+    tmp_path: Path,
+) -> None:
+    import duckdb  # type: ignore
+
+    def task_schema_inventory(connection: object) -> dict[str, object]:
+        columns = connection.execute(  # type: ignore[attr-defined]
+            """
+            SELECT column_name, data_type, is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_schema = 'main' AND table_name = 'coordination_tasks'
+            ORDER BY ordinal_position
+            """
+        ).fetchall()
+        constraints = connection.execute(  # type: ignore[attr-defined]
+            """
+            SELECT constraint_type, constraint_column_names, constraint_text
+            FROM duckdb_constraints()
+            WHERE schema_name = 'main' AND table_name = 'coordination_tasks'
+            ORDER BY constraint_index
+            """
+        ).fetchall()
+        indexes = connection.execute(  # type: ignore[attr-defined]
+            """
+            SELECT index_name, is_unique, is_primary, expressions
+            FROM duckdb_indexes()
+            WHERE schema_name = 'main' AND table_name = 'coordination_tasks'
+            ORDER BY index_name
+            """
+        ).fetchall()
+        return {
+            "columns": tuple(tuple(row) for row in columns),
+            "constraints": tuple(
+                (row[0], tuple(row[1]), row[2]) for row in constraints
+            ),
+            "indexes": tuple(tuple(row) for row in indexes),
+        }
+
+    coordinator, clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    try:
+        connection = coordinator._require()  # noqa: SLF001
+        connection.execute(
+            """
+            INSERT INTO coordination_tasks(
+                task_cid, task_id, worktree_id, registered_at_ms,
+                ready, body_json
+            )
+            SELECT 'task:bulk-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
+                   'BULK-' || LPAD(CAST(i AS VARCHAR), 4, '0'),
+                   '', 900000 + i, TRUE, '{}'
+            FROM range(512) AS generated(i)
+            """
+        )
+        coordinator._commit_if_idle(connection)  # noqa: SLF001
+        coordinator.register_task(
+            task_cid="task:rearm-persisted",
+            task_id="REARM-PERSISTED",
+            body={"payload": "preserve-exactly"},
+        )
+        _settled_control_completion(coordinator, "task:rearm-persisted")
+    finally:
+        coordinator.close()
+
+    checkpoint = duckdb.connect(str(database_path))
+    try:
+        checkpoint.execute("CHECKPOINT")
+        assert checkpoint.execute(
+            "SELECT COUNT(*) FROM coordination_tasks"
+        ).fetchone()[0] == 513
+        before_inventory = task_schema_inventory(checkpoint)
+    finally:
+        checkpoint.close()
+
+    coordinator = open_database_coordinator(database_path, clock_ms=clock)
+    raw_connection = coordinator._require()  # noqa: SLF001
+
+    class RejectCoordinationTaskUpdate:
+        def __init__(self, raw: object) -> None:
+            self.raw = raw
+
+        @property
+        def in_transaction(self) -> bool:
+            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
+
+        def execute(
+            self,
+            statement: str,
+            parameters: object | None = None,
+        ) -> object:
+            normalized = " ".join(str(statement).upper().split())
+            if normalized.startswith("UPDATE COORDINATION_TASKS"):
+                raise AssertionError(
+                    "persisted coordination_tasks rows must not be updated"
+                )
+            if parameters is None:
+                return self.raw.execute(statement)  # type: ignore[attr-defined]
+            return self.raw.execute(  # type: ignore[attr-defined]
+                statement,
+                parameters,
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.raw, name)
+
+    coordinator._connection = RejectCoordinationTaskUpdate(  # noqa: SLF001
+        raw_connection
+    )
+    try:
+        rearmed = coordinator.rearm_task_from_control(
+            "task:rearm-persisted",
+            control_task_observation=_control_rearm_observation(
+                task_cid="task:rearm-persisted",
+                task_alias="REARM-PERSISTED",
+            ),
+        )
+        assert rearmed["ready"] is True
+        assert rearmed["replayed"] is False
+    finally:
+        coordinator.close()
+
+    landed = duckdb.connect(str(database_path))
+    try:
+        landed.execute("CHECKPOINT")
+        assert task_schema_inventory(landed) == before_inventory
+        assert landed.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT task_cid) FROM coordination_tasks"
+        ).fetchone() == (513, 513)
+        assert landed.execute(
+            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
+            ["task:rearm-persisted"],
+        ).fetchone() == (True, '{"payload":"preserve-exactly"}')
+        assert landed.execute(
+            "SELECT COUNT(*) FROM task_completions WHERE task_cid = ?",
+            ["task:rearm-persisted"],
+        ).fetchone()[0] == 0
+        assert landed.execute(
+            """
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = 'main'
+              AND table_name = 'coordination_tasks_rearm_staging'
+            """
+        ).fetchone()[0] == 0
+        assert landed.execute(
+            """
+            SELECT COUNT(*) FROM duckdb_indexes()
+            WHERE schema_name = 'main'
+              AND index_name = 'coordination_tasks_ready_idx'
+              AND table_name = 'coordination_tasks'
+            """
+        ).fetchone()[0] == 1
+    finally:
+        landed.close()
+
+    reopened = open_database_coordinator(database_path, clock_ms=clock)
+    try:
+        replay = reopened.rearm_task_from_control(
+            "task:rearm-persisted",
+            control_task_observation=_control_rearm_observation(
+                task_cid="task:rearm-persisted",
+                task_alias="REARM-PERSISTED",
+            ),
+        )
+        assert replay == {**rearmed, "replayed": True}
+        projection = reopened.coordination_registry_projection()
+        assert projection["counts"]["registered_tasks"] == 513
+        assert projection["logical_completions"] == []
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize("failure_point", ["begin", "commit"])
+def test_control_rearm_transaction_boundaries_fail_closed(
+    tmp_path: Path,
+    failure_point: str,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    coordinator.register_task(
+        task_cid="task:rearm-transaction",
+        task_id="REARM-TRANSACTION",
+    )
+    _settled_control_completion(coordinator, "task:rearm-transaction")
+    raw_connection = coordinator._require()  # noqa: SLF001
+
+    class TransactionFault:
+        def __init__(self, raw: object) -> None:
+            self.raw = raw
+
+        @property
+        def in_transaction(self) -> bool:
+            return bool(self.raw.in_transaction)  # type: ignore[attr-defined]
+
+        def execute(
+            self,
+            statement: str,
+            parameters: object | None = None,
+        ) -> object:
+            normalized = " ".join(str(statement).upper().split())
+            if failure_point == "begin" and normalized == "BEGIN TRANSACTION":
+                return self.raw.execute("SELECT 1")  # type: ignore[attr-defined]
+            if failure_point == "commit" and normalized == "COMMIT":
+                raise RuntimeError("injected task-rearm commit failure")
+            if parameters is None:
+                return self.raw.execute(statement)  # type: ignore[attr-defined]
+            return self.raw.execute(  # type: ignore[attr-defined]
+                statement,
+                parameters,
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self.raw, name)
+
+    coordinator._connection = TransactionFault(raw_connection)  # noqa: SLF001
+    expected_error = (
+        DatabaseCoordinationError if failure_point == "begin" else RuntimeError
+    )
+    try:
+        with pytest.raises(expected_error):
+            coordinator.rearm_task_from_control(
+                "task:rearm-transaction",
+                control_task_observation=_control_rearm_observation(
+                    task_cid="task:rearm-transaction",
+                    task_alias="REARM-TRANSACTION",
+                ),
+            )
+        assert coordinator._require().in_transaction is False  # noqa: SLF001
+        readiness = coordinator.claimability("task:rearm-transaction")
+        assert readiness["completion_status"] == AttemptStatus.SUCCEEDED.value
+        assert readiness["claimable"] is False
+        assert coordinator._require().execute(  # noqa: SLF001
+            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+            ["task:rearm-transaction"],
+        ).fetchone()[0] is False
+        assert coordinator._require().execute(  # noqa: SLF001
+            """
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = 'main'
+              AND table_name = 'coordination_tasks_rearm_staging'
+            """
+        ).fetchone()[0] == 0
+    finally:
+        coordinator.close()
+
+
+def test_control_rearm_rejects_active_completion_authority(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:rearm-live", task_id="REARM-LIVE")
+        claim = coordinator.claim_task(
+            task_cid="task:rearm-live",
+            owner_session_id="session:live-rearm",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:live-rearm",
+        )
+        coordinator.complete_task_claim(
+            claim,
+            control_completion_receipt=_completed_control_task(prepared),
+        )
+        observation = _control_rearm_observation(
+            task_cid="task:rearm-live",
+            task_alias="REARM-LIVE",
+            nested=True,
+        )
+
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="requires a quiescent sidecar",
+        ):
+            coordinator.rearm_task_from_control(
+                "task:rearm-live",
+                control_task_observation=observation,
+            )
+        assert coordinator.claimability("task:rearm-live")[
+            "completion_status"
+        ] == AttemptStatus.SUCCEEDED.value
+
+        coordinator.settle_task_claim(claim)
+        maintenance = coordinator.acquire_maintenance_lease(
+            owner_session_id="session:rearm-maintenance",
+            scope="rearm-maintenance",
+        )
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="requires a quiescent sidecar",
+        ):
+            coordinator.rearm_task_from_control(
+                "task:rearm-live",
+                control_task_observation=observation,
+            )
+        coordinator.release(maintenance.as_fenced_lease())
+        assert coordinator.rearm_task_from_control(
+            "task:rearm-live",
+            control_task_observation=observation,
+        )["ready"] is True
+    finally:
+        coordinator.close()
+
+
+def test_control_rearm_rejects_malformed_stale_or_mismatched_observations(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:rearm-closed", task_id="REARM-CLOSED")
+        _settled_control_completion(coordinator, "task:rearm-closed")
+        invalid_observations: list[dict[str, object]] = [
+            {},
+            {"task_cid": "task:rearm-closed", "status": "retrying"},
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                nested=False,
+            ),
+            _control_rearm_observation(
+                task_cid="task:not-the-task",
+                task_alias="REARM-CLOSED",
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="NOT-THE-REGISTERED-TASK",
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                revision=3,
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                status="completed",
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                status="blocked",
+            ),
+            _control_rearm_observation(
+                task_cid="task:rearm-closed",
+                task_alias="REARM-CLOSED",
+                status="in_progress",
+            ),
+            {
+                "task_cid": "task:rearm-closed",
+                "task_alias": "REARM-CLOSED",
+                "status": "retrying",
+                "revision": "4",
+            },
+            {
+                **_control_rearm_observation(
+                    task_cid="task:rearm-closed",
+                    task_alias="REARM-CLOSED",
+                    nested=True,
+                ),
+                "changed": False,
+            },
+            {
+                **_control_rearm_observation(
+                    task_cid="task:rearm-closed",
+                    task_alias="REARM-CLOSED",
+                ),
+                "receipt_cid": "",
+            },
+        ]
+        for observation in invalid_observations:
+            with pytest.raises(
+                (
+                    DatabaseCoordinationStaleFenceError,
+                    DatabaseCoordinationNotReadyError,
+                )
+            ):
+                coordinator.rearm_task_from_control(
+                    "task:rearm-closed",
+                    control_task_observation=observation,
+                )
+            assert coordinator.claimability("task:rearm-closed")[
+                "completion_status"
+            ] == AttemptStatus.SUCCEEDED.value
+
+        valid = _control_rearm_observation(
+            task_cid="task:rearm-closed",
+            task_alias="REARM-CLOSED",
+        )
+        coordinator.rearm_task_from_control(
+            "task:rearm-closed",
+            control_task_observation=valid,
+        )
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.rearm_task_from_control(
+                "task:rearm-closed",
+                control_task_observation={
+                    **valid,
+                    "receipt_cid": "cid:forged-control-rearm",
+                },
+            )
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.rearm_task_from_control(
+                "task:rearm-closed",
+                control_task_observation=_control_rearm_observation(
+                    task_cid="task:rearm-closed",
+                    task_alias="REARM-CLOSED",
+                    revision=5,
+                ),
             )
     finally:
         coordinator.close()

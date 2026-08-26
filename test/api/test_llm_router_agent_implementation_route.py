@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -501,10 +502,21 @@ def _native_quota_home(
     repo: Path,
     *,
     receipt: dict[str, object],
+    verifier_workspace: Path | None = None,
+    encoded_workspace: bool = False,
 ) -> tuple[Path, str]:
     session_id = "f159e13e-462f-43bc-9da2-01bd0c1f5761"
     home = repo / "native-verifier-home"
-    session = home / "sessions" / session_id
+    sessions = home / "sessions"
+    workspace = (
+        verifier_workspace.resolve()
+        if verifier_workspace is not None
+        else None
+    )
+    if encoded_workspace:
+        assert workspace is not None
+        sessions /= quote(str(workspace), safe="")
+    session = sessions / session_id
     session.mkdir(parents=True)
 
     def update(value: dict[str, object]) -> dict[str, object]:
@@ -537,10 +549,13 @@ def _native_quota_home(
     )
     transcript.chmod(0o600)
     summary = session / "summary.json"
+    info = {"id": session_id}
+    if workspace is not None:
+        info["cwd"] = str(workspace)
     summary.write_text(
         json.dumps(
             {
-                "info": {"id": session_id},
+                "info": info,
                 "current_model_id": "grok-4.5",
                 "grok_home": str(home),
             },
@@ -907,10 +922,15 @@ def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
         probe_returncode=41,
         observed_at_ms=invocation.issued_at_ms,
     )
-    home, session_id = _native_quota_home(repo, receipt=receipt)
     verifier_root = tmp_path / "verifier"
     verifier_workspace = verifier_root / "workspace"
     verifier_workspace.mkdir(parents=True, mode=0o700)
+    home, session_id = _native_quota_home(
+        repo,
+        receipt=receipt,
+        verifier_workspace=verifier_workspace,
+        encoded_workspace=True,
+    )
     verifier_prompt = verifier_root / "prompt.txt"
     verifier_prompt.write_text(
         "Reply with exactly the single word OK.\n",

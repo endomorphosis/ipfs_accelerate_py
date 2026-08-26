@@ -799,6 +799,80 @@ def test_queue_backoff_and_retry(tmp_path: Path) -> None:
         assert any(item["task_cid"] == ids["task_a"] for item in ready_after)
 
 
+def test_guarded_retry_replaces_wrong_deadline_and_rejects_drift(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        now = 1_700_000_000_000
+        repo._clock_ms = lambda: now  # type: ignore[method-assign]
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        claim_receipt = {
+            "operation": "database_claim",
+            "attempt_id": "attempt:deadline-test",
+        }
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=int(task["revision"]),
+            new_status="in_progress",
+            receipt=claim_receipt,
+        )
+        claimed = repo.get_task(ids["task_a"])
+        assert claimed is not None
+
+        reason = "database_portal_retry:attempt:deadline-test:capacity"
+        repo.record_queue_backoff(
+            task_cid=ids["task_a"],
+            delay_ms=1_000,
+            reason=reason,
+        )
+        transition_receipt = {
+            "operation": "database_portal_capacity_retry",
+            "queue_reason": reason,
+            "queue_reused": False,
+            "queue_receipt": {},
+            "retry_not_before_ms": 0,
+        }
+        result = repo.record_queue_backoff_and_cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=int(claimed["revision"]),
+            expected_control_receipt=claim_receipt,
+            new_status="retrying",
+            receipt=transition_receipt,
+            delay_ms=60_000,
+            reason=reason,
+        )
+        assert result["queue_reused"] is False
+        assert result["retry_not_before_ms"] == now + 60_000
+        assert result["transition_receipt"]["retry_not_before_ms"] == now + 60_000
+        cooled = repo.get_queue_entry(ids["task_a"])
+        assert cooled is not None
+        assert cooled.retry_not_before_ms == now + 60_000
+
+        retrying = repo.get_task(ids["task_a"])
+        assert retrying is not None
+        exact_receipt = retrying["body"]["completion_receipt"]
+        repo.record_queue_backoff(
+            task_cid=ids["task_a"],
+            delay_ms=90_000,
+            reason=reason,
+        )
+        with pytest.raises(
+            IntentRepositoryConflictError,
+            match="queue does not match its receipt",
+        ):
+            repo.record_queue_backoff_and_cas_task_status(
+                task_cid=ids["task_a"],
+                expected_revision=int(retrying["revision"]),
+                expected_control_receipt=exact_receipt,
+                new_status="retrying",
+                receipt=exact_receipt,
+                delay_ms=60_000,
+                reason=reason,
+            )
+
+
 # ---------------------------------------------------------------------------
 # Plan supersession / continuation / CAS heads
 # ---------------------------------------------------------------------------
