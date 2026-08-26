@@ -5619,6 +5619,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         accepted_control_plane_pin=control_plane_pin,
         accepted_control_plane_descriptor=control_plane_launch.descriptor,
     )
+    implementation_branch = str(launch_plan["implementation_branch"])
     children = tuple(
         multi_runner_module.PlanBoundSupervisorChild.from_cli_record(
             launch_plan["argv"][index + 1]
@@ -5656,7 +5657,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             implement=True,
             max_task_attempts=board.payload["max_task_attempts"],
             worktree_root=board.path(board.runtime_paths["worktrees"]),
-            merge_target_branch=board.merge_target_branch,
+            merge_target_branch=implementation_branch,
             merge_queue_dir=board.path(board.runtime_paths["merge_queue"]),
             task_shard_count=1,
             task_shard_index=0,
@@ -5678,6 +5679,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             plan_bound_task_source_revision=child.task_source_revision,
             plan_bound_configuration_root=child.configuration_root,
             plan_bound_accepted_tree_root=repo,
+            board_namespace=board.board_namespace,
             accepted_control_plane_pin=control_plane_pin,
             accepted_control_plane_descriptor=control_plane_launch.descriptor,
         )
@@ -6311,6 +6313,12 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             pid = os.fork()
             if pid == 0:  # pragma: no branch - isolated production boundary
                 try:
+                    # The production runner applies this sealed environment
+                    # before it starts a plan-bound child.  This fixture
+                    # invokes the entry point directly after ``fork()``, so
+                    # mirror that boundary in the child without changing the
+                    # pytest parent's later recovery and assertion context.
+                    os.environ.update(launch_plan["environment"])
                     child_rc = supervisor_module._run_plan_bound_daemon_child(
                         helper_argv
                     )
@@ -7301,6 +7309,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 cwd=str(repo.resolve()),
             )
             recovery_env = recovery_profile.launch_environment(0)
+            recovery_env.update(launch_plan["environment"])
             recovery_env.update(
                 {
                     "_ASE3_TEST_SOURCE_ROOT": str(REPO_ROOT),
@@ -7605,21 +7614,41 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 else:
                     assert durable_request.failure_count == 0
                 if crash_task_id == "TEST-A":
-                    assert _git(repo, "show", "main:src/test-a.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-a.py",
+                    ).stdout == (
                         "VALUE = 'TEST-A'\n"
                     )
                 elif wave_scenario == "crash_serialized_merge_confirmed":
-                    assert _git(repo, "show", "main:src/test-b.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-b.py",
+                    ).stdout == (
                         "VALUE = 'TEST-B'\n"
                     )
-                    assert _git(repo, "show", "main:src/test-a.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-a.py",
+                    ).stdout == (
                         "VALUE = 'TEST-A'\n"
                     )
                 else:
-                    assert _git(repo, "show", "main:src/test-b.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-b.py",
+                    ).stdout == (
                         "VALUE = 'already-present'\n"
                     )
-                    assert _git(repo, "show", "main:src/test-a.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-a.py",
+                    ).stdout == (
                         "VALUE = 'TEST-A'\n"
                     )
                 if wave_scenario == "crash_serialized_merge_confirmed":
@@ -7846,10 +7875,18 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             {"task_id": "TEST-A", "status": "completed", "failure_count": 0},
             {"task_id": "TEST-B", "status": "completed", "failure_count": 0},
         ]
-        assert _git(repo, "show", "main:src/test-a.py").stdout == (
+        assert _git(
+            repo,
+            "show",
+            f"{implementation_branch}:src/test-a.py",
+        ).stdout == (
             "VALUE = 'TEST-A'\n"
         )
-        assert _git(repo, "show", "main:src/test-b.py").stdout == (
+        assert _git(
+            repo,
+            "show",
+            f"{implementation_branch}:src/test-b.py",
+        ).stdout == (
             "VALUE = 'TEST-B'\n"
         )
     elif wave_scenario == "repeated_no_change_cleanup":

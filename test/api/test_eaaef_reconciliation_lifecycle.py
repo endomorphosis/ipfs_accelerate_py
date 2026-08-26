@@ -270,8 +270,39 @@ def _qualification(source_forest_root: str) -> dict[str, Any]:
     return value
 
 
+def _bootstrap_qualification(source_forest_root: str) -> dict[str, Any]:
+    value = {
+        "schema": lifecycle.EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA,
+        "interface": lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
+        "source_forest_root": source_forest_root,
+        "materialization_operation": (
+            "materialize_offline_22_plus_94_then_start_owner"
+        ),
+        "bootstrap_materialization_mode": "offline_before_exclusive_owner_start",
+        "bootstrap_materialization_before_owner_start": True,
+        "offline_population_includes_execution_contracts": True,
+        "direct_database_mutation_after_owner_start": False,
+        "exclusive_owner_lifecycle_interface": (
+            lifecycle.EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE
+        ),
+        "exclusive_owner_lifecycle_qualification_status": (
+            lifecycle.EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS
+        ),
+        "bootstrap_owner_ready": True,
+        "bootstrap_owner_blockers": [],
+        "database_authority_crossing_allowed": False,
+        "filesystem_path_authority_crossing_allowed": False,
+        "transport_token_authority_crossing_allowed": False,
+        "sql_crossing_allowed": False,
+        "provider_launch_allowed": False,
+    }
+    value["qualification_cid"] = lifecycle._cid(value)
+    return value
+
+
 class _FakeOwner:
     INTERFACE = lifecycle.EAAEF_RECONCILIATION_OWNER_INTERFACE
+    BOOTSTRAP_INTERFACE = lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
 
     def __init__(
         self,
@@ -289,6 +320,9 @@ class _FakeOwner:
     def reconciliation_qualification(self) -> Mapping[str, Any]:
         return _qualification(self.source_forest_root)
 
+    def bootstrap_reconciliation_qualification(self) -> Mapping[str, Any]:
+        return _bootstrap_qualification(self.source_forest_root)
+
     def materialize_offline_population(
         self,
         request: Mapping[str, Any],
@@ -299,7 +333,7 @@ class _FakeOwner:
         snapshot = _bootstrap_snapshot(population)
         value = {
             "schema": lifecycle.EAAEF_OFFLINE_POPULATION_RECEIPT_SCHEMA,
-            "interface": lifecycle.EAAEF_RECONCILIATION_OWNER_INTERFACE,
+            "interface": lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
             "request_cid": request["request_cid"],
             "generation_id": request["generation_id"],
             "source_forest_root": population.source_forest_root,
@@ -383,6 +417,33 @@ class _FakeOwner:
         }
         value["receipt_cid"] = lifecycle._cid(value)
         return value
+
+
+class _FakeBootstrapOwner:
+    INTERFACE = lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+    BOOTSTRAP_INTERFACE = lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+
+    def __init__(self, source_forest_root: str) -> None:
+        self._delegate = _FakeOwner(source_forest_root)
+        self.source_forest_root = source_forest_root
+
+    @property
+    def offline_request(self) -> dict[str, Any] | None:
+        return self._delegate.offline_request
+
+    def bootstrap_reconciliation_qualification(self) -> Mapping[str, Any]:
+        return _bootstrap_qualification(self.source_forest_root)
+
+    def materialize_offline_population(
+        self,
+        request: Mapping[str, Any],
+        *,
+        population: lifecycle.CompiledEAAEFPopulation,
+    ) -> Mapping[str, Any]:
+        return self._delegate.materialize_offline_population(
+            request,
+            population=population,
+        )
 
 
 def _state(
@@ -1202,6 +1263,8 @@ def test_preflight_accepts_current_head_over_tracked_predecessor_policy(
     )
 
     assert result["valid"] is True
+    assert result["bootstrap_owner_ready"] is True
+    assert result["production_owner_ready"] is True
     assert result["stale_bindings"] == []
     assert observed == [forest["source_forest_root"]]
     assert result["population"]["source_head"] == forest["source_head"]
@@ -1281,13 +1344,126 @@ def test_historical_tracked_host_admission_is_ignored(
     assert "scheduler_source_policy" not in result["stale_bindings"]
 
 
+def test_bootstrap_preflight_readiness_is_distinct_from_production_readiness(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    population = _population(repo_root)
+    bootstrap_owner = _FakeBootstrapOwner(population.source_forest_root)
+    monkeypatch.setattr(
+        lifecycle,
+        "verify_fresh_authority_bundle",
+        lambda *_args, **_kwargs: object(),
+    )
+
+    result = lifecycle.preflight_reconciliation(
+        repo_root,
+        authority={"fresh": True},
+        trust_roots={"independent": True},
+        bootstrap_owner=bootstrap_owner,
+    )
+
+    assert result["bootstrap_owner_ready"] is True
+    assert result["production_owner_ready"] is False
+    assert result["valid"] is False
+    assert result["bootstrap_owner_qualification"]["bootstrap_owner_ready"] is True
+    assert (
+        "bootstrap_portfolio_materialization_owner_unavailable_until_casf_binding"
+        not in result["blockers"]
+    )
+    assert (
+        "typed_portfolio_materialization_owner_unavailable_until_final_casf_adapter"
+        in result["blockers"]
+    )
+
+
+def test_bootstrap_resolver_requires_an_explicit_exact_binding(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        typed_eaaef_reconciliation_owner as owner_module,
+    )
+
+    monkeypatch.delattr(
+        owner_module,
+        "open_eaaef_bootstrap_reconciliation_owner",
+        raising=False,
+    )
+    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="opener is absent"):
+        lifecycle.resolve_bootstrap_reconciliation_owner(repo_root)
+
+    population = _population(repo_root)
+    bound = _FakeBootstrapOwner(population.source_forest_root)
+    monkeypatch.setattr(
+        owner_module,
+        "open_eaaef_bootstrap_reconciliation_owner",
+        lambda *, repo_root: bound,
+        raising=False,
+    )
+    assert lifecycle.resolve_bootstrap_reconciliation_owner(repo_root) is bound
+
+
+def test_one_shot_materialize_cli_does_not_resolve_or_orphan_bootstrap_owner(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def production_unavailable(_repo_root: Path) -> object:
+        raise lifecycle.EAAEFReconciliationBlocked("full production owner absent")
+
+    def forbidden_bootstrap_resolution(_repo_root: Path) -> object:
+        raise AssertionError("one-shot materialize resolved a bootstrap broker")
+
+    monkeypatch.setattr(
+        lifecycle,
+        "resolve_production_reconciliation_owner",
+        production_unavailable,
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "resolve_bootstrap_reconciliation_owner",
+        forbidden_bootstrap_resolution,
+    )
+    state_root = tmp_path / "unused-state"
+
+    exit_code = lifecycle.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--state-root",
+            str(state_root),
+            "materialize",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 2
+    assert output["error"] == "full production owner absent"
+    assert not state_root.exists()
+
+
+def test_only_prepare_uses_the_bootstrap_gate() -> None:
+    prepare_source = inspect.getsource(lifecycle.prepare_fresh_generation)
+    assert "require_bootstrap_reconciliation_owner(" in prepare_source
+    assert "require_typed_reconciliation_owner(" not in prepare_source
+    for operation in (
+        lifecycle.materialize_fresh_generation,
+        lifecycle.launch_reconciliation_supervisor,
+        lifecycle.reconciliation_status,
+        lifecycle.stop_reconciliation_generation,
+    ):
+        assert "require_typed_reconciliation_owner(" in inspect.getsource(operation)
+
+
 def test_prepare_materializes_offline_contracts_and_stops_before_authority(
     repo_root: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     population = _population(repo_root)
-    owner = _FakeOwner(population.source_forest_root)
+    owner = _FakeBootstrapOwner(population.source_forest_root)
     monkeypatch.setattr(
         lifecycle,
         "inspect_current_repository_forest",
@@ -1315,6 +1491,9 @@ def test_prepare_materializes_offline_contracts_and_stops_before_authority(
     assert owner.offline_request["owner_must_be_absent_during_population_write"] is True
     assert owner.offline_request["expected_execution_contract_counts"] == (
         population.execution_contract_counts
+    )
+    assert owner.offline_request["interface"] == (
+        lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
     )
 
 

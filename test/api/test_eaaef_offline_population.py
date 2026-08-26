@@ -39,7 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     DatabaseTaskSource,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_eaaef_reconciliation_owner import (
-    EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS,
+    EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
     EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE,
     EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
     EAAEF_CASF_BOOTSTRAP_REGISTRY_SCHEMA,
@@ -1216,13 +1216,26 @@ def test_casf_bootstrap_binding_holds_owner_guard_through_commit_and_start(
         source_forest_root=population.source_forest_root,
         owner_lifecycle=owner_lifecycle,
     )
-    qualification = owner.reconciliation_qualification()
+    qualification = owner.bootstrap_reconciliation_qualification()
+    assert owner.INTERFACE == EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
     assert qualification["bootstrap_materialization_before_owner_start"] is True
-    assert qualification["plan_r2_remote_runtime_blockers"] == list(
-        EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS
-    )
+    assert qualification["bootstrap_owner_ready"] is False
+    assert qualification["bootstrap_owner_blockers"] == [
+        "casf_quack_exclusive_owner_lifecycle_not_bound"
+    ]
     assert qualification["provider_launch_allowed"] is False
-    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="qualification differs"):
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationBlocked,
+        match="bootstrap reconciliation owner qualification differs",
+    ):
+        lifecycle.require_bootstrap_reconciliation_owner(
+            owner,
+            source_forest_root=population.source_forest_root,
+        )
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationBlocked,
+        match="typed_portfolio_materialization_owner_unavailable",
+    ):
         lifecycle.require_typed_reconciliation_owner(
             owner,
             source_forest_root=population.source_forest_root,
@@ -1564,16 +1577,21 @@ def test_persistent_casf_bootstrap_owner_preserves_lease_through_quack_start(
         source_forest_root=population.source_forest_root,
         owner_lifecycle=concrete,
     )
-    qualification = owner.reconciliation_qualification()
+    qualification = owner.bootstrap_reconciliation_qualification()
+    assert qualification["interface"] == EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+    assert qualification["bootstrap_owner_ready"] is True
+    assert qualification["bootstrap_owner_blockers"] == []
     assert (
-        "casf_quack_exclusive_owner_lifecycle_not_bound"
-        not in qualification["plan_r2_remote_runtime_blockers"]
+        lifecycle.require_bootstrap_reconciliation_owner(
+            owner,
+            source_forest_root=population.source_forest_root,
+        )
+        is owner
     )
-    assert (
-        "typed_database_task_source_runtime_adapter_not_bound"
-        in qualification["plan_r2_remote_runtime_blockers"]
-    )
-    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="qualification differs"):
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationBlocked,
+        match="typed_portfolio_materialization_owner_unavailable",
+    ):
         lifecycle.require_typed_reconciliation_owner(
             owner,
             source_forest_root=population.source_forest_root,
