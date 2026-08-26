@@ -1979,6 +1979,21 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         ) == 2
         assert daemon._typed_authoritative_attempt_floor(requeued) == 2
         assert daemon._shared_claim_binding_for_this_owner(requeued) is None
+        typed_history = adapter.task_revision_history_projection(
+            requeued.task_cid
+        )
+        typed_history_body = dict(typed_history)
+        typed_history_cid = typed_history_body.pop("projection_cid")
+        assert typed_history_cid == content_identity(typed_history_body)
+        assert [
+            revision["revision"]
+            for revision in typed_history["revisions"]
+        ] == list(range(1, requeued.revision + 1))
+        assert typed_history["revisions"][-1] == {
+            "revision": requeued.revision,
+            "status": "ready",
+            "body": dict(requeued.body),
+        }
         intended_quarantine = {
             **requeue_receipt,
             "operation": "database_strict_resume_quarantine",
@@ -2760,6 +2775,7 @@ def test_operator_blocked_retry_recovers_once_and_replays_after_restart(
         "executor_retry_cooldown_by_task",
         "executor_insert_retry_cooldown",
         "executor_cas_task_status_receipt",
+        "executor_insert_task_revision",
         "txn_load_generation",
         "txn_lookup_idempotency",
         "txn_advance_store_revision",
@@ -4463,6 +4479,10 @@ def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
         "task_identity",
         "task_alias",
     )
+    assert catalog[
+        "executor_task_revision_history_by_cid"
+    ].parameter_names == ("task_cid", "limit", "offset")
+    assert catalog["executor_task_revision_history_by_cid"].mutation is False
     assert catalog["executor_control_snapshot"].parameter_names == ()
     assert catalog["executor_control_snapshot"].mutation is False
     assert catalog["executor_retry_cooldown_by_task"].parameter_names == (

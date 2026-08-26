@@ -1767,7 +1767,10 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
         ),
         "task.status.cas": frozenset({"txn_cas_task_status"}),
         "task.status.cas.receipt": frozenset(
-            {"executor_cas_task_status_receipt"}
+            {
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision",
+            }
         ),
         "task.retry.cooldown.record": frozenset(
             {
@@ -1778,12 +1781,14 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: frozenset(
             {
                 "executor_cas_task_status_receipt",
+                "executor_insert_task_revision",
                 "executor_insert_retry_cooldown",
             }
         ),
         TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND: frozenset(
             {
                 "executor_cas_task_status_receipt",
+                "executor_insert_task_revision",
                 "executor_insert_retry_cooldown",
             }
         ),
@@ -5282,6 +5287,26 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "task status receipt mutation differs from the admitted command"
                 )
+        elif name == "executor_insert_task_revision":
+            if (
+                not manifest
+                or manifest[-1][0] != "executor_cas_task_status_receipt"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task revision must immediately follow its receipt CAS"
+                )
+            receipt_cas = manifest[-1][1]
+            expected = {
+                "task_cid": receipt_cas.get("task_cid"),
+                "revision": receipt_cas.get("new_revision"),
+                "status": receipt_cas.get("status"),
+                "body_json": receipt_cas.get("body_json"),
+                "recorded_at": receipt_cas.get("updated_at"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "task revision differs from its receipt CAS"
+                )
         elif name == "executor_insert_validation_run":
             expected = {
                 "run_id": command.parameters.get("run_id"),
@@ -5431,6 +5456,48 @@ class TypedStateOwnerGateway:
             if names.count(seal) != 1:
                 raise TypedStateOwnerAuthorizationError(
                     "transaction seal mutation count differs"
+                )
+
+        receipt_cas = [
+            bound
+            for name, bound in manifest
+            if name == "executor_cas_task_status_receipt"
+        ]
+        task_revisions = [
+            bound
+            for name, bound in manifest
+            if name == "executor_insert_task_revision"
+        ]
+        if receipt_cas or task_revisions:
+            if len(receipt_cas) != 1 or len(task_revisions) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "receipt CAS requires exactly one task revision"
+                )
+            expected_revision = task_revisions[0]
+            revision_rows = self._connection.execute(
+                """
+                SELECT revision, status, body_json, recorded_at
+                FROM task_revisions
+                WHERE task_cid = ? AND revision = ? LIMIT 2
+                """,
+                [
+                    expected_revision["task_cid"],
+                    expected_revision["revision"],
+                ],
+            ).fetchall()
+            observed_revision = (
+                tuple(revision_rows[0][index] for index in range(4))
+                if len(revision_rows) == 1
+                else ()
+            )
+            if observed_revision != (
+                expected_revision["revision"],
+                expected_revision["status"],
+                expected_revision["body_json"],
+                expected_revision["recorded_at"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task revision post-state differs from its receipt CAS"
                 )
 
         if command_operation in _EVENT_EMITTING_COMMANDS:

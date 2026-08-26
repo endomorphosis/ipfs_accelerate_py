@@ -483,6 +483,18 @@ def _default_templates() -> dict[str, StatementTemplate]:
                 "Exact full-fidelity task projection for an admitted executor"
             ),
         ),
+        "executor_task_revision_history_by_cid": StatementTemplate(
+            name="executor_task_revision_history_by_cid",
+            sql=(
+                "SELECT revision, status, body_json FROM task_revisions "
+                "WHERE task_cid = ? ORDER BY revision ASC LIMIT ? OFFSET ?"
+            ),
+            parameter_names=("task_cid", "limit", "offset"),
+            kind=StatementKind.QUERY,
+            description=(
+                "Bounded task revision-history page for an admitted executor"
+            ),
+        ),
         "executor_control_snapshot": StatementTemplate(
             name="executor_control_snapshot",
             sql=(
@@ -739,6 +751,24 @@ def _default_templates() -> dict[str, StatementTemplate]:
             kind=StatementKind.MUTATION,
             description=(
                 "CAS task status while retaining its authoritative transition receipt"
+            ),
+        ),
+        "executor_insert_task_revision": StatementTemplate(
+            name="executor_insert_task_revision",
+            sql=(
+                "INSERT INTO task_revisions (task_cid, revision, status, "
+                "body_json, recorded_at) VALUES (?, ?, ?, ?, ?)"
+            ),
+            parameter_names=(
+                "task_cid",
+                "revision",
+                "status",
+                "body_json",
+                "recorded_at",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Append the exact task revision produced by a receipt CAS"
             ),
         ),
         "insert_goal": StatementTemplate(
@@ -2005,6 +2035,7 @@ class QuackStateClient:
         ) -> Mapping[str, Any]:
             parameters = dict(active.parameters)
             expected = int(parameters["expected_task_revision"])
+            recorded_at = self._clock()
             # The remote typed owner performs this semantic check at its
             # transaction boundary.  Embedded mode has no separate owner, so
             # enforce the same closed reopen policy inside this transaction.
@@ -2019,7 +2050,7 @@ class QuackStateClient:
                 (
                     str(parameters["status"]),
                     expected + 1,
-                    self._clock(),
+                    recorded_at,
                     str(parameters["body_json"]),
                     str(parameters["task_cid"]),
                     expected,
@@ -2034,6 +2065,16 @@ class QuackStateClient:
                         "expected_task_revision": expected,
                     },
                 )
+            txn.execute_named_operation(
+                "executor_insert_task_revision",
+                (
+                    str(parameters["task_cid"]),
+                    expected + 1,
+                    str(parameters["status"]),
+                    str(parameters["body_json"]),
+                    recorded_at,
+                ),
+            )
             return {
                 "task_cid": str(parameters["task_cid"]),
                 "status": str(parameters["status"]),
@@ -2328,12 +2369,13 @@ class QuackStateClient:
                     "dead claim recovery cooldown absence CAS failed"
                 )
             expected = int(values["expected_task_revision"])
+            recorded_at = self._clock()
             task_result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",
                 (
                     "retrying",
                     expected + 1,
-                    self._clock(),
+                    recorded_at,
                     values["body_json"],
                     values["task_cid"],
                     expected,
@@ -2343,6 +2385,16 @@ class QuackStateClient:
                 raise OptimisticConflictError(
                     "dead claim recovery task CAS failed"
                 )
+            txn.execute_named_operation(
+                "executor_insert_task_revision",
+                (
+                    values["task_cid"],
+                    expected + 1,
+                    "retrying",
+                    values["body_json"],
+                    recorded_at,
+                ),
+            )
             return {
                 "schema": TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
                 "operation": TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
@@ -2638,12 +2690,13 @@ class QuackStateClient:
                     "blocked retry recovery cooldown absence CAS failed"
                 )
             expected = int(values["expected_task_revision"])
+            recorded_at = self._clock()
             task_result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",
                 (
                     "retrying",
                     expected + 1,
-                    self._clock(),
+                    recorded_at,
                     values["body_json"],
                     values["task_cid"],
                     expected,
@@ -2653,6 +2706,16 @@ class QuackStateClient:
                 raise OptimisticConflictError(
                     "blocked retry recovery task CAS failed"
                 )
+            txn.execute_named_operation(
+                "executor_insert_task_revision",
+                (
+                    values["task_cid"],
+                    expected + 1,
+                    "retrying",
+                    values["body_json"],
+                    recorded_at,
+                ),
+            )
             return {
                 "schema": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
                 "operation": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,

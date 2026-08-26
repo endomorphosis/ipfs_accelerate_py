@@ -42,7 +42,13 @@ from .database_task_source import (
 from .database_task_source import (
     CASResult as DatabaseCASResult,
 )
-from .intent_repository import IntentReceipt, QueueEntry
+from .intent_repository import (
+    MAX_PLAN_PROJECTION_BYTES,
+    MAX_PROJECTION_RECORDS,
+    TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+    IntentReceipt,
+    QueueEntry,
+)
 from .quack_state_client import ClientSession, QuackStateClient, TransportMode
 from .state_owner_bootstrap import StateOwnerBootstrapCredentials
 from .task_execution_route_policy import (
@@ -71,6 +77,7 @@ TYPED_DATABASE_TASK_SOURCE_SCHEMA: Final = (
 )
 DEFAULT_QUERY_LIMIT: Final = 50
 _TRANSPORT_PAGE_LIMIT: Final = 500
+_TASK_HISTORY_PAGE_LIMIT: Final = 16
 _MAX_JSON_BYTES: Final = 262_144
 _READY_STATUSES: Final[frozenset[str]] = frozenset(
     {"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"}
@@ -107,6 +114,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "executor_task_projection_page",
         "executor_control_snapshot",
         "executor_task_projection_by_identity",
+        "executor_task_revision_history_by_cid",
         "executor_retry_cooldown_by_task",
         "executor_retry_cooldown_page",
         "txn_load_generation",
@@ -115,6 +123,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "txn_record_idempotency",
         "txn_cas_task_status",
         "executor_cas_task_status_receipt",
+        "executor_insert_task_revision",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
         "executor_insert_validation_run",
@@ -964,6 +973,102 @@ class TypedDatabaseTaskSource:
         return _record_from_row(rows[0])[0]
 
     get = get_task
+
+    def task_revision_history_projection(
+        self,
+        task_cid_or_alias: str,
+    ) -> Mapping[str, Any]:
+        """Return canonical task history through the closed typed owner.
+
+        The post-merge crash fence consumes this same projection contract from
+        local DuckDB task sources.  Typed execution must obtain it through a
+        fixed read-only operation so it never falls back to a second database
+        authority or weakens the fence when a task reaches later revisions.
+        """
+
+        key = str(task_cid_or_alias or "").strip()
+        if not key:
+            raise TaskSourceIntegrityError("task identity must not be empty")
+        for _attempt in range(4):
+            before = self._client.load_generation()
+            task = self.get_task(key)
+            if task is None:
+                raise KeyError(key)
+            rows: list[Mapping[str, Any]] = []
+            offset = 0
+            while offset <= MAX_PROJECTION_RECORDS:
+                page = self._client.execute(
+                    "executor_task_revision_history_by_cid",
+                    {
+                        "task_cid": task.task_cid,
+                        "limit": min(
+                            _TASK_HISTORY_PAGE_LIMIT,
+                            MAX_PROJECTION_RECORDS + 1 - offset,
+                        ),
+                        "offset": offset,
+                    },
+                )
+                if not page:
+                    break
+                rows.extend(page)
+                offset += len(page)
+                if len(rows) > MAX_PROJECTION_RECORDS:
+                    raise TaskSourceBoundsError(
+                        "task revision history exceeds projection bound"
+                    )
+                if len(page) < _TASK_HISTORY_PAGE_LIMIT:
+                    break
+            after = self._client.load_generation()
+            if before.content_id != after.content_id:
+                continue
+
+            revisions: list[dict[str, Any]] = []
+            for raw in rows:
+                row = dict(raw)
+                if set(row) != {"revision", "status", "body_json"}:
+                    raise TaskSourceIntegrityError(
+                        "typed task revision differs from its closed projection"
+                    )
+                revision = row.get("revision")
+                status = row.get("status")
+                if (
+                    isinstance(revision, bool)
+                    or not isinstance(revision, int)
+                    or revision < 1
+                    or not isinstance(status, str)
+                    or not status.strip()
+                ):
+                    raise TaskSourceIntegrityError(
+                        "typed task revision history is malformed"
+                    )
+                revisions.append(
+                    {
+                        "revision": revision,
+                        "status": status,
+                        "body": _mapping_json(
+                            row.get("body_json"),
+                            noun="task revision body",
+                        ),
+                    }
+                )
+            material = {
+                "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                "task_cid": task.task_cid,
+                "revisions": revisions,
+            }
+            if len(canonical_json_bytes(material)) > MAX_PLAN_PROJECTION_BYTES:
+                raise TaskSourceBoundsError(
+                    "task revision history projection exceeds its byte bound"
+                )
+            return MappingProxyType(
+                {
+                    **material,
+                    "projection_cid": content_identity(material),
+                }
+            )
+        raise TaskSourceConflictError(
+            "typed task revision history changed during bounded projection"
+        )
 
     def list_tasks(
         self,
