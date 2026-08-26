@@ -2383,7 +2383,7 @@ def verify_compiled_eaaef_population_commitments(
         ) from exc
     if observed_contract_counts != {
         "task_dependencies": 270,
-        "task_outputs": 415,
+        "task_outputs": 430,
         "task_validations": 117,
         "task_acceptance": 116,
     }:
