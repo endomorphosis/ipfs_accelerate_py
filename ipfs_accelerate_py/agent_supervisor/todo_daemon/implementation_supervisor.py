@@ -10936,6 +10936,19 @@ class PortalImplementationSupervisor:
                 ),
             }
         )
+        child_environment.update(
+            {
+                SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
+                    self._managed_daemon_identity_path()
+                ),
+                SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                    self._managed_daemon_owner_scope(),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+            }
+        )
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
             schema="ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor",

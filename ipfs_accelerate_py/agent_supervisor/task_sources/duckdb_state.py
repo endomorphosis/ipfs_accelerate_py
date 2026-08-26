@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 import os
+import random
 import re
 import sqlite3
 import stat
@@ -116,22 +117,15 @@ def _connection_tuning(
     if not isinstance(configuration, Mapping):
         raise TypeError("DuckDB connection configuration must be a mapping")
     tuning: dict[str, str] = {}
-    protected = {
-        name
-        for name, _configured, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS
-    }
+    protected = {name for name, _configured, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS}
     for raw_name, raw_value in configuration.items():
         if not isinstance(raw_name, str):
             raise TypeError("DuckDB connection configuration keys must be strings")
         name = raw_name
         if name in protected:
-            raise ValueError(
-                f"DuckDB supervisor policy setting {name!r} cannot be overridden"
-            )
+            raise ValueError(f"DuckDB supervisor policy setting {name!r} cannot be overridden")
         if name not in DUCKDB_CONNECTION_POLICY_TUNING_KEYS:
-            raise ValueError(
-                f"unsupported DuckDB supervisor connection setting: {raw_name!r}"
-            )
+            raise ValueError(f"unsupported DuckDB supervisor connection setting: {raw_name!r}")
         if name in tuning:
             raise ValueError(f"duplicate DuckDB connection setting: {name!r}")
         if name == "threads":
@@ -139,8 +133,7 @@ def _connection_tuning(
                 raise TypeError("DuckDB threads must be an integer")
             if not 1 <= raw_value <= DUCKDB_CONNECTION_POLICY_MAX_THREADS:
                 raise ValueError(
-                    "DuckDB threads must be between 1 and "
-                    f"{DUCKDB_CONNECTION_POLICY_MAX_THREADS}"
+                    f"DuckDB threads must be between 1 and {DUCKDB_CONNECTION_POLICY_MAX_THREADS}"
                 )
             tuning[name] = str(raw_value)
             continue
@@ -149,12 +142,8 @@ def _connection_tuning(
         memory_limit = raw_value
         match = _DUCKDB_MEMORY_LIMIT.fullmatch(memory_limit)
         if match is None:
-            raise ValueError(
-                "DuckDB memory_limit must be an integer B, KB, MB, or GB value"
-            )
-        memory_bytes = int(match.group(1)) * _DUCKDB_MEMORY_MULTIPLIERS[
-            match.group(2)
-        ]
+            raise ValueError("DuckDB memory_limit must be an integer B, KB, MB, or GB value")
+        memory_bytes = int(match.group(1)) * _DUCKDB_MEMORY_MULTIPLIERS[match.group(2)]
         if not (
             DUCKDB_CONNECTION_POLICY_MIN_MEMORY_BYTES
             <= memory_bytes
@@ -178,9 +167,7 @@ def _verify_connection_policy(
     setting_names = tuple(
         name for name, _configured, _expected in settings
     )
-    expressions = ", ".join(
-        f"current_setting('{name}')" for name in setting_names
-    )
+    expressions = ", ".join(f"current_setting('{name}')" for name in setting_names)
     try:
         row = connection.execute(f"SELECT {expressions}").fetchone()
     except Exception as exc:
@@ -3167,9 +3154,8 @@ def _execute_quack_owner_mutation(
 ) -> DuckDBCursor:
     """Apply UPDATE/DELETE on the exclusive owner connection.
 
-    This Quack ATTACH build can SELECT/INSERT new rows but cannot UPDATE or
-    DELETE attached base tables. Mutations stay on the state-owner that
-    already holds the exclusive file connection.
+    This filesystem rendezvous exists only because the currently admitted
+    Quack build cannot update attached base tables.  It is not a SQL tunnel.
     """
 
     target = quack_owner_mutation_dir()
@@ -3273,6 +3259,11 @@ def _execute_quack_owner_mutation(
         )
     finally:
         os.close(inbox_fd)
+
+
+# The directory environment variable remains stable for deployed supervisors;
+# only the contents changed from SQL mutation requests to typed commands.
+quack_owner_mutation_dir = quack_owner_command_dir
 
 
 def _consume_duckdb_result(connection: Any) -> None:

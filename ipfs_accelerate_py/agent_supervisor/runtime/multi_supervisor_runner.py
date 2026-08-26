@@ -5278,6 +5278,18 @@ def supervisor_status_health_fields(
             "supervisor_status": "missing",
             "supervisor_status_path": str(status_path),
         }
+    recorded_pid = payload.get("supervisor_pid")
+    try:
+        recorded_pid = None if recorded_pid is None else int(recorded_pid)
+    except (TypeError, ValueError):
+        recorded_pid = None
+    if live_pid is not None and recorded_pid not in {None, int(live_pid)}:
+        # A leftover projection from a prior generation must not recycle the
+        # live child before it can publish a matching heartbeat.
+        return {
+            "supervisor_status": "missing",
+            "supervisor_status_path": str(status_path),
+        }
     updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
     if updated_at is None:
         if generation_bound:

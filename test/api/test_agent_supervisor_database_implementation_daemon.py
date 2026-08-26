@@ -100,6 +100,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA,
     DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
+    POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+    POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationConflictError,
     DatabaseImplementationCoordinationDriftError,

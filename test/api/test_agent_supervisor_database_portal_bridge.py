@@ -91,6 +91,19 @@ def _attempt(*, attempt_number: int = 1) -> DatabaseTaskAttempt:
     )
 
 
+def test_implementation_conflict_matches_main_module_alias() -> None:
+    class DatabaseImplementationConflictError(RuntimeError):
+        pass
+
+    assert _is_implementation_conflict(
+        DatabaseImplementationConflictError("stale row")
+    )
+    assert not _is_implementation_conflict(RuntimeError("stale row"))
+    assert _is_implementation_conflict(
+        DatabaseImplementationConflictError("no longer matches")
+    )
+
+
 def _record() -> SimpleNamespace:
     return SimpleNamespace(
         task_cid="task:cid:004",
