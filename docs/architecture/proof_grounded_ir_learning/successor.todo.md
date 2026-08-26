@@ -314,7 +314,7 @@ evidence.
 
 ## PGIR-207 Re-qualify, publish or reject, and issue the following board
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
