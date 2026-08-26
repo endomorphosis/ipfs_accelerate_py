@@ -12,15 +12,16 @@ from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
     harden_state_authority_process,
 )
 
-# Redeem the one-shot state-authority handoff before importing the supervisor.
-# The implementation module is intentionally large, so delaying redemption
-# until ``main`` makes cold-import latency part of the parent's fail-closed
-# handoff deadline.
-harden_state_authority_process()
 
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (  # noqa: E402, I001
-    main,
-)
+def main() -> int:
+    """Redeem authority before importing the large implementation module."""
+
+    harden_state_authority_process()
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        main as implementation_main,
+    )
+
+    return implementation_main()
 
 
 if __name__ == "__main__":

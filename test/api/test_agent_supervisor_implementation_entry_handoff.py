@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import os
 import subprocess
@@ -26,14 +27,19 @@ def test_entry_hardens_before_importing_implementation_supervisor() -> None:
         for node in tree.body
         if isinstance(node, ast.ImportFrom) and node.module == PROCESS_SECURITY_MODULE
     )
-    implementation_import = next(
+    main_function = next(
         node
         for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+    implementation_import = next(
+        node
+        for node in main_function.body
         if isinstance(node, ast.ImportFrom) and node.module == IMPLEMENTATION_MODULE
     )
     harden_call = next(
         node
-        for node in tree.body
+        for node in main_function.body
         if isinstance(node, ast.Expr)
         and isinstance(node.value, ast.Call)
         and isinstance(node.value.func, ast.Name)
@@ -42,6 +48,43 @@ def test_entry_hardens_before_importing_implementation_supervisor() -> None:
 
     assert process_security_import.lineno < harden_call.lineno
     assert harden_call.lineno < implementation_import.lineno
+    assert not any(
+        isinstance(node, ast.ImportFrom) and node.module == IMPLEMENTATION_MODULE
+        for node in tree.body
+    )
+    assert not any(
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "harden_state_authority_process"
+        for node in tree.body
+    )
+
+
+def test_entry_import_is_inert_until_main_is_called(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Library imports must not redeem process authority as a side effect."""
+
+    import ipfs_accelerate_py.agent_supervisor.runtime.process_security as security
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        security,
+        "harden_state_authority_process",
+        lambda: calls.append("harden"),
+    )
+    module_name = "_aseh_test_implementation_supervisor_entry"
+    spec = importlib.util.spec_from_file_location(module_name, ENTRY)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    try:
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(module_name, None)
+
+    assert calls == []
 
 
 @pytest.mark.skipif(

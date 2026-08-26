@@ -14153,6 +14153,11 @@ def test_aseh_sealed_owner_rechecks_candidate_before_owner_start(
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_assert_exact_run_launch_admission",
+        lambda *_args, **_kwargs: ordering.append("assert_admission"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_git",
         lambda *_args, **_kwargs: "",
     )
@@ -14281,6 +14286,7 @@ def test_aseh_sealed_owner_rechecks_candidate_before_owner_start(
         "executor_enter",
         "preflight",
         "admission",
+        "assert_admission",
         "executor_exit",
         "build_server",
     ]
@@ -22825,6 +22831,205 @@ def _aseh_r28_policy_fixture(
     return policy
 
 
+def test_aseh_r29_policy_reuses_published_r27_waiter_route() -> None:
+    bootstrap_id = "sha256:" + ("1" * 64)
+    chain = _aseh_r28_structural_chain()[:-1]
+    for item in chain:
+        item["bootstrap_receipt_id"] = bootstrap_id
+    chain[-1]["repair_head"] = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+    )
+    head = "2" * 40
+    tree = "3" * 40
+    witness = {
+        "head": head,
+        "tree": tree,
+        "branch_ref": "refs/heads/agent/aseh-r29",
+        "index_entries_digest": "sha256:" + ("4" * 64),
+        "index_flags_digest": "sha256:" + ("5" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("6" * 64),
+        "branch_reflog_digest": "sha256:" + ("7" * 64),
+    }
+    route = aseh_operator._r27_historical_live_validation_executor_contract()
+
+    policy = aseh_operator._r29_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_id,
+        prior_chain=chain,
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        executor_contract=route,
+    )
+
+    assert policy["policy_revision"] == 29
+    assert policy["prior_receipt_cids"] == list(
+        aseh_operator.ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS
+    )
+    assert policy["previous_receipt_cid"] == (
+        aseh_operator.ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+    )
+    assert policy["executor_contract_cid"] == aseh_operator._identity(route)
+    assert policy["candidate_base_head"] == (
+        aseh_operator
+        .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    )
+    assert aseh_operator._historical_live_policy_revision(policy) == 29
+
+
+def test_aseh_r29_unpublished_r28_receipt_absence_is_nofollow(
+    tmp_path: Path,
+) -> None:
+    r28_path = tmp_path / "unpublished-r28.json"
+    aseh_operator._assert_r29_unpublished_r28_receipt_absent(r28_path)
+
+    target = tmp_path / "target.json"
+    target.write_text("{}", encoding="utf-8")
+    r28_path.symlink_to(target)
+    with pytest.raises(aseh_operator.OperatorError, match="remain absent"):
+        aseh_operator._assert_r29_unpublished_r28_receipt_absent(r28_path)
+
+
+def test_aseh_r29_validation_seals_full_unreceipted_r27_delta() -> None:
+    matrix = (
+        aseh_operator
+        .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS
+    )
+    py_compile = matrix[0]
+    pytest_command = matrix[1]
+    diff_check = matrix[3]
+
+    for path in (
+        "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+    ):
+        assert path in py_compile
+    assert (
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+        in pytest_command
+    )
+    assert (
+        "test/api/test_agent_supervisor_implementation_entry_handoff.py"
+        in pytest_command
+    )
+    assert "aseh_r28_" in pytest_command[-1]
+    assert "aseh_r29_" in pytest_command[-1]
+    assert "entry_" in pytest_command[-1]
+    assert diff_check[3] == aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_HEAD
+    assert aseh_operator.ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS == (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_CHANGED_PATHS
+    )
+
+
+def test_aseh_r29_late_launch_rejects_dangling_r28_receipt_name(
+    tmp_path: Path,
+) -> None:
+    r28_path = tmp_path / "unpublished-r28.json"
+    r28_path.symlink_to("missing-target")
+
+    with pytest.raises(aseh_operator.OperatorError, match="remain absent"):
+        aseh_operator._assert_r29_launch_r28_receipt_absent(
+            paths={
+                "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": (
+                    r28_path
+                )
+            },
+            launch_bundle={"r28_receipt_absent": True},
+        )
+
+
+def test_aseh_r29_cleanup_fence_defers_live_rerun(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r29_population_requires_policy",
+        lambda _population: True,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_provider_cleanup_fence_transition",
+        lambda *_args, **kwargs: calls.append(kwargs["rerun_validations"])
+        or {"deferred": True},
+    )
+
+    result = (
+        aseh_operator._validate_repair_provider_cleanup_fence_with_active_r19_policy(
+            {},
+            paths={
+                "repair_sealed_validation_contract_dispatch_correction_transition_receipt": (
+                    tmp_path / "r29.json"
+                )
+            },
+            population={},
+            bootstrap={},
+            previous_receipt={},
+        )
+    )
+
+    assert result == {"deferred": True}
+    assert calls == [False]
+
+
+def test_aseh_r28_sealed_validation_contract_dispatches_exact_python_matrix(
+) -> None:
+    r27 = aseh_operator._r27_sealed_receipt_validation_executor_contract()
+    r28 = aseh_operator._r28_sealed_receipt_validation_executor_contract()
+    sealed_commands = tuple(
+        command
+        for command in (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_VALIDATIONS
+        )
+        if aseh_operator._r28_validation_executor_class(command)
+        == aseh_operator.ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    )
+
+    assert sealed_commands
+    assert r28["parent_executor_contract_cid"] == aseh_operator._identity(r27)
+    assert r28["policy_revision"] == 28
+    assert all(
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r28,
+            declared=command,
+        )
+        == r28
+        for command in sealed_commands
+    )
+
+
+def test_aseh_r28_sealed_validation_contract_rejects_prior_and_unknown_policy(
+) -> None:
+    r27 = aseh_operator._r27_sealed_receipt_validation_executor_contract()
+    r28 = aseh_operator._r28_sealed_receipt_validation_executor_contract()
+    r28_only = next(
+        command
+        for command in (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_VALIDATIONS
+        )
+        if aseh_operator._r28_validation_executor_class(command)
+        == aseh_operator.ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="R27"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r27,
+            declared=r28_only,
+        )
+    with pytest.raises(aseh_operator.OperatorError, match="unknown"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            {**r28, "policy_revision": 29},
+            declared=r28_only,
+        )
+
+
 def test_aseh_r28_initial_health_requires_exact_r1_r28_chain() -> None:
     chain = _aseh_r28_structural_chain()
     assert aseh_operator._admit_exact_r28_transition_chain(chain) == chain
@@ -23473,7 +23678,7 @@ def test_aseh_r28_prequalification_precedes_continuity_and_duckdb(
     assert events == ["qualify-r28", "read-continuity"]
 
 
-def test_aseh_r27_delegates_r28_before_suffix_admission(
+def test_aseh_r29_denies_r28_before_suffix_admission(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -23506,7 +23711,6 @@ def test_aseh_r27_delegates_r28_before_suffix_admission(
             .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
         ),
     }
-    sentinel = {"delegated": "r28"}
     monkeypatch.setattr(
         aseh_operator,
         "_secure_runtime_json",
@@ -23520,27 +23724,856 @@ def test_aseh_r27_delegates_r28_before_suffix_admission(
     monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
     monkeypatch.setattr(
         aseh_operator,
+        "_authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_authorize_repair_sealed_owner_initial_health_scheduler_exit_transition_if_applicable",
-        lambda **kwargs: (
-            sentinel
-            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
-            == list(aseh_operator.ASEH_R28_EXACT_R1_R27_RECEIPT_CIDS)
-            else pytest.fail("R27 did not delegate the exact R1-R27 chain")
-        ),
+        lambda **_kwargs: pytest.fail("terminal R28 was retried"),
     )
     monkeypatch.setattr(
         aseh_operator,
         "_admit_materialized_launch",
         lambda *_args, **_kwargs: pytest.fail(
-            "R27 materialized suffix ran before R28 delegation"
+            "R27 materialized suffix admitted an alternate child"
         ),
     )
+    with pytest.raises(aseh_operator.OperatorError, match="R28.*retry is denied"):
+        aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": r27_path,
+                "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": r28_path,
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="9" * 40,
+            previous_receipt=r26_chain[-1],
+            previous_transition=r26_chain[-1],
+            prior_receipt_chain=r26_chain,
+            authorization_directory_fd=90,
+        )
+
+
+def _aseh_r29_structural_chain() -> list[dict[str, object]]:
+    chain: list[dict[str, object]] = []
+    last_index = len(aseh_operator.ASEH_R29_REPAIR_TRANSITION_CHAIN_SCHEMAS) - 1
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R29_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        receipt_cid = (
+            aseh_operator.ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS[index]
+            if index < len(aseh_operator.ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS)
+            else "sha256:" + ("9" * 64)
+        )
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": (
+                None
+                if index == 0
+                else (29 if index == last_index else index + 1)
+            ),
+            "receipt_cid": receipt_cid,
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+    return chain
+
+
+def _aseh_r29_materialized_chain(
+    *,
+    head: str,
+    tree: str,
+    witness: dict[str, str] | None = None,
+) -> list[dict[str, object]]:
+    chain = _aseh_r29_structural_chain()
+    chain[-6]["receipt_cid"] = (
+        aseh_operator.ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    )
+    chain[-5].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+            ),
+            "receipt_cid": aseh_operator.ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-6]["receipt_cid"],
+        }
+    )
+    chain[-4].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_TREE
+            ),
+            "receipt_cid": aseh_operator.ASEH_R26_EXACT_R25_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-5]["receipt_cid"],
+        }
+    )
+    chain[-3].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            ),
+            "receipt_cid": aseh_operator.ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-4]["receipt_cid"],
+        }
+    )
+    chain[-2].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+            ),
+            "receipt_cid": aseh_operator.ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-3]["receipt_cid"],
+        }
+    )
+    chain[-1].update(
+        {
+            "base_head": (
+                aseh_operator
+                .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+            ),
+            "published_r27_base_head": (
+                aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_HEAD
+            ),
+            "published_r27_base_tree": (
+                aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_TREE
+            ),
+            "failed_unpublished_r28_head": (
+                aseh_operator
+                .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+            ),
+            "failed_unpublished_r28_tree": (
+                aseh_operator
+                .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+            ),
+            "unreceipted_effective_changed_paths": list(
+                aseh_operator.ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+            ),
+            "authorization_attempt": {
+                "attempt_cid": "sha256:" + ("8" * 64)
+            },
+            "repair_head": head,
+            "repair_tree": tree,
+            "previous_receipt_cid": chain[-2]["receipt_cid"],
+            "projection_recovery_failure_evidence_cid": "sha256:" + ("9" * 64),
+            "r25_preflight_failure_evidence_cid": "sha256:" + ("a" * 64),
+            "r28_authorization_failure_evidence_cid": (
+                aseh_operator._r29_expected_r28_authorization_failure_evidence()[
+                    "evidence_cid"
+                ]
+            ),
+        }
+    )
+    if witness is not None:
+        chain[-1]["candidate_authorization_witness"] = witness
+    return chain
+
+
+def _aseh_r29_policy_fixture(
+    *,
+    head: str,
+    tree: str,
+    witness: dict[str, str],
+) -> dict[str, object]:
+    policy: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": aseh_operator.PROGRAM,
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 29,
+        "authorization_basis": (
+            "validated_r1_r27_chain_plus_observed_r29_candidate_witness"
+        ),
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "prior_receipt_count": len(
+            aseh_operator.ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS
+        ),
+        "prior_receipt_cids": list(
+            aseh_operator.ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS
+        ),
+        "prior_receipt_chain_cid": aseh_operator._identity(
+            list(aseh_operator.ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS)
+        ),
+        "previous_receipt_cid": (
+            aseh_operator.ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+        ),
+        "candidate_base_head": (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": head,
+        "candidate_tree": tree,
+        "candidate_authorization_witness_cid": aseh_operator._identity(witness),
+        "executor_contract_cid": aseh_operator._identity(
+            aseh_operator._r27_historical_live_validation_executor_contract()
+        ),
+        "logical_argv_sha256": aseh_operator._identity(
+            list(aseh_operator._r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": (
+            aseh_operator.ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        ),
+        "validation_subject_tree": (
+            aseh_operator.ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        ),
+    }
+    policy["policy_admission_cid"] = aseh_operator._identity(policy)
+    return policy
+
+
+def test_aseh_r29_contract_is_direct_r27_child_and_binds_failed_r28() -> None:
+    r27 = aseh_operator._r27_sealed_receipt_validation_executor_contract()
+    r28 = aseh_operator._r28_sealed_receipt_validation_executor_contract()
+    r29 = aseh_operator._r29_sealed_receipt_validation_executor_contract()
+
+    assert aseh_operator._identity(r28) == (
+        aseh_operator.ASEH_R29_FAILED_R28_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    assert r29["parent_executor_contract_cid"] == aseh_operator._identity(r27)
+    assert r29["parent_executor_contract_cid"] != aseh_operator._identity(r28)
+    assert r29["unpublished_r28_executor_contract_cid"] == (
+        aseh_operator.ASEH_R29_FAILED_R28_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    assert r29["policy_revision"] == 29
+    sealed = tuple(
+        command
+        for command in (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS
+        )
+        if aseh_operator._r29_validation_executor_class(command)
+        == aseh_operator.ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    )
+    assert sealed
+    assert all(
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r29,
+            declared=command,
+        )
+        == r29
+        for command in sealed
+    )
+
+
+def test_aseh_r29_authorization_failure_evidence_is_closed_and_unmeasured(
+) -> None:
+    evidence = aseh_operator._r29_expected_r28_authorization_failure_evidence()
+
+    assert evidence["authorization_argv"] == [
+        "python3",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "--config",
+        "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
+        "authorize-repair-transition",
+    ]
+    assert evidence["ok"] is False
+    assert evidence["exit_code"] == 1
+    assert evidence["error_message"] == (
+        "sealed validation executor contract is unknown"
+    )
+    assert evidence["raw_stream_bytes_preserved"] is False
+    assert evidence["stdout_digest"] is None
+    assert evidence["stderr_digest"] is None
+    assert evidence["r28_receipt_published"] is False
+    assert evidence["r28_retry_authorized"] is False
+    assert evidence["dispatch_source_proof"][
+        "undispatched_contract_revision"
+    ] == 28
+    assert evidence["dispatch_source_proof"][
+        "undispatched_classifier_revision"
+    ] == 28
+    assert (
+        aseh_operator._validate_r29_r28_authorization_failure_evidence(evidence)
+        == evidence
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("exit_code", 0),
+        ("error_message", "other"),
+        ("raw_stream_bytes_preserved", True),
+        ("stdout_digest", "sha256:" + ("a" * 64)),
+        ("r28_receipt_published", True),
+        ("r28_retry_authorized", True),
+        ("database_effect", "observed"),
+        ("ducklake_effect", "observed"),
+    ],
+)
+def test_aseh_r29_authorization_failure_near_misses_fail_closed(
+    field: str,
+    value: object,
+) -> None:
+    changed = json.loads(
+        json.dumps(
+            aseh_operator._r29_expected_r28_authorization_failure_evidence()
+        )
+    )
+    changed[field] = value
+    unsigned = dict(changed)
+    unsigned.pop("evidence_cid")
+    changed["evidence_cid"] = aseh_operator._identity(unsigned)
+    with pytest.raises(aseh_operator.OperatorError, match="R29"):
+        aseh_operator._validate_r29_r28_authorization_failure_evidence(changed)
+
+
+def test_aseh_r29_chain_skips_unpublished_r28() -> None:
+    chain = _aseh_r29_structural_chain()
+
+    assert aseh_operator._admit_exact_r29_transition_chain(chain) == chain
+    assert chain[-1]["transition_revision"] == 29
+    assert chain[-2]["transition_revision"] == 27
+    assert all(item["transition_revision"] != 28 for item in chain)
+    assert tuple(item["receipt_cid"] for item in chain[:-1]) == (
+        aseh_operator.ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS
+    )
+
+    inserted = json.loads(json.dumps(chain))
+    inserted[-1]["schema"] = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_SCHEMA
+    )
+    inserted[-1]["transition_revision"] = 28
+    with pytest.raises(aseh_operator.OperatorError, match="R29"):
+        aseh_operator._admit_exact_r29_transition_chain(inserted)
+
+
+def test_aseh_r29_launch_assertion_binds_failed_r28_without_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    )
+    head = "c" * 40
+    tree = "d" * 40
+    chain = _aseh_r29_materialized_chain(head=head, tree=tree)
+    admission: dict[str, object] = {
+        "runtime_source_head": head,
+        "runtime_repository_tree_id": tree,
+        "repair_transition": chain[-1],
+        "repair_transition_chain": chain,
+        "projection_matches_events": True,
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base if args == ("show", "-s", "--format=%P", head) else ""
+        ),
+    )
+
+    aseh_operator._assert_exact_run_launch_admission(
+        admission, candidate_head=head, candidate_tree=tree
+    )
+    changed = json.loads(json.dumps(admission))
+    changed["repair_transition"][
+        "r28_authorization_failure_evidence_cid"
+    ] = "sha256:" + ("e" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R29"):
+        aseh_operator._assert_exact_run_launch_admission(
+            changed, candidate_head=head, candidate_tree=tree
+        )
+
+
+def test_aseh_r29_launch_assertion_retains_seal_on_two_parent_descendant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor_head = "c" * 40
+    anchor_tree = "d" * 40
+    descendant_head = "e" * 40
+    descendant_tree = "f" * 40
+    chain = _aseh_r29_materialized_chain(
+        head=anchor_head,
+        tree=anchor_tree,
+    )
+    active = chain[-1]
+    admission: dict[str, object] = {
+        "runtime_source_head": descendant_head,
+        "runtime_repository_tree_id": descendant_tree,
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "canonical_continuity": {
+            "sealed_owner_foreign_recovery_waiter_admission_to_sealed_validation_contract_dispatch_correction": active,
+            "repair_to_current": {"admitted": True},
+        },
+        "historical_live_authorizing_receipt_cid": active["receipt_cid"],
+        "projection_matches_events": True,
+    }
+
+    def git(*args: str) -> str:
+        if args == ("show", "-s", "--format=%P", descendant_head):
+            return f"{'1' * 40} {'2' * 40}"
+        if args == (
+            "merge-base",
+            "--is-ancestor",
+            anchor_head,
+            descendant_head,
+        ):
+            return ""
+        raise AssertionError(f"unexpected git argv: {args!r}")
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=descendant_head,
+        candidate_tree=descendant_tree,
+    )
+
+    changed = json.loads(json.dumps(admission))
+    del changed["canonical_continuity"]["repair_to_current"]
+    with pytest.raises(aseh_operator.OperatorError, match="retained R29"):
+        aseh_operator._assert_exact_run_launch_admission(
+            changed,
+            candidate_head=descendant_head,
+            candidate_tree=descendant_tree,
+        )
+
+
+def test_aseh_r29_projects_one_bound_r23_owner_permission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    )
+    head = "c" * 40
+    tree = "d" * 40
+    witness = _aseh_r22_witness(head, tree)
+    chain = _aseh_r29_materialized_chain(
+        head=head, tree=tree, witness=witness
+    )
+    active = chain[-1]
+    admission: dict[str, object] = {
+        "runtime_source_head": head,
+        "runtime_repository_tree_id": tree,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "historical_live_authorizing_receipt_cid": active["receipt_cid"],
+        "projection_matches_events": True,
+    }
+    admission["admission_cid"] = aseh_operator._identity(admission)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base if args == ("show", "-s", "--format=%P", head) else ""
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    board = SimpleNamespace(
+        resolved_database_program=lambda: SimpleNamespace(
+            store_id="data/aseh/control.duckdb"
+        )
+    )
+
+    context = (
+        aseh_operator._r23_owner_start_permission_context_from_launch_admission(
+            board=board,
+            launch_admission=admission,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+        )
+    )
+    assert context is not None
+    assert context["repair_transition_receipt_cid"] == active["receipt_cid"]
+    assert chain[-2]["receipt_cid"] == (
+        aseh_operator.ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+    )
+    assert chain[-6]["receipt_cid"] == (
+        aseh_operator.ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    )
+
+
+def test_aseh_r29_prequalification_precedes_older_routes_and_continuity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap_path = tmp_path / "bootstrap.json"
+    repair_path = tmp_path / "repair-r1.json"
+    repair_path.touch()
+    bootstrap = {
+        "source_head": "0" * 40,
+        "repository_tree_id": "1" * 40,
+        "plan_root_cid": "sha256:" + ("2" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("3" * 64)},
+        "source_identities": {},
+        "bootstrap_receipt_id": "sha256:" + ("4" * 64),
+    }
+    population = {
+        **bootstrap,
+        "source_head": "5" * 40,
+        "repository_tree_id": "6" * 40,
+    }
+    events: list[str] = []
+    monkeypatch.setattr(aseh_operator, "_population", lambda *_args: population)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: bootstrap if path == bootstrap_path else {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _value: bootstrap["bootstrap_receipt_id"],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_prequalify_r29_historical_live_launch",
+        lambda **_kwargs: events.append("qualify-r29") or {"qualified": True},
+    )
+    for revision in range(20, 29):
+        monkeypatch.setattr(
+            aseh_operator,
+            f"_prequalify_r{revision}_historical_live_launch",
+            lambda **_kwargs: pytest.fail("older qualifier ran after R29"),
+        )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_transition",
+        lambda *_args, **_kwargs: {"repair_head": "9" * 40},
+    )
+
+    def continuity(*_args: object, **kwargs: object) -> None:
+        assert kwargs["r29_projection_recovery_prequalification"] == {
+            "qualified": True
+        }
+        events.append("read-continuity")
+        raise aseh_operator.OperatorError("continuity sentinel")
+
+    monkeypatch.setattr(aseh_operator, "_read_continuity_state", continuity)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_projection_matches_events_on_disposable_copy",
+        lambda *_args: pytest.fail("DuckDB replay ran before R29 qualification"),
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="continuity sentinel"):
+        aseh_operator._admit_materialized_launch(
+            object(),
+            {},
+            {
+                "bootstrap_receipt": bootstrap_path,
+                "repair_transition_receipt": repair_path,
+            },
+        )
+    assert events == ["qualify-r29", "read-continuity"]
+
+
+def test_aseh_r29_transition_wrappers_select_exact_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+
+    def run(**kwargs: object) -> list[dict[str, object]]:
+        calls.append(("run", int(kwargs["_revision"])))
+        return [{"revision": kwargs["_revision"]}]
+
+    def validate(
+        _receipt: object,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        calls.append(("validate", int(kwargs["_revision"])))
+        return {"revision": kwargs["_revision"]}
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_docker_create_readiness_vendor_resolver_transition_validations",
+        run,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_docker_create_readiness_vendor_resolver_transition",
+        validate,
+    )
+    witness = {"head": "a" * 40}
+    assert aseh_operator._run_repair_sealed_validation_contract_dispatch_correction_transition_validations(
+        candidate_head="a" * 40,
+        candidate_tree="b" * 40,
+        authorization_witness=witness,
+    ) == [{"revision": 29}]
+    assert aseh_operator._validate_repair_sealed_validation_contract_dispatch_correction_transition(
+        {},
+        bootstrap={},
+        previous_receipt={},
+        rerun_validations=False,
+    ) == {"revision": 29}
+    assert calls == [("run", 29), ("validate", 29)]
+
+
+def test_aseh_r29_receipt_identity_binds_both_failure_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    policy = _aseh_r29_policy_fixture(head=head, tree=tree, witness=witness)
+    historical: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA,
+        "active_policy_cid": policy["policy_admission_cid"],
+        "authorizing_receipt_cid": None,
+        "returncode": 0,
+        "terminal_class": "verified_success",
+    }
+    historical["evidence_cid"] = aseh_operator._identity(historical)
+    inherited_failure = {"evidence_cid": "sha256:" + ("2" * 64)}
+    inherited_preflight = {"evidence_cid": "sha256:" + ("3" * 64)}
+    inherited_proof = {"semantic_admission_cid": "sha256:" + ("4" * 64)}
+    inherited_terminal = {"evidence_cid": "sha256:" + ("5" * 64)}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r25_projection_recovery_failure_evidence",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r26_r25_preflight_failure_evidence",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r26_projection_recovery_prestart_admission",
+        lambda value, **_kwargs: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r27_r26_terminal_failure_evidence",
+        lambda value: dict(value),
+    )
+    receipt: dict[str, object] = {
+        "schema": (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+        ),
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R29"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 29,
+        "bootstrap_receipt_id": policy["bootstrap_receipt_id"],
+        "previous_receipt_cid": (
+            aseh_operator.ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+        ),
+        "plan_root_cid": "sha256:" + ("6" * 64),
+        "repository_tree_id": "7" * 40,
+        "base_head": (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "base_tree": (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        ),
+        "published_r27_base_head": (
+            aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_HEAD
+        ),
+        "published_r27_base_tree": (
+            aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_TREE
+        ),
+        "failed_unpublished_r28_head": (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "failed_unpublished_r28_tree": (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        ),
+        "repair_head": head,
+        "repair_tree": tree,
+        "changed_paths": list(
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("8" * 64),
+        "unreceipted_effective_changed_paths": list(
+            aseh_operator.ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        ),
+        "unreceipted_effective_patch_digest": "sha256:" + ("9" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R27"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_AUTHORITY
+        ),
+        "validation_results": [],
+        "candidate_authorization_witness": witness,
+        "sealed_validation_executor_contract": (
+            aseh_operator._r29_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": policy,
+        "historical_live_execution_evidence": historical,
+        "projection_recovery_failure_evidence": inherited_failure,
+        "r25_preflight_failure_evidence": inherited_preflight,
+        "projection_recovery_prestart_admission": inherited_proof,
+        "r26_terminal_failure_evidence": inherited_terminal,
+        "r27_initial_health_failure_evidence": (
+            aseh_operator._r28_expected_r27_initial_health_failure_evidence()
+        ),
+        "r28_authorization_failure_evidence": (
+            aseh_operator._r29_expected_r28_authorization_failure_evidence()
+        ),
+        "authorization_attempt": aseh_operator._r29_authorization_attempt_record(
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+            started_at=1.0,
+        ),
+        "terminal_success_criteria": (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert set(receipt) == (
+        aseh_operator
+        .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_RECEIPT_FIELDS
+    )
+    assert aseh_operator._repair_sealed_validation_contract_dispatch_correction_transition_receipt_id(
+        receipt
+    ) == receipt["receipt_cid"]
+
+    changed = json.loads(json.dumps(receipt))
+    changed["r28_authorization_failure_evidence"][
+        "r28_receipt_published"
+    ] = True
+    unsigned_failure = dict(changed["r28_authorization_failure_evidence"])
+    unsigned_failure.pop("evidence_cid")
+    changed["r28_authorization_failure_evidence"]["evidence_cid"] = (
+        aseh_operator._identity(unsigned_failure)
+    )
+    unsigned_receipt = dict(changed)
+    unsigned_receipt.pop("receipt_cid")
+    changed["receipt_cid"] = aseh_operator._identity(unsigned_receipt)
+    with pytest.raises(aseh_operator.OperatorError, match="R29"):
+        aseh_operator._repair_sealed_validation_contract_dispatch_correction_transition_receipt_id(
+            changed
+        )
+
+    for invalid_authorized_at in (0.5, float("nan"), float("inf")):
+        changed = json.loads(json.dumps(receipt))
+        changed["authorized_at"] = invalid_authorized_at
+        if invalid_authorized_at == 0.5:
+            unsigned_receipt = dict(changed)
+            unsigned_receipt.pop("receipt_cid")
+            changed["receipt_cid"] = aseh_operator._identity(unsigned_receipt)
+        with pytest.raises(aseh_operator.OperatorError, match="R29|schema"):
+            aseh_operator._repair_sealed_validation_contract_dispatch_correction_transition_receipt_id(
+                changed
+            )
+
+
+def test_aseh_r27_delegates_r29_before_r28_and_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r27_path = tmp_path / "repair-r27.json"
+    r27_path.touch()
+    full_prior = _aseh_r29_structural_chain()[:-1]
+    r26_chain = full_prior[:-1]
+    r26_chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    r27_receipt = dict(full_prior[-1])
+    r27_transition = {
+        **r27_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "repair_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        ),
+    }
+    sentinel = {"delegated": "r29"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r27_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition",
+        lambda *_args, **_kwargs: r27_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS)
+            else pytest.fail("R27 did not delegate the exact R1-R27 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_owner_initial_health_scheduler_exit_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("R28 ran before direct-R27 R29"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R27 materialized suffix ran before R29 delegation"
+        ),
+    )
+
     result = aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
         board=object(),
         config={},
         paths={
             "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": r27_path,
-            "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": r28_path,
+            "repair_sealed_validation_contract_dispatch_correction_transition_receipt": tmp_path
+            / "repair-r29.json",
         },
         bootstrap={},
         bootstrap_id="bootstrap",
@@ -23551,3 +24584,1950 @@ def test_aseh_r27_delegates_r28_before_suffix_admission(
         authorization_directory_fd=90,
     )
     assert result == sentinel
+
+
+def test_aseh_r29_capable_source_never_retries_r28_for_an_alternate_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r27_path = tmp_path / "repair-r27.json"
+    r27_path.touch()
+    full_prior = _aseh_r29_structural_chain()[:-1]
+    r26_chain = full_prior[:-1]
+    r26_chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    r27_receipt = dict(full_prior[-1])
+    r27_transition = {
+        **r27_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "repair_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        ),
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r27_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition",
+        lambda *_args, **_kwargs: r27_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_owner_initial_health_scheduler_exit_transition_if_applicable",
+        lambda **_kwargs: pytest.fail("terminal R28 was retried"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "alternate post-R27 child reached suffix admission"
+        ),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="R28.*retry is denied"):
+        aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": r27_path,
+                "repair_sealed_validation_contract_dispatch_correction_transition_receipt": tmp_path
+                / "repair-r29.json",
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="9" * 40,
+            previous_receipt=r26_chain[-1],
+            previous_transition=r26_chain[-1],
+            prior_receipt_chain=r26_chain,
+            authorization_directory_fd=90,
+        )
+
+
+def test_aseh_r29_authorizer_rejects_any_r28_entry_before_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r28_path = tmp_path / "repair-r28.json"
+    r28_path.symlink_to("missing-target")
+    chain = _aseh_r29_structural_chain()[:-1]
+    chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_sealed_validation_contract_dispatch_correction_transition_validations",
+        lambda **_kwargs: pytest.fail("R29 validation ran before R28 absence"),
+    )
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="unpublished R28"):
+            aseh_operator._authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable(
+                board=object(),
+                config={},
+                paths={
+                    "repair_sealed_validation_contract_dispatch_correction_transition_receipt": tmp_path
+                    / "repair-r29.json",
+                    "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": r28_path,
+                    "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": tmp_path
+                    / "repair-r29-attempt.json",
+                },
+                bootstrap={},
+                bootstrap_id="bootstrap",
+                head="9" * 40,
+                previous_receipt=chain[-1],
+                previous_transition=chain[-1],
+                prior_receipt_chain=chain,
+                authorization_directory_fd=directory_fd,
+            )
+    finally:
+        os.close(directory_fd)
+
+
+def test_aseh_r29_authorizer_publishes_one_direct_r27_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    )
+    head = "a" * 40
+    tree = "b" * 40
+    chain = _aseh_r29_structural_chain()[:-1]
+    chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    previous = chain[-1]
+    previous.update(
+        {
+            "projection_recovery_failure_evidence": {"evidence_cid": "f"},
+            "r25_preflight_failure_evidence": {"evidence_cid": "p"},
+            "projection_recovery_prestart_admission": {
+                "semantic_admission_cid": "s"
+            },
+            "r26_terminal_failure_evidence": {"evidence_cid": "t"},
+        }
+    )
+    witness = _aseh_r22_witness(head, tree)
+
+    def git(*args: str) -> str:
+        if args == ("show", "-s", "--format=%P", head):
+            return base
+        if args == ("rev-parse", f"{base}^{{tree}}"):
+            return (
+                aseh_operator
+                .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+            )
+        if args == ("show", "-s", "--format=%P", base):
+            return aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_HEAD
+        if args == (
+            "rev-parse",
+            f"{aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_HEAD}^{{tree}}",
+        ):
+            return aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_TREE
+        if args == (
+            "rev-parse",
+            f"{base}:scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        ):
+            return aseh_operator.ASEH_R29_FAILED_R28_DISPATCH_SOURCE_BLOB_OID
+        if args == ("rev-parse", f"{head}^{{tree}}"):
+            return tree
+        raise AssertionError(f"unexpected git argv: {args!r}")
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+
+    def changed_paths(start: str, finish: str) -> tuple[str, ...]:
+        assert finish == head
+        if start == base:
+            return (
+                aseh_operator
+                .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_CHANGED_PATHS
+            )
+        if start == aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_HEAD:
+            return aseh_operator.ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        raise AssertionError(f"unexpected diff base: {start}")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        changed_paths,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: witness,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    r27_failure = (
+        aseh_operator._r28_expected_r27_initial_health_failure_evidence()
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r28_r27_initial_health_failure_evidence",
+        lambda **_kwargs: r27_failure,
+    )
+    events: list[str] = []
+
+    def validate(**_kwargs: object) -> list[dict[str, object]]:
+        assert attempt_path in published
+        assert published[attempt_path]["attempt_state"] == (
+            "started_before_validator_or_live_effect"
+        )
+        events.append("validation")
+        return []
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_sealed_validation_contract_dispatch_correction_transition_validations",
+        validate,
+    )
+
+    def qualify(**kwargs: object) -> tuple[dict[str, str], dict[str, str]]:
+        assert kwargs["authorization_attempt"] == published[attempt_path]
+        assert kwargs["active_candidate_head"] == head
+        assert kwargs["active_candidate_tree"] == tree
+        assert kwargs["active_candidate_authorization_witness"] == witness
+        events.append("historical_live")
+        return {"policy": "r29"}, {"evidence": "r29"}
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r29_pre_duckdb_historical_live_policy",
+        qualify,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_validation_contract_dispatch_correction_transition",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda *_args: "sha256:" + ("c" * 64),
+    )
+    r29_path = tmp_path / "repair-r29.json"
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    published: dict[Path, dict[str, object]] = {}
+    published_authority_fds: dict[Path, object] = {}
+
+    def publish(path: Path, payload: dict[str, object], **kwargs: object) -> None:
+        events.append(
+            "attempt_publish" if path == attempt_path else "receipt_publish"
+        )
+        published[path] = payload
+        published_authority_fds[path] = kwargs[
+            "authority_directory_fd"
+        ]
+
+    monkeypatch.setattr(aseh_operator, "_atomic_json_create", publish)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: dict(published[path]),
+    )
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        result = aseh_operator._authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+                "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": tmp_path
+                / "repair-r28.json",
+                "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+            },
+            bootstrap={
+                "plan_root_cid": "sha256:" + ("d" * 64),
+                "repository_tree_id": "e" * 40,
+            },
+            bootstrap_id="sha256:" + ("1" * 64),
+            head=head,
+            previous_receipt=previous,
+            previous_transition=previous,
+            prior_receipt_chain=chain,
+            authorization_directory_fd=directory_fd,
+        )
+    finally:
+        os.close(directory_fd)
+
+    payload = published[r29_path]
+    assert isinstance(payload, dict)
+    assert published[attempt_path] == payload["authorization_attempt"]
+    assert published_authority_fds[attempt_path] == directory_fd
+    assert published_authority_fds[r29_path] == directory_fd
+    assert events == [
+        "attempt_publish",
+        "validation",
+        "historical_live",
+        "receipt_publish",
+    ]
+    assert payload["transition_revision"] == 29
+    assert payload["previous_receipt_cid"] == (
+        aseh_operator.ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+    )
+    assert payload["r28_authorization_failure_evidence"][
+        "r28_retry_authorized"
+    ] is False
+    assert payload["database_mutated"] is False
+    assert payload["published_r27_base_head"] == (
+        aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_HEAD
+    )
+    assert payload["failed_unpublished_r28_head"] == base
+    assert payload["unreceipted_effective_changed_paths"] == list(
+        aseh_operator.ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+    )
+    assert all(
+        item["transition_revision"] != 28
+        for item in result["repair_transition_chain"]
+    )
+
+
+@pytest.mark.parametrize("started_at", [float("nan"), float("inf")])
+def test_aseh_r29_authorization_attempt_rejects_nonfinite_time(
+    started_at: float,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    attempt = aseh_operator._r29_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        started_at=1.0,
+    )
+    attempt["started_at"] = started_at
+
+    with pytest.raises(aseh_operator.OperatorError, match="attempt differs"):
+        aseh_operator._validate_r29_authorization_attempt_record(
+            attempt,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+        )
+
+
+def test_aseh_r29_historical_live_guard_runs_immediately_before_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    def guard() -> None:
+        events.append("guard")
+
+    def release(descriptor: int, payload: bytes) -> int:
+        assert descriptor == 91
+        assert payload == b"1"
+        events.append("release")
+        return 1
+
+    monkeypatch.setattr(aseh_operator.os, "write", release)
+    aseh_operator._r19_release_historical_live_waiter(
+        91,
+        revision=29,
+        pre_effect_guard=guard,
+    )
+
+    assert events == ["guard", "release"]
+
+
+def test_aseh_r29_historical_live_failed_guard_never_releases_waiter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator.os,
+        "write",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R29 waiter was released after its final guard failed"
+        ),
+    )
+
+    def reject() -> None:
+        raise aseh_operator.OperatorError("injected final effect rejection")
+
+    with pytest.raises(aseh_operator.OperatorError, match="effect rejection"):
+        aseh_operator._r19_release_historical_live_waiter(
+            91,
+            revision=29,
+            pre_effect_guard=reject,
+        )
+
+
+def test_aseh_r29_historical_live_readiness_routes_through_final_guard() -> None:
+    source = inspect.getsource(
+        aseh_operator._run_r19_historical_live_validation
+    )
+    readiness = source.index("R19 historical live readiness differs")
+    release = source.index(
+        "_r19_release_historical_live_waiter(",
+        readiness,
+    )
+    release_close = source.index("os.close(release_write)", release)
+    execution = source.index("execution_deadline =", release)
+
+    assert "os.write(release_write" not in source
+    assert readiness < release < release_close < execution
+
+
+def test_aseh_r29_historical_live_qualifier_binds_active_descendant_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor_head = "a" * 40
+    anchor_tree = "b" * 40
+    active_head = "c" * 40
+    active_tree = "d" * 40
+    anchor_witness = {"identity": "anchor"}
+    active_witness = {"identity": "active-descendant"}
+    attempt = {"identity": "attempt"}
+    receipt = {"identity": "receipt"}
+    r28_path = tmp_path / "repair-r28.json"
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    r29_path = tmp_path / "repair-r29.json"
+    paths = {
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": r28_path,
+        "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+        "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+    }
+    candidate_head = "e" * 40
+    candidate_tree = "f" * 40
+    continuity: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-canonical-merge-suffix@1"
+        ),
+        "base_head": anchor_head,
+        "target_head": active_head,
+        "target_tree": active_tree,
+        "integrations": [
+            {
+                "request_id": "request-1",
+                "task_alias": "ASEH-001",
+                "task_cid": "task-cid-1",
+                "candidate_commit": candidate_head,
+                "candidate_tree": candidate_tree,
+                "integration_commit": active_head,
+                "integration_tree": active_tree,
+                "changed_paths": ["bounded.py"],
+            }
+        ],
+    }
+    continuity["receipt_cid"] = aseh_operator._identity(continuity)
+    qualification: dict[str, object] = {}
+    guard_observation: dict[str, object] = {}
+
+    def qualify(**kwargs: object) -> tuple[dict[str, str], dict[str, str]]:
+        qualification.update(kwargs)
+        return {"policy": "r29"}, {"evidence": "r29"}
+
+    def observe_guard(**kwargs: object) -> None:
+        guard_observation.update(kwargs)
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r19_historical_live_policy",
+        qualify,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_r29_historical_live_effect_admission",
+        observe_guard,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args: (
+            f"{anchor_head} {candidate_head}"
+            if args == ("show", "-s", "--format=%P", active_head)
+            else candidate_tree
+            if args == ("rev-parse", f"{candidate_head}^{{tree}}")
+            else active_tree
+            if args == ("rev-parse", f"{active_head}^{{tree}}")
+            else pytest.fail(f"unexpected Git call: {args!r}")
+        ),
+    )
+
+    result = aseh_operator._qualify_r29_pre_duckdb_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id="sha256:" + ("1" * 64),
+        prior_chain=[],
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=anchor_witness,
+        policy_admission=None,
+        authorizing_receipt_cid="sha256:" + ("2" * 64),
+        authorization_attempt=attempt,
+        authorization_receipt=receipt,
+        active_candidate_head=active_head,
+        active_candidate_tree=active_tree,
+        active_candidate_authorization_witness=active_witness,
+        continuity_admission=continuity,
+    )
+    attempt["identity"] = "mutated"
+    receipt["identity"] = "mutated"
+    anchor_witness["identity"] = "mutated"
+    active_witness["identity"] = "mutated"
+    continuity["target_head"] = "0" * 40
+    paths.clear()
+    guard = qualification["pre_effect_guard"]
+    assert callable(guard)
+    guard()
+
+    assert result == ({"policy": "r29"}, {"evidence": "r29"})
+    assert qualification["_revision"] == 29
+    assert guard_observation == {
+        "paths": {
+            "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": r28_path,
+            "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+            "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+        },
+        "authorization_attempt": {"identity": "attempt"},
+        "authorization_candidate_head": anchor_head,
+        "authorization_candidate_tree": anchor_tree,
+        "authorization_candidate_witness": {"identity": "anchor"},
+        "authorization_receipt": {"identity": "receipt"},
+        "authorizing_receipt_cid": "sha256:" + ("2" * 64),
+        "active_candidate_head": active_head,
+        "active_candidate_tree": active_tree,
+        "active_candidate_witness": {"identity": "active-descendant"},
+        "continuity_admission": {
+            **continuity,
+            "target_head": active_head,
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("changed_gate", "error_match"),
+    [
+        ("candidate", "candidate drift"),
+        ("r28_receipt", "remain absent"),
+        ("authorization_attempt", "attempt differs"),
+    ],
+)
+def test_aseh_r29_historical_live_final_gate_blocks_each_mutation(
+    changed_gate: str,
+    error_match: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    attempt = aseh_operator._r29_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        started_at=1.0,
+    )
+    stored_attempt = (
+        aseh_operator._r29_authorization_attempt_record(
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+            started_at=2.0,
+        )
+        if changed_gate == "authorization_attempt"
+        else attempt
+    )
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    attempt_path.write_text(
+        json.dumps(stored_attempt, separators=(",", ":"), sort_keys=True),
+        encoding="utf-8",
+    )
+    attempt_path.chmod(0o600)
+    r28_path = tmp_path / "repair-r28.json"
+    r29_path = tmp_path / "repair-r29.json"
+    if changed_gate == "r28_receipt":
+        r28_path.write_text("{}", encoding="utf-8")
+    if changed_gate == "candidate":
+        monkeypatch.setattr(
+            aseh_operator,
+            "_assert_candidate_authorization_witness",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                aseh_operator.OperatorError("injected candidate drift")
+            ),
+        )
+    else:
+        monkeypatch.setattr(
+            aseh_operator,
+            "_assert_candidate_authorization_witness",
+            lambda *_args, **_kwargs: pytest.fail(
+                "candidate gate ran after an earlier R29 gate failed"
+            ),
+        )
+    monkeypatch.setattr(
+        aseh_operator.os,
+        "write",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R29 waiter was released after mutable evidence changed"
+        ),
+    )
+
+    def guard() -> None:
+        aseh_operator._assert_r29_historical_live_effect_admission(
+            paths={
+                "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": r28_path,
+                "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+                "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+            },
+            authorization_attempt=attempt,
+            authorization_candidate_head=head,
+            authorization_candidate_tree=tree,
+            authorization_candidate_witness=witness,
+            authorization_receipt=None,
+            authorizing_receipt_cid=None,
+            active_candidate_head=head,
+            active_candidate_tree=tree,
+            active_candidate_witness=witness,
+            continuity_admission=None,
+        )
+
+    with pytest.raises(aseh_operator.OperatorError, match=error_match):
+        aseh_operator._r19_release_historical_live_waiter(
+            91,
+            revision=29,
+            pre_effect_guard=guard,
+        )
+
+
+@pytest.mark.parametrize("receipt_state", ["removed", "replaced"])
+def test_aseh_r29_historical_live_final_gate_blocks_changed_r29_receipt(
+    receipt_state: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    attempt = aseh_operator._r29_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        started_at=1.0,
+    )
+    expected_receipt = {"identity": "expected-r29"}
+    receipt_cid = aseh_operator._identity(expected_receipt)
+    r29_path = tmp_path / "repair-r29.json"
+    if receipt_state == "replaced":
+        r29_path.write_text(
+            json.dumps({"identity": "replacement-r29"}),
+            encoding="utf-8",
+        )
+        r29_path.chmod(0o600)
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    attempt_path.write_text(json.dumps(attempt), encoding="utf-8")
+    attempt_path.chmod(0o600)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_sealed_validation_contract_dispatch_correction_transition_receipt_id",
+        aseh_operator._identity,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: pytest.fail(
+            "candidate gate ran after the R29 receipt gate failed"
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator.os,
+        "write",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R29 waiter was released after its receipt changed"
+        ),
+    )
+
+    def guard() -> None:
+        aseh_operator._assert_r29_historical_live_effect_admission(
+            paths={
+                "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": tmp_path
+                / "repair-r28.json",
+                "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+                "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+            },
+            authorization_attempt=attempt,
+            authorization_candidate_head=head,
+            authorization_candidate_tree=tree,
+            authorization_candidate_witness=witness,
+            authorization_receipt=expected_receipt,
+            authorizing_receipt_cid=receipt_cid,
+            active_candidate_head=head,
+            active_candidate_tree=tree,
+            active_candidate_witness=witness,
+            continuity_admission=None,
+        )
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="transition receipt changed before effect",
+    ):
+        aseh_operator._r19_release_historical_live_waiter(
+            91,
+            revision=29,
+            pre_effect_guard=guard,
+        )
+
+
+@pytest.mark.parametrize("entry_kind", ["regular", "dangling_symlink", "fifo"])
+def test_aseh_r29_preexisting_attempt_denies_revision_retry(
+    entry_kind: str,
+    tmp_path: Path,
+) -> None:
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    if entry_kind == "regular":
+        attempt_path.write_text("{}", encoding="utf-8")
+    elif entry_kind == "dangling_symlink":
+        attempt_path.symlink_to("missing-target")
+    else:
+        os.mkfifo(attempt_path)
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="retry is denied"):
+            aseh_operator._assert_r29_authorization_attempt_absent(
+                attempt_path,
+                authorization_directory_fd=directory_fd,
+            )
+    finally:
+        os.close(directory_fd)
+
+
+def test_aseh_r29_nonregular_receipt_rejected_before_any_effect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r29_path = tmp_path / "repair-r29.json"
+    os.mkfifo(r29_path)
+    chain = _aseh_r29_structural_chain()[:-1]
+    chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    for name in (
+        "_secure_runtime_json",
+        "_run_repair_sealed_validation_contract_dispatch_correction_transition_validations",
+        "_qualify_r29_pre_duckdb_historical_live_policy",
+        "_admit_materialized_launch",
+    ):
+        monkeypatch.setattr(
+            aseh_operator,
+            name,
+            lambda *_args, _name=name, **_kwargs: pytest.fail(
+                f"{_name} ran for a nonregular R29 receipt"
+            ),
+        )
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="not a regular file"):
+            aseh_operator._authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable(
+                board=object(),
+                config={},
+                paths={
+                    "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+                    "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": tmp_path
+                    / "repair-r28.json",
+                    "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": tmp_path
+                    / "repair-r29-attempt.json",
+                },
+                bootstrap={},
+                bootstrap_id="bootstrap",
+                head="9" * 40,
+                previous_receipt=chain[-1],
+                previous_transition=chain[-1],
+                prior_receipt_chain=chain,
+                authorization_directory_fd=directory_fd,
+            )
+    finally:
+        os.close(directory_fd)
+
+
+@pytest.mark.parametrize("stored_state", ["missing", "corrupt", "mismatch"])
+def test_aseh_r29_idempotent_authorization_requires_exact_attempt(
+    stored_state: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r29_path = tmp_path / "repair-r29.json"
+    r29_path.write_text("{}", encoding="utf-8")
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    chain = _aseh_r29_structural_chain()[:-1]
+    chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    expected_attempt = aseh_operator._r29_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        started_at=1.0,
+    )
+    receipt: dict[str, object] = {
+        "repair_head": head,
+        "repair_tree": tree,
+        "candidate_authorization_witness": witness,
+    }
+    if stored_state != "missing":
+        receipt["authorization_attempt"] = expected_attempt
+    stored_attempt: dict[str, object]
+    if stored_state == "corrupt":
+        stored_attempt = {}
+    else:
+        stored_attempt = aseh_operator._r29_authorization_attempt_record(
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+            started_at=2.0 if stored_state == "mismatch" else 1.0,
+        )
+
+    def read(path: Path, **_kwargs: object) -> dict[str, object]:
+        if path == r29_path:
+            return receipt
+        if path == attempt_path:
+            return stored_attempt
+        raise AssertionError(f"unexpected R29 evidence path: {path}")
+
+    monkeypatch.setattr(aseh_operator, "_secure_runtime_json", read)
+    for name in (
+        "_run_repair_sealed_validation_contract_dispatch_correction_transition_validations",
+        "_qualify_r29_pre_duckdb_historical_live_policy",
+        "_admit_materialized_launch",
+    ):
+        monkeypatch.setattr(
+            aseh_operator,
+            name,
+            lambda *_args, _name=name, **_kwargs: pytest.fail(
+                f"{_name} ran before attempt admission"
+            ),
+        )
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="attempt"):
+            aseh_operator._authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable(
+                board=object(),
+                config={},
+                paths={
+                    "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+                    "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": tmp_path
+                    / "repair-r28.json",
+                    "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+                },
+                bootstrap={},
+                bootstrap_id="bootstrap",
+                head="9" * 40,
+                previous_receipt=chain[-1],
+                previous_transition=chain[-1],
+                prior_receipt_chain=chain,
+                authorization_directory_fd=directory_fd,
+            )
+    finally:
+        os.close(directory_fd)
+
+
+def test_aseh_r29_prequalification_rejects_corrupt_persisted_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r29_path = tmp_path / "repair-r29.json"
+    r29_path.write_text("{}", encoding="utf-8")
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    attempt = aseh_operator._r29_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        started_at=1.0,
+    )
+    receipt = {
+        "repair_head": head,
+        "repair_tree": tree,
+        "candidate_authorization_witness": witness,
+        "authorization_attempt": attempt,
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r29_population_requires_policy",
+        lambda _population: True,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_load_exact_r27_receipt_chain",
+        lambda _paths: [{}],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_sealed_validation_contract_dispatch_correction_transition_receipt_id",
+        lambda _receipt: "sha256:" + ("1" * 64),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_validation_contract_dispatch_correction_transition",
+        lambda *_args, **_kwargs: receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: receipt if path == r29_path else {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args: tree
+        if args == ("rev-parse", f"{head}^{{tree}}")
+        else pytest.fail(f"unexpected Git call: {args!r}"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r29_historical_live_policy_admission",
+        lambda *_args, **_kwargs: pytest.fail(
+            "live policy ran before attempt admission"
+        ),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="attempt differs"):
+        aseh_operator._prequalify_r29_historical_live_launch(
+            paths={
+                "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+                "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+                "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": tmp_path
+                / "repair-r28.json",
+            },
+            population={"source_head": head, "repository_tree_id": tree},
+            bootstrap={},
+        )
+
+
+@pytest.mark.parametrize(
+    ("parent_count", "expected_outcome"),
+    [(1, "rejected"), (2, "deferred")],
+)
+def test_aseh_r29_descendant_live_work_waits_for_canonical_continuity(
+    parent_count: int,
+    expected_outcome: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    anchor_head = "a" * 40
+    anchor_tree = "b" * 40
+    active_head = "c" * 40
+    active_tree = "d" * 40
+    candidate_parent = "e" * 40
+    anchor_witness = _aseh_r22_witness(anchor_head, anchor_tree)
+    active_witness = _aseh_r22_witness(active_head, active_tree)
+    attempt = aseh_operator._r29_authorization_attempt_record(
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=anchor_witness,
+        started_at=1.0,
+    )
+    policy = {"policy_admission_cid": "sha256:" + ("1" * 64)}
+    stored_evidence = {"stored": "evidence"}
+    receipt = {
+        "authorization_attempt": attempt,
+        "historical_live_policy_admission": policy,
+        "historical_live_execution_evidence": stored_evidence,
+    }
+    transition = {
+        "repair_head": anchor_head,
+        "repair_tree": anchor_tree,
+        "candidate_authorization_witness": anchor_witness,
+    }
+    r29_path = tmp_path / "repair-r29.json"
+    r29_path.write_text("{}", encoding="utf-8")
+    r29_path.chmod(0o600)
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    receipt_cid = "sha256:" + ("2" * 64)
+    qualifier_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r29_population_requires_policy",
+        lambda _population: True,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_load_exact_r27_receipt_chain",
+        lambda _paths: [{"receipt_cid": "sha256:" + ("3" * 64)}],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: receipt if path == r29_path else attempt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_sealed_validation_contract_dispatch_correction_transition_receipt_id",
+        lambda _receipt: receipt_cid,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_validation_contract_dispatch_correction_transition",
+        lambda *_args, **_kwargs: transition,
+    )
+
+    def git(*args: str) -> str:
+        if args == ("rev-parse", f"{active_head}^{{tree}}"):
+            return active_tree
+        if args == ("merge-base", "--is-ancestor", anchor_head, active_head):
+            return ""
+        if args == ("show", "-s", "--format=%P", active_head):
+            parents = [anchor_head]
+            if parent_count == 2:
+                parents.append(candidate_parent)
+            return " ".join(parents)
+        raise AssertionError(f"unexpected Git call: {args!r}")
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: active_witness,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _bootstrap: "sha256:" + ("4" * 64),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r27_historical_live_validation_executor_contract",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r29_historical_live_policy_admission",
+        lambda *_args, **_kwargs: policy,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r11_validation_environment",
+        lambda _checkout: {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r11_command_environment_identity",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_execution_evidence",
+        lambda *_args, **_kwargs: stored_evidence,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_exact_r29_transition_chain",
+        lambda values: list(values),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r29_pre_duckdb_historical_live_policy",
+        lambda **kwargs: qualifier_calls.append(dict(kwargs))
+        or pytest.fail("R29 live work ran before canonical continuity"),
+    )
+    paths = {
+        "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+        "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": tmp_path
+        / "repair-r28.json",
+    }
+    population = {
+        "source_head": active_head,
+        "repository_tree_id": active_tree,
+    }
+
+    if expected_outcome == "rejected":
+        with pytest.raises(aseh_operator.OperatorError, match="merge commit"):
+            aseh_operator._prequalify_r29_historical_live_launch(
+                paths=paths,
+                population=population,
+                bootstrap={},
+            )
+    else:
+        result = aseh_operator._prequalify_r29_historical_live_launch(
+            paths=paths,
+            population=population,
+            bootstrap={},
+        )
+        assert result is not None
+        assert result["historical_live_deferred"] is True
+        assert result["fresh_evidence"] is None
+        assert result["active_source_head"] == active_head
+        assert result["active_source_tree"] == active_tree
+    assert qualifier_calls == []
+
+
+def test_aseh_r29_deferred_live_completion_follows_canonical_suffix_admission() -> None:
+    source = inspect.getsource(aseh_operator._admit_materialized_launch)
+    proof = source.index("current_proof = _admit_canonical_merge_suffix(")
+    completion = source.index(
+        "_complete_r29_historical_live_prequalification(",
+        proof,
+    )
+    late_receipt = source.index("late_receipt = _secure_runtime_json(", completion)
+
+    assert proof < completion < late_receipt
+
+
+def test_aseh_r29_historical_live_continuity_rejects_minimal_self_hash() -> None:
+    continuity: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-canonical-merge-suffix@1"
+        ),
+        "base_head": "a" * 40,
+        "target_head": "c" * 40,
+        "target_tree": "d" * 40,
+        "integrations": [{"integration_commit": "c" * 40}],
+    }
+    continuity["receipt_cid"] = aseh_operator._identity(continuity)
+
+    with pytest.raises(aseh_operator.OperatorError, match="integration differs"):
+        aseh_operator._validate_r29_historical_live_effect_continuity(
+            continuity,
+            authorization_candidate_head="a" * 40,
+            authorization_candidate_tree="b" * 40,
+            active_candidate_head="c" * 40,
+            active_candidate_tree="d" * 40,
+        )
+
+
+def test_aseh_r29_historical_live_exact_head_rejects_tree_mismatch() -> None:
+    with pytest.raises(aseh_operator.OperatorError, match="head and tree"):
+        aseh_operator._validate_r29_historical_live_effect_continuity(
+            None,
+            authorization_candidate_head="a" * 40,
+            authorization_candidate_tree="b" * 40,
+            active_candidate_head="a" * 40,
+            active_candidate_tree="c" * 40,
+        )
+
+
+def test_aseh_r29_failed_attempt_without_receipt_blocks_older_routes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    attempt_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r29_population_requires_policy",
+        lambda _population: False,
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="retry is denied"):
+        aseh_operator._prequalify_r29_historical_live_launch(
+            paths={
+                "repair_sealed_validation_contract_dispatch_correction_transition_receipt": tmp_path
+                / "repair-r29.json",
+                "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+            },
+            population={},
+            bootstrap={},
+        )
+
+
+def test_aseh_r29_final_owner_start_recheck_rejects_changed_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    admitted_attempt = aseh_operator._r29_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        started_at=1.0,
+    )
+    changed_attempt = aseh_operator._r29_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        started_at=2.0,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: (
+            {"receipt": "r29"} if path == r29_path else changed_attempt
+        ),
+    )
+    receipt_cid = "sha256:" + ("c" * 64)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_sealed_validation_contract_dispatch_correction_transition_receipt_id",
+        lambda _receipt: receipt_cid,
+    )
+    r29_path = tmp_path / "repair-r29.json"
+
+    with pytest.raises(aseh_operator.OperatorError, match="attempt differs"):
+        aseh_operator._recheck_r29_admission_r28_receipt_absence(
+            paths={
+                "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": tmp_path
+                / "repair-r28.json",
+                "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": tmp_path
+                / "repair-r29-attempt.json",
+                "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+            },
+            launch_admission={
+                "repair_transition": {
+                    "schema": (
+                        aseh_operator
+                        .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+                    ),
+                    "repair_head": head,
+                    "repair_tree": tree,
+                    "candidate_authorization_witness": witness,
+                    "authorization_attempt": admitted_attempt,
+                    "receipt_cid": receipt_cid,
+                }
+            },
+        )
+
+
+def test_aseh_r29_owner_start_guard_wraps_both_physical_start_calls() -> None:
+    source = inspect.getsource(aseh_operator._r21_start_server_with_one_safe_retry)
+    admission_guard = inspect.getsource(
+        aseh_operator._recheck_r29_admission_r28_receipt_absence
+    )
+    first_start = source.index("identity = server.start()")
+    retry_start = source.index("identity = fresh_server.start()")
+    guard = "pre_start_guard()"
+    witness = "_assert_candidate_authorization_witness("
+
+    first_guard = source.rfind(guard, 0, first_start)
+    first_witness = source.rfind(witness, 0, first_start)
+    retry_guard = source.rfind(guard, first_start, retry_start)
+    retry_witness = source.rfind(witness, first_start, retry_start)
+    assert first_guard > source.index(
+        '"owner_start_attempt_1"'
+    )
+    assert first_guard < first_witness < first_start
+    assert retry_guard > source.index(
+        '"owner_start_attempt_2"'
+    )
+    assert retry_guard < retry_witness < retry_start
+    assert (
+        "_assert_r29_transition_receipt_effect_authority(" in admission_guard
+    )
+    assert (
+        "repair_sealed_validation_contract_dispatch_correction_"
+        in admission_guard
+    )
+
+
+def test_aseh_r29_owner_start_rechecks_active_witness_after_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    initial = _AsehR21FakeServer(
+        "initial",
+        _aseh_r21_fake_identity("initial"),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(monkeypatch, initial=initial)
+    baseline_complete = False
+
+    def observe(**_kwargs: object) -> dict[str, object]:
+        nonlocal baseline_complete
+        baseline_complete = True
+        return {
+            "database": {"availability": "absent"},
+            "wal": {"availability": "absent"},
+        }
+
+    def assert_witness(*_args: object, **_kwargs: object) -> None:
+        assert baseline_complete
+        raise aseh_operator.OperatorError("injected active candidate drift")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_owner_start_contention_observation",
+        observe,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        assert_witness,
+    )
+    phase = aseh_operator._new_sealed_owner_terminal_phase()
+    with pytest.raises(aseh_operator.OperatorError, match="candidate drift"):
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=context["board"],
+            paths=context["paths"],
+            server=initial,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={"sealed": "witness"},
+            failure={},
+            failure_event=threading.Event(),
+            terminal_phase=phase,
+            r23_permission_context=None,
+            pre_start_guard=lambda: None,
+        )
+
+    assert initial.start_calls == 0
+    assert phase["stage"] == "pre_start_quiescence"
+    assert phase["owner_start_attempted"] is False
+
+
+def test_aseh_r29_owner_retry_rechecks_active_witness_after_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first = _AsehR21FakeServer(
+        "first",
+        _aseh_r21_migration_failure(TimeoutError("lock timeout")),
+        events,
+        live,
+    )
+    retry = _AsehR21FakeServer(
+        "retry",
+        _aseh_r21_fake_identity("retry"),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch,
+        initial=first,
+        retry=retry,
+    )
+    guard_calls = 0
+    witness_calls = 0
+
+    def guard() -> None:
+        nonlocal guard_calls
+        guard_calls += 1
+
+    def assert_witness(*_args: object, **_kwargs: object) -> None:
+        nonlocal witness_calls
+        witness_calls += 1
+        if guard_calls == 2:
+            raise aseh_operator.OperatorError("injected retry candidate drift")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        assert_witness,
+    )
+    phase = aseh_operator._new_sealed_owner_terminal_phase()
+    with pytest.raises(aseh_operator.OperatorError, match="candidate drift"):
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=context["board"],
+            paths=context["paths"],
+            server=first,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={"sealed": "witness"},
+            failure={},
+            failure_event=threading.Event(),
+            terminal_phase=phase,
+            r23_permission_context=None,
+            pre_start_guard=guard,
+        )
+
+    assert guard_calls == 2
+    assert witness_calls == 2
+    assert first.start_calls == 1
+    assert retry.start_calls == 0
+    assert [item["decision"] for item in context["decisions"]] == [
+        "retry_admitted"
+    ]
+    assert phase["stage"] == "owner_start_retry_admission"
+    assert phase["owner_start_attempted"] is True
+
+
+def test_aseh_r29_owner_start_guard_blocks_r28_injected_during_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    initial = _AsehR21FakeServer(
+        "initial",
+        _aseh_r21_fake_identity("initial"),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(monkeypatch, initial=initial)
+    r28_path = tmp_path / "repair-r28.json"
+
+    def observe(**_kwargs: object) -> dict[str, object]:
+        r28_path.write_text("{}", encoding="utf-8")
+        return {
+            "database": {"availability": "absent"},
+            "wal": {"availability": "absent"},
+        }
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_owner_start_contention_observation",
+        observe,
+    )
+    phase = aseh_operator._new_sealed_owner_terminal_phase()
+    with pytest.raises(aseh_operator.OperatorError, match="remain absent"):
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=context["board"],
+            paths=context["paths"],
+            server=initial,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={"sealed": "witness"},
+            failure={},
+            failure_event=threading.Event(),
+            terminal_phase=phase,
+            pre_start_guard=lambda: (
+                aseh_operator._assert_r29_unpublished_r28_receipt_absent(
+                    r28_path
+                )
+            ),
+        )
+
+    assert initial.start_calls == 0
+    assert phase["stage"] == "pre_start_quiescence"
+    assert phase["owner_start_attempted"] is False
+
+
+def test_aseh_r29_owner_start_guard_blocks_r28_before_retry_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first = _AsehR21FakeServer(
+        "first",
+        _aseh_r21_migration_failure(TimeoutError("lock timeout")),
+        events,
+        live,
+    )
+    retry = _AsehR21FakeServer(
+        "retry",
+        _aseh_r21_fake_identity("retry"),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch,
+        initial=first,
+        retry=retry,
+    )
+    r28_path = tmp_path / "repair-r28.json"
+    guard_calls = 0
+
+    def guard() -> None:
+        nonlocal guard_calls
+        guard_calls += 1
+        if guard_calls == 2:
+            r28_path.write_text("{}", encoding="utf-8")
+        aseh_operator._assert_r29_unpublished_r28_receipt_absent(r28_path)
+
+    phase = aseh_operator._new_sealed_owner_terminal_phase()
+    with pytest.raises(aseh_operator.OperatorError, match="remain absent"):
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=context["board"],
+            paths=context["paths"],
+            server=first,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={"sealed": "witness"},
+            failure={},
+            failure_event=threading.Event(),
+            terminal_phase=phase,
+            pre_start_guard=guard,
+        )
+
+    assert guard_calls == 2
+    assert first.start_calls == 1
+    assert retry.start_calls == 0
+    assert [item["decision"] for item in context["decisions"]] == [
+        "retry_admitted"
+    ]
+    assert phase["stage"] == "owner_start_retry_admission"
+    assert phase["owner_start_attempted"] is True
+
+
+@pytest.mark.parametrize("receipt_state", ["removed", "replaced"])
+def test_aseh_r29_owner_start_guard_blocks_changed_receipt_before_first_start(
+    receipt_state: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    initial = _AsehR21FakeServer(
+        "initial",
+        _aseh_r21_fake_identity("initial"),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(monkeypatch, initial=initial)
+    expected_receipt = {"identity": "expected-r29"}
+    receipt_cid = aseh_operator._identity(expected_receipt)
+    r29_path = tmp_path / "repair-r29.json"
+    r29_path.write_text(json.dumps(expected_receipt), encoding="utf-8")
+    r29_path.chmod(0o600)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_sealed_validation_contract_dispatch_correction_transition_receipt_id",
+        aseh_operator._identity,
+    )
+
+    def observe(**_kwargs: object) -> dict[str, object]:
+        if receipt_state == "removed":
+            r29_path.unlink()
+        else:
+            r29_path.write_text(
+                json.dumps({"identity": "replacement-r29"}),
+                encoding="utf-8",
+            )
+            r29_path.chmod(0o600)
+        return {
+            "database": {"availability": "absent"},
+            "wal": {"availability": "absent"},
+        }
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_owner_start_contention_observation",
+        observe,
+    )
+    phase = aseh_operator._new_sealed_owner_terminal_phase()
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="transition receipt changed before effect",
+    ):
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=context["board"],
+            paths=context["paths"],
+            server=initial,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={"sealed": "witness"},
+            failure={},
+            failure_event=threading.Event(),
+            terminal_phase=phase,
+            r23_permission_context=None,
+            pre_start_guard=lambda: (
+                aseh_operator._assert_r29_transition_receipt_effect_authority(
+                    r29_path,
+                    expected_receipt=expected_receipt,
+                    expected_receipt_cid=receipt_cid,
+                )
+            ),
+        )
+
+    assert initial.start_calls == 0
+    assert phase["stage"] == "pre_start_quiescence"
+    assert phase["owner_start_attempted"] is False
+
+
+@pytest.mark.parametrize("receipt_state", ["removed", "replaced"])
+def test_aseh_r29_owner_retry_guard_blocks_changed_receipt_before_retry_start(
+    receipt_state: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first = _AsehR21FakeServer(
+        "first",
+        _aseh_r21_migration_failure(TimeoutError("lock timeout")),
+        events,
+        live,
+    )
+    retry = _AsehR21FakeServer(
+        "retry",
+        _aseh_r21_fake_identity("retry"),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch,
+        initial=first,
+        retry=retry,
+    )
+    expected_receipt = {"identity": "expected-r29"}
+    receipt_cid = aseh_operator._identity(expected_receipt)
+    r29_path = tmp_path / "repair-r29.json"
+    r29_path.write_text(json.dumps(expected_receipt), encoding="utf-8")
+    r29_path.chmod(0o600)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_sealed_validation_contract_dispatch_correction_transition_receipt_id",
+        aseh_operator._identity,
+    )
+    guard_calls = 0
+
+    def guard() -> None:
+        nonlocal guard_calls
+        guard_calls += 1
+        if guard_calls == 2:
+            if receipt_state == "removed":
+                r29_path.unlink()
+            else:
+                r29_path.write_text(
+                    json.dumps({"identity": "replacement-r29"}),
+                    encoding="utf-8",
+                )
+                r29_path.chmod(0o600)
+        aseh_operator._assert_r29_transition_receipt_effect_authority(
+            r29_path,
+            expected_receipt=expected_receipt,
+            expected_receipt_cid=receipt_cid,
+        )
+
+    phase = aseh_operator._new_sealed_owner_terminal_phase()
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="transition receipt changed before effect",
+    ):
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=context["board"],
+            paths=context["paths"],
+            server=first,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={"sealed": "witness"},
+            failure={},
+            failure_event=threading.Event(),
+            terminal_phase=phase,
+            r23_permission_context=None,
+            pre_start_guard=guard,
+        )
+
+    assert guard_calls == 2
+    assert first.start_calls == 1
+    assert retry.start_calls == 0
+    assert [item["decision"] for item in context["decisions"]] == [
+        "retry_admitted"
+    ]
+    assert phase["stage"] == "owner_start_retry_admission"
+    assert phase["owner_start_attempted"] is True
+
+
+@pytest.mark.timeout(2)
+def test_aseh_r29_secure_runtime_json_rejects_fifo_nonblocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fifo_path = tmp_path / "attempt.json"
+    os.mkfifo(fifo_path)
+    real_open = os.open
+    observed_flags: list[int] = []
+
+    def guarded_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        if path == fifo_path.name:
+            observed_flags.append(flags)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(aseh_operator.os, "open", guarded_open)
+    with pytest.raises(aseh_operator.OperatorError, match="identity is unsafe"):
+        aseh_operator._secure_runtime_json(fifo_path, max_bytes=1024)
+
+    assert len(observed_flags) == 1
+    assert observed_flags[0] & os.O_NONBLOCK
+
+
+def test_aseh_r29_secure_runtime_json_rejects_symlinked_parent(
+    tmp_path: Path,
+) -> None:
+    authority = tmp_path / "authority"
+    authority.mkdir()
+    receipt = authority / "receipt.json"
+    receipt.write_text('{"sealed":true}', encoding="utf-8")
+    receipt.chmod(0o600)
+    alias = tmp_path / "authority-alias"
+    alias.symlink_to(authority, target_is_directory=True)
+
+    with pytest.raises(OSError):
+        aseh_operator._secure_runtime_json(
+            alias / receipt.name,
+            max_bytes=1024,
+        )
+
+
+def test_aseh_r29_secure_runtime_json_detects_rewrite_with_restored_mtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = tmp_path / "receipt.json"
+    original_bytes = b'{"value":"aaaa"}'
+    replacement_bytes = b'{"value":"bbbb"}'
+    assert len(original_bytes) == len(replacement_bytes)
+    receipt.write_bytes(original_bytes)
+    receipt.chmod(0o600)
+    original = receipt.stat()
+    real_read = os.read
+    rewritten = False
+
+    def rewrite_after_read(descriptor: int, size: int) -> bytes:
+        nonlocal rewritten
+        observed = real_read(descriptor, size)
+        if not rewritten:
+            rewritten = True
+            with receipt.open("r+b") as handle:
+                handle.write(replacement_bytes)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.utime(
+                receipt,
+                ns=(original.st_atime_ns, original.st_mtime_ns),
+            )
+            changed = receipt.stat()
+            assert changed.st_ino == original.st_ino
+            assert changed.st_size == original.st_size
+            assert changed.st_mtime_ns == original.st_mtime_ns
+            assert changed.st_ctime_ns != original.st_ctime_ns
+        return observed
+
+    monkeypatch.setattr(aseh_operator.os, "read", rewrite_after_read)
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="runtime authority file changed during read",
+    ):
+        aseh_operator._secure_runtime_json(receipt, max_bytes=1024)
+
+    assert rewritten is True
+    assert receipt.read_bytes() == replacement_bytes
+
+
+def test_aseh_r29_atomic_publication_verification_is_nonblocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt_path = tmp_path / "receipt.json"
+    real_open = os.open
+    verification_flags: list[int] = []
+
+    def guarded_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        if path == receipt_path.name:
+            verification_flags.append(flags)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(aseh_operator.os, "open", guarded_open)
+    aseh_operator._atomic_json_create(receipt_path, {"sealed": True})
+
+    assert len(verification_flags) == 1
+    assert verification_flags[0] & os.O_NONBLOCK
+
+
+@pytest.mark.parametrize("injection_stage", ["validation", "historical_live"])
+def test_aseh_r29_authorizer_rechecks_r28_after_each_effect_stage(
+    injection_stage: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    )
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    chain = _aseh_r29_structural_chain()[:-1]
+    chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+
+    def git(*args: str) -> str:
+        if args == ("show", "-s", "--format=%P", head):
+            return base
+        if args == ("rev-parse", f"{base}^{{tree}}"):
+            return (
+                aseh_operator
+                .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+            )
+        if args == ("show", "-s", "--format=%P", base):
+            return aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_HEAD
+        if args == (
+            "rev-parse",
+            f"{aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_HEAD}^{{tree}}",
+        ):
+            return aseh_operator.ASEH_R29_PUBLISHED_R27_BASE_TREE
+        if args == (
+            "rev-parse",
+            f"{base}:scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        ):
+            return aseh_operator.ASEH_R29_FAILED_R28_DISPATCH_SOURCE_BLOB_OID
+        if args == ("rev-parse", f"{head}^{{tree}}"):
+            return tree
+        raise AssertionError(f"unexpected Git call: {args!r}")
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda start, finish: (
+            aseh_operator
+            .REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_CHANGED_PATHS
+            if start == base and finish == head
+            else aseh_operator.ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: witness,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r28_r27_initial_health_failure_evidence",
+        lambda **_kwargs: (
+            aseh_operator._r28_expected_r27_initial_health_failure_evidence()
+        ),
+    )
+    r28_path = tmp_path / "repair-r28.json"
+    r29_path = tmp_path / "repair-r29.json"
+    attempt_path = tmp_path / "repair-r29-attempt.json"
+    events: list[str] = []
+
+    def validate(**_kwargs: object) -> list[dict[str, object]]:
+        events.append("validation")
+        if injection_stage == "validation":
+            r28_path.write_text("{}", encoding="utf-8")
+        return []
+
+    def qualify(**_kwargs: object) -> tuple[dict[str, str], dict[str, str]]:
+        events.append("historical_live")
+        if injection_stage == "historical_live":
+            r28_path.write_text("{}", encoding="utf-8")
+        return {"policy": "r29"}, {"evidence": "r29"}
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_sealed_validation_contract_dispatch_correction_transition_validations",
+        validate,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r29_pre_duckdb_historical_live_policy",
+        qualify,
+    )
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="unpublished R28"):
+            aseh_operator._authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable(
+                board=object(),
+                config={},
+                paths={
+                    "repair_sealed_validation_contract_dispatch_correction_transition_receipt": r29_path,
+                    "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": r28_path,
+                    "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": attempt_path,
+                },
+                bootstrap={},
+                bootstrap_id="bootstrap",
+                head=head,
+                previous_receipt=chain[-1],
+                previous_transition=chain[-1],
+                prior_receipt_chain=chain,
+                authorization_directory_fd=directory_fd,
+            )
+    finally:
+        os.close(directory_fd)
+
+    assert attempt_path.is_file()
+    assert not r29_path.exists()
+    assert events == (
+        ["validation"]
+        if injection_stage == "validation"
+        else ["validation", "historical_live"]
+    )

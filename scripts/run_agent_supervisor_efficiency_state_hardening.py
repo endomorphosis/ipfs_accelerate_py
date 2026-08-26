@@ -16,6 +16,7 @@ import fcntl
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import re
 import select
@@ -29,7 +30,7 @@ import threading
 import time
 import traceback
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -135,6 +136,10 @@ ASEH_R28_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r28-historical-live-policy-admission@1"
 )
+ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r29-historical-live-policy-admission@1"
+)
 ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r27-historical-live-execution@1"
@@ -237,6 +242,14 @@ ASEH_R27_R26_TERMINAL_FAILURE_EVIDENCE_SCHEMA: Final = (
 ASEH_R28_R27_INITIAL_HEALTH_FAILURE_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r28-r27-initial-health-failure-evidence@1"
+)
+ASEH_R29_R28_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r29-r28-authorization-failure-evidence@1"
+)
+ASEH_R29_AUTHORIZATION_ATTEMPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r29-authorization-attempt@1"
 )
 ASEH_R21_OWNER_START_RECOVERY_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -3166,6 +3179,116 @@ REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_NON_SUCCESS: Final 
     "retry, inferred scheduler return code, live database access during pure "
     "evidence capture, gate reduction, or self-authorized promotion is rejected."
 )
+REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-sealed-validation-contract-dispatch-correction-"
+    "transition@1"
+)
+REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD: Final = (
+    "48e8327d9d95a886248d74278aba2e0085a4e90c"
+)
+REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE: Final = (
+    "266c1e030f80a276d30a5c5a4ee52d118f96f114"
+)
+REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_CHANGED_PATHS: Final = (
+    "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+)
+ASEH_R29_PUBLISHED_R27_BASE_HEAD: Final = (
+    REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+)
+ASEH_R29_PUBLISHED_R27_BASE_TREE: Final = (
+    REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+)
+ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS: Final = (
+    REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_CHANGED_PATHS
+)
+ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID: Final = (
+    "sha256:40c52be7c0ae15c82f2c3f639c808c7c32c9a47276ed4fca60130515d695abd9"
+)
+ASEH_R29_FAILED_R28_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:aae175c1ff76422d986dfe6e5ff5c3fa8f93362c6d7a0ce8ec0f9807b3b606b2"
+)
+ASEH_R29_FAILED_R28_FIRST_VALIDATION_ARGV_CID: Final = (
+    "sha256:4bcc9cf01e20804922954515532f618eee0ad9f5dfd1121b13817cdfc66d8e76"
+)
+ASEH_R29_FAILED_R28_AUTHORIZATION_ARGV: Final = (
+    "python3",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "--config",
+    "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
+    "authorize-repair-transition",
+)
+ASEH_R29_FAILED_R28_DISPATCH_SOURCE_BLOB_OID: Final = (
+    "3e95c1b7d59221ac0438c19c27e57521dfb2551e"
+)
+ASEH_R29_FAILED_R28_DISPATCH_SOURCE_SHA256: Final = (
+    "sha256:55a31a1a520ce4b953095e507fd8db01fa5f313960905f2e8bc0ac38ad666090"
+)
+ASEH_R29_FAILED_R28_DISPATCH_FUNCTION_SHA256: Final = (
+    "sha256:88115309b67c9161bd775606c7ea09ccf2666ea6c87ccac310c3328da3b9a257"
+)
+REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+        "-k",
+        (
+            "aseh_r27_ or aseh_r28_ or aseh_r29_ or "
+            "delegates_r28_before_suffix_admission or "
+            "delegates_r29_before or entry_"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        ASEH_R29_PUBLISHED_R27_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue repairing the existing canonical supervisor through one exact "
+    "R29 child of published R27 after R28 authorization failed before receipt "
+    "publication"
+)
+REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SUCCESS: Final = (
+    "The exact published R29 child retains immutable R1-R27 receipts, records "
+    "R28's non-authoritative authorization failure without retrying R28, and "
+    "seals the complete unreceipted R27-to-R29 effective delta while correcting "
+    "the missing R28 contract/classifier entries in the existing validation "
+    "dispatch path."
+)
+REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_NON_SUCCESS: Final = (
+    "Any R28 receipt or retry, different R27 receipt, R28 candidate, failed "
+    "argv, exit, error, executor-contract identity, source proof, dispatch "
+    "correction, immediate or effective changed path, unsealed inherited R28 "
+    "change, validation reduction, live database or DuckLake effect, provider "
+    "effect, or self-authorized promotion is rejected."
+)
 ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS: Final = (
     "sha256:498dae56cef1484c43a318a88dd02155ecf56a4de9b611085ca0098fbc3cf9d8",
     "sha256:e08514ca997ab6aaf6dffe566124fe6fb7b6c4824b4cd6b0dfc90274141a24ca",
@@ -3218,6 +3341,10 @@ ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS: Final = (
 ASEH_R28_EXACT_R1_R27_RECEIPT_CIDS: Final = (
     *ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS,
     ASEH_R28_EXACT_R27_REPAIR_RECEIPT_CID,
+)
+ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS: Final = (
+    *ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS,
+    ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID,
 )
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
@@ -3298,6 +3425,10 @@ ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R28_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_SCHEMA,
+)
+ASEH_R29_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -3444,6 +3575,22 @@ REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_RECEIPT_FIELDS:
 REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_RECEIPT_FIELDS
     | frozenset({"r27_initial_health_failure_evidence"})
+)
+REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_RECEIPT_FIELDS
+    | frozenset(
+        {
+            "r27_initial_health_failure_evidence",
+            "r28_authorization_failure_evidence",
+            "published_r27_base_head",
+            "published_r27_base_tree",
+            "failed_unpublished_r28_head",
+            "failed_unpublished_r28_tree",
+            "unreceipted_effective_changed_paths",
+            "unreceipted_effective_patch_digest",
+            "authorization_attempt",
+        }
+    )
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -3752,7 +3899,8 @@ def _atomic_json_create(
                 path.name,
                 os.O_RDONLY
                 | getattr(os, "O_CLOEXEC", 0)
-                | getattr(os, "O_NOFOLLOW", 0),
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0),
                 dir_fd=directory_fd,
             )
             try:
@@ -3969,42 +4117,55 @@ def _r19_historical_live_lifecycle_guard(
 
 
 def _secure_runtime_json(path: Path, *, max_bytes: int) -> dict[str, Any]:
-    """Read one same-UID, single-link runtime object without following links."""
+    """Read one same-UID runtime object through an anchored parent namespace."""
 
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     if not nofollow:
         raise OperatorError("runtime authority reads require O_NOFOLLOW")
-    descriptor = os.open(
-        path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | nofollow
-    )
-    try:
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or opened.st_uid != os.geteuid()
-            or opened.st_nlink != 1
-            or stat.S_IMODE(opened.st_mode) != 0o600
-            or opened.st_size <= 0
-            or opened.st_size > max_bytes
-        ):
-            raise OperatorError("runtime authority file identity is unsafe")
-        chunks: list[bytes] = []
-        remaining = int(opened.st_size)
-        while remaining:
-            chunk = os.read(descriptor, min(remaining, 65_536))
-            if not chunk:
-                raise OperatorError("runtime authority file was truncated")
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        after = os.fstat(descriptor)
-    finally:
-        os.close(descriptor)
-    path_after = os.lstat(path)
+    if path.name in {"", ".", ".."} or "/" in path.name:
+        raise OperatorError("runtime authority file name is unsafe")
+    with _anchored_directory_descriptor(path.parent) as directory_fd:
+        descriptor = os.open(
+            path.name,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | nofollow,
+            dir_fd=directory_fd,
+        )
+        try:
+            opened = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_uid != os.geteuid()
+                or opened.st_nlink != 1
+                or stat.S_IMODE(opened.st_mode) != 0o600
+                or opened.st_size <= 0
+                or opened.st_size > max_bytes
+            ):
+                raise OperatorError("runtime authority file identity is unsafe")
+            chunks: list[bytes] = []
+            remaining = int(opened.st_size)
+            while remaining:
+                chunk = os.read(descriptor, min(remaining, 65_536))
+                if not chunk:
+                    raise OperatorError("runtime authority file was truncated")
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        path_after = os.stat(
+            path.name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
 
     def identity(value: os.stat_result) -> tuple[int, ...]:
         return (
             value.st_dev, value.st_ino, value.st_mode, value.st_uid,
             value.st_nlink, value.st_size, value.st_mtime_ns,
+            value.st_ctime_ns,
         )
 
     if (
@@ -6157,6 +6318,271 @@ def _r28_r27_initial_health_failure_evidence(
     )
 
 
+def _r29_expected_r28_authorization_failure_evidence() -> dict[str, Any]:
+    """Return the exact non-authoritative R28 authorization-failure record."""
+
+    evidence: dict[str, Any] = {
+        "schema": ASEH_R29_R28_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA,
+        "authority": "non_authoritative_operator_observation",
+        "published_parent_head": (
+            REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "published_parent_tree": (
+            REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        ),
+        "published_parent_receipt_cid": ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID,
+        "failed_candidate_head": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "failed_candidate_tree": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        ),
+        "attempted_transition_revision": 28,
+        "attempted_executor_contract_cid": (
+            ASEH_R29_FAILED_R28_VALIDATION_EXECUTOR_CONTRACT_CID
+        ),
+        "attempted_first_validation_argv_sha256": (
+            ASEH_R29_FAILED_R28_FIRST_VALIDATION_ARGV_CID
+        ),
+        "authorization_argv": list(ASEH_R29_FAILED_R28_AUTHORIZATION_ARGV),
+        "ok": False,
+        "exit_code": 1,
+        "error_type": "OperatorError",
+        "error_message": "sealed validation executor contract is unknown",
+        "stdout_classification": "structured_operator_json",
+        "stderr_classification": "empty",
+        "raw_stream_bytes_preserved": False,
+        "stdout_digest": None,
+        "stderr_digest": None,
+        "digest_availability": (
+            "unavailable_raw_stream_bytes_not_preserved"
+        ),
+        "r28_receipt_published": False,
+        "r28_retry_authorized": False,
+        "validator_effect": "none_observed",
+        "historical_live_effect": "none_observed",
+        "provider_effect": "none_observed",
+        "database_effect": "none_observed",
+        "ducklake_effect": "none_observed",
+        "effect_observation_authority": (
+            "non_authoritative_operator_report_plus_deterministic_dispatch_"
+            "source_proof"
+        ),
+        "dispatch_source_proof": {
+            "candidate_head": (
+                REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+            ),
+            "candidate_tree": (
+                REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+            ),
+            "source_path": (
+                "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+            ),
+            "source_blob_oid": ASEH_R29_FAILED_R28_DISPATCH_SOURCE_BLOB_OID,
+            "source_sha256": ASEH_R29_FAILED_R28_DISPATCH_SOURCE_SHA256,
+            "function_name": (
+                "_admit_sealed_receipt_validation_executor_contract"
+            ),
+            "function_source_sha256": (
+                ASEH_R29_FAILED_R28_DISPATCH_FUNCTION_SHA256
+            ),
+            "function_start_line": 10596,
+            "function_end_line": 10680,
+            "defined_contract_revision": 28,
+            "defined_classifier_revision": 28,
+            "dispatched_contract_revisions": list(range(16, 28)),
+            "dispatched_classifier_revisions": list(range(16, 28)),
+            "undispatched_contract_revision": 28,
+            "undispatched_classifier_revision": 28,
+            "terminal_error_branch": (
+                "sealed validation executor contract is unknown"
+            ),
+        },
+    }
+    evidence["evidence_cid"] = _identity(evidence)
+    return evidence
+
+
+def _r29_authorization_attempt_record(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    started_at: float,
+) -> dict[str, Any]:
+    """Create the durable one-shot fence before any R29 executable stage."""
+
+    witness = dict(candidate_authorization_witness)
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or type(started_at) not in {int, float}
+        or not math.isfinite(float(started_at))
+        or float(started_at) <= 0.0
+    ):
+        raise OperatorError("R29 authorization attempt identity is invalid")
+    attempt: dict[str, Any] = {
+        "schema": ASEH_R29_AUTHORIZATION_ATTEMPT_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 29,
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "published_r27_receipt_cid": ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID,
+        "failed_unpublished_r28_head": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "failed_unpublished_r28_tree": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        ),
+        "authorization_argv": list(ASEH_R29_FAILED_R28_AUTHORIZATION_ARGV),
+        "validation_executor_contract_cid": _identity(
+            _r29_sealed_receipt_validation_executor_contract()
+        ),
+        "candidate_authorization_witness_cid": _identity(witness),
+        "attempt_state": "started_before_validator_or_live_effect",
+        "retry_authorized": False,
+        "validator_effect": "not_observed_at_attempt_creation",
+        "historical_live_effect": "not_observed_at_attempt_creation",
+        "provider_effect": "not_observed_at_attempt_creation",
+        "database_effect": "not_observed_at_attempt_creation",
+        "ducklake_effect": "not_observed_at_attempt_creation",
+        "started_at": float(started_at),
+    }
+    attempt["attempt_cid"] = _identity(attempt)
+    return _validate_r29_authorization_attempt_record(
+        attempt,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=witness,
+    )
+
+
+def _validate_r29_authorization_attempt_record(
+    value: Mapping[str, Any],
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+) -> dict[str, Any]:
+    """Admit only the create-once R29 attempt fence for this candidate."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R29 authorization attempt is invalid")
+    attempt = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "transition_revision",
+        "candidate_head",
+        "candidate_tree",
+        "published_r27_receipt_cid",
+        "failed_unpublished_r28_head",
+        "failed_unpublished_r28_tree",
+        "authorization_argv",
+        "validation_executor_contract_cid",
+        "candidate_authorization_witness_cid",
+        "attempt_state",
+        "retry_authorized",
+        "validator_effect",
+        "historical_live_effect",
+        "provider_effect",
+        "database_effect",
+        "ducklake_effect",
+        "started_at",
+        "attempt_cid",
+    }
+    unsigned = dict(attempt)
+    attempt_cid = str(unsigned.pop("attempt_cid", "") or "")
+    if (
+        set(attempt) != fields
+        or attempt.get("schema") != ASEH_R29_AUTHORIZATION_ATTEMPT_SCHEMA
+        or attempt.get("program_id") != PROGRAM
+        or attempt.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or attempt.get("transition_revision") != 29
+        or attempt.get("candidate_head") != candidate_head
+        or attempt.get("candidate_tree") != candidate_tree
+        or attempt.get("published_r27_receipt_cid")
+        != ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+        or attempt.get("failed_unpublished_r28_head")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        or attempt.get("failed_unpublished_r28_tree")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        or attempt.get("authorization_argv")
+        != list(ASEH_R29_FAILED_R28_AUTHORIZATION_ARGV)
+        or attempt.get("validation_executor_contract_cid")
+        != _identity(_r29_sealed_receipt_validation_executor_contract())
+        or attempt.get("candidate_authorization_witness_cid")
+        != _identity(dict(candidate_authorization_witness))
+        or attempt.get("attempt_state")
+        != "started_before_validator_or_live_effect"
+        or attempt.get("retry_authorized") is not False
+        or any(
+            attempt.get(name) != "not_observed_at_attempt_creation"
+            for name in (
+                "validator_effect",
+                "historical_live_effect",
+                "provider_effect",
+                "database_effect",
+                "ducklake_effect",
+            )
+        )
+        or type(attempt.get("started_at")) not in {int, float}
+        or not math.isfinite(float(attempt["started_at"]))
+        or float(attempt["started_at"]) <= 0.0
+        or attempt_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R29 authorization attempt differs")
+    return attempt
+
+
+def _validate_r29_r28_authorization_failure_evidence(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit the exact failed R28 authorization report, never as live proof."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R29 R28 authorization failure evidence is invalid")
+    evidence = dict(value)
+    expected = _r29_expected_r28_authorization_failure_evidence()
+    unsigned = dict(evidence)
+    evidence_cid = str(unsigned.pop("evidence_cid", "") or "")
+    source_proof = evidence.get("dispatch_source_proof")
+    if (
+        evidence != expected
+        or evidence.get("schema")
+        != ASEH_R29_R28_AUTHORIZATION_FAILURE_EVIDENCE_SCHEMA
+        or evidence.get("authority")
+        != "non_authoritative_operator_observation"
+        or evidence.get("attempted_executor_contract_cid")
+        != _identity(_r28_sealed_receipt_validation_executor_contract())
+        or evidence.get("attempted_first_validation_argv_sha256")
+        != _identity(
+            list(
+                REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_VALIDATIONS[
+                    0
+                ]
+            )
+        )
+        or evidence.get("ok") is not False
+        or evidence.get("exit_code") != 1
+        or evidence.get("raw_stream_bytes_preserved") is not False
+        or evidence.get("stdout_digest") is not None
+        or evidence.get("stderr_digest") is not None
+        or evidence.get("r28_receipt_published") is not False
+        or evidence.get("r28_retry_authorized") is not False
+        or not isinstance(source_proof, Mapping)
+        or source_proof.get("undispatched_contract_revision") != 28
+        or source_proof.get("undispatched_classifier_revision") != 28
+        or evidence_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R29 R28 authorization failure evidence differs")
+    return evidence
+
+
 def _repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt_id(
     payload: Mapping[str, Any],
 ) -> str:
@@ -6462,6 +6888,158 @@ def _repair_sealed_owner_initial_health_scheduler_exit_transition_receipt_id(
     return receipt_id
 
 
+def _repair_sealed_validation_contract_dispatch_correction_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-29 direct-R27 dispatch-correction receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    policy_value = payload.get("historical_live_policy_admission")
+    historical_value = payload.get("historical_live_execution_evidence")
+    failure_value = payload.get("projection_recovery_failure_evidence")
+    preflight_value = payload.get("r25_preflight_failure_evidence")
+    proof_value = payload.get("projection_recovery_prestart_admission")
+    r26_terminal_value = payload.get("r26_terminal_failure_evidence")
+    r27_failure_value = payload.get("r27_initial_health_failure_evidence")
+    r28_failure_value = payload.get("r28_authorization_failure_evidence")
+    attempt_value = payload.get("authorization_attempt")
+    policy = (
+        _validate_r29_historical_live_policy_admission_record(policy_value)
+        if isinstance(policy_value, Mapping)
+        else None
+    )
+    historical = (
+        dict(historical_value) if isinstance(historical_value, Mapping) else {}
+    )
+    unsigned_historical = dict(historical)
+    historical_cid = str(unsigned_historical.pop("evidence_cid", "") or "")
+    failure = (
+        _validate_r25_projection_recovery_failure_evidence(failure_value)
+        if isinstance(failure_value, Mapping)
+        else None
+    )
+    preflight = (
+        _validate_r26_r25_preflight_failure_evidence(preflight_value)
+        if isinstance(preflight_value, Mapping)
+        else None
+    )
+    proof = (
+        _validate_r26_projection_recovery_prestart_admission(
+            proof_value,
+            expected_failure_evidence_cid=(
+                str(failure.get("evidence_cid") or "")
+                if isinstance(failure, Mapping)
+                else ""
+            ),
+            expected_preflight_failure_evidence_cid=(
+                str(preflight.get("evidence_cid") or "")
+                if isinstance(preflight, Mapping)
+                else ""
+            ),
+        )
+        if isinstance(proof_value, Mapping)
+        else None
+    )
+    r26_terminal = (
+        _validate_r27_r26_terminal_failure_evidence(r26_terminal_value)
+        if isinstance(r26_terminal_value, Mapping)
+        else None
+    )
+    r27_failure = (
+        _validate_r28_r27_initial_health_failure_evidence(r27_failure_value)
+        if isinstance(r27_failure_value, Mapping)
+        else None
+    )
+    r28_failure = (
+        _validate_r29_r28_authorization_failure_evidence(r28_failure_value)
+        if isinstance(r28_failure_value, Mapping)
+        else None
+    )
+    attempt = (
+        _validate_r29_authorization_attempt_record(
+            attempt_value,
+            candidate_head=str(payload.get("repair_head") or ""),
+            candidate_tree=str(payload.get("repair_tree") or ""),
+            candidate_authorization_witness=witness,
+        )
+        if isinstance(attempt_value, Mapping) and isinstance(witness, Mapping)
+        else None
+    )
+    if (
+        payload.get("schema")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 29
+        or payload.get("previous_receipt_cid")
+        != ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+        or payload.get("published_r27_base_head")
+        != ASEH_R29_PUBLISHED_R27_BASE_HEAD
+        or payload.get("published_r27_base_tree")
+        != ASEH_R29_PUBLISHED_R27_BASE_TREE
+        or payload.get("failed_unpublished_r28_head")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        or payload.get("failed_unpublished_r28_tree")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        or payload.get("unreceipted_effective_changed_paths")
+        != list(ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS)
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(payload.get("unreceipted_effective_patch_digest") or ""),
+        )
+        is None
+        or payload.get("terminal_success_criteria")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r29_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+        or not isinstance(policy, Mapping)
+        or not isinstance(failure, Mapping)
+        or not isinstance(preflight, Mapping)
+        or not isinstance(proof, Mapping)
+        or not isinstance(r26_terminal, Mapping)
+        or not isinstance(r27_failure, Mapping)
+        or not isinstance(r28_failure, Mapping)
+        or not isinstance(attempt, Mapping)
+        or type(payload.get("authorized_at")) not in {int, float}
+        or not math.isfinite(float(payload["authorized_at"]))
+        or float(payload["authorized_at"]) < float(attempt["started_at"])
+        or policy.get("bootstrap_receipt_id")
+        != payload.get("bootstrap_receipt_id")
+        or policy.get("previous_receipt_cid")
+        != ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+        or policy.get("candidate_head") != payload.get("repair_head")
+        or policy.get("candidate_tree") != payload.get("repair_tree")
+        or policy.get("candidate_authorization_witness_cid")
+        != _identity(dict(witness))
+        or historical.get("schema") != ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
+        or historical.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or historical.get("authorizing_receipt_cid") is not None
+        or historical.get("returncode") != 0
+        or historical.get("terminal_class") != "verified_success"
+        or historical_cid != _identity(unsigned_historical)
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed validation contract dispatch correction "
+            "schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair sealed validation contract dispatch correction "
+            "CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -6698,6 +7276,9 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r28 = globals().get(
         "REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_VALIDATIONS"
     )
+    r29 = globals().get(
+        "REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
@@ -6714,6 +7295,7 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         *((r26,) if isinstance(r26, Sequence) else ()),
         *((r27,) if isinstance(r27, Sequence) else ()),
         *((r28,) if isinstance(r28, Sequence) else ()),
+        *((r29,) if isinstance(r29, Sequence) else ()),
     )
 
 
@@ -7919,6 +8501,78 @@ def _r28_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
             "historical_live_route": _r27_historical_live_executor_contract(),
             "scope": (
                 "r28_authorization_pre_duckdb_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _r29_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend published R27 while binding the unpublished R28 dispatch miss."""
+
+    parent = _r27_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if parent_cid != ASEH_R27_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID:
+        raise OperatorError("historical R27 validation contract drifted")
+    failed_r28 = _r28_sealed_receipt_validation_executor_contract()
+    if (
+        _identity(failed_r28)
+        != ASEH_R29_FAILED_R28_VALIDATION_EXECUTOR_CONTRACT_CID
+    ):
+        raise OperatorError("unpublished R28 validation contract drifted")
+    matrix = (
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS
+    )
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r29_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r29-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 29,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": _r27_historical_live_executor_contract(),
+            "unpublished_r28_executor_contract_cid": (
+                ASEH_R29_FAILED_R28_VALIDATION_EXECUTOR_CONTRACT_CID
+            ),
+            "unpublished_r28_first_validation_argv_sha256": (
+                ASEH_R29_FAILED_R28_FIRST_VALIDATION_ARGV_CID
+            ),
+            "scope": (
+                "r29_authorization_pre_duckdb_and_materialized_launch_"
                 "admission_only"
             ),
         }
@@ -9997,6 +10651,222 @@ def _admit_r28_historical_live_policy_admission(
     return supplied
 
 
+def _validate_r29_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate R29's policy on the exact published R27 live route."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R29 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "policy_revision",
+        "authorization_basis",
+        "bootstrap_receipt_id",
+        "prior_receipt_count",
+        "prior_receipt_cids",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_base_head",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    unsigned = dict(supplied)
+    policy_cid = str(unsigned.pop("policy_admission_cid", "") or "")
+    digest_fields = (
+        "bootstrap_receipt_id",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+    )
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 29
+        or supplied.get("authorization_basis")
+        != "validated_r1_r27_chain_plus_observed_r29_candidate_witness"
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or supplied.get("prior_receipt_cids")
+        != list(ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS)
+        or supplied.get("prior_receipt_chain_cid")
+        != _identity(list(ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS))
+        or supplied.get("previous_receipt_cid")
+        != ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS[-1]
+        or supplied.get("candidate_base_head")
+        != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(supplied.get(field) or "")
+            )
+            is None
+            for field in digest_fields
+        )
+        or supplied.get("executor_contract_cid")
+        != _identity(_r27_historical_live_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R29 historical live policy admission differs")
+    return supplied
+
+
+def _r29_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build R29 authority directly on published R27's preserved route."""
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None:
+        raise OperatorError("R29 historical live bootstrap identity is invalid")
+    admitted_chain = _admit_exact_r27_transition_chain(list(prior_chain))
+    receipt_cids = tuple(str(item["receipt_cid"]) for item in admitted_chain)
+    if (
+        receipt_cids != ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS
+        or any(
+            item.get("bootstrap_receipt_id") != bootstrap_receipt_id
+            for item in admitted_chain
+        )
+        or admitted_chain[-1].get("repair_head")
+        != REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError("R29 historical live prior receipt vector differs")
+    witness = dict(candidate_authorization_witness)
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+        or re.fullmatch(
+            r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*",
+            str(witness.get("branch_ref") or ""),
+        )
+        is None
+        or ".." in str(witness.get("branch_ref") or "")
+        or "//" in str(witness.get("branch_ref") or "")
+        or str(witness.get("branch_ref") or "").endswith(("/", ".lock"))
+        or witness.get("status_digest") != _identity(b"")
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", witness[field]) is None
+            for field in (
+                "index_entries_digest",
+                "index_flags_digest",
+                "status_digest",
+                "head_reflog_digest",
+                "branch_reflog_digest",
+            )
+        )
+    ):
+        raise OperatorError(
+            "R29 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    expected_contract = _r27_historical_live_validation_executor_contract()
+    if admitted_contract != expected_contract:
+        raise OperatorError("R29 historical live executor contract differs")
+    admission: dict[str, Any] = {
+        "schema": ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 29,
+        "authorization_basis": (
+            "validated_r1_r27_chain_plus_observed_r29_candidate_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_cids": list(receipt_cids),
+        "prior_receipt_chain_cid": _identity(list(receipt_cids)),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r29_historical_live_policy_admission_record(admission)
+
+
+def _admit_r29_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit only R29's exact direct-R27 policy and unchanged route."""
+
+    supplied = _validate_r29_historical_live_policy_admission_record(value)
+    expected = _r29_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+    )
+    if supplied != expected:
+        raise OperatorError("R29 historical live policy admission is unknown")
+    return supplied
+
+
 def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
     """Return the only admitted historical-live policy revision."""
 
@@ -10021,6 +10891,8 @@ def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
         return 27
     if schema == ASEH_R28_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
         return 28
+    if schema == ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 29
     raise OperatorError("historical live policy schema is unknown")
 
 
@@ -10224,6 +11096,7 @@ def _r19_active_policy_scope(
     executor_contract: Mapping[str, Any],
     authorizing_receipt_cid: str | None,
     lifecycle_lock_identity: Mapping[str, Any],
+    pre_effect_guard: Callable[[], None] | None = None,
 ) -> Any:
     """Expose one typed, fenced R19 policy for one exact live call."""
 
@@ -10247,8 +11120,16 @@ def _r19_active_policy_scope(
         26: _validate_r26_historical_live_policy_admission_record,
         27: _validate_r27_historical_live_policy_admission_record,
         28: _validate_r28_historical_live_policy_admission_record,
+        29: _validate_r29_historical_live_policy_admission_record,
     }[revision]
     policy = policy_validator(policy_admission)
+    if (
+        (revision == 29 and not callable(pre_effect_guard))
+        or (revision != 29 and pre_effect_guard is not None)
+    ):
+        raise OperatorError(
+            "historical live pre-effect guard differs from policy revision"
+        )
     witness = json.loads(executor.authorization_witness_json)
     lifecycle_lock = _validate_r19_historical_live_lock_identity(
         lifecycle_lock_identity,
@@ -10276,6 +11157,7 @@ def _r19_active_policy_scope(
         "executor_contract": contract,
         "authorizing_receipt_cid": authorizing_receipt_cid,
         "lifecycle_lock_identity": lifecycle_lock,
+        "pre_effect_guard": pre_effect_guard,
         "consumed": False,
     }
     _ASEH_ACTIVE_R19_POLICY = active
@@ -10593,6 +11475,29 @@ def _r28_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r29_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R29 suffix argv without broadening prior matrices."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS
+        )
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R29 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -10639,8 +11544,23 @@ def _admit_sealed_receipt_validation_executor_contract(
     r25 = _r25_sealed_receipt_validation_executor_contract()
     r26 = _r26_sealed_receipt_validation_executor_contract()
     r27 = _r27_sealed_receipt_validation_executor_contract()
+    r28 = _r28_sealed_receipt_validation_executor_contract()
+    r29 = _r29_sealed_receipt_validation_executor_contract()
     contracts = (
-        r16, r17, r18, r19, r20, r21, r22, r23, r24, r25, r26, r27
+        r16,
+        r17,
+        r18,
+        r19,
+        r20,
+        r21,
+        r22,
+        r23,
+        r24,
+        r25,
+        r26,
+        r27,
+        r28,
+        r29,
     )
     if supplied not in contracts:
         raise OperatorError("sealed validation executor contract is unknown")
@@ -10661,6 +11581,8 @@ def _admit_sealed_receipt_validation_executor_contract(
                 _r25_validation_executor_class,
                 _r26_validation_executor_class,
                 _r27_validation_executor_class,
+                _r28_validation_executor_class,
+                _r29_validation_executor_class,
             ),
             strict=True,
         )
@@ -16566,7 +17488,7 @@ def _validate_r19_historical_live_execution_evidence(
         }
         fields = (
             base_fields | {"foreign_recovery_ownership"}
-            if revision in {27, 28}
+            if revision in {27, 28, 29}
             else base_fields
         )
         script_identity = result.get("script_identity")
@@ -16645,7 +17567,7 @@ def _validate_r19_historical_live_execution_evidence(
             raise OperatorError(
                 "R19 historical live detached-effect entry is invalid"
             )
-        if revision in {27, 28}:
+        if revision in {27, 28, 29}:
             ownership = result.get("foreign_recovery_ownership")
             if ownership is not None:
                 base_item = {
@@ -16674,7 +17596,7 @@ def _validate_r19_historical_live_execution_evidence(
             or result.get("schema")
             != (
                 ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA
-                if revision in {27, 28}
+                if revision in {27, 28, 29}
                 else ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA
             )
             or entries
@@ -16709,6 +17631,7 @@ def _validate_r19_historical_live_execution_evidence(
         26: _admit_r26_historical_live_policy_admission,
         27: _admit_r27_historical_live_policy_admission,
         28: _admit_r28_historical_live_policy_admission,
+        29: _admit_r29_historical_live_policy_admission,
     }[revision]
     policy = policy_admitter(
         policy_admission,
@@ -16762,7 +17685,7 @@ def _validate_r19_historical_live_execution_evidence(
         or supplied.get("schema")
         != (
             ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
-            if revision in {27, 28}
+            if revision in {27, 28, 29}
             else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
         )
         or supplied.get("executor_class")
@@ -16991,7 +17914,7 @@ def _validate_r19_historical_live_execution_evidence(
     )
     baseline_admitter = (
         _r27_admit_stable_unrelated_baseline
-        if revision in {27, 28}
+        if revision in {27, 28, 29}
         else _r19_admit_stable_unrelated_baseline
     )
     baseline_admitter(
@@ -17120,6 +18043,28 @@ def _r27_terminal_scope_guard(
             )
 
 
+def _r19_release_historical_live_waiter(
+    release_write: int,
+    *,
+    revision: int,
+    pre_effect_guard: Callable[[], None] | None,
+) -> None:
+    """Run R29's last identity gate immediately before the live effect."""
+
+    if type(release_write) is not int or release_write < 0:
+        raise OperatorError("R19 historical live release descriptor is invalid")
+    if revision == 29:
+        if not callable(pre_effect_guard):
+            raise OperatorError("R29 historical live pre-effect guard is absent")
+        pre_effect_guard()
+    elif pre_effect_guard is not None:
+        raise OperatorError(
+            "historical live pre-effect guard is outside R29 authority"
+        )
+    if os.write(release_write, b"1") != 1:
+        raise OperatorError("R19 historical live release was incomplete")
+
+
 def _run_r19_historical_live_validation(
     declared: tuple[str, ...],
     *,
@@ -17164,6 +18109,7 @@ def _run_r19_historical_live_validation(
         ASEH_R26_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 26,
         ASEH_R27_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 27,
         ASEH_R28_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 28,
+        ASEH_R29_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 29,
     }.get(active_policy_value.get("schema"), 19)
     policy_validator = {
         19: _validate_r19_historical_live_policy_admission_record,
@@ -17176,8 +18122,17 @@ def _run_r19_historical_live_validation(
         26: _validate_r26_historical_live_policy_admission_record,
         27: _validate_r27_historical_live_policy_admission_record,
         28: _validate_r28_historical_live_policy_admission_record,
+        29: _validate_r29_historical_live_policy_admission_record,
     }[revision]
     policy_admission = policy_validator(active_policy_value)
+    pre_effect_guard = active_policy.get("pre_effect_guard")
+    if (
+        (revision == 29 and not callable(pre_effect_guard))
+        or (revision != 29 and pre_effect_guard is not None)
+    ):
+        raise OperatorError(
+            "historical live pre-effect guard differs from active policy"
+        )
     lifecycle_lock_identity = _validate_r19_historical_live_lock_identity(
         active_policy["lifecycle_lock_identity"]
     )
@@ -17246,7 +18201,7 @@ def _run_r19_historical_live_validation(
             docker_snapshot=before_docker,
             working_directory=working_directory,
         )
-        if revision in {27, 28}
+        if revision in {27, 28, 29}
         else _r19_detached_effect_snapshot()
     )
     time.sleep(0.05)
@@ -17256,12 +18211,12 @@ def _run_r19_historical_live_validation(
             docker_snapshot=confirmed_docker,
             working_directory=working_directory,
         )
-        if revision in {27, 28}
+        if revision in {27, 28, 29}
         else _r19_detached_effect_snapshot()
     )
     baseline_admitter = (
         _r27_admit_stable_unrelated_baseline
-        if revision in {27, 28}
+        if revision in {27, 28, 29}
         else _r19_admit_stable_unrelated_baseline
     )
     baseline_admitter(
@@ -17287,7 +18242,7 @@ def _run_r19_historical_live_validation(
             before_detached=before_detached,
             working_directory=working_directory,
         )
-        if revision in {27, 28}
+        if revision in {27, 28, 29}
         else _r19_terminal_scope_guard(
             before_docker=before_docker,
             before_detached=before_detached,
@@ -17386,7 +18341,11 @@ def _run_r19_historical_live_validation(
                     raise OperatorError(
                         "R19 historical live readiness differs"
                     )
-                os.write(release_write, b"1")
+                _r19_release_historical_live_waiter(
+                    release_write,
+                    revision=revision,
+                    pre_effect_guard=pre_effect_guard,
+                )
                 os.close(release_write)
                 release_write = -1
                 execution_deadline = min(deadline, time.monotonic() + 10.0)
@@ -17526,7 +18485,7 @@ def _run_r19_historical_live_validation(
     evidence: dict[str, Any] = {
         "schema": (
             ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
-            if revision in {27, 28}
+            if revision in {27, 28, 29}
             else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
         ),
         "executor_class": ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS,
@@ -17594,15 +18553,23 @@ def _qualify_r19_historical_live_policy(
     candidate_authorization_witness: Mapping[str, str],
     policy_admission: Mapping[str, Any] | None,
     authorizing_receipt_cid: str | None,
+    pre_effect_guard: Callable[[], None] | None = None,
     _revision: int = 19,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run and admit the exact historical live route under one typed fence."""
 
-    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26, 27, 28}:
+    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29}:
         raise OperatorError("historical live policy revision is invalid")
+    if (
+        (_revision == 29 and not callable(pre_effect_guard))
+        or (_revision != 29 and pre_effect_guard is not None)
+    ):
+        raise OperatorError(
+            "historical live pre-effect guard differs from qualification revision"
+        )
     executor_contract = (
         _r27_historical_live_validation_executor_contract()
-        if _revision in {27, 28}
+        if _revision in {27, 28, 29}
         else _r19_sealed_receipt_validation_executor_contract()
     )
     policy_builder = {
@@ -17616,6 +18583,7 @@ def _qualify_r19_historical_live_policy(
         26: _r26_historical_live_policy_admission,
         27: _r27_historical_live_policy_admission,
         28: _r28_historical_live_policy_admission,
+        29: _r29_historical_live_policy_admission,
     }[_revision]
     policy_admitter = {
         19: _admit_r19_historical_live_policy_admission,
@@ -17628,6 +18596,7 @@ def _qualify_r19_historical_live_policy(
         26: _admit_r26_historical_live_policy_admission,
         27: _admit_r27_historical_live_policy_admission,
         28: _admit_r28_historical_live_policy_admission,
+        29: _admit_r29_historical_live_policy_admission,
     }[_revision]
     computed_policy = policy_builder(
         bootstrap_receipt_id=bootstrap_receipt_id,
@@ -17668,6 +18637,7 @@ def _qualify_r19_historical_live_policy(
                 executor_contract=executor_contract,
                 authorizing_receipt_cid=authorizing_receipt_cid,
                 lifecycle_lock_identity=lifecycle_lock,
+                pre_effect_guard=pre_effect_guard,
             ):
                 completed = _run(
                     command,
@@ -17956,6 +18926,98 @@ def _qualify_r28_pre_duckdb_historical_live_policy(
         policy_admission=policy_admission,
         authorizing_receipt_cid=authorizing_receipt_cid,
         _revision=28,
+    )
+
+
+def _qualify_r29_pre_duckdb_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+    authorization_attempt: Mapping[str, Any],
+    authorization_receipt: Mapping[str, Any] | None,
+    active_candidate_head: str,
+    active_candidate_tree: str,
+    active_candidate_authorization_witness: Mapping[str, str],
+    continuity_admission: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Qualify R29 through the exact published R27 live route."""
+
+    r28_path = paths.get(
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt"
+    )
+    attempt_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_"
+        "authorization_attempt"
+    )
+    r29_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_"
+        "transition_receipt"
+    )
+    if (
+        not isinstance(r28_path, Path)
+        or not isinstance(attempt_path, Path)
+        or not isinstance(r29_path, Path)
+    ):
+        raise OperatorError("R29 historical live effect evidence is absent")
+    guard_paths = {
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": (
+            r28_path
+        ),
+        "repair_sealed_validation_contract_dispatch_correction_authorization_attempt": (
+            attempt_path
+        ),
+        "repair_sealed_validation_contract_dispatch_correction_transition_receipt": (
+            r29_path
+        ),
+    }
+    sealed_attempt = json.loads(_canonical_json(authorization_attempt))
+    sealed_receipt = (
+        None
+        if authorization_receipt is None
+        else json.loads(_canonical_json(authorization_receipt))
+    )
+    sealed_authorization_witness = dict(candidate_authorization_witness)
+    sealed_active_witness = dict(active_candidate_authorization_witness)
+    sealed_continuity = _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=candidate_head,
+        authorization_candidate_tree=candidate_tree,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+    )
+
+    def pre_effect_guard() -> None:
+        _assert_r29_historical_live_effect_admission(
+            paths=guard_paths,
+            authorization_attempt=sealed_attempt,
+            authorization_candidate_head=candidate_head,
+            authorization_candidate_tree=candidate_tree,
+            authorization_candidate_witness=sealed_authorization_witness,
+            authorization_receipt=sealed_receipt,
+            authorizing_receipt_cid=authorizing_receipt_cid,
+            active_candidate_head=active_candidate_head,
+            active_candidate_tree=active_candidate_tree,
+            active_candidate_witness=sealed_active_witness,
+            continuity_admission=sealed_continuity,
+        )
+
+    return _qualify_r19_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        policy_admission=policy_admission,
+        authorizing_receipt_cid=authorizing_receipt_cid,
+        pre_effect_guard=pre_effect_guard,
+        _revision=29,
     )
 
 
@@ -18840,6 +19902,46 @@ def _admit_exact_r28_transition_chain(
     return chain
 
 
+def _admit_exact_r29_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit immutable R1-R27 plus adjacent R29, never unpublished R28."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R29_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R29 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    last_index = len(ASEH_R29_REPAIR_TRANSITION_CHAIN_SCHEMAS) - 1
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R29_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = (
+            None if index == 0 else (29 if index == last_index else index + 1)
+        )
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R29 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R29 repair transition chain differs")
+        chain.append(item)
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in chain[:-1]
+    ) != ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS:
+        raise OperatorError("R29 historical receipt vector differs")
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -19554,6 +20656,156 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R28 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r29_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r27_admitted = chain[-2]
+        active_admitted = chain[-1]
+        failure_evidence_cid = (
+            transition.get("projection_recovery_failure_evidence_cid")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        preflight_failure_evidence_cid = (
+            transition.get("r25_preflight_failure_evidence_cid")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        recovery_admission = (
+            _validate_r26_projection_recovery_prestart_admission(
+                admission.get("projection_recovery_prestart_admission"),
+                expected_failure_evidence_cid=str(
+                    failure_evidence_cid or ""
+                ),
+                expected_preflight_failure_evidence_cid=str(
+                    preflight_failure_evidence_cid or ""
+                ),
+            )
+            if isinstance(
+                admission.get("projection_recovery_prestart_admission"),
+                Mapping,
+            )
+            else None
+        )
+        projection_matches_events = admission.get("projection_matches_events")
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+            or transition.get("base_head")
+            != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+            or transition.get("published_r27_base_head")
+            != ASEH_R29_PUBLISHED_R27_BASE_HEAD
+            or transition.get("published_r27_base_tree")
+            != ASEH_R29_PUBLISHED_R27_BASE_TREE
+            or transition.get("failed_unpublished_r28_head")
+            != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+            or transition.get("failed_unpublished_r28_tree")
+            != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+            or transition.get("unreceipted_effective_changed_paths")
+            != list(ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS)
+            or not isinstance(transition.get("authorization_attempt"), Mapping)
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r27_admitted.get("repair_head")
+            != REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+            or r27_admitted.get("repair_tree")
+            != REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+            or r27_admitted.get("receipt_cid")
+            != ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r27_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r27_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or transition.get("r28_authorization_failure_evidence_cid")
+            != _r29_expected_r28_authorization_failure_evidence().get(
+                "evidence_cid"
+            )
+            or (
+                isinstance(recovery_admission, Mapping)
+                and transition.get(
+                    "projection_recovery_prestart_semantic_admission_cid"
+                )
+                != recovery_admission.get("semantic_admission_cid")
+            )
+            or type(projection_matches_events) is not bool
+            or (
+                projection_matches_events is False
+                and (
+                    not isinstance(recovery_admission, Mapping)
+                    or admission.get("projection_cid")
+                    != recovery_admission.get("before_projection_cid")
+                    or admission.get("event_cursor")
+                    != recovery_admission.get("before_event_watermark")
+                )
+            )
+            or (
+                projection_matches_events is True
+                and recovery_admission is not None
+            )
+        ):
+            raise OperatorError(
+                "current R29 candidate lacks its exact admitted validation seal"
+            )
+    else:
+        transition = admission.get("repair_transition")
+        continuity = admission.get("canonical_continuity")
+        chain = _admit_exact_r29_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        active_admitted = chain[-1]
+        if (
+            len(parents) != 2
+            or not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+            or transition.get("repair_head") == candidate_head
+            or transition.get("repair_head") != active_admitted.get("repair_head")
+            or transition.get("repair_tree") != active_admitted.get("repair_tree")
+            or transition.get("receipt_cid") != active_admitted.get("receipt_cid")
+            or transition.get("published_r27_base_head")
+            != ASEH_R29_PUBLISHED_R27_BASE_HEAD
+            or transition.get("published_r27_base_tree")
+            != ASEH_R29_PUBLISHED_R27_BASE_TREE
+            or transition.get("failed_unpublished_r28_head")
+            != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+            or transition.get("failed_unpublished_r28_tree")
+            != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+            or transition.get("unreceipted_effective_changed_paths")
+            != list(ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS)
+            or not isinstance(transition.get("authorization_attempt"), Mapping)
+            or transition.get("r28_authorization_failure_evidence_cid")
+            != _r29_expected_r28_authorization_failure_evidence().get(
+                "evidence_cid"
+            )
+            or not isinstance(continuity, Mapping)
+            or not isinstance(continuity.get("repair_to_current"), Mapping)
+            or (
+                "sealed_owner_foreign_recovery_waiter_admission_to_"
+                "sealed_validation_contract_dispatch_correction"
+            )
+            not in continuity
+            or admission.get("historical_live_authorizing_receipt_cid")
+            != transition.get("receipt_cid")
+            or type(admission.get("projection_matches_events")) is not bool
+        ):
+            raise OperatorError(
+                "current descendant lacks its retained R29 validation seal"
+            )
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition["repair_head"]),
+            candidate_head,
+        )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -19841,6 +21093,19 @@ def _r28_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_VALIDATIONS[
+            -2
+        ]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r29_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R29 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS[
             -2
         ]
     ):
@@ -20978,16 +22243,27 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     authorization_witness: Mapping[str, str],
     _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16-R28 repair matrix against committed bytes."""
+    """Run the bounded R16-R29 repair matrix against committed bytes."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28}:
+    if _revision not in {
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29
+    }:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 28:
+    if _revision == 29:
+        matrix = (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r29_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r29_validation_working_tree_scope
+        executor_class_for = _r29_validation_executor_class
+    elif _revision == 28:
         matrix = (
             REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_VALIDATIONS
         )
@@ -21523,6 +22799,22 @@ def _run_repair_sealed_owner_initial_health_scheduler_exit_transition_validation
     )
 
 
+def _run_repair_sealed_validation_contract_dispatch_correction_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded direct-R27 R29 suffix through typed executors."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=29,
+    )
+
+
 def _observe_repair_provider_cleanup_fence_known_baseline(
 ) -> dict[str, Any]:
     """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
@@ -21866,6 +23158,22 @@ def _paths(board: Any) -> dict[str, Path]:
         / "bootstrap"
         / "bootstrap-repair-sealed-owner-initial-health-scheduler-exit-"
         "transition.json"
+    )
+    result[
+        "repair_sealed_validation_contract_dispatch_correction_transition_receipt"
+    ] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-sealed-validation-contract-dispatch-correction-"
+        "transition.json"
+    )
+    result[
+        "repair_sealed_validation_contract_dispatch_correction_authorization_attempt"
+    ] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-sealed-validation-contract-dispatch-correction-"
+        "authorization-attempt.json"
     )
     result["owner_start_recovery_decisions"] = (
         result["evidence"] / "control-plane" / "owner-start-recovery"
@@ -24056,6 +25364,24 @@ def _validate_repair_sealed_owner_initial_health_scheduler_exit_transition(
         previous_receipt=previous_receipt,
         rerun_validations=rerun_validations,
         _revision=28,
+    )
+
+
+def _validate_repair_sealed_validation_contract_dispatch_correction_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit revision 29 directly on immutable R27, never unpublished R28."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=29,
     )
 
 
@@ -26739,12 +28065,45 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     rerun_validations: bool,
     _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit one immutable transition in the exact R16-R28 suffix."""
+    """Admit one immutable transition in the exact R16-R29 suffix."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28}:
+    if _revision not in {
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29
+    }:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 28:
+    if _revision == 29:
+        receipt_id = (
+            _repair_sealed_validation_contract_dispatch_correction_transition_receipt_id(
+                receipt
+            )
+        )
+        previous_receipt_id = (
+            _repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        )
+        changed_paths_value = (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_AUTHORITY
+        )
+        commands = (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r29_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+        )
+        executor_class_for = _r29_validation_executor_class
+        scope_for = _r29_validation_working_tree_scope
+    elif _revision == 28:
         receipt_id = (
             _repair_sealed_owner_initial_health_scheduler_exit_transition_receipt_id(
                 receipt
@@ -27139,7 +28498,13 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             changed_paths_value
         )
         or receipt.get("dependencies")
-        != [f"ASEH-BOOTSTRAP-002@ASEH-PLAN-R{_revision - 1}"]
+        != [
+            (
+                "ASEH-BOOTSTRAP-002@ASEH-PLAN-R27"
+                if _revision == 29
+                else f"ASEH-BOOTSTRAP-002@ASEH-PLAN-R{_revision - 1}"
+            )
+        ]
         or receipt.get("owning_repository") != "ipfs_accelerate_py"
         or receipt.get("risk_class")
         != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
@@ -27179,6 +28544,27 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         raise OperatorError(
             "bootstrap repair Docker-create-readiness/vendor-resolver Git "
             "proof differs"
+        )
+    if _revision == 29 and (
+        _git("show", "-s", "--format=%P", base_head).split()
+        != [ASEH_R29_PUBLISHED_R27_BASE_HEAD]
+        or _git("rev-parse", f"{ASEH_R29_PUBLISHED_R27_BASE_HEAD}^{{tree}}")
+        != ASEH_R29_PUBLISHED_R27_BASE_TREE
+        or receipt.get("published_r27_base_head")
+        != ASEH_R29_PUBLISHED_R27_BASE_HEAD
+        or receipt.get("published_r27_base_tree")
+        != ASEH_R29_PUBLISHED_R27_BASE_TREE
+        or receipt.get("failed_unpublished_r28_head") != base_head
+        or receipt.get("failed_unpublished_r28_tree") != base_tree
+        or _git_changed_paths(ASEH_R29_PUBLISHED_R27_BASE_HEAD, repair)
+        != ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        or receipt.get("unreceipted_effective_changed_paths")
+        != list(ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS)
+        or receipt.get("unreceipted_effective_patch_digest")
+        != _git_patch_digest(ASEH_R29_PUBLISHED_R27_BASE_HEAD, repair)
+    ):
+        raise OperatorError(
+            "bootstrap repair R29 unreceipted effective Git proof differs"
         )
     expected_witness_fields = {
         "head",
@@ -27436,7 +28822,23 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         ),
         "receipt_cid": receipt_id,
     }
-    if _revision in {26, 27, 28}:
+    if _revision == 29:
+        transition_result.update(
+            {
+                "published_r27_base_head": ASEH_R29_PUBLISHED_R27_BASE_HEAD,
+                "published_r27_base_tree": ASEH_R29_PUBLISHED_R27_BASE_TREE,
+                "failed_unpublished_r28_head": base_head,
+                "failed_unpublished_r28_tree": base_tree,
+                "unreceipted_effective_changed_paths": list(
+                    ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+                ),
+                "unreceipted_effective_patch_digest": str(
+                    receipt.get("unreceipted_effective_patch_digest") or ""
+                ),
+                "authorization_attempt": dict(receipt["authorization_attempt"]),
+            }
+        )
+    if _revision in {26, 27, 28, 29}:
         failure_value = receipt.get("projection_recovery_failure_evidence")
         failure = (
             _validate_r25_projection_recovery_failure_evidence(failure_value)
@@ -27484,7 +28886,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         transition_result[
             "projection_recovery_prestart_semantic_admission_cid"
         ] = recovery["semantic_admission_cid"]
-        if _revision in {27, 28}:
+        if _revision in {27, 28, 29}:
             terminal_value = receipt.get("r26_terminal_failure_evidence")
             terminal = (
                 _validate_r27_r26_terminal_failure_evidence(terminal_value)
@@ -27496,7 +28898,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result["r26_terminal_failure_evidence_cid"] = (
                 terminal["evidence_cid"]
             )
-        if _revision == 28:
+        if _revision in {28, 29}:
             r27_failure_value = receipt.get(
                 "r27_initial_health_failure_evidence"
             )
@@ -27514,6 +28916,24 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             transition_result[
                 "r27_initial_health_failure_evidence_cid"
             ] = r27_failure["evidence_cid"]
+        if _revision == 29:
+            r28_failure_value = receipt.get(
+                "r28_authorization_failure_evidence"
+            )
+            r28_failure = (
+                _validate_r29_r28_authorization_failure_evidence(
+                    r28_failure_value
+                )
+                if isinstance(r28_failure_value, Mapping)
+                else None
+            )
+            if not isinstance(r28_failure, Mapping):
+                raise OperatorError(
+                    "R29 R28-authorization failure evidence is absent"
+                )
+            transition_result[
+                "r28_authorization_failure_evidence_cid"
+            ] = r28_failure["evidence_cid"]
     elif _revision == 25:
         failure_value = receipt.get("projection_recovery_failure_evidence")
         failure = (
@@ -28197,6 +29617,43 @@ def _r28_population_requires_policy(
     )
 
 
+def _r29_population_requires_policy(
+    population: Mapping[str, Any],
+) -> bool:
+    """Recognize the exact committed R29 child before its receipt exists."""
+
+    head = str(population.get("source_head") or "")
+    tree = str(population.get("repository_tree_id") or "")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    return (
+        _git("show", "-s", "--format=%P", head).split()
+        == [
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        ]
+        and _git(
+            "show",
+            "-s",
+            "--format=%P",
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD,
+        ).split()
+        == [ASEH_R29_PUBLISHED_R27_BASE_HEAD]
+        and _git("rev-parse", f"{ASEH_R29_PUBLISHED_R27_BASE_HEAD}^{{tree}}")
+        == ASEH_R29_PUBLISHED_R27_BASE_TREE
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD,
+            head,
+        )
+        == REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_CHANGED_PATHS
+        and _git_changed_paths(ASEH_R29_PUBLISHED_R27_BASE_HEAD, head)
+        == ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+    )
+
+
 def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     receipt: Mapping[str, Any],
     *,
@@ -28237,6 +29694,18 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     r28_path = paths.get(
         "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt"
     )
+    r29_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_transition_receipt"
+    )
+    if isinstance(r29_path, Path) and (
+        r29_path.is_file() or _r29_population_requires_policy(population)
+    ):
+        return _validate_repair_provider_cleanup_fence_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=False,
+        )
     if (
         isinstance(r19_path, Path) and r19_path.is_file()
     ) or _r19_population_requires_policy(population):
@@ -29649,6 +31118,667 @@ def _prequalify_r28_historical_live_launch(
     }
 
 
+def _assert_r29_unpublished_r28_receipt_absent(r28_path: Path) -> None:
+    """Prove R28's unpublished receipt name is absent without following it."""
+
+    if not r28_path.is_absolute():
+        raise OperatorError("R29 R28 receipt path is not absolute")
+    with _anchored_directory_descriptor(r28_path.parent) as directory_fd:
+        if not _r21_path_absent(directory_fd, r28_path.name):
+            raise OperatorError(
+                "R29 requires the unpublished R28 receipt to remain absent"
+            )
+
+
+def _r29_receipt_name_is_absent(
+    receipt_path: Path,
+    *,
+    authorization_directory_fd: int | None = None,
+) -> bool:
+    """Classify the R29 receipt name without following a non-regular entry."""
+
+    if not receipt_path.is_absolute():
+        raise OperatorError("R29 receipt path is not absolute")
+    with _anchored_directory_descriptor(receipt_path.parent) as directory_fd:
+        if authorization_directory_fd is not None and not _same_namespace_identity(
+            os.fstat(directory_fd),
+            os.fstat(authorization_directory_fd),
+        ):
+            raise OperatorError("R29 authorization directory changed")
+        try:
+            named = os.stat(
+                receipt_path.name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return True
+        except OSError as exc:
+            raise OperatorError("R29 receipt target state is unknown") from exc
+        if not stat.S_ISREG(named.st_mode):
+            raise OperatorError("R29 receipt target is not a regular file")
+    return False
+
+
+def _assert_r29_launch_r28_receipt_absent(
+    *,
+    paths: Mapping[str, Path],
+    launch_bundle: Mapping[str, Any],
+) -> None:
+    """Recheck the R28 name without following it at late launch admission."""
+
+    r28_path = paths.get(
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt"
+    )
+    if (
+        not isinstance(r28_path, Path)
+        or launch_bundle.get("r28_receipt_absent") is not True
+    ):
+        raise OperatorError("R29 launch cannot admit an R28 receipt")
+    _assert_r29_unpublished_r28_receipt_absent(r28_path)
+
+
+def _assert_r29_authorization_attempt_absent(
+    attempt_path: Path,
+    *,
+    authorization_directory_fd: int | None = None,
+) -> None:
+    """Deny every sequential or concurrent replay of revision 29."""
+
+    if not attempt_path.is_absolute():
+        raise OperatorError("R29 authorization attempt path is not absolute")
+    with _anchored_directory_descriptor(attempt_path.parent) as directory_fd:
+        if authorization_directory_fd is not None and not _same_namespace_identity(
+            os.fstat(directory_fd), os.fstat(authorization_directory_fd)
+        ):
+            raise OperatorError(
+                "R29 authorization directory changed before attempt fence"
+            )
+        if not _r21_path_absent(directory_fd, attempt_path.name):
+            raise OperatorError(
+                "R29 authorization attempt already exists; revision retry is denied"
+            )
+
+
+def _assert_r29_transition_receipt_effect_authority(
+    receipt_path: Path,
+    *,
+    expected_receipt: Mapping[str, Any] | None,
+    expected_receipt_cid: str | None,
+) -> None:
+    """Require initial absence or exact published R29 receipt retention."""
+
+    if not receipt_path.is_absolute():
+        raise OperatorError("R29 transition receipt path is not absolute")
+    if expected_receipt_cid is None:
+        if expected_receipt is not None:
+            raise OperatorError("R29 transition receipt expectation is invalid")
+        if not _r29_receipt_name_is_absent(receipt_path):
+            raise OperatorError(
+                "R29 transition receipt must remain absent before publication"
+            )
+        return
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", expected_receipt_cid) is None:
+        raise OperatorError("R29 transition receipt CID is invalid")
+    sealed_expected = (
+        None
+        if expected_receipt is None
+        else json.loads(_canonical_json(expected_receipt))
+    )
+    if (
+        sealed_expected is not None
+        and _repair_sealed_validation_contract_dispatch_correction_transition_receipt_id(
+            sealed_expected
+        )
+        != expected_receipt_cid
+    ):
+        raise OperatorError("R29 expected transition receipt differs")
+    try:
+        observed = _secure_runtime_json(
+            receipt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+    except (OSError, OperatorError) as exc:
+        raise OperatorError(
+            "R29 transition receipt changed before effect"
+        ) from exc
+    if (
+        _repair_sealed_validation_contract_dispatch_correction_transition_receipt_id(
+            observed
+        )
+        != expected_receipt_cid
+        or (sealed_expected is not None and observed != sealed_expected)
+    ):
+        raise OperatorError("R29 transition receipt changed before effect")
+
+
+def _validate_r29_historical_live_effect_continuity(
+    value: Mapping[str, Any] | None,
+    *,
+    authorization_candidate_head: str,
+    authorization_candidate_tree: str,
+    active_candidate_head: str,
+    active_candidate_tree: str,
+) -> dict[str, Any] | None:
+    """Close a just-admitted canonical merge suffix for the live guard."""
+
+    if (
+        active_candidate_head == authorization_candidate_head
+        and active_candidate_tree == authorization_candidate_tree
+    ):
+        if value is not None:
+            raise OperatorError(
+                "R29 exact candidate cannot carry descendant continuity"
+            )
+        return None
+    if active_candidate_head == authorization_candidate_head:
+        raise OperatorError("R29 candidate head and tree identity differ")
+    if not isinstance(value, Mapping):
+        raise OperatorError(
+            "R29 descendant live effect lacks admitted canonical continuity"
+        )
+    continuity = json.loads(_canonical_json(value))
+    unsigned = dict(continuity)
+    receipt_cid = str(unsigned.pop("receipt_cid", "") or "")
+    integrations = continuity.get("integrations")
+    if (
+        set(continuity)
+        != {
+            "schema",
+            "base_head",
+            "target_head",
+            "target_tree",
+            "integrations",
+            "receipt_cid",
+        }
+        or continuity.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/aseh-canonical-merge-suffix@1"
+        or continuity.get("base_head") != authorization_candidate_head
+        or continuity.get("target_head") != active_candidate_head
+        or continuity.get("target_tree") != active_candidate_tree
+        or not isinstance(integrations, list)
+        or not integrations
+        or not all(isinstance(item, Mapping) for item in integrations)
+        or receipt_cid != _identity(unsigned)
+    ):
+        raise OperatorError(
+            "R29 descendant live effect continuity differs"
+        )
+    expected_integration_fields = {
+        "request_id",
+        "task_alias",
+        "task_cid",
+        "candidate_commit",
+        "candidate_tree",
+        "integration_commit",
+        "integration_tree",
+        "changed_paths",
+    }
+    previous = authorization_candidate_head
+    for integration in integrations:
+        candidate = str(integration.get("candidate_commit") or "")
+        candidate_tree = str(integration.get("candidate_tree") or "")
+        integration_commit = str(integration.get("integration_commit") or "")
+        integration_tree = str(integration.get("integration_tree") or "")
+        changed_paths = integration.get("changed_paths")
+        if (
+            set(integration) != expected_integration_fields
+            or not str(integration.get("request_id") or "")
+            or not str(integration.get("task_alias") or "")
+            or not str(integration.get("task_cid") or "")
+            or re.fullmatch(r"[0-9a-f]{40}", candidate) is None
+            or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+            or re.fullmatch(r"[0-9a-f]{40}", integration_commit) is None
+            or re.fullmatch(r"[0-9a-f]{40}", integration_tree) is None
+            or not isinstance(changed_paths, list)
+            or not all(
+                isinstance(path, str)
+                and path
+                and not Path(path).is_absolute()
+                and all(part not in {"", ".", ".."} for part in Path(path).parts)
+                for path in changed_paths
+            )
+            or _git("show", "-s", "--format=%P", integration_commit).split()
+            != [previous, candidate]
+            or _git("rev-parse", f"{candidate}^{{tree}}") != candidate_tree
+            or _git("rev-parse", f"{integration_commit}^{{tree}}")
+            != integration_tree
+        ):
+            raise OperatorError(
+                "R29 descendant live effect integration differs"
+            )
+        previous = integration_commit
+    if (
+        previous != active_candidate_head
+        or integrations[-1].get("integration_commit") != active_candidate_head
+        or _git("rev-parse", f"{active_candidate_head}^{{tree}}")
+        != active_candidate_tree
+    ):
+        raise OperatorError("R29 descendant live effect target differs")
+    return continuity
+
+
+def _assert_r29_historical_live_effect_admission(
+    *,
+    paths: Mapping[str, Path],
+    authorization_attempt: Mapping[str, Any],
+    authorization_candidate_head: str,
+    authorization_candidate_tree: str,
+    authorization_candidate_witness: Mapping[str, str],
+    authorization_receipt: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+    active_candidate_head: str,
+    active_candidate_tree: str,
+    active_candidate_witness: Mapping[str, str],
+    continuity_admission: Mapping[str, Any] | None,
+) -> None:
+    """Revalidate all mutable R29 evidence at the live-effect boundary."""
+
+    r28_path = paths.get(
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt"
+    )
+    attempt_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_"
+        "authorization_attempt"
+    )
+    r29_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_"
+        "transition_receipt"
+    )
+    if (
+        not isinstance(r28_path, Path)
+        or not isinstance(attempt_path, Path)
+        or not isinstance(r29_path, Path)
+    ):
+        raise OperatorError("R29 historical live effect evidence is absent")
+    expected_attempt = _validate_r29_authorization_attempt_record(
+        authorization_attempt,
+        candidate_head=authorization_candidate_head,
+        candidate_tree=authorization_candidate_tree,
+        candidate_authorization_witness=authorization_candidate_witness,
+    )
+    _assert_r29_unpublished_r28_receipt_absent(r28_path)
+    _assert_r29_transition_receipt_effect_authority(
+        r29_path,
+        expected_receipt=authorization_receipt,
+        expected_receipt_cid=authorizing_receipt_cid,
+    )
+    stored_attempt = _secure_runtime_json(
+        attempt_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    if (
+        _validate_r29_authorization_attempt_record(
+            stored_attempt,
+            candidate_head=authorization_candidate_head,
+            candidate_tree=authorization_candidate_tree,
+            candidate_authorization_witness=authorization_candidate_witness,
+        )
+        != expected_attempt
+    ):
+        raise OperatorError("R29 historical live authorization attempt differs")
+    _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=authorization_candidate_head,
+        authorization_candidate_tree=authorization_candidate_tree,
+        active_candidate_head=active_candidate_head,
+        active_candidate_tree=active_candidate_tree,
+    )
+    _assert_candidate_authorization_witness(
+        active_candidate_witness,
+        expected_head=active_candidate_head,
+        expected_tree=active_candidate_tree,
+        boundary="immediately before R29 historical live effect release",
+    )
+
+
+def _recheck_r29_admission_r28_receipt_absence(
+    *,
+    paths: Mapping[str, Path],
+    launch_admission: Mapping[str, Any],
+) -> None:
+    """Keep every mutable R29 authority exact at the owner-start boundary."""
+
+    transition = launch_admission.get("repair_transition")
+    if (
+        isinstance(transition, Mapping)
+        and transition.get("schema")
+        == REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+    ):
+        _assert_r29_launch_r28_receipt_absent(
+            paths=paths,
+            launch_bundle={"r28_receipt_absent": True},
+        )
+        attempt_path = paths.get(
+            "repair_sealed_validation_contract_dispatch_correction_"
+            "authorization_attempt"
+        )
+        attempt_value = transition.get("authorization_attempt")
+        witness = transition.get("candidate_authorization_witness")
+        r29_path = paths.get(
+            "repair_sealed_validation_contract_dispatch_correction_"
+            "transition_receipt"
+        )
+        receipt_cid = str(transition.get("receipt_cid") or "")
+        if (
+            not isinstance(attempt_path, Path)
+            or not isinstance(r29_path, Path)
+            or not isinstance(attempt_value, Mapping)
+            or not isinstance(witness, Mapping)
+        ):
+            raise OperatorError("R29 owner-start authority is absent")
+        _assert_r29_transition_receipt_effect_authority(
+            r29_path,
+            expected_receipt=None,
+            expected_receipt_cid=receipt_cid,
+        )
+        stored_attempt = _secure_runtime_json(
+            attempt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        if (
+            _validate_r29_authorization_attempt_record(
+                stored_attempt,
+                candidate_head=str(transition.get("repair_head") or ""),
+                candidate_tree=str(transition.get("repair_tree") or ""),
+                candidate_authorization_witness=witness,
+            )
+            != attempt_value
+        ):
+            raise OperatorError("R29 owner-start authorization attempt differs")
+
+
+def _complete_r29_historical_live_prequalification(
+    *,
+    paths: Mapping[str, Path],
+    bundle: Mapping[str, Any],
+    continuity_admission: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Release R29 live work only after its current-tree authority is closed."""
+
+    receipt = bundle.get("receipt")
+    prior_chain = bundle.get("prior_chain")
+    transition = bundle.get("transition")
+    policy = bundle.get("policy_admission")
+    stored_evidence = bundle.get("stored_evidence")
+    authorization_attempt = bundle.get("authorization_attempt")
+    active_source_witness = bundle.get("active_source_witness")
+    receipt_cid = str(bundle.get("receipt_cid") or "")
+    active_head = str(bundle.get("active_source_head") or "")
+    active_tree = str(bundle.get("active_source_tree") or "")
+    if (
+        not isinstance(receipt, Mapping)
+        or not isinstance(prior_chain, list)
+        or not isinstance(transition, Mapping)
+        or not isinstance(policy, Mapping)
+        or not isinstance(stored_evidence, Mapping)
+        or not isinstance(authorization_attempt, Mapping)
+        or not isinstance(active_source_witness, Mapping)
+        or bundle.get("fresh_evidence") is not None
+    ):
+        raise OperatorError("R29 historical live prequalification is incomplete")
+    anchor_head = str(transition.get("repair_head") or "")
+    anchor_tree = str(transition.get("repair_tree") or "")
+    witness = transition.get("candidate_authorization_witness")
+    is_descendant = active_head != anchor_head or active_tree != anchor_tree
+    if (
+        not isinstance(witness, Mapping)
+        or bundle.get("receipt_anchor_is_current") is not (not is_descendant)
+        or bundle.get("historical_live_deferred") is not is_descendant
+    ):
+        raise OperatorError("R29 historical live source identity differs")
+    sealed_continuity = _validate_r29_historical_live_effect_continuity(
+        continuity_admission,
+        authorization_candidate_head=anchor_head,
+        authorization_candidate_tree=anchor_tree,
+        active_candidate_head=active_head,
+        active_candidate_tree=active_tree,
+    )
+    admitted_policy, fresh_evidence = (
+        _qualify_r29_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=str(
+                bundle.get("bootstrap_receipt_id") or ""
+            ),
+            prior_chain=prior_chain,
+            candidate_head=anchor_head,
+            candidate_tree=anchor_tree,
+            candidate_authorization_witness=witness,
+            policy_admission=policy,
+            authorizing_receipt_cid=receipt_cid,
+            authorization_attempt=authorization_attempt,
+            authorization_receipt=receipt,
+            active_candidate_head=active_head,
+            active_candidate_tree=active_tree,
+            active_candidate_authorization_witness=active_source_witness,
+            continuity_admission=sealed_continuity,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        active_source_witness,
+        expected_head=active_head,
+        expected_tree=active_tree,
+        boundary="after R29 live qualification on the active source",
+    )
+    r29_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_"
+        "transition_receipt"
+    )
+    r28_path = paths.get(
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt"
+    )
+    attempt_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_"
+        "authorization_attempt"
+    )
+    if (
+        not isinstance(r29_path, Path)
+        or not isinstance(r28_path, Path)
+        or not isinstance(attempt_path, Path)
+    ):
+        raise OperatorError("R29 historical live evidence path is absent")
+    _assert_r29_transition_receipt_effect_authority(
+        r29_path,
+        expected_receipt=receipt,
+        expected_receipt_cid=receipt_cid,
+    )
+    second_attempt = _secure_runtime_json(
+        attempt_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    _assert_r29_unpublished_r28_receipt_absent(r28_path)
+    if (
+        second_attempt != authorization_attempt
+        or admitted_policy != policy
+        or fresh_evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or fresh_evidence.get("authorizing_receipt_cid") != receipt_cid
+    ):
+        raise OperatorError(
+            "R29 historical live receipt changed during prequalification"
+        )
+    result = dict(bundle)
+    result["fresh_evidence"] = fresh_evidence
+    result["historical_live_deferred"] = False
+    result["historical_live_effect_continuity"] = sealed_continuity
+    return result
+
+
+def _prequalify_r29_historical_live_launch(
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Qualify R29 directly on published R27 before canonical DuckDB access."""
+
+    r29_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_transition_receipt"
+    )
+    if not isinstance(r29_path, Path):
+        return None
+    exact_candidate = _r29_population_requires_policy(population)
+    attempt_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_"
+        "authorization_attempt"
+    )
+    if not isinstance(attempt_path, Path):
+        raise OperatorError("R29 authorization attempt path is absent")
+    if attempt_path.parent != r29_path.parent:
+        raise OperatorError("R29 authorization evidence directories differ")
+    r29_receipt_absent = _r29_receipt_name_is_absent(r29_path)
+    if r29_receipt_absent:
+        _assert_r29_authorization_attempt_absent(attempt_path)
+        if exact_candidate:
+            raise OperatorError(
+                "active R29 pre-DuckDB historical-live policy receipt is absent"
+            )
+        return None
+    r28_path = paths.get(
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt"
+    )
+    if not isinstance(r28_path, Path):
+        raise OperatorError("R29 authorization evidence path is absent")
+    _assert_r29_unpublished_r28_receipt_absent(r28_path)
+    prior_chain = _load_exact_r27_receipt_chain(paths)
+    r27_receipt = prior_chain[-1]
+    first_receipt = _secure_runtime_json(
+        r29_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    receipt_cid = (
+        _repair_sealed_validation_contract_dispatch_correction_transition_receipt_id(
+            first_receipt
+        )
+    )
+    transition = (
+        _validate_repair_sealed_validation_contract_dispatch_correction_transition(
+            first_receipt,
+            bootstrap=bootstrap,
+            previous_receipt=r27_receipt,
+            rerun_validations=False,
+        )
+    )
+    current_head = str(population.get("source_head") or "")
+    current_tree = str(population.get("repository_tree_id") or "")
+    anchor_head = str(transition.get("repair_head") or "")
+    anchor_tree = str(transition.get("repair_tree") or "")
+    witness = transition.get("candidate_authorization_witness")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", current_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", current_tree) is None
+        or re.fullmatch(r"[0-9a-f]{40}", anchor_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", anchor_tree) is None
+        or _git("rev-parse", f"{current_head}^{{tree}}") != current_tree
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "active R29 historical-live policy does not bind the current tree"
+        )
+    attempt_value = first_receipt.get("authorization_attempt")
+    if not isinstance(attempt_value, Mapping):
+        raise OperatorError("active R29 authorization attempt is absent")
+    stored_attempt = _secure_runtime_json(
+        attempt_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    admitted_attempt = _validate_r29_authorization_attempt_record(
+        stored_attempt,
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=witness,
+    )
+    if admitted_attempt != attempt_value:
+        raise OperatorError("active R29 authorization attempt differs")
+    is_descendant = current_head != anchor_head or current_tree != anchor_tree
+    if is_descendant:
+        _git("merge-base", "--is-ancestor", anchor_head, current_head)
+        if len(_git("show", "-s", "--format=%P", current_head).split()) != 2:
+            raise OperatorError(
+                "R29 descendant live qualification requires a merge commit"
+            )
+    active_source_witness = _candidate_authorization_witness(
+        expected_head=current_head,
+        expected_tree=current_tree,
+    )
+    if current_head == anchor_head:
+        _assert_candidate_authorization_witness(
+            witness,
+            expected_head=anchor_head,
+            expected_tree=anchor_tree,
+            boundary="before R29 pre-DuckDB historical live qualification",
+        )
+    bootstrap_receipt_id = _bootstrap_receipt_id(bootstrap)
+    executor_contract = _r27_historical_live_validation_executor_contract()
+    policy_value = first_receipt.get("historical_live_policy_admission")
+    policy = _admit_r29_historical_live_policy_admission(
+        policy_value if isinstance(policy_value, Mapping) else {},
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+    )
+    stored_evidence_value = first_receipt.get(
+        "historical_live_execution_evidence"
+    )
+    if not isinstance(stored_evidence_value, Mapping):
+        raise OperatorError(
+            "active R29 historical-live stored execution evidence is absent"
+        )
+    stored_evidence = _validate_r19_historical_live_execution_evidence(
+        stored_evidence_value,
+        policy_admission=policy,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=anchor_head,
+        candidate_tree=anchor_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+        environment_identity=_r11_command_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            _r11_historical_live_docker_command(),
+            checkout=Path("/sealed-checkout"),
+        ),
+        returncode=int(stored_evidence_value.get("returncode", 78)),
+        stdout_digest=str(stored_evidence_value.get("stdout_digest") or ""),
+        stderr_digest=str(stored_evidence_value.get("stderr_digest") or ""),
+        authorizing_receipt_cid=None,
+    )
+    exact_chain = _admit_exact_r29_transition_chain(
+        [*prior_chain, first_receipt]
+    )
+    bundle = {
+        "receipt": first_receipt,
+        "receipt_cid": receipt_cid,
+        "prior_chain": prior_chain,
+        "exact_chain": exact_chain,
+        "transition": transition,
+        "policy_admission": policy,
+        "stored_evidence": stored_evidence,
+        "fresh_evidence": None,
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "authorization_attempt": admitted_attempt,
+        "candidate_authorization_witness_cid": _identity(dict(witness)),
+        "active_source_witness": dict(active_source_witness),
+        "active_source_witness_cid": _identity(active_source_witness),
+        "active_source_head": current_head,
+        "active_source_tree": current_tree,
+        "receipt_anchor_is_current": not is_descendant,
+        "historical_live_deferred": is_descendant,
+        "historical_live_effect_continuity": None,
+        "r28_receipt_absent": True,
+    }
+    if is_descendant:
+        return bundle
+    return _complete_r29_historical_live_prequalification(
+        paths=paths,
+        bundle=bundle,
+        continuity_admission=None,
+    )
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -30098,6 +32228,7 @@ def _read_continuity_state(
     r26_projection_recovery_prequalification: Mapping[str, Any] | None = None,
     r27_projection_recovery_prequalification: Mapping[str, Any] | None = None,
     r28_projection_recovery_prequalification: Mapping[str, Any] | None = None,
+    r29_projection_recovery_prequalification: Mapping[str, Any] | None = None,
 ) -> tuple[
     dict[str, Any],
     list[str],
@@ -30112,7 +32243,8 @@ def _read_continuity_state(
         with _offline_merge_queue_guard(paths) as queue_database:
             recovery_admission: dict[str, Any] | None = None
             r26_projection_bundle = (
-                r28_projection_recovery_prequalification
+                r29_projection_recovery_prequalification
+                or r28_projection_recovery_prequalification
                 or r27_projection_recovery_prequalification
                 or r26_projection_recovery_prequalification
             )
@@ -34466,8 +36598,8 @@ def _authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_
         )
         _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
         expected_chain = [*prior_chain, receipt]
-        r28_result = (
-            _authorize_repair_sealed_owner_initial_health_scheduler_exit_transition_if_applicable(
+        r29_result = (
+            _authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable(
                 board=board,
                 config=config,
                 paths=paths,
@@ -34480,8 +36612,13 @@ def _authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_
                 authorization_directory_fd=authorization_directory_fd,
             )
         )
-        if r28_result is not None:
-            return r28_result
+        if r29_result is not None:
+            return r29_result
+        if head != str(transition["repair_head"]):
+            raise OperatorError(
+                "R28 authorization retry is denied after its recorded "
+                "terminal attempt; the exact R29 correction is required"
+            )
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = _admit_exact_r27_transition_chain(
@@ -34939,6 +37076,424 @@ def _authorize_repair_sealed_owner_initial_health_scheduler_exit_transition_if_a
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R28 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_sealed_validation_contract_dispatch_correction_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize exact R29 directly on R27 without retrying R28."""
+
+    r29_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_transition_receipt"
+    )
+    r28_path = paths.get(
+        "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt"
+    )
+    attempt_path = paths.get(
+        "repair_sealed_validation_contract_dispatch_correction_authorization_attempt"
+    )
+    if (
+        not isinstance(r29_path, Path)
+        or not isinstance(r28_path, Path)
+        or not isinstance(attempt_path, Path)
+    ):
+        return None
+    if (
+        r28_path.parent != r29_path.parent
+        or attempt_path.parent != r29_path.parent
+    ):
+        raise OperatorError("R29 authorization evidence directories differ")
+
+    def assert_unpublished_r28_absent(*, boundary: str) -> None:
+        with _anchored_directory_descriptor(r28_path.parent) as directory_fd:
+            if not _same_namespace_identity(
+                os.fstat(directory_fd),
+                os.fstat(authorization_directory_fd),
+            ):
+                raise OperatorError(
+                    f"R29 authorization directory changed {boundary}"
+                )
+            if not _r21_path_absent(directory_fd, r28_path.name):
+                raise OperatorError(
+                    f"R29 requires unpublished R28 receipt absence {boundary}"
+                )
+
+    prior_chain = _admit_exact_r27_transition_chain(list(prior_receipt_chain))
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in prior_chain
+    ) != ASEH_R29_EXACT_R1_R27_RECEIPT_CIDS:
+        raise OperatorError("bootstrap repair R29 prior vector differs")
+    prior_receipt = prior_chain[-1]
+    transition_binding_fields = (
+        "schema",
+        "task_id",
+        "transition_revision",
+        "base_head",
+        "base_tree",
+        "repair_head",
+        "repair_tree",
+        "changed_paths",
+        "patch_digest",
+        "previous_receipt_cid",
+        "candidate_authorization_witness",
+        "sealed_validation_executor_contract",
+        "receipt_cid",
+    )
+    if (
+        prior_receipt != previous_receipt
+        or any(
+            previous_transition.get(field) != prior_receipt.get(field)
+            for field in transition_binding_fields
+        )
+        or previous_transition.get("repair_head")
+        != REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        or previous_transition.get("repair_tree")
+        != REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        or previous_transition.get("receipt_cid")
+        != ASEH_R29_EXACT_R27_REPAIR_RECEIPT_CID
+    ):
+        raise OperatorError("bootstrap repair R29 prior chain differs")
+
+    assert_unpublished_r28_absent(boundary="before R29 receipt admission")
+    r29_receipt_absent = _r29_receipt_name_is_absent(
+        r29_path,
+        authorization_directory_fd=authorization_directory_fd,
+    )
+    if not r29_receipt_absent:
+        receipt = _secure_runtime_json(
+            r29_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        attempt_value = receipt.get("authorization_attempt")
+        attempt_witness = receipt.get("candidate_authorization_witness")
+        if (
+            not isinstance(attempt_value, Mapping)
+            or not isinstance(attempt_witness, Mapping)
+        ):
+            raise OperatorError("R29 authorization attempt is absent")
+        stored_attempt = _secure_runtime_json(
+            attempt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        admitted_attempt = _validate_r29_authorization_attempt_record(
+            stored_attempt,
+            candidate_head=str(receipt.get("repair_head") or ""),
+            candidate_tree=str(receipt.get("repair_tree") or ""),
+            candidate_authorization_witness=dict(attempt_witness),
+        )
+        if admitted_attempt != attempt_value:
+            raise OperatorError("R29 authorization attempt changed")
+        transition = (
+            _validate_repair_sealed_validation_contract_dispatch_correction_transition(
+                receipt,
+                bootstrap=bootstrap,
+                previous_receipt=previous_receipt,
+                rerun_validations=receipt.get("repair_head") == head,
+            )
+        )
+        _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
+        expected_chain = [*prior_chain, receipt]
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = _admit_exact_r29_transition_chain(
+            current_admission.get("repair_transition_chain")
+        )
+        admitted_continuity = current_admission.get("canonical_continuity")
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head") != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid") != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in admitted_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or (
+                "sealed_owner_foreign_recovery_waiter_admission_to_"
+                "sealed_validation_contract_dispatch_correction"
+            )
+            not in admitted_continuity
+            or current_admission.get("historical_live_authorizing_receipt_cid")
+            != receipt.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current admission does not retain the R29 dispatch correction"
+            )
+        assert_unpublished_r28_absent(
+            boundary="after R29 idempotent receipt admission"
+        )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission["runtime_source_head"],
+        }
+
+    base_head = (
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    )
+    if _git("show", "-s", "--format=%P", head).split() != [base_head]:
+        return None
+    if _git("rev-parse", f"{base_head}^{{tree}}") != (
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+    ):
+        raise OperatorError("bootstrap repair R29 base tree differs")
+    if _git("show", "-s", "--format=%P", base_head).split() != [
+        ASEH_R29_PUBLISHED_R27_BASE_HEAD
+    ]:
+        raise OperatorError("bootstrap repair R29 failed-candidate parent differs")
+    if _git("rev-parse", f"{ASEH_R29_PUBLISHED_R27_BASE_HEAD}^{{tree}}") != (
+        ASEH_R29_PUBLISHED_R27_BASE_TREE
+    ):
+        raise OperatorError("bootstrap repair R29 published R27 tree differs")
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError("bootstrap repair R29 changed paths differ")
+    if _git_changed_paths(ASEH_R29_PUBLISHED_R27_BASE_HEAD, head) != (
+        ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair R29 unreceipted effective changed paths differ"
+        )
+    dispatch_path = "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+    if (
+        _git("rev-parse", f"{base_head}:{dispatch_path}")
+        != ASEH_R29_FAILED_R28_DISPATCH_SOURCE_BLOB_OID
+        or _identity(_git_bytes("show", f"{base_head}:{dispatch_path}"))
+        != ASEH_R29_FAILED_R28_DISPATCH_SOURCE_SHA256
+    ):
+        raise OperatorError("bootstrap repair R29 failed dispatch source differs")
+
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    r27_failure_evidence = _r28_r27_initial_health_failure_evidence(paths=paths)
+    r28_failure_evidence = (
+        _validate_r29_r28_authorization_failure_evidence(
+            _r29_expected_r28_authorization_failure_evidence()
+        )
+    )
+    assert_unpublished_r28_absent(boundary="before R29 validation")
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R29 failure evidence before validation",
+    )
+    _assert_r29_authorization_attempt_absent(
+        attempt_path,
+        authorization_directory_fd=authorization_directory_fd,
+    )
+    authorization_attempt = _r29_authorization_attempt_record(
+        candidate_head=head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=authorization_witness,
+        started_at=time.time(),
+    )
+    _atomic_json_create(
+        attempt_path,
+        authorization_attempt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    stored_attempt = _secure_runtime_json(
+        attempt_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    if (
+        _validate_r29_authorization_attempt_record(
+            stored_attempt,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+        )
+        != authorization_attempt
+    ):
+        raise OperatorError("R29 authorization attempt changed after publication")
+    validation_results = (
+        _run_repair_sealed_validation_contract_dispatch_correction_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    assert_unpublished_r28_absent(boundary="after R29 validation")
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R29 validation before live qualification",
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r29_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+            authorization_attempt=authorization_attempt,
+            authorization_receipt=None,
+            active_candidate_head=head,
+            active_candidate_tree=candidate_tree,
+            active_candidate_authorization_witness=authorization_witness,
+            continuity_admission=None,
+        )
+    )
+    assert_unpublished_r28_absent(boundary="after R29 live qualification")
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R29 live qualification before receipt publication",
+    )
+
+    inherited_names = (
+        "projection_recovery_failure_evidence",
+        "r25_preflight_failure_evidence",
+        "projection_recovery_prestart_admission",
+        "r26_terminal_failure_evidence",
+    )
+    inherited: dict[str, Mapping[str, Any]] = {}
+    for name in inherited_names:
+        value = previous_receipt.get(name)
+        if not isinstance(value, Mapping):
+            raise OperatorError(f"R29 inherited {name} is absent")
+        inherited[name] = value
+    receipt: dict[str, Any] = {
+        "schema": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+        ),
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R29",
+        "program_id": PROGRAM,
+        "transition_revision": 29,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        ),
+        "published_r27_base_head": ASEH_R29_PUBLISHED_R27_BASE_HEAD,
+        "published_r27_base_tree": ASEH_R29_PUBLISHED_R27_BASE_TREE,
+        "failed_unpublished_r28_head": base_head,
+        "failed_unpublished_r28_tree": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_TREE
+        ),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "unreceipted_effective_changed_paths": list(
+            ASEH_R29_UNRECEIPTED_EFFECTIVE_CHANGED_PATHS
+        ),
+        "unreceipted_effective_patch_digest": _git_patch_digest(
+            ASEH_R29_PUBLISHED_R27_BASE_HEAD,
+            head,
+        ),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R27"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r29_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": historical_policy,
+        "historical_live_execution_evidence": historical_evidence,
+        **{name: dict(value) for name, value in inherited.items()},
+        "r27_initial_health_failure_evidence": r27_failure_evidence,
+        "r28_authorization_failure_evidence": r28_failure_evidence,
+        "authorization_attempt": authorization_attempt,
+        "terminal_success_criteria": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_sealed_validation_contract_dispatch_correction_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    if (
+        _r28_r27_initial_health_failure_evidence(paths=paths)
+        != r27_failure_evidence
+        or _r29_expected_r28_authorization_failure_evidence()
+        != r28_failure_evidence
+        or _secure_runtime_json(
+            attempt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        != authorization_attempt
+    ):
+        raise OperatorError("R29 failure evidence changed before publication")
+    assert_unpublished_r28_absent(
+        boundary="immediately before R29 receipt publication"
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R29 receipt publication",
+    )
+    _atomic_json_create(
+        r29_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    assert_unpublished_r28_absent(boundary="after R29 receipt publication")
+    if _secure_runtime_json(
+        attempt_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    ) != authorization_attempt:
+        raise OperatorError("R29 authorization attempt changed after receipt")
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R29 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -37246,14 +39801,24 @@ def _admit_materialized_launch(
         paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
     )
     receipt_id = _bootstrap_receipt_id(bootstrap)
-    r28_prequalification = _prequalify_r28_historical_live_launch(
-        paths=paths,
-        population=population,
-        bootstrap=bootstrap,
+    r29_prequalification = _prequalify_r29_historical_live_launch(
+        paths=paths, population=population, bootstrap=bootstrap
+    )
+    r28_prequalification = (
+        None
+        if r29_prequalification is not None
+        else _prequalify_r28_historical_live_launch(
+            paths=paths,
+            population=population,
+            bootstrap=bootstrap,
+        )
     )
     r27_prequalification = (
         None
-        if r28_prequalification is not None
+        if (
+            r29_prequalification is not None
+            or r28_prequalification is not None
+        )
         else _prequalify_r27_historical_live_launch(
             paths=paths,
             population=population,
@@ -37262,7 +39827,11 @@ def _admit_materialized_launch(
     )
     r26_prequalification = (
         None
-        if r28_prequalification is not None or r27_prequalification is not None
+        if (
+            r29_prequalification is not None
+            or r28_prequalification is not None
+            or r27_prequalification is not None
+        )
         else _prequalify_r26_historical_live_launch(
             paths=paths,
             population=population,
@@ -37272,7 +39841,8 @@ def _admit_materialized_launch(
     r25_prequalification = (
         None
         if (
-            r28_prequalification is not None
+            r29_prequalification is not None
+            or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
         )
@@ -37283,7 +39853,8 @@ def _admit_materialized_launch(
     r24_prequalification = (
         None
         if (
-            r28_prequalification is not None
+            r29_prequalification is not None
+            or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
             or r25_prequalification is not None
@@ -37297,7 +39868,8 @@ def _admit_materialized_launch(
     r23_prequalification = (
         None
         if (
-            r28_prequalification is not None
+            r29_prequalification is not None
+            or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
             or r25_prequalification is not None
@@ -37312,7 +39884,8 @@ def _admit_materialized_launch(
     r22_prequalification = (
         None
         if (
-            r28_prequalification is not None
+            r29_prequalification is not None
+            or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
             or r25_prequalification is not None
@@ -37328,7 +39901,8 @@ def _admit_materialized_launch(
     r21_prequalification = (
         None
         if (
-            r28_prequalification is not None
+            r29_prequalification is not None
+            or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
             or r24_prequalification is not None
@@ -37345,7 +39919,8 @@ def _admit_materialized_launch(
     r20_prequalification = (
         None
         if (
-            r28_prequalification is not None
+            r29_prequalification is not None
+            or r28_prequalification is not None
             or r27_prequalification is not None
             or r26_prequalification is not None
             or r23_prequalification is not None
@@ -37429,6 +40004,7 @@ def _admit_materialized_launch(
             r26_projection_recovery_prequalification=r26_prequalification,
             r27_projection_recovery_prequalification=r27_prequalification,
             r28_projection_recovery_prequalification=r28_prequalification,
+            r29_projection_recovery_prequalification=r29_prequalification,
         )
         base_proof = _admit_canonical_merge_suffix(
             board,
@@ -37532,6 +40108,9 @@ def _admit_materialized_launch(
             sealed_owner_initial_health_scheduler_exit_transition: (
                 dict[str, Any] | None
             ) = None
+            sealed_validation_contract_dispatch_correction_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -37551,6 +40130,7 @@ def _admit_materialized_launch(
             r26_receipt: dict[str, Any] | None = None
             r27_receipt: dict[str, Any] | None = None
             r28_receipt: dict[str, Any] | None = None
+            r29_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -38617,18 +41197,24 @@ def _admit_materialized_launch(
                     sealed_owner_capsule_schema_data_completeness_transition
                 )
             r27_reconstruction = r27_prequalification
-            if r28_prequalification is not None:
-                raw_r28_prior = r28_prequalification.get("prior_chain")
+            direct_r27_child_prequalification = (
+                r29_prequalification or r28_prequalification
+            )
+            if direct_r27_child_prequalification is not None:
+                raw_direct_r27_prior = direct_r27_child_prequalification.get(
+                    "prior_chain"
+                )
                 if (
-                    not isinstance(raw_r28_prior, list)
-                    or len(raw_r28_prior)
+                    not isinstance(raw_direct_r27_prior, list)
+                    or len(raw_direct_r27_prior)
                     != len(ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS)
-                    or not isinstance(raw_r28_prior[-1], Mapping)
-                    or not isinstance(raw_r28_prior[-2], Mapping)
+                    or not isinstance(raw_direct_r27_prior[-1], Mapping)
+                    or not isinstance(raw_direct_r27_prior[-2], Mapping)
                 ):
-                    raise OperatorError("R28 prior R27 chain differs")
-                inherited_r27 = raw_r28_prior[-1]
-                inherited_r26 = raw_r28_prior[-2]
+                    revision = "R29" if r29_prequalification is not None else "R28"
+                    raise OperatorError(f"{revision} prior R27 chain differs")
+                inherited_r27 = raw_direct_r27_prior[-1]
+                inherited_r26 = raw_direct_r27_prior[-2]
                 r27_reconstruction = {
                     "transition": (
                         _validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition(
@@ -38639,7 +41225,7 @@ def _admit_materialized_launch(
                         )
                     ),
                     "receipt": inherited_r27,
-                    "prior_chain": raw_r28_prior[:-1],
+                    "prior_chain": raw_direct_r27_prior[:-1],
                 }
             r26_reconstruction = r26_prequalification
             if r27_reconstruction is not None:
@@ -38921,6 +41507,38 @@ def _admit_materialized_launch(
                 active_transition = (
                     sealed_owner_initial_health_scheduler_exit_transition
                 )
+            if r29_prequalification is not None:
+                raw_r29_transition = r29_prequalification.get("transition")
+                raw_r29_receipt = r29_prequalification.get("receipt")
+                raw_r29_prior_chain = r29_prequalification.get("prior_chain")
+                if (
+                    sealed_owner_foreign_recovery_waiter_admission_transition
+                    is None
+                    or r27_receipt is None
+                    or not isinstance(raw_r29_transition, Mapping)
+                    or not isinstance(raw_r29_receipt, Mapping)
+                    or not isinstance(raw_r29_prior_chain, list)
+                    or len(raw_r29_prior_chain)
+                    != len(ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+                    or raw_r29_prior_chain[-1] != r27_receipt
+                    or raw_r29_transition.get("base_head")
+                    != REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+                    or raw_r29_transition.get("previous_receipt_cid")
+                    != sealed_owner_foreign_recovery_waiter_admission_transition.get(
+                        "receipt_cid"
+                    )
+                    or r29_prequalification.get("r28_receipt_absent") is not True
+                ):
+                    raise OperatorError(
+                        "R29 dispatch correction does not extend admitted R27"
+                    )
+                sealed_validation_contract_dispatch_correction_transition = dict(
+                    raw_r29_transition
+                )
+                r29_receipt = dict(raw_r29_receipt)
+                active_transition = (
+                    sealed_validation_contract_dispatch_correction_transition
+                )
             if (
                 historical_lifecycle_route_transition is None
                 and _r19_population_requires_policy(population)
@@ -39028,6 +41646,21 @@ def _admit_materialized_launch(
                 raise OperatorError(
                     "active R28 scheduler-exit repair policy receipt is absent"
                 )
+            if (
+                sealed_validation_contract_dispatch_correction_transition
+                is None
+                and isinstance(
+                    paths.get(
+                        "repair_sealed_validation_contract_dispatch_"
+                        "correction_transition_receipt"
+                    ),
+                    Path,
+                )
+                and _r29_population_requires_policy(population)
+            ):
+                raise OperatorError(
+                    "active R29 dispatch-correction policy receipt is absent"
+                )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -39037,6 +41670,17 @@ def _admit_materialized_launch(
                 task_outputs=outputs,
                 completed_requests=requests,
             )
+            if (
+                r29_prequalification is not None
+                and r29_prequalification.get("historical_live_deferred") is True
+            ):
+                r29_prequalification = (
+                    _complete_r29_historical_live_prequalification(
+                        paths=paths,
+                        bundle=r29_prequalification,
+                        continuity_admission=current_proof,
+                    )
+                )
             repair_transition = active_transition
             repair_transition_chain.append(followup_transition)
             if clean_launch_transition is not None:
@@ -39141,6 +41785,7 @@ def _admit_materialized_launch(
                             and r26_prequalification is None
                             and r27_prequalification is None
                             and r28_prequalification is None
+                            and r29_prequalification is None
                         ) or r21_receipt is None:
                             raise OperatorError(
                                 "R21 pre-DuckDB qualification bundle is absent"
@@ -39177,6 +41822,7 @@ def _admit_materialized_launch(
                                     and r26_prequalification is None
                                     and r27_prequalification is None
                                     and r28_prequalification is None
+                                    and r29_prequalification is None
                                 )
                                 or r22_receipt is None
                             ):
@@ -39214,6 +41860,7 @@ def _admit_materialized_launch(
                                         and r26_prequalification is None
                                         and r27_prequalification is None
                                         and r28_prequalification is None
+                                        and r29_prequalification is None
                                     )
                                     or r23_receipt is None
                                 ):
@@ -39251,6 +41898,7 @@ def _admit_materialized_launch(
                                             and r26_prequalification is None
                                             and r27_prequalification is None
                                             and r28_prequalification is None
+                                            and r29_prequalification is None
                                         )
                                         or r24_receipt is None
                                     ):
@@ -39413,12 +42061,55 @@ def _admit_materialized_launch(
                                                         _validate_repair_sealed_owner_initial_health_scheduler_exit_transition
                                                     )
                                                     launch_previous_receipt = r27_receipt
+                                                if (
+                                                    sealed_validation_contract_dispatch_correction_transition
+                                                    is not None
+                                                ):
+                                                    if (
+                                                        r29_prequalification is None
+                                                        or r29_receipt is None
+                                                        or r29_prequalification.get(
+                                                            "r28_receipt_absent"
+                                                        )
+                                                        is not True
+                                                    ):
+                                                        raise OperatorError(
+                                                            "R29 pre-DuckDB qualification "
+                                                            "bundle is absent"
+                                                        )
+                                                    repair_transition_chain.append(
+                                                        sealed_validation_contract_dispatch_correction_transition
+                                                    )
+                                                    launch_chain = (
+                                                        _admit_exact_r29_transition_chain(
+                                                            repair_transition_chain
+                                                        )
+                                                    )
+                                                    launch_bundle = r29_prequalification
+                                                    launch_receipt = r29_receipt
+                                                    launch_transition = (
+                                                        sealed_validation_contract_dispatch_correction_transition
+                                                    )
+                                                    launch_path = paths.get(
+                                                        "repair_sealed_validation_"
+                                                        "contract_dispatch_correction_"
+                                                        "transition_receipt"
+                                                    )
+                                                    launch_validator = (
+                                                        _validate_repair_sealed_validation_contract_dispatch_correction_transition
+                                                    )
+                                                    launch_previous_receipt = r27_receipt
                     if not isinstance(launch_bundle, Mapping):
                         raise OperatorError(
                             "pre-DuckDB qualification bundle is absent"
                         )
                     if not isinstance(launch_path, Path):
                         raise OperatorError("pre-DuckDB receipt path is absent")
+                    if launch_bundle is r29_prequalification:
+                        _assert_r29_launch_r28_receipt_absent(
+                            paths=paths,
+                            launch_bundle=launch_bundle,
+                        )
                     late_receipt = _secure_runtime_json(
                         launch_path,
                         max_bytes=STATUS_RECEIPT_MAX_BYTES,
@@ -39429,6 +42120,11 @@ def _admit_materialized_launch(
                         previous_receipt=launch_previous_receipt,
                         rerun_validations=True,
                     )
+                    if launch_bundle is r29_prequalification:
+                        _assert_r29_launch_r28_receipt_absent(
+                            paths=paths,
+                            launch_bundle=launch_bundle,
+                        )
                     early_exact_chain = launch_bundle.get("exact_chain")
                     policy_admission = launch_bundle.get(
                         "policy_admission"
@@ -39668,6 +42364,14 @@ def _admit_materialized_launch(
                     "sealed_owner_foreign_recovery_waiter_admission_to_"
                     "sealed_owner_initial_health_scheduler_exit"
                 ] = sealed_owner_initial_health_scheduler_exit_transition
+            if (
+                sealed_validation_contract_dispatch_correction_transition
+                is not None
+            ):
+                continuity[
+                    "sealed_owner_foreign_recovery_waiter_admission_to_"
+                    "sealed_validation_contract_dispatch_correction"
+                ] = sealed_validation_contract_dispatch_correction_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -39719,10 +42423,16 @@ def _admit_materialized_launch(
         or r26_prequalification is not None
         or r27_prequalification is not None
         or r28_prequalification is not None
+        or r29_prequalification is not None
     ):
         admission["projection_matches_events"] = integrity[
             "projection_matches_events"
         ]
+    if r29_prequalification is not None:
+        _assert_r29_launch_r28_receipt_absent(
+            paths=paths,
+            launch_bundle=r29_prequalification,
+        )
     admission["admission_cid"] = _identity(admission)
     return admission
 
@@ -41273,6 +43983,7 @@ def _r21_start_server_with_one_safe_retry(
     failure_event: threading.Event,
     terminal_phase: dict[str, Any] | None = None,
     r23_permission_context: Mapping[str, Any] | None = None,
+    pre_start_guard: Callable[[], None] | None = None,
 ) -> tuple[Any, Any, dict[str, Any] | None]:
     """Start a fresh owner, admitting at most one exact quiescent retry."""
 
@@ -41320,23 +44031,27 @@ def _r21_start_server_with_one_safe_retry(
             error_type=type(baseline_exc).__name__,
         )
         raise
-    if r23_permission_context is not None:
-        permission_witness = r23_permission_context.get(
-            "candidate_authorization_witness"
-        )
-        if not isinstance(permission_witness, Mapping):
-            raise OperatorError("R23 owner-start permission witness is absent")
-        _assert_candidate_authorization_witness(
-            permission_witness,
-            expected_head=candidate_head,
-            expected_tree=candidate_tree,
-            boundary="after R23 permission admission immediately before owner start",
-        )
     _set_sealed_owner_terminal_phase(
         terminal_phase,
         "owner_start_attempt_1",
         owner_start_attempted=True,
     )
+    try:
+        if pre_start_guard is not None:
+            pre_start_guard()
+        _assert_candidate_authorization_witness(
+            authorization_witness,
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+            boundary="immediately before physical owner start",
+        )
+    except BaseException:
+        _set_sealed_owner_terminal_phase(
+            terminal_phase,
+            "pre_start_quiescence",
+            owner_start_attempted=False,
+        )
+        raise
     try:
         identity = server.start()
     except Exception as first_exc:
@@ -41457,17 +44172,27 @@ def _r21_start_server_with_one_safe_retry(
             error_type=type(build_exc).__name__,
         )
         raise
-    _assert_candidate_authorization_witness(
-        authorization_witness,
-        expected_head=candidate_head,
-        expected_tree=candidate_tree,
-        boundary="immediately before R21 owner-start retry",
-    )
     _set_sealed_owner_terminal_phase(
         terminal_phase,
         "owner_start_attempt_2",
         owner_start_attempted=True,
     )
+    try:
+        if pre_start_guard is not None:
+            pre_start_guard()
+        _assert_candidate_authorization_witness(
+            authorization_witness,
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+            boundary="immediately before physical owner-start retry",
+        )
+    except BaseException:
+        _set_sealed_owner_terminal_phase(
+            terminal_phase,
+            "owner_start_retry_admission",
+            owner_start_attempted=True,
+        )
+        raise
     try:
         identity = fresh_server.start()
     except Exception as retry_exc:
@@ -41548,7 +44273,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
     candidate_tree: str,
     candidate_authorization_witness: Mapping[str, str],
 ) -> dict[str, Any] | None:
-    """Project unchanged R23 permission authority through exact R28."""
+    """Project unchanged R23 permission authority through exact R29."""
 
     parents = _git("show", "-s", "--format=%P", candidate_head).split()
     exact_r23 = parents == [
@@ -41569,7 +44294,20 @@ def _r23_owner_start_permission_context_from_launch_admission(
     exact_r28 = parents == [
         REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
     ]
-    if not any((exact_r23, exact_r24, exact_r25, exact_r26, exact_r27, exact_r28)):
+    exact_r29 = parents == [
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+    ]
+    if not any(
+        (
+            exact_r23,
+            exact_r24,
+            exact_r25,
+            exact_r26,
+            exact_r27,
+            exact_r28,
+            exact_r29,
+        )
+    ):
         return None
     if not isinstance(launch_admission, Mapping):
         raise OperatorError("R23 materialized launch admission is invalid")
@@ -41578,7 +44316,11 @@ def _r23_owner_start_permission_context_from_launch_admission(
     if admission_cid != _identity(unsigned_admission):
         raise OperatorError("R23 materialized launch admission CID differs")
     chain = (
-        _admit_exact_r28_transition_chain(
+        _admit_exact_r29_transition_chain(
+            launch_admission.get("repair_transition_chain")
+        )
+        if exact_r29
+        else _admit_exact_r28_transition_chain(
             launch_admission.get("repair_transition_chain")
         )
         if exact_r28
@@ -41607,7 +44349,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
     current_witness = dict(candidate_authorization_witness)
     r23_authority = (
         chain[-6]
-        if exact_r28
+        if exact_r29 or exact_r28
         else chain[-5]
         if exact_r27
         else chain[-4]
@@ -41620,7 +44362,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
     )
     r24_authority = (
         chain[-5]
-        if exact_r28
+        if exact_r29 or exact_r28
         else chain[-4]
         if exact_r27
         else chain[-3]
@@ -41631,7 +44373,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
     )
     r25_authority = (
         chain[-4]
-        if exact_r28
+        if exact_r29 or exact_r28
         else chain[-3]
         if exact_r27
         else chain[-2]
@@ -41639,11 +44381,17 @@ def _r23_owner_start_permission_context_from_launch_admission(
         else None
     )
     r26_authority = (
-        chain[-3] if exact_r28 else chain[-2] if exact_r27 else None
+        chain[-3]
+        if exact_r29 or exact_r28
+        else chain[-2]
+        if exact_r27
+        else None
     )
-    r27_authority = chain[-2] if exact_r28 else None
+    r27_authority = chain[-2] if exact_r29 or exact_r28 else None
     expected_schema = (
-        REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_SCHEMA
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_SCHEMA
+        if exact_r29
+        else REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_SCHEMA
         if exact_r28
         else REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SCHEMA
         if exact_r27
@@ -41656,7 +44404,9 @@ def _r23_owner_start_permission_context_from_launch_admission(
         else REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
     )
     expected_base = (
-        REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        REPAIR_SEALED_VALIDATION_CONTRACT_DISPATCH_CORRECTION_TRANSITION_BASE_HEAD
+        if exact_r29
+        else REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
         if exact_r28
         else REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
         if exact_r27
@@ -41683,7 +44433,21 @@ def _r23_owner_start_permission_context_from_launch_admission(
         or launch_admission.get("historical_live_authorizing_receipt_cid")
         != transition.get("receipt_cid")
         or (
-            (exact_r24 or exact_r25 or exact_r26 or exact_r27 or exact_r28)
+            exact_r29
+            and transition.get("r28_authorization_failure_evidence_cid")
+            != _r29_expected_r28_authorization_failure_evidence().get(
+                "evidence_cid"
+            )
+        )
+        or (
+            (
+                exact_r24
+                or exact_r25
+                or exact_r26
+                or exact_r27
+                or exact_r28
+                or exact_r29
+            )
             and (
                 r23_authority.get("schema")
                 != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
@@ -41697,7 +44461,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            (exact_r25 or exact_r26 or exact_r27 or exact_r28)
+            (exact_r25 or exact_r26 or exact_r27 or exact_r28 or exact_r29)
             and (
                 not isinstance(r24_authority, Mapping)
                 or r24_authority.get("schema")
@@ -41718,7 +44482,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            (exact_r26 or exact_r27 or exact_r28)
+            (exact_r26 or exact_r27 or exact_r28 or exact_r29)
             and (
                 not isinstance(r25_authority, Mapping)
                 or r25_authority.get("schema")
@@ -41739,7 +44503,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            (exact_r27 or exact_r28)
+            (exact_r27 or exact_r28 or exact_r29)
             and (
                 not isinstance(r26_authority, Mapping)
                 or r26_authority.get("schema")
@@ -41760,7 +44524,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            exact_r28
+            (exact_r28 or exact_r29)
             and (
                 not isinstance(r27_authority, Mapping)
                 or r27_authority.get("schema")
@@ -43350,6 +46114,10 @@ def _run_supervisor_owner_impl(
         )
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is not None:
         raise OperatorError("sealed validation authority survived admission")
+    _recheck_r29_admission_r28_receipt_absence(
+        paths=paths,
+        launch_admission=launch_admission,
+    )
     server = _build_server(board, paths)
     stop = threading.Event()
     failure_event = threading.Event()
@@ -43381,6 +46149,10 @@ def _run_supervisor_owner_impl(
                 terminal_phase,
                 "pre_start_quiescence",
             )
+            _recheck_r29_admission_r28_receipt_absence(
+                paths=paths,
+                launch_admission=launch_admission,
+            )
             server, identity, owner_start_recovery = (
                 _r21_start_server_with_one_safe_retry(
                     board=board,
@@ -43393,6 +46165,12 @@ def _run_supervisor_owner_impl(
                     failure_event=failure_event,
                     terminal_phase=terminal_phase,
                     r23_permission_context=r23_permission_context,
+                    pre_start_guard=lambda: (
+                        _recheck_r29_admission_r28_receipt_absence(
+                            paths=paths,
+                            launch_admission=launch_admission,
+                        )
+                    ),
                 )
             )
             owner_started = True
