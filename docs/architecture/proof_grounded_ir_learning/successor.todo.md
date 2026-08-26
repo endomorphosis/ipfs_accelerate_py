@@ -304,7 +304,7 @@ evidence.
 - Required proof or evaluation evidence: training, checkpoint, proof, evaluation, resource, reducer-CAS, and paired-comparison receipts
 - Result identity: RESULT(PGIR-206) in successor-v1
 - Outputs: data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/
-- Validation: python -m pytest -q test/api/test_agent_supervisor_proof_workflow_e2e.py test/api/test_agent_supervisor_scheduler.py
+- Validation: /usr/bin/python3.12 -S data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/build_not_run.py --check; /usr/bin/python3.12 -S data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/verify_not_run.py; python -m pytest -q test/api/test_agent_supervisor_proof_workflow_e2e.py test/api/test_agent_supervisor_scheduler.py
 - Bundle: pgir/successor/r1-r6
 - Parallel lane: experiment-orchestrator
 - Predicted files: data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/
@@ -337,7 +337,7 @@ evidence.
 - Required proof or evaluation evidence: manifest, evaluation, proof, promotion, publication, and complete result-graph verification
 - Result identity: RESULT(PGIR-207) in successor-v1
 - Outputs: data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/, docs/architecture/proof_grounded_ir_learning/successor-v1/
-- Validation: python -m pytest -q test/api/test_agent_supervisor_goal_completion.py test/api/test_agent_supervisor_proof_goal_completion.py
+- Validation: /usr/bin/python3.12 -S data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/verify_qualification.py --fresh-recursive; python -m pytest -q test/api/test_agent_supervisor_goal_completion.py test/api/test_agent_supervisor_proof_goal_completion.py
 - Bundle: pgir/successor/qualification
 - Parallel lane: final-qualifier
 - Predicted files: data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/, docs/architecture/proof_grounded_ir_learning/successor-v1/
