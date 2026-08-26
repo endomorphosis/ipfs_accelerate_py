@@ -1077,6 +1077,10 @@ def eaaef_checkout_has_only_generated_receipt_drift(
         completed = subprocess.run(
             [
                 "/usr/bin/git",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.fsmonitor=false",
                 "status",
                 "--porcelain=v1",
                 "--untracked-files=all",
@@ -1104,7 +1108,18 @@ def eaaef_checkout_has_only_generated_receipt_drift(
         return False
     try:
         index = subprocess.run(
-            ["/usr/bin/git", "ls-files", "-v", "-z", "--", "."],
+            [
+                "/usr/bin/git",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.fsmonitor=false",
+                "ls-files",
+                "-v",
+                "-z",
+                "--",
+                ".",
+            ],
             cwd=root,
             check=False,
             capture_output=True,

@@ -781,6 +781,107 @@ def test_current_launch_authority_rejects_non_receipt_checkout_drift(
         verify_current_admission_bundle_receipt(tmp_path)
 
 
+def test_generated_receipt_drift_check_neutralizes_hostile_git_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "eaaef-test@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "EAAEF Test"],
+        cwd=tmp_path,
+        check=True,
+    )
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("committed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "fixture"],
+        cwd=tmp_path,
+        check=True,
+    )
+
+    hostile_root = tmp_path / ".git" / "hostile-config"
+    hostile_root.mkdir()
+    local_sentinel = hostile_root / "local-fsmonitor-ran"
+    local_fsmonitor = hostile_root / "local-fsmonitor.sh"
+    local_fsmonitor.write_text(
+        "#!/bin/sh\n"
+        f"printf bad > {str(local_sentinel)!r}\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    local_fsmonitor.chmod(0o700)
+    hostile_hooks = hostile_root / "hooks"
+    hostile_hooks.mkdir()
+    subprocess.run(
+        ["git", "config", "core.fsmonitor", str(local_fsmonitor)],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "core.hooksPath", str(hostile_hooks)],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["/usr/bin/git", "status", "--porcelain=v1"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert local_sentinel.exists()
+    local_sentinel.unlink()
+
+    system_sentinel = hostile_root / "system-fsmonitor-ran"
+    system_fsmonitor = hostile_root / "system-fsmonitor.sh"
+    system_fsmonitor.write_text(
+        "#!/bin/sh\n"
+        f"printf bad > {str(system_sentinel)!r}\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    system_fsmonitor.chmod(0o700)
+    system_config = hostile_root / "system-gitconfig"
+    system_config.write_text(
+        "[core]\n"
+        f"\tfsmonitor = {system_fsmonitor}\n"
+        f"\thooksPath = {hostile_hooks}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(system_config))
+
+    real_run = subprocess.run
+    observed: list[list[str]] = []
+
+    def audited_run(arguments: list[str], **kwargs: object) -> object:
+        if arguments and arguments[0] == "/usr/bin/git":
+            observed.append(list(arguments))
+            assert arguments[1:5] == [
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.fsmonitor=false",
+            ]
+            environment = kwargs.get("env")
+            assert isinstance(environment, dict)
+            assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
+            assert environment["GIT_CONFIG_GLOBAL"] == "/dev/null"
+            assert "GIT_CONFIG_SYSTEM" not in environment
+        return real_run(arguments, **kwargs)
+
+    monkeypatch.setattr(eaaef_host_admission.subprocess, "run", audited_run)
+    assert eaaef_checkout_has_only_generated_receipt_drift(tmp_path) is True
+    assert len(observed) == 2
+    assert not local_sentinel.exists()
+    assert not system_sentinel.exists()
+
+
 def _write_current_task_receipt(
     receipt_dir: Path,
     *,
