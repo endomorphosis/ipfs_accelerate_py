@@ -118,7 +118,6 @@ from ..task_sources.duckdb_state import (
     quack_owner_mutation_content_id,
     quack_owner_mutation_inbox_path,
     quack_owner_mutation_mac,
-    unstall_stale_in_progress_tasks,
     validate_quack_owner_command_request,
 )
 from ..task_sources.intent_repository import (
@@ -5185,13 +5184,37 @@ class QuackStateServer:
             raise
 
     def _unstall_stale_board_gates(self, connection: Any) -> None:
-        """Retry leftover in_progress gates before quack_serve occupies the writer."""
+        """Reconcile and unstall through the one bound intent authority.
 
+        Every operation occurs before transport/read-replica publication while
+        this process holds the exclusive owner fence.  Integrity failures are
+        startup failures; they are never converted to a warning.
+        """
+
+        identity = self._identity
+        if identity is None:
+            raise QuackStateServerReadyError(
+                "board recovery requires the exact starting owner identity"
+            )
+        repository = IntentRepository(
+            self.config.database_path,
+            bound_connection=connection,
+            owner_id="quack-state-owner",
+            session_id=f"quack-owner-{identity.generation}",
+            install_schema=False,
+        )
         try:
-            result = unstall_stale_in_progress_tasks(connection)
-        except Exception as exc:
-            self._log(f"board unstall skipped: {type(exc).__name__}")
-            return
+            recovery = repository.reconcile_legacy_stale_unstall_projection_drift()
+            if recovery.changed:
+                candidates = recovery.details.get("candidates") or ()
+                self._log(
+                    "board projection recovery "
+                    f"candidates={len(candidates)} event_id={recovery.event_id}"
+                )
+            result = repository.unstall_stale_in_progress_tasks()
+            repository.assert_projection_matches_events()
+        finally:
+            repository.close()
         unstalled = result.get("unstalled") or []
         if not unstalled:
             return

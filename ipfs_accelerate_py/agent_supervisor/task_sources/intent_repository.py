@@ -24,6 +24,7 @@ provider, or process action.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -2807,10 +2808,17 @@ class IntentRepository:
                     "result_id": result_id,
                     "run_id": run_id,
                     "task_cid": tcid,
+                    "attempt_id": attempt_id or "",
                     "outcome": outcome_text,
                     "evidence_digest": digest,
                     "argv": argv_list,
                     "body": body_map,
+                    "validation_evidence_body": {
+                        "run_id": run_id,
+                        "result_id": result_id,
+                        "argv": argv_list,
+                        "outcome": outcome_text,
+                    },
                     "recorded_at": now,
                     "revision": 0,
                 },
@@ -3340,10 +3348,13 @@ class IntentRepository:
                 body={
                     "task_cid": tcid,
                     "attempt": attempt,
+                    "started_at_ms": now_ms,
                     "retry_not_before_ms": retry_not_before,
                     "delay_ms": delay,
                     "selection_penalty": penalty,
                     "reason": reason_text,
+                    "claimant_did": self.owner_id,
+                    "owner_session_id": self.session_id,
                     "revision": attempt,
                 },
             )
@@ -3625,11 +3636,130 @@ class IntentRepository:
         now: datetime | None = None,
         stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
     ) -> dict[str, Any]:
-        """Retry leftover in_progress gates so dependents can become ready."""
+        """Retry stale gates through the canonical event-sourced transition.
+
+        The low-level helper owns the DuckDB status-index workaround only.  On
+        a canonical control plane this repository owns the projection CAS,
+        task revision, and domain event, all inside this one transaction.
+        """
 
         with self._connection(write=True) as connection:
+            def transition(item: Mapping[str, Any]) -> Mapping[str, Any]:
+                task_cid = str(item["task_cid"])
+                previous_revision = int(item["previous_revision"])
+                revision = int(item["revision"])
+                recorded_at = str(item["recorded_at"])
+                row = connection.execute(
+                    """
+                    SELECT task_cid, task_alias, goal_cid, status, revision, body_json
+                    FROM tasks WHERE task_cid = ?
+                    """,
+                    [task_cid],
+                ).fetchone()
+                if row is None:
+                    raise IntentRepositoryIntegrityError(
+                        "stale-task recovery target disappeared"
+                    )
+                if str(row[3]) != "in_progress" or int(row[4]) != previous_revision:
+                    raise IntentRepositoryConflictError(
+                        "stale-task recovery lost its exact task revision CAS"
+                    )
+                body = _decode_json(row[5], noun="task body")
+                if not isinstance(body, dict):
+                    body = {}
+                else:
+                    body = dict(body)
+                previous_receipt = body.get("completion_receipt")
+                recovery_receipt: dict[str, Any] = (
+                    dict(previous_receipt)
+                    if isinstance(previous_receipt, Mapping)
+                    else {}
+                )
+                recovery_receipt.update(
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "stale-task-recovery-receipt@1"
+                        ),
+                        "operation": "event_sourced_stale_in_progress_unstall",
+                        "task_cid": task_cid,
+                        "task_alias": str(row[1]),
+                        "previous_status": "in_progress",
+                        "status": "retrying",
+                        "previous_revision": previous_revision,
+                        "revision": revision,
+                        "age_seconds": int(item["age_seconds"]),
+                        "stale_seconds": int(stale_seconds),
+                        "owner_id": self.owner_id,
+                        "session_id": self.session_id,
+                        "recorded_at": recorded_at,
+                    }
+                )
+                recovery_receipt["receipt_cid"] = content_identity(
+                    recovery_receipt
+                )
+                body["completion_receipt"] = recovery_receipt
+                updated = connection.execute(
+                    """
+                    UPDATE tasks SET status = 'retrying', revision = ?,
+                        updated_at = ?, body_json = ?
+                    WHERE task_cid = ? AND revision = ? AND status = 'in_progress'
+                    RETURNING revision
+                    """,
+                    [
+                        revision,
+                        recorded_at,
+                        _canonical(body, noun="task body"),
+                        task_cid,
+                        previous_revision,
+                    ],
+                ).fetchone()
+                if updated is None or int(updated[0]) != revision:
+                    raise IntentRepositoryConflictError(
+                        "stale-task recovery task revision CAS changed"
+                    )
+                connection.execute(
+                    """
+                    INSERT INTO task_revisions (
+                        task_cid, revision, status, body_json, recorded_at
+                    ) VALUES (?, ?, 'retrying', ?, ?)
+                    """,
+                    [
+                        task_cid,
+                        revision,
+                        _canonical(body, noun="task revision body"),
+                        recorded_at,
+                    ],
+                )
+                event = self._append_event(
+                    connection,
+                    event_type=IntentEventType.TASK_STATUS_CHANGED,
+                    subject_id=task_cid,
+                    task_cid=task_cid,
+                    body={
+                        "task_cid": task_cid,
+                        "task_alias": str(row[1]),
+                        "goal_cid": str(row[2]),
+                        "previous_status": "in_progress",
+                        "status": "retrying",
+                        "revision": revision,
+                        "receipt": recovery_receipt,
+                        "recorded_at": recorded_at,
+                    },
+                )
+                return {
+                    **dict(item),
+                    "changed": True,
+                    "event_id": event.event_id,
+                    "event_global_sequence": event.global_sequence,
+                    "receipt_cid": recovery_receipt["receipt_cid"],
+                }
+
             return apply_stale_in_progress_unstall(
-                connection, now=now, stale_seconds=stale_seconds
+                connection,
+                now=now,
+                stale_seconds=stale_seconds,
+                canonical_transition=transition,
             )
 
     # -- readiness / selection -----------------------------------------------
@@ -3726,12 +3856,13 @@ class IntentRepository:
         """Recover intent projections from admitted events if they diverge.
 
         Recovery is a pure database operation: rebuild projections from the
-        event stream and emit a recovery receipt. No external files are read.
+        event stream and emit a recovery receipt. No external files are read,
+        and the rebuild plus receipt are committed atomically.
         """
 
-        before = self.snapshot()
-        rebuilt = self.rebuild_projections_from_events()
         with self._connection(write=True) as connection:
+            before = self._snapshot_on(connection)
+            rebuilt = self._rebuild_projections_from_events_on(connection, strict=True)
             return self._append_event(
                 connection,
                 event_type=IntentEventType.RECOVERY_APPLIED,
@@ -3745,6 +3876,241 @@ class IntentRepository:
                 },
             )
 
+    def reconcile_legacy_stale_unstall_projection_drift(self) -> IntentReceipt:
+        """Repair only the exact projection-only stale-unstall legacy shape.
+
+        Older owner startup code advanced ``tasks`` from ``in_progress@N`` to
+        ``retrying@N+1`` without a task revision or intent event.  This bounded
+        recovery accepts only that reconstructible footprint.  Any unrelated
+        event/projection divergence rolls back and fails closed.
+        """
+
+        try:
+            settled = self.assert_projection_matches_events()
+        except IntentRepositoryIntegrityError:
+            # Diagnose the divergence inside the exclusive recovery
+            # transaction below. The parity probe itself always rolls back.
+            pass
+        else:
+            with self._connection(write=False) as connection:
+                full_projection_cid = content_identity(
+                    self._full_projection_on(connection)
+                )
+            return IntentReceipt(
+                event_id="",
+                event_type=IntentEventType.RECOVERY_APPLIED.value,
+                global_sequence=settled.event_watermark,
+                recorded_at=_utc_iso(),
+                subject_id="intent:recovery:legacy-stale-unstall",
+                revision=settled.event_watermark,
+                changed=False,
+                details=MappingProxyType(
+                    {
+                        "operation": "legacy_projection_only_stale_unstall",
+                        "projection_cid": settled.projection_cid,
+                        "full_projection_cid": full_projection_cid,
+                        "candidates": (),
+                    }
+                ),
+            )
+
+        with self._connection(write=True) as connection:
+            before = self._snapshot_on(connection)
+            before_full = self._full_projection_on(connection)
+            before_full_cid = content_identity(before_full)
+            before_tasks = self._task_projection_rows_on(connection)
+            before_goals = self._status_projection_rows_on(
+                connection, "goals", "goal_cid"
+            )
+            before_plans = self._status_projection_rows_on(
+                connection, "plans", "plan_cid"
+            )
+            candidates: list[dict[str, Any]] = []
+            for task_cid, row in sorted(before_tasks.items()):
+                status = str(row[6])
+                revision = int(row[7])
+                if status != "retrying" or revision < 2:
+                    continue
+                current_revision = connection.execute(
+                    "SELECT 1 FROM task_revisions WHERE task_cid = ? AND revision = ?",
+                    [task_cid, revision],
+                ).fetchone()
+                if current_revision is not None:
+                    continue
+                prior = connection.execute(
+                    """
+                    SELECT status, body_json FROM task_revisions
+                    WHERE task_cid = ? AND revision = ?
+                    """,
+                    [task_cid, revision - 1],
+                ).fetchone()
+                if (
+                    prior is None
+                    or str(prior[0]) != "in_progress"
+                    or str(prior[1]) != str(row[12])
+                ):
+                    continue
+                latest = connection.execute(
+                    """
+                    SELECT event_type, body_json, global_sequence
+                    FROM domain_events
+                    WHERE stream_id = ? AND task_cid = ?
+                      AND event_type IN (?, ?, ?, ?, ?)
+                    ORDER BY global_sequence DESC LIMIT 1
+                    """,
+                    [
+                        INTENT_STREAM_ID,
+                        task_cid,
+                        IntentEventType.TASK_UPSERTED.value,
+                        IntentEventType.TASK_STATUS_CHANGED.value,
+                        IntentEventType.COMPLETION_RECORDED.value,
+                        IntentEventType.TASK_BLOCKED.value,
+                        IntentEventType.TASK_UNBLOCKED.value,
+                    ],
+                ).fetchone()
+                if latest is None:
+                    continue
+                wrapper = _decode_json(latest[1], noun="event body")
+                payload = wrapper.get("body") if isinstance(wrapper, dict) else None
+                if not isinstance(payload, dict):
+                    continue
+                if (
+                    str(payload.get("task_cid") or "") != task_cid
+                    or str(payload.get("status") or "") != "in_progress"
+                    or int(payload.get("revision") or -1) != revision - 1
+                ):
+                    continue
+                candidates.append(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": str(row[1]),
+                        "legacy_status": "retrying",
+                        "legacy_revision": revision,
+                        "admitted_status": "in_progress",
+                        "admitted_revision": revision - 1,
+                        "last_event_type": str(latest[0]),
+                        "last_event_global_sequence": int(latest[2]),
+                    }
+                )
+
+            rebuilt = self._rebuild_projections_from_events_on(connection, strict=True)
+            after_full = self._full_projection_on(connection)
+            after_full_cid = content_identity(after_full)
+            after_tasks = self._task_projection_rows_on(connection)
+            after_goals = self._status_projection_rows_on(
+                connection, "goals", "goal_cid"
+            )
+            after_plans = self._status_projection_rows_on(
+                connection, "plans", "plan_cid"
+            )
+            candidate_ids = {item["task_cid"] for item in candidates}
+            if (
+                before.objective_count != rebuilt.objective_count
+                or before.goal_count != rebuilt.goal_count
+                or before.plan_count != rebuilt.plan_count
+                or before.task_count != rebuilt.task_count
+                or before.dependency_count != rebuilt.dependency_count
+                or before_goals != after_goals
+                or before_plans != after_plans
+                or set(before_tasks) != set(after_tasks)
+            ):
+                raise IntentRepositoryIntegrityError(
+                    "projection drift is not the bounded legacy stale-unstall shape"
+                )
+            for table, before_projection in before_full.items():
+                if table == "tasks":
+                    continue
+                if before_projection != after_full.get(table):
+                    raise IntentRepositoryIntegrityError(
+                        "projection drift changes state outside the stale task rows"
+                    )
+            for task_cid, before_row in before_tasks.items():
+                after_row = after_tasks[task_cid]
+                if task_cid not in candidate_ids:
+                    if before_row != after_row:
+                        raise IntentRepositoryIntegrityError(
+                            "projection drift includes a non-stale task row"
+                        )
+                    continue
+                candidate = next(
+                    item for item in candidates if item["task_cid"] == task_cid
+                )
+                if (
+                    str(after_row[6]) != candidate["admitted_status"]
+                    or int(after_row[7]) != candidate["admitted_revision"]
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "legacy stale-unstall candidate does not replay to its admitted state"
+                    )
+                # The legacy bypass changed only status, revision, and
+                # updated_at.  All authority-bearing task fields and body must
+                # reconstruct exactly.
+                for ordinal in (0, 1, 2, 3, 4, 5, 8, 9, 11, 12):
+                    if str(before_row[ordinal]) != str(after_row[ordinal]):
+                        raise IntentRepositoryIntegrityError(
+                            "legacy stale-unstall candidate changed task authority"
+                        )
+
+            if (
+                before.projection_cid == rebuilt.projection_cid
+                and before_full_cid == after_full_cid
+            ):
+                raise IntentRepositoryConflictError(
+                    "projection became event-equivalent during legacy recovery; retry "
+                    "from the current authoritative revision"
+                )
+            if not candidates:
+                raise IntentRepositoryIntegrityError(
+                    "projection/event divergence has no admitted legacy stale-unstall repair"
+                )
+            return self._append_event(
+                connection,
+                event_type=IntentEventType.RECOVERY_APPLIED,
+                subject_id="intent:recovery:legacy-stale-unstall",
+                body={
+                    "operation": "legacy_projection_only_stale_unstall",
+                    "before_projection_cid": before.projection_cid,
+                    "after_projection_cid": rebuilt.projection_cid,
+                    "before_full_projection_cid": before_full_cid,
+                    "after_full_projection_cid": after_full_cid,
+                    "candidates": candidates,
+                    "event_watermark": rebuilt.event_watermark,
+                    "revision": rebuilt.event_watermark,
+                    "recorded_at": _utc_iso(),
+                },
+            )
+
+    def assert_projection_matches_events(self) -> IntentSnapshot:
+        """Prove full projection parity without committing the test replay."""
+
+        class _ParityProvedRollback(Exception):
+            pass
+
+        proof: dict[str, IntentSnapshot] = {}
+        try:
+            with self._connection(write=True) as connection:
+                before = self._snapshot_on(connection)
+                before_full_cid = content_identity(self._full_projection_on(connection))
+                rebuilt = self._rebuild_projections_from_events_on(
+                    connection, strict=True
+                )
+                rebuilt_full_cid = content_identity(
+                    self._full_projection_on(connection)
+                )
+                if (
+                    before.projection_cid != rebuilt.projection_cid
+                    or before_full_cid != rebuilt_full_cid
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "intent projection differs from admitted events"
+                    )
+                proof["snapshot"] = before
+                # The repository transaction manager rolls the replay back;
+                # equality is evidence, not authority to rewrite live rows.
+                raise _ParityProvedRollback
+        except _ParityProvedRollback:
+            return proof["snapshot"]
+
     def rebuild_projections_from_events(self) -> IntentSnapshot:
         """Clear intent projections and re-apply admitted intent events.
 
@@ -3752,75 +4118,162 @@ class IntentRepository:
         """
 
         with self._connection(write=True) as connection:
-            events = connection.execute(
+            return self._rebuild_projections_from_events_on(connection)
+
+    def _rebuild_projections_from_events_on(
+        self,
+        connection: Any,
+        *,
+        strict: bool = False,
+    ) -> IntentSnapshot:
+        events = connection.execute(
                 """
-                SELECT event_id, event_type, task_cid, body_json, global_sequence
+                SELECT event_id, event_type, task_cid, attempt_id, session_id,
+                       recorded_at, body_json, sequence, global_sequence
                 FROM domain_events
                 WHERE stream_id = ?
                 ORDER BY global_sequence ASC
                 """,
                 [INTENT_STREAM_ID],
             ).fetchall()
-            replayed_validation_run_ids: set[str] = set()
-            replayed_validation_result_ids: set[str] = set()
-            # Preserve non-intent domain events; only rebuild intent projections.
-            for table in _PROJECTION_TABLES:
-                try:
-                    connection.execute(f"DELETE FROM {table}")
-                except Exception:
-                    # Some tables may be empty or not present in partial installs.
-                    pass
-            # Leases are shared with the lease coordinator; only clear queue
-            # entries owned by this repository's extension schema.
+        replayed_validation_run_ids: set[str] = set()
+        replayed_validation_result_ids: set[str] = set()
+        replayed_attempt_ids: set[str] = set()
+        # Preserve non-intent domain events; only rebuild intent projections.
+        for table in _PROJECTION_TABLES:
+            # ``task_attempts`` has an immediate unique ART index on
+            # ``(task_cid, attempt_number)``. DuckDB can reject deleting and
+            # reinserting the exact same key in one transaction. Attempts are
+            # updated in place and pruned after replay.
+            if table == "task_attempts":
+                continue
             try:
-                connection.execute(
-                    "DELETE FROM leases WHERE extension_schema = ?",
-                    [_SHARED_QUEUE_LEASE_SCHEMA],
-                )
+                connection.execute(f"DELETE FROM {table}")
             except Exception:
-                pass
-            for event_row in events:
-                # DuckDBRow iterates keys; index into values explicitly.
-                event_type = str(event_row[1])
-                body_json = event_row[3]
-                body_wrapper = _decode_json(body_json, noun="event body")
-                if not isinstance(body_wrapper, dict):
-                    continue
-                payload = body_wrapper.get("body")
-                if not isinstance(payload, dict):
-                    payload = body_wrapper
-                if event_type == IntentEventType.VALIDATION_RECORDED.value:
-                    run_id = str(payload.get("run_id") or "")
-                    result_id = str(payload.get("result_id") or "")
-                    if run_id:
-                        replayed_validation_run_ids.add(run_id)
-                    if result_id:
-                        replayed_validation_result_ids.add(result_id)
-                self._apply_event_payload(
-                    connection,
-                    event_type=event_type,
-                    payload=payload,
+                # Some tables may be empty or not present in partial installs.
+                if strict:
+                    raise
+        # Leases are shared with the lease coordinator; only clear queue
+        # entries owned by this repository's extension schema.
+        try:
+            connection.execute(
+                "DELETE FROM leases WHERE extension_schema = ?",
+                [_SHARED_QUEUE_LEASE_SCHEMA],
+            )
+        except Exception:
+            if strict:
+                raise
+        prior_global_sequence = 0
+        for expected_stream_sequence, event_row in enumerate(events, start=1):
+            # DuckDBRow iterates keys; index into values explicitly.
+            event_type = str(event_row[1])
+            event_task_cid = str(event_row[2] or "")
+            event_attempt_id = str(event_row[3] or "")
+            event_session_id = str(event_row[4] or "")
+            event_recorded_at = str(event_row[5] or "")
+            body_json = event_row[6]
+            stream_sequence = int(event_row[7])
+            global_sequence = int(event_row[8])
+            body_wrapper = _decode_json(body_json, noun="event body")
+            if not isinstance(body_wrapper, dict):
+                if strict:
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event body is not an object"
+                    )
+                continue
+            payload = body_wrapper.get("body")
+            if not isinstance(payload, dict):
+                if strict:
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event has no typed body payload"
+                    )
+                payload = body_wrapper
+            if strict:
+                try:
+                    IntentEventType(event_type)
+                except ValueError as exc:
+                    raise IntentRepositoryIntegrityError(
+                        f"unsupported admitted intent event type: {event_type}"
+                    ) from exc
+                if (
+                    stream_sequence != expected_stream_sequence
+                    or global_sequence <= prior_global_sequence
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event sequence is not monotonic and contiguous"
+                    )
+                expected_event_id = content_identity(
+                    {
+                        "stream_id": INTENT_STREAM_ID,
+                        "sequence": stream_sequence,
+                        "global_sequence": global_sequence,
+                        "event_type": event_type,
+                        "body": body_wrapper,
+                    }
                 )
-            # DuckDB's immediate unique-index checks can reject a delete and
-            # reinsert of the same ``(run_id, ordinal)`` in one transaction.
-            # Validation projections are therefore updated in place during
-            # replay, then rows absent from the admitted event stream are
-            # removed before this transaction commits.
-            for row in connection.execute("SELECT result_id FROM validation_results").fetchall():
-                result_id = str(row[0])
-                if result_id not in replayed_validation_result_ids:
-                    connection.execute(
-                        "DELETE FROM validation_results WHERE result_id = ?",
-                        [result_id],
+                if str(event_row[0]) != expected_event_id:
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event content identity does not reconstruct"
                     )
-            for row in connection.execute("SELECT run_id FROM validation_runs").fetchall():
-                run_id = str(row[0])
-                if run_id not in replayed_validation_run_ids:
-                    connection.execute(
-                        "DELETE FROM validation_runs WHERE run_id = ?",
-                        [run_id],
+                if (
+                    str(body_wrapper.get("schema") or "") != INTENT_EVENT_SCHEMA
+                    or str(body_wrapper.get("event_type") or "") != event_type
+                    or str(body_wrapper.get("recorded_at") or "")
+                    != event_recorded_at
+                    or str(payload.get("task_cid") or event_task_cid)
+                    != event_task_cid
+                ):
+                    raise IntentRepositoryIntegrityError(
+                        "admitted intent event envelope does not match its columns"
                     )
-        return self.snapshot()
+            prior_global_sequence = global_sequence
+            if event_type == IntentEventType.VALIDATION_RECORDED.value:
+                run_id = str(payload.get("run_id") or "")
+                result_id = str(payload.get("result_id") or "")
+                if run_id:
+                    replayed_validation_run_ids.add(run_id)
+                if result_id:
+                    replayed_validation_result_ids.add(result_id)
+            if event_type == IntentEventType.ATTEMPT_RECORDED.value:
+                attempt_id = str(payload.get("attempt_id") or event_attempt_id)
+                if attempt_id:
+                    replayed_attempt_ids.add(attempt_id)
+            self._apply_event_payload(
+                connection,
+                event_type=event_type,
+                payload=payload,
+                event_owner_id=str(body_wrapper.get("owner_id") or ""),
+                event_session_id=event_session_id,
+                event_attempt_id=event_attempt_id,
+                event_recorded_at=event_recorded_at,
+            )
+        # DuckDB's immediate unique-index checks can reject a delete and
+        # reinsert of the same ``(run_id, ordinal)`` in one transaction.
+        # Validation projections are therefore updated in place during
+        # replay, then rows absent from the admitted event stream are
+        # removed before this transaction commits.
+        for row in connection.execute("SELECT result_id FROM validation_results").fetchall():
+            result_id = str(row[0])
+            if result_id not in replayed_validation_result_ids:
+                connection.execute(
+                    "DELETE FROM validation_results WHERE result_id = ?",
+                    [result_id],
+                )
+        for row in connection.execute("SELECT run_id FROM validation_runs").fetchall():
+            run_id = str(row[0])
+            if run_id not in replayed_validation_run_ids:
+                connection.execute(
+                    "DELETE FROM validation_runs WHERE run_id = ?",
+                    [run_id],
+                )
+        for row in connection.execute("SELECT attempt_id FROM task_attempts").fetchall():
+            attempt_id = str(row[0])
+            if attempt_id not in replayed_attempt_ids:
+                connection.execute(
+                    "DELETE FROM task_attempts WHERE attempt_id = ?",
+                    [attempt_id],
+                )
+        return self._snapshot_on(connection)
 
     def _apply_event_payload(
         self,
@@ -3828,14 +4281,22 @@ class IntentRepository:
         *,
         event_type: str,
         payload: Mapping[str, Any],
+        event_owner_id: str = "",
+        event_session_id: str = "",
+        event_attempt_id: str = "",
+        event_recorded_at: str = "",
     ) -> None:
         """Project one admitted event into current-state tables (idempotent)."""
 
-        now = str(payload.get("recorded_at") or _utc_iso())
+        now = str(payload.get("recorded_at") or event_recorded_at or _utc_iso())
         if event_type == IntentEventType.OBJECTIVE_UPSERTED.value:
             oid = str(payload["objective_id"])
             revision = int(payload.get("revision") or 1)
             body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+            prior = connection.execute(
+                "SELECT created_at FROM objectives WHERE objective_id = ?", [oid]
+            ).fetchone()
+            created_at = str(prior[0]) if prior is not None else now
             connection.execute("DELETE FROM objectives WHERE objective_id = ?", [oid])
             connection.execute(
                 """
@@ -3851,7 +4312,7 @@ class IntentRepository:
                     str(payload.get("title") or oid),
                     str(payload.get("status") or "open"),
                     str(payload.get("priority") or "P2"),
-                    now,
+                    created_at,
                     now,
                     revision,
                     _canonical(body, noun="objective body"),
@@ -3881,6 +4342,10 @@ class IntentRepository:
             gcid = str(payload["goal_cid"])
             revision = int(payload.get("revision") or 1)
             body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+            prior = connection.execute(
+                "SELECT created_at FROM goals WHERE goal_cid = ?", [gcid]
+            ).fetchone()
+            created_at = str(prior[0]) if prior is not None else now
             connection.execute("DELETE FROM goals WHERE goal_cid = ?", [gcid])
             connection.execute(
                 """
@@ -3897,7 +4362,7 @@ class IntentRepository:
                     int(payload.get("ordinal") or 0),
                     str(payload.get("title") or gcid),
                     str(payload.get("status") or "open"),
-                    now,
+                    created_at,
                     now,
                     revision,
                     _canonical(body, noun="goal body"),
@@ -3950,8 +4415,29 @@ class IntentRepository:
             body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
             status = str(payload.get("status") or "active")
             goal_cid = str(payload.get("goal_cid") or "")
+            prior = connection.execute(
+                "SELECT plan_alias, created_at FROM plans WHERE plan_cid = ?",
+                [pcid],
+            ).fetchone()
+            created_at = str(prior[1]) if prior is not None else now
+            plan_alias = str(payload.get("plan_alias") or "")
+            if not plan_alias and prior is not None:
+                plan_alias = str(prior[0])
             if event_type == IntentEventType.PLAN_CONTINUED.value:
                 status = "active"
+                predecessor = str(payload.get("continuation_of") or "")
+                predecessor_row = (
+                    connection.execute(
+                        "SELECT plan_alias FROM plans WHERE plan_cid = ?",
+                        [predecessor],
+                    ).fetchone()
+                    if predecessor
+                    else None
+                )
+                if not plan_alias and predecessor_row is not None:
+                    plan_alias = f"{predecessor_row[0]}-cont"
+            if not plan_alias:
+                plan_alias = pcid
             connection.execute("DELETE FROM plans WHERE plan_cid = ?", [pcid])
             connection.execute(
                 """
@@ -3963,26 +4449,30 @@ class IntentRepository:
                 [
                     pcid,
                     goal_cid,
-                    str(payload.get("plan_alias") or pcid),
+                    plan_alias,
                     status,
-                    now,
+                    created_at,
                     now,
                     revision,
                     _canonical(body, noun="plan body"),
                 ],
             )
-            connection.execute(
-                "DELETE FROM plan_revisions WHERE plan_cid = ? AND revision = ?",
-                [pcid, revision],
-            )
-            connection.execute(
-                """
-                INSERT INTO plan_revisions (
-                    plan_cid, revision, body_json, recorded_at
-                ) VALUES (?, ?, ?, ?)
-                """,
-                [pcid, revision, _canonical(body, noun="plan revision"), now],
-            )
+            # Existing continuation heads historically advanced without a
+            # second plan_revisions row.  Preserve that admitted behavior;
+            # first creation and ordinary upserts/revisions do write one.
+            if event_type != IntentEventType.PLAN_CONTINUED.value or prior is None:
+                connection.execute(
+                    "DELETE FROM plan_revisions WHERE plan_cid = ? AND revision = ?",
+                    [pcid, revision],
+                )
+                connection.execute(
+                    """
+                    INSERT INTO plan_revisions (
+                        plan_cid, revision, body_json, recorded_at
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    [pcid, revision, _canonical(body, noun="plan revision"), now],
+                )
             # Mirror live upsert_plan head demotion so rebuild status matches.
             if (
                 event_type == IntentEventType.PLAN_UPSERTED.value
@@ -4031,6 +4521,8 @@ class IntentRepository:
             successor = str(payload.get("successor_plan_cid") or "")
             revision = int(payload.get("revision") or 1)
             body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+            goal_cid = str(payload.get("goal_cid") or "")
+            reason = str(payload.get("reason") or "superseded")
             connection.execute(
                 """
                 UPDATE plans SET status = 'superseded', revision = ?,
@@ -4047,6 +4539,40 @@ class IntentRepository:
                     """,
                     [now, successor],
                 )
+            decision_id = content_identity(
+                {
+                    "kind": "supersession",
+                    "plan_cid": pcid,
+                    "successor": successor,
+                    "revision": revision,
+                }
+            )
+            connection.execute(
+                "DELETE FROM planning_decisions WHERE decision_id = ?",
+                [decision_id],
+            )
+            connection.execute(
+                """
+                INSERT INTO planning_decisions (
+                    decision_id, plan_cid, goal_cid, decision_kind,
+                    decided_at, body_json
+                ) VALUES (?, ?, ?, 'supersession', ?, ?)
+                """,
+                [
+                    decision_id,
+                    pcid,
+                    goal_cid,
+                    now,
+                    _canonical(
+                        {
+                            "predecessor": pcid,
+                            "successor": successor,
+                            "reason": reason,
+                        },
+                        noun="supersession decision",
+                    ),
+                ],
+            )
             return
 
         if event_type == IntentEventType.TASK_UPSERTED.value:
@@ -4058,6 +4584,10 @@ class IntentRepository:
                 if isinstance(payload.get("identity"), dict)
                 else {"task_cid": tcid}
             )
+            prior = connection.execute(
+                "SELECT created_at FROM tasks WHERE task_cid = ?", [tcid]
+            ).fetchone()
+            created_at = str(prior[0]) if prior is not None else now
             connection.execute("DELETE FROM tasks WHERE task_cid = ?", [tcid])
             connection.execute(
                 """
@@ -4077,7 +4607,7 @@ class IntentRepository:
                     str(payload.get("status") or "ready"),
                     revision,
                     str(payload.get("priority") or "P2"),
-                    now,
+                    created_at,
                     now,
                     _canonical(identity, noun="task identity"),
                     _canonical(body, noun="task body"),
@@ -4154,6 +4684,20 @@ class IntentRepository:
                     receipt,
                     body.get("completion_receipt"),
                 )
+                if receipt.get("operation") in {
+                    "reopen_unimplemented_unknown_callback_quarantine",
+                    "requeue_unimplemented_stale_attempt",
+                }:
+                    raw_reopen_count = receipt.get(
+                        "unknown_callback_reopen_count"
+                    )
+                    if raw_reopen_count is not None:
+                        try:
+                            body["unknown_callback_reopen_count"] = max(
+                                0, int(raw_reopen_count)
+                            )
+                        except (TypeError, ValueError):
+                            pass
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
@@ -4308,6 +4852,7 @@ class IntentRepository:
 
         if event_type == IntentEventType.EVIDENCE_RECORDED.value:
             evidence_id = str(payload["evidence_id"])
+            created_at = str(payload.get("created_at") or now)
             connection.execute(
                 "DELETE FROM evidence_nodes WHERE evidence_id = ?",
                 [evidence_id],
@@ -4325,7 +4870,7 @@ class IntentRepository:
                     str(payload.get("task_cid") or ""),
                     str(payload.get("evidence_kind") or "evidence"),
                     str(payload.get("digest") or ""),
-                    now,
+                    created_at,
                     _canonical(
                         payload.get("body") if isinstance(payload.get("body"), dict) else {},
                         noun="evidence body",
@@ -4357,7 +4902,7 @@ class IntentRepository:
                     [
                         run_id,
                         tcid,
-                        "",
+                        str(payload.get("attempt_id") or event_attempt_id),
                         now,
                         now,
                         str(payload.get("outcome") or "passed"),
@@ -4411,6 +4956,36 @@ class IntentRepository:
                         "run_id": run_id,
                     }
                 )
+                declared_evidence_body = payload.get("validation_evidence_body")
+                if isinstance(declared_evidence_body, Mapping):
+                    validation_evidence_body = dict(declared_evidence_body)
+                else:
+                    minimal_legacy_body = {
+                        "run_id": run_id,
+                        "result_id": result_id,
+                    }
+                    rich_legacy_body = {
+                        **minimal_legacy_body,
+                        "argv": list(payload.get("argv") or ()),
+                        "outcome": str(payload.get("outcome") or "passed"),
+                    }
+                    validation_body = payload.get("body")
+                    legacy_portal_minimal = (
+                        isinstance(validation_body, Mapping)
+                        and validation_body.get("validator")
+                        == "DatabasePortalExecutionBridge@1"
+                        and isinstance(validation_body.get("portal_receipt_id"), str)
+                        and bool(validation_body.get("portal_receipt_id"))
+                    )
+                    # The first admitted portal-bridge contract materialized
+                    # only run/result IDs. Later legacy repository events used
+                    # the rich argv/outcome suffix. The immutable validator and
+                    # receipt markers distinguish those event-defined shapes;
+                    # current events carry the complete body explicitly.
+                    if legacy_portal_minimal:
+                        validation_evidence_body = minimal_legacy_body
+                    else:
+                        validation_evidence_body = rich_legacy_body
                 connection.execute(
                     "DELETE FROM evidence_nodes WHERE evidence_id = ?",
                     [evidence_id],
@@ -4430,7 +5005,7 @@ class IntentRepository:
                         str(payload.get("evidence_digest") or ""),
                         now,
                         _canonical(
-                            {"run_id": run_id, "result_id": result_id},
+                            validation_evidence_body,
                             noun="validation evidence",
                         ),
                     ],
@@ -4443,6 +5018,21 @@ class IntentRepository:
             retry = int(payload.get("retry_not_before_ms") or 0)
             reason = str(payload.get("reason") or "backoff")
             penalty = int(payload.get("selection_penalty") or 0)
+            delay = int(payload.get("delay_ms") or 0)
+            started_at_ms = int(
+                payload.get("started_at_ms")
+                or max(0, retry - max(0, delay))
+            )
+            claimant_did = str(
+                payload.get("claimant_did")
+                or event_owner_id
+                or self.owner_id
+            )
+            owner_session_id = str(
+                payload.get("owner_session_id")
+                or event_session_id
+                or self.session_id
+            )
             exists = connection.execute(
                 "SELECT 1 FROM leases WHERE task_cid = ?", [tcid]
             ).fetchone()
@@ -4469,16 +5059,16 @@ class IntentRepository:
                         tcid,
                         f"claim:queue:{tcid}",
                         f"resolution:queue:{tcid}",
-                        self.owner_id,
+                        claimant_did,
                         1,
                         1,
                         0,
                         attempt,
                         "released",
-                        0,
+                        started_at_ms,
                         reason,
                         retry,
-                        self.session_id,
+                        owner_session_id,
                         1,
                         1,
                         QUEUE_ENTRY_SCHEMA,
@@ -4520,34 +5110,52 @@ class IntentRepository:
             return
 
         if event_type == IntentEventType.ATTEMPT_RECORDED.value:
-            attempt_id = str(payload["attempt_id"])
-            connection.execute("DELETE FROM task_attempts WHERE attempt_id = ?", [attempt_id])
-            connection.execute(
-                """
-                INSERT INTO task_attempts (
-                    attempt_id, task_cid, attempt_number, owner_session_id,
-                    fencing_token, fence_epoch, started_at, finished_at,
-                    status, revision
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    attempt_id,
-                    str(payload.get("task_cid") or ""),
-                    int(payload.get("attempt_number") or 1),
-                    str(payload.get("owner_session_id") or self.session_id),
-                    int(payload.get("fencing_token") or 1),
-                    1,
-                    now,
-                    "",
-                    str(payload.get("status") or "started"),
-                    1,
-                ],
-            )
+            attempt_id = str(payload.get("attempt_id") or event_attempt_id)
+            attempt_row = [
+                str(payload.get("task_cid") or ""),
+                int(payload.get("attempt_number") or 1),
+                str(
+                    payload.get("owner_session_id")
+                    or event_session_id
+                    or self.session_id
+                ),
+                int(payload.get("fencing_token") or 1),
+                int(payload.get("fence_epoch") or 1),
+                str(payload.get("started_at") or now),
+                str(payload.get("finished_at") or ""),
+                str(payload.get("status") or "started"),
+                int(payload.get("revision") or 1),
+            ]
+            exists = connection.execute(
+                "SELECT 1 FROM task_attempts WHERE attempt_id = ?", [attempt_id]
+            ).fetchone()
+            if exists is None:
+                connection.execute(
+                    """
+                    INSERT INTO task_attempts (
+                        attempt_id, task_cid, attempt_number, owner_session_id,
+                        fencing_token, fence_epoch, started_at, finished_at,
+                        status, revision
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [attempt_id, *attempt_row],
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE task_attempts SET task_cid = ?, attempt_number = ?,
+                        owner_session_id = ?, fencing_token = ?, fence_epoch = ?,
+                        started_at = ?, finished_at = ?, status = ?, revision = ?
+                    WHERE attempt_id = ?
+                    """,
+                    [*attempt_row, attempt_id],
+                )
             return
 
         if event_type == IntentEventType.TASK_BLOCKED.value:
             block_id = str(payload["block_id"])
             tcid = str(payload["task_cid"])
+            created_at = str(payload.get("created_at") or now)
             connection.execute("DELETE FROM task_blocks WHERE block_id = ?", [block_id])
             connection.execute(
                 """
@@ -4562,7 +5170,7 @@ class IntentRepository:
                     str(payload.get("blocker_kind") or "manual"),
                     str(payload.get("blocker_id") or "unknown"),
                     str(payload.get("reason") or "blocked"),
-                    now,
+                    created_at,
                     "",
                     "active",
                 ],
@@ -4572,64 +5180,173 @@ class IntentRepository:
                 UPDATE tasks SET status = 'blocked', revision = ?, updated_at = ?
                 WHERE task_cid = ?
                 """,
-                [int(payload.get("revision") or 1), now, tcid],
+                [int(payload.get("revision") or 1), created_at, tcid],
             )
             return
 
         if event_type == IntentEventType.TASK_UNBLOCKED.value:
             tcid = str(payload["task_cid"])
+            cleared_at = str(payload.get("cleared_at") or now)
             connection.execute(
                 """
                 UPDATE task_blocks SET state = 'cleared', cleared_at = ?
                 WHERE task_cid = ? AND state = 'active'
                 """,
-                [now, tcid],
+                [cleared_at, tcid],
             )
             connection.execute(
                 """
                 UPDATE tasks SET status = 'ready', revision = ?, updated_at = ?
                 WHERE task_cid = ?
                 """,
-                [int(payload.get("revision") or 1), now, tcid],
+                [int(payload.get("revision") or 1), cleared_at, tcid],
             )
             return
 
         # Recovery and unknown types are intentionally no-ops for projection.
 
-    def snapshot(self) -> IntentSnapshot:
-        with self._connection(write=False) as connection:
-            objective_count = int(
-                connection.execute("SELECT COUNT(*) FROM objectives").fetchone()[0]
+    def _task_projection_rows_on(
+        self, connection: Any
+    ) -> dict[str, tuple[Any, ...]]:
+        rows = connection.execute(
+            """
+            SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id,
+                   ordinal, status, revision, priority, created_at, updated_at,
+                   identity_json, body_json
+            FROM tasks ORDER BY task_cid
+            """
+        ).fetchall()
+        return {
+            str(row[0]): tuple(
+                self._projection_value(row[index]) for index in range(13)
             )
-            goal_count = int(connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0])
-            plan_count = int(connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0])
-            task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
-            dependency_count = int(
-                connection.execute("SELECT COUNT(*) FROM task_dependencies").fetchone()[0]
+            for row in rows
+        }
+
+    @staticmethod
+    def _projection_value(value: Any) -> Any:
+        if value is None or isinstance(value, (str, bool, int)):
+            return value
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            raw = bytes(value)
+            return {
+                "byte_length": len(raw),
+                "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            }
+        if isinstance(value, datetime):
+            moment = value
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=timezone.utc)
+            return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        # Decimal/date/UUID and extension scalar types have stable string
+        # projections; floats are represented textually so intent JSON never
+        # mistakes a non-exact value for an exact integer measurement.
+        return str(value)
+
+    def _full_projection_on(self, connection: Any) -> dict[str, Any]:
+        projection: dict[str, Any] = {}
+        for table in _PROJECTION_TABLES:
+            cursor = connection.execute(f"SELECT * FROM {table} ORDER BY ALL")
+            cursor_columns = getattr(cursor, "_columns", ())
+            if cursor_columns:
+                columns = tuple(str(item) for item in cursor_columns)
+            else:
+                columns = tuple(
+                    str(item[0])
+                    for item in (getattr(cursor, "description", None) or ())
+                )
+            rows = cursor.fetchall()
+            if len(rows) > MAX_PROJECTION_RECORDS:
+                raise IntentRepositoryBoundsError(
+                    f"{table} exceeds the projection replay record bound"
+                )
+            projection[table] = {
+                "columns": list(columns),
+                "rows": [
+                    [self._projection_value(row[index]) for index in range(len(columns))]
+                    for row in rows
+                ],
+            }
+        try:
+            lease_cursor = connection.execute(
+                """
+                SELECT * FROM leases WHERE extension_schema = ? ORDER BY ALL
+                """,
+                [_SHARED_QUEUE_LEASE_SCHEMA],
             )
-            watermark = int(
-                connection.execute(
-                    "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
-                ).fetchone()[0]
-            )
-            task_rows = connection.execute(
-                """
-                SELECT task_cid, status, revision FROM tasks
-                ORDER BY task_cid
-                """
-            ).fetchall()
-            plan_rows = connection.execute(
-                """
-                SELECT plan_cid, status, revision FROM plans
-                ORDER BY plan_cid
-                """
-            ).fetchall()
-            goal_rows = connection.execute(
-                """
-                SELECT goal_cid, status, revision FROM goals
-                ORDER BY goal_cid
-                """
-            ).fetchall()
+            cursor_columns = getattr(lease_cursor, "_columns", ())
+            if cursor_columns:
+                lease_columns = tuple(str(item) for item in cursor_columns)
+            else:
+                lease_columns = tuple(
+                    str(item[0])
+                    for item in (getattr(lease_cursor, "description", None) or ())
+                )
+            lease_rows = lease_cursor.fetchall()
+        except Exception as exc:
+            raise IntentRepositoryIntegrityError(
+                "intent queue lease projection is unavailable"
+            ) from exc
+        projection["leases:intent-queue"] = {
+            "columns": list(lease_columns),
+            "rows": [
+                [
+                    self._projection_value(row[index])
+                    for index in range(len(lease_columns))
+                ]
+                for row in lease_rows
+            ],
+        }
+        return projection
+
+    def _status_projection_rows_on(
+        self,
+        connection: Any,
+        table: str,
+        identity_column: str,
+    ) -> tuple[tuple[str, str, int], ...]:
+        allowed = {("goals", "goal_cid"), ("plans", "plan_cid")}
+        if (table, identity_column) not in allowed:
+            raise IntentRepositoryIntegrityError("unsupported status projection")
+        rows = connection.execute(
+            f"SELECT {identity_column}, status, revision "
+            f"FROM {table} ORDER BY {identity_column}"
+        ).fetchall()
+        return tuple((str(row[0]), str(row[1]), int(row[2])) for row in rows)
+
+    def _snapshot_on(self, connection: Any) -> IntentSnapshot:
+        objective_count = int(
+            connection.execute("SELECT COUNT(*) FROM objectives").fetchone()[0]
+        )
+        goal_count = int(connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0])
+        plan_count = int(connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0])
+        task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
+        dependency_count = int(
+            connection.execute("SELECT COUNT(*) FROM task_dependencies").fetchone()[0]
+        )
+        watermark = int(
+            connection.execute(
+                "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+            ).fetchone()[0]
+        )
+        task_rows = connection.execute(
+            """
+            SELECT task_cid, status, revision FROM tasks
+            ORDER BY task_cid
+            """
+        ).fetchall()
+        plan_rows = connection.execute(
+            """
+            SELECT plan_cid, status, revision FROM plans
+            ORDER BY plan_cid
+            """
+        ).fetchall()
+        goal_rows = connection.execute(
+            """
+            SELECT goal_cid, status, revision FROM goals
+            ORDER BY goal_cid
+            """
+        ).fetchall()
         material = {
             "objectives": objective_count,
             "goals": [
@@ -4657,6 +5374,10 @@ class IntentRepository:
             projection_cid=content_identity(material),
             recorded_at=_utc_iso(),
         )
+
+    def snapshot(self) -> IntentSnapshot:
+        with self._connection(write=False) as connection:
+            return self._snapshot_on(connection)
 
     def task_revision_history_projection(self, task_cid_or_alias: str) -> Mapping[str, Any]:
         """Return bounded task-body revisions for legacy spec-CID replay.

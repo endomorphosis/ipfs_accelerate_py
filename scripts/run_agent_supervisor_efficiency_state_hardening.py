@@ -119,6 +119,10 @@ ASEH_R24_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r24-historical-live-policy-admission@1"
 )
+ASEH_R25_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r25-historical-live-policy-admission@1"
+)
 ASEH_R19_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
     "sha256:48e0aded2d74a8ff1f9ed8d5b9e0af8ad73072fd9d9f5152e9c1af0544828c82"
 )
@@ -133,6 +137,9 @@ ASEH_R22_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
 )
 ASEH_R23_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
     "sha256:667e11e52a85c82e29f193366a6529ceb1585044542a1f8ce62057f960477e2a"
+)
+ASEH_R24_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:75aa45e6546cb8d20e5c3e30db66a54a853780e0de81393d6a374d30b090ba32"
 )
 ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -169,6 +176,14 @@ ASEH_R23_OWNER_START_CONTENTION_OBSERVATION_SCHEMA: Final = (
 ASEH_R24_CAPSULE_SCHEMA_DATA_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r24-capsule-schema-data-evidence@1"
+)
+ASEH_R25_PROJECTION_RECOVERY_FAILURE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r25-projection-recovery-failure-evidence@1"
+)
+ASEH_R25_PROJECTION_RECOVERY_PRESTART_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r25-projection-recovery-prestart-admission@1"
 )
 ASEH_R21_OWNER_START_RECOVERY_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -2656,6 +2671,165 @@ REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_NON_SUCCESS: Fin
     "mutation during authorization, broadened retry, reduced validation, or "
     "self-authorized promotion is rejected."
 )
+REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-sealed-owner-event-sourced-projection-recovery-"
+    "transition@1"
+)
+REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD: Final = (
+    "fe2d9a09d36380272eab1634a5684c5f5b30ec62"
+)
+REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE: Final = (
+    "f70f06b50c1840dc2c0a116fabe12e0a65b08d74"
+)
+REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py",
+    "test/api/test_agent_supervisor_intent_repository.py",
+    "test/api/test_agent_supervisor_quack_state_server.py",
+    "test/api/test_agent_supervisor_quack_transport_defaults.py",
+)
+ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID: Final = (
+    "sha256:ade47dc99c9aa8e3b0328f4df12eeeaecc439c68842101a1ed3545a1eac5ac64"
+)
+ASEH_R25_EXACT_R24_FAILURE_RECEIPT_CIDS: Final = {
+    "owner_start_permission": (
+        "sha256:6cf0e09ca8e6b6bcf851d6fb6fb1cb29998f15a5366c8f672ffbb72d5382edb9"
+    ),
+    "owner_terminal": (
+        "sha256:a0188f013201d9be316ec96b9378ebf2a1132dc9fc0f33a9d54ddbb2e72a8678"
+    ),
+    "control_failure": (
+        "sha256:243adb18699a363179e32d2c61e9f703dff76ac4c9b4a0b236b43ab959b00cf9"
+    ),
+    "live_status": (
+        "sha256:520217ae51e85327f7ae4ddddf94b479088abe6af834b4539eed8d962f241093"
+    ),
+}
+ASEH_R25_EXACT_R24_TERMINAL_RECORD_CID: Final = (
+    "sha256:4a22c36baed9657df11de121baf8d0fdb68ded99f321e20d9aef4c7ef30919db"
+)
+ASEH_R25_EXACT_R24_STATUS_SAMPLE_CIDS: Final = (
+    "sha256:2cab2228627dd19edbabd964fb48c3118f0e578012bee96a8b7ac425ec11b72a",
+    "sha256:9933a333f0b483aec6ded2012298a04d6f454e1bcdf461e38472e8ef2b02df76",
+)
+ASEH_R25_EXACT_R24_MATERIALIZED_LAUNCH_ADMISSION_CID: Final = (
+    "sha256:da4997b4745d8394bfbd92a9d2a742da033631faf0ea97662ab699eeeafc81b6"
+)
+ASEH_R25_EXACT_R24_FAILED_CAPSULE_ID: Final = (
+    "sha256:d3fd4c2e8875a052319217685378e9c05d097040f00762a96309b2d954236bc5"
+)
+ASEH_R25_EXACT_R24_FAILED_CAPSULE_ARCHIVE_SHA256: Final = (
+    "sha256:c69d145aa6c8f5f48b241b97f8f4528e6b1c7627ee0332cc8d114b7966a9e6bc"
+)
+ASEH_R25_EXACT_DATABASE_AFTER_R24_FAILURE: Final = {
+    "inode": 68717649,
+    "size_bytes": 54276096,
+    "mode": 0o600,
+    "sha256": (
+        "sha256:bb98de89225d1fab5422fd8bf8e8416fad738f26d15cffecdd4c9d3a547ab7f3"
+    ),
+}
+ASEH_R25_EXACT_LEGACY_PROJECTION_RECOVERY_CANDIDATES: Final = (
+    {
+        "task_alias": "ASEH-010",
+        "legacy_status": "retrying",
+        "legacy_revision": 17,
+        "admitted_status": "in_progress",
+        "admitted_revision": 16,
+    },
+    {
+        "task_alias": "ASEH-020",
+        "legacy_status": "retrying",
+        "legacy_revision": 17,
+        "admitted_status": "in_progress",
+        "admitted_revision": 16,
+    },
+    {
+        "task_alias": "ASEH-040",
+        "legacy_status": "retrying",
+        "legacy_revision": 17,
+        "admitted_status": "in_progress",
+        "admitted_revision": 16,
+    },
+)
+REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "test/api/test_agent_supervisor_intent_repository.py",
+        "test/api/test_agent_supervisor_quack_state_server.py",
+        "test/api/test_agent_supervisor_quack_transport_defaults.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_intent_repository.py",
+        "test/api/test_agent_supervisor_quack_state_server.py",
+        "test/api/test_agent_supervisor_quack_transport_defaults.py",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        (
+            "stale_unstall or legacy_reconciliation or "
+            "legacy_recovery_receipt or legacy_projection or strict_replay or "
+            "start_unstalls_stale_in_progress_gate or "
+            "unstall_refuses_projection_only or stale_gate or aseh_r25_ or "
+            "delegates_r25_before_suffix_admission"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue repairing the existing canonical supervisor so the sole Quack "
+    "owner repairs the exact observed legacy projection drift through admitted "
+    "events and records every stale-gate recovery atomically"
+)
+REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SUCCESS: Final = (
+    "The exact published R25 child retains the immutable R1-R24 receipt vector, "
+    "reuses the unchanged historical-live executor before DuckDB access, binds "
+    "the failed R24 initial-health observations without retrying R24, reconciles "
+    "only the exact legacy projection-only stale-gate drift from admitted events, "
+    "then records each stale-gate retrying transition with its revision and event "
+    "in one owner transaction so restart is idempotent and replay remains exact."
+)
+REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R24 parent or tree, changed sibling, rewritten prior receipt, "
+    "non-adjacent chain, missing or replaced failure observation, same-R24 retry, "
+    "direct production task-table write, projection change without an admitted "
+    "event and revision, near-miss legacy repair, double transition, swallowed "
+    "recovery failure, reduced validation, gate reduction, database mutation "
+    "during authorization, or self-authorized promotion is rejected."
+)
 ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS: Final = (
     "sha256:498dae56cef1484c43a318a88dd02155ecf56a4de9b611085ca0098fbc3cf9d8",
     "sha256:e08514ca997ab6aaf6dffe566124fe6fb7b6c4824b4cd6b0dfc90274141a24ca",
@@ -2692,6 +2866,10 @@ ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS: Final = (
 ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS: Final = (
     *ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS,
     "sha256:1d0920814cae0cd89e41fc9a5316a0d4ab3fc2b3399e28bae216c8d28145f76d",
+)
+ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS: Final = (
+    *ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS,
+    ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID,
 )
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
@@ -2756,6 +2934,10 @@ ASEH_R23_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R24_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R23_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_SCHEMA,
+)
+ASEH_R25_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R24_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -2881,6 +3063,10 @@ REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_RECEIPT_FIELDS: Fin
 REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_RECEIPT_FIELDS
     | frozenset({"capsule_schema_data_evidence"})
+)
+REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_RECEIPT_FIELDS
+    | frozenset({"projection_recovery_failure_evidence"})
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -4514,6 +4700,247 @@ def _repair_sealed_owner_capsule_schema_data_completeness_transition_receipt_id(
     return receipt_id
 
 
+def _validate_r25_projection_recovery_failure_evidence(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit the exact failed R24 launch without granting an R24 retry."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R25 projection-recovery failure evidence is invalid")
+    evidence = dict(value)
+    fields = {
+        "schema",
+        "failed_candidate_head",
+        "failed_candidate_tree",
+        "prior_repair_receipt_cid",
+        "owner_start_permission_receipt",
+        "sealed_owner_terminal_observation",
+        "control_failure_receipt",
+        "live_status_receipt",
+        "database_after_failed_launch",
+        "database_changed_since_owner_start",
+        "database_observed_during_authorization",
+        "database_mutated_during_authorization",
+        "r24_retry_authorized",
+        "failure_class",
+        "evidence_cid",
+    }
+
+    def admit_receipt(raw: object, expected_cid: str) -> dict[str, Any]:
+        if not isinstance(raw, Mapping):
+            raise OperatorError(
+                "R25 projection-recovery failure receipt is invalid"
+            )
+        receipt = dict(raw)
+        unsigned = dict(receipt)
+        receipt_cid = str(unsigned.pop("receipt_cid", "") or "")
+        if receipt_cid != expected_cid or receipt_cid != _identity(unsigned):
+            raise OperatorError(
+                "R25 projection-recovery failure receipt CID differs"
+            )
+        return receipt
+
+    permission = admit_receipt(
+        evidence.get("owner_start_permission_receipt"),
+        ASEH_R25_EXACT_R24_FAILURE_RECEIPT_CIDS["owner_start_permission"],
+    )
+    terminal = admit_receipt(
+        evidence.get("sealed_owner_terminal_observation"),
+        ASEH_R25_EXACT_R24_FAILURE_RECEIPT_CIDS["owner_terminal"],
+    )
+    control = admit_receipt(
+        evidence.get("control_failure_receipt"),
+        ASEH_R25_EXACT_R24_FAILURE_RECEIPT_CIDS["control_failure"],
+    )
+    live_status = admit_receipt(
+        evidence.get("live_status_receipt"),
+        ASEH_R25_EXACT_R24_FAILURE_RECEIPT_CIDS["live_status"],
+    )
+    terminal_record = terminal.get("terminal_record")
+    samples = live_status.get("samples")
+    database_after = evidence.get("database_after_failed_launch")
+    permission_database = permission.get("database_permission_observation")
+    if not isinstance(samples, list):
+        samples = []
+    sample_cids = tuple(
+        str(item.get("sample_cid") or "")
+        for item in samples
+        if isinstance(item, Mapping)
+    )
+    sample_authorities = [
+        item.get("authority")
+        for item in samples
+        if isinstance(item, Mapping)
+    ]
+    if (
+        set(evidence) != fields
+        or evidence.get("schema")
+        != ASEH_R25_PROJECTION_RECOVERY_FAILURE_EVIDENCE_SCHEMA
+        or evidence.get("failed_candidate_head")
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        or evidence.get("failed_candidate_tree")
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+        or evidence.get("prior_repair_receipt_cid")
+        != ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID
+        or permission.get("schema")
+        != ASEH_R23_OWNER_START_PERMISSION_RECEIPT_SCHEMA
+        or permission.get("candidate_head")
+        != evidence.get("failed_candidate_head")
+        or permission.get("candidate_tree")
+        != evidence.get("failed_candidate_tree")
+        or permission.get("repair_transition_receipt_cid")
+        != ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID
+        or permission.get("materialized_launch_admission_cid")
+        != ASEH_R25_EXACT_R24_MATERIALIZED_LAUNCH_ADMISSION_CID
+        or permission.get("owner_start_attempted") is not False
+        or permission.get("retry_authorized") is not False
+        or permission.get("database_content_mutated") is not False
+        or permission.get("database_metadata_mutated") is not False
+        or not isinstance(permission_database, Mapping)
+        or permission_database.get("sha256_after")
+        != ASEH_R24_EXACT_DATABASE_BASELINE["sha256"]
+        or permission_database.get("size_bytes")
+        != ASEH_R24_EXACT_DATABASE_BASELINE["size_bytes"]
+        or terminal.get("schema")
+        != ASEH_SEALED_OWNER_TERMINAL_OBSERVATION_SCHEMA
+        or terminal.get("candidate_head")
+        != evidence.get("failed_candidate_head")
+        or terminal.get("candidate_tree")
+        != evidence.get("failed_candidate_tree")
+        or terminal.get("capsule_id")
+        != ASEH_R25_EXACT_R24_FAILED_CAPSULE_ID
+        or terminal.get("capsule_archive_sha256")
+        != ASEH_R25_EXACT_R24_FAILED_CAPSULE_ARCHIVE_SHA256
+        or terminal.get("child_returncode") != 78
+        or terminal.get("terminal_record_availability") != "observed"
+        or terminal.get("retry_authorized") is not False
+        or not isinstance(terminal_record, Mapping)
+        or terminal_record.get("record_cid")
+        != ASEH_R25_EXACT_R24_TERMINAL_RECORD_CID
+        or terminal_record.get("stage") != "initial_health"
+        or terminal_record.get("outcome") != "failed"
+        or terminal_record.get("error_type") != "OperatorError"
+        or terminal_record.get("owner_start_attempted") is not True
+        or terminal_record.get("owner_identity_observed") is not True
+        or terminal_record.get("scheduler_birth_observed") is not True
+        or terminal_record.get("retry_authorized") is not False
+        or control.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/aseh-control-failure@1"
+        or control.get("reason_code")
+        != "authoritative_status_unavailable_two_samples"
+        or control.get("error_type") != "ASEHHealthQueryFailure"
+        or live_status.get("schema") != LIVE_STATUS_SCHEMA
+        or live_status.get("healthy") is not False
+        or sample_cids != ASEH_R25_EXACT_R24_STATUS_SAMPLE_CIDS
+        or len(sample_authorities) != 2
+        or any(
+            not isinstance(authority, Mapping)
+            or authority.get("available") is not False
+            or authority.get("error_type") != "OperatorError"
+            or authority.get("error")
+            != "published replica projection differs from admitted events"
+            for authority in sample_authorities
+        )
+        or not isinstance(database_after, Mapping)
+        or database_after.get("schema")
+        != ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA
+        or database_after.get("availability") != "observed"
+        or database_after.get("inode")
+        != ASEH_R25_EXACT_DATABASE_AFTER_R24_FAILURE["inode"]
+        or database_after.get("size_bytes")
+        != ASEH_R25_EXACT_DATABASE_AFTER_R24_FAILURE["size_bytes"]
+        or stat.S_IMODE(int(database_after.get("mode") or 0))
+        != ASEH_R25_EXACT_DATABASE_AFTER_R24_FAILURE["mode"]
+        or database_after.get("sha256")
+        != ASEH_R25_EXACT_DATABASE_AFTER_R24_FAILURE["sha256"]
+        or database_after.get("sha256") == permission_database.get("sha256_after")
+        or evidence.get("database_changed_since_owner_start") is not True
+        or evidence.get("database_observed_during_authorization") is not True
+        or evidence.get("database_mutated_during_authorization") is not False
+        or evidence.get("r24_retry_authorized") is not False
+        or evidence.get("failure_class")
+        != "legacy_projection_only_stale_unstall_rejected_by_shadow_replay"
+    ):
+        raise OperatorError("R25 projection-recovery failure evidence differs")
+    unsigned = dict(evidence)
+    evidence_cid = str(unsigned.pop("evidence_cid", "") or "")
+    if evidence_cid != _identity(unsigned):
+        raise OperatorError("R25 projection-recovery failure evidence CID differs")
+    return evidence
+
+
+def _repair_sealed_owner_event_sourced_projection_recovery_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-25 event-sourced recovery receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    policy_value = payload.get("historical_live_policy_admission")
+    evidence_value = payload.get("historical_live_execution_evidence")
+    failure_value = payload.get("projection_recovery_failure_evidence")
+    policy = (
+        _validate_r25_historical_live_policy_admission_record(policy_value)
+        if isinstance(policy_value, Mapping)
+        else None
+    )
+    historical_evidence = (
+        dict(evidence_value) if isinstance(evidence_value, Mapping) else {}
+    )
+    unsigned_historical = dict(historical_evidence)
+    historical_evidence_cid = str(
+        unsigned_historical.pop("evidence_cid", "") or ""
+    )
+    failure_evidence = (
+        _validate_r25_projection_recovery_failure_evidence(failure_value)
+        if isinstance(failure_value, Mapping)
+        else None
+    )
+    if (
+        payload.get("schema")
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 25
+        or payload.get("terminal_success_criteria")
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r25_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+        or not isinstance(policy, Mapping)
+        or not isinstance(failure_evidence, Mapping)
+        or policy.get("bootstrap_receipt_id")
+        != payload.get("bootstrap_receipt_id")
+        or policy.get("previous_receipt_cid")
+        != payload.get("previous_receipt_cid")
+        or policy.get("candidate_head") != payload.get("repair_head")
+        or policy.get("candidate_tree") != payload.get("repair_tree")
+        or policy.get("candidate_authorization_witness_cid")
+        != _identity(dict(witness))
+        or historical_evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or historical_evidence.get("authorizing_receipt_cid") is not None
+        or historical_evidence.get("returncode") != 0
+        or historical_evidence.get("terminal_class") != "verified_success"
+        or historical_evidence_cid != _identity(unsigned_historical)
+    ):
+        raise OperatorError(
+            "bootstrap repair event-sourced projection-recovery schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair event-sourced projection-recovery CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -4738,6 +5165,9 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r24 = globals().get(
         "REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_VALIDATIONS"
     )
+    r25 = globals().get(
+        "REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
@@ -4750,6 +5180,7 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         *((r22,) if isinstance(r22, Sequence) else ()),
         *((r23,) if isinstance(r23, Sequence) else ()),
         *((r24,) if isinstance(r24, Sequence) else ()),
+        *((r25,) if isinstance(r25, Sequence) else ()),
     )
 
 
@@ -5665,6 +6096,66 @@ def _r24_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
             "historical_live_route": _r19_historical_live_executor_contract(),
             "scope": (
                 "r24_authorization_pre_duckdb_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _r25_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend immutable R24 without adding an executor or live route."""
+
+    parent = _r24_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if parent_cid != ASEH_R24_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID:
+        raise OperatorError("historical R24 validation contract drifted")
+    matrix = (
+        REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_VALIDATIONS
+    )
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r25_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r25-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 25,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": _r19_historical_live_executor_contract(),
+            "scope": (
+                "r25_authorization_pre_duckdb_and_materialized_launch_"
                 "admission_only"
             ),
         }
@@ -6964,6 +7455,222 @@ def _admit_r24_historical_live_policy_admission(
     return supplied
 
 
+def _validate_r25_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed R25 policy bound to immutable R1-R24 receipts."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R25 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "policy_revision",
+        "authorization_basis",
+        "bootstrap_receipt_id",
+        "prior_receipt_count",
+        "prior_receipt_cids",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_base_head",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    unsigned = dict(supplied)
+    policy_admission_cid = str(
+        unsigned.pop("policy_admission_cid", "") or ""
+    )
+    digest_fields = (
+        "bootstrap_receipt_id",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+    )
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R25_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 25
+        or supplied.get("authorization_basis")
+        != "validated_r1_r24_chain_plus_observed_r25_candidate_witness"
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R24_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or supplied.get("prior_receipt_cids")
+        != list(ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS)
+        or supplied.get("prior_receipt_chain_cid")
+        != _identity(list(ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS))
+        or supplied.get("previous_receipt_cid")
+        != ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS[-1]
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(supplied.get(field) or ""),
+            )
+            is None
+            for field in digest_fields
+        )
+        or supplied.get("candidate_base_head")
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or supplied.get("executor_contract_cid")
+        != _identity(_r19_sealed_receipt_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_admission_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R25 historical live policy admission differs")
+    return supplied
+
+
+def _r25_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build R25 live authority from the exact immutable R1-R24 vector."""
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None:
+        raise OperatorError("R25 historical live bootstrap identity is invalid")
+    admitted_chain = _admit_exact_r24_transition_chain(list(prior_chain))
+    receipt_cids = tuple(str(item["receipt_cid"]) for item in admitted_chain)
+    if (
+        receipt_cids != ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS
+        or any(
+            item.get("bootstrap_receipt_id") != bootstrap_receipt_id
+            for item in admitted_chain
+        )
+        or admitted_chain[-1].get("repair_head")
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError("R25 historical live prior receipt vector differs")
+    witness = dict(candidate_authorization_witness)
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+        or re.fullmatch(
+            r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*",
+            str(witness.get("branch_ref") or ""),
+        )
+        is None
+        or ".." in str(witness.get("branch_ref") or "")
+        or "//" in str(witness.get("branch_ref") or "")
+        or str(witness.get("branch_ref") or "").endswith(("/", ".lock"))
+        or witness.get("status_digest") != _identity(b"")
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", witness[field]) is None
+            for field in (
+                "index_entries_digest",
+                "index_flags_digest",
+                "status_digest",
+                "head_reflog_digest",
+                "branch_reflog_digest",
+            )
+        )
+    ):
+        raise OperatorError(
+            "R25 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    admission: dict[str, Any] = {
+        "schema": ASEH_R25_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 25,
+        "authorization_basis": (
+            "validated_r1_r24_chain_plus_observed_r25_candidate_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_cids": list(receipt_cids),
+        "prior_receipt_chain_cid": _identity(list(receipt_cids)),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r25_historical_live_policy_admission_record(admission)
+
+
+def _admit_r25_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit only R25's deterministic record for the supplied exact inputs."""
+
+    supplied = _validate_r25_historical_live_policy_admission_record(value)
+    expected = _r25_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+    )
+    if supplied != expected:
+        raise OperatorError("R25 historical live policy admission is unknown")
+    return supplied
+
+
 def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
     """Return the only admitted historical-live policy revision."""
 
@@ -6980,6 +7687,8 @@ def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
         return 23
     if schema == ASEH_R24_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
         return 24
+    if schema == ASEH_R25_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 25
     raise OperatorError("historical live policy schema is unknown")
 
 
@@ -7202,6 +7911,7 @@ def _r19_active_policy_scope(
         22: _validate_r22_historical_live_policy_admission_record,
         23: _validate_r23_historical_live_policy_admission_record,
         24: _validate_r24_historical_live_policy_admission_record,
+        25: _validate_r25_historical_live_policy_admission_record,
     }[revision]
     policy = policy_validator(policy_admission)
     witness = json.loads(executor.authorization_witness_json)
@@ -7456,6 +8166,29 @@ def _r24_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r25_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R25 suffix argv without broadening prior matrices."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_VALIDATIONS
+        )
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R25 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -7499,7 +8232,8 @@ def _admit_sealed_receipt_validation_executor_contract(
     r22 = _r22_sealed_receipt_validation_executor_contract()
     r23 = _r23_sealed_receipt_validation_executor_contract()
     r24 = _r24_sealed_receipt_validation_executor_contract()
-    contracts = (r16, r17, r18, r19, r20, r21, r22, r23, r24)
+    r25 = _r25_sealed_receipt_validation_executor_contract()
+    contracts = (r16, r17, r18, r19, r20, r21, r22, r23, r24, r25)
     if supplied not in contracts:
         raise OperatorError("sealed validation executor contract is unknown")
     classifier = {
@@ -7516,6 +8250,7 @@ def _admit_sealed_receipt_validation_executor_contract(
                 _r22_validation_executor_class,
                 _r23_validation_executor_class,
                 _r24_validation_executor_class,
+                _r25_validation_executor_class,
             ),
             strict=True,
         )
@@ -12799,6 +13534,7 @@ def _validate_r19_historical_live_execution_evidence(
         22: _admit_r22_historical_live_policy_admission,
         23: _admit_r23_historical_live_policy_admission,
         24: _admit_r24_historical_live_policy_admission,
+        25: _admit_r25_historical_live_policy_admission,
     }[revision]
     policy = policy_admitter(
         policy_admission,
@@ -13200,6 +13936,7 @@ def _run_r19_historical_live_validation(
         ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 22,
         ASEH_R23_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 23,
         ASEH_R24_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 24,
+        ASEH_R25_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 25,
     }.get(active_policy_value.get("schema"), 19)
     policy_validator = {
         19: _validate_r19_historical_live_policy_admission_record,
@@ -13208,6 +13945,7 @@ def _run_r19_historical_live_validation(
         22: _validate_r22_historical_live_policy_admission_record,
         23: _validate_r23_historical_live_policy_admission_record,
         24: _validate_r24_historical_live_policy_admission_record,
+        25: _validate_r25_historical_live_policy_admission_record,
     }[revision]
     policy_admission = policy_validator(active_policy_value)
     lifecycle_lock_identity = _validate_r19_historical_live_lock_identity(
@@ -13598,7 +14336,7 @@ def _qualify_r19_historical_live_policy(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run and admit the exact historical live route under one typed fence."""
 
-    if _revision not in {19, 20, 21, 22, 23, 24}:
+    if _revision not in {19, 20, 21, 22, 23, 24, 25}:
         raise OperatorError("historical live policy revision is invalid")
     executor_contract = _r19_sealed_receipt_validation_executor_contract()
     policy_builder = {
@@ -13608,6 +14346,7 @@ def _qualify_r19_historical_live_policy(
         22: _r22_historical_live_policy_admission,
         23: _r23_historical_live_policy_admission,
         24: _r24_historical_live_policy_admission,
+        25: _r25_historical_live_policy_admission,
     }[_revision]
     policy_admitter = {
         19: _admit_r19_historical_live_policy_admission,
@@ -13616,6 +14355,7 @@ def _qualify_r19_historical_live_policy(
         22: _admit_r22_historical_live_policy_admission,
         23: _admit_r23_historical_live_policy_admission,
         24: _admit_r24_historical_live_policy_admission,
+        25: _admit_r25_historical_live_policy_admission,
     }[_revision]
     computed_policy = policy_builder(
         bootstrap_receipt_id=bootstrap_receipt_id,
@@ -13840,6 +14580,32 @@ def _qualify_r24_pre_duckdb_historical_live_policy(
         policy_admission=policy_admission,
         authorizing_receipt_cid=authorizing_receipt_cid,
         _revision=24,
+    )
+
+
+def _qualify_r25_pre_duckdb_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Qualify R25 through R24's unchanged pre-DuckDB live route."""
+
+    return _qualify_r19_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        policy_admission=policy_admission,
+        authorizing_receipt_cid=authorizing_receipt_cid,
+        _revision=25,
     )
 
 
@@ -14576,6 +15342,43 @@ def _admit_exact_r24_transition_chain(
     return chain
 
 
+def _admit_exact_r25_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit immutable R1-R24 plus one exact adjacent R25 receipt."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R25_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R25 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R25_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R25 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R25 repair transition chain differs")
+        chain.append(item)
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in chain[:-1]
+    ) != ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS:
+        raise OperatorError("R25 historical receipt vector differs")
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -14971,6 +15774,71 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R24 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [
+        REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r25_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r24_admitted = chain[-2]
+        active_admitted = chain[-1]
+        failure_evidence_cid = (
+            transition.get("projection_recovery_failure_evidence_cid")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        recovery_admission = (
+            _validate_r25_projection_recovery_prestart_admission(
+                admission.get("projection_recovery_prestart_admission"),
+                expected_failure_evidence_cid=str(failure_evidence_cid or ""),
+            )
+            if isinstance(
+                admission.get("projection_recovery_prestart_admission"),
+                Mapping,
+            )
+            else None
+        )
+        projection_matches_events = admission.get("projection_matches_events")
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r24_admitted.get("repair_head")
+            != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+            or r24_admitted.get("repair_tree")
+            != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+            or r24_admitted.get("receipt_cid")
+            != ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r24_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r24_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or type(projection_matches_events) is not bool
+            or (
+                projection_matches_events is False
+                and (
+                    not isinstance(recovery_admission, Mapping)
+                    or admission.get("projection_cid")
+                    != recovery_admission.get("before_projection_cid")
+                    or admission.get("event_cursor")
+                    != recovery_admission.get("before_event_watermark")
+                )
+            )
+            or (
+                projection_matches_events is True
+                and recovery_admission is not None
+            )
+        ):
+            raise OperatorError(
+                "current R25 candidate lacks its exact admitted validation seal"
+            )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -15206,6 +16074,19 @@ def _r24_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_VALIDATIONS[
+            -2
+        ]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r25_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R25 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_VALIDATIONS[
             -2
         ]
     ):
@@ -16343,16 +17224,25 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     authorization_witness: Mapping[str, str],
     _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16-R24 repair matrix against committed bytes."""
+    """Run the bounded R16-R25 repair matrix against committed bytes."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24}:
+    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24, 25}:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 24:
+    if _revision == 25:
+        matrix = (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r25_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r25_validation_working_tree_scope
+        executor_class_for = _r25_validation_executor_class
+    elif _revision == 24:
         matrix = (
             REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_VALIDATIONS
         )
@@ -16788,6 +17678,22 @@ def _run_repair_sealed_owner_capsule_schema_data_completeness_transition_validat
     )
 
 
+def _run_repair_sealed_owner_event_sourced_projection_recovery_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R25 suffix through the existing typed executors."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=25,
+    )
+
+
 def _observe_repair_provider_cleanup_fence_known_baseline(
 ) -> dict[str, Any]:
     """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
@@ -17098,6 +18004,14 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-sealed-owner-capsule-schema-data-completeness-"
+        "transition.json"
+    )
+    result[
+        "repair_sealed_owner_event_sourced_projection_recovery_transition_receipt"
+    ] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-sealed-owner-event-sourced-projection-recovery-"
         "transition.json"
     )
     result["owner_start_recovery_decisions"] = (
@@ -18174,6 +19088,7 @@ def _verify_materialized_source_from_bootstrap(
     *,
     bootstrap: Mapping[str, Any],
     projection_matches_events: bool | None = None,
+    projection_recovery_prestart_admission: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[str], dict[str, Any], dict[str, tuple[str, ...]]]:
     """Verify live lifecycle state without reminting the sealed task corpus."""
 
@@ -18198,7 +19113,16 @@ def _verify_materialized_source_from_bootstrap(
         if projection_matches_events is None
         else projection_matches_events
     )
-    if projection_matches is not True:
+    recovery_admission = (
+        _validate_r25_projection_recovery_prestart_admission(
+            projection_recovery_prestart_admission
+        )
+        if projection_recovery_prestart_admission is not None
+        else None
+    )
+    if projection_matches is not True and not (
+        projection_matches is False and recovery_admission is not None
+    ):
         raise OperatorError("materialized projection differs from admitted events")
     snapshot = source.snapshot().to_dict()
     page = source.list_tasks(limit=100)
@@ -18299,7 +19223,7 @@ def _verify_materialized_source_from_bootstrap(
         raise OperatorError("materialized ready frontier is not task-corpus bound")
     integrity = {
         "schema": "ipfs_accelerate_py/agent-supervisor/aseh-integrity@1",
-        "projection_matches_events": True,
+        "projection_matches_events": projection_matches is True,
         "projection_cid": snapshot["projection_cid"],
         "event_cursor": snapshot["event_cursor"],
         "task_statuses": {
@@ -18339,8 +19263,17 @@ def _verify_materialized_source_from_bootstrap(
             )
         },
     }
+    if recovery_admission is not None:
+        integrity["projection_recovery_prestart_admission_cid"] = (
+            recovery_admission["proof_cid"]
+        )
     integrity["integrity_receipt_id"] = _identity(integrity)
-    _admit_current_projection_against_bootstrap(bootstrap, snapshot, integrity)
+    _admit_current_projection_against_bootstrap(
+        bootstrap,
+        snapshot,
+        integrity,
+        projection_recovery_prestart_admission=recovery_admission,
+    )
     return snapshot, ready, integrity, transient_outputs
 
 
@@ -18379,6 +19312,8 @@ def _admit_current_projection_against_bootstrap(
     bootstrap: Mapping[str, Any],
     snapshot: Mapping[str, Any],
     integrity: Mapping[str, Any],
+    *,
+    projection_recovery_prestart_admission: Mapping[str, Any] | None = None,
 ) -> None:
     """Admit monotonic lifecycle state without rewriting initial truth."""
 
@@ -18411,12 +19346,37 @@ def _admit_current_projection_against_bootstrap(
             or candidate.get("source_identity") != expected_source_identity
         ):
             raise OperatorError("projection source identity is not self-authenticating")
+    recovery_admission = (
+        _validate_r25_projection_recovery_prestart_admission(
+            projection_recovery_prestart_admission
+        )
+        if projection_recovery_prestart_admission is not None
+        else None
+    )
+    immutable_fields = tuple(
+        field
+        for field in _IMMUTABLE_INTEGRITY_FIELDS
+        if recovery_admission is None or field != "projection_matches_events"
+    )
     if any(
         integrity.get(field) != sealed_integrity.get(field)
-        for field in _IMMUTABLE_INTEGRITY_FIELDS
+        for field in immutable_fields
     ):
         raise OperatorError(
             "current projection immutable corpus differs from bootstrap"
+        )
+    if recovery_admission is not None and (
+        sealed_integrity.get("projection_matches_events") is not True
+        or integrity.get("projection_matches_events") is not False
+        or integrity.get("projection_recovery_prestart_admission_cid")
+        != recovery_admission.get("proof_cid")
+        or snapshot.get("projection_cid")
+        != recovery_admission.get("before_projection_cid")
+        or snapshot.get("event_cursor")
+        != recovery_admission.get("before_event_watermark")
+    ):
+        raise OperatorError(
+            "current projection does not match the exact R25 prestart drift proof"
         )
     sealed_revisions = sealed_integrity.get("task_revisions")
     current_revisions = integrity.get("task_revisions")
@@ -19171,6 +20131,24 @@ def _validate_repair_sealed_owner_capsule_schema_data_completeness_transition(
         previous_receipt=previous_receipt,
         rerun_validations=rerun_validations,
         _revision=24,
+    )
+
+
+def _validate_repair_sealed_owner_event_sourced_projection_recovery_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 25 chained to the immutable R24 receipt."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=25,
     )
 
 
@@ -21854,12 +22832,43 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     rerun_validations: bool,
     _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit one immutable transition in the exact R16-R24 suffix."""
+    """Admit one immutable transition in the exact R16-R25 suffix."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24}:
+    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24, 25}:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 24:
+    if _revision == 25:
+        receipt_id = (
+            _repair_sealed_owner_event_sourced_projection_recovery_transition_receipt_id(
+                receipt
+            )
+        )
+        previous_receipt_id = (
+            _repair_sealed_owner_capsule_schema_data_completeness_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        )
+        changed_paths_value = (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_AUTHORITY
+        )
+        commands = (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r25_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SCHEMA
+        )
+        executor_class_for = _r25_validation_executor_class
+        scope_for = _r25_validation_working_tree_scope
+    elif _revision == 24:
         receipt_id = (
             _repair_sealed_owner_capsule_schema_data_completeness_transition_receipt_id(
                 receipt
@@ -22408,7 +23417,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 "bootstrap repair Docker-create-readiness/vendor-resolver "
                 "commands differ"
             )
-    return {
+    transition_result = {
         "schema": schema_value,
         "task_id": REPAIR_TRANSITION_TASK_ID,
         "transition_revision": _revision,
@@ -22427,6 +23436,19 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         ),
         "receipt_cid": receipt_id,
     }
+    if _revision == 25:
+        failure_value = receipt.get("projection_recovery_failure_evidence")
+        failure = (
+            _validate_r25_projection_recovery_failure_evidence(failure_value)
+            if isinstance(failure_value, Mapping)
+            else None
+        )
+        if not isinstance(failure, Mapping):
+            raise OperatorError("R25 projection-recovery evidence is absent")
+        transition_result["projection_recovery_failure_evidence_cid"] = (
+            failure["evidence_cid"]
+        )
+    return transition_result
 
 
 def _load_exact_r18_receipt_chain(
@@ -22642,6 +23664,32 @@ def _load_exact_r23_receipt_chain(
         str(item.get("receipt_cid") or "") for item in admitted
     ) != ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS:
         raise OperatorError("R24 historical live prior receipt vector differs")
+    return admitted
+
+
+def _load_exact_r24_receipt_chain(
+    paths: Mapping[str, Path],
+) -> list[Mapping[str, Any]]:
+    """Load, self-CID-admit, and vector-bind raw R1-R24 receipts."""
+
+    chain = list(_load_exact_r23_receipt_chain(paths))
+    r24_path = paths.get(
+        "repair_sealed_owner_capsule_schema_data_completeness_transition_receipt"
+    )
+    if not isinstance(r24_path, Path) or not r24_path.is_file():
+        raise OperatorError("R25 historical live prior R24 receipt is absent")
+    r24_receipt = _secure_runtime_json(
+        r24_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    _repair_sealed_owner_capsule_schema_data_completeness_transition_receipt_id(
+        r24_receipt
+    )
+    admitted = _admit_exact_r24_transition_chain([*chain, r24_receipt])
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in admitted
+    ) != ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS:
+        raise OperatorError("R25 historical live prior receipt vector differs")
     return admitted
 
 
@@ -22889,6 +23937,32 @@ def _r24_population_requires_policy(
     )
 
 
+def _r25_population_requires_policy(
+    population: Mapping[str, Any],
+) -> bool:
+    """Recognize the exact committed R25 child before its receipt exists."""
+
+    head = str(population.get("source_head") or "")
+    tree = str(population.get("repository_tree_id") or "")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    return (
+        _git("show", "-s", "--format=%P", head).split()
+        == [
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        ]
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD,
+            head,
+        )
+        == REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_CHANGED_PATHS
+    )
+
+
 def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     receipt: Mapping[str, Any],
     *,
@@ -22916,6 +23990,9 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     )
     r24_path = paths.get(
         "repair_sealed_owner_capsule_schema_data_completeness_transition_receipt"
+    )
+    r25_path = paths.get(
+        "repair_sealed_owner_event_sourced_projection_recovery_transition_receipt"
     )
     if (
         isinstance(r19_path, Path) and r19_path.is_file()
@@ -22964,6 +24041,15 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
         )
     if isinstance(r24_path, Path) and (
         r24_path.is_file() or _r24_population_requires_policy(population)
+    ):
+        return _validate_repair_provider_cleanup_fence_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=False,
+        )
+    if isinstance(r25_path, Path) and (
+        r25_path.is_file() or _r25_population_requires_policy(population)
     ):
         return _validate_repair_provider_cleanup_fence_transition(
             receipt,
@@ -23705,6 +24791,153 @@ def _prequalify_r24_historical_live_launch(
     }
 
 
+def _prequalify_r25_historical_live_launch(
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Qualify R25 through R24's route before canonical DuckDB access."""
+
+    r25_path = paths.get(
+        "repair_sealed_owner_event_sourced_projection_recovery_transition_receipt"
+    )
+    if not isinstance(r25_path, Path):
+        return None
+    if not _r25_population_requires_policy(population):
+        return None
+    if not r25_path.is_file():
+        raise OperatorError(
+            "active R25 pre-DuckDB historical-live policy receipt is absent"
+        )
+    prior_chain = _load_exact_r24_receipt_chain(paths)
+    r24_receipt = prior_chain[-1]
+    first_receipt = _secure_runtime_json(
+        r25_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    receipt_cid = (
+        _repair_sealed_owner_event_sourced_projection_recovery_transition_receipt_id(
+            first_receipt
+        )
+    )
+    transition = (
+        _validate_repair_sealed_owner_event_sourced_projection_recovery_transition(
+            first_receipt,
+            bootstrap=bootstrap,
+            previous_receipt=r24_receipt,
+            rerun_validations=False,
+        )
+    )
+    current_head = str(population.get("source_head") or "")
+    current_tree = str(population.get("repository_tree_id") or "")
+    witness = transition.get("candidate_authorization_witness")
+    if (
+        current_head != transition.get("repair_head")
+        or current_tree != transition.get("repair_tree")
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "active R25 historical-live policy does not bind the current tree"
+        )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="before R25 pre-DuckDB historical live qualification",
+    )
+    bootstrap_receipt_id = _bootstrap_receipt_id(bootstrap)
+    executor_contract = _r19_sealed_receipt_validation_executor_contract()
+    policy_value = first_receipt.get("historical_live_policy_admission")
+    policy = _admit_r25_historical_live_policy_admission(
+        policy_value if isinstance(policy_value, Mapping) else {},
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+    )
+    stored_evidence_value = first_receipt.get(
+        "historical_live_execution_evidence"
+    )
+    if not isinstance(stored_evidence_value, Mapping):
+        raise OperatorError(
+            "active R25 historical-live stored execution evidence is absent"
+        )
+    stored_evidence = _validate_r19_historical_live_execution_evidence(
+        stored_evidence_value,
+        policy_admission=policy,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+        environment_identity=_r11_command_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            _r11_historical_live_docker_command(),
+            checkout=Path("/sealed-checkout"),
+        ),
+        returncode=int(stored_evidence_value.get("returncode", 78)),
+        stdout_digest=str(stored_evidence_value.get("stdout_digest") or ""),
+        stderr_digest=str(stored_evidence_value.get("stderr_digest") or ""),
+        authorizing_receipt_cid=None,
+    )
+    admitted_policy, fresh_evidence = (
+        _qualify_r25_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_receipt_id,
+            prior_chain=prior_chain,
+            candidate_head=current_head,
+            candidate_tree=current_tree,
+            candidate_authorization_witness=witness,
+            policy_admission=policy,
+            authorizing_receipt_cid=receipt_cid,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="after R25 pre-DuckDB historical live qualification",
+    )
+    second_receipt = _secure_runtime_json(
+        r25_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    second_receipt_cid = (
+        _repair_sealed_owner_event_sourced_projection_recovery_transition_receipt_id(
+            second_receipt
+        )
+    )
+    if (
+        second_receipt != first_receipt
+        or second_receipt_cid != receipt_cid
+        or admitted_policy != policy
+        or fresh_evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or fresh_evidence.get("authorizing_receipt_cid") != receipt_cid
+    ):
+        raise OperatorError(
+            "R25 historical live receipt changed during prequalification"
+        )
+    exact_chain = _admit_exact_r25_transition_chain(
+        [*prior_chain, first_receipt]
+    )
+    return {
+        "receipt": first_receipt,
+        "receipt_cid": receipt_cid,
+        "prior_chain": prior_chain,
+        "exact_chain": exact_chain,
+        "transition": transition,
+        "policy_admission": policy,
+        "stored_evidence": stored_evidence,
+        "fresh_evidence": fresh_evidence,
+        "candidate_authorization_witness_cid": _identity(dict(witness)),
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -23743,6 +24976,228 @@ def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
             install_schema=False,
         ) as replay:
             return replay.projection_matches_events() is True
+
+
+def _validate_r25_projection_recovery_prestart_admission(
+    value: Mapping[str, Any],
+    *,
+    expected_failure_evidence_cid: str | None = None,
+) -> dict[str, Any]:
+    """Admit only the exact disposable proof needed before R25 owner start."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R25 projection-recovery prestart proof is invalid")
+    proof = dict(value)
+    fields = {
+        "schema",
+        "authority",
+        "failure_evidence_cid",
+        "source_database_observation",
+        "source_wal_availability",
+        "copy_database_sha256",
+        "before_projection_cid",
+        "before_event_watermark",
+        "before_projection_matches_events",
+        "recovery_event_id",
+        "recovery_event_global_sequence",
+        "recovery_candidates",
+        "after_projection_cid",
+        "after_event_watermark",
+        "strict_projection_matches_events",
+        "second_pass_changed",
+        "second_pass_event_watermark",
+        "second_pass_projection_cid",
+        "live_database_mutated",
+        "proof_cid",
+    }
+    candidates = proof.get("recovery_candidates")
+    expected = [
+        dict(item)
+        for item in ASEH_R25_EXACT_LEGACY_PROJECTION_RECOVERY_CANDIDATES
+    ]
+    normalized: list[dict[str, Any]] = []
+    if isinstance(candidates, list):
+        for item in candidates:
+            if not isinstance(item, Mapping):
+                break
+            normalized.append(
+                {
+                    "task_alias": str(item.get("task_alias") or ""),
+                    "legacy_status": str(item.get("legacy_status") or ""),
+                    "legacy_revision": item.get("legacy_revision"),
+                    "admitted_status": str(item.get("admitted_status") or ""),
+                    "admitted_revision": item.get("admitted_revision"),
+                }
+            )
+    normalized.sort(key=lambda item: item["task_alias"])
+    observation = proof.get("source_database_observation")
+    unsigned = dict(proof)
+    proof_cid = str(unsigned.pop("proof_cid", "") or "")
+    if (
+        set(proof) != fields
+        or proof.get("schema")
+        != ASEH_R25_PROJECTION_RECOVERY_PRESTART_ADMISSION_SCHEMA
+        or proof.get("authority") != "non_authoritative_disposable_copy"
+        or (
+            expected_failure_evidence_cid is not None
+            and proof.get("failure_evidence_cid")
+            != expected_failure_evidence_cid
+        )
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(proof.get("failure_evidence_cid") or ""),
+        )
+        is None
+        or not isinstance(observation, Mapping)
+        or observation.get("availability") != "observed"
+        or proof.get("source_wal_availability") != "absent"
+        or proof.get("copy_database_sha256") != observation.get("sha256")
+        or proof.get("before_projection_matches_events") is not False
+        or normalized != expected
+        or proof.get("strict_projection_matches_events") is not True
+        or proof.get("second_pass_changed") is not False
+        or proof.get("live_database_mutated") is not False
+        or not str(proof.get("recovery_event_id") or "").startswith("bag")
+        or type(proof.get("before_event_watermark")) is not int
+        or type(proof.get("recovery_event_global_sequence")) is not int
+        or type(proof.get("after_event_watermark")) is not int
+        or type(proof.get("second_pass_event_watermark")) is not int
+        or proof.get("recovery_event_global_sequence")
+        != proof.get("after_event_watermark")
+        or proof.get("after_event_watermark")
+        != proof.get("second_pass_event_watermark")
+        or proof.get("after_projection_cid")
+        != proof.get("second_pass_projection_cid")
+        or proof_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R25 projection-recovery prestart proof differs")
+    return proof
+
+
+def _r25_projection_recovery_on_disposable_copy(
+    database: Path,
+    *,
+    expected_database_observation: Mapping[str, Any],
+    failure_evidence_cid: str,
+) -> dict[str, Any]:
+    """Prove the exact R24 drift and its idempotent repair on private bytes."""
+
+    import shutil
+    import tempfile
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        IntentRepository,
+        IntentRepositoryIntegrityError,
+    )
+
+    directory_fd = os.open(
+        database.parent,
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        source_before = _r21_owner_start_file_observation(
+            directory_fd, database.name
+        )
+        wal_name = f"{database.name}.wal"
+        wal_before = _r21_owner_start_file_observation(directory_fd, wal_name)
+        if (
+            source_before != dict(expected_database_observation)
+            or wal_before.get("availability") != "absent"
+        ):
+            raise OperatorError(
+                "R25 prestart database differs from the admitted failed R24 bytes"
+            )
+        with tempfile.TemporaryDirectory(prefix="aseh-r25-projection-recovery-") as raw:
+            clone = Path(raw) / database.name
+            shutil.copy2(database, clone)
+            os.chmod(clone, 0o600)
+            clone_fd = os.open(
+                clone.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
+            try:
+                clone_observation = _r21_owner_start_file_observation(
+                    clone_fd, clone.name
+                )
+            finally:
+                os.close(clone_fd)
+            if (
+                clone_observation.get("sha256") != source_before.get("sha256")
+                or clone_observation.get("size_bytes")
+                != source_before.get("size_bytes")
+            ):
+                raise OperatorError("R25 disposable database copy differs")
+
+            repository = IntentRepository(
+                clone,
+                owner_id="aseh-r25-private-projection-recovery",
+                session_id="aseh-r25-private-projection-recovery",
+                install_schema=False,
+            )
+            try:
+                before = repository.snapshot()
+                try:
+                    repository.assert_projection_matches_events()
+                except IntentRepositoryIntegrityError:
+                    pass
+                else:
+                    raise OperatorError(
+                        "R25 prestart database has no projection drift to recover"
+                    )
+                recovery = repository.reconcile_legacy_stale_unstall_projection_drift()
+                candidates = [
+                    dict(item)
+                    for item in (recovery.details.get("candidates") or ())
+                    if isinstance(item, Mapping)
+                ]
+                candidates.sort(key=lambda item: str(item.get("task_alias") or ""))
+                after = repository.assert_projection_matches_events()
+                second = repository.reconcile_legacy_stale_unstall_projection_drift()
+                second_after = repository.assert_projection_matches_events()
+            finally:
+                repository.close()
+    except IntentRepositoryIntegrityError as exc:
+        raise OperatorError(
+            "R25 prestart database is not the bounded legacy projection drift"
+        ) from exc
+    finally:
+        source_after = _r21_owner_start_file_observation(
+            directory_fd, database.name
+        )
+        wal_after = _r21_owner_start_file_observation(directory_fd, wal_name)
+        os.close(directory_fd)
+    if source_after != source_before or wal_after != wal_before:
+        raise OperatorError("live database changed during R25 disposable replay")
+    proof: dict[str, Any] = {
+        "schema": ASEH_R25_PROJECTION_RECOVERY_PRESTART_ADMISSION_SCHEMA,
+        "authority": "non_authoritative_disposable_copy",
+        "failure_evidence_cid": failure_evidence_cid,
+        "source_database_observation": dict(source_before),
+        "source_wal_availability": "absent",
+        "copy_database_sha256": str(clone_observation["sha256"]),
+        "before_projection_cid": before.projection_cid,
+        "before_event_watermark": before.event_watermark,
+        "before_projection_matches_events": False,
+        "recovery_event_id": recovery.event_id,
+        "recovery_event_global_sequence": recovery.global_sequence,
+        "recovery_candidates": candidates,
+        "after_projection_cid": after.projection_cid,
+        "after_event_watermark": after.event_watermark,
+        "strict_projection_matches_events": True,
+        "second_pass_changed": second.changed,
+        "second_pass_event_watermark": second_after.event_watermark,
+        "second_pass_projection_cid": second_after.projection_cid,
+        "live_database_mutated": False,
+    }
+    proof["proof_cid"] = _identity(proof)
+    return _validate_r25_projection_recovery_prestart_admission(
+        proof,
+        expected_failure_evidence_cid=failure_evidence_cid,
+    )
 
 
 @contextmanager
@@ -23793,20 +25248,60 @@ def _read_continuity_state(
     board: Any,
     paths: Mapping[str, Path],
     bootstrap: Mapping[str, Any],
+    *,
+    r25_projection_recovery_prequalification: Mapping[str, Any] | None = None,
 ) -> tuple[
     dict[str, Any],
     list[str],
     dict[str, Any],
     dict[str, tuple[str, ...]],
     tuple[Any, ...],
+    dict[str, Any] | None,
 ]:
     """Take one mutually excluded read-only DB and merge-queue snapshot."""
 
     with _offline_database_guard(paths):
         with _offline_merge_queue_guard(paths) as queue_database:
-            projection_matches = _projection_matches_events_on_disposable_copy(
-                paths["database"]
-            )
+            recovery_admission: dict[str, Any] | None = None
+            if r25_projection_recovery_prequalification is not None:
+                projection_matches = (
+                    _projection_matches_events_on_disposable_copy(
+                        paths["database"]
+                    )
+                )
+                if not projection_matches:
+                    receipt = r25_projection_recovery_prequalification.get(
+                        "receipt"
+                    )
+                    failure_value = (
+                        receipt.get("projection_recovery_failure_evidence")
+                        if isinstance(receipt, Mapping)
+                        else None
+                    )
+                    failure = (
+                        _validate_r25_projection_recovery_failure_evidence(
+                            failure_value
+                        )
+                        if isinstance(failure_value, Mapping)
+                        else None
+                    )
+                    if not isinstance(failure, Mapping):
+                        raise OperatorError(
+                            "R25 prestart projection-recovery evidence is absent"
+                        )
+                    recovery_admission = (
+                        _r25_projection_recovery_on_disposable_copy(
+                            paths["database"],
+                            expected_database_observation=failure[
+                                "database_after_failed_launch"
+                            ],
+                            failure_evidence_cid=str(failure["evidence_cid"]),
+                        )
+                    )
+            else:
+                projection_matches = _projection_matches_events_on_disposable_copy(
+                    paths["database"]
+                )
             with _read_only_database_task_source(
                 paths["database"],
                 owner_id="aseh-launch-continuity:read-only",
@@ -23818,10 +25313,13 @@ def _read_continuity_state(
                         source,
                         bootstrap=bootstrap,
                         projection_matches_events=projection_matches,
+                        projection_recovery_prestart_admission=(
+                            recovery_admission
+                        ),
                     )
                 )
             requests = _read_completed_merge_requests(queue_database)
-    return snapshot, ready, integrity, outputs, requests
+    return snapshot, ready, integrity, outputs, requests, recovery_admission
 
 
 def _admit_repair_followup_base(
@@ -27081,6 +28579,85 @@ def _r24_capsule_schema_data_evidence(
                 pass
 
 
+def _r25_projection_recovery_failure_evidence(
+    *,
+    paths: Mapping[str, Path],
+) -> dict[str, Any]:
+    """Preserve the exact R24 failed-launch observations without mutation."""
+
+    permission_directory = paths.get("owner_start_permission_receipts")
+    terminal_directory = paths.get("sealed_owner_terminal_observations")
+    control_path = paths.get("inbox_failure_receipt")
+    status_path = paths.get("status_receipt")
+    database = paths.get("database")
+    if (
+        not isinstance(permission_directory, Path)
+        or not isinstance(terminal_directory, Path)
+        or not isinstance(control_path, Path)
+        or not isinstance(status_path, Path)
+        or not isinstance(database, Path)
+    ):
+        raise OperatorError("R25 failed-launch evidence path is absent")
+    permission_cid = ASEH_R25_EXACT_R24_FAILURE_RECEIPT_CIDS[
+        "owner_start_permission"
+    ]
+    terminal_cid = ASEH_R25_EXACT_R24_FAILURE_RECEIPT_CIDS["owner_terminal"]
+    permission = _secure_runtime_json(
+        permission_directory / f"{permission_cid[7:]}.json",
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    terminal = _secure_runtime_json(
+        terminal_directory / f"{terminal_cid[7:]}.json",
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    control = _secure_runtime_json(
+        control_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    live_status = _secure_runtime_json(
+        status_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    with _offline_database_guard(paths):
+        directory_fd = os.open(
+            database.parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+        )
+        try:
+            database_after = _r21_owner_start_file_observation(
+                directory_fd,
+                database.name,
+            )
+        finally:
+            os.close(directory_fd)
+    evidence: dict[str, Any] = {
+        "schema": ASEH_R25_PROJECTION_RECOVERY_FAILURE_EVIDENCE_SCHEMA,
+        "failed_candidate_head": (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        ),
+        "failed_candidate_tree": (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+        ),
+        "prior_repair_receipt_cid": ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID,
+        "owner_start_permission_receipt": permission,
+        "sealed_owner_terminal_observation": terminal,
+        "control_failure_receipt": control,
+        "live_status_receipt": live_status,
+        "database_after_failed_launch": database_after,
+        "database_changed_since_owner_start": True,
+        "database_observed_during_authorization": True,
+        "database_mutated_during_authorization": False,
+        "r24_retry_authorized": False,
+        "failure_class": (
+            "legacy_projection_only_stale_unstall_rejected_by_shadow_replay"
+        ),
+    }
+    evidence["evidence_cid"] = _identity(evidence)
+    return _validate_r25_projection_recovery_failure_evidence(evidence)
+
+
 def _authorize_repair_sealed_owner_capsule_schema_data_completeness_transition_if_applicable(
     *,
     board: Any,
@@ -27147,6 +28724,22 @@ def _authorize_repair_sealed_owner_capsule_schema_data_completeness_transition_i
         )
         _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
         expected_chain = [*prior_chain, receipt]
+        r25_result = (
+            _authorize_repair_sealed_owner_event_sourced_projection_recovery_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r25_result is not None:
+            return r25_result
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = _admit_exact_r24_transition_chain(
@@ -27306,6 +28899,263 @@ def _authorize_repair_sealed_owner_capsule_schema_data_completeness_transition_i
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R24 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_sealed_owner_event_sourced_projection_recovery_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one exact R25 child through R24's sealed live route."""
+
+    r25_path = paths.get(
+        "repair_sealed_owner_event_sourced_projection_recovery_transition_receipt"
+    )
+    if not isinstance(r25_path, Path):
+        return None
+    prior_chain = _admit_exact_r24_transition_chain(list(prior_receipt_chain))
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in prior_chain
+    ) != ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS:
+        raise OperatorError(
+            "bootstrap repair projection-recovery prior vector differs"
+        )
+    prior_receipt = prior_chain[-1]
+    transition_binding_fields = (
+        "schema",
+        "task_id",
+        "transition_revision",
+        "base_head",
+        "base_tree",
+        "repair_head",
+        "repair_tree",
+        "changed_paths",
+        "patch_digest",
+        "previous_receipt_cid",
+        "candidate_authorization_witness",
+        "sealed_validation_executor_contract",
+        "receipt_cid",
+    )
+    if (
+        prior_receipt != previous_receipt
+        or any(
+            previous_transition.get(field) != prior_receipt.get(field)
+            for field in transition_binding_fields
+        )
+        or previous_transition.get("repair_head")
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        or previous_transition.get("repair_tree")
+        != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+        or previous_transition.get("receipt_cid")
+        != ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID
+    ):
+        raise OperatorError(
+            "bootstrap repair projection-recovery prior chain differs"
+        )
+    if r25_path.is_file():
+        receipt = _secure_runtime_json(
+            r25_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = (
+            _validate_repair_sealed_owner_event_sourced_projection_recovery_transition(
+                receipt,
+                bootstrap=bootstrap,
+                previous_receipt=previous_receipt,
+                rerun_validations=receipt.get("repair_head") == head,
+            )
+        )
+        _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
+        expected_chain = [*prior_chain, receipt]
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = _admit_exact_r25_transition_chain(
+            current_admission.get("repair_transition_chain")
+        )
+        admitted_continuity = current_admission.get("canonical_continuity")
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head") != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid") != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in admitted_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or (
+                "sealed_owner_capsule_schema_data_completeness_to_"
+                "sealed_owner_event_sourced_projection_recovery"
+            )
+            not in admitted_continuity
+            or current_admission.get("historical_live_authorizing_receipt_cid")
+            != receipt.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current admission does not retain the R25 projection-recovery "
+                "repair"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission["runtime_source_head"],
+        }
+    base_head = (
+        REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+    )
+    if _git("show", "-s", "--format=%P", head).split() != [base_head]:
+        return None
+    if _git("rev-parse", f"{base_head}^{{tree}}") != (
+        REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+    ):
+        raise OperatorError("bootstrap repair projection-recovery base tree differs")
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair projection-recovery changed paths differ"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    validation_results = (
+        _run_repair_sealed_owner_event_sourced_projection_recovery_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R25 validation before live qualification",
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r25_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R25 live qualification before failure observation",
+    )
+    failure_evidence = _r25_projection_recovery_failure_evidence(paths=paths)
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R25 failure observation before receipt publication",
+    )
+    receipt: dict[str, Any] = {
+        "schema": (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SCHEMA
+        ),
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R25",
+        "program_id": PROGRAM,
+        "transition_revision": 25,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+        ),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R24"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r25_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": historical_policy,
+        "historical_live_execution_evidence": historical_evidence,
+        "projection_recovery_failure_evidence": failure_evidence,
+        "terminal_success_criteria": (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_sealed_owner_event_sourced_projection_recovery_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    final_failure_evidence = _r25_projection_recovery_failure_evidence(
+        paths=paths
+    )
+    if final_failure_evidence != failure_evidence:
+        raise OperatorError(
+            "R25 failed-launch evidence changed before receipt publication"
+        )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R25 receipt publication",
+    )
+    _atomic_json_create(
+        r25_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R25 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -29423,7 +31273,7 @@ def _authorize_repair_transition_locked(
             )
         if repair_head != REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT:
             raise OperatorError("prior bootstrap repair identity differs")
-        snapshot, _ready, integrity, outputs, requests = (
+        snapshot, _ready, integrity, outputs, requests, _recovery = (
             _read_continuity_state(board, paths, bootstrap)
         )
         base_proof = _admit_canonical_merge_suffix(
@@ -29529,8 +31379,8 @@ def _authorize_repair_transition_locked(
             "repair_transition_receipt": receipt,
             "repair_transition_chain": [prior, receipt],
         }
-    snapshot, _ready, integrity, outputs, requests = _read_continuity_state(
-        board, paths, bootstrap
+    snapshot, _ready, integrity, outputs, requests, _recovery = (
+        _read_continuity_state(board, paths, bootstrap)
     )
     base_proof = _admit_canonical_merge_suffix(
         board,
@@ -29613,14 +31463,21 @@ def _admit_materialized_launch(
         paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
     )
     receipt_id = _bootstrap_receipt_id(bootstrap)
-    r24_prequalification = _prequalify_r24_historical_live_launch(
-        paths=paths,
-        population=population,
-        bootstrap=bootstrap,
+    r25_prequalification = _prequalify_r25_historical_live_launch(
+        paths=paths, population=population, bootstrap=bootstrap
+    )
+    r24_prequalification = (
+        None
+        if r25_prequalification is not None
+        else _prequalify_r24_historical_live_launch(
+            paths=paths,
+            population=population,
+            bootstrap=bootstrap,
+        )
     )
     r23_prequalification = (
         None
-        if r24_prequalification is not None
+        if r25_prequalification is not None or r24_prequalification is not None
         else _prequalify_r23_historical_live_launch(
             paths=paths,
             population=population,
@@ -29629,7 +31486,11 @@ def _admit_materialized_launch(
     )
     r22_prequalification = (
         None
-        if r24_prequalification is not None or r23_prequalification is not None
+        if (
+            r25_prequalification is not None
+            or r24_prequalification is not None
+            or r23_prequalification is not None
+        )
         else _prequalify_r22_historical_live_launch(
             paths=paths,
             population=population,
@@ -29640,6 +31501,7 @@ def _admit_materialized_launch(
         None
         if (
             r24_prequalification is not None
+            or r25_prequalification is not None
             or r23_prequalification is not None
             or r22_prequalification is not None
         )
@@ -29654,6 +31516,7 @@ def _admit_materialized_launch(
         if (
             r23_prequalification is not None
             or r24_prequalification is not None
+            or r25_prequalification is not None
             or r22_prequalification is not None
             or r21_prequalification is not None
         )
@@ -29677,6 +31540,7 @@ def _admit_materialized_launch(
     repair_transition: dict[str, Any] = {}
     repair_transition_chain: list[dict[str, Any]] = []
     historical_live_launch_evidence: dict[str, Any] | None = None
+    projection_recovery_prestart_admission: dict[str, Any] | None = None
     if exact_bootstrap:
         with _offline_database_guard(paths):
             projection_matches = _projection_matches_events_on_disposable_copy(
@@ -29716,8 +31580,18 @@ def _admit_materialized_launch(
             repair_receipt, bootstrap=bootstrap, rerun_validations=True
         )
         repair_transition_chain = [repair_transition]
-        snapshot, ready, integrity, outputs, requests = _read_continuity_state(
-            board, paths, bootstrap
+        (
+            snapshot,
+            ready,
+            integrity,
+            outputs,
+            requests,
+            projection_recovery_prestart_admission,
+        ) = _read_continuity_state(
+            board,
+            paths,
+            bootstrap,
+            r25_projection_recovery_prequalification=r25_prequalification,
         )
         base_proof = _admit_canonical_merge_suffix(
             board,
@@ -29809,6 +31683,9 @@ def _admit_materialized_launch(
             sealed_owner_capsule_schema_data_completeness_transition: (
                 dict[str, Any] | None
             ) = None
+            sealed_owner_event_sourced_projection_recovery_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -29824,6 +31701,7 @@ def _admit_materialized_launch(
             r22_receipt: dict[str, Any] | None = None
             r23_receipt: dict[str, Any] | None = None
             r24_receipt: dict[str, Any] | None = None
+            r25_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -30889,6 +32767,137 @@ def _admit_materialized_launch(
                 active_transition = (
                     sealed_owner_capsule_schema_data_completeness_transition
                 )
+            if r25_prequalification is not None:
+                raw_r25_transition = r25_prequalification.get("transition")
+                raw_r25_receipt = r25_prequalification.get("receipt")
+                raw_r25_prior_chain = r25_prequalification.get("prior_chain")
+                if (
+                    historical_lifecycle_route_transition is None
+                    or r19_receipt is None
+                    or not isinstance(raw_r25_transition, Mapping)
+                    or not isinstance(raw_r25_receipt, Mapping)
+                    or not isinstance(raw_r25_prior_chain, list)
+                    or len(raw_r25_prior_chain)
+                    != len(ASEH_R24_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+                    or raw_r25_prior_chain[-6] != r19_receipt
+                ):
+                    raise OperatorError(
+                        "R25 pre-DuckDB transition prior chain differs"
+                    )
+                raw_r20_receipt = raw_r25_prior_chain[-5]
+                raw_r21_receipt = raw_r25_prior_chain[-4]
+                raw_r22_receipt = raw_r25_prior_chain[-3]
+                raw_r23_receipt = raw_r25_prior_chain[-2]
+                raw_r24_receipt = raw_r25_prior_chain[-1]
+                if not all(
+                    isinstance(item, Mapping)
+                    for item in (
+                        raw_r20_receipt,
+                        raw_r21_receipt,
+                        raw_r22_receipt,
+                        raw_r23_receipt,
+                        raw_r24_receipt,
+                    )
+                ):
+                    raise OperatorError(
+                        "R25 prior R20/R21/R22/R23/R24 receipt is invalid"
+                    )
+                admitted_r20_transition = (
+                    _validate_repair_pre_duckdb_historical_live_transition(
+                        raw_r20_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=r19_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                admitted_r21_transition = (
+                    _validate_repair_sealed_owner_startup_contention_recovery_transition(
+                        raw_r21_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=raw_r20_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                admitted_r22_transition = (
+                    _validate_repair_sealed_owner_terminal_observability_transition(
+                        raw_r22_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=raw_r21_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                admitted_r23_transition = (
+                    _validate_repair_sealed_owner_database_permission_hardening_transition(
+                        raw_r23_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=raw_r22_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                admitted_r24_transition = (
+                    _validate_repair_sealed_owner_capsule_schema_data_completeness_transition(
+                        raw_r24_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=raw_r23_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                if (
+                    admitted_r20_transition.get("base_head")
+                    != historical_lifecycle_route_transition.get("repair_head")
+                    or admitted_r20_transition.get("previous_receipt_cid")
+                    != historical_lifecycle_route_transition.get("receipt_cid")
+                    or admitted_r21_transition.get("base_head")
+                    != admitted_r20_transition.get("repair_head")
+                    or admitted_r21_transition.get("previous_receipt_cid")
+                    != admitted_r20_transition.get("receipt_cid")
+                    or admitted_r22_transition.get("base_head")
+                    != admitted_r21_transition.get("repair_head")
+                    or admitted_r22_transition.get("previous_receipt_cid")
+                    != admitted_r21_transition.get("receipt_cid")
+                    or admitted_r23_transition.get("base_head")
+                    != admitted_r22_transition.get("repair_head")
+                    or admitted_r23_transition.get("previous_receipt_cid")
+                    != admitted_r22_transition.get("receipt_cid")
+                    or admitted_r24_transition.get("base_head")
+                    != admitted_r23_transition.get("repair_head")
+                    or admitted_r24_transition.get("previous_receipt_cid")
+                    != admitted_r23_transition.get("receipt_cid")
+                    or raw_r25_transition.get("base_head")
+                    != admitted_r24_transition.get("repair_head")
+                    or raw_r25_transition.get("previous_receipt_cid")
+                    != admitted_r24_transition.get("receipt_cid")
+                ):
+                    raise OperatorError(
+                        "R25 projection recovery does not extend admitted R24"
+                    )
+                pre_duckdb_historical_live_transition = dict(
+                    admitted_r20_transition
+                )
+                r20_receipt = dict(raw_r20_receipt)
+                sealed_owner_startup_contention_recovery_transition = dict(
+                    admitted_r21_transition
+                )
+                r21_receipt = dict(raw_r21_receipt)
+                sealed_owner_terminal_observability_transition = dict(
+                    admitted_r22_transition
+                )
+                r22_receipt = dict(raw_r22_receipt)
+                sealed_owner_database_permission_hardening_transition = dict(
+                    admitted_r23_transition
+                )
+                r23_receipt = dict(raw_r23_receipt)
+                sealed_owner_capsule_schema_data_completeness_transition = dict(
+                    admitted_r24_transition
+                )
+                r24_receipt = dict(raw_r24_receipt)
+                sealed_owner_event_sourced_projection_recovery_transition = dict(
+                    raw_r25_transition
+                )
+                r25_receipt = dict(raw_r25_receipt)
+                active_transition = (
+                    sealed_owner_event_sourced_projection_recovery_transition
+                )
             if (
                 historical_lifecycle_route_transition is None
                 and _r19_population_requires_policy(population)
@@ -30937,6 +32946,20 @@ def _admit_materialized_launch(
             ):
                 raise OperatorError(
                     "active R24 capsule schema-data policy receipt is absent"
+                )
+            if (
+                sealed_owner_event_sourced_projection_recovery_transition is None
+                and isinstance(
+                    paths.get(
+                        "repair_sealed_owner_event_sourced_projection_recovery_"
+                        "transition_receipt"
+                    ),
+                    Path,
+                )
+                and _r25_population_requires_policy(population)
+            ):
+                raise OperatorError(
+                    "active R25 projection-recovery policy receipt is absent"
                 )
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -31047,6 +33070,7 @@ def _admit_materialized_launch(
                             and r22_prequalification is None
                             and r23_prequalification is None
                             and r24_prequalification is None
+                            and r25_prequalification is None
                         ) or r21_receipt is None:
                             raise OperatorError(
                                 "R21 pre-DuckDB qualification bundle is absent"
@@ -31079,6 +33103,7 @@ def _admit_materialized_launch(
                                     r22_prequalification is None
                                     and r23_prequalification is None
                                     and r24_prequalification is None
+                                    and r25_prequalification is None
                                 )
                                 or r22_receipt is None
                             ):
@@ -31112,6 +33137,7 @@ def _admit_materialized_launch(
                                     (
                                         r23_prequalification is None
                                         and r24_prequalification is None
+                                        and r25_prequalification is None
                                     )
                                     or r23_receipt is None
                                 ):
@@ -31143,7 +33169,10 @@ def _admit_materialized_launch(
                                     is not None
                                 ):
                                     if (
-                                        r24_prequalification is None
+                                        (
+                                            r24_prequalification is None
+                                            and r25_prequalification is None
+                                        )
                                         or r24_receipt is None
                                     ):
                                         raise OperatorError(
@@ -31169,6 +33198,40 @@ def _admit_materialized_launch(
                                         _validate_repair_sealed_owner_capsule_schema_data_completeness_transition
                                     )
                                     launch_previous_receipt = r23_receipt
+                                    if (
+                                        sealed_owner_event_sourced_projection_recovery_transition
+                                        is not None
+                                    ):
+                                        if (
+                                            r25_prequalification is None
+                                            or r25_receipt is None
+                                        ):
+                                            raise OperatorError(
+                                                "R25 pre-DuckDB qualification "
+                                                "bundle is absent"
+                                            )
+                                        repair_transition_chain.append(
+                                            sealed_owner_event_sourced_projection_recovery_transition
+                                        )
+                                        launch_chain = (
+                                            _admit_exact_r25_transition_chain(
+                                                repair_transition_chain
+                                            )
+                                        )
+                                        launch_bundle = r25_prequalification
+                                        launch_receipt = r25_receipt
+                                        launch_transition = (
+                                            sealed_owner_event_sourced_projection_recovery_transition
+                                        )
+                                        launch_path = paths.get(
+                                            "repair_sealed_owner_event_sourced_"
+                                            "projection_recovery_transition_"
+                                            "receipt"
+                                        )
+                                        launch_validator = (
+                                            _validate_repair_sealed_owner_event_sourced_projection_recovery_transition
+                                        )
+                                        launch_previous_receipt = r24_receipt
                     if not isinstance(launch_bundle, Mapping):
                         raise OperatorError(
                             "pre-DuckDB qualification bundle is absent"
@@ -31390,6 +33453,14 @@ def _admit_materialized_launch(
                     "sealed_owner_database_permission_hardening_to_"
                     "sealed_owner_capsule_schema_data_completeness"
                 ] = sealed_owner_capsule_schema_data_completeness_transition
+            if (
+                sealed_owner_event_sourced_projection_recovery_transition
+                is not None
+            ):
+                continuity[
+                    "sealed_owner_capsule_schema_data_completeness_to_"
+                    "sealed_owner_event_sourced_projection_recovery"
+                ] = sealed_owner_event_sourced_projection_recovery_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -31432,6 +33503,14 @@ def _admit_materialized_launch(
         admission["historical_live_policy_admission_cid"] = (
             historical_live_launch_evidence["active_policy_cid"]
         )
+    if projection_recovery_prestart_admission is not None:
+        admission["projection_recovery_prestart_admission"] = (
+            projection_recovery_prestart_admission
+        )
+    if r25_prequalification is not None:
+        admission["projection_matches_events"] = integrity[
+            "projection_matches_events"
+        ]
     admission["admission_cid"] = _identity(admission)
     return admission
 
@@ -33257,7 +35336,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
     candidate_tree: str,
     candidate_authorization_witness: Mapping[str, str],
 ) -> dict[str, Any] | None:
-    """Project unchanged R23 permission authority for exact R23/R24 children."""
+    """Project unchanged R23 permission authority through exact R25."""
 
     parents = _git("show", "-s", "--format=%P", candidate_head).split()
     exact_r23 = parents == [
@@ -33266,7 +35345,10 @@ def _r23_owner_start_permission_context_from_launch_admission(
     exact_r24 = parents == [
         REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_BASE_HEAD
     ]
-    if not exact_r23 and not exact_r24:
+    exact_r25 = parents == [
+        REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+    ]
+    if not exact_r23 and not exact_r24 and not exact_r25:
         return None
     if not isinstance(launch_admission, Mapping):
         raise OperatorError("R23 materialized launch admission is invalid")
@@ -33275,7 +35357,11 @@ def _r23_owner_start_permission_context_from_launch_admission(
     if admission_cid != _identity(unsigned_admission):
         raise OperatorError("R23 materialized launch admission CID differs")
     chain = (
-        _admit_exact_r24_transition_chain(
+        _admit_exact_r25_transition_chain(
+            launch_admission.get("repair_transition_chain")
+        )
+        if exact_r25
+        else _admit_exact_r24_transition_chain(
             launch_admission.get("repair_transition_chain")
         )
         if exact_r24
@@ -33285,14 +35371,19 @@ def _r23_owner_start_permission_context_from_launch_admission(
     )
     transition = launch_admission.get("repair_transition")
     current_witness = dict(candidate_authorization_witness)
-    r23_authority = chain[-2] if exact_r24 else chain[-1]
+    r23_authority = chain[-3] if exact_r25 else chain[-2] if exact_r24 else chain[-1]
+    r24_authority = chain[-2] if exact_r25 else None
     expected_schema = (
-        REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_SCHEMA
+        REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SCHEMA
+        if exact_r25
+        else REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_SCHEMA
         if exact_r24
         else REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
     )
     expected_base = (
-        REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_BASE_HEAD
+        REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        if exact_r25
+        else REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_BASE_HEAD
         if exact_r24
         else REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
     )
@@ -33311,14 +35402,35 @@ def _r23_owner_start_permission_context_from_launch_admission(
         or launch_admission.get("historical_live_authorizing_receipt_cid")
         != transition.get("receipt_cid")
         or (
-            exact_r24
+            (exact_r24 or exact_r25)
             and (
                 r23_authority.get("schema")
                 != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
                 or r23_authority.get("receipt_cid")
                 != ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
-                or transition.get("previous_receipt_cid")
+                or (
+                    exact_r24
+                    and transition.get("previous_receipt_cid")
+                    != r23_authority.get("receipt_cid")
+                )
+            )
+        )
+        or (
+            exact_r25
+            and (
+                not isinstance(r24_authority, Mapping)
+                or r24_authority.get("schema")
+                != REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_SCHEMA
+                or r24_authority.get("repair_head")
+                != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+                or r24_authority.get("repair_tree")
+                != REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+                or r24_authority.get("receipt_cid")
+                != ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID
+                or r24_authority.get("previous_receipt_cid")
                 != r23_authority.get("receipt_cid")
+                or transition.get("previous_receipt_cid")
+                != r24_authority.get("receipt_cid")
             )
         )
     ):

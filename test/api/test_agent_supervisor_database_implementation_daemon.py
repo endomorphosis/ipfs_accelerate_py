@@ -6217,6 +6217,160 @@ def test_stale_in_progress_unstall_leaves_live_attempts_alone(
         daemon.close()
 
 
+def test_quack_stale_gate_requests_owner_recycle_without_replica_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-stale-gate-owner-recycle",
+        max_task_attempts=3,
+    )
+    requested: list[str] = []
+    cooldowns: list[str] = []
+    try:
+        source = daemon.task_source
+        intent = source.intent
+        intent._quack_transport = True
+        stale = (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()
+        monkeypatch.setattr(
+            intent,
+            "list_tasks",
+            lambda **_kwargs: (
+                {
+                    "task_cid": "task:cid:stale-quack-gate",
+                    "status": "in_progress",
+                    "updated_at": stale,
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            source,
+            "unstall_stale_in_progress_tasks",
+            lambda **_kwargs: pytest.fail(
+                "Quack replica attempted the embedded unstall mutation path"
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: requested.append("owner-recycle")
+            or {"ok": True, "requested": True, "waited": False},
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_arm_quack_attach_cooldown",
+            lambda: cooldowns.append("armed"),
+        )
+
+        assert daemon.reconcile_stale_in_progress_gates() == []
+        assert requested == ["owner-recycle"]
+        assert cooldowns == ["armed"]
+    finally:
+        daemon.close()
+
+
+def test_quack_stale_gate_fails_closed_when_owner_recycle_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-stale-gate-rejected-recycle",
+        max_task_attempts=3,
+    )
+    try:
+        source = daemon.task_source
+        intent = source.intent
+        intent._quack_transport = True
+        stale = (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()
+        monkeypatch.setattr(
+            intent,
+            "list_tasks",
+            lambda **_kwargs: (
+                {
+                    "task_cid": "task:cid:stale-quack-gate",
+                    "status": "in_progress",
+                    "updated_at": stale,
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            source,
+            "unstall_stale_in_progress_tasks",
+            lambda **_kwargs: pytest.fail(
+                "Quack replica attempted the embedded unstall mutation path"
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: {"ok": False, "requested": False, "waited": False},
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_arm_quack_attach_cooldown",
+            lambda: pytest.fail("rejected owner recycle armed a success cooldown"),
+        )
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="did not accept",
+        ):
+            daemon.reconcile_stale_in_progress_gates()
+    finally:
+        daemon.close()
+
+
+def test_quack_live_gate_does_not_request_owner_recycle_or_replica_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-live-gate-no-recycle",
+        max_task_attempts=3,
+    )
+    try:
+        source = daemon.task_source
+        intent = source.intent
+        intent._quack_transport = True
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+        monkeypatch.setattr(
+            intent,
+            "list_tasks",
+            lambda **_kwargs: (
+                {
+                    "task_cid": "task:cid:live-quack-gate",
+                    "status": "in_progress",
+                    "updated_at": recent,
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            source,
+            "unstall_stale_in_progress_tasks",
+            lambda **_kwargs: pytest.fail(
+                "Quack replica attempted the embedded unstall mutation path"
+            ),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: pytest.fail("live Quack gate requested an owner recycle"),
+        )
+
+        assert daemon.reconcile_stale_in_progress_gates() == []
+    finally:
+        daemon.close()
+
+
 def test_quack_attach_contention_still_expires_running_attempts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

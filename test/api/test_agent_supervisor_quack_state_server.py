@@ -83,6 +83,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBConnectionPolicyError,
+    open_duckdb_connection,
     open_quack_transport_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
@@ -177,6 +178,14 @@ class FakeConnection:
             return _Result((self._meta.get(str(key), ""),))
         if "FROM STORE_GENERATIONS" in upper or "MAX(GENERATION)" in upper:
             return _Result((self.max_generation,))
+        # Owner startup now proves the event stream and every intent
+        # projection agree before it can listen.  This lifecycle fake models
+        # an installed but empty intent store; the real-DuckDB tests below
+        # exercise populated replay and stale-task recovery.
+        if upper.startswith("SELECT COUNT(*) FROM "):
+            return _Result((0,))
+        if "COALESCE(MAX(GLOBAL_SEQUENCE), 0)" in upper:
+            return _Result((0,))
         if upper.startswith("SELECT 1"):
             return _Result((1,))
         if upper.startswith("CHECKPOINT"):
@@ -2736,11 +2745,17 @@ def test_real_default_transport_requires_authenticated_remote_readiness(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
-def test_start_unstalls_stale_in_progress_gate_before_listen(tmp_path: Path) -> None:
+def test_start_unstalls_stale_in_progress_gate_before_listen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from datetime import datetime, timedelta, timezone
 
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         open_duckdb_connection,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        IntentRepository,
     )
 
     db = tmp_path / "control.duckdb"
@@ -2755,36 +2770,30 @@ def test_start_unstalls_stale_in_progress_gate_before_listen(tmp_path: Path) -> 
     stale = (datetime.now(timezone.utc) - timedelta(hours=12)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
-    connection = open_duckdb_connection(db)
+    repository = IntentRepository(db, owner_id="test-owner", install_schema=False)
     try:
-        columns = [
-            str(row[1])
-            for row in connection.execute("PRAGMA table_info('tasks')").fetchall()
-        ]
-        colset = set(columns)
-        required = {"task_cid", "task_alias", "status", "revision", "updated_at"}
-        if not required <= colset:
-            pytest.skip("control-plane tasks table has no unstall columns")
-        payload: dict[str, object] = {
-            "task_cid": "cid-021",
-            "task_alias": "PCCE-021",
-            "status": "in_progress",
-            "revision": 9,
-            "updated_at": stale,
-            "goal_cid": "goal:cid:root",
-            "ordinal": 21,
-            "identity_json": "{}",
-            "body_json": "{}",
-        }
-        names = [name for name in columns if name in payload]
-        connection.execute(
-            f"INSERT INTO tasks ({', '.join(names)}) VALUES ("
-            + ", ".join("?" for _ in names)
-            + ")",
-            [payload[name] for name in names],
+        repository.upsert_goal(
+            goal_cid="goal:cid:root",
+            goal_alias="goal-root",
+            title="Root",
         )
+        repository.upsert_task(
+            task_cid="cid-021",
+            task_alias="PCCE-021",
+            goal_cid="goal:cid:root",
+            ordinal=21,
+            status="ready",
+        )
+        original_utc_iso = intent_repository._utc_iso
+        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
+        repository.cas_task_status(
+            task_cid="cid-021",
+            expected_revision=1,
+            new_status="in_progress",
+        )
+        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
     finally:
-        connection.close()
+        repository.close()
 
     server = build_server(
         database_path=db,
@@ -2793,6 +2802,7 @@ def test_start_unstalls_stale_in_progress_gate_before_listen(tmp_path: Path) -> 
         capability_probe=lambda **_k: _compatible_report(),
         process_birth_factory=lambda: _birth(pid=os.getpid()),
         owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
+        connection_factory=lambda path: open_duckdb_connection(path),
     )
     server.start()
     try:
@@ -2803,9 +2813,153 @@ def test_start_unstalls_stale_in_progress_gate_before_listen(tmp_path: Path) -> 
         assert row is not None
         status, revision = row[0], row[1]
         assert status == "retrying"
-        assert int(revision) == 10
+        assert int(revision) == 3
+        bound = IntentRepository(
+            db,
+            bound_connection=server._connection,
+            owner_id="test-readback",
+            install_schema=False,
+        )
+        try:
+            bound.assert_projection_matches_events()
+        finally:
+            bound.close()
     finally:
         server.stop()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
+def test_start_repairs_legacy_projection_only_unstall_once_before_listen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The R24 startup bypass is recovered once, then uses canonical CAS."""
+
+    from datetime import datetime, timedelta, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+        unstall_stale_in_progress_tasks,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        INTENT_STREAM_ID,
+        IntentEventType,
+        IntentRepository,
+    )
+
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="test-owner",
+    )
+    stale = (datetime.now(timezone.utc) - timedelta(hours=12)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    repository = IntentRepository(db, owner_id="test-owner", install_schema=False)
+    try:
+        repository.upsert_goal(
+            goal_cid="goal:cid:root",
+            goal_alias="goal-root",
+            title="Root",
+        )
+        repository.upsert_task(
+            task_cid="cid-legacy-021",
+            task_alias="PCCE-LEGACY-021",
+            goal_cid="goal:cid:root",
+            ordinal=21,
+            status="ready",
+        )
+        original_utc_iso = intent_repository._utc_iso
+        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
+        repository.cas_task_status(
+            task_cid="cid-legacy-021",
+            expected_revision=1,
+            new_status="in_progress",
+        )
+        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
+    finally:
+        repository.close()
+
+    # Reproduce only the historical R24 bypass footprint: the task row moved
+    # to retrying@3, while task_revisions and domain_events remained at the
+    # admitted in_progress@2 state.
+    connection = open_duckdb_connection(db)
+    try:
+        legacy = unstall_stale_in_progress_tasks(
+            connection,
+            now=datetime.now(timezone.utc),
+            allow_projection_only=True,
+        )
+        assert [item["task_alias"] for item in legacy["unstalled"]] == [
+            "PCCE-LEGACY-021"
+        ]
+    finally:
+        connection.close()
+
+    def make_server() -> QuackStateServer:
+        return build_server(
+            database_path=db,
+            state_dir=state,
+            transport=FakeQuackTransport(),
+            capability_probe=lambda **_k: _compatible_report(),
+            process_birth_factory=lambda: _birth(pid=os.getpid()),
+            owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
+            connection_factory=lambda path: open_duckdb_connection(path),
+        )
+
+    expected_counts: tuple[int, int] | None = None
+    for _generation in range(2):
+        server = make_server()
+        server.start()
+        try:
+            raw = getattr(server._connection, "_connection", server._connection)
+            status_row = raw.execute(
+                "SELECT status, revision FROM tasks "
+                "WHERE task_alias = 'PCCE-LEGACY-021'"
+            ).fetchone()
+            assert status_row is not None
+            assert (str(status_row[0]), int(status_row[1])) == ("retrying", 3)
+            observed_counts = (
+                int(
+                    raw.execute(
+                        "SELECT COUNT(*) FROM domain_events "
+                        "WHERE stream_id = ? AND task_cid = ? AND event_type = ?",
+                        [
+                            INTENT_STREAM_ID,
+                            "cid-legacy-021",
+                            IntentEventType.TASK_STATUS_CHANGED.value,
+                        ],
+                    ).fetchone()[0]
+                ),
+                int(
+                    raw.execute(
+                        "SELECT COUNT(*) FROM domain_events "
+                        "WHERE stream_id = ? AND event_type = ?",
+                        [INTENT_STREAM_ID, IntentEventType.RECOVERY_APPLIED.value],
+                    ).fetchone()[0]
+                ),
+            )
+            if expected_counts is None:
+                expected_counts = observed_counts
+                assert expected_counts == (2, 1)
+            else:
+                assert observed_counts == expected_counts
+            bound = IntentRepository(
+                db,
+                bound_connection=server._connection,
+                owner_id="test-readback",
+                install_schema=False,
+            )
+            try:
+                bound.assert_projection_matches_events()
+            finally:
+                bound.close()
+        finally:
+            server.stop()
 
 
 def test_config_rejects_raw_token_as_secret_handle(tmp_path: Path) -> None:

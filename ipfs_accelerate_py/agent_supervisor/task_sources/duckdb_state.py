@@ -2506,6 +2506,8 @@ def unstall_stale_in_progress_tasks(
     *,
     now: datetime | None = None,
     stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    canonical_transition: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    allow_projection_only: bool = False,
 ) -> dict[str, Any]:
     """Return in_progress tasks that have been idle longer than a live attempt.
 
@@ -2522,7 +2524,8 @@ def unstall_stale_in_progress_tasks(
         clock = clock.replace(tzinfo=timezone.utc)
     rows = connection.execute(
         "SELECT task_cid, task_alias, status, revision, updated_at "
-        "FROM tasks WHERE status = 'in_progress'"
+        "FROM tasks WHERE status = 'in_progress' "
+        "ORDER BY task_alias, task_cid"
     ).fetchall()
     unstalled: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
@@ -2551,6 +2554,11 @@ def unstall_stale_in_progress_tasks(
             )
             continue
         pending.append((task_cid, task_alias, status, revision, int(age)))
+    if pending and canonical_transition is None and allow_projection_only is not True:
+        raise DuckDBConnectionPolicyError(
+            "stale-task recovery requires the IntentRepository transition authority; "
+            "projection-only mutation is permitted only by an explicit hermetic fixture"
+        )
     index_sql: list[str] = []
     if pending:
         index_sql = _drop_task_status_indexes(connection)
@@ -2558,22 +2566,65 @@ def unstall_stale_in_progress_tasks(
         for task_cid, task_alias, status, revision, age in pending:
             new_revision = int(revision) + 1
             stamp = clock.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            connection.execute(
-                "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
-                "WHERE task_cid = ? AND revision = ? AND status = 'in_progress'",
-                ["retrying", new_revision, stamp, str(task_cid), int(revision)],
-            )
-            unstalled.append(
-                {
-                    "task_cid": str(task_cid),
-                    "task_alias": str(task_alias),
-                    "previous_revision": int(revision),
-                    "revision": new_revision,
-                    "previous_status": str(status),
-                    "status": "retrying",
-                    "age_seconds": int(age),
-                }
-            )
+            transition_input = {
+                "task_cid": str(task_cid),
+                "task_alias": str(task_alias),
+                "previous_revision": int(revision),
+                "revision": new_revision,
+                "previous_status": str(status),
+                "status": "retrying",
+                "age_seconds": int(age),
+                "recorded_at": stamp,
+            }
+            if canonical_transition is None:
+                updated = connection.execute(
+                    "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+                    "WHERE task_cid = ? AND revision = ? AND status = 'in_progress' "
+                    "RETURNING revision",
+                    ["retrying", new_revision, stamp, str(task_cid), int(revision)],
+                ).fetchone()
+                if updated is None or int(_row_tuple(updated)[0]) != new_revision:
+                    raise DuckDBConnectionPolicyError(
+                        "stale-task recovery lost its exact task revision CAS"
+                    )
+                transition_result: Mapping[str, Any] = transition_input
+            else:
+                transition_result = canonical_transition(transition_input)
+                if not isinstance(transition_result, Mapping):
+                    raise DuckDBConnectionPolicyError(
+                        "canonical stale-task transition returned no typed result"
+                    )
+                try:
+                    result_sequence = int(
+                        transition_result.get("event_global_sequence") or 0
+                    )
+                    result_previous_revision = int(
+                        transition_result.get("previous_revision") or -1
+                    )
+                    result_revision = int(transition_result.get("revision") or -1)
+                except (TypeError, ValueError) as exc:
+                    raise DuckDBConnectionPolicyError(
+                        "canonical stale-task transition returned malformed evidence"
+                    ) from exc
+                if (
+                    transition_result.get("changed") is not True
+                    or str(transition_result.get("task_cid") or "") != str(task_cid)
+                    or str(transition_result.get("task_alias") or "") != str(task_alias)
+                    or str(transition_result.get("previous_status") or "")
+                    != "in_progress"
+                    or str(transition_result.get("status") or "") != "retrying"
+                    or result_previous_revision != int(revision)
+                    or result_revision != new_revision
+                    or not str(transition_result.get("event_id") or "").startswith("bag")
+                    or result_sequence < 1
+                    or not str(transition_result.get("receipt_cid") or "").startswith(
+                        "bag"
+                    )
+                ):
+                    raise DuckDBConnectionPolicyError(
+                        "canonical stale-task transition did not prove the exact CAS"
+                    )
+            unstalled.append({**transition_input, **dict(transition_result)})
     finally:
         if index_sql:
             _restore_task_status_indexes(connection, index_sql)
@@ -2594,6 +2645,9 @@ _OWNER_INBOX_DML_PREFIXES = _QUACK_OWNER_DML_PREFIXES + ("INSERT ",)
 def apply_owner_command_payload(
     connection: Any,
     payload: Mapping[str, Any],
+    *,
+    canonical_transition: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    allow_projection_only: bool = False,
 ) -> dict[str, Any]:
     """Apply one owner-inbox command on the exclusive writer connection.
 
@@ -2610,7 +2664,10 @@ def apply_owner_command_payload(
         stale_raw = payload.get("stale_seconds", STALE_IN_PROGRESS_UNSTALL_SECONDS)
         stale_seconds = int(stale_raw)
         result = unstall_stale_in_progress_tasks(
-            connection, stale_seconds=stale_seconds
+            connection,
+            stale_seconds=stale_seconds,
+            canonical_transition=canonical_transition,
+            allow_projection_only=allow_projection_only,
         )
         return {
             "ok": True,

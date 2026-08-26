@@ -503,7 +503,12 @@ def test_unstall_stale_in_progress_tasks_retries_dead_gate(tmp_path) -> None:
             (now - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         ],
     )
-    result = unstall_stale_in_progress_tasks(connection, now=now, stale_seconds=16_200)
+    result = unstall_stale_in_progress_tasks(
+        connection,
+        now=now,
+        stale_seconds=16_200,
+        allow_projection_only=True,
+    )
     aliases = [item["task_alias"] for item in result["unstalled"]]
     assert aliases == ["PCCE-021"]
     rows = {
@@ -514,6 +519,48 @@ def test_unstall_stale_in_progress_tasks_retries_dead_gate(tmp_path) -> None:
     }
     assert rows["PCCE-021"] == ("retrying", 10)
     assert rows["PCCE-022"] == ("in_progress", 1)
+
+
+def test_unstall_refuses_projection_only_mutation_without_fixture_authority() -> None:
+    import duckdb
+    from datetime import datetime, timedelta, timezone
+
+    connection = duckdb.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL
+        )
+        """
+    )
+    now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+        [
+            "cid-021",
+            "PCCE-021",
+            "in_progress",
+            9,
+            (now - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ],
+    )
+    with pytest.raises(
+        DuckDBConnectionPolicyError,
+        match="IntentRepository transition authority",
+    ):
+        unstall_stale_in_progress_tasks(
+            connection,
+            now=now,
+            stale_seconds=16_200,
+        )
+    row = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_cid = 'cid-021'"
+    ).fetchone()
+    assert tuple(row) == ("in_progress", 9)
 
 
 def test_unstall_drops_status_indexes_that_fatal_status_updates(tmp_path) -> None:
@@ -549,7 +596,12 @@ def test_unstall_drops_status_indexes_that_fatal_status_updates(tmp_path) -> Non
             (now - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         ],
     )
-    result = unstall_stale_in_progress_tasks(connection, now=now, stale_seconds=16_200)
+    result = unstall_stale_in_progress_tasks(
+        connection,
+        now=now,
+        stale_seconds=16_200,
+        allow_projection_only=True,
+    )
     assert [item["task_alias"] for item in result["unstalled"]] == ["PCCE-021"]
     assert any("tasks_status_idx" in sql for sql in result["status_indexes_rebuilt"])
     row = connection.execute(
@@ -602,6 +654,7 @@ def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> No
     reply = apply_owner_command_payload(
         connection,
         {"op": "board_unstall", "stale_seconds": 16_200},
+        allow_projection_only=True,
     )
     assert reply["ok"] is True
     assert reply["rowcount"] == 1

@@ -929,6 +929,590 @@ def test_rebuild_from_admitted_events_matches_projections(tmp_path: Path) -> Non
         assert recovery.event_type == IntentEventType.RECOVERY_APPLIED.value
 
 
+def test_stale_unstall_is_one_atomic_replayable_transition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+    stale = "2026-08-25T00:00:00Z"
+    now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        original_utc_iso = intent_repository._utc_iso
+        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=1,
+            new_status="in_progress",
+            receipt={"attempt_id": "attempt:one", "fencing_token": 7},
+        )
+        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
+
+        before_watermark = repo.event_watermark()
+        result = repo.unstall_stale_in_progress_tasks(
+            now=now,
+            stale_seconds=16_200,
+        )
+        assert [item["task_cid"] for item in result["unstalled"]] == [ids["task_a"]]
+        transition = result["unstalled"][0]
+        assert transition["previous_revision"] == 2
+        assert transition["revision"] == 3
+        assert transition["changed"] is True
+        assert transition["event_global_sequence"] == before_watermark + 1
+
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        assert (task["status"], task["revision"]) == ("retrying", 3)
+        stored_receipt = task["body"]["completion_receipt"]
+        assert stored_receipt["operation"] == "event_sourced_stale_in_progress_unstall"
+        assert stored_receipt["attempt_id"] == "attempt:one"
+        assert stored_receipt["fencing_token"] == 7
+        with repo._connection(write=False) as connection:  # noqa: SLF001
+            revision_row = connection.execute(
+                """
+                SELECT status, body_json FROM task_revisions
+                WHERE task_cid = ? AND revision = 3
+                """,
+                [ids["task_a"]],
+            ).fetchone()
+            event_row = connection.execute(
+                """
+                SELECT event_id FROM domain_events
+                WHERE task_cid = ? AND event_type = ? AND global_sequence = ?
+                """,
+                [
+                    ids["task_a"],
+                    IntentEventType.TASK_STATUS_CHANGED.value,
+                    transition["event_global_sequence"],
+                ],
+            ).fetchone()
+        assert revision_row is not None and str(revision_row[0]) == "retrying"
+        assert event_row is not None and str(event_row[0]) == transition["event_id"]
+        repo.assert_projection_matches_events()
+
+        watermark = repo.event_watermark()
+        duplicate = repo.unstall_stale_in_progress_tasks(now=now, stale_seconds=16_200)
+        assert duplicate["unstalled"] == []
+        assert repo.event_watermark() == watermark
+
+
+def test_exact_legacy_projection_only_unstall_is_bounded_and_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+    stale = "2026-08-25T00:00:00Z"
+    now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        original_utc_iso = intent_repository._utc_iso
+        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=1,
+            new_status="in_progress",
+        )
+        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            connection.execute(
+                """
+                UPDATE tasks SET status = 'retrying', revision = 3,
+                    updated_at = '2026-08-26T00:00:00Z'
+                WHERE task_cid = ? AND revision = 2 AND status = 'in_progress'
+                """,
+                [ids["task_a"]],
+            )
+
+        recovery = repo.reconcile_legacy_stale_unstall_projection_drift()
+        assert recovery.changed is True
+        assert recovery.event_type == IntentEventType.RECOVERY_APPLIED.value
+        assert [item["task_cid"] for item in recovery.details["candidates"]] == [
+            ids["task_a"]
+        ]
+        admitted = repo.get_task(ids["task_a"])
+        assert admitted is not None
+        assert (admitted["status"], admitted["revision"]) == ("in_progress", 2)
+
+        transition = repo.unstall_stale_in_progress_tasks(
+            now=now,
+            stale_seconds=16_200,
+        )
+        assert [item["task_cid"] for item in transition["unstalled"]] == [
+            ids["task_a"]
+        ]
+        repo.assert_projection_matches_events()
+        watermark = repo.event_watermark()
+        with repo._connection(write=False) as connection:  # noqa: SLF001
+            rowids_before = tuple(
+                (str(row[0]), int(row[1]))
+                for row in connection.execute(
+                    "SELECT task_cid, rowid FROM tasks ORDER BY task_cid"
+                ).fetchall()
+            )
+        duplicate = repo.reconcile_legacy_stale_unstall_projection_drift()
+        assert duplicate.changed is False
+        assert repo.event_watermark() == watermark
+        with repo._connection(write=False) as connection:  # noqa: SLF001
+            rowids_after = tuple(
+                (str(row[0]), int(row[1]))
+                for row in connection.execute(
+                    "SELECT task_cid, rowid FROM tasks ORDER BY task_cid"
+                ).fetchall()
+            )
+        assert rowids_after == rowids_before
+
+
+def test_legacy_reconciliation_rejects_near_miss_and_rolls_back(tmp_path: Path) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            connection.execute(
+                """
+                UPDATE tasks SET status = 'retrying', revision = 4,
+                    updated_at = '2026-08-26T00:00:00Z'
+                WHERE task_cid = ? AND revision = 1
+                """,
+                [ids["task_a"]],
+            )
+        with pytest.raises(
+            IntentRepositoryIntegrityError,
+            match="projection drift",
+        ):
+            repo.reconcile_legacy_stale_unstall_projection_drift()
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        assert (task["status"], task["revision"]) == ("retrying", 4)
+
+
+def test_stale_unstall_event_failure_rolls_back_projection_and_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+    stale = "2026-08-25T00:00:00Z"
+    now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        original_utc_iso = intent_repository._utc_iso
+        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=1,
+            new_status="in_progress",
+        )
+        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
+        watermark = repo.event_watermark()
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                repo,
+                "_append_event",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("injected event append failure")
+                ),
+            )
+            with pytest.raises(RuntimeError, match="injected event append failure"):
+                repo.unstall_stale_in_progress_tasks(
+                    now=now,
+                    stale_seconds=16_200,
+                )
+
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        assert (task["status"], task["revision"]) == ("in_progress", 2)
+        with repo._connection(write=False) as connection:  # noqa: SLF001
+            assert connection.execute(
+                "SELECT 1 FROM task_revisions WHERE task_cid = ? AND revision = 3",
+                [ids["task_a"]],
+            ).fetchone() is None
+        assert repo.event_watermark() == watermark
+        repo.assert_projection_matches_events()
+
+
+def test_legacy_recovery_receipt_failure_rolls_back_rebuild(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+    stale = "2026-08-25T00:00:00Z"
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        original_utc_iso = intent_repository._utc_iso
+        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=1,
+            new_status="in_progress",
+        )
+        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            connection.execute(
+                """
+                UPDATE tasks SET status = 'retrying', revision = 3,
+                    updated_at = '2026-08-26T00:00:00Z'
+                WHERE task_cid = ? AND revision = 2
+                """,
+                [ids["task_a"]],
+            )
+        watermark = repo.event_watermark()
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                repo,
+                "_append_event",
+                lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    RuntimeError("injected recovery receipt failure")
+                ),
+            )
+            with pytest.raises(RuntimeError, match="injected recovery receipt failure"):
+                repo.reconcile_legacy_stale_unstall_projection_drift()
+
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        assert (task["status"], task["revision"]) == ("retrying", 3)
+        assert repo.event_watermark() == watermark
+        recovery = repo.reconcile_legacy_stale_unstall_projection_drift()
+        assert recovery.changed is True
+
+
+def test_strict_replay_preserves_first_creation_times_and_continuation_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+    current = ["2026-08-20T00:00:00Z"]
+    monkeypatch.setattr(
+        intent_repository,
+        "_utc_iso",
+        lambda _moment=None: current[0],
+    )
+    with _repo(tmp_path) as repo:
+        repo.upsert_objective(
+            objective_id="objective:replay",
+            objective_alias="objective-replay",
+            title="first objective",
+        )
+        repo.upsert_goal(
+            goal_cid="goal:replay",
+            goal_alias="goal-replay",
+            title="first goal",
+            objective_id="objective:replay",
+        )
+        repo.upsert_plan(
+            plan_cid="plan:replay",
+            goal_cid="goal:replay",
+            plan_alias="plan-replay",
+        )
+        repo.upsert_task(
+            task_cid="task:replay",
+            task_alias="task-replay",
+            goal_cid="goal:replay",
+            plan_cid="plan:replay",
+            objective_id="objective:replay",
+        )
+        first_created = {
+            "objective": repo.get_objective("objective:replay")["created_at"],  # type: ignore[index]
+            "goal": repo.get_goal("goal:replay")["created_at"],  # type: ignore[index]
+            "plan": repo.get_plan("plan:replay")["created_at"],  # type: ignore[index]
+            "task": repo.get_task("task:replay")["created_at"],  # type: ignore[index]
+        }
+
+        current[0] = "2026-08-21T00:00:00Z"
+        repo.upsert_objective(
+            objective_id="objective:replay",
+            objective_alias="objective-replay",
+            title="revised objective",
+            expected_revision=1,
+        )
+        current[0] = "2026-08-22T00:00:00Z"
+        repo.upsert_goal(
+            goal_cid="goal:replay",
+            goal_alias="goal-replay",
+            title="revised goal",
+            objective_id="objective:replay",
+            expected_revision=1,
+        )
+        current[0] = "2026-08-23T00:00:00Z"
+        repo.upsert_plan(
+            plan_cid="plan:replay",
+            goal_cid="goal:replay",
+            plan_alias="plan-replay",
+            body={"revision": 2},
+            expected_revision=1,
+        )
+        current[0] = "2026-08-24T00:00:00Z"
+        repo.upsert_task(
+            task_cid="task:replay",
+            task_alias="task-replay",
+            goal_cid="goal:replay",
+            plan_cid="plan:replay",
+            objective_id="objective:replay",
+            body={"revision": 2},
+            expected_revision=1,
+        )
+        current[0] = "2026-08-25T00:00:00Z"
+        repo.continue_plan(
+            plan_cid="plan:replay",
+            continuation_plan_cid="plan:replay-cont",
+            expected_revision=2,
+            body={"phase": "continuation"},
+        )
+
+        assert repo.get_objective("objective:replay")["created_at"] == first_created[  # type: ignore[index]
+            "objective"
+        ]
+        assert repo.get_goal("goal:replay")["created_at"] == first_created["goal"]  # type: ignore[index]
+        assert repo.get_plan("plan:replay")["created_at"] == first_created["plan"]  # type: ignore[index]
+        assert repo.get_task("task:replay")["created_at"] == first_created["task"]  # type: ignore[index]
+        continuation = repo.get_plan("plan:replay-cont")
+        assert continuation is not None
+        assert continuation["plan_alias"] == "plan-replay-cont"
+        repo.assert_projection_matches_events()
+
+
+def test_strict_replay_preserves_runtime_authority_rows(tmp_path: Path) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        repo._clock_ms = lambda: 1_800_000_000_000  # type: ignore[method-assign]
+        repo.record_validation_result(
+            task_cid=ids["task_a"],
+            outcome="passed",
+            evidence_digest=ids["evidence_digest"],
+            argv=["python", "-m", "pytest", "-q"],
+            attempt_id="attempt:validation",
+        )
+        repo.record_queue_backoff(
+            task_cid=ids["task_b"],
+            delay_ms=5_000,
+            reason="provider capacity",
+            selection_penalty=9,
+        )
+        repo.record_attempt(
+            task_cid=ids["task_a"],
+            owner_session_id="session:attempt-one",
+            fencing_token=7,
+        )
+        repo.record_attempt(
+            task_cid=ids["task_a"],
+            owner_session_id="session:attempt-two",
+            fencing_token=8,
+        )
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=1,
+            new_status="in_progress",
+        )
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=2,
+            new_status="retrying",
+            receipt={
+                "operation": "requeue_unimplemented_stale_attempt",
+                "unknown_callback_reopen_count": 3,
+            },
+        )
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=3,
+            new_status="in_progress",
+            receipt={"attempt_id": "attempt:subsequent"},
+        )
+
+        repo.assert_projection_matches_events()
+        repo.rebuild_projections_from_events()
+
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        assert task["body"]["unknown_callback_reopen_count"] == 3
+        assert task["body"]["completion_receipt"][
+            "unknown_callback_reopen_count"
+        ] == 3
+        with repo._connection(write=False) as connection:  # noqa: SLF001
+            evidence_body = json.loads(
+                str(
+                    connection.execute(
+                        "SELECT body_json FROM evidence_nodes "
+                        "WHERE task_cid = ? AND evidence_kind = 'validation'",
+                        [ids["task_a"]],
+                    ).fetchone()[0]
+                )
+            )
+            lease = connection.execute(
+                "SELECT claimant_did, started_at_ms, owner_session_id "
+                "FROM leases WHERE task_cid = ?",
+                [ids["task_b"]],
+            ).fetchone()
+            attempts = connection.execute(
+                "SELECT owner_session_id, fencing_token FROM task_attempts "
+                "WHERE task_cid = ? ORDER BY attempt_number",
+                [ids["task_a"]],
+            ).fetchall()
+        assert evidence_body["argv"] == ["python", "-m", "pytest", "-q"]
+        assert evidence_body["outcome"] == "passed"
+        assert tuple(lease[index] for index in range(3)) == (
+            "owner:test",
+            1_800_000_000_000,
+            "session:intent",
+        )
+        assert [(str(row[0]), int(row[1])) for row in attempts] == [
+            ("session:attempt-one", 7),
+            ("session:attempt-two", 8),
+        ]
+
+
+def test_strict_replay_distinguishes_admitted_legacy_validation_bodies(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        expected_bodies: dict[str, dict[str, object]] = {}
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            for ordinal, portal_minimal in enumerate((True, False), start=1):
+                recorded_at = f"2026-08-2{ordinal}T12:00:00Z"
+                argv = [f"legacy-validation-{ordinal}"]
+                validation_body: dict[str, object] = (
+                    {
+                        "validator": "DatabasePortalExecutionBridge@1",
+                        "portal_receipt_id": f"sha256:{ordinal:064x}",
+                    }
+                    if portal_minimal
+                    else {"route": "legacy-rich-validation"}
+                )
+                run_id = content_identity(
+                    {
+                        "task_cid": ids["task_a"],
+                        "attempt_id": "",
+                        "argv": argv,
+                        "recorded_at": recorded_at,
+                    }
+                )
+                digest = f"sha256:{(ordinal + 10):064x}"
+                result_id = content_identity(
+                    {
+                        "run_id": run_id,
+                        "outcome": "passed",
+                        "evidence_digest": digest,
+                    }
+                )
+                evidence_id = content_identity(
+                    {
+                        "task_cid": ids["task_a"],
+                        "evidence_kind": "validation",
+                        "digest": digest,
+                        "run_id": run_id,
+                    }
+                )
+                expected_body: dict[str, object] = {
+                    "run_id": run_id,
+                    "result_id": result_id,
+                }
+                if not portal_minimal:
+                    expected_body.update({"argv": argv, "outcome": "passed"})
+                expected_bodies[evidence_id] = expected_body
+                compact = lambda value: json.dumps(  # noqa: E731
+                    value, sort_keys=True, separators=(",", ":")
+                )
+                connection.execute(
+                    "INSERT INTO validation_runs VALUES (?, ?, '', ?, ?, ?, ?, ?)",
+                    [
+                        run_id,
+                        ids["task_a"],
+                        recorded_at,
+                        recorded_at,
+                        "passed",
+                        content_identity({"argv": argv}),
+                        compact({"argv": argv, **validation_body}),
+                    ],
+                )
+                connection.execute(
+                    "INSERT INTO validation_results VALUES (?, ?, ?, 0, ?, ?, ?)",
+                    [
+                        result_id,
+                        run_id,
+                        ids["task_a"],
+                        "passed",
+                        digest,
+                        compact(validation_body),
+                    ],
+                )
+                connection.execute(
+                    "INSERT INTO evidence_nodes VALUES (?, '', ?, 'validation', ?, ?, ?)",
+                    [
+                        evidence_id,
+                        ids["task_a"],
+                        digest,
+                        recorded_at,
+                        compact(expected_body),
+                    ],
+                )
+                repo._append_event(  # noqa: SLF001
+                    connection,
+                    event_type=IntentEventType.VALIDATION_RECORDED,
+                    subject_id=result_id,
+                    task_cid=ids["task_a"],
+                    body={
+                        "result_id": result_id,
+                        "run_id": run_id,
+                        "task_cid": ids["task_a"],
+                        "outcome": "passed",
+                        "evidence_digest": digest,
+                        "argv": argv,
+                        "body": validation_body,
+                        "recorded_at": recorded_at,
+                        "revision": 0,
+                    },
+                )
+
+        repo.assert_projection_matches_events()
+        repo.rebuild_projections_from_events()
+        with repo._connection(write=False) as connection:  # noqa: SLF001
+            rows = connection.execute(
+                "SELECT evidence_id, body_json FROM evidence_nodes "
+                "WHERE evidence_id IN (?, ?) ORDER BY evidence_id",
+                sorted(expected_bodies),
+            ).fetchall()
+        assert {
+            str(row[0]): json.loads(str(row[1])) for row in rows
+        } == expected_bodies
+
+
+def test_strict_replay_reconstructs_supersession_decision(tmp_path: Path) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        repo.upsert_plan(
+            plan_cid="plan:cid:v2",
+            goal_cid=ids["goal_cid"],
+            plan_alias="plan-v2",
+            status="draft",
+            set_head=False,
+        )
+        repo.supersede_plan(
+            plan_cid=ids["plan_cid"],
+            successor_plan_cid="plan:cid:v2",
+            expected_revision=1,
+            reason="strict replay qualification",
+        )
+        repo.assert_projection_matches_events()
+        repo.rebuild_projections_from_events()
+        with repo._connection(write=False) as connection:  # noqa: SLF001
+            decision = connection.execute(
+                "SELECT plan_cid, goal_cid, decision_kind, body_json "
+                "FROM planning_decisions"
+            ).fetchone()
+        assert tuple(decision[index] for index in range(3)) == (
+            ids["plan_cid"],
+            ids["goal_cid"],
+            "supersession",
+        )
+        assert json.loads(str(decision[3]))["reason"] == "strict replay qualification"
+
+
 def test_legacy_completion_replay_accepts_only_reconstructable_empty_evidence(
     tmp_path: Path,
 ) -> None:

@@ -14819,6 +14819,7 @@ def test_aseh_r19_historical_lifecycle_route_and_prior_suffixes_are_active_admis
             {"task_statuses": {}, "task_revisions": {}},
             {},
             [],
+            None,
         ),
     )
     monkeypatch.setattr(
@@ -16273,6 +16274,7 @@ def _configure_aseh_r20_materialized_launch(
             {"task_statuses": {}, "task_revisions": {}},
             {},
             [],
+            None,
         )
 
     monkeypatch.setattr(aseh_operator, "_read_continuity_state", continuity)
@@ -20451,6 +20453,738 @@ def test_aseh_r23_delegates_r24_before_suffix_admission(
             previous_receipt=r22_chain[-1],
             previous_transition=r22_chain[-1],
             prior_receipt_chain=r22_chain,
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
+
+
+def _aseh_r25_structural_chain() -> list[dict[str, object]]:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R25_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        receipt_cid = (
+            aseh_operator.ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS[index]
+            if index < 24
+            else "sha256:" + ("a" * 64)
+        )
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": receipt_cid,
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+    return chain
+
+
+def test_aseh_r25_projection_recovery_requires_exact_r1_r25_chain() -> None:
+    chain = _aseh_r25_structural_chain()
+    assert aseh_operator._admit_exact_r25_transition_chain(chain) == chain
+
+    with pytest.raises(aseh_operator.OperatorError, match="R25"):
+        aseh_operator._admit_exact_r25_transition_chain(chain[:-1])
+    rewritten = [dict(item) for item in chain]
+    rewritten[23]["receipt_cid"] = "sha256:" + ("e" * 64)
+    rewritten[24]["previous_receipt_cid"] = rewritten[23]["receipt_cid"]
+    with pytest.raises(aseh_operator.OperatorError, match="vector"):
+        aseh_operator._admit_exact_r25_transition_chain(rewritten)
+    unlinked = [dict(item) for item in chain]
+    unlinked[-1]["previous_receipt_cid"] = "sha256:" + ("d" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R25"):
+        aseh_operator._admit_exact_r25_transition_chain(unlinked)
+
+
+def test_aseh_r25_projection_recovery_matrix_is_globally_registered() -> None:
+    matrix = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_VALIDATIONS
+    )
+    registered = {
+        tuple(tuple(command) for command in candidate)
+        for candidate in aseh_operator._receipt_validation_matrices()
+    }
+
+    assert tuple(tuple(command) for command in matrix) in registered
+    assert (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_CHANGED_PATHS
+    ) == (
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "test/api/test_agent_supervisor_intent_repository.py",
+        "test/api/test_agent_supervisor_quack_state_server.py",
+        "test/api/test_agent_supervisor_quack_transport_defaults.py",
+    )
+    parent = aseh_operator._r24_sealed_receipt_validation_executor_contract()
+    assert aseh_operator._identity(parent) == (
+        aseh_operator.ASEH_R24_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    contract = aseh_operator._r25_sealed_receipt_validation_executor_contract()
+    assert contract["parent_executor_contract_cid"] == (
+        aseh_operator.ASEH_R24_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+    for command in matrix:
+        parsed = aseh_operator._parse_receipt_validation_python_command(
+            command,
+            require_known=True,
+        )
+        if aseh_operator.ASEH_RECEIPT_VALIDATION_PYTHON in command:
+            assert parsed is not None
+
+
+def _aseh_r25_projection_failure_evidence_fixture() -> dict[str, object]:
+    cids = aseh_operator.ASEH_R25_EXACT_R24_FAILURE_RECEIPT_CIDS
+
+    def receipt(cid: str, **values: object) -> dict[str, object]:
+        return {"_fixture_cid": cid, **values, "receipt_cid": cid}
+
+    permission = receipt(
+        cids["owner_start_permission"],
+        schema=aseh_operator.ASEH_R23_OWNER_START_PERMISSION_RECEIPT_SCHEMA,
+        candidate_head=(
+            aseh_operator
+            .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        ),
+        candidate_tree=(
+            aseh_operator
+            .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+        ),
+        repair_transition_receipt_cid=(
+            aseh_operator.ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID
+        ),
+        materialized_launch_admission_cid=(
+            aseh_operator.ASEH_R25_EXACT_R24_MATERIALIZED_LAUNCH_ADMISSION_CID
+        ),
+        owner_start_attempted=False,
+        retry_authorized=False,
+        database_content_mutated=False,
+        database_metadata_mutated=False,
+        database_permission_observation={
+            "sha256_after": (
+                aseh_operator.ASEH_R24_EXACT_DATABASE_BASELINE["sha256"]
+            ),
+            "size_bytes": (
+                aseh_operator.ASEH_R24_EXACT_DATABASE_BASELINE["size_bytes"]
+            ),
+        },
+    )
+    terminal = receipt(
+        cids["owner_terminal"],
+        schema=aseh_operator.ASEH_SEALED_OWNER_TERMINAL_OBSERVATION_SCHEMA,
+        candidate_head=(
+            aseh_operator
+            .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        ),
+        candidate_tree=(
+            aseh_operator
+            .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+        ),
+        capsule_id=aseh_operator.ASEH_R25_EXACT_R24_FAILED_CAPSULE_ID,
+        capsule_archive_sha256=(
+            aseh_operator.ASEH_R25_EXACT_R24_FAILED_CAPSULE_ARCHIVE_SHA256
+        ),
+        child_returncode=78,
+        terminal_record_availability="observed",
+        retry_authorized=False,
+        terminal_record={
+            "record_cid": (
+                aseh_operator.ASEH_R25_EXACT_R24_TERMINAL_RECORD_CID
+            ),
+            "stage": "initial_health",
+            "outcome": "failed",
+            "error_type": "OperatorError",
+            "owner_start_attempted": True,
+            "owner_identity_observed": True,
+            "scheduler_birth_observed": True,
+            "retry_authorized": False,
+        },
+    )
+    control = receipt(
+        cids["control_failure"],
+        schema="ipfs_accelerate_py/agent-supervisor/aseh-control-failure@1",
+        reason_code="authoritative_status_unavailable_two_samples",
+        error_type="ASEHHealthQueryFailure",
+    )
+    samples = [
+        {
+            "sample_cid": cid,
+            "authority": {
+                "available": False,
+                "error_type": "OperatorError",
+                "error": (
+                    "published replica projection differs from admitted events"
+                ),
+            },
+        }
+        for cid in aseh_operator.ASEH_R25_EXACT_R24_STATUS_SAMPLE_CIDS
+    ]
+    live_status = receipt(
+        cids["live_status"],
+        schema=aseh_operator.LIVE_STATUS_SCHEMA,
+        healthy=False,
+        samples=samples,
+    )
+    database = aseh_operator.ASEH_R25_EXACT_DATABASE_AFTER_R24_FAILURE
+    evidence: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R25_PROJECTION_RECOVERY_FAILURE_EVIDENCE_SCHEMA,
+        "failed_candidate_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        ),
+        "failed_candidate_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+        ),
+        "prior_repair_receipt_cid": (
+            aseh_operator.ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID
+        ),
+        "owner_start_permission_receipt": permission,
+        "sealed_owner_terminal_observation": terminal,
+        "control_failure_receipt": control,
+        "live_status_receipt": live_status,
+        "database_after_failed_launch": {
+            "schema": aseh_operator.ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA,
+            "availability": "observed",
+            "inode": database["inode"],
+            "size_bytes": database["size_bytes"],
+            "mode": 0o100000 | int(database["mode"]),
+            "sha256": database["sha256"],
+        },
+        "database_changed_since_owner_start": True,
+        "database_observed_during_authorization": True,
+        "database_mutated_during_authorization": False,
+        "r24_retry_authorized": False,
+        "failure_class": (
+            "legacy_projection_only_stale_unstall_rejected_by_shadow_replay"
+        ),
+    }
+    evidence["evidence_cid"] = aseh_operator._identity(evidence)
+    return evidence
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["sample", "retry", "database", "failure-class"],
+)
+def test_aseh_r25_projection_failure_evidence_is_closed(
+    mutation: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evidence = _aseh_r25_projection_failure_evidence_fixture()
+    original_identity = aseh_operator._identity
+
+    def fixture_identity(value: object) -> str:
+        if isinstance(value, dict) and "_fixture_cid" in value:
+            return str(value["_fixture_cid"])
+        return original_identity(value)
+
+    monkeypatch.setattr(aseh_operator, "_identity", fixture_identity)
+    assert (
+        aseh_operator._validate_r25_projection_recovery_failure_evidence(
+            evidence
+        )
+        == evidence
+    )
+
+    changed = json.loads(json.dumps(evidence))
+    if mutation == "sample":
+        changed["live_status_receipt"]["samples"][0]["authority"]["error"] = (
+            "different"
+        )
+    elif mutation == "retry":
+        changed["sealed_owner_terminal_observation"]["retry_authorized"] = True
+    elif mutation == "database":
+        changed["database_after_failed_launch"]["sha256"] = (
+            "sha256:" + ("9" * 64)
+        )
+    else:
+        changed["failure_class"] = "broadened"
+    changed["evidence_cid"] = original_identity(
+        {key: value for key, value in changed.items() if key != "evidence_cid"}
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R25"):
+        aseh_operator._validate_r25_projection_recovery_failure_evidence(
+            changed
+        )
+
+
+def _aseh_r25_prestart_proof_fixture() -> dict[str, object]:
+    proof: dict[str, object] = {
+        "schema": (
+            aseh_operator.ASEH_R25_PROJECTION_RECOVERY_PRESTART_ADMISSION_SCHEMA
+        ),
+        "authority": "non_authoritative_disposable_copy",
+        "failure_evidence_cid": "sha256:" + ("f" * 64),
+        "source_database_observation": {
+            "availability": "observed",
+            "sha256": "sha256:" + ("d" * 64),
+        },
+        "source_wal_availability": "absent",
+        "copy_database_sha256": "sha256:" + ("d" * 64),
+        "before_projection_cid": "bag-before",
+        "before_event_watermark": 140,
+        "before_projection_matches_events": False,
+        "recovery_event_id": "bag-recovery",
+        "recovery_event_global_sequence": 141,
+        "recovery_candidates": [
+            dict(item)
+            for item in (
+                aseh_operator
+                .ASEH_R25_EXACT_LEGACY_PROJECTION_RECOVERY_CANDIDATES
+            )
+        ],
+        "after_projection_cid": "bag-after",
+        "after_event_watermark": 141,
+        "strict_projection_matches_events": True,
+        "second_pass_changed": False,
+        "second_pass_event_watermark": 141,
+        "second_pass_projection_cid": "bag-after",
+        "live_database_mutated": False,
+    }
+    proof["proof_cid"] = aseh_operator._identity(proof)
+    return proof
+
+
+def _aseh_r25_legacy_projection_database(
+    path: Path,
+    *,
+    near_miss: bool = False,
+) -> dict[str, object]:
+    import duckdb
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        install_control_plane_schema,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        IntentRepository,
+    )
+
+    install_control_plane_schema(
+        path,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="aseh-r25-prestart-test",
+    )
+    repository = IntentRepository(
+        path,
+        owner_id="aseh-r25-prestart-test",
+        install_schema=False,
+    )
+    try:
+        repository.upsert_goal(
+            goal_cid="goal:aseh-r25-prestart",
+            goal_alias="ASEH-G000",
+            title="R25 prestart",
+        )
+        for ordinal, alias in enumerate(("ASEH-010", "ASEH-020", "ASEH-040")):
+            task_cid = f"task:{alias.lower()}"
+            repository.upsert_task(
+                task_cid=task_cid,
+                task_alias=alias,
+                goal_cid="goal:aseh-r25-prestart",
+                ordinal=ordinal,
+                status="ready",
+            )
+            for revision in range(2, 17):
+                repository.cas_task_status(
+                    task_cid=task_cid,
+                    expected_revision=revision - 1,
+                    new_status=(
+                        "in_progress" if revision % 2 == 0 else "retrying"
+                    ),
+                )
+    finally:
+        repository.close()
+
+    connection = duckdb.connect(str(path))
+    try:
+        connection.execute(
+            "UPDATE tasks SET status = 'retrying', revision = 17 "
+            "WHERE task_alias IN ('ASEH-010', 'ASEH-020', 'ASEH-040')"
+        )
+        if near_miss:
+            connection.execute(
+                "UPDATE tasks SET body_json = '{\"unauthorized\":true}' "
+                "WHERE task_alias = 'ASEH-010'"
+            )
+    finally:
+        connection.close()
+    os.chmod(path, 0o600)
+    directory_fd = os.open(
+        path.parent,
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        return aseh_operator._r21_owner_start_file_observation(
+            directory_fd, path.name
+        )
+    finally:
+        os.close(directory_fd)
+
+
+def test_aseh_r25_prestart_admits_exact_legacy_drift_on_disposable_copy(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    database = tmp_path / "control.duckdb"
+    observation = _aseh_r25_legacy_projection_database(database)
+    proof = aseh_operator._r25_projection_recovery_on_disposable_copy(
+        database,
+        expected_database_observation=observation,
+        failure_evidence_cid="sha256:" + ("f" * 64),
+    )
+
+    assert proof["before_projection_matches_events"] is False
+    assert proof["strict_projection_matches_events"] is True
+    assert proof["second_pass_changed"] is False
+    assert [
+        item["task_alias"] for item in proof["recovery_candidates"]
+    ] == ["ASEH-010", "ASEH-020", "ASEH-040"]
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        rows = connection.execute(
+            "SELECT task_alias, status, revision FROM tasks "
+            "WHERE task_alias IN ('ASEH-010', 'ASEH-020', 'ASEH-040') "
+            "ORDER BY task_alias"
+        ).fetchall()
+    finally:
+        connection.close()
+    assert [tuple(row) for row in rows] == [
+        ("ASEH-010", "retrying", 17),
+        ("ASEH-020", "retrying", 17),
+        ("ASEH-040", "retrying", 17),
+    ]
+
+
+def test_aseh_r25_prestart_rejects_near_miss_legacy_drift(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "control.duckdb"
+    observation = _aseh_r25_legacy_projection_database(
+        database,
+        near_miss=True,
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="bounded legacy"):
+        aseh_operator._r25_projection_recovery_on_disposable_copy(
+            database,
+            expected_database_observation=observation,
+            failure_evidence_cid="sha256:" + ("f" * 64),
+        )
+
+
+def test_aseh_r25_exact_launch_reuses_one_bound_r23_permission_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain = _aseh_r25_structural_chain()
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+    )
+    base_tree = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+    )
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    chain[-3]["receipt_cid"] = (
+        aseh_operator.ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    )
+    chain[-2].update(
+        {
+            "schema": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_SCHEMA
+            ),
+            "repair_head": base,
+            "repair_tree": base_tree,
+            "receipt_cid": (
+                aseh_operator.ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID
+            ),
+            "previous_receipt_cid": chain[-3]["receipt_cid"],
+        }
+    )
+    active = chain[-1]
+    active.update(
+        {
+            "base_head": base,
+            "repair_head": head,
+            "repair_tree": tree,
+            "previous_receipt_cid": chain[-2]["receipt_cid"],
+            "candidate_authorization_witness": witness,
+            "projection_recovery_failure_evidence_cid": (
+                "sha256:" + ("f" * 64)
+            ),
+        }
+    )
+    recovery_proof = _aseh_r25_prestart_proof_fixture()
+    admission: dict[str, object] = {
+        "runtime_source_head": head,
+        "runtime_repository_tree_id": tree,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "historical_live_authorizing_receipt_cid": active["receipt_cid"],
+        "projection_cid": recovery_proof["before_projection_cid"],
+        "event_cursor": recovery_proof["before_event_watermark"],
+        "projection_matches_events": False,
+        "projection_recovery_prestart_admission": recovery_proof,
+    }
+    admission["admission_cid"] = aseh_operator._identity(admission)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base if args == ("show", "-s", "--format=%P", head) else ""
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    board = SimpleNamespace(
+        resolved_database_program=lambda: SimpleNamespace(
+            store_id="data/aseh/control.duckdb"
+        )
+    )
+
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=head,
+        candidate_tree=tree,
+    )
+    context = (
+        aseh_operator._r23_owner_start_permission_context_from_launch_admission(
+            board=board,
+            launch_admission=admission,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+        )
+    )
+    assert context is not None
+    assert context["repair_transition_receipt_cid"] == active["receipt_cid"]
+    assert chain[-2]["receipt_cid"] == (
+        aseh_operator.ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID
+    )
+    assert chain[-3]["receipt_cid"] == (
+        aseh_operator.ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    )
+
+    recovered_admission = dict(admission)
+    recovered_admission.pop("projection_recovery_prestart_admission")
+    recovered_admission["projection_matches_events"] = True
+    recovered_admission["projection_cid"] = "bag-after-owner-recovery"
+    recovered_admission["event_cursor"] = 141
+    recovered_admission.pop("admission_cid")
+    recovered_admission["admission_cid"] = aseh_operator._identity(
+        recovered_admission
+    )
+    aseh_operator._assert_exact_run_launch_admission(
+        recovered_admission,
+        candidate_head=head,
+        candidate_tree=tree,
+    )
+
+    missing_proof = dict(admission)
+    missing_proof.pop("projection_recovery_prestart_admission")
+    missing_proof.pop("admission_cid")
+    missing_proof["admission_cid"] = aseh_operator._identity(missing_proof)
+    with pytest.raises(aseh_operator.OperatorError, match="R25"):
+        aseh_operator._assert_exact_run_launch_admission(
+            missing_proof,
+            candidate_head=head,
+            candidate_tree=tree,
+        )
+
+
+def test_aseh_r25_exact_candidate_without_receipt_fails_pre_duckdb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r25_population_requires_policy",
+        lambda _population: True,
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R25 pre-DuckDB"):
+        aseh_operator._prequalify_r25_historical_live_launch(
+            paths={
+                "repair_sealed_owner_event_sourced_projection_recovery_transition_receipt": (
+                    tmp_path / "absent-r25.json"
+                )
+            },
+            population={},
+            bootstrap={},
+        )
+
+
+def test_aseh_r25_prequalification_precedes_continuity_and_duckdb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap_path = tmp_path / "bootstrap.json"
+    repair_path = tmp_path / "repair-r1.json"
+    repair_path.touch()
+    bootstrap = {
+        "source_head": "0" * 40,
+        "repository_tree_id": "1" * 40,
+        "plan_root_cid": "sha256:" + ("2" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("3" * 64)},
+        "source_identities": {},
+        "bootstrap_receipt_id": "sha256:" + ("4" * 64),
+    }
+    population = {
+        "source_head": "5" * 40,
+        "repository_tree_id": "6" * 40,
+        "plan_root_cid": "sha256:" + ("7" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("8" * 64)},
+        "source_identities": {},
+    }
+    events: list[str] = []
+    monkeypatch.setattr(aseh_operator, "_population", lambda *_args: population)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: bootstrap if path == bootstrap_path else {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _value: bootstrap["bootstrap_receipt_id"],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_prequalify_r25_historical_live_launch",
+        lambda **_kwargs: events.append("qualify-r25") or {"qualified": True},
+    )
+    for name in (
+        "_prequalify_r24_historical_live_launch",
+        "_prequalify_r23_historical_live_launch",
+        "_prequalify_r22_historical_live_launch",
+        "_prequalify_r21_historical_live_launch",
+        "_prequalify_r20_historical_live_launch",
+    ):
+        monkeypatch.setattr(
+            aseh_operator,
+            name,
+            lambda **_kwargs: pytest.fail("older qualifier ran after R25"),
+        )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_transition",
+        lambda *_args, **_kwargs: {"repair_head": "9" * 40},
+    )
+
+    def continuity(*_args: object, **_kwargs: object) -> None:
+        events.append("read-continuity")
+        raise aseh_operator.OperatorError("continuity sentinel")
+
+    monkeypatch.setattr(aseh_operator, "_read_continuity_state", continuity)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_projection_matches_events_on_disposable_copy",
+        lambda *_args: pytest.fail("DuckDB replay ran before R25 qualification"),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="continuity sentinel"):
+        aseh_operator._admit_materialized_launch(
+            object(),
+            {},
+            {
+                "bootstrap_receipt": bootstrap_path,
+                "repair_transition_receipt": repair_path,
+            },
+        )
+    assert events == ["qualify-r25", "read-continuity"]
+
+
+def test_aseh_r24_delegates_r25_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r24_path = tmp_path / "repair-r24.json"
+    r24_path.touch()
+    r25_path = tmp_path / "repair-r25.json"
+    full_prior = _aseh_r25_structural_chain()[:-1]
+    r23_chain = full_prior[:-1]
+    r23_chain[-1]["repair_head"] = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_CAPSULE_SCHEMA_DATA_COMPLETENESS_TRANSITION_BASE_HEAD
+    )
+    r24_receipt = dict(full_prior[-1])
+    r24_transition = {
+        **r24_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+        ),
+        "repair_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+        ),
+    }
+    sentinel = {"delegated": "r25"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r24_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_capsule_schema_data_completeness_transition",
+        lambda *_args, **_kwargs: r24_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_owner_event_sourced_projection_recovery_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS)
+            else pytest.fail("R24 did not delegate the exact R1-R24 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R24 materialized suffix ran before R25 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_sealed_owner_capsule_schema_data_completeness_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_capsule_schema_data_completeness_transition_receipt": (
+                    r24_path
+                ),
+                "repair_sealed_owner_event_sourced_projection_recovery_transition_receipt": (
+                    r25_path
+                ),
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="9" * 40,
+            previous_receipt=r23_chain[-1],
+            previous_transition=r23_chain[-1],
+            prior_receipt_chain=r23_chain,
             authorization_directory_fd=90,
         )
     )

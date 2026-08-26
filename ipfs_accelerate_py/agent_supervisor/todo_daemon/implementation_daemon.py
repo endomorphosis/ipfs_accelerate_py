@@ -79772,6 +79772,67 @@ class DatabaseImplementationDaemon:
         """
 
         self._require_execution_authority("stale in_progress board unstall")
+        source = self.task_source
+        intent = getattr(source, "intent", None)
+        if bool(getattr(intent, "uses_quack_transport", False)):
+            from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                STALE_IN_PROGRESS_UNSTALL_SECONDS,
+            )
+            from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+                MAX_PAGE_LIMIT,
+            )
+
+            # A Quack client is a read-replica consumer, never a task-table
+            # writer.  Inspect the bounded projection with SELECTs only and
+            # request the existing pre-listen owner recovery iff a stale gate
+            # is actually visible.  Calling ``source.unstall_*`` here would
+            # run the status-index DROP/CREATE workaround against the replica
+            # before reaching the canonical transition service.
+            now = datetime.fromtimestamp(self._now_ms() / 1000.0, timezone.utc)
+            offset = 0
+            stale_gate_found = False
+            while True:
+                page = intent.list_tasks(
+                    status="in_progress",
+                    limit=MAX_PAGE_LIMIT,
+                    offset=offset,
+                )
+                if not isinstance(page, Sequence) or isinstance(page, (str, bytes)):
+                    raise DatabaseImplementationAuthorityError(
+                        "Quack task source returned malformed stale-gate projection"
+                    )
+                for row in page:
+                    if not isinstance(row, Mapping):
+                        raise DatabaseImplementationAuthorityError(
+                            "Quack task source returned malformed stale-gate row"
+                        )
+                    updated = parse_timestamp(str(row.get("updated_at") or ""))
+                    if updated is None:
+                        continue
+                    age_seconds = (
+                        now - updated.astimezone(timezone.utc)
+                    ).total_seconds()
+                    if age_seconds >= float(STALE_IN_PROGRESS_UNSTALL_SECONDS):
+                        stale_gate_found = True
+                        break
+                if stale_gate_found or len(page) < MAX_PAGE_LIMIT:
+                    break
+                if not page:
+                    break
+                offset += len(page)
+            if not stale_gate_found:
+                return []
+            request = self._request_owner_board_unstall()
+            if request.get("requested") is not True:
+                raise DatabaseImplementationAuthorityError(
+                    "exclusive Quack owner did not accept the stale-gate "
+                    "board-unstall recycle request"
+                )
+            self._arm_quack_attach_cooldown()
+            # A request is not an observed state transition.  The owner will
+            # emit the authoritative event/receipt during its pre-listen
+            # restart window, so do not report these tasks as unstalled yet.
+            return []
         unstall = getattr(self.task_source, "unstall_stale_in_progress_tasks", None)
         if not callable(unstall):
             return []
