@@ -1938,6 +1938,7 @@ def _stopped_state_continuity_fixture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[dict[str, Path], dict[str, object], dict[str, object]]:
     from ipfs_accelerate_py.agent_supervisor.merge import worktree_lifecycle
+    from ipfs_accelerate_py.utils.cid_utils import cid_from_sha256_digest
 
     paths = operator._paths(root)
     databases = operator._successor_state_databases(paths)
@@ -1959,10 +1960,17 @@ def _stopped_state_continuity_fixture(
         replace=False,
     )
 
+    schema_digest = hashlib.sha256(
+        b"test-stopped-continuity-schema"
+    ).hexdigest()
+    schema_cid = cid_from_sha256_digest(
+        bytes.fromhex(schema_digest),
+        codec="dag-json",
+    )
     provenance: dict[str, object] = {
         "receipt_cid": "b" + ("a" * 60),
         "database_uuid": "database:test-stopped-continuity",
-        "schema_fingerprint": "schema:test-stopped-continuity",
+        "schema_fingerprint": schema_cid,
         "catalog_fingerprint": "catalog:test-stopped-continuity",
     }
     restart_calls = 0
@@ -1991,7 +1999,10 @@ def _stopped_state_continuity_fixture(
     monkeypatch.setattr(
         operator,
         "_database_identity",
-        lambda _database: {"database_uuid": provenance["database_uuid"]},
+        lambda _database: {
+            "database_uuid": provenance["database_uuid"],
+            "schema_fingerprint": provenance["schema_fingerprint"],
+        },
     )
     monkeypatch.setattr(
         worktree_lifecycle,
@@ -2014,7 +2025,7 @@ def _stopped_state_continuity_fixture(
         "server_id": "server:test-stopped-continuity",
         "store_id": operator.SUCCESSOR_DATABASE_RELATIVE.as_posix(),
         "database_uuid": provenance["database_uuid"],
-        "schema_fingerprint": provenance["schema_fingerprint"],
+        "schema_fingerprint": f"sha256:{schema_digest}",
         "secret_handle": operator.SECRET_HANDLE,
         "process_birth": birth,
     }
@@ -2111,6 +2122,79 @@ def _stopped_state_continuity_fixture(
     operator._write_status(paths["controller_status"], bound_status)
     continuity["test_restart_calls"] = lambda: restart_calls
     return paths, provenance, continuity
+
+
+def test_owner_schema_fingerprint_bridge_is_exact_dag_json_sha256_only() -> None:
+    from ipfs_accelerate_py.utils.cid_utils import cid_from_sha256_digest
+
+    operator = _operator()
+    digest = hashlib.sha256(b"real-owner-schema-shape").digest()
+    dag_json_cid = cid_from_sha256_digest(digest, codec="dag-json")
+    raw_cid = cid_from_sha256_digest(digest, codec="raw")
+    owner_fingerprint = f"sha256:{digest.hex()}"
+
+    assert operator._owner_schema_fingerprint_matches_canonical_cid(
+        owner_fingerprint,
+        dag_json_cid,
+    ) is True
+    assert operator._owner_schema_fingerprint_matches_canonical_cid(
+        owner_fingerprint,
+        raw_cid,
+    ) is False
+    assert operator._owner_schema_fingerprint_matches_canonical_cid(
+        "sha256:" + ("0" * 64),
+        dag_json_cid,
+    ) is False
+    assert operator._owner_schema_fingerprint_matches_canonical_cid(
+        owner_fingerprint.upper(),
+        dag_json_cid,
+    ) is False
+    assert operator._owner_schema_fingerprint_matches_canonical_cid(
+        owner_fingerprint,
+        dag_json_cid.upper(),
+    ) is False
+
+
+@pytest.mark.parametrize("mismatch", ("wrong_digest", "wrong_codec"))
+def test_stopped_recovery_binds_raw_database_schema_cid_to_owner_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch: str,
+) -> None:
+    from ipfs_accelerate_py.utils.cid_utils import cid_from_sha256_digest
+
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    _unpublish_stopped_continuity(operator, paths, legacy=True)
+    provenance_digest = hashlib.sha256(b"test-stopped-continuity-schema").digest()
+    database_schema = cid_from_sha256_digest(
+        (
+            hashlib.sha256(b"wrong-database-schema").digest()
+            if mismatch == "wrong_digest"
+            else provenance_digest
+        ),
+        codec="dag-json" if mismatch == "wrong_digest" else "raw",
+    )
+    monkeypatch.setattr(
+        operator,
+        "_database_identity",
+        lambda _database: {
+            "database_uuid": provenance["database_uuid"],
+            "schema_fingerprint": database_schema,
+        },
+    )
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="database identity differs from provenance",
+    ):
+        operator.stopped_recovery_preflight(tmp_path)
+
+    assert not paths["stopped_state_continuity"].exists()
 
 
 def _unpublish_stopped_continuity(
@@ -3570,7 +3654,10 @@ def test_stopped_projection_profile_and_identity_use_one_sealed_snapshot(
 
     def database_identity(path: Path) -> dict[str, object]:
         observed.append(("identity", str(path), None))
-        return {"database_uuid": provenance["database_uuid"]}
+        return {
+            "database_uuid": provenance["database_uuid"],
+            "schema_fingerprint": provenance["schema_fingerprint"],
+        }
 
     monkeypatch.setattr(operator, "_verify_profile", verify_profile)
     monkeypatch.setattr(operator, "_database_identity", database_identity)

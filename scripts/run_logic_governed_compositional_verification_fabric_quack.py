@@ -26,6 +26,8 @@ scheduler reads that projection for scheduling, leasing, or completion.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import contextlib
 import copy
 import ctypes
@@ -6606,6 +6608,48 @@ def _require_stopped_controller_tree_dead(
         )
 
 
+def _owner_schema_fingerprint_matches_canonical_cid(
+    owner_fingerprint: Any,
+    canonical_fingerprint: Any,
+) -> bool:
+    """Bridge only the Quack owner's typed SHA-256/DAG-JSON CID forms."""
+
+    if (
+        type(owner_fingerprint) is not str
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", owner_fingerprint) is None
+        or type(canonical_fingerprint) is not str
+        or canonical_fingerprint != canonical_fingerprint.lower()
+        or not canonical_fingerprint.startswith("b")
+    ):
+        return False
+    payload = canonical_fingerprint[1:]
+    if (
+        not payload
+        or re.fullmatch(r"[a-z2-7]+", payload) is None
+        or len(payload) % 8 in {1, 3, 6}
+    ):
+        return False
+    try:
+        raw = base64.b32decode(
+            payload.upper() + ("=" * ((-len(payload)) % 8)),
+            casefold=False,
+        )
+    except (binascii.Error, ValueError):
+        return False
+    if (
+        "b" + base64.b32encode(raw).decode("ascii").lower().rstrip("=")
+        != canonical_fingerprint
+    ):
+        return False
+    # CIDv1 + dag-json(0x0129) + sha2-256 + 32-byte digest.
+    prefix = b"\x01\xa9\x02\x12\x20"
+    return (
+        len(raw) == len(prefix) + 32
+        and raw.startswith(prefix)
+        and owner_fingerprint == f"sha256:{raw[len(prefix):].hex()}"
+    )
+
+
 def _validate_unbound_stopped_controller_status(
     stopped_status: Mapping[str, Any],
     *,
@@ -6669,8 +6713,10 @@ def _validate_unbound_stopped_controller_status(
         or not isinstance(scheduler_birth, Mapping)
         or owner_identity.get("process_birth") != controller_birth
         or owner_identity.get("database_uuid") != provenance.get("database_uuid")
-        or owner_identity.get("schema_fingerprint")
-        != provenance.get("schema_fingerprint")
+        or not _owner_schema_fingerprint_matches_canonical_cid(
+            owner_identity.get("schema_fingerprint"),
+            provenance.get("schema_fingerprint"),
+        )
         or owner_identity.get("store_id")
         != SUCCESSOR_DATABASE_RELATIVE.as_posix()
         or owner_identity.get("secret_handle") != SECRET_HANDLE
@@ -6729,8 +6775,10 @@ def _capture_stopped_recovery_anchors(
         or owner_identity.get("process_birth")
         != stopped_status.get("controller_birth")
         or owner_identity.get("database_uuid") != provenance.get("database_uuid")
-        or owner_identity.get("schema_fingerprint")
-        != provenance.get("schema_fingerprint")
+        or not _owner_schema_fingerprint_matches_canonical_cid(
+            owner_identity.get("schema_fingerprint"),
+            provenance.get("schema_fingerprint"),
+        )
         or owner_identity.get("store_id")
         != SUCCESSOR_DATABASE_RELATIVE.as_posix()
         or owner_identity.get("secret_handle") != SECRET_HANDLE
@@ -6770,6 +6818,12 @@ def _capture_stopped_recovery_anchors(
         or verification.get("catalog_fingerprint")
         != provenance.get("catalog_fingerprint")
         or identity.get("database_uuid") != provenance.get("database_uuid")
+        or identity.get("schema_fingerprint")
+        != provenance.get("schema_fingerprint")
+        or not _owner_schema_fingerprint_matches_canonical_cid(
+            owner_identity.get("schema_fingerprint"),
+            identity.get("schema_fingerprint"),
+        )
     ):
         raise SuccessorOperatorError(
             "clean-stop recovery anchor database identity differs"
@@ -7062,6 +7116,8 @@ def _stopped_recovery_preflight_locked(
         read_only=True,
     )
     identity = _database_identity(Path(io_paths["databases"]["control"]))
+    owner_identity = durable_status["owner_identity"]
+    assert isinstance(owner_identity, Mapping)
     if (
         verification.get("schema_fingerprint")
         != observed_provenance.get("schema_fingerprint")
@@ -7069,6 +7125,12 @@ def _stopped_recovery_preflight_locked(
         != observed_provenance.get("catalog_fingerprint")
         or identity.get("database_uuid")
         != observed_provenance.get("database_uuid")
+        or identity.get("schema_fingerprint")
+        != observed_provenance.get("schema_fingerprint")
+        or not _owner_schema_fingerprint_matches_canonical_cid(
+            owner_identity.get("schema_fingerprint"),
+            identity.get("schema_fingerprint"),
+        )
     ):
         raise SuccessorOperatorError(
             "stopped recovery database identity differs from provenance"
@@ -10257,8 +10319,10 @@ def _load_projection_source_continuity(
         or not isinstance(scheduler_birth_raw, Mapping)
         or owner_identity.get("process_birth") != controller_birth_raw
         or owner_identity.get("database_uuid") != provenance.get("database_uuid")
-        or owner_identity.get("schema_fingerprint")
-        != provenance.get("schema_fingerprint")
+        or not _owner_schema_fingerprint_matches_canonical_cid(
+            owner_identity.get("schema_fingerprint"),
+            provenance.get("schema_fingerprint"),
+        )
         or owner_identity.get("store_id") != SUCCESSOR_DATABASE_RELATIVE.as_posix()
         or owner_identity.get("secret_handle") != SECRET_HANDLE
     ):
@@ -10441,6 +10505,12 @@ def _load_projection_source_continuity(
         != provenance.get("catalog_fingerprint")
         or database_identity.get("database_uuid")
         != provenance.get("database_uuid")
+        or database_identity.get("schema_fingerprint")
+        != provenance.get("schema_fingerprint")
+        or not _owner_schema_fingerprint_matches_canonical_cid(
+            owner_identity.get("schema_fingerprint"),
+            database_identity.get("schema_fingerprint"),
+        )
     ):
         raise SuccessorOperatorError(
             "stopped-state database identity differs from provenance"
