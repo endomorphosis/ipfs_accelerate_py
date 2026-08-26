@@ -5779,7 +5779,10 @@ class QuackStateServer:
                 or metadata.st_size <= 0
                 or metadata.st_size > QUACK_OWNER_COMMAND_MAX_ENVELOPE_BYTES
             ):
-                claim_path.unlink(missing_ok=True)
+                try:
+                    claim_path.unlink(missing_ok=True)
+                except OSError:
+                    return False
                 return True
             if not already_claimed:
                 if processing.exists():
@@ -5788,7 +5791,10 @@ class QuackStateServer:
         except FileNotFoundError:
             return False
         except OSError:
-            claim_path.unlink(missing_ok=True)
+            try:
+                claim_path.unlink(missing_ok=True)
+            except OSError:
+                return False
             return True
 
         published = False
@@ -6027,7 +6033,11 @@ class QuackStateServer:
                             candidate = _read_bounded_canonical_json(
                                 request_path
                             )
-                        except (OSError, ValueError):
+                        except (
+                            OSError,
+                            QuackStateServerMutationError,
+                            ValueError,
+                        ):
                             candidate = None
                         if (
                             isinstance(candidate, Mapping)
@@ -6038,6 +6048,23 @@ class QuackStateServer:
                             # filenames. Leave that reviewed protocol for
                             # _process_mutation_inbox_locked instead of
                             # consuming it as an invalid command request.
+                            continue
+                        if (
+                            isinstance(candidate, Mapping)
+                            and candidate.get("schema")
+                            != QUACK_OWNER_COMMAND_REQUEST_SCHEMA
+                        ):
+                            # UUID filenames were historically also used by
+                            # untyped helper requests.  They are neither an
+                            # authenticated command nor a legacy owner-DML
+                            # envelope, so consume a regular foreign artifact
+                            # without creating a signed response oracle.
+                            try:
+                                request_path.unlink(missing_ok=True)
+                            except OSError:
+                                pass
+                            else:
+                                serviced += 1
                             continue
                         if self._service_owner_command_request(
                             request_path=request_path,

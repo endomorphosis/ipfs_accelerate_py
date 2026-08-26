@@ -136,6 +136,7 @@ def test_live_child_projection_preserves_validation_runtime(
         "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": "opaque-test-token",
         multi_runner_module.QUACK_TOKEN_FILE_ENV: str(marker / "unavailable"),
         multi_runner_module.BOARD_EXTENSION_INSTALL_POLICY_ENV: "load_only",
+        multi_runner_module.LEGACY_BOARD_UNSTALL_POLICY_ENV: "disabled",
     }
 
     projected = (
@@ -155,6 +156,21 @@ def test_live_child_projection_preserves_validation_runtime(
     assert projected[
         "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_MODULES"
     ] == "pytest,z3,cvc5"
+    assert projected[
+        multi_runner_module.LEGACY_BOARD_UNSTALL_POLICY_ENV
+    ] == "disabled"
+
+    environment[multi_runner_module.LEGACY_BOARD_UNSTALL_POLICY_ENV] = (
+        "enabled"
+    )
+    with pytest.raises(ValueError, match="legacy board unstall policy"):
+        multi_runner_module._lgcvf_configured_board_live_positive_child_environment(
+            environment,
+            common_args=(
+                "--endpoint-secret-handle",
+                "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+            ),
+        )
 
 
 def test_lgcvf_live_runtime_admission_fails_closed() -> None:

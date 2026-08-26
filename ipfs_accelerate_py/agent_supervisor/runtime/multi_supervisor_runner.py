@@ -1235,6 +1235,10 @@ BOARD_EXTENSION_INSTALL_POLICY_ENV = (
     "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY"
 )
 BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY = "load_only"
+LEGACY_BOARD_UNSTALL_POLICY_ENV = (
+    "IPFS_ACCELERATE_AGENT_LEGACY_BOARD_UNSTALL_POLICY"
+)
+LEGACY_BOARD_UNSTALL_DISABLED = "disabled"
 TASK_SOURCE_KIND_ENV = "IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND"
 EVENT_STORE_PATH_ENV = "IPFS_ACCELERATE_AGENT_EVENT_STORE_PATH"
 RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
@@ -1285,6 +1289,7 @@ _PLAN_BOUND_PROFILE_ENV_NAMES = frozenset(
         VALIDATION_PYTHON_MODULES_ENV,
         TRUSTED_DUCKDB_HOME_ENV,
         QUACK_TOKEN_FILE_ENV,
+        LEGACY_BOARD_UNSTALL_POLICY_ENV,
     }
 )
 _PLAN_BOUND_LIFECYCLE_ENV_NAMES = frozenset(
@@ -1461,6 +1466,12 @@ def _lgcvf_configured_board_live_positive_child_environment(
     if extension_policy != BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY:
         raise ValueError("LGCVF live DuckDB extension policy is not load-only")
     projected[BOARD_EXTENSION_INSTALL_POLICY_ENV] = extension_policy
+    legacy_unstall_policy = str(
+        environment.get(LEGACY_BOARD_UNSTALL_POLICY_ENV, "") or ""
+    )
+    if legacy_unstall_policy != LEGACY_BOARD_UNSTALL_DISABLED:
+        raise ValueError("LGCVF legacy board unstall policy is not disabled")
+    projected[LEGACY_BOARD_UNSTALL_POLICY_ENV] = legacy_unstall_policy
     for name in tuple(projected):
         if (
             name.startswith(("LD_", "PYTHON"))

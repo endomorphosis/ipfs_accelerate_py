@@ -288,6 +288,10 @@ def test_lgcvf_bootstrap_daemon_omits_root_token_and_passes_sealed_prelaunch(
         BOARD_EXTENSION_INSTALL_POLICY_ENV,
         BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY,
     )
+    monkeypatch.setenv(
+        LEGACY_BOARD_UNSTALL_POLICY_ENV,
+        LEGACY_BOARD_UNSTALL_DISABLED,
+    )
 
     program = DatabaseProgramConfig(
         authority_mode="quack",

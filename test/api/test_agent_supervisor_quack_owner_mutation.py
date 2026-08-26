@@ -903,6 +903,75 @@ def test_owner_command_and_inbox_share_one_transaction_lock(
         server.stop()
 
 
+def test_noncanonical_uuid_request_is_dropped_without_owner_failure(
+    tmp_path: Path,
+) -> None:
+    """A legacy/foreign UUID envelope cannot terminate the typed owner."""
+
+    server, _identity, _token, _database = _server(tmp_path)
+    request_id = "c" * 32
+    request = server.mutation_inbox_path() / f"{request_id}.request.json"
+    done = server.mutation_inbox_path() / f"{request_id}.done.json"
+    request.parent.mkdir(mode=0o700, parents=True)
+    request.write_text(
+        '{"op": "board_unstall", "stale_seconds": 16200}\n',
+        encoding="utf-8",
+    )
+    try:
+        assert server.service_mutation_inbox() == 1
+        assert server.lifecycle.value == "ready"
+        assert not request.exists()
+        assert not done.exists()
+    finally:
+        server.stop()
+
+
+def test_canonical_foreign_uuid_request_has_no_signed_oracle(
+    tmp_path: Path,
+) -> None:
+    server, _identity, _token, _database = _server(tmp_path)
+    request_id = "d" * 32
+    request = server.mutation_inbox_path() / f"{request_id}.request.json"
+    done = server.mutation_inbox_path() / f"{request_id}.done.json"
+    request.parent.mkdir(mode=0o700, parents=True)
+    request.write_bytes(
+        canonical_json_bytes(
+            {"op": "board_unstall", "stale_seconds": 16_200}
+        )
+        + b"\n"
+    )
+    try:
+        assert server.service_mutation_inbox() == 1
+        assert server.lifecycle.value == "ready"
+        assert not request.exists()
+        assert not done.exists()
+    finally:
+        server.stop()
+
+
+def test_nonregular_uuid_request_cannot_block_later_request(
+    tmp_path: Path,
+) -> None:
+    server, _identity, _token, _database = _server(tmp_path)
+    inbox = server.mutation_inbox_path()
+    unsafe = inbox / f"{'a' * 32}.request.json"
+    request = inbox / f"{'c' * 32}.request.json"
+    inbox.mkdir(mode=0o700, parents=True)
+    unsafe.mkdir(mode=0o700)
+    request.write_text(
+        '{"op": "board_unstall", "stale_seconds": 16200}\n',
+        encoding="utf-8",
+    )
+    try:
+        assert server.service_mutation_inbox(max_requests=1) == 1
+        assert server.lifecycle.value == "ready"
+        assert unsafe.is_dir()
+        assert not request.exists()
+    finally:
+        unsafe.rmdir()
+        server.stop()
+
+
 def test_owner_command_requires_strict_status_publication_before_signed_success(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
