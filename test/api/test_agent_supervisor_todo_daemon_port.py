@@ -11429,6 +11429,50 @@ def test_lgcvf_daemon_diagnostic_collapses_untrusted_metadata(capfd):
     assert sentinel not in captured.err
 
 
+def test_lgcvf_daemon_diagnostic_names_sealed_supervisor_exceptions(capfd):
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+
+    sentinel = "must-not-cross-lgcvf-sealed-exception-diagnostic"
+    implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
+        "runtime_pass",
+        TaskSourceIntegrityError(sentinel),
+    )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=runtime_pass type=TaskSourceIntegrityError\n"
+    )
+    assert sentinel not in captured.err
+    assert len(captured.err.encode("ascii")) <= 160
+
+
+def test_lgcvf_daemon_diagnostic_rejects_forged_supervisor_module(capfd):
+    sentinel = "must-not-cross-lgcvf-forged-supervisor-type"
+
+    class ForgedSupervisorError(Exception):
+        pass
+
+    ForgedSupervisorError.__module__ = (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source"
+    )
+    implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
+        "runtime_pass",
+        ForgedSupervisorError(sentinel),
+    )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=runtime_pass type=BaseException\n"
+    )
+    assert sentinel not in captured.err
+
+
 def test_lgcvf_owner_client_construction_is_staged_and_scrubs_credentials(
     tmp_path,
     monkeypatch,

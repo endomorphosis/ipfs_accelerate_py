@@ -118134,10 +118134,34 @@ def _emit_lgcvf_daemon_diagnostic(phase: str, exc: BaseException) -> None:
     safe_phase = (
         phase if phase in _LGCVF_DAEMON_DIAGNOSTIC_PHASES else "unknown"
     )
-    safe_type = type(exc).__name__
+    exception_type = type(exc)
+    safe_type = exception_type.__name__
     if (
         type(safe_type) is not str
-        or safe_type not in _LGCVF_DAEMON_DIAGNOSTIC_TYPES
+        or (
+            safe_type not in _LGCVF_DAEMON_DIAGNOSTIC_TYPES
+            and not (
+                len(safe_type) <= 64
+                and safe_type.isascii()
+                and safe_type.isidentifier()
+                and type(exception_type.__module__) is str
+                and exception_type.__module__.startswith(
+                    "ipfs_accelerate_py.agent_supervisor."
+                )
+                and type(
+                    getattr(
+                        sys.modules.get(exception_type.__module__),
+                        "__dict__",
+                        None,
+                    )
+                )
+                is dict
+                and sys.modules[exception_type.__module__].__dict__.get(
+                    safe_type
+                )
+                is exception_type
+            )
+        )
     ):
         safe_type = "BaseException"
     record = (
