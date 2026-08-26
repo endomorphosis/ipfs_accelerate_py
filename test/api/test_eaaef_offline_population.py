@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import os
 import subprocess
+import sys
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import replace
@@ -11,21 +13,32 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
+    ed25519_did_key,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     eaaef_offline_population as offline,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     eaaef_reconciliation_lifecycle as lifecycle,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources import (
-    typed_eaaef_reconciliation_owner as owner_facade,
-)
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_eaaef_reconciliation_owner import (
+    EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS,
+    EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE,
+    EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
+    EAAEF_CASF_BOOTSTRAP_REGISTRY_SCHEMA,
+    EAAEF_CASF_OWNER_ABORT_RECEIPT_SCHEMA,
+    EAAEF_CASF_OWNER_ABSENCE_ATTESTATION_SCHEMA,
+    EAAEF_CASF_OWNER_COMMIT_RECEIPT_SCHEMA,
+    EAAEF_CASF_OWNER_START_RECEIPT_SCHEMA,
     EAAEF_OWNER_PRODUCTION_BLOCKERS,
+    EAAEFCASFBootstrapOwnerError,
+    EAAEFCASFBootstrapRegistry,
     EAAEFTypedReconciliationOwnerUnavailable,
+    bind_eaaef_casf_bootstrap_owner,
     open_eaaef_typed_reconciliation_owner,
 )
 
@@ -123,6 +136,280 @@ def _population(repo_root: Path) -> lifecycle.CompiledEAAEFPopulation:
         forest=_sealed_forest(),
         repo_root=repo_root,
     )
+
+
+def _bootstrap_snapshot(
+    population: lifecycle.CompiledEAAEFPopulation,
+) -> dict[str, Any]:
+    value = {
+        "schema": lifecycle.EAAEF_BOOTSTRAP_SNAPSHOT_SCHEMA,
+        "source_head": population.source_head,
+        "source_tree": population.source_tree,
+        "source_forest_root": population.source_forest_root,
+        "board_cid": population.board_cid,
+        "reconciliation_population_cid": population.population_cid,
+        "bootstrap_population_cid": population.bootstrap_population_cid,
+        "bootstrap_task_count": lifecycle.EAAEF_BOOTSTRAP_TASK_COUNT,
+        "held_task_count": lifecycle.EAAEF_PLAN_R2_TASK_COUNT,
+        "terminal_statuses_imported": 0,
+        "bootstrap_materialization_mode": "offline_before_exclusive_owner_start",
+        "bootstrap_owner_absent_during_materialization": True,
+        "owner_started_after_bootstrap": True,
+        "direct_database_mutation_after_owner_start": False,
+        "bootstrap_admission_cid": "sha256:" + "a" * 64,
+        "r1_launch_capsule_cid": "sha256:" + "b" * 64,
+        "quack_owner_qualification_cid": "sha256:" + "c" * 64,
+        "quack_command_fabric_qualification_cid": "sha256:" + "d" * 64,
+        "owner_principal_did": ed25519_did_key(bytes([11]) * 32),
+        "shard_id": "fresh-shard",
+        "store_id": "fresh-store",
+        "owner_generation": 1,
+        "expected_epoch": 1,
+        "fencing_token": 1,
+        "lease_id": "fresh-lease",
+        "expected_version": 1,
+        "expected_active_plan_cid": population.plan_r1_cid,
+        "expected_active_plan_root_cid": population.plan_r1_cid,
+        "expected_active_plan_revision": 1,
+        "expected_event_cursor": "0",
+        "expected_semantic_root_cid": population.source_forest_root,
+        "request_id": "fresh-request",
+        "idempotency_key": "fresh-idempotency",
+        "deadline_ms": 200_000,
+        "issued_at_ms": 100_000,
+        "expires_at_ms": 300_000,
+        "one_use_nonce": "fresh-nonce",
+    }
+    value["snapshot_cid"] = lifecycle._cid(value)
+    return value
+
+
+class _FakeCASFBootstrapGuard:
+    """Non-production process double for provisional owner lifecycle tests."""
+
+    INTERFACE = EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE
+    NONPRODUCTION_TEST_DOUBLE = True
+
+    def __init__(
+        self,
+        binding: object,
+        population: lifecycle.CompiledEAAEFPopulation,
+        events: list[str],
+        *,
+        start_error: BaseException | None = None,
+        start_mutation: tuple[str, Any] | None = None,
+    ) -> None:
+        self.binding = binding
+        self.population = population
+        self.events = events
+        self.start_error = start_error
+        self.start_mutation = start_mutation
+        self.held = False
+        self.absence: dict[str, Any] | None = None
+        self.start_receipt: dict[str, Any] | None = None
+        self.process: subprocess.Popen[bytes] | None = None
+        self.process_birth: lifecycle.ProcessBirth | None = None
+        self.committed = False
+
+    def __enter__(self) -> _FakeCASFBootstrapGuard:
+        self.held = True
+        self.events.append("exclusive_guard_acquired")
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        if not self.committed:
+            self._terminate_owner()
+        self.events.append("exclusive_guard_released")
+        self.held = False
+
+    def _terminate_owner(self) -> None:
+        process = self.process
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+    def cleanup(self) -> None:
+        self._terminate_owner()
+
+    def owner_absence_attestation(self) -> dict[str, Any]:
+        assert self.held is True
+        self.events.append("owner_absence_attested")
+        value = {
+            "schema": EAAEF_CASF_OWNER_ABSENCE_ATTESTATION_SCHEMA,
+            "interface": EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
+            "generation_id": self.binding.generation_id,
+            "source_forest_root": self.binding.source_forest_root,
+            "owner_absent": True,
+            "exclusive_owner_lease_held": True,
+            "observed_owner_process_birth": None,
+        }
+        value["attestation_cid"] = lifecycle._cid(value)
+        self.absence = value
+        return value
+
+    def start_after_offline_commit(
+        self,
+        *,
+        offline_materialization_receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        assert self.held is True
+        assert self.binding.database_path.is_file()
+        record = json.loads(
+            (self.binding.database_path.parent / "bootstrap-owner.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert record["phase"] == "offline_committed"
+        assert offline_materialization_receipt["owner_started"] is False
+        self.events.append("owner_start_requested")
+        if self.start_error is not None:
+            raise self.start_error
+        assert self.absence is not None
+        self.process = subprocess.Popen(
+            [sys.executable, "-c", "import signal; signal.pause()"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        birth = lifecycle.inspect_process_birth(self.process.pid)
+        for _attempt in range(100):
+            if birth is not None:
+                break
+            os.sched_yield()
+            birth = lifecycle.inspect_process_birth(self.process.pid)
+        assert birth is not None
+        self.process_birth = birth
+        value = {
+            "schema": EAAEF_CASF_OWNER_START_RECEIPT_SCHEMA,
+            "interface": EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
+            "generation_id": self.binding.generation_id,
+            "source_forest_root": self.binding.source_forest_root,
+            "population_cid": self.binding.population_cid,
+            "absence_attestation_cid": self.absence["attestation_cid"],
+            "offline_materialization_receipt_cid": (
+                offline_materialization_receipt["receipt_cid"]
+            ),
+            "owner_started_after_bootstrap": True,
+            "exclusive_owner_lease_handoff_complete": True,
+            "owner_start_commit_pending": True,
+            "provider_process_started": False,
+            "owner_process_birth": birth.to_dict(),
+            "bootstrap_snapshot": _bootstrap_snapshot(self.population),
+        }
+        if self.start_mutation is not None:
+            field, selected = self.start_mutation
+            value[field] = selected
+        value["start_receipt_cid"] = lifecycle._cid(value)
+        self.start_receipt = value
+        return value
+
+    def abort_started_owner(
+        self,
+        *,
+        start_receipt: Mapping[str, Any] | None,
+        reason_code: str,
+    ) -> dict[str, Any]:
+        assert self.held is True
+        self.events.append("owner_abort_requested")
+        self._terminate_owner()
+        start_cid = ""
+        if start_receipt is not None and isinstance(
+            start_receipt.get("start_receipt_cid"), str
+        ):
+            start_cid = start_receipt["start_receipt_cid"]
+        value = {
+            "schema": EAAEF_CASF_OWNER_ABORT_RECEIPT_SCHEMA,
+            "interface": EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
+            "generation_id": self.binding.generation_id,
+            "owner_start_receipt_cid": start_cid,
+            "abort_reason_code": reason_code,
+            "owner_abort_completed": True,
+            "remaining_started_owner_count": 0,
+            "owner_process_birth": (
+                None if self.process_birth is None else self.process_birth.to_dict()
+            ),
+            "owner_process_alive": False,
+            "task_state_mutated": False,
+        }
+        value["abort_receipt_cid"] = lifecycle._cid(value)
+        self.committed = False
+        return value
+
+    def commit_started_owner(
+        self,
+        *,
+        start_receipt: Mapping[str, Any],
+        final_record_cid: str,
+    ) -> dict[str, Any]:
+        assert self.held is True
+        assert self.start_receipt == start_receipt
+        assert self.process_birth is not None
+        assert lifecycle.inspect_process_birth(self.process_birth.pid) == self.process_birth
+        record = json.loads(
+            (self.binding.database_path.parent / "bootstrap-owner.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert record["phase"] == "owner_started"
+        assert record["record_cid"] == final_record_cid
+        self.events.append("owner_commit_requested")
+        self.committed = True
+        value = {
+            "schema": EAAEF_CASF_OWNER_COMMIT_RECEIPT_SCHEMA,
+            "interface": EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
+            "generation_id": self.binding.generation_id,
+            "owner_start_receipt_cid": start_receipt["start_receipt_cid"],
+            "final_record_cid": final_record_cid,
+            "owner_commit_completed": True,
+            "owner_process_birth": self.process_birth.to_dict(),
+            "owner_process_alive": True,
+            "provider_process_started": False,
+        }
+        value["commit_receipt_cid"] = lifecycle._cid(value)
+        return value
+
+
+class _FakeCASFBootstrapLifecycle:
+    """Explicitly non-production lifecycle; it never exercises CASF/Quack."""
+
+    INTERFACE = EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE
+    NONPRODUCTION_TEST_DOUBLE = True
+
+    def __init__(
+        self,
+        population: lifecycle.CompiledEAAEFPopulation,
+        *,
+        start_error: BaseException | None = None,
+        start_mutation: tuple[str, Any] | None = None,
+    ) -> None:
+        self.population = population
+        self.events: list[str] = []
+        self.start_error = start_error
+        self.start_mutation = start_mutation
+        self.guards: list[_FakeCASFBootstrapGuard] = []
+
+    def hold_exclusive_bootstrap(
+        self,
+        binding: object,
+    ) -> _FakeCASFBootstrapGuard:
+        guard = _FakeCASFBootstrapGuard(
+            binding,
+            self.population,
+            self.events,
+            start_error=self.start_error,
+            start_mutation=self.start_mutation,
+        )
+        self.guards.append(guard)
+        return guard
+
+    def cleanup(self) -> None:
+        for guard in self.guards:
+            guard.cleanup()
 
 
 def _board(repo_root: Path) -> dict[str, Any]:
@@ -781,6 +1068,37 @@ def test_commitment_failure_occurs_before_offline_sink_call(repo_root: Path) -> 
     assert sink.called is False
 
 
+def _bootstrap_registry_record(
+    generation_id: str,
+    phase: str,
+    *,
+    owner_process_birth: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    absence_cid = "sha256:" + "1" * 64
+    offline_cid = "sha256:" + "2" * 64 if phase != "absent" else ""
+    started = phase == "owner_started"
+    value = {
+        "schema": EAAEF_CASF_BOOTSTRAP_REGISTRY_SCHEMA,
+        "generation_id": generation_id,
+        "phase": phase,
+        "request_cid": "sha256:" + "3" * 64,
+        "source_forest_root": "sha256:" + "4" * 64,
+        "population_cid": "sha256:" + "5" * 64,
+        "owner_lifecycle_interface": EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
+        "absence_attestation_cid": absence_cid,
+        "offline_materialization_receipt_cid": offline_cid,
+        "owner_start_receipt_cid": "sha256:" + "6" * 64 if started else "",
+        "canonical_bootstrap_receipt_cid": (
+            "sha256:" + "7" * 64 if started else ""
+        ),
+        "owner_process_birth": (
+            dict(owner_process_birth or {}) if started else None
+        ),
+    }
+    value["record_cid"] = lifecycle._cid(value)
+    return value
+
+
 def test_static_owner_facade_reports_blockers_and_cannot_effect(repo_root: Path) -> None:
     owner = open_eaaef_typed_reconciliation_owner(repo_root=repo_root)
     qualification = owner.reconciliation_qualification()
@@ -798,7 +1116,7 @@ def test_static_owner_facade_reports_blockers_and_cannot_effect(repo_root: Path)
     assert qualification["qualification_cid"] == lifecycle._cid(
         {key: value for key, value in qualification.items() if key != "qualification_cid"}
     )
-    facade_source = inspect.getsource(owner_facade)
+    facade_source = inspect.getsource(type(owner))
     assert "duckdb.connect(" not in facade_source
     assert "os.kill(" not in facade_source
     assert "subprocess." not in facade_source
@@ -821,3 +1139,348 @@ def test_static_owner_facade_reports_blockers_and_cannot_effect(repo_root: Path)
                 method({}, population=object(), authority=object())
             else:
                 method({})
+
+
+def test_casf_bootstrap_binding_holds_owner_guard_through_commit_and_start(
+    repo_root: Path,
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+) -> None:
+    if not DatabaseTaskSource.available():
+        pytest.skip("DuckDB unavailable")
+    population = _population(repo_root)
+    owner_lifecycle = _FakeCASFBootstrapLifecycle(population)
+    request.addfinalizer(owner_lifecycle.cleanup)
+    assert owner_lifecycle.NONPRODUCTION_TEST_DOUBLE is True
+    registry_root = tmp_path / "casf-bootstrap-registry"
+    owner = bind_eaaef_casf_bootstrap_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        owner_lifecycle=owner_lifecycle,
+    )
+    qualification = owner.reconciliation_qualification()
+    assert qualification["bootstrap_materialization_before_owner_start"] is True
+    assert qualification["plan_r2_remote_runtime_blockers"] == list(
+        EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS
+    )
+    assert qualification["provider_launch_allowed"] is False
+    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="qualification differs"):
+        lifecycle.require_typed_reconciliation_owner(
+            owner,
+            source_forest_root=population.source_forest_root,
+        )
+
+    generation_id = "eaaef-bootstrap-test-001"
+    offline_request = lifecycle._build_offline_population_request(
+        generation_id=generation_id,
+        population=population,
+    )
+    receipt = owner.materialize_offline_population(
+        offline_request,
+        population=population,
+    )
+
+    assert owner_lifecycle.events == [
+        "exclusive_guard_acquired",
+        "owner_absence_attested",
+        "owner_start_requested",
+        "owner_commit_requested",
+        "exclusive_guard_released",
+    ]
+    assert receipt["task_count"] == 116
+    assert receipt["task_status_counts"] == {"blocked": 94, "todo": 22}
+    assert receipt["owner_started_after_bootstrap"] is True
+    assert receipt["provider_process_started"] is False
+    record_path = (
+        registry_root
+        / "generations"
+        / generation_id
+        / "bootstrap-owner.json"
+    )
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert record["schema"] == EAAEF_CASF_BOOTSTRAP_REGISTRY_SCHEMA
+    assert record["phase"] == "owner_started"
+    assert record["request_cid"] == offline_request["request_cid"]
+    assert record["canonical_bootstrap_receipt_cid"] == receipt["receipt_cid"]
+    assert record["owner_process_birth"] is not None
+    assert record["record_cid"] == lifecycle._cid(
+        {key: value for key, value in record.items() if key != "record_cid"}
+    )
+    assert str(registry_root) not in json.dumps(receipt, sort_keys=True)
+    generation_dir = record_path.parent
+    assert registry_root.stat().st_mode & 0o777 == 0o700
+    assert generation_dir.stat().st_mode & 0o777 == 0o700
+    assert generation_dir.parent.stat().st_mode & 0o777 == 0o700
+    assert (registry_root / ".bootstrap-owner.lock").stat().st_mode & 0o777 == 0o600
+    assert record_path.stat().st_mode & 0o777 == 0o600
+    assert (generation_dir / "control.duckdb").stat().st_mode & 0o777 == 0o600
+    guard = owner_lifecycle.guards[0]
+    assert guard.NONPRODUCTION_TEST_DOUBLE is True
+    assert guard.start_receipt is not None
+    assert guard.absence is not None
+    assert guard.start_receipt["absence_attestation_cid"] == (
+        guard.absence["attestation_cid"]
+    )
+    assert guard.start_receipt["offline_materialization_receipt_cid"] == (
+        record["offline_materialization_receipt_cid"]
+    )
+    assert guard.process_birth is not None
+    assert lifecycle.inspect_process_birth(guard.process_birth.pid) == guard.process_birth
+
+
+def test_casf_bootstrap_registry_rejects_intermediate_symlink(
+    repo_root: Path,
+    tmp_path: Path,
+) -> None:
+    population = _population(repo_root)
+    owner_lifecycle = _FakeCASFBootstrapLifecycle(population)
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "linked-registry"
+    link.symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="contains a symlink"):
+        bind_eaaef_casf_bootstrap_owner(
+            repo_root=repo_root,
+            registry_root=link / "nested",
+            source_forest_root=population.source_forest_root,
+            owner_lifecycle=owner_lifecycle,
+        )
+
+
+def test_casf_bootstrap_registry_seals_existing_generations_parent(
+    tmp_path: Path,
+) -> None:
+    registry = EAAEFCASFBootstrapRegistry(tmp_path / "registry")
+    with registry.exclusive() as capability:
+        generations = registry.root / "generations"
+        generations.mkdir(mode=0o700)
+        generations.chmod(0o777)
+        registry.prepare_generation(capability, "eaaef-bootstrap-mode-001")
+
+    assert generations.stat().st_mode & 0o777 == 0o700
+
+
+def test_casf_bootstrap_registry_rejects_symlinked_generations_parent(
+    tmp_path: Path,
+) -> None:
+    registry = EAAEFCASFBootstrapRegistry(tmp_path / "registry")
+    target = tmp_path / "outside-generations"
+    target.mkdir(mode=0o700)
+    with registry.exclusive() as capability:
+        (registry.root / "generations").symlink_to(target, target_is_directory=True)
+        with pytest.raises(EAAEFCASFBootstrapOwnerError, match="parent is unsafe"):
+            registry.prepare_generation(capability, "eaaef-bootstrap-symlink-001")
+
+
+def test_casf_bootstrap_registry_requires_capability_and_monotonic_transitions(
+    tmp_path: Path,
+) -> None:
+    registry = EAAEFCASFBootstrapRegistry(tmp_path / "registry")
+    generation_id = "eaaef-bootstrap-monotonic-001"
+    birth = lifecycle.inspect_process_birth(os.getpid())
+    assert birth is not None
+    absent = _bootstrap_registry_record(generation_id, "absent")
+    offline_record = _bootstrap_registry_record(generation_id, "offline_committed")
+    owner_started = _bootstrap_registry_record(
+        generation_id,
+        "owner_started",
+        owner_process_birth=birth.to_dict(),
+    )
+
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="held-lock capability"):
+        registry.prepare_generation(object(), generation_id)
+    with registry.exclusive() as capability:
+        registry.prepare_generation(capability, generation_id)
+        with pytest.raises(EAAEFCASFBootstrapOwnerError, match="held-lock capability"):
+            registry.write_record(object(), generation_id, absent)
+        registry.write_record(capability, generation_id, absent)
+        with pytest.raises(EAAEFCASFBootstrapOwnerError, match="not monotonic"):
+            registry.write_record(capability, generation_id, owner_started)
+        registry.write_record(capability, generation_id, offline_record)
+        with pytest.raises(EAAEFCASFBootstrapOwnerError, match="not monotonic"):
+            registry.write_record(capability, generation_id, absent)
+
+        malformed_birth = birth.to_dict()
+        malformed_birth["pid"] = True
+        malformed_owner = _bootstrap_registry_record(
+            generation_id,
+            "owner_started",
+            owner_process_birth=malformed_birth,
+        )
+        with pytest.raises(EAAEFCASFBootstrapOwnerError, match="birth types differ"):
+            registry.write_record(capability, generation_id, malformed_owner)
+
+        registry.write_record(capability, generation_id, owner_started)
+        with pytest.raises(EAAEFCASFBootstrapOwnerError, match="not monotonic"):
+            registry.write_record(capability, generation_id, offline_record)
+        stale_capability = capability
+
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="held-lock capability"):
+        registry.write_record(stale_capability, generation_id, owner_started)
+
+
+def test_casf_bootstrap_start_failure_persists_offline_commit_and_never_rewrites(
+    repo_root: Path,
+    tmp_path: Path,
+) -> None:
+    if not DatabaseTaskSource.available():
+        pytest.skip("DuckDB unavailable")
+    population = _population(repo_root)
+    owner_lifecycle = _FakeCASFBootstrapLifecycle(
+        population,
+        start_error=RuntimeError("injected owner start failure"),
+    )
+    registry_root = tmp_path / "casf-bootstrap-registry"
+    owner = bind_eaaef_casf_bootstrap_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        owner_lifecycle=owner_lifecycle,
+    )
+    generation_id = "eaaef-bootstrap-test-002"
+    request = lifecycle._build_offline_population_request(
+        generation_id=generation_id,
+        population=population,
+    )
+
+    with pytest.raises(RuntimeError, match="injected owner start failure"):
+        owner.materialize_offline_population(request, population=population)
+    assert owner_lifecycle.events[-2:] == [
+        "owner_abort_requested",
+        "exclusive_guard_released",
+    ]
+    assert owner_lifecycle.events[-1] == "exclusive_guard_released"
+    generation_dir = registry_root / "generations" / generation_id
+    record_path = generation_dir / "bootstrap-owner.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert record["phase"] == "offline_committed"
+    assert record["owner_start_receipt_cid"] == ""
+    assert record["canonical_bootstrap_receipt_cid"] == ""
+    assert record["owner_process_birth"] is None
+    database_path = generation_dir / "control.duckdb"
+    original_database_size = database_path.stat().st_size
+
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="durable state"):
+        owner.materialize_offline_population(request, population=population)
+    assert database_path.stat().st_size == original_database_size
+
+
+@pytest.mark.parametrize(
+    ("start_mutation", "message"),
+    [
+        (
+            ("offline_materialization_receipt_cid", "sha256:" + "f" * 64),
+            "start evidence differs",
+        ),
+        (("owner_started_after_bootstrap", 1), "start evidence differs"),
+    ],
+)
+def test_casf_bootstrap_malformed_post_start_receipt_aborts_provisional_owner(
+    repo_root: Path,
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+    start_mutation: tuple[str, Any],
+    message: str,
+) -> None:
+    if not DatabaseTaskSource.available():
+        pytest.skip("DuckDB unavailable")
+    population = _population(repo_root)
+    owner_lifecycle = _FakeCASFBootstrapLifecycle(
+        population,
+        start_mutation=start_mutation,
+    )
+    request.addfinalizer(owner_lifecycle.cleanup)
+    registry_root = tmp_path / "casf-bootstrap-registry"
+    owner = bind_eaaef_casf_bootstrap_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        owner_lifecycle=owner_lifecycle,
+    )
+    generation_id = "eaaef-bootstrap-malformed-start-001"
+    offline_request = lifecycle._build_offline_population_request(
+        generation_id=generation_id,
+        population=population,
+    )
+
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match=message):
+        owner.materialize_offline_population(offline_request, population=population)
+
+    assert owner_lifecycle.events[-2:] == [
+        "owner_abort_requested",
+        "exclusive_guard_released",
+    ]
+    guard = owner_lifecycle.guards[0]
+    assert guard.process_birth is not None
+    assert lifecycle.inspect_process_birth(guard.process_birth.pid) != guard.process_birth
+    record = json.loads(
+        (
+            registry_root
+            / "generations"
+            / generation_id
+            / "bootstrap-owner.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert record["phase"] == "offline_committed"
+
+
+def test_casf_bootstrap_final_record_failure_aborts_provisional_owner(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    if not DatabaseTaskSource.available():
+        pytest.skip("DuckDB unavailable")
+    population = _population(repo_root)
+    owner_lifecycle = _FakeCASFBootstrapLifecycle(population)
+    request.addfinalizer(owner_lifecycle.cleanup)
+    registry_root = tmp_path / "casf-bootstrap-registry"
+    owner = bind_eaaef_casf_bootstrap_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        owner_lifecycle=owner_lifecycle,
+    )
+    generation_id = "eaaef-bootstrap-final-write-failure-001"
+    offline_request = lifecycle._build_offline_population_request(
+        generation_id=generation_id,
+        population=population,
+    )
+    original_write_record = owner._registry.write_record
+
+    def _fail_final_record(
+        capability: object,
+        selected_generation_id: str,
+        record: Mapping[str, Any],
+    ) -> None:
+        original_write_record(capability, selected_generation_id, record)
+        if record.get("phase") == "owner_started":
+            raise OSError("injected final registry postcondition failure")
+
+    monkeypatch.setattr(owner._registry, "write_record", _fail_final_record)
+
+    with pytest.raises(OSError, match="injected final registry postcondition failure"):
+        owner.materialize_offline_population(offline_request, population=population)
+
+    assert owner_lifecycle.events[-2:] == [
+        "owner_abort_requested",
+        "exclusive_guard_released",
+    ]
+    assert "owner_commit_requested" not in owner_lifecycle.events
+    guard = owner_lifecycle.guards[0]
+    assert guard.process_birth is not None
+    assert lifecycle.inspect_process_birth(guard.process_birth.pid) != guard.process_birth
+    record = json.loads(
+        (
+            registry_root
+            / "generations"
+            / generation_id
+            / "bootstrap-owner.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert record["phase"] == "owner_started"
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="durable state"):
+        owner.materialize_offline_population(offline_request, population=population)

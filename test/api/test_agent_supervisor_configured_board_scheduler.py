@@ -1680,6 +1680,64 @@ def test_sealed_bootstrap_denies_missing_native_dependency_pin(
     assert result.returncode == 78
 
 
+def test_sealed_bootstrap_requires_verified_eaaef_191_not_an_admission_word(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tracked decision word cannot select the native-authority gate."""
+
+    receipt_dir = (
+        tmp_path
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "receipts/host_admission"
+    )
+    receipt_dir.mkdir(parents=True)
+    (receipt_dir / "admission_bundle.json").write_text(
+        json.dumps({"decision": "admitted", "task_id": "EAAEF-191"}),
+        encoding="utf-8",
+    )
+    source_head = _git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+    source_tree = _git(REPO_ROOT, "rev-parse", "HEAD^{tree}").stdout.strip()
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=source_head,
+        source_tree=source_tree,
+    )
+    command = multi_runner_module.build_sealed_control_plane_module_command(
+        python_executable=sys.executable,
+        pin=control_plane_pin,
+        descriptor=control_plane_launch.descriptor,
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        ),
+        argv=("--help",),
+        repo_root=tmp_path,
+    )
+    assert command[9] == (
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_eaaef_host_receipt_admitted",
+        lambda _root, task_id, **_identity: task_id == "EAAEF-191",
+    )
+    admitted = multi_runner_module.build_sealed_control_plane_module_command(
+        python_executable=sys.executable,
+        pin=control_plane_pin,
+        descriptor=control_plane_launch.descriptor,
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        ),
+        argv=("--help",),
+        repo_root=tmp_path,
+    )
+    assert admitted[9] == (
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
+    )
+
+
 def test_implementation_daemon_rehardens_before_argument_parsing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

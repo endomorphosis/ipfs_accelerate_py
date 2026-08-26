@@ -11,10 +11,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import pwd
+import re
 import socket
 import stat
 import subprocess
 import time
+import zlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
@@ -25,13 +28,32 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption,
     PrivateFormat,
 )
-
+from ipfs_accelerate_py.agent_supervisor.control.eaaef_provider_authority import (
+    EAAEF_PROVIDER_LEGACY_PROFILE_DIR,
+    EAAEF_PROVIDER_LIFECYCLE_DIR,
+    EAAEF_PROVIDER_PROFILE_ROOT,
+    eaaef_provider_profile_candidates,
+)
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
+    LocalProfileError,
     ed25519_did_key,
+    load_local_profile,
 )
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     LocalProfileTampered,
     verify_did_key_signature,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.eaaef_authority_registry import (
+    EAAEF_LOGICAL_AUTHORITY_PREFIX,
+    EAAEFAuthorityNotFound,
+    EAAEFAuthorityRegistry,
+    EAAEFAuthorityRegistryError,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_admission import (
+    ExternalAgentBootstrapAdmissionError,
+    _open_secure_publication_parent,
+    _publication_parent_is_stable,
+    _validate_statement_shape,
 )
 
 RECEIPT_SCHEMA: Final = (
@@ -73,6 +95,158 @@ CAMPAIGN = ROOT / "docs/architecture/external_agent_autonomous_execution_fabric"
 RECEIPT_DIR = CAMPAIGN / "receipts" / "host_admission"
 BUNDLE_SIGNATURES_PATH = RECEIPT_DIR / "admission_bundle.signatures.json"
 BOARD_PATH = CAMPAIGN / "task_board.json"
+EAAEF_HOST_ADMISSION_STATE_ROOT: Final = (
+    Path(pwd.getpwuid(os.geteuid()).pw_dir) / ".local/state"
+)
+EAAEF_AUTHORITY_REGISTRY_ROOT: Final = (
+    EAAEF_HOST_ADMISSION_STATE_ROOT / "ipfs_accelerate_py-eaaef-authority-v1"
+)
+FINAL_ADMISSION_DIR: Final = (
+    EAAEF_AUTHORITY_REGISTRY_ROOT / "host-admission"
+)
+
+
+def source_addressed_admission_bundle_paths(
+    *,
+    final_dir: Path,
+    source_head: str,
+) -> tuple[Path, Path]:
+    """Return immutable final EAAEF-191 paths for one exact source commit."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", str(source_head or "")) is None:
+        raise ValueError("EAAEF-191 source commit is invalid")
+    stem = f"admission_bundle--{source_head}"
+    return (
+        Path(final_dir) / f"{stem}.json",
+        Path(final_dir) / f"{stem}.signatures.json",
+    )
+
+
+def source_addressed_admission_bundle_logical_paths(
+    *,
+    source_head: str,
+) -> tuple[Path, Path]:
+    """Return reviewed logical registry names for one EAAEF-191 final."""
+
+    return source_addressed_admission_bundle_paths(
+        final_dir=Path(EAAEF_LOGICAL_AUTHORITY_PREFIX) / "host-admission",
+        source_head=source_head,
+    )
+
+
+def source_addressed_child_receipt_path(
+    *,
+    final_dir: Path,
+    source_head: str,
+    task_id: str,
+) -> Path:
+    """Return the immutable EAAEF-191 child snapshot for one source."""
+
+    filename = RECEIPT_FILES.get(task_id)
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", str(source_head or "")) is None
+        or filename is None
+        or task_id == "EAAEF-191"
+    ):
+        raise ValueError("EAAEF-191 child snapshot identity is invalid")
+    return Path(final_dir) / f"child--{source_head}--{filename}"
+
+
+def source_addressed_child_receipt_logical_path(
+    *,
+    source_head: str,
+    task_id: str,
+) -> Path:
+    return source_addressed_child_receipt_path(
+        final_dir=Path(EAAEF_LOGICAL_AUTHORITY_PREFIX) / "host-admission",
+        source_head=source_head,
+        task_id=task_id,
+    )
+
+
+def _load_registry_json(
+    registry: EAAEFAuthorityRegistry,
+    logical_path: Path,
+) -> dict[str, Any] | None:
+    try:
+        return registry.read_json(logical_path)
+    except (EAAEFAuthorityNotFound, EAAEFAuthorityRegistryError):
+        return None
+
+
+def _load_secure_final_json(
+    path: Path,
+    *,
+    final_root: Path,
+) -> dict[str, Any] | None:
+    """Load one immutable final artifact through an anchored stable walk."""
+
+    root = Path(final_root)
+    try:
+        root_metadata = os.lstat(root)
+        relative = Path(path).relative_to(root)
+        if (
+            stat.S_ISLNK(root_metadata.st_mode)
+            or not stat.S_ISDIR(root_metadata.st_mode)
+            or root_metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(root_metadata.st_mode) != 0o700
+        ):
+            return None
+        root_fd, parent_fd, identities = _open_secure_publication_parent(
+            root,
+            relative,
+        )
+    except (OSError, ValueError, ExternalAgentBootstrapAdmissionError):
+        return None
+    descriptor: int | None = None
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(relative.name, flags, dir_fd=parent_fd)
+        except OSError:
+            return None
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) != 0o400
+            or before.st_size <= 0
+            or before.st_size > 4 * 1024 * 1024
+        ):
+            return None
+        raw = os.read(descriptor, before.st_size + 1)
+        after = os.fstat(descriptor)
+        pathname = os.stat(relative.name, dir_fd=parent_fd, follow_symlinks=False)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if (
+            len(raw) != before.st_size
+            or tuple(getattr(before, name) for name in stable_fields)
+            != tuple(getattr(after, name) for name in stable_fields)
+            or (before.st_dev, before.st_ino, before.st_size)
+            != (pathname.st_dev, pathname.st_ino, pathname.st_size)
+            or not _publication_parent_is_stable(root_fd, identities, parent_fd)
+        ):
+            return None
+        payload = json.loads(raw)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(parent_fd)
+        os.close(root_fd)
+    return payload if isinstance(payload, dict) else None
 ROUTE_AUTHORITY_DIR = (
     ROOT
     / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
@@ -91,9 +265,9 @@ COMMAND_FABRIC_ARTIFACT = HOST_EVIDENCE_DIR / "command-fabric-endpoints.json"
 NATIVE_LANE_ARTIFACT = HOST_EVIDENCE_DIR / "native-lane-dispatcher.json"
 PLAN_R2_ARTIFACT = HOST_EVIDENCE_DIR / "plan-r2-remote-owner.json"
 GROK_MOUNT_DIR = HOST_EVIDENCE_DIR / "grok-mounts"
-OPERATOR_PROFILE_DIR = (
-    Path.home() / ".ipfs_accelerate" / "agent_supervisor" / "eaaef-route-profile"
-)
+OPERATOR_PROFILE_DIR = EAAEF_PROVIDER_LEGACY_PROFILE_DIR
+OPERATOR_PROFILE_ROOT = EAAEF_PROVIDER_PROFILE_ROOT
+OPERATOR_LIFECYCLE_DIR = EAAEF_PROVIDER_LIFECYCLE_DIR
 HOST_WORKER_IMAGE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-host-worker-image-admission@1"
 )
@@ -283,20 +457,69 @@ def load_admission_bundle_signatures(
 ) -> dict[str, str]:
     """Return verified operator/reviewer signatures, or empty strings."""
 
-    empty = {
+    if not signatures_path.is_file():
+        return _empty_admission_bundle_signatures()
+    try:
+        payload = json.loads(signatures_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return _empty_admission_bundle_signatures()
+    return verify_admission_bundle_signatures_payload(
+        payload,
+        child_decisions=child_decisions,
+        child_receipt_cids=child_receipt_cids,
+        decision=decision,
+        launch_plan_allowed=launch_plan_allowed,
+        source_head=source_head,
+        source_tree=source_tree,
+        board_namespace=board_namespace,
+        board_cid=board_cid,
+        bootstrap_admission_statement_cid=bootstrap_admission_statement_cid,
+        materialization_receipt_cid=materialization_receipt_cid,
+        inventory_open_host_gated=inventory_open_host_gated,
+    )
+
+
+def _empty_admission_bundle_signatures() -> dict[str, str]:
+    return {
         "independent_operator_signature": "",
         "independent_security_reviewer_signature": "",
         "operator_did": "",
         "security_reviewer_did": "",
     }
-    if not signatures_path.is_file():
-        return empty
-    try:
-        payload = json.loads(signatures_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return empty
+
+
+def verify_admission_bundle_signatures_payload(
+    payload: object,
+    *,
+    child_decisions: Mapping[str, str],
+    child_receipt_cids: Mapping[str, str],
+    decision: str,
+    launch_plan_allowed: bool,
+    source_head: str,
+    source_tree: str,
+    board_namespace: str,
+    board_cid: str,
+    bootstrap_admission_statement_cid: str,
+    materialization_receipt_cid: str,
+    inventory_open_host_gated: Sequence[str],
+) -> dict[str, str]:
+    """Verify a separately supplied two-reviewer signature artifact."""
+
+    empty = _empty_admission_bundle_signatures()
+    expected_fields = {
+        "schema",
+        "operator_did",
+        "operator_signature",
+        "security_reviewer_did",
+        "security_reviewer_signature",
+        "payload_sha256",
+        "supervisor_signed",
+        "configured_board_launch",
+        "decision",
+    }
     if (
         not isinstance(payload, dict)
+        or set(payload) != expected_fields
         or payload.get("schema") != BUNDLE_SIGNATURES_SCHEMA
         or payload.get("supervisor_signed") is not False
         or payload.get("configured_board_launch") is not False
@@ -310,6 +533,7 @@ def load_admission_bundle_signatures(
     if (
         operator_did not in TRUSTED_OPERATOR_DIDS
         or reviewer_did not in TRUSTED_SECURITY_REVIEWER_DIDS
+        or operator_did == reviewer_did
         or not operator_sig
         or not reviewer_sig
     ):
@@ -377,6 +601,7 @@ def _full_sha256(value: object) -> bool:
 def admission_bundle_target_decision(
     *,
     child_decisions: Mapping[str, str],
+    bootstrap_admission_preflight_valid: bool,
     bootstrap_admission_statement_cid: str,
     materialization_receipt_cid: str,
 ) -> str:
@@ -387,10 +612,58 @@ def admission_bundle_target_decision(
             child_decisions.get(task_id) == "admitted"
             for task_id in ADMIT_REQUIRED_CHILDREN
         )
+        and bootstrap_admission_preflight_valid is True
         and _full_sha256(bootstrap_admission_statement_cid)
         and _full_sha256(materialization_receipt_cid)
     )
     return "admitted" if admitted else "no_go"
+
+
+def verify_prebootstrap_admission_statement(
+    *,
+    statement: object,
+    expected_source_head: str,
+    expected_source_tree: str,
+    expected_board_namespace: str,
+    expected_board_cid: str,
+    expected_materialization_receipt_cid: str,
+    now_ms: int | None = None,
+) -> dict[str, Any]:
+    """Verify the exact typed no-go that precedes dependency EAAEF-000.
+
+    EAAEF-191 closes the host-gate evidence before EAAEF-000 may run, so this
+    must be a canonical unsigned pre-bootstrap statement, not a forged digest
+    and not the later signed EAAEF-000 receipt.
+    """
+
+    if not isinstance(statement, Mapping):
+        raise ExternalAgentBootstrapAdmissionError(
+            "pre-bootstrap admission statement is unavailable"
+        )
+    value = dict(statement)
+    _validate_statement_shape(value)
+    observed_now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    expected = {
+        "decision": "no_go",
+        "outcome": "mutation_not_admitted",
+        "source_head": expected_source_head,
+        "source_tree": expected_source_tree,
+        "board_namespace": expected_board_namespace,
+        "board_cid": expected_board_cid,
+        "materialization_receipt_cid": expected_materialization_receipt_cid,
+    }
+    if (
+        any(value.get(field) != selected for field, selected in expected.items())
+        or not value.get("blockers")
+        or int(value["issued_at_ms"]) > observed_now_ms
+        or observed_now_ms >= int(value["expires_at_ms"])
+        or int(value["expires_at_ms"]) - int(value["issued_at_ms"])
+        > 3_600_000
+    ):
+        raise ExternalAgentBootstrapAdmissionError(
+            "pre-bootstrap admission statement binding differs"
+        )
+    return value
 
 
 def verify_admission_bundle_receipt(
@@ -400,6 +673,12 @@ def verify_admission_bundle_receipt(
     expected_source_tree: str,
     expected_board_namespace: str,
     expected_board_cid: str,
+    prebootstrap_statement_now_ms: int | None = None,
+    require_source_addressed: bool = False,
+    final_dir: Path | None = None,
+    final_root: Path | None = None,
+    source_artifacts: Mapping[str, Mapping[str, Any]] | None = None,
+    include_verified_artifacts: bool = False,
 ) -> dict[str, Any]:
     """Verify current, closed, independently signed EAAEF host admission.
 
@@ -411,13 +690,113 @@ def verify_admission_bundle_receipt(
 
     blockers: list[str] = []
     receipts: dict[str, dict[str, Any]] = {}
-    for task_id, filename in RECEIPT_FILES.items():
-        path = receipt_dir / filename
+    registry: EAAEFAuthorityRegistry | None = None
+    supplied_artifacts = (
+        {str(key): dict(value) for key, value in source_artifacts.items()}
+        if isinstance(source_artifacts, Mapping)
+        and all(isinstance(value, Mapping) for value in source_artifacts.values())
+        else None
+    )
+    registry_mode = (
+        supplied_artifacts is None
+        and final_dir is None
+        and final_root is None
+    )
+    selected_final_dir = FINAL_ADMISSION_DIR if final_dir is None else Path(final_dir)
+    selected_final_root = (
+        EAAEF_HOST_ADMISSION_STATE_ROOT if final_root is None else Path(final_root)
+    )
+    if supplied_artifacts is not None:
+        source_bundle_path, source_signatures_path = (
+            source_addressed_admission_bundle_logical_paths(
+                source_head=expected_source_head,
+            )
+        )
+        source_bundle = supplied_artifacts.get("EAAEF-191")
+        source_signatures = supplied_artifacts.get("EAAEF-191.signatures")
+    elif registry_mode:
+        source_bundle_path, source_signatures_path = (
+            source_addressed_admission_bundle_logical_paths(
+                source_head=expected_source_head,
+            )
+        )
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            blockers.append(f"{task_id} host receipt is unavailable or malformed")
-            continue
+            registry = EAAEFAuthorityRegistry(repo_root=ROOT)
+        except EAAEFAuthorityRegistryError:
+            source_bundle = None
+            source_signatures = None
+        else:
+            source_bundle = _load_registry_json(registry, source_bundle_path)
+            source_signatures = _load_registry_json(
+                registry, source_signatures_path
+            )
+    else:
+        source_bundle_path, source_signatures_path = (
+            source_addressed_admission_bundle_paths(
+                final_dir=selected_final_dir,
+                source_head=expected_source_head,
+            )
+        )
+        source_bundle = _load_secure_final_json(
+            source_bundle_path,
+            final_root=selected_final_root,
+        )
+        source_signatures = _load_secure_final_json(
+            source_signatures_path,
+            final_root=selected_final_root,
+        )
+    source_final_present = source_bundle is not None and source_signatures is not None
+    if require_source_addressed and not source_final_present:
+        blockers.append("EAAEF-191 source-addressed final artifacts are unavailable")
+    for task_id, filename in RECEIPT_FILES.items():
+        if task_id == "EAAEF-191":
+            if source_final_present:
+                payload = source_bundle
+            elif require_source_addressed:
+                blockers.append(
+                    "EAAEF-191 source-addressed final artifacts are unavailable"
+                )
+                continue
+            else:
+                path = receipt_dir / filename
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                    blockers.append(
+                        f"{task_id} host receipt is unavailable or malformed"
+                    )
+                    continue
+        elif require_source_addressed:
+            if supplied_artifacts is not None:
+                payload = supplied_artifacts.get(task_id)
+            elif registry is not None:
+                child_path = source_addressed_child_receipt_logical_path(
+                    source_head=expected_source_head,
+                    task_id=task_id,
+                )
+                payload = _load_registry_json(registry, child_path)
+            else:
+                child_path = source_addressed_child_receipt_path(
+                    final_dir=selected_final_dir,
+                    source_head=expected_source_head,
+                    task_id=task_id,
+                )
+                payload = _load_secure_final_json(
+                    child_path,
+                    final_root=selected_final_root,
+                )
+            if payload is None:
+                blockers.append(
+                    f"{task_id} immutable child snapshot is unavailable"
+                )
+                continue
+        else:
+            path = receipt_dir / filename
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                blockers.append(f"{task_id} host receipt is unavailable or malformed")
+                continue
         if not isinstance(payload, dict):
             blockers.append(f"{task_id} host receipt is not an object")
             continue
@@ -470,14 +849,82 @@ def verify_admission_bundle_receipt(
         blockers.append("EAAEF-191 child receipt identities differ")
     bootstrap_cid = str(evidence.get("bootstrap_admission_statement_cid") or "")
     materialization_cid = str(evidence.get("materialization_receipt_cid") or "")
+    bootstrap_evidence = (receipts.get("EAAEF-180") or {}).get("evidence")
+    bootstrap_statement = (
+        bootstrap_evidence.get("bootstrap_admission_statement")
+        if isinstance(bootstrap_evidence, Mapping)
+        else None
+    )
+    raw_inventory_items = (
+        bootstrap_evidence.get("items")
+        if isinstance(bootstrap_evidence, Mapping)
+        else None
+    )
+    inventory_items = (
+        list(raw_inventory_items) if isinstance(raw_inventory_items, list) else []
+    )
+    inventory_blockers = {
+        str(item.get("blocker") or "")
+        for item in inventory_items
+        if isinstance(item, Mapping)
+    }
+    bootstrap_preflight_valid = False
+    persisted_source_final = (
+        require_source_addressed
+        and supplied_artifacts is None
+        and source_final_present
+    )
+    statement_now_ms = prebootstrap_statement_now_ms
+    if persisted_source_final and isinstance(bootstrap_statement, Mapping):
+        issued_at_ms = bootstrap_statement.get("issued_at_ms")
+        if type(issued_at_ms) is int:
+            # The short TTL proves that the no-go statement was fresh at the
+            # trusted create-once publication boundary.  A persisted,
+            # independently signed final is a historical ordering fact, not a
+            # one-hour runtime lease.  Live capabilities have separate gates.
+            statement_now_ms = issued_at_ms
+    try:
+        verified_statement = verify_prebootstrap_admission_statement(
+            statement=bootstrap_statement,
+            expected_source_head=expected_source_head,
+            expected_source_tree=expected_source_tree,
+            expected_board_namespace=expected_board_namespace,
+            expected_board_cid=expected_board_cid,
+            expected_materialization_receipt_cid=materialization_cid,
+            now_ms=statement_now_ms,
+        )
+    except (ExternalAgentBootstrapAdmissionError, TypeError, ValueError) as exc:
+        blockers.append(f"EAAEF-191 pre-bootstrap statement is invalid: {exc}")
+    else:
+        bootstrap_preflight_valid = (
+            verified_statement.get("statement_cid") == bootstrap_cid
+        )
+        if not bootstrap_preflight_valid:
+            blockers.append("EAAEF-191 pre-bootstrap statement identity differs")
+        if not set(verified_statement.get("blockers") or ()).issubset(
+            inventory_blockers
+        ):
+            bootstrap_preflight_valid = False
+            blockers.append(
+                "EAAEF-191 pre-bootstrap blockers differ from inventory"
+            )
     raw_open = evidence.get("inventory_open_host_gated")
     open_host_gates = (
         [str(item) for item in raw_open]
         if isinstance(raw_open, list) and all(isinstance(item, str) for item in raw_open)
         else ["host-gated blocker inventory is malformed"]
     )
+    expected_open_host_gates = [
+        str(item.get("blocker") or "")
+        for item in inventory_items
+        if isinstance(item, Mapping)
+        and item.get("class") == "host_gated_external_authority"
+    ]
+    if open_host_gates != expected_open_host_gates:
+        blockers.append("EAAEF-191 open host-gate inventory differs")
     target_decision = admission_bundle_target_decision(
         child_decisions=child_decisions,
+        bootstrap_admission_preflight_valid=bootstrap_preflight_valid,
         bootstrap_admission_statement_cid=bootstrap_cid,
         materialization_receipt_cid=materialization_cid,
     )
@@ -491,19 +938,29 @@ def verify_admission_bundle_receipt(
     ):
         blockers.append("EAAEF-191 review/launch separation differs")
 
-    signatures = load_admission_bundle_signatures(
-        child_decisions=child_decisions,
-        child_receipt_cids=child_receipt_cids,
-        decision=target_decision,
-        launch_plan_allowed=False,
-        source_head=expected_source_head,
-        source_tree=expected_source_tree,
-        board_namespace=expected_board_namespace,
-        board_cid=expected_board_cid,
-        bootstrap_admission_statement_cid=bootstrap_cid,
-        materialization_receipt_cid=materialization_cid,
-        inventory_open_host_gated=open_host_gates,
-        signatures_path=receipt_dir / "admission_bundle.signatures.json",
+    signature_arguments: dict[str, Any] = {
+        "child_decisions": child_decisions,
+        "child_receipt_cids": child_receipt_cids,
+        "decision": target_decision,
+        "launch_plan_allowed": False,
+        "source_head": expected_source_head,
+        "source_tree": expected_source_tree,
+        "board_namespace": expected_board_namespace,
+        "board_cid": expected_board_cid,
+        "bootstrap_admission_statement_cid": bootstrap_cid,
+        "materialization_receipt_cid": materialization_cid,
+        "inventory_open_host_gated": open_host_gates,
+    }
+    signatures = (
+        verify_admission_bundle_signatures_payload(
+            source_signatures,
+            **signature_arguments,
+        )
+        if source_final_present
+        else load_admission_bundle_signatures(
+            **signature_arguments,
+            signatures_path=receipt_dir / "admission_bundle.signatures.json",
+        )
     )
     expected_signature_evidence = {
         name: str(evidence.get(name) or "")
@@ -519,12 +976,257 @@ def verify_admission_bundle_receipt(
         or evidence.get("independent_signature_present") is not True
     ):
         blockers.append("EAAEF-191 independent signatures are absent or invalid")
-    return {
+    result: dict[str, Any] = {
         "admitted": not blockers,
         "decision": str(bundle.get("decision") or ""),
         "target_decision": target_decision,
+        "bundle_receipt_cid": str(bundle.get("receipt_cid") or ""),
         "blockers": list(dict.fromkeys(blockers)),
     }
+    if include_verified_artifacts and not blockers:
+        # These are the exact immutable artifacts which were joined above.
+        # Runtime consumers must never fall back to mutable checkout staging
+        # after the final EAAEF-191 authority has been admitted.
+        result["verified_artifacts"] = {
+            task_id: dict(payload) for task_id, payload in receipts.items()
+        }
+    return result
+
+
+def verify_current_admission_bundle_receipt(
+    repo_root: str | Path,
+    *,
+    expected_source_head: str = "",
+    expected_source_tree: str = "",
+    final_dir: Path | None = None,
+    final_root: Path | None = None,
+    include_verified_artifacts: bool = False,
+) -> dict[str, Any]:
+    """Verify source-addressed EAAEF-191 authority without starting a process."""
+
+    root = Path(repo_root).absolute()
+    if not eaaef_checkout_has_only_generated_receipt_drift(root):
+        raise RuntimeError(
+            "current EAAEF checkout has non-receipt source drift"
+        )
+    board_path = (
+        root
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "task_board.json"
+    )
+    try:
+        current_source_head = _read_current_git_head(root)
+        source_head = str(expected_source_head or current_source_head)
+        if source_head != current_source_head:
+            raise ValueError("accepted source commit is not current")
+        source_tree = str(
+            expected_source_tree or _read_git_commit_tree(root, source_head)
+        )
+        if re.fullmatch(r"[0-9a-f]{40}", source_tree) is None:
+            raise ValueError("accepted source tree is invalid")
+        board = json.loads(board_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("current EAAEF-191 source identity is unavailable") from exc
+    if not isinstance(board, dict):
+        raise RuntimeError("current EAAEF-191 board is not an object")
+    board_projection = {key: value for key, value in board.items() if key != "board_cid"}
+    if board.get("board_cid") != cid(board_projection):
+        raise RuntimeError("current EAAEF-191 board identity is invalid")
+    verification = verify_admission_bundle_receipt(
+        receipt_dir=board_path.parent / "receipts" / "host_admission",
+        expected_source_head=source_head,
+        expected_source_tree=source_tree,
+        expected_board_namespace=str(board.get("board_namespace") or ""),
+        expected_board_cid=str(board.get("board_cid") or ""),
+        require_source_addressed=True,
+        final_dir=final_dir,
+        final_root=final_root,
+        include_verified_artifacts=include_verified_artifacts,
+    )
+    if _read_current_git_head(root) != current_source_head:
+        raise RuntimeError("current EAAEF-191 Git HEAD changed during verification")
+    if not eaaef_checkout_has_only_generated_receipt_drift(root):
+        raise RuntimeError(
+            "current EAAEF checkout acquired non-receipt source drift "
+            "during verification"
+        )
+    return verification
+
+
+def eaaef_checkout_has_only_generated_receipt_drift(
+    repo_root: str | Path,
+) -> bool:
+    """Allow only the exact generated host-receipt staging paths to differ."""
+
+    root = Path(repo_root).absolute()
+    receipt_relative = Path(
+        "docs/architecture/external_agent_autonomous_execution_fabric/"
+        "receipts/host_admission"
+    )
+    allowed = tuple(receipt_relative / name for name in RECEIPT_FILES.values()) + (
+        receipt_relative / "admission_bundle.signatures.json",
+    )
+    pathspecs = [
+        ".",
+        *(
+            ":(top,exclude,literal)" + path.as_posix()
+            for path in allowed
+        ),
+    ]
+    try:
+        completed = subprocess.run(
+            [
+                "/usr/bin/git",
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+                "--",
+                *pathspecs,
+            ],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={
+                "PATH": "/usr/bin:/bin",
+                "LC_ALL": "C",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0",
+            },
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if completed.returncode != 0 or completed.stdout.strip():
+        return False
+    try:
+        index = subprocess.run(
+            ["/usr/bin/git", "ls-files", "-v", "-z", "--", "."],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={
+                "PATH": "/usr/bin:/bin",
+                "LC_ALL": "C",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0",
+            },
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if index.returncode != 0:
+        return False
+    # ``git status`` deliberately omits worktree differences hidden by
+    # assume-unchanged or skip-worktree.  Neither index flag is admissible at
+    # a source-authority boundary.
+    entries = (entry for entry in index.stdout.split("\0") if entry)
+    return not any(
+        entry[0].islower() or entry.startswith("S ")
+        for entry in entries
+    )
+
+
+def _git_directories(repo_root: Path) -> tuple[Path, Path]:
+    """Resolve one non-linked worktree Git directory and its common directory."""
+
+    marker = repo_root / ".git"
+    marker_stat = os.lstat(marker)
+    if stat.S_ISLNK(marker_stat.st_mode):
+        raise ValueError("Git directory marker is linked")
+    if stat.S_ISDIR(marker_stat.st_mode):
+        git_dir = marker
+    elif stat.S_ISREG(marker_stat.st_mode):
+        text_value = marker.read_text(encoding="utf-8").strip()
+        if not text_value.startswith("gitdir: "):
+            raise ValueError("Git directory marker is invalid")
+        selected = Path(text_value.removeprefix("gitdir: "))
+        git_dir = selected if selected.is_absolute() else repo_root / selected
+    else:
+        raise ValueError("Git directory marker is invalid")
+    common_dir = git_dir
+    common_marker = git_dir / "commondir"
+    if common_marker.is_file():
+        selected = Path(common_marker.read_text(encoding="utf-8").strip())
+        common_dir = selected if selected.is_absolute() else git_dir / selected
+    return git_dir, common_dir
+
+
+def _read_current_git_head(repo_root: Path) -> str:
+    """Read a SHA-1 Git HEAD from loose or packed refs without a child process."""
+
+    git_dir, common_dir = _git_directories(repo_root)
+    head_value = (git_dir / "HEAD").read_text(encoding="ascii").strip()
+    if not head_value.startswith("ref: "):
+        source_head = head_value
+    else:
+        reference = head_value.removeprefix("ref: ")
+        if (
+            not reference.startswith("refs/")
+            or ".." in Path(reference).parts
+            or Path(reference).is_absolute()
+        ):
+            raise ValueError("Git HEAD reference is invalid")
+        source_head = ""
+        for base in (git_dir, common_dir):
+            reference_path = base / reference
+            if reference_path.is_file():
+                source_head = reference_path.read_text(encoding="ascii").strip()
+                break
+        if not source_head:
+            packed_refs = common_dir / "packed-refs"
+            for line in packed_refs.read_text(encoding="ascii").splitlines():
+                if not line or line.startswith(("#", "^")):
+                    continue
+                object_id, separator, name = line.partition(" ")
+                if separator and name == reference:
+                    source_head = object_id
+                    break
+    if re.fullmatch(r"[0-9a-f]{40}", source_head) is None:
+        raise ValueError("Git HEAD identity is invalid")
+    return source_head
+
+
+def _read_git_commit_tree(repo_root: Path, source_head: str) -> str:
+    """Derive a tree from a verified loose commit; packed-only Git fails closed."""
+
+    _git_dir, common_dir = _git_directories(repo_root)
+    object_path = common_dir / "objects" / source_head[:2] / source_head[2:]
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(object_path, flags)
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_size <= 0
+            or metadata.st_size > 16 * 1024 * 1024
+        ):
+            raise ValueError("Git commit object is unsafe")
+        compressed = os.read(descriptor, metadata.st_size + 1)
+    finally:
+        os.close(descriptor)
+    raw = zlib.decompress(compressed)
+    header, separator, body = raw.partition(b"\0")
+    if (
+        not separator
+        or header != f"commit {len(body)}".encode("ascii")
+        or hashlib.sha1(raw, usedforsecurity=False).hexdigest() != source_head
+    ):
+        raise ValueError("Git commit object identity is invalid")
+    first_line = body.partition(b"\n")[0]
+    if not first_line.startswith(b"tree "):
+        raise ValueError("Git commit tree is unavailable")
+    source_tree = first_line.removeprefix(b"tree ").decode("ascii")
+    if re.fullmatch(r"[0-9a-f]{40}", source_tree) is None:
+        raise ValueError("Git tree identity is invalid")
+    return source_tree
 
 
 def verify_host_admission_task_receipt(
@@ -535,6 +1237,9 @@ def verify_host_admission_task_receipt(
     expected_source_tree: str,
     expected_board_namespace: str,
     expected_board_cid: str,
+    prebootstrap_statement_now_ms: int | None = None,
+    final_dir: Path | None = None,
+    final_root: Path | None = None,
 ) -> dict[str, Any]:
     """Verify one current-source EAAEF host-admission task receipt.
 
@@ -555,16 +1260,49 @@ def verify_host_admission_task_receipt(
 
     blockers: list[str] = []
     payload: dict[str, Any] | None = None
+    verified_bundle_receipt_cid = ""
     path = receipt_dir / filename
-    try:
-        raw_payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        blockers.append(f"{task_id} host receipt is unavailable or malformed")
-    else:
-        if isinstance(raw_payload, dict):
-            payload = raw_payload
+    if task_id == "EAAEF-191":
+        if final_dir is None and final_root is None:
+            path, _signatures_path = (
+                source_addressed_admission_bundle_logical_paths(
+                    source_head=expected_source_head,
+                )
+            )
+            try:
+                registry = EAAEFAuthorityRegistry(repo_root=ROOT)
+            except EAAEFAuthorityRegistryError:
+                payload = None
+            else:
+                payload = _load_registry_json(registry, path)
         else:
-            blockers.append(f"{task_id} host receipt is not an object")
+            selected_final_dir = (
+                FINAL_ADMISSION_DIR if final_dir is None else Path(final_dir)
+            )
+            selected_final_root = (
+                EAAEF_HOST_ADMISSION_STATE_ROOT
+                if final_root is None
+                else Path(final_root)
+            )
+            path, _signatures_path = source_addressed_admission_bundle_paths(
+                final_dir=selected_final_dir,
+                source_head=expected_source_head,
+            )
+            payload = _load_secure_final_json(
+                path, final_root=selected_final_root
+            )
+        if payload is None:
+            blockers.append(f"{task_id} host receipt is unavailable or malformed")
+    else:
+        try:
+            raw_payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            blockers.append(f"{task_id} host receipt is unavailable or malformed")
+        else:
+            if isinstance(raw_payload, dict):
+                payload = raw_payload
+            else:
+                blockers.append(f"{task_id} host receipt is not an object")
 
     decision = str((payload or {}).get("decision") or "")
     if payload is not None:
@@ -603,24 +1341,42 @@ def verify_host_admission_task_receipt(
         )
 
     if task_id == "EAAEF-191":
-        bundle_verification = verify_admission_bundle_receipt(
+        bundle_arguments: dict[str, Any] = dict(
             receipt_dir=receipt_dir,
             expected_source_head=expected_source_head,
             expected_source_tree=expected_source_tree,
             expected_board_namespace=expected_board_namespace,
             expected_board_cid=expected_board_cid,
+            require_source_addressed=True,
+            final_dir=final_dir,
+            final_root=final_root,
         )
+        if prebootstrap_statement_now_ms is not None:
+            bundle_arguments["prebootstrap_statement_now_ms"] = (
+                prebootstrap_statement_now_ms
+            )
+        bundle_verification = verify_admission_bundle_receipt(**bundle_arguments)
+        verified_bundle_receipt_cid = str(
+            bundle_verification.get("bundle_receipt_cid") or ""
+        )
+        if verified_bundle_receipt_cid != str(
+            (payload or {}).get("receipt_cid") or ""
+        ):
+            blockers.append("EAAEF-191 verified bundle receipt CID differs")
         if bundle_verification.get("admitted") is not True:
             bundle_blockers = bundle_verification.get("blockers")
             if isinstance(bundle_blockers, list):
                 blockers.extend(str(item) for item in bundle_blockers)
             blockers.append("EAAEF-191 full admission-bundle verification failed")
 
-    return {
+    result: dict[str, Any] = {
         "valid": not blockers,
         "decision": decision,
         "blockers": list(dict.fromkeys(blockers)),
     }
+    if task_id == "EAAEF-191" and verified_bundle_receipt_cid:
+        result["receipt_cid"] = verified_bundle_receipt_cid
+    return result
 
 
 def classify_blocker(text: str) -> str:
@@ -648,13 +1404,28 @@ def closing_task_ids(text: str) -> list[str]:
 
 def _git(*args: str) -> str:
     return subprocess.check_output(
-        ["git", *args],
+        ["/usr/bin/git", *args],
         cwd=ROOT,
         text=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "LC_ALL": "C",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        },
     ).strip()
 
 
 def _source_identity() -> dict[str, str]:
+    board_relative = (
+        BOARD_PATH.relative_to(ROOT) if BOARD_PATH.is_relative_to(ROOT) else None
+    )
+    if board_relative is not None and _git(
+        "status", "--porcelain", "--", str(board_relative)
+    ):
+        raise RuntimeError("EAAEF board differs from the committed source")
     board = json.loads(BOARD_PATH.read_text(encoding="utf-8"))
     return {
         "source_head": _git("rev-parse", "HEAD"),
@@ -664,7 +1435,13 @@ def _source_identity() -> dict[str, str]:
     }
 
 
-def _base_receipt(task_id: str, *, decision: str, evidence: Mapping[str, Any]) -> dict[str, Any]:
+def _base_receipt(
+    task_id: str,
+    *,
+    decision: str,
+    evidence: Mapping[str, Any],
+    source_identity: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     payload = {
         "schema": RECEIPT_SCHEMA if task_id != "EAAEF-191" else BUNDLE_SCHEMA,
         "task_id": task_id,
@@ -674,13 +1451,43 @@ def _base_receipt(task_id: str, *, decision: str, evidence: Mapping[str, Any]) -
         "supervisor_process_started": False,
         "self_signed": False,
         "independent_signatures": [],
-        **_source_identity(),
+        **dict(source_identity or _source_identity()),
         "evidence": dict(evidence),
     }
     payload["receipt_cid"] = cid(
         {key: value for key, value in payload.items() if key != "receipt_cid"}
     )
     return payload
+
+
+def _bootstrap_admission_capture(
+    *,
+    plan: Mapping[str, Any],
+    source_identity: Mapping[str, str],
+) -> tuple[dict[str, Any], str]:
+    """Capture and verify the dependency-safe pre-EAAEF-000 no-go statement."""
+
+    statement = plan.get("bootstrap_admission_statement")
+    try:
+        verified = verify_prebootstrap_admission_statement(
+            statement=statement,
+            expected_source_head=source_identity["source_head"],
+            expected_source_tree=source_identity["source_tree"],
+            expected_board_namespace=source_identity["board_namespace"],
+            expected_board_cid=source_identity["board_cid"],
+            expected_materialization_receipt_cid=str(
+                plan.get("materialization_receipt_cid") or ""
+            ),
+        )
+    except (ExternalAgentBootstrapAdmissionError, TypeError, ValueError) as exc:
+        return {
+            "bootstrap_admission_statement": (
+                dict(statement) if isinstance(statement, Mapping) else None
+            ),
+        }, f"pre-bootstrap admission statement rejected: {exc}"
+    return {
+        "bootstrap_admission_statement": verified,
+    }, ""
 
 
 class EarlyFrontierPreflightBlocked(RuntimeError):
@@ -840,8 +1647,8 @@ def bind_runtime_principals() -> dict[str, Any]:
 def probe_duckdb_quack() -> dict[str, Any]:
     """Refuse silent 1.5.2 substitution. Do not network-install Quack."""
 
+    import _duckdb
     import duckdb
-
     from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
         QuackCompatibilityProfile,
         probe_quack_capabilities,
@@ -849,8 +1656,12 @@ def probe_duckdb_quack() -> dict[str, Any]:
 
     observed = str(getattr(duckdb, "__version__", "") or "")
     module_path = Path(getattr(duckdb, "__file__", "") or "").resolve()
+    native_module_path = Path(
+        getattr(_duckdb, "__file__", "") or ""
+    ).resolve()
     try:
         module_path.relative_to(APPROVED_IMPORT_ROOT.resolve())
+        native_module_path.relative_to(APPROVED_IMPORT_ROOT.resolve())
         under_approved_root = True
     except (ValueError, OSError):
         under_approved_root = False
@@ -869,8 +1680,27 @@ def probe_duckdb_quack() -> dict[str, Any]:
     )
     exact_duckdb = observed == REQUIRED_DUCKDB
     installed_from = ""
+    extension_path = Path()
     if report.extension is not None:
         installed_from = str(report.extension.installed_from or "")
+        extension_path = Path(str(report.extension.install_path or ""))
+    httpfs_path = (
+        extension_path.with_name("httpfs.duckdb_extension")
+        if extension_path.name
+        else Path()
+    )
+    try:
+        module_sha256 = _stable_regular_file_sha256(module_path)
+        native_module_sha256 = _stable_regular_file_sha256(native_module_path)
+        quack_extension_sha256 = _stable_regular_file_sha256(extension_path)
+        httpfs_extension_sha256 = _stable_regular_file_sha256(httpfs_path)
+        exact_file_pins = True
+    except OSError:
+        module_sha256 = ""
+        native_module_sha256 = ""
+        quack_extension_sha256 = ""
+        httpfs_extension_sha256 = ""
+        exact_file_pins = False
     exact_quack = (
         report.passes_health_check
         and exact_duckdb
@@ -881,7 +1711,7 @@ def probe_duckdb_quack() -> dict[str, Any]:
         and f"{report.platform_name}-{report.platform_machine}"
         == REQUIRED_QUACK_PLATFORM
     )
-    if exact_duckdb and exact_quack and under_approved_root:
+    if exact_duckdb and exact_quack and under_approved_root and exact_file_pins:
         decision = "admitted"
     else:
         decision = "typed_missing"
@@ -894,6 +1724,12 @@ def probe_duckdb_quack() -> dict[str, Any]:
         "required_quack_platform": REQUIRED_QUACK_PLATFORM,
         "observed_duckdb": observed,
         "observed_module_path": str(module_path),
+        "observed_module_sha256": module_sha256,
+        "observed_native_module_path": str(native_module_path),
+        "observed_native_module_sha256": native_module_sha256,
+        "quack_extension_sha256": quack_extension_sha256,
+        "httpfs_extension_path": str(httpfs_path),
+        "httpfs_extension_sha256": httpfs_extension_sha256,
         "under_approved_import_root": under_approved_root,
         "silent_substitution_refused": observed != REQUIRED_DUCKDB,
         "quack_probe": report.to_dict(),
@@ -1076,6 +1912,45 @@ def _committed_provider_authorization_paths() -> list[str]:
     return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
 
 
+def _loaded_provider_authorizations() -> tuple[list[Any], list[dict[str, str]]]:
+    """Load valid candidates newest-in-history first, independent of filenames."""
+
+    from ipfs_accelerate_py import agent_implementation_route as routes
+
+    loaded: list[tuple[int, Any]] = []
+    attempts: list[dict[str, str]] = []
+    for relative in _committed_provider_authorization_paths():
+        try:
+            authorization = routes.load_agent_implementation_route_authorization(
+                repo_root=ROOT,
+                artifact_path=relative,
+                board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            attempts.append({"path": relative, "error": str(exc)})
+            continue
+        distance = subprocess.run(
+            ["git", "rev-list", "--count", f"{authorization.source_head}..HEAD"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        try:
+            commit_distance = int(distance.stdout.strip())
+        except ValueError:
+            commit_distance = 2**31 - 1
+        loaded.append((commit_distance, authorization))
+    loaded.sort(
+        key=lambda item: (
+            item[0],
+            -int(item[1].authorized_at_ms),
+            str(item[1].artifact_path),
+        )
+    )
+    return [authorization for _distance, authorization in loaded], attempts
+
+
 def probe_provider_authorization() -> dict[str, Any]:
     """Admit only a loadable source-addressed grok_cli/codex authorization.
 
@@ -1086,17 +1961,8 @@ def probe_provider_authorization() -> dict[str, Any]:
     from ipfs_accelerate_py import agent_implementation_route as routes
 
     candidates = _committed_provider_authorization_paths()
-    attempts: list[dict[str, str]] = []
-    for relative in candidates:
-        try:
-            authorization = routes.load_agent_implementation_route_authorization(
-                repo_root=ROOT,
-                artifact_path=relative,
-                board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
-            )
-        except (OSError, TypeError, ValueError) as exc:
-            attempts.append({"path": relative, "error": str(exc)})
-            continue
+    loaded, attempts = _loaded_provider_authorizations()
+    for authorization in loaded:
         return {
             "decision": "admitted",
             "artifact": "eaaef_scoped_provider_authorization",
@@ -1147,14 +2013,48 @@ def _write_private_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _load_operator_key() -> tuple[Ed25519PrivateKey, str] | None:
-    key_path = OPERATOR_PROFILE_DIR / "local_dev_profile.key"
-    if not key_path.is_file():
-        return None
-    try:
-        key = Ed25519PrivateKey.from_private_bytes(key_path.read_bytes())
-    except ValueError:
-        return None
-    return key, ed25519_did_key(key.public_key())
+    """Resolve the private reviewer key for one admitted provider authority.
+
+    A source-specific profile is preferred, while the original fixed profile
+    remains a compatibility candidate for already committed authorizations.
+    The signed profile, lifecycle anchor, authorization bounds, and private-key
+    DID must all agree before host evidence may use the key.
+    """
+
+    loaded, _attempts = _loaded_provider_authorizations()
+    for authorization in loaded:
+        bounds = authorization.authority_bounds
+        if bounds is None:
+            continue
+        candidates = eaaef_provider_profile_candidates(
+            repository_cid=bounds.repository_cid,
+            baseline_commit=bounds.baseline_commit,
+            profile_root=OPERATOR_PROFILE_ROOT,
+            legacy_profile_dir=OPERATOR_PROFILE_DIR,
+        )
+        for profile_dir in candidates:
+            try:
+                profile = load_local_profile(
+                    repository_cid=bounds.repository_cid,
+                    profile_dir=profile_dir,
+                    lifecycle_dir=OPERATOR_LIFECYCLE_DIR,
+                )
+                key = Ed25519PrivateKey.from_private_bytes(
+                    (profile_dir / "local_dev_profile.key").read_bytes()
+                )
+            except (LocalProfileError, OSError, ValueError):
+                continue
+            signer_did = ed25519_did_key(key.public_key())
+            if (
+                profile.baseline_commit != bounds.baseline_commit
+                or profile.content_id != bounds.authority_cid
+                or profile.identity_did != authorization.reviewer_identity
+                or profile.reviewer_identity != authorization.reviewer_identity
+                or signer_did != authorization.reviewer_identity
+            ):
+                continue
+            return key, signer_did
+    return None
 
 
 def _sign_mapping(key: Ed25519PrivateKey, payload: Mapping[str, Any]) -> str:
@@ -1765,10 +2665,10 @@ def materialize_container_profile(
         worker_container_execution_profile_signing_bytes,
     )
     from ipfs_accelerate_py.agent_supervisor.validation.external_agent_fabric_bootstrap import (
+        _EXPECTED_CONTAINER_ENV,
         EAAEF_BOOTSTRAP_POLICY_CID,
         EAAEF_WORKER_CONTAINER_PROFILE_REVIEWER_ROLE_V2,
         EAAEF_WORKER_CONTAINER_PROFILE_SCHEMA_V2,
-        _EXPECTED_CONTAINER_ENV,
         eaaef_worker_container_profile_signing_bytes,
         validate_eaaef_worker_container_profile_artifact,
     )
@@ -2307,19 +3207,80 @@ def probe_worker_network(
 
 def _unix_endpoint(name: str) -> str:
     directory = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "eaaef-cf"
-    directory.mkdir(parents=True, exist_ok=True)
-    os.chmod(directory, stat.S_IRWXU)
     path = directory / f"{name}.sock"
-    if path.exists() or path.is_symlink():
-        path.unlink()
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        sock.bind(str(path))
-        sock.listen(1)
-    finally:
-        sock.close()
-    os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
     return f"unix://{path}"
+
+
+def _unix_listener_live(endpoint: object) -> bool:
+    """Prove one exact owner-only UNIX endpoint has a live listener."""
+
+    value = str(endpoint or "")
+    if not value.startswith("unix://"):
+        return False
+    path = Path(value.removeprefix("unix://"))
+    try:
+        parent = os.lstat(path.parent)
+        metadata = os.lstat(path)
+        if (
+            not path.is_absolute()
+            or Path(os.path.abspath(os.fspath(path))) != path
+            or path.parent.name != "eaaef-cf"
+            or path.parent.resolve(strict=True) != path.parent
+            or stat.S_ISLNK(parent.st_mode)
+            or not stat.S_ISDIR(parent.st_mode)
+            or parent.st_uid != os.geteuid()
+            or stat.S_IMODE(parent.st_mode) & 0o077
+            or not stat.S_ISSOCK(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+        ):
+            return False
+    except OSError:
+        return False
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(0.2)
+    try:
+        return client.connect_ex(str(path)) == 0
+    except OSError:
+        return False
+    finally:
+        client.close()
+
+
+def command_fabric_endpoints_live(evidence: object) -> bool:
+    """Reject connect-only endpoints as command-fabric launch authority.
+
+    A listening owner-only socket proves neither the peer process identity nor
+    possession of the independently admitted command-signing authority.  The
+    production EAAEF primitives authenticate those properties through a
+    signed operational capability, ``SO_PEERCRED``/process-birth binding, a
+    fresh request nonce and a signed ``AuthorizedStateCommand`` response.  The
+    legacy four-socket host artifact carries none of those session proofs (and
+    there is no deployed four-distinct authenticated service implementation),
+    so it must remain a typed no-go rather than treating ``connect(2)`` as
+    authorization.
+
+    Keep the endpoint-shape and physical-listener checks here as diagnostics;
+    they are deliberately insufficient to return ``True``.  A future adapter
+    may enable this gate only by consuming the existing typed operational
+    capability/client and dispatcher/owner session qualifications.
+    """
+
+    if not isinstance(evidence, Mapping):
+        return False
+    endpoints = tuple(
+        str(evidence.get(field) or "")
+        for field in (
+            "command_authorizer_endpoint",
+            "quack_ingress_endpoint",
+            "quack_projection_endpoint",
+            "dispatcher_endpoint",
+        )
+    )
+    physically_live = len(set(endpoints)) == 4 and all(
+        _unix_listener_live(endpoint) for endpoint in endpoints
+    )
+    return physically_live and False
 
 
 def _quack_extension_digest() -> str:
@@ -2329,6 +3290,55 @@ def _quack_extension_digest() -> str:
     if not extension.is_file():
         return ""
     return "sha256:" + hashlib.sha256(extension.read_bytes()).hexdigest()
+
+
+def _stable_regular_file_sha256(path: Path) -> str:
+    """Hash one no-follow regular file and reject concurrent replacement."""
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(path, flags)
+    try:
+        before = os.fstat(descriptor)
+        linked_before = os.stat(path, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_size <= 0
+            or before.st_size > 1024 * 1024 * 1024
+            or (before.st_dev, before.st_ino) != (
+                linked_before.st_dev,
+                linked_before.st_ino,
+            )
+        ):
+            raise OSError("pinned runtime file is not a bounded regular file")
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+        linked_after = os.stat(path, follow_symlinks=False)
+        stable = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if (
+            tuple(getattr(before, field) for field in stable)
+            != tuple(getattr(after, field) for field in stable)
+            or tuple(getattr(after, field) for field in stable)
+            != tuple(getattr(linked_after, field) for field in stable)
+        ):
+            raise OSError("pinned runtime file changed while hashed")
+        return "sha256:" + digest.hexdigest()
+    finally:
+        os.close(descriptor)
 
 
 def _probe_signed_host_artifact(
@@ -2359,6 +3369,14 @@ def _probe_signed_host_artifact(
             reason=f"{artifact} admission artifact schema is invalid",
             extra=extra,
         )
+    try:
+        source = _source_identity()
+    except (OSError, RuntimeError, subprocess.SubprocessError, ValueError):
+        return _typed_missing_artifact(
+            artifact=artifact,
+            reason=f"{artifact} current source identity is unavailable",
+            extra=extra,
+        )
     signature = str(payload.get("signature") or "")
     signer_did = str(payload.get("signer_did") or "")
     unsigned = {
@@ -2373,6 +3391,8 @@ def _probe_signed_host_artifact(
         or payload.get("artifact_cid") != cid({**unsigned, "signature": signature})
         or payload.get("supervisor_signed") is not False
         or payload.get("configured_board_launch") is not False
+        or payload.get("source_head") != source["source_head"]
+        or payload.get("source_tree") != source["source_tree"]
         or any(payload.get(key) != value for key, value in required.items())
     ):
         return _typed_missing_artifact(
@@ -2391,6 +3411,8 @@ def _probe_signed_host_artifact(
         "artifact_path": str(path.relative_to(ROOT)),
         "artifact_cid": str(payload.get("artifact_cid") or ""),
         "signer_did": signer_did,
+        "source_head": source["source_head"],
+        "source_tree": source["source_tree"],
     }
     evidence.update(dict(extra))
     return evidence
@@ -2401,64 +3423,35 @@ def materialize_command_fabric(
     principals: Mapping[str, Any] | None = None,
     duckdb: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    principals = dict(principals or bind_runtime_principals())
+    del principals
     duckdb = dict(duckdb or probe_duckdb_quack())
     extra = {
         "child_adapter_status": "admitted",
         "implemented_unqualified_fail_closed_admitted": False,
         "configured_board_launch": False,
     }
-    operator = _load_operator_key()
-    if operator is None or duckdb.get("decision") != "admitted":
+    if duckdb.get("decision") != "admitted":
         return _typed_missing_artifact(
             artifact="signed_command_fabric_endpoints",
             reason="deployed signed command-authorizer, Quack ingress/projection and dispatcher endpoints are absent",
             extra=extra,
         )
-    key, signer_did = operator
-    source = _source_identity()
-    owner_did = str(principals["principals"][2]["did"])
-    unsigned = {
-        "schema": HOST_COMMAND_FABRIC_SCHEMA,
-        "source_head": source["source_head"],
-        "source_tree": source["source_tree"],
-        "command_authorizer_endpoint": _unix_endpoint("authorizer"),
-        "quack_ingress_endpoint": _unix_endpoint("ingress"),
-        "quack_projection_endpoint": _unix_endpoint("projection"),
-        "dispatcher_endpoint": _unix_endpoint("dispatcher"),
-        "command_authorizer_principal_did": owner_did,
-        "child_adapter_status": "admitted",
-        "implemented_unqualified_fail_closed_admitted": False,
-        "transport_kind": "private_unix_length_prefixed_json",
-        "configured_board_launch": False,
-        "supervisor_signed": False,
-        "live_dispatch_claimed": False,
-        "signer_did": signer_did,
-        "signer_role": "independent_security_reviewer",
-    }
-    unsigned["signature"] = _sign_mapping(key, unsigned)
-    artifact = _self_address(unsigned, "artifact_cid")
-    _write_private_json(COMMAND_FABRIC_ARTIFACT, artifact)
-    return {
-        "artifact": "signed_command_fabric_endpoints",
-        "decision": "admitted",
-        "independent_signature_present": True,
-        "self_signed_rejected": True,
-        "source_only_factory_authority": False,
-        "supervisor_signed": False,
-        "child_adapter_status": "admitted",
-        "implemented_unqualified_fail_closed_admitted": False,
-        "command_authorizer_endpoint": artifact["command_authorizer_endpoint"],
-        "quack_ingress_endpoint": artifact["quack_ingress_endpoint"],
-        "quack_projection_endpoint": artifact["quack_projection_endpoint"],
-        "dispatcher_endpoint": artifact["dispatcher_endpoint"],
-        "command_authorizer_principal_did": owner_did,
-        "artifact_path": str(COMMAND_FABRIC_ARTIFACT.relative_to(ROOT)),
-        "artifact_cid": artifact["artifact_cid"],
-        "signer_did": signer_did,
-        "configured_board_launch": False,
-        "live_dispatch_claimed": False,
-    }
+    # This host collector is not an authorization-service deployer and may not
+    # mint endpoint authority from sockets it happens to be able to connect to.
+    # Consume a separately supplied artifact, then keep it closed until its
+    # authenticated live-session proofs are wired to the existing typed EAAEF
+    # clients.
+    evidence = probe_command_fabric()
+    if evidence.get("decision") == "admitted":
+        return evidence
+    return _typed_missing_artifact(
+        artifact="signed_command_fabric_endpoints",
+        reason=(
+            "authenticated command-authorizer, typed Quack owner/projection "
+            "and dispatcher session proofs are absent"
+        ),
+        extra=extra,
+    )
 
 
 def probe_command_fabric() -> dict[str, Any]:
@@ -2493,19 +3486,13 @@ def probe_command_fabric() -> dict[str, Any]:
         "command_authorizer_principal_did",
     ):
         evidence[field] = payload.get(field)
-    endpoints = {
-        evidence["command_authorizer_endpoint"],
-        evidence["quack_ingress_endpoint"],
-        evidence["quack_projection_endpoint"],
-        evidence["dispatcher_endpoint"],
-    }
-    if (
-        len(endpoints) != 4
-        or any(not str(item).startswith("unix://") for item in endpoints)
-    ):
+    if not command_fabric_endpoints_live(evidence):
         return _typed_missing_artifact(
             artifact="signed_command_fabric_endpoints",
-            reason="command-fabric endpoints are not four distinct unix sockets",
+            reason=(
+                "command-fabric endpoints lack authenticated operational "
+                "capability and live session proofs"
+            ),
             extra=extra,
         )
     return evidence
@@ -2794,6 +3781,7 @@ def collect_early_frontier_host_admission_receipts(
     plan = validate_early_frontier_launch_plan(
         load_isolated_launch_plan(timeout_seconds=timeout_seconds)
     )
+    source_identity = _source_identity()
     blocker_classes = {
         str(key): str(value)
         for key, value in dict(plan.get("blocker_classes") or {}).items()
@@ -2821,27 +3809,35 @@ def collect_early_frontier_host_admission_receipts(
                 "materialization_receipt_cid": plan.get(
                     "materialization_receipt_cid"
                 ),
-                "bootstrap_admission_decision": (
-                    (plan.get("bootstrap_admission_statement") or {}).get("decision")
+                "bootstrap_admission_statement": (
+                    dict(plan["bootstrap_admission_statement"])
+                    if isinstance(
+                        plan.get("bootstrap_admission_statement"), Mapping
+                    )
+                    else None
                 ),
                 "items": inventory_items,
                 "auto_recoverable_action": "host_bootstrap_recovery",
             },
+            source_identity=source_identity,
         ),
         "EAAEF-181": _base_receipt(
             "EAAEF-181",
             decision="bound_unadmitted",
             evidence=principals,
+            source_identity=source_identity,
         ),
         "EAAEF-182": _base_receipt(
             "EAAEF-182",
             decision=str(duckdb["decision"]),
             evidence=duckdb,
+            source_identity=source_identity,
         ),
         "EAAEF-183": _base_receipt(
             "EAAEF-183",
             decision=str(engine["decision"]),
             evidence=engine,
+            source_identity=source_identity,
         ),
     }
     if tuple(receipts) != EARLY_FRONTIER_TASK_IDS:
@@ -2859,7 +3855,14 @@ def collect_host_admission_receipts(
     plan = dict(launch_plan or load_isolated_launch_plan(timeout_seconds=timeout_seconds))
     if plan.get("process_started") is True:
         raise RuntimeError("collector refuses a plan that started a process")
+    source_identity = _source_identity()
+    bootstrap_capture, bootstrap_error = _bootstrap_admission_capture(
+        plan=plan,
+        source_identity=source_identity,
+    )
     blockers = [str(item) for item in plan.get("blockers") or () if str(item)]
+    if bootstrap_error:
+        blockers.append(bootstrap_error)
     blocker_classes = {
         str(key): str(value)
         for key, value in dict(plan.get("blocker_classes") or {}).items()
@@ -2892,62 +3895,71 @@ def collect_host_admission_receipts(
                 "launch_plan_allowed": False,
                 "launch_plan_schema": plan.get("schema"),
                 "materialization_receipt_cid": plan.get("materialization_receipt_cid"),
-                "bootstrap_admission_decision": (
-                    (plan.get("bootstrap_admission_statement") or {}).get("decision")
-                ),
+                **bootstrap_capture,
                 "items": inventory_items,
                 "auto_recoverable_action": "host_bootstrap_recovery",
             },
+            source_identity=source_identity,
         ),
         "EAAEF-181": _base_receipt(
             "EAAEF-181",
             decision="bound_unadmitted",
             evidence=principals,
+            source_identity=source_identity,
         ),
         "EAAEF-182": _base_receipt(
             "EAAEF-182",
             decision=str(duckdb["decision"]),
             evidence=duckdb,
+            source_identity=source_identity,
         ),
         "EAAEF-183": _base_receipt(
             "EAAEF-183",
             decision=str(engine["decision"]),
             evidence=engine,
+            source_identity=source_identity,
         ),
         "EAAEF-184": _base_receipt(
             "EAAEF-184",
             decision=str(provider_authorization["decision"]),
             evidence=provider_authorization,
+            source_identity=source_identity,
         ),
         "EAAEF-185": _base_receipt(
             "EAAEF-185",
             decision=str(worker_image.get("decision") or "typed_missing"),
             evidence=worker_image,
+            source_identity=source_identity,
         ),
         "EAAEF-186": _base_receipt(
             "EAAEF-186",
             decision=str(container_profile.get("decision") or "typed_missing"),
             evidence=container_profile,
+            source_identity=source_identity,
         ),
         "EAAEF-187": _base_receipt(
             "EAAEF-187",
             decision=str(worker_network.get("decision") or "typed_missing"),
             evidence=worker_network,
+            source_identity=source_identity,
         ),
         "EAAEF-188": _base_receipt(
             "EAAEF-188",
             decision=str(command_fabric.get("decision") or "typed_missing"),
             evidence=command_fabric,
+            source_identity=source_identity,
         ),
         "EAAEF-189": _base_receipt(
             "EAAEF-189",
             decision=str(native_lane.get("decision") or "typed_missing"),
             evidence=native_lane,
+            source_identity=source_identity,
         ),
         "EAAEF-190": _base_receipt(
             "EAAEF-190",
             decision=str(plan_r2.get("decision") or "typed_missing"),
             evidence=plan_r2,
+            source_identity=source_identity,
         ),
     }
     child_cids = {
@@ -2960,8 +3972,18 @@ def collect_host_admission_receipts(
         for task_id in RECEIPT_FILES
         if task_id != "EAAEF-191"
     }
-    bootstrap_cid = str(
-        (plan.get("bootstrap_admission_statement") or {}).get("statement_cid") or ""
+    bootstrap_statement = bootstrap_capture.get("bootstrap_admission_statement")
+    bootstrap_preflight_valid = not bootstrap_error and isinstance(
+        bootstrap_statement, Mapping
+    )
+    if isinstance(bootstrap_statement, Mapping) and not set(
+        bootstrap_statement.get("blockers") or ()
+    ).issubset(set(blockers)):
+        bootstrap_preflight_valid = False
+    bootstrap_cid = (
+        str(bootstrap_statement.get("statement_cid") or "")
+        if isinstance(bootstrap_statement, Mapping)
+        else ""
     )
     materialization_cid = str(plan.get("materialization_receipt_cid") or "")
     open_host_gates = [
@@ -2969,9 +3991,10 @@ def collect_host_admission_receipts(
         for item in inventory_items
         if item["class"] == "host_gated_external_authority"
     ]
-    source_identity = receipts["EAAEF-180"]
+    receipt_source_identity = receipts["EAAEF-180"]
     target_decision = admission_bundle_target_decision(
         child_decisions=child_decisions,
+        bootstrap_admission_preflight_valid=bootstrap_preflight_valid,
         bootstrap_admission_statement_cid=bootstrap_cid,
         materialization_receipt_cid=materialization_cid,
     )
@@ -2979,10 +4002,10 @@ def collect_host_admission_receipts(
         "child_decisions": child_decisions,
         "child_receipt_cids": child_cids,
         "launch_plan_allowed": False,
-        "source_head": str(source_identity["source_head"]),
-        "source_tree": str(source_identity["source_tree"]),
-        "board_namespace": str(source_identity["board_namespace"]),
-        "board_cid": str(source_identity["board_cid"]),
+        "source_head": str(receipt_source_identity["source_head"]),
+        "source_tree": str(receipt_source_identity["source_tree"]),
+        "board_namespace": str(receipt_source_identity["board_namespace"]),
+        "board_cid": str(receipt_source_identity["board_cid"]),
         "bootstrap_admission_statement_cid": bootstrap_cid,
         "materialization_receipt_cid": materialization_cid,
         "inventory_open_host_gated": open_host_gates,
@@ -3022,16 +4045,27 @@ def collect_host_admission_receipts(
             "prospective_supervisor_signature_rejected": True,
             "inventory_open_host_gated": open_host_gates,
         },
+        source_identity=source_identity,
     )
     return receipts
 
 
 def write_host_admission_receipts(
     receipts: Mapping[str, Mapping[str, Any]],
+    *,
+    task_ids: Sequence[str] | None = None,
 ) -> list[str]:
+    selected = tuple(RECEIPT_FILES if task_ids is None else task_ids)
+    if (
+        len(selected) != len(set(selected))
+        or any(task_id not in RECEIPT_FILES for task_id in selected)
+        or any(task_id not in receipts for task_id in selected)
+    ):
+        raise ValueError("host-admission receipt write selection is invalid")
     RECEIPT_DIR.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
-    for task_id, filename in RECEIPT_FILES.items():
+    for task_id in selected:
+        filename = RECEIPT_FILES[task_id]
         payload = dict(receipts[task_id])
         path = RECEIPT_DIR / filename
         path.write_text(

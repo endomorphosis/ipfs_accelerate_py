@@ -110,7 +110,7 @@ from ..runtime.multi_supervisor_runner import (
     STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
     TRUSTED_DUCKDB_HOME_ENV,
-    _eaaef_host_receipt_admitted,
+    _eaaef_source_addressed_host_receipts,
     _lgcvf_configured_board_live_positive_child_environment,
     _trusted_duckdb_runtime_environment,
     build_lgcvf_configured_board_live_module_command,
@@ -2355,11 +2355,23 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
         # daemon child while create-once lane artifacts remain unpublished.
         # Without those receipts the Portal factory is still a silent demotion
         # to local Markdown/JSON/DuckDB authority and must stay fail-closed.
-        host_admitted = (
-            _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-191")
-            and _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-189")
-            and _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-185")
-            and _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-186")
+        immutable_receipts = _eaaef_source_addressed_host_receipts(
+            accepted_tree_root,
+            expected_source_head=accepted_control_plane_pin.source_head,
+            expected_source_tree=accepted_control_plane_pin.source_tree,
+        )
+        host_admitted = bool(
+            immutable_receipts is not None
+            and all(
+                immutable_receipts.get(task_id, {}).get("decision")
+                == "admitted"
+                for task_id in (
+                    "EAAEF-191",
+                    "EAAEF-189",
+                    "EAAEF-185",
+                    "EAAEF-186",
+                )
+            )
         )
         if not host_admitted:
             _reject_unsealed_eaaef_daemon_gateway(
@@ -10933,22 +10945,11 @@ class PortalImplementationSupervisor:
 
     def _run_forever_loop(self) -> int:
         self.ensure_event_log_file()
-        self.repair_main_checkout_merge_state()
-        managed_daemon_guard = self.ensure_managed_daemon_pid_file()
-        if managed_daemon_guard.get("blocked", False):
-            self._record_event(
-                "managed_daemon_start_blocked",
-                managed_daemon_guard,
-            )
-            raise RuntimeError(
-                str(
-                    managed_daemon_guard.get("reason")
-                    or "managed_daemon_ownership_unproven"
-                )
-            )
-        try:
-            preflight = self.run_once(include_refill=False)
-        except Exception as exc:
+        if (
+            self.config.plan_bound_dispatch
+            and not self.config.execution_slice_task_ids
+            and not self.config.execution_slice_task_cids
+        ):
             self._record_event(
                 "plan_bound_empty_slice",
                 {"daemon_started": False},
@@ -21853,6 +21854,47 @@ class PortalImplementationSupervisor:
         return merged
 
     def _start_daemon(self) -> subprocess.Popen[str]:
+        # The accepted native bootstrap currently denies this supervisor
+        # before repository import, and no serializable command-line value can
+        # replace the absent independently verified per-birth objects.  Keep a
+        # second source-level fence here so direct/in-process callers also stop
+        # before PID-file repair, command construction, or Popen.
+        if _requires_eaaef_implementation_daemon_birth(
+            self.config.database_program
+        ):
+            raw_root = getattr(self.config, "repo_root", None)
+            repo_root = Path(raw_root) if raw_root else None
+            accepted_pin = getattr(
+                self.config, "accepted_control_plane_pin", None
+            )
+            immutable_receipts = (
+                _eaaef_source_addressed_host_receipts(
+                    repo_root,
+                    expected_source_head=accepted_pin.source_head,
+                    expected_source_tree=accepted_pin.source_tree,
+                )
+                if repo_root is not None
+                and repo_root.is_dir()
+                and accepted_pin is not None
+                else None
+            )
+            host_admitted = bool(
+                immutable_receipts is not None
+                and all(
+                    immutable_receipts.get(task_id, {}).get("decision")
+                    == "admitted"
+                    for task_id in (
+                        "EAAEF-191",
+                        "EAAEF-189",
+                        "EAAEF-185",
+                        "EAAEF-186",
+                    )
+                )
+            )
+            if not host_admitted:
+                raise PlanBoundDispatchError(
+                    EAAEF_IMPLEMENTATION_DAEMON_BIRTH_NO_GO
+                )
         managed_daemon_guard = self.ensure_managed_daemon_pid_file()
         if managed_daemon_guard.get("blocked", False):
             raise RuntimeError(
@@ -21876,6 +21918,18 @@ class PortalImplementationSupervisor:
                 )
             )
         popen_options: dict[str, object] = {}
+        sealed_fds = (
+            (int(self.config.accepted_control_plane_descriptor),)
+            if self.config.plan_bound_dispatch
+            and int(self.config.accepted_control_plane_descriptor) >= 3
+            else ()
+        )
+        bootstrap_fds = (
+            (int(self.config.state_owner_bootstrap_fd),)
+            if int(self.config.state_owner_bootstrap_fd) >= 3
+            else ()
+        )
+        live_fds: tuple[int, ...] = ()
         if live_context is not None:
             live_context = verify_lgcvf_configured_board_live_context(
                 capsule_pin_json=live_context.capsule_pin_json,
@@ -21885,14 +21939,12 @@ class PortalImplementationSupervisor:
                 native_descriptor=live_context.native_descriptor,
             )
             self.config.configured_board_live_context = live_context
-            popen_options["pass_fds"] = tuple(
-                dict.fromkeys(
-                    (
-                        *live_context.pass_fds,
-                        int(self.config.state_owner_bootstrap_fd),
-                    )
-                )
-            )
+            live_fds = live_context.pass_fds
+        pass_fds = tuple(
+            dict.fromkeys((*live_fds, *sealed_fds, *bootstrap_fds))
+        )
+        if pass_fds:
+            popen_options["pass_fds"] = pass_fds
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,

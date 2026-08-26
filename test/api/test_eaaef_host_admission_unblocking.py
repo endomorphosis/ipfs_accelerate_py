@@ -8,15 +8,23 @@ from __future__ import annotations
 
 import base64
 import json
+import os
+import socket
+import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     ed25519_did_key,
 )
 from ipfs_accelerate_py.agent_supervisor.validation import eaaef_host_admission
+from ipfs_accelerate_py.agent_supervisor.validation import (
+    external_agent_bootstrap_admission as bootstrap_admission,
+)
 from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
     BUNDLE_SCHEMA,
     BUNDLE_SIGNATURES_SCHEMA,
@@ -32,8 +40,11 @@ from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import 
     classify_blocker,
     closing_task_ids,
     collect_host_admission_receipts,
+    eaaef_checkout_has_only_generated_receipt_drift,
     verify_admission_bundle_receipt,
+    verify_current_admission_bundle_receipt,
     verify_host_admission_task_receipt,
+    verify_prebootstrap_admission_statement,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.implementation_auto_rescue import (
     AutoRescueAction,
@@ -44,6 +55,55 @@ ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN = ROOT / "docs/architecture/external_agent_autonomous_execution_fabric"
 BOARD = CAMPAIGN / "task_board.json"
 HOST_EVIDENCE_IDS = [f"EAAEF-{number}" for number in range(180, 192)]
+
+
+def _prebootstrap_statement(
+    *,
+    source_head: str,
+    source_tree: str,
+    board_cid: str,
+    materialization_cid: str,
+) -> dict[str, object]:
+    issued_at_ms = int(time.time() * 1000)
+    value: dict[str, object] = {
+        field: "" for field in bootstrap_admission._STATEMENT_FIELDS
+    }
+    value.update(
+        {
+            "schema": bootstrap_admission.EAAEF_BOOTSTRAP_ADMISSION_STATEMENT_SCHEMA,
+            "task_id": "EAAEF-000",
+            "board_namespace": (
+                "external-agent-autonomous-execution-fabric-v1"
+            ),
+            "decision": "no_go",
+            "outcome": "mutation_not_admitted",
+            "blockers": ["EAAEF-191 host admission bundle pending"],
+            "board_cid": board_cid,
+            "source_head": source_head,
+            "source_tree": source_tree,
+            "materialization_receipt_cid": materialization_cid,
+            "materialization_store_generation": "eaaef-test-run-v1",
+            "materialization_database_program_binding_cid": (
+                "sha256:" + "6" * 64
+            ),
+            "materialization_bootstrap_profile_cid": "sha256:" + "7" * 64,
+            "materialization_operational_profile_cid": "sha256:" + "8" * 64,
+            "provider_qualification_expires_at_ms": 0,
+            "provider_maximum_parallel_workers": 0,
+            "provider_maximum_parallel_containers": 0,
+            "provider_task_dispatch_admitted": False,
+            "quack_qualification_expires_at_ms": 0,
+            "quack_epoch": 0,
+            "quack_fence": 0,
+            "authority": dict(bootstrap_admission._EXPECTED_AUTHORITY),
+            "one_use_nonce": "prebootstrap-test-nonce",
+            "issued_at_ms": issued_at_ms,
+            "expires_at_ms": issued_at_ms + 3_600_000,
+        }
+    )
+    value.pop("statement_cid", None)
+    value["statement_cid"] = bootstrap_admission._cid(value)
+    return value
 
 
 def _board() -> dict:
@@ -164,16 +224,32 @@ def test_duckdb_quack_receipt_contract() -> None:
         assert evidence["quack_probe"]["extension"]["installed_from"] == "core"
 
 
-def test_duckdb_quack_probe_requires_the_exact_host_profile(monkeypatch) -> None:
+def test_duckdb_quack_probe_requires_the_exact_host_profile(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources import quack_capabilities
 
     observed: dict[str, object] = {}
+    site_packages = tmp_path / "site-packages"
+    module_path = site_packages / "duckdb/__init__.py"
+    module_path.parent.mkdir(parents=True)
+    module_path.write_text("# pinned duckdb package\n", encoding="utf-8")
+    native_module_path = site_packages / "_duckdb.test.so"
+    native_module_path.write_bytes(b"pinned native duckdb")
+    extension_dir = tmp_path / ".duckdb/extensions/v1.5.5/linux_arm64"
+    extension_dir.mkdir(parents=True)
+    extension_path = extension_dir / "quack.duckdb_extension"
+    httpfs_path = extension_dir / "httpfs.duckdb_extension"
+    extension_path.write_bytes(b"pinned quack")
+    httpfs_path.write_bytes(b"pinned httpfs")
 
     class _Report:
         passes_health_check = True
         extension = SimpleNamespace(
             installed_from="core",
             extension_version=REQUIRED_QUACK_EXTENSION_VERSION,
+            install_path=str(extension_path),
         )
         extension_fingerprint = REQUIRED_QUACK_EXTENSION_FINGERPRINT
         platform_name = "linux"
@@ -185,6 +261,7 @@ def test_duckdb_quack_probe_requires_the_exact_host_profile(monkeypatch) -> None
                 "extension": {
                     "installed_from": "core",
                     "extension_version": REQUIRED_QUACK_EXTENSION_VERSION,
+                    "install_path": str(extension_path),
                 },
                 "extension_fingerprint": REQUIRED_QUACK_EXTENSION_FINGERPRINT,
                 "platform_name": "linux",
@@ -201,8 +278,18 @@ def test_duckdb_quack_probe_requires_the_exact_host_profile(monkeypatch) -> None
         "duckdb",
         SimpleNamespace(
             __version__="1.5.5",
-            __file__=str(eaaef_host_admission.APPROVED_IMPORT_ROOT / "duckdb/__init__.py"),
+            __file__=str(module_path),
         ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "_duckdb",
+        SimpleNamespace(__file__=str(native_module_path)),
+    )
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "APPROVED_IMPORT_ROOT",
+        site_packages,
     )
     monkeypatch.setattr(quack_capabilities, "probe_quack_capabilities", _probe)
 
@@ -222,6 +309,18 @@ def test_duckdb_quack_probe_requires_the_exact_host_profile(monkeypatch) -> None
         REQUIRED_QUACK_EXTENSION_FINGERPRINT
     )
     assert evidence["required_quack_platform"] == REQUIRED_QUACK_PLATFORM
+    assert evidence["observed_module_sha256"] == (
+        eaaef_host_admission._stable_regular_file_sha256(module_path)
+    )
+    assert evidence["observed_native_module_sha256"] == (
+        eaaef_host_admission._stable_regular_file_sha256(native_module_path)
+    )
+    assert evidence["quack_extension_sha256"] == (
+        eaaef_host_admission._stable_regular_file_sha256(extension_path)
+    )
+    assert evidence["httpfs_extension_sha256"] == (
+        eaaef_host_admission._stable_regular_file_sha256(httpfs_path)
+    )
 
 
 def test_engine_mode_receipt_contract() -> None:
@@ -329,6 +428,82 @@ def test_command_fabric_receipt_contract() -> None:
         assert evidence["independent_signature_present"] is False
 
 
+def test_command_fabric_endpoint_requires_a_live_owner_only_listener(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = tmp_path / "runtime"
+    directory = runtime / "eaaef-cf"
+    directory.mkdir(parents=True, mode=0o700)
+    directory.chmod(0o700)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    endpoint = eaaef_host_admission._unix_endpoint("authorizer")
+    path = Path(endpoint.removeprefix("unix://"))
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        server.bind(str(path))
+        server.listen(1)
+        os.chmod(path, 0o600)
+        assert eaaef_host_admission._unix_listener_live(endpoint) is True
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        assert eaaef_host_admission._unix_listener_live(endpoint) is True
+    finally:
+        server.close()
+    assert eaaef_host_admission._unix_listener_live(endpoint) is False
+
+
+def test_connect_only_command_fabric_listeners_never_admit_runtime_authority(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "eaaef-cf"
+    directory.mkdir(mode=0o700)
+    servers: list[socket.socket] = []
+    evidence: dict[str, str] = {}
+    try:
+        for field, name in (
+            ("command_authorizer_endpoint", "authorizer"),
+            ("quack_ingress_endpoint", "ingress"),
+            ("quack_projection_endpoint", "projection"),
+            ("dispatcher_endpoint", "dispatcher"),
+        ):
+            path = directory / f"{name}.sock"
+            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            server.bind(str(path))
+            server.listen(1)
+            os.chmod(path, 0o600)
+            servers.append(server)
+            evidence[field] = f"unix://{path}"
+
+        assert all(
+            eaaef_host_admission._unix_listener_live(endpoint)
+            for endpoint in evidence.values()
+        )
+        assert eaaef_host_admission.command_fabric_endpoints_live(evidence) is False
+    finally:
+        for server in servers:
+            server.close()
+
+
+def test_host_collector_never_mints_command_fabric_authority_from_liveness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = tmp_path / "command-fabric-endpoints.json"
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "COMMAND_FABRIC_ARTIFACT",
+        artifact,
+    )
+
+    evidence = eaaef_host_admission.materialize_command_fabric(
+        duckdb={"decision": "admitted"},
+    )
+
+    assert evidence["decision"] == "typed_missing"
+    assert "authenticated" in str(evidence.get("reason") or "")
+    assert artifact.exists() is False
+
+
 def test_native_lane_receipt_contract() -> None:
     payload = _receipt("native_lane_dispatcher.json")
     evidence = payload["evidence"]
@@ -406,9 +581,17 @@ def test_admission_review_binds_source_children_and_host_gate_inventory() -> Non
     materialization_cid = "sha256:" + "b" * 64
     assert admission_bundle_target_decision(
         child_decisions=child_decisions,
+        bootstrap_admission_preflight_valid=True,
         bootstrap_admission_statement_cid=bootstrap_cid,
         materialization_receipt_cid=materialization_cid,
     ) == "admitted"
+
+    assert admission_bundle_target_decision(
+        child_decisions=child_decisions,
+        bootstrap_admission_preflight_valid=False,
+        bootstrap_admission_statement_cid=bootstrap_cid,
+        materialization_receipt_cid=materialization_cid,
+    ) == "no_go"
 
     common = {
         "child_decisions": child_decisions,
@@ -442,6 +625,89 @@ def test_admission_review_binds_source_children_and_host_gate_inventory() -> Non
     assert review != changed
 
 
+def test_prebootstrap_statement_requires_canonical_current_materialization() -> None:
+    source_head = "1" * 40
+    source_tree = "2" * 40
+    board_cid = "sha256:" + "3" * 64
+    materialization_cid = "sha256:" + "4" * 64
+    statement = _prebootstrap_statement(
+        source_head=source_head,
+        source_tree=source_tree,
+        board_cid=board_cid,
+        materialization_cid=materialization_cid,
+    )
+    verified = verify_prebootstrap_admission_statement(
+        statement=statement,
+        expected_source_head=source_head,
+        expected_source_tree=source_tree,
+        expected_board_namespace=(
+            "external-agent-autonomous-execution-fabric-v1"
+        ),
+        expected_board_cid=board_cid,
+        expected_materialization_receipt_cid=materialization_cid,
+        now_ms=int(statement["issued_at_ms"]) + 1,
+    )
+    assert verified["statement_cid"] == statement["statement_cid"]
+
+    forged = {**statement, "statement_cid": "sha256:" + "f" * 64}
+    with pytest.raises(
+        bootstrap_admission.ExternalAgentBootstrapAdmissionError,
+        match="admission statement is invalid",
+    ):
+        verify_prebootstrap_admission_statement(
+            statement=forged,
+            expected_source_head=source_head,
+            expected_source_tree=source_tree,
+            expected_board_namespace=(
+                "external-agent-autonomous-execution-fabric-v1"
+            ),
+            expected_board_cid=board_cid,
+            expected_materialization_receipt_cid=materialization_cid,
+            now_ms=int(statement["issued_at_ms"]) + 1,
+        )
+
+    stale = {**statement, "materialization_receipt_cid": "sha256:" + "e" * 64}
+    stale.pop("statement_cid")
+    stale["statement_cid"] = bootstrap_admission._cid(stale)
+    with pytest.raises(
+        bootstrap_admission.ExternalAgentBootstrapAdmissionError,
+        match="binding differs",
+    ):
+        verify_prebootstrap_admission_statement(
+            statement=stale,
+            expected_source_head=source_head,
+            expected_source_tree=source_tree,
+            expected_board_namespace=(
+                "external-agent-autonomous-execution-fabric-v1"
+            ),
+            expected_board_cid=board_cid,
+            expected_materialization_receipt_cid=materialization_cid,
+            now_ms=int(statement["issued_at_ms"]) + 1,
+        )
+
+    overlong = {
+        **statement,
+        "expires_at_ms": int(statement["issued_at_ms"]) + 3_600_001,
+    }
+    overlong.pop("statement_cid")
+    overlong["statement_cid"] = bootstrap_admission._cid(overlong)
+    with pytest.raises(
+        bootstrap_admission.ExternalAgentBootstrapAdmissionError,
+        match="binding differs",
+    ):
+        verify_prebootstrap_admission_statement(
+            statement=overlong,
+            expected_source_head=source_head,
+            expected_source_tree=source_tree,
+            expected_board_namespace=(
+                "external-agent-autonomous-execution-fabric-v1"
+            ),
+            expected_board_cid=board_cid,
+            expected_materialization_receipt_cid=materialization_cid,
+            now_ms=int(overlong["issued_at_ms"]) + 1,
+        )
+
+
 def test_tracked_admission_word_is_not_current_launch_authority() -> None:
     board = _board()
     verification = verify_admission_bundle_receipt(
@@ -452,6 +718,67 @@ def test_tracked_admission_word_is_not_current_launch_authority() -> None:
     )
     assert verification["admitted"] is False
     assert verification["blockers"]
+
+
+def test_current_launch_authority_rejects_non_receipt_checkout_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    subprocess.run(
+        ["git", "init", "-q"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "eaaef-test@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "EAAEF Test"],
+        cwd=tmp_path,
+        check=True,
+    )
+    runtime = tmp_path / "ipfs_accelerate_py/runtime.py"
+    runtime.parent.mkdir()
+    runtime.write_text("SOURCE = 'committed'\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "fixture"],
+        cwd=tmp_path,
+        check=True,
+    )
+    receipt = (
+        tmp_path
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "receipts/host_admission/blocker_inventory.json"
+    )
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "attacker-selected-git-dir"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "attacker-selected-worktree"))
+    assert eaaef_checkout_has_only_generated_receipt_drift(tmp_path) is True
+
+    test_git_environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"GIT_DIR", "GIT_WORK_TREE"}
+    }
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--assume-unchanged",
+            "ipfs_accelerate_py/runtime.py",
+        ],
+        cwd=tmp_path,
+        check=True,
+        env=test_git_environment,
+    )
+    runtime.write_text("SOURCE = 'dirty runtime'\n", encoding="utf-8")
+    assert eaaef_checkout_has_only_generated_receipt_drift(tmp_path) is False
+    with pytest.raises(RuntimeError, match="non-receipt source drift"):
+        verify_current_admission_bundle_receipt(tmp_path)
 
 
 def _write_current_task_receipt(
@@ -594,14 +921,17 @@ def test_bundle_task_verifier_requires_full_admission_verification(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    tmp_path.chmod(0o700)
     expected = {
         "receipt_dir": tmp_path,
+        "final_dir": tmp_path,
+        "final_root": tmp_path,
         "expected_source_head": "1" * 40,
         "expected_source_tree": "2" * 40,
         "expected_board_namespace": "external-agent-autonomous-execution-fabric-v1",
         "expected_board_cid": "sha256:" + "3" * 64,
     }
-    _write_current_task_receipt(
+    bundle = _write_current_task_receipt(
         tmp_path,
         task_id="EAAEF-191",
         decision="admitted",
@@ -610,6 +940,17 @@ def test_bundle_task_verifier_requires_full_admission_verification(
         board_namespace=expected["expected_board_namespace"],
         board_cid=expected["expected_board_cid"],
     )
+    source_bundle_path, _source_signatures_path = (
+        eaaef_host_admission.source_addressed_admission_bundle_paths(
+            final_dir=tmp_path,
+            source_head=expected["expected_source_head"],
+        )
+    )
+    source_bundle_path.write_text(
+        json.dumps(bundle, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    source_bundle_path.chmod(0o400)
     calls = []
 
     def _reject_bundle(**kwargs):
@@ -629,7 +970,7 @@ def test_bundle_task_verifier_requires_full_admission_verification(
     rejected = verify_host_admission_task_receipt(task_id="EAAEF-191", **expected)
     assert rejected["valid"] is False
     assert "signed child receipt replay" in rejected["blockers"]
-    assert calls == [expected]
+    assert calls == [{**expected, "require_source_addressed": True}]
 
     monkeypatch.setattr(
         eaaef_host_admission,
@@ -638,6 +979,7 @@ def test_bundle_task_verifier_requires_full_admission_verification(
             "admitted": True,
             "decision": "admitted",
             "target_decision": "admitted",
+            "bundle_receipt_cid": bundle["receipt_cid"],
             "blockers": [],
         },
     )
@@ -646,20 +988,65 @@ def test_bundle_task_verifier_requires_full_admission_verification(
         "valid": True,
         "decision": "admitted",
         "blockers": [],
+        "receipt_cid": bundle["receipt_cid"],
     }
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "verify_admission_bundle_receipt",
+        lambda **_kwargs: {
+            "admitted": True,
+            "decision": "admitted",
+            "target_decision": "admitted",
+            "bundle_receipt_cid": "sha256:" + "f" * 64,
+            "blockers": [],
+        },
+    )
+    mismatched_cid = verify_host_admission_task_receipt(
+        task_id="EAAEF-191", **expected
+    )
+    assert mismatched_cid["valid"] is False
+    assert "EAAEF-191 verified bundle receipt CID differs" in mismatched_cid[
+        "blockers"
+    ]
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "verify_admission_bundle_receipt",
+        lambda **_kwargs: {
+            "admitted": True,
+            "decision": "admitted",
+            "target_decision": "admitted",
+            "bundle_receipt_cid": bundle["receipt_cid"],
+            "blockers": [],
+        },
+    )
+    source_bundle_path.chmod(0o600)
+    insecure = verify_host_admission_task_receipt(
+        task_id="EAAEF-191", **expected
+    )
+    assert insecure["valid"] is False
+    assert "EAAEF-191 host receipt is unavailable or malformed" in insecure[
+        "blockers"
+    ]
 
 
 def test_current_signed_bundle_rejects_child_receipt_replay(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    tmp_path.chmod(0o700)
     source_head = "1" * 40
     source_tree = "2" * 40
     board_namespace = "external-agent-autonomous-execution-fabric-v1"
     board_cid = "sha256:" + "3" * 64
-    bootstrap_cid = "sha256:" + "4" * 64
     materialization_cid = "sha256:" + "5" * 64
-    open_host_gates = ["board validation awaits this EAAEF-191 bundle — reviewed"]
+    bootstrap_statement = _prebootstrap_statement(
+        source_head=source_head,
+        source_tree=source_tree,
+        board_cid=board_cid,
+        materialization_cid=materialization_cid,
+    )
+    bootstrap_cid = str(bootstrap_statement["statement_cid"])
+    open_host_gates = ["EAAEF-191 host admission bundle pending"]
     operator_key = Ed25519PrivateKey.generate()
     reviewer_key = Ed25519PrivateKey.generate()
     operator_did = ed25519_did_key(operator_key.public_key())
@@ -698,7 +1085,20 @@ def test_current_signed_bundle_rejects_child_receipt_replay(
             "source_tree": source_tree,
             "board_namespace": board_namespace,
             "board_cid": board_cid,
-            "evidence": {},
+            "evidence": (
+                {
+                    "bootstrap_admission_statement": bootstrap_statement,
+                    "items": [
+                        {
+                            "blocker": "EAAEF-191 host admission bundle pending",
+                            "class": "host_gated_external_authority",
+                            "closing_task_ids": ["EAAEF-191"],
+                        }
+                    ],
+                }
+                if task_id == "EAAEF-180"
+                else {}
+            ),
         }
         child["receipt_cid"] = cid(child)
         (tmp_path / filename).write_text(
@@ -797,12 +1197,100 @@ def test_current_signed_bundle_rejects_child_receipt_replay(
 
     expected = {
         "receipt_dir": tmp_path,
+        "final_dir": tmp_path,
+        "final_root": tmp_path,
         "expected_source_head": source_head,
         "expected_source_tree": source_tree,
         "expected_board_namespace": board_namespace,
         "expected_board_cid": board_cid,
+        "prebootstrap_statement_now_ms": (
+            int(bootstrap_statement["issued_at_ms"]) + 1
+        ),
     }
     assert verify_admission_bundle_receipt(**expected)["admitted"] is True
+    strict_without_source = verify_admission_bundle_receipt(
+        **expected,
+        require_source_addressed=True,
+    )
+    assert strict_without_source["admitted"] is False
+    assert (
+        "EAAEF-191 source-addressed final artifacts are unavailable"
+        in strict_without_source["blockers"]
+    )
+    source_bundle_path, source_signatures_path = (
+        eaaef_host_admission.source_addressed_admission_bundle_paths(
+            final_dir=tmp_path,
+            source_head=source_head,
+        )
+    )
+    source_bundle_path.write_text(
+        json.dumps(bundle, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    source_signatures_path.write_text(
+        json.dumps(signatures, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    source_bundle_path.chmod(0o400)
+    source_signatures_path.chmod(0o400)
+    for task_id, filename in RECEIPT_FILES.items():
+        if task_id == "EAAEF-191":
+            continue
+        snapshot = eaaef_host_admission.source_addressed_child_receipt_path(
+            final_dir=tmp_path,
+            source_head=source_head,
+            task_id=task_id,
+        )
+        snapshot.write_bytes((tmp_path / filename).read_bytes())
+        snapshot.chmod(0o400)
+    assert (
+        verify_admission_bundle_receipt(
+            **expected,
+            require_source_addressed=True,
+        )["admitted"]
+        is True
+    )
+    expired_expected = {
+        **expected,
+        "prebootstrap_statement_now_ms": int(
+            bootstrap_statement["expires_at_ms"]
+        )
+        + 1,
+    }
+    assert verify_admission_bundle_receipt(**expired_expected)["admitted"] is False
+    historical = verify_admission_bundle_receipt(
+        **expired_expected,
+        require_source_addressed=True,
+    )
+    assert historical["admitted"] is True
+    assert historical["blockers"] == []
+    source_bundle_path.unlink()
+    source_signatures_path.unlink()
+
+    bundle_path = tmp_path / RECEIPT_FILES["EAAEF-191"]
+    mismatched_bundle = {
+        **bundle,
+        "evidence": {
+            **bundle["evidence"],
+            "bootstrap_admission_statement_cid": "sha256:" + "f" * 64,
+        },
+    }
+    mismatched_bundle.pop("receipt_cid", None)
+    mismatched_bundle["receipt_cid"] = cid(mismatched_bundle)
+    bundle_path.write_text(
+        json.dumps(mismatched_bundle, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    mismatched = verify_admission_bundle_receipt(**expected)
+    assert mismatched["admitted"] is False
+    assert mismatched["target_decision"] == "no_go"
+    assert "EAAEF-191 pre-bootstrap statement identity differs" in mismatched[
+        "blockers"
+    ]
+    bundle_path.write_text(
+        json.dumps(bundle, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
     signatures_path = tmp_path / "admission_bundle.signatures.json"
     mislabeled = {**signatures, "configured_board_launch": True}

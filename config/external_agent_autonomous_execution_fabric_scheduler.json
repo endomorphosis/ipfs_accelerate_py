@@ -215,6 +215,13 @@
     "secrets_from_environment_only": true,
     "secrets_in_argv_prompts_logs_or_receipts": false
   },
+  "bootstrap_qualification_trust": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-qualification-trust@1",
+    "trusted_provider_signer_dids": [],
+    "trusted_image_reviewer_dids": [],
+    "trusted_container_profile_reviewer_dids": [],
+    "trusted_quack_reviewer_dids": []
+  },
   "configured_board_live_seal": {
     "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-configured-board-live-seal@2",
     "authority_registry_prefix": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority",

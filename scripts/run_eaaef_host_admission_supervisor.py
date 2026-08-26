@@ -191,11 +191,23 @@ def _verify_host_admission_task_receipt(
         if isinstance(raw_blockers, (list, tuple))
         else []
     )
-    return {
+    result: dict[str, Any] = {
         "valid": raw.get("valid") is True,
         "decision": str(raw.get("decision") or ""),
         "blockers": blockers,
     }
+    receipt_cid = raw.get("receipt_cid")
+    if (
+        isinstance(receipt_cid, str)
+        and len(receipt_cid) == 71
+        and receipt_cid.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in receipt_cid[7:])
+    ):
+        result["receipt_cid"] = receipt_cid
+    elif task_id == "EAAEF-191" and receipt_cid is not None:
+        result["valid"] = False
+        result["blockers"].append("EAAEF-191 verified receipt CID is invalid")
+    return result
 
 
 def _host_receipt_completion_verdict(
@@ -213,7 +225,9 @@ def _host_receipt_completion_verdict(
         expected_identity=expected_identity,
     )
     blockers = list(verification["blockers"])
-    if not receipt_path.is_file():
+    receipt_cid = str(verification.get("receipt_cid") or "")
+    receipt_present = bool(receipt_cid) if task_id == "EAAEF-191" else receipt_path.is_file()
+    if not receipt_present:
         blockers.append(f"{task_id} host receipt is missing")
     decision = str(verification["decision"])
     allowed_decisions = COMPLETION_DECISIONS.get(task_id, frozenset())
@@ -226,14 +240,40 @@ def _host_receipt_completion_verdict(
     return {
         "valid": verification["valid"],
         "decision": decision,
+        "receipt_cid": receipt_cid,
         "blockers": blockers,
         "completion_allowed": (
             verification["valid"] is True
-            and receipt_path.is_file()
+            and receipt_present
             and decision in allowed_decisions
             and not blockers
         ),
     }
+
+
+def _host_receipt_evidence_reference(
+    *,
+    task_id: str,
+    receipt_path: Path,
+    verdict: dict[str, Any],
+    expected_identity: dict[str, str],
+) -> tuple[str, str]:
+    """Return the reviewed evidence path and digest for one verified receipt."""
+
+    if task_id == "EAAEF-191":
+        _ensure_repository_importable()
+        from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+            source_addressed_admission_bundle_logical_paths,
+        )
+
+        logical_path, _logical_signatures_path = (
+            source_addressed_admission_bundle_logical_paths(
+                source_head=expected_identity["source_head"],
+            )
+        )
+        return logical_path.as_posix(), str(verdict.get("receipt_cid") or "")
+    digest = _cid_bytes(receipt_path.read_bytes()) if receipt_path.is_file() else ""
+    return str(receipt_path.relative_to(ROOT)), digest
 
 
 def _collect_host_admission() -> dict[str, Any]:
@@ -430,7 +470,12 @@ def _complete_s_task(
             "decision": verdict["decision"],
             "receipt_valid": True,
         }
-    receipt_digest_before = _cid_bytes(receipt_path.read_bytes())
+    evidence_path, receipt_digest_before = _host_receipt_evidence_reference(
+        task_id=alias,
+        receipt_path=receipt_path,
+        verdict=verdict,
+        expected_identity=expected_identity,
+    )
     validation = [
         "python3",
         "-m",
@@ -463,15 +508,22 @@ def _complete_s_task(
         receipt_path=receipt_path,
         expected_identity=expected_identity,
     )
-    receipt_digest_after = (
-        _cid_bytes(receipt_path.read_bytes()) if receipt_path.is_file() else ""
+    final_evidence_path, receipt_digest_after = _host_receipt_evidence_reference(
+        task_id=alias,
+        receipt_path=receipt_path,
+        verdict=final_verdict,
+        expected_identity=expected_identity,
     )
     if (
         final_verdict["completion_allowed"] is not True
+        or final_evidence_path != evidence_path
         or receipt_digest_after != receipt_digest_before
     ):
         blockers = list(final_verdict["blockers"])
-        if receipt_digest_after != receipt_digest_before:
+        if (
+            final_evidence_path != evidence_path
+            or receipt_digest_after != receipt_digest_before
+        ):
             blockers.append(f"{alias} host receipt changed during validation")
         return {
             "task_id": alias,
@@ -485,7 +537,7 @@ def _complete_s_task(
         evidence_kind="host_admission_receipt",
         digest=receipt_digest_after,
         body={
-            "path": str(receipt_path.relative_to(ROOT)),
+            "path": final_evidence_path,
             "source_head": expected_identity["source_head"],
             "source_tree": expected_identity["source_tree"],
             "board_namespace": expected_identity["board_namespace"],
