@@ -40,6 +40,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema i
     eaaef_board_scheduler_lease_seed,
     install_eaaef_operational_schema,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    COMPLETION_EVIDENCE_SCHEMA,
+    completion_evidence_projection_on_connection,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
     quack_daemon_operation_command_vocabulary,
 )
@@ -1183,6 +1187,53 @@ def test_all_29_borrowed_operations_execute_in_one_owner_transaction(
                 sequence=34,
             )
             assert cas["task"]["status"] == "completed"
+            completion_projection = completion_evidence_projection_on_connection(
+                transaction._connection,  # noqa: SLF001 - owner snapshot assertion
+                task_cids=(task_cid,),
+                transaction_owned_by_caller=True,
+            )
+            assert completion_projection["completion_receipts"] == [
+                {
+                    "receipt_cid": cas["receipt_cid"],
+                    "task_cid": task_cid,
+                    "goal_cid": "goal:eaaef",
+                    "attempt_id": claim["attempt_id"],
+                    "claim_cid": claim["claim_id"],
+                    "fencing_token": claim["fencing_token"],
+                    "completed_at": completion_projection["completion_receipts"][0][
+                        "completed_at"
+                    ],
+                    "validation_run_id": "",
+                    "evidence_digest": completion_projection[
+                        "completion_receipts"
+                    ][0]["evidence_digest"],
+                    "body": {
+                        "schema": COMPLETION_EVIDENCE_SCHEMA,
+                        "receipt": completion_receipt,
+                        "evidence_digests": [digest],
+                        "revision": 3,
+                    },
+                }
+            ]
+            replayed_cas = _apply(
+                adapter,
+                transaction,
+                "task.cas_status",
+                {
+                    "task_cid": task_cid,
+                    "expected_revision": 3,
+                    "status": "completed",
+                    "receipt": completion_receipt,
+                    "evidence_digests": [digest],
+                },
+                scope=task_cid,
+                sequence=34,
+            )
+            assert replayed_cas == {
+                **cas,
+                "previous_status": "completed",
+                "changed": False,
+            }
             exercised.add("task.cas_status")
             completed = _apply(
                 adapter,
@@ -1816,6 +1867,126 @@ def test_terminal_task_cas_and_claim_completion_require_canonical_barrier_receip
                     scope=str(claim["task_cid"]),
                     sequence=308,
                 )
+            transaction.rollback()
+        except BaseException:
+            if transaction.active:
+                transaction.rollback()
+            raise
+
+
+def test_terminal_task_cas_replay_rejects_pre_normalization_raw_receipt_row(
+    tmp_path: Path,
+) -> None:
+    database = _database(tmp_path, count=1)
+    adapter = _adapter()
+    with open_duckdb_connection(database) as connection:
+        transaction = StateTransaction(connection, store_id="eaaef-control").begin()
+        try:
+            claim = _claim(adapter, transaction, sequence=350)
+            _mark_claimed_task_in_progress(
+                adapter,
+                transaction,
+                claim,
+                expected_revision=1,
+                sequence=351,
+            )
+            _ensure_attempt_record(adapter, transaction, claim, sequence=352)
+            _, validation_payload = _commit_attempt_through_validation(
+                adapter,
+                transaction,
+                claim,
+                sequence=353,
+                tag="legacy-raw-completion-receipt",
+            )
+            digest = str(validation_payload["evidence_digest"])
+            prepared = _apply(
+                adapter,
+                transaction,
+                "coordination.prepare_completion",
+                {
+                    "claim": _claim_identity(claim),
+                    "control_expected_revision": 2,
+                    "control_expected_status": "in_progress",
+                    "evidence_digest": digest,
+                    "body": {},
+                    "now_ms": _NOW,
+                },
+                scope=str(claim["task_cid"]),
+                sequence=354,
+            )
+            receipt = {
+                "operation": "database_complete",
+                "attempt_id": claim["attempt_id"],
+                "claim_id": claim["claim_id"],
+                "lease_id": claim["lease_id"],
+                "owner_session_id": claim["owner_session_id"],
+                "fencing_token": claim["fencing_token"],
+                "fence_epoch": claim["fence_epoch"],
+                "evidence_digest": digest,
+                "coordination_preparation": prepared,
+                "validation": validation_payload,
+            }
+            cas = _apply(
+                adapter,
+                transaction,
+                "task.cas_status",
+                {
+                    "task_cid": claim["task_cid"],
+                    "expected_revision": 2,
+                    "status": "completed",
+                    "receipt": receipt,
+                    "evidence_digests": [digest],
+                },
+                scope=str(claim["task_cid"]),
+                sequence=355,
+            )
+            before = adapter._task_record(  # noqa: SLF001 - exact state assertion
+                transaction._connection,  # noqa: SLF001
+                str(claim["task_cid"]),
+            )
+            assert before is not None and before["revision"] == 3
+
+            # This is the exact pre-normalization representation: the raw
+            # control receipt occupied completion_receipts.body_json directly.
+            legacy_raw_body = json.dumps(
+                receipt,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            transaction._connection.execute(  # noqa: SLF001 - corruption fixture
+                "UPDATE completion_receipts SET body_json=? WHERE receipt_cid=?",
+                [legacy_raw_body, cas["receipt_cid"]],
+            )
+
+            with pytest.raises(
+                EAAEFBorrowedTransactionConflict,
+                match="not normalized for the current task revision",
+            ):
+                _apply(
+                    adapter,
+                    transaction,
+                    "task.cas_status",
+                    {
+                        "task_cid": claim["task_cid"],
+                        "expected_revision": 3,
+                        "status": "completed",
+                        "receipt": receipt,
+                        "evidence_digests": [digest],
+                    },
+                    scope=str(claim["task_cid"]),
+                    sequence=356,
+                )
+
+            assert adapter._task_record(  # noqa: SLF001
+                transaction._connection,  # noqa: SLF001
+                str(claim["task_cid"]),
+            ) == before
+            durable_raw_body = transaction._connection.execute(  # noqa: SLF001
+                "SELECT body_json FROM completion_receipts WHERE receipt_cid=?",
+                [cas["receipt_cid"]],
+            ).fetchone()
+            assert durable_raw_body is not None
+            assert str(durable_raw_body[0]) == legacy_raw_body
             transaction.rollback()
         except BaseException:
             if transaction.active:
