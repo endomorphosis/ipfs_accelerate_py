@@ -105856,6 +105856,29 @@ class DatabaseImplementationDaemon:
             )
         return dict(raw)
 
+    def _pooled_worktree_create_recovery_evidence(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Return exact pooled-create evidence, never infer it from a reason.
+
+        ``portal_provider_failed`` is a shared terminal envelope for many
+        provider and proposal failures.  Callback availability therefore
+        proves only that this daemon can inspect pooled-worktree artifacts;
+        the callback's independently verified, attempt-bound receipt is the
+        authority that classifies this particular failure as pooled create.
+        """
+
+        callback = self._pooled_worktree_create_recovery_fn
+        if not callable(callback):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery evidence is unavailable"
+            )
+        return self._verified_pooled_worktree_create_recovery_receipt(
+            attempt,
+            callback(attempt),
+        )
+
     def _verified_pooled_worktree_create_recovery_state(
         self,
         attempt: DatabaseTaskAttempt,
@@ -106120,6 +106143,25 @@ class DatabaseImplementationDaemon:
                 )
             status = str(task.status or "").strip().lower()
             if status == "retrying":
+                task_body = getattr(task, "body", None)
+                receipt = (
+                    task_body.get("completion_receipt")
+                    if isinstance(task_body, Mapping)
+                    else None
+                )
+                operation = (
+                    str(receipt.get("operation") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
+                if operation != (
+                    "database_portal_pooled_worktree_create_retry_recovery"
+                ):
+                    # Another admitted blocked-to-retrying transition owns
+                    # this control row.  The immutable failed phase can still
+                    # carry the shared provider-failure reason, but that is no
+                    # authority for pooled reconciliation to reinterpret it.
+                    continue
                 self._verified_pooled_worktree_create_recovery_state(attempt, task)
                 self._reconcile_failed_attempt_coordination(attempt)
                 continue
@@ -106137,7 +106179,9 @@ class DatabaseImplementationDaemon:
                 )
                 continue
             try:
-                evidence = callback(attempt)
+                evidence = self._pooled_worktree_create_recovery_evidence(
+                    attempt
+                )
                 outcome = self.recover_blocked_portal_pooled_worktree_create_retry(
                     attempt,
                     recovery_evidence=evidence,
@@ -109419,6 +109463,7 @@ class DatabaseImplementationDaemon:
                 from .database_portal_bridge import (
                     DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS,
                     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON,
+                    DatabasePortalBridgeError,
                 )
 
                 if reason == "not_attempted":
@@ -109590,19 +109635,29 @@ class DatabaseImplementationDaemon:
                         # result may use that compatibility path.
                         continue
 
-                dedicated_recovery_pending = bool(
-                    (
-                        reason
-                        == "external_protected_checkout_recovery_required"
-                        and self._external_protected_checkout_recovery_fn
-                        is not None
-                    )
-                    or (
-                        reason
-                        == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON
-                        and self._pooled_worktree_create_recovery_fn is not None
-                    )
+                dedicated_recovery_pending = (
+                    reason
+                    == "external_protected_checkout_recovery_required"
+                    and self._external_protected_checkout_recovery_fn
+                    is not None
                 )
+                if (
+                    reason
+                    == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON
+                    and self._pooled_worktree_create_recovery_fn is not None
+                ):
+                    try:
+                        self._pooled_worktree_create_recovery_evidence(attempt)
+                    except (
+                        DatabaseImplementationDaemonError,
+                        DatabasePortalBridgeError,
+                    ):
+                        # A generic provider failure is not pooled-worktree
+                        # evidence.  Let the ordinary bounded retry policy
+                        # decide it unless the exact typed receipt verifies.
+                        pass
+                    else:
+                        dedicated_recovery_pending = True
                 checkout_contention = (
                     reason in DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS
                 )
@@ -110604,6 +110659,23 @@ class DatabaseImplementationDaemon:
                     "status": "failed",
                 }
             portal_error_reason = self._database_portal_reason(str(exc))
+            pooled_worktree_create_recovery_owned = False
+            if (
+                portal_error_reason
+                == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON
+                and self._pooled_worktree_create_recovery_fn is not None
+            ):
+                try:
+                    self._pooled_worktree_create_recovery_evidence(attempt)
+                except (
+                    DatabaseImplementationDaemonError,
+                    DatabasePortalBridgeError,
+                ):
+                    # Callback presence cannot classify the shared generic
+                    # provider-failure envelope as a pooled-create failure.
+                    pass
+                else:
+                    pooled_worktree_create_recovery_owned = True
             recovery_owned_terminal_failure = bool(
                 isinstance(exc, DatabasePortalBridgeError)
                 and not isinstance(
@@ -110631,11 +110703,7 @@ class DatabaseImplementationDaemon:
                         and self._validation_retry_seed_conflict_recovery_fn
                         is not None
                     )
-                    or (
-                        portal_error_reason
-                        == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON
-                        and self._pooled_worktree_create_recovery_fn is not None
-                    )
+                    or pooled_worktree_create_recovery_owned
                 )
             )
             if (

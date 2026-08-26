@@ -6,7 +6,7 @@ import hashlib
 import json
 import subprocess
 import threading
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -385,7 +385,11 @@ class _TaskSource:
         self.record = record
 
     def get_task(self, task_cid: str) -> object | None:
-        return self.record if task_cid == "task:cid:004" else None
+        return (
+            self.record
+            if task_cid == str(getattr(self.record, "task_cid", "") or "")
+            else None
+        )
 
     def snapshot(self) -> object:
         return SimpleNamespace(repository_tree_id="tree:control-plane-current")
@@ -4332,6 +4336,60 @@ def test_bridge_keeps_dispatched_provider_failure_terminal(tmp_path: Path) -> No
         bridge.run_provider(_attempt())
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert str(caught.value) == "model_failed"
+
+
+def test_pooled_recovery_maps_projected_cid_then_rejects_stale_replay(
+    tmp_path: Path,
+) -> None:
+    """Generation-5 stale proposal evidence is provider work, not pool setup."""
+
+    record = _record()
+    database_task_cid = (
+        "baguqeera6mvj3326qcksmlmwafo3s7ppd4s22vnbsn4tjnk4ylbjyqiesypa"
+    )
+    record.task_cid = database_task_cid
+    record.body["allowed_paths"] = ["inventory/result.json"]
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+        max_passes=1,
+    )
+    attempt = replace(_attempt(), task_cid=database_task_cid)
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    projection = bridge._verify_projection(paths, binding)
+    _projected_key, projected_cid = bridge._portal_completion_event_identity(
+        paths=paths,
+        projection_text=projection,
+        binding=binding,
+    )
+    assert projected_cid != attempt.task_cid
+    append_jsonl_event(
+        paths.events,
+        "implementation_finished",
+        {
+            "task_id": attempt.task_alias,
+            "canonical_task_cid": projected_cid,
+            "task_cid": projected_cid,
+            "attempt": 1,
+            "provider_dispatched": True,
+            "attempt_consumed": True,
+            "returncode": 78,
+            "validation_result": {
+                "reason": "proposal_gate_failed",
+                "proposal_gate": {
+                    "accepted": False,
+                    "reason_codes": ["stale_proposal_replay"],
+                },
+            },
+        },
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="requires a pre-dispatch worktree-setup failure",
+    ):
+        bridge.recover_pooled_worktree_create(attempt)
 
 
 def test_bridge_recovers_pooled_worktree_create_when_path_absent(

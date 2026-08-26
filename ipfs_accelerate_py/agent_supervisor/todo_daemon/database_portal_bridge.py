@@ -11813,19 +11813,56 @@ class DatabasePortalExecutionBridge:
             )
         alias = str(getattr(attempt, "task_alias", "") or "")
         task_cid = str(attempt.task_cid)
-        finished = [
+        candidates = [
             event
             for event in self._verified_event_chain(paths)
             if event.get("type") == "implementation_finished"
             and str(event.get("task_id") or "") == alias
-            and str(event.get("canonical_task_cid") or event.get("task_cid") or "")
-            in {"", task_cid}
         ]
+
+        def event_cid_matches(event: Mapping[str, Any], expected: str) -> bool:
+            observed = {
+                str(event.get(field) or "")
+                for field in ("canonical_task_cid", "task_cid")
+                if str(event.get(field) or "")
+            }
+            return not observed or observed == {expected}
+
+        finished = [
+            event for event in candidates if event_cid_matches(event, task_cid)
+        ]
+        if not finished and candidates:
+            # Portal intentionally derives a projection-private semantic CID
+            # for lifecycle events.  Resolve that CID only through the exact
+            # immutable database-attempt binding; it is never a replacement
+            # for the authoritative DuckDB task CID.
+            bound_paths, binding = self._recovery_attempt_binding(
+                attempt,
+                recovery_name="pooled-worktree create recovery",
+            )
+            projection_text = self._verify_projection(bound_paths, binding)
+            _portal_task_key, portal_task_cid = (
+                self._portal_completion_event_identity(
+                    paths=bound_paths,
+                    projection_text=projection_text,
+                    binding=binding,
+                )
+            )
+            finished = [
+                event
+                for event in candidates
+                if event_cid_matches(event, portal_task_cid)
+            ]
         if not finished:
             raise DatabasePortalBridgeError(
                 "pooled-worktree create recovery has no implementation_finished event"
             )
         last = finished[-1]
+        if last.get("provider_dispatched") is not False:
+            raise DatabasePortalBridgeError(
+                "pooled-worktree create recovery requires a pre-dispatch "
+                "worktree-setup failure"
+            )
         exception = last.get("exception_result")
         if not isinstance(exception, Mapping):
             raise DatabasePortalBridgeError(
@@ -11836,8 +11873,7 @@ class DatabasePortalExecutionBridge:
             last.get("worktree_path") or exception.get("worktree_path") or ""
         )
         if (
-            last.get("provider_dispatched") is not False
-            or str(exception.get("phase") or "") != "worktree_setup"
+            str(exception.get("phase") or "") != "worktree_setup"
             or not message.startswith(_POOLED_WORKTREE_CREATE_FAILURE_PREFIX)
         ):
             raise DatabasePortalBridgeError(

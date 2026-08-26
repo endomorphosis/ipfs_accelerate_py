@@ -527,3 +527,57 @@ def test_automatic_pooled_worktree_recovery_fails_closed_for_foreign_failure(
         assert daemon.task_source.get(source_attempt.task_cid).status == "blocked"
     finally:
         daemon.close()
+
+
+def test_generic_provider_failure_is_not_owned_by_pooled_callback_presence(
+    tmp_path: Path,
+) -> None:
+    """A generation-5-style stale replay follows the generic bounded retry."""
+
+    callback_attempts: list[str] = []
+
+    def provider(_attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    def recover(attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        callback_attempts.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError(
+            "pooled-worktree create recovery requires a pre-dispatch "
+            "worktree-setup failure; observed provider-dispatched "
+            "stale_proposal_replay returncode=78"
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        provider_fn=provider,
+        pooled_worktree_create_recovery_fn=recover,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population())
+        failed = daemon.run_once()
+        source_attempt = daemon.get_attempt(str(failed["attempt_id"]))
+        assert source_attempt is not None
+        blocked = daemon.task_source.get(source_attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is True
+        assert outcomes[0]["status"] == "retrying"
+        retried = daemon.task_source.get(source_attempt.task_cid)
+        assert retried is not None and retried.status == "retrying"
+        receipt = retried.body["completion_receipt"]
+        assert receipt["operation"] == (
+            "database_portal_validation_retry_recovery"
+        )
+        assert receipt["evidence_source"] == (
+            "portal_provider_failed_reclassified"
+        )
+
+        callback_count = len(callback_attempts)
+        assert daemon.reconcile_blocked_pooled_worktree_create_recoveries() == []
+        assert len(callback_attempts) == callback_count
+        assert daemon.task_source.get(source_attempt.task_cid).status == "retrying"
+    finally:
+        daemon.close()
