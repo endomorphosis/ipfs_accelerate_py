@@ -4,8 +4,11 @@ import hashlib
 import inspect
 import json
 import os
+import socket
 import subprocess
 import sys
+import threading
+import time
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import replace
@@ -16,11 +19,21 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     ed25519_did_key,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    current_process_birth,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    eaaef_casf_bootstrap_lifecycle as casf_lifecycle,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     eaaef_offline_population as offline,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     eaaef_reconciliation_lifecycle as lifecycle,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    ExclusiveOwnerLease,
+    QuackStateServerOwnershipError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
@@ -35,6 +48,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_eaaef_reconciliation
     EAAEF_CASF_OWNER_COMMIT_RECEIPT_SCHEMA,
     EAAEF_CASF_OWNER_START_RECEIPT_SCHEMA,
     EAAEF_OWNER_PRODUCTION_BLOCKERS,
+    EAAEFCASFBootstrapBinding,
     EAAEFCASFBootstrapOwnerError,
     EAAEFCASFBootstrapRegistry,
     EAAEFTypedReconciliationOwnerUnavailable,
@@ -182,6 +196,49 @@ def _bootstrap_snapshot(
     }
     value["snapshot_cid"] = lifecycle._cid(value)
     return value
+
+
+def _concrete_snapshot_bindings() -> (
+    casf_lifecycle.EAAEFCASFBootstrapSnapshotBindings
+):
+    return casf_lifecycle.EAAEFCASFBootstrapSnapshotBindings(
+        bootstrap_admission_cid="sha256:" + "a" * 64,
+        r1_launch_capsule_cid="sha256:" + "b" * 64,
+        quack_owner_qualification_cid="sha256:" + "c" * 64,
+        quack_command_fabric_qualification_cid="sha256:" + "d" * 64,
+        owner_principal_did=ed25519_did_key(bytes([11]) * 32),
+        shard_id="fresh-shard",
+        store_id="fresh-store",
+        lease_id="fresh-lease",
+        expected_event_cursor="0",
+        request_id="fresh-request",
+        idempotency_key="fresh-idempotency",
+        issued_at_ms=100_000,
+        deadline_ms=200_000,
+        expires_at_ms=300_000,
+        one_use_nonce="fresh-nonce",
+    )
+
+
+def _concrete_bootstrap_binding(
+    generation_dir: Path,
+    *,
+    generation_id: str,
+) -> EAAEFCASFBootstrapBinding:
+    generation_dir.mkdir(mode=0o700)
+    generation_dir.chmod(0o700)
+    return EAAEFCASFBootstrapBinding(
+        generation_id=generation_id,
+        source_head="1" * 40,
+        source_tree="2" * 40,
+        source_forest_root="sha256:" + "3" * 64,
+        board_cid="sha256:" + "4" * 64,
+        population_cid="sha256:" + "5" * 64,
+        bootstrap_population_cid="sha256:" + "6" * 64,
+        plan_r1_cid="sha256:" + "7" * 64,
+        database_path=generation_dir / "control.duckdb",
+        owner_state_dir=generation_dir / "casf-owner",
+    )
 
 
 class _FakeCASFBootstrapGuard:
@@ -1484,3 +1541,411 @@ def test_casf_bootstrap_final_record_failure_aborts_provisional_owner(
     assert record["phase"] == "owner_started"
     with pytest.raises(EAAEFCASFBootstrapOwnerError, match="durable state"):
         owner.materialize_offline_population(offline_request, population=population)
+
+
+def test_persistent_casf_bootstrap_owner_preserves_lease_through_quack_start(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not DatabaseTaskSource.available():
+        pytest.skip("DuckDB unavailable")
+    population = _population(repo_root)
+    concrete = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+        snapshot_bindings=_concrete_snapshot_bindings(),
+        startup_timeout_seconds=60,
+        operation_timeout_seconds=180,
+        shutdown_timeout_seconds=30,
+    )
+    registry_root = tmp_path / "persistent-casf-bootstrap"
+    owner = bind_eaaef_casf_bootstrap_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        owner_lifecycle=concrete,
+    )
+    qualification = owner.reconciliation_qualification()
+    assert (
+        "casf_quack_exclusive_owner_lifecycle_not_bound"
+        not in qualification["plan_r2_remote_runtime_blockers"]
+    )
+    assert (
+        "typed_database_task_source_runtime_adapter_not_bound"
+        in qualification["plan_r2_remote_runtime_blockers"]
+    )
+    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="qualification differs"):
+        lifecycle.require_typed_reconciliation_owner(
+            owner,
+            source_forest_root=population.source_forest_root,
+        )
+    generation_id = "eaaef-persistent-success-001"
+    request = lifecycle._build_offline_population_request(
+        generation_id=generation_id,
+        population=population,
+    )
+    generation_dir = registry_root / "generations" / generation_id
+    database_path = generation_dir / "control.duckdb"
+    lock_path = database_path.with_name(f".{database_path.name}.state-owner.lock")
+    marker_path = database_path.with_name(f".{database_path.name}.state-owner.json")
+    observed: dict[str, Any] = {}
+    original_materialize = offline.materialize_offline_eaaef_population
+
+    def _observe_held_offline_lease(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        observed["offline_marker"] = marker
+        contender = ExclusiveOwnerLease(
+            lock_path=lock_path,
+            marker_path=marker_path,
+        )
+        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock"):
+            contender.acquire(
+                server_id="eaaef-test-contender",
+                process_birth=current_process_birth(),
+                database_path=database_path,
+                generation=1,
+            )
+        return original_materialize(*args, **kwargs)
+
+    monkeypatch.setattr(
+        offline,
+        "materialize_offline_eaaef_population",
+        _observe_held_offline_lease,
+    )
+    receipt = owner.materialize_offline_population(request, population=population)
+
+    assert receipt["task_status_counts"] == {"blocked": 94, "todo": 22}
+    assert receipt["provider_process_started"] is False
+    offline_marker = observed["offline_marker"]
+    live_marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert live_marker["fence_token"] == offline_marker["fence_token"]
+    assert live_marker["process_birth"] == offline_marker["process_birth"]
+    assert live_marker["server_id"] != offline_marker["server_id"]
+    assert concrete.committed_generation_ids() == (generation_id,)
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="later effects remain unavailable"):
+        owner.apply_signed_plan_r2({}, population=population, authority=object())
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="later effects remain unavailable"):
+        owner.reconciliation_status_snapshot({})
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="later effects remain unavailable"):
+        owner.stop_reconciliation_tracks({})
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="later effects remain unavailable"):
+        owner.launch_reconciliation_supervisor({})
+
+    broker = concrete._brokers[generation_id]
+    assert broker.start_receipt is not None
+    replay = casf_lifecycle._build_request(
+        generation_id=generation_id,
+        sequence=2,
+        operation="commit_started_owner",
+        arguments={
+            "owner_start_receipt_cid": broker.start_receipt["start_receipt_cid"],
+            "final_record_cid": broker.final_record_cid,
+        },
+    )
+    replay_raw = casf_lifecycle._canonical_bytes(
+        replay, noun="test exact replay"
+    )
+    replay_response = casf_lifecycle._validate_response(
+        broker.exchange_raw_for_test(replay_raw),
+        generation_id=generation_id,
+        sequence=2,
+        operation="commit_started_owner",
+        request_cid=replay["request_cid"],
+    )
+    assert replay_response["ok"] is True
+
+    # The durable owner_started record is the handoff point: closing the
+    # caller-death sentinel after commit must leave the owner live.
+    os.close(broker.death_writer)
+    broker.death_writer = -1
+    time.sleep(0.1)
+    assert broker.process.poll() is None
+    assert marker_path.exists()
+
+    divergent = casf_lifecycle._build_request(
+        generation_id=generation_id,
+        sequence=2,
+        operation="commit_started_owner",
+        arguments={
+            "owner_start_receipt_cid": broker.start_receipt["start_receipt_cid"],
+            "final_record_cid": "sha256:" + "f" * 64,
+        },
+    )
+    divergent_raw = casf_lifecycle._canonical_bytes(
+        divergent, noun="test divergent replay"
+    )
+    divergent_response = casf_lifecycle._validate_response(
+        broker.exchange_raw_for_test(divergent_raw),
+        generation_id=generation_id,
+        sequence=2,
+        operation="commit_started_owner",
+        request_cid=divergent["request_cid"],
+    )
+    assert divergent_response["ok"] is False
+    assert divergent_response["error_code"] == "broker_frame_diverged"
+    broker.close_descriptors()
+    assert broker.wait_dead(30)
+    concrete._forget_broker(generation_id, broker)
+    assert not marker_path.exists()
+
+
+def test_persistent_casf_bootstrap_aborts_after_final_record_failure(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not DatabaseTaskSource.available():
+        pytest.skip("DuckDB unavailable")
+    population = _population(repo_root)
+    concrete = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+        snapshot_bindings=_concrete_snapshot_bindings(),
+        startup_timeout_seconds=60,
+        operation_timeout_seconds=180,
+        shutdown_timeout_seconds=30,
+    )
+    registry_root = tmp_path / "persistent-casf-abort"
+    owner = bind_eaaef_casf_bootstrap_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        owner_lifecycle=concrete,
+    )
+    generation_id = "eaaef-persistent-abort-001"
+    request = lifecycle._build_offline_population_request(
+        generation_id=generation_id,
+        population=population,
+    )
+    original_write_record = owner._registry.write_record
+
+    def _fail_after_final_record(
+        capability: object,
+        selected_generation_id: str,
+        record: Mapping[str, Any],
+    ) -> None:
+        original_write_record(capability, selected_generation_id, record)
+        if record.get("phase") == "owner_started":
+            raise OSError("injected persistent-owner final record failure")
+
+    monkeypatch.setattr(owner._registry, "write_record", _fail_after_final_record)
+    with pytest.raises(OSError, match="persistent-owner final record failure"):
+        owner.materialize_offline_population(request, population=population)
+
+    generation_dir = registry_root / "generations" / generation_id
+    record = json.loads(
+        (generation_dir / "bootstrap-owner.json").read_text(encoding="utf-8")
+    )
+    birth = lifecycle.ProcessBirth.from_mapping(record["owner_process_birth"])
+    assert lifecycle.inspect_process_birth(birth.pid) != birth
+    assert concrete.committed_generation_ids() == ()
+    assert not (generation_dir / ".control.duckdb.state-owner.json").exists()
+
+
+def test_persistent_casf_bootstrap_releases_lease_when_caller_dies(
+    tmp_path: Path,
+) -> None:
+    generation_id = "eaaef-caller-death-001"
+    binding = _concrete_bootstrap_binding(
+        tmp_path / "caller-death-generation",
+        generation_id=generation_id,
+    )
+    marker_path = binding.database_path.with_name(
+        f".{binding.database_path.name}.state-owner.json"
+    )
+    lock_path = binding.database_path.with_name(
+        f".{binding.database_path.name}.state-owner.lock"
+    )
+    helper = """
+import signal
+import sys
+from pathlib import Path
+from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import ed25519_did_key
+from ipfs_accelerate_py.agent_supervisor.runtime.eaaef_casf_bootstrap_lifecycle import EAAEFCASFBootstrapSnapshotBindings, QuackEAAEFCASFBootstrapOwnerLifecycle
+from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_casf_bootstrap_owner import EAAEFCASFBootstrapBinding
+root = Path(sys.argv[1])
+binding = EAAEFCASFBootstrapBinding(
+    generation_id="eaaef-caller-death-001", source_head="1" * 40,
+    source_tree="2" * 40, source_forest_root="sha256:" + "3" * 64,
+    board_cid="sha256:" + "4" * 64, population_cid="sha256:" + "5" * 64,
+    bootstrap_population_cid="sha256:" + "6" * 64,
+    plan_r1_cid="sha256:" + "7" * 64, database_path=root / "control.duckdb",
+    owner_state_dir=root / "casf-owner",
+)
+snapshot = EAAEFCASFBootstrapSnapshotBindings(
+    bootstrap_admission_cid="sha256:" + "a" * 64,
+    r1_launch_capsule_cid="sha256:" + "b" * 64,
+    quack_owner_qualification_cid="sha256:" + "c" * 64,
+    quack_command_fabric_qualification_cid="sha256:" + "d" * 64,
+    owner_principal_did=ed25519_did_key(bytes([11]) * 32), shard_id="fresh-shard",
+    store_id="fresh-store", lease_id="fresh-lease", expected_event_cursor="0",
+    request_id="fresh-request", idempotency_key="fresh-idempotency",
+    issued_at_ms=100000, deadline_ms=200000, expires_at_ms=300000,
+    one_use_nonce="fresh-nonce",
+)
+lifecycle = QuackEAAEFCASFBootstrapOwnerLifecycle(
+    snapshot_bindings=snapshot, startup_timeout_seconds=30,
+    operation_timeout_seconds=30, shutdown_timeout_seconds=10,
+)
+with lifecycle.hold_exclusive_bootstrap(binding):
+    print("READY", flush=True)
+    signal.pause()
+"""
+    caller = subprocess.Popen(
+        [sys.executable, "-B", "-c", helper, str(binding.database_path.parent)],
+        cwd=Path(__file__).resolve().parents[2],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert caller.stdout is not None
+    try:
+        ready = caller.stdout.readline().strip()
+        if ready != "READY":
+            assert caller.stderr is not None
+            pytest.fail("caller helper failed: " + caller.stderr.read())
+        owner_birth = json.loads(marker_path.read_text(encoding="utf-8"))[
+            "process_birth"
+        ]
+        caller.kill()
+        caller.wait(timeout=10)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if (
+                not marker_path.exists()
+                and lifecycle.inspect_process_birth(int(owner_birth["pid"])) is None
+            ):
+                break
+            time.sleep(0.02)
+        assert not marker_path.exists()
+        contender = ExclusiveOwnerLease(
+            lock_path=lock_path,
+            marker_path=marker_path,
+        )
+        contender.acquire(
+            server_id="caller-death-recovery",
+            process_birth=current_process_birth(),
+            database_path=binding.database_path,
+            generation=1,
+        )
+        contender.release()
+        assert lifecycle.inspect_process_birth(int(owner_birth["pid"])) is None
+    finally:
+        if caller.poll() is None:
+            caller.kill()
+            caller.wait(timeout=10)
+
+
+@pytest.mark.parametrize(
+    ("forbidden_key", "forbidden_value"),
+    [
+        ("database_path", "/tmp/attacker/control.duckdb"),
+        ("transport_token", "raw-secret"),
+        ("sql", "SELECT * FROM tasks"),
+    ],
+)
+def test_persistent_casf_bootstrap_broker_rejects_authority_injection(
+    tmp_path: Path,
+    forbidden_key: str,
+    forbidden_value: str,
+) -> None:
+    generation_id = "eaaef-frame-attack-001"
+    binding = _concrete_bootstrap_binding(
+        tmp_path / f"frame-attack-{forbidden_key}",
+        generation_id=generation_id,
+    )
+    concrete = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+        snapshot_bindings=_concrete_snapshot_bindings(),
+        startup_timeout_seconds=30,
+        operation_timeout_seconds=30,
+        shutdown_timeout_seconds=10,
+    )
+    with concrete.hold_exclusive_bootstrap(binding) as guard:
+        broker = guard._broker
+        assert broker is not None
+        attack: dict[str, Any] = {
+            "schema": casf_lifecycle.EAAEF_CASF_BOOTSTRAP_BROKER_REQUEST_SCHEMA,
+            "interface": casf_lifecycle.EAAEF_CASF_BOOTSTRAP_BROKER_INTERFACE,
+            "generation_id": generation_id,
+            "sequence": 1,
+            "operation": "abort_started_owner",
+            "arguments": {
+                "owner_start_receipt_cid": "",
+                "abort_reason_code": "attacker-request",
+                forbidden_key: forbidden_value,
+            },
+        }
+        attack["request_cid"] = lifecycle._cid(attack)
+        raw = lifecycle._canonical_bytes(attack)
+        response = casf_lifecycle._decode_canonical_object(
+            broker.exchange_raw_for_test(raw), noun="attack response"
+        )
+        assert response["ok"] is False
+        assert response["error_code"] == "broker_frame_invalid"
+    assert forbidden_value not in json.dumps(response, sort_keys=True)
+
+
+def test_persistent_casf_bootstrap_delayed_response_does_not_resend_request(
+    tmp_path: Path,
+) -> None:
+    binding = _concrete_bootstrap_binding(
+        tmp_path / "delayed-response-generation",
+        generation_id="eaaef-delayed-response-001",
+    )
+    client_channel, server_channel = socket.socketpair(
+        socket.AF_UNIX, socket.SOCK_STREAM
+    )
+    death_reader, death_writer = os.pipe()
+    os.close(death_reader)
+    requests: list[bytes] = []
+
+    def _delayed_service() -> None:
+        request_raw = casf_lifecycle._recv_packet(server_channel)
+        requests.append(request_raw)
+        request = casf_lifecycle._validate_request(
+            request_raw, generation_id=binding.generation_id
+        )
+        time.sleep(0.12)
+        response = casf_lifecycle._build_response(
+            generation_id=binding.generation_id,
+            sequence=request["sequence"],
+            operation=request["operation"],
+            request_cid=request["request_cid"],
+            ok=True,
+            result={"owner_abort_acknowledged": True},
+        )
+        casf_lifecycle._send_packet(
+            server_channel,
+            casf_lifecycle._canonical_bytes(
+                response, noun="delayed test response"
+            ),
+        )
+        server_channel.settimeout(0.2)
+        try:
+            requests.append(casf_lifecycle._recv_packet(server_channel))
+        except TimeoutError:
+            pass
+
+    service = threading.Thread(target=_delayed_service, daemon=True)
+    service.start()
+    broker = casf_lifecycle._BrokerClient(
+        binding=binding,
+        channel=client_channel,
+        death_writer=death_writer,
+        process=object(),
+        absence={},
+        timeout_seconds=0.1,
+    )
+    try:
+        result = broker._exchange(
+            "abort_started_owner",
+            {
+                "owner_start_receipt_cid": "",
+                "abort_reason_code": "delayed-response-test",
+            },
+        )
+        assert result == {"owner_abort_acknowledged": True}
+        service.join(timeout=2)
+        assert not service.is_alive()
+        assert len(requests) == 1
+    finally:
+        broker.close_descriptors()
+        server_channel.close()
