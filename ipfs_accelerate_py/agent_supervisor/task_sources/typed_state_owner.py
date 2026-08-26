@@ -78,6 +78,22 @@ TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: Final = (
 TYPED_DATABASE_CLAIM_RECOVERY_REASON: Final = (
     "database_claim_lost_sidecar_dead_process"
 )
+TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-blocked-retry-recovery@1"
+)
+TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND: Final = (
+    "task.blocked.retry.recover"
+)
+TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION: Final = (
+    "database_operator_blocked_retry_recovery"
+)
+TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON: Final = (
+    "database_operator_blocked_retry_recovery"
+)
+TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION: Final = (
+    "database_portal_terminal_failure"
+)
 TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "typed-database-strict-resume-rejection@1"
@@ -103,6 +119,7 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_post_merge_declared_outputs_requalification_recovery",
         "database_portal_inflight_deferral_unstall",
         TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+        TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
     }
 )
 _PROTECTED_REOPENED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
@@ -1196,6 +1213,12 @@ def _validated_retry_mutation_parameters(
                 "cooldown_parameters"
             ]
         )
+    if value.get("operation") == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND:
+        return dict(
+            _validated_blocked_retry_recovery_parameters(value)[
+                "cooldown_parameters"
+            ]
+        )
     return _validated_retry_cooldown_parameters(value)
 
 
@@ -1205,6 +1228,194 @@ def _dead_claim_recovery_command_digest(
     """Bind deterministic replay to the complete atomic recovery payload."""
 
     validated = _validated_dead_claim_recovery_parameters(parameters)
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name not in {"body", "cooldown_parameters"}
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+def _validated_blocked_retry_recovery_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the one-shot blocked-to-retrying owner command.
+
+    This command is intentionally narrower than the ordinary retry API.  It
+    exists for an operator-sealed current-head handoff after one terminal
+    portal attempt, and admits exactly one remaining attempt.  Sidecar state
+    is independently sealed by the operator and enters this transaction only
+    through its immutable evidence identity; the owner never opens a second
+    database authority from a client-provided path.
+    """
+
+    parameters = dict(value)
+    required = {
+        "schema",
+        "operation",
+        "task_cid",
+        "expected_task_revision",
+        "expected_task_status",
+        "terminal_operation",
+        "terminal_reason",
+        "source_completion_receipt_id",
+        "operator_handoff_receipt_id",
+        "sidecar_evidence_id",
+        "execution_route_binding_cid",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fresh_attempt_number",
+        "max_task_attempts_before",
+        "max_task_attempts_after",
+        "attempt_refunded",
+        "fencing_token",
+        "fence_epoch",
+        "delay_ms",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "selection_penalty",
+        "consecutive_failures",
+        "reason",
+        "resolution_cid",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "extension_schema",
+        "extension_json",
+        "status",
+        "body_json",
+    }
+    if set(parameters) != required:
+        raise TypedStateOwnerAuthorizationError(
+            "blocked retry recovery command differs from its closed schema"
+        )
+    if (
+        parameters.get("schema")
+        != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA
+        or parameters.get("operation")
+        != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND
+        or parameters.get("expected_task_status") != "blocked"
+        or parameters.get("status") != "retrying"
+        or parameters.get("terminal_operation")
+        != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
+        or parameters.get("delay_ms") != 0
+        or parameters.get("selection_penalty") != 0
+        or parameters.get("reason")
+        != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON
+        or parameters.get("expected_queue_revision") != -1
+        or parameters.get("expected_queue_attempt") != 0
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "blocked retry recovery is outside its closed transition"
+        )
+    body_json = parameters.get("body_json")
+    if (
+        type(body_json) is not str
+        or not body_json
+        or len(body_json.encode("utf-8")) > 1024 * 1024
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "blocked retry recovery task body is invalid"
+        )
+    try:
+        body = json.loads(body_json)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "blocked retry recovery task body is malformed"
+        ) from exc
+    if not isinstance(body, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "blocked retry recovery task body is malformed"
+        )
+    reference_bounds = {
+        "terminal_operation": 1_024,
+        "terminal_reason": 2_048,
+        "source_completion_receipt_id": 1_024,
+        "operator_handoff_receipt_id": 1_024,
+        "sidecar_evidence_id": 1_024,
+        "execution_route_binding_cid": 1_024,
+        "execution_route_policy_id": 1_024,
+    }
+    for name, maximum in reference_bounds.items():
+        member = parameters.get(name)
+        if (
+            type(member) is not str
+            or not member.strip()
+            or member != member.strip()
+            or len(member.encode("utf-8")) > maximum
+            or any(marker in member for marker in ("\x00", "\n", "\r"))
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"blocked retry recovery {name} is invalid"
+            )
+    attempt_number = parameters.get("attempt_number")
+    fresh_attempt_number = parameters.get("fresh_attempt_number")
+    max_attempts_before = parameters.get("max_task_attempts_before")
+    max_attempts_after = parameters.get("max_task_attempts_after")
+    route_revision = parameters.get("execution_route_origin_revision")
+    if (
+        type(attempt_number) is not int
+        or attempt_number < 1
+        or type(fresh_attempt_number) is not int
+        or fresh_attempt_number != attempt_number + 1
+        or type(max_attempts_before) is not int
+        or max_attempts_before != attempt_number
+        or type(max_attempts_after) is not int
+        or max_attempts_after != fresh_attempt_number
+        or parameters.get("attempt_refunded") is not False
+        or type(route_revision) is not int
+        or route_revision < 1
+        or type(parameters.get("expected_task_revision")) is not int
+        or parameters["expected_task_revision"] < 1
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "blocked retry recovery attempt budget or route revision is invalid"
+        )
+    cooldown_parameters = {
+        "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+        "operation": "task.retry.cooldown.record",
+        "task_cid": parameters["task_cid"],
+        "expected_task_revision": parameters["expected_task_revision"],
+        # The row is consumed only with the atomically materialized retrying
+        # task; the outer command separately proves the blocked predecessor.
+        "expected_task_status": "retrying",
+        "attempt_id": parameters["attempt_id"],
+        "claim_id": parameters["claim_id"],
+        "lease_id": parameters["lease_id"],
+        "owner_session_id": parameters["owner_session_id"],
+        "attempt_number": parameters["attempt_number"],
+        "fencing_token": parameters["fencing_token"],
+        "fence_epoch": parameters["fence_epoch"],
+        "delay_ms": parameters["delay_ms"],
+        "started_at_ms": parameters["started_at_ms"],
+        "retry_not_before_ms": parameters["retry_not_before_ms"],
+        "selection_penalty": parameters["selection_penalty"],
+        "consecutive_failures": parameters["consecutive_failures"],
+        "reason": parameters["reason"],
+        "resolution_cid": parameters["resolution_cid"],
+        "expected_queue_revision": parameters["expected_queue_revision"],
+        "expected_queue_attempt": parameters["expected_queue_attempt"],
+        "extension_schema": parameters["extension_schema"],
+        "extension_json": parameters["extension_json"],
+    }
+    _validated_retry_cooldown_parameters(cooldown_parameters)
+    return {
+        **parameters,
+        "body": dict(body),
+        "cooldown_parameters": cooldown_parameters,
+    }
+
+
+def _blocked_retry_recovery_command_digest(
+    parameters: Mapping[str, Any],
+) -> str:
+    """Bind replay to the complete operator-sealed recovery payload."""
+
+    validated = _validated_blocked_retry_recovery_parameters(parameters)
     material = {
         name: member
         for name, member in validated.items()
@@ -1570,6 +1781,12 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_insert_retry_cooldown",
             }
         ),
+        TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND: frozenset(
+            {
+                "executor_cas_task_status_receipt",
+                "executor_insert_retry_cooldown",
+            }
+        ),
         "task.validation.record.passed": frozenset(
             {
                 "executor_insert_validation_run",
@@ -1593,6 +1810,7 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
         "task.status.cas.receipt",
         "task.retry.cooldown.record",
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+        TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
     }
@@ -1666,6 +1884,11 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: (
                 _COMMAND_MUTATION_CATALOG[
                     TYPED_DATABASE_CLAIM_RECOVERY_COMMAND
+                ]
+            ),
+            TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND: (
+                _COMMAND_MUTATION_CATALOG[
+                    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND
                 ]
             ),
             "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
@@ -3225,6 +3448,7 @@ class TypedStateOwnerGateway:
             "task.status.cas": "claim",
             "task.status.cas.receipt": "claim",
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: "claim",
+            TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND: "claim",
         }.get(operation, "append")
         if command.command_kind.value != expected_kind:
             raise TypedStateOwnerAuthorizationError(
@@ -3249,6 +3473,18 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "dead claim recovery replay identity differs from its parameters"
+                )
+        if operation == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND:
+            digest = _blocked_retry_recovery_command_digest(
+                command.parameters
+            )
+            if (
+                command.command_id != f"cmd:blocked-retry-recovery:{digest}"
+                or command.idempotency_key
+                != f"executor-blocked-retry-recovery:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "blocked retry recovery replay identity differs from its parameters"
                 )
         if operation in {"task.status.cas", "task.status.cas.receipt"}:
             requested_status = command.parameters.get("status")
@@ -3662,6 +3898,179 @@ class TypedStateOwnerGateway:
                 "cooldown_parameters": values,
                 "recovery_receipt": recovery_receipt,
                 "historic_liveness": liveness.value,
+            }
+        if operation == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND:
+            recovery = _validated_blocked_retry_recovery_parameters(
+                command.parameters
+            )
+            values = dict(recovery["cooldown_parameters"])
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "blocked retry recovery task authority is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            if (
+                str(task_row[0] or "").strip().lower() != "blocked"
+                or type(task_row[1]) is not int
+                or int(task_row[1]) != values["expected_task_revision"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "blocked retry recovery task revision is stale"
+                )
+            try:
+                prior_body = json.loads(str(task_row[2] or "{}"))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "blocked retry recovery prior task body is malformed"
+                ) from exc
+            prior_receipt = (
+                prior_body.get("completion_receipt")
+                if isinstance(prior_body, Mapping)
+                else None
+            )
+            if not isinstance(prior_receipt, Mapping):
+                raise TypedStateOwnerAuthorizationError(
+                    "blocked retry recovery has no terminal receipt"
+                )
+            prior_identity = _validated_database_claim_identity(prior_receipt)
+            exact_identity = {
+                "claim_id": values["claim_id"],
+                "attempt_id": values["attempt_id"],
+                "attempt_number": values["attempt_number"],
+                "lease_id": values["lease_id"],
+                "owner_session_id": values["owner_session_id"],
+                "fencing_token": values["fencing_token"],
+                "fence_epoch": values["fence_epoch"],
+            }
+            try:
+                execution_route = TaskExecutionRouteBinding.from_dict(
+                    prior_receipt.get("execution_route_binding")
+                ).to_dict()
+            except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "blocked retry recovery terminal receipt has no exact route"
+                ) from exc
+            source_completion_receipt_id = "sha256:" + hashlib.sha256(
+                canonical_json_bytes(dict(prior_receipt))
+            ).hexdigest()
+            route_binding_cid = content_identity(
+                {"task_execution_route_binding": execution_route}
+            )
+            if (
+                prior_receipt.get("operation")
+                != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
+                or prior_receipt.get("reason")
+                != recovery["terminal_reason"]
+                or prior_receipt.get("retryable") is not False
+                or any(
+                    not _strict_scalar_equal(
+                        prior_identity.get(name), expected
+                    )
+                    for name, expected in exact_identity.items()
+                )
+                or not _strict_scalar_equal(
+                    prior_receipt.get("control_expected_revision"),
+                    values["expected_task_revision"] - 1,
+                )
+                or prior_receipt.get("control_expected_status")
+                != "in_progress"
+                or execution_route["task_cid"] != values["task_cid"]
+                or prior_receipt.get("execution_route_policy_id")
+                != execution_route["policy_id"]
+                or not _strict_scalar_equal(
+                    prior_receipt.get("execution_route_origin_revision"),
+                    execution_route["task_revision"],
+                )
+                or recovery["source_completion_receipt_id"]
+                != source_completion_receipt_id
+                or recovery["execution_route_binding_cid"]
+                != route_binding_cid
+                or recovery["execution_route_policy_id"]
+                != execution_route["policy_id"]
+                or not _strict_scalar_equal(
+                    recovery["execution_route_origin_revision"],
+                    execution_route["task_revision"],
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "blocked retry recovery differs from terminal authority"
+                )
+            queue_rows = self._connection.execute(
+                "SELECT task_cid FROM leases WHERE task_cid = ? LIMIT 2",
+                [values["task_cid"]],
+            ).fetchall()
+            if queue_rows:
+                raise TypedStateOwnerAuthorizationError(
+                    "blocked retry recovery requires exact cooldown absence"
+                )
+            recovery_receipt = {
+                "schema": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+                "operation": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
+                **exact_identity,
+                "terminal_operation": recovery["terminal_operation"],
+                "terminal_reason": recovery["terminal_reason"],
+                "source_completion_receipt_id": (
+                    source_completion_receipt_id
+                ),
+                "operator_handoff_receipt_id": recovery[
+                    "operator_handoff_receipt_id"
+                ],
+                "sidecar_evidence_id": recovery["sidecar_evidence_id"],
+                "recovered_from_revision": values["expected_task_revision"],
+                "max_task_attempts_before": recovery[
+                    "max_task_attempts_before"
+                ],
+                "max_task_attempts_after": recovery[
+                    "max_task_attempts_after"
+                ],
+                "attempt_refunded": False,
+                "fresh_attempt_number": recovery[
+                    "fresh_attempt_number"
+                ],
+                "queue_reason": values["reason"],
+                "backoff_ms": 0,
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "control_expected_status": "blocked",
+                "control_expected_revision": values[
+                    "expected_task_revision"
+                ],
+                "execution_route_binding": execution_route,
+                "execution_route_binding_cid": route_binding_cid,
+                "execution_route_policy_id": execution_route["policy_id"],
+                "execution_route_origin_revision": int(
+                    execution_route["task_revision"]
+                ),
+            }
+            expected_body = dict(prior_body)
+            expected_body["completion_receipt"] = recovery_receipt
+            expected_body_json = canonical_json_bytes(expected_body).decode(
+                "utf-8"
+            )
+            if (
+                recovery["body"] != expected_body
+                or command.parameters.get("body_json")
+                != expected_body_json
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "blocked retry recovery receipt differs from owner-derived authority"
+                )
+            return {
+                "operation": operation,
+                "task_cid": values["task_cid"],
+                "expected_revision": values["expected_task_revision"],
+                "body_json": expected_body_json,
+                "cooldown_parameters": values,
+                "recovery_receipt": recovery_receipt,
+                "source_completion_receipt_id": (
+                    source_completion_receipt_id
+                ),
             }
         if operation == "task.status.cas.receipt":
             try:
@@ -5082,13 +5491,16 @@ class TypedStateOwnerGateway:
                     "semantic mutation differs from owner-resolved authority"
                 )
 
-        if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
+        if operation in {
+            TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+            TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
+        }:
             values = dict(authority["cooldown_parameters"])
             expected_revision = int(authority["expected_revision"])
             cooldown_mutation = one("executor_insert_retry_cooldown")
             if by_name.get("executor_update_retry_cooldown"):
                 raise TypedStateOwnerAuthorizationError(
-                    "dead claim recovery cannot replace a cooldown row"
+                    "atomic retry recovery cannot replace a cooldown row"
                 )
             exact(
                 one("executor_cas_task_status_receipt"),
@@ -5143,7 +5555,7 @@ class TypedStateOwnerGateway:
                 authority["body_json"],
             ):
                 raise TypedStateOwnerAuthorizationError(
-                    "dead claim recovery task post-state differs"
+                    "atomic retry recovery task post-state differs"
                 )
             queue_rows = self._connection.execute(
                 """
@@ -5185,7 +5597,7 @@ class TypedStateOwnerGateway:
             )
             if observed_queue != expected_queue:
                 raise TypedStateOwnerAuthorizationError(
-                    "dead claim recovery cooldown post-state differs"
+                    "atomic retry recovery cooldown post-state differs"
                 )
             return
 

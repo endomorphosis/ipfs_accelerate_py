@@ -75,6 +75,11 @@ from .control_plane_transactions import (
 from .database_task_source import TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
 from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON,
+    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+    TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION,
     TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
@@ -2348,6 +2353,339 @@ class QuackStateClient:
                 "queue_revision": 1,
                 "retry_not_before_ms": values["retry_not_before_ms"],
                 "historic_liveness": "dead",
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_recovery)
+
+    def recover_blocked_task_retry(
+        self,
+        *,
+        task_cid: str,
+        expected_task_revision: int,
+        task_body: Mapping[str, Any],
+        terminal_receipt: Mapping[str, Any],
+        max_task_attempts_before: int,
+        max_task_attempts_after: int,
+        operator_handoff_receipt_id: str,
+        sidecar_evidence_id: str,
+        now_ms: int,
+    ) -> CASResult:
+        """Atomically admit one operator-sealed blocked retry.
+
+        The caller must retain the exact blocked task body and fixed
+        ``now_ms``.  They are part of the command digest, so a restart can
+        submit the same identity after the task has advanced and receive the
+        durable idempotent result without re-evaluating stale predecessor
+        state.  This method is intentionally not surfaced by
+        ``TypedDatabaseTaskSource`` or any daemon-wide grant.
+        """
+
+        task = str(task_cid or "").strip()
+        if (
+            not task
+            or isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 1
+        ):
+            raise QuackClientError(
+                "blocked retry recovery task revision is invalid"
+            )
+        body = dict(task_body)
+        prior = dict(terminal_receipt)
+        if body.get("completion_receipt") != prior:
+            raise QuackClientError(
+                "blocked retry recovery requires the exact terminal receipt"
+            )
+        terminal_reason = prior.get("reason")
+        if (
+            prior.get("operation")
+            != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
+            or type(terminal_reason) is not str
+            or not terminal_reason.strip()
+            or terminal_reason != terminal_reason.strip()
+            or len(terminal_reason.encode("utf-8")) > 2_048
+            or prior.get("retryable") is not False
+            or prior.get("control_expected_status") != "in_progress"
+            or prior.get("control_expected_revision")
+            != expected_task_revision - 1
+        ):
+            raise QuackClientError(
+                "blocked retry recovery terminal lineage is invalid"
+            )
+        normalized_references: dict[str, str] = {}
+        for name, value in {
+            "operator_handoff_receipt_id": operator_handoff_receipt_id,
+            "sidecar_evidence_id": sidecar_evidence_id,
+        }.items():
+            selected = str(value or "").strip()
+            if (
+                not selected
+                or selected != value
+                or len(selected.encode("utf-8")) > 1_024
+                or any(marker in selected for marker in ("\x00", "\n", "\r"))
+            ):
+                raise QuackClientError(
+                    f"blocked retry recovery {name} is invalid"
+                )
+            normalized_references[name] = selected
+        text_identity: dict[str, str] = {}
+        for name in (
+            "claim_id",
+            "attempt_id",
+            "lease_id",
+            "owner_session_id",
+        ):
+            value = prior.get(name)
+            if (
+                type(value) is not str
+                or not value.strip()
+                or value != value.strip()
+                or len(value.encode("utf-8")) > 1_024
+                or any(marker in value for marker in ("\x00", "\n", "\r"))
+            ):
+                raise QuackClientError(
+                    f"blocked retry recovery {name} is invalid"
+                )
+            text_identity[name] = value
+        integer_identity: dict[str, int] = {}
+        for name in ("attempt_number", "fencing_token", "fence_epoch"):
+            value = prior.get(name)
+            if type(value) is not int or value < 1:
+                raise QuackClientError(
+                    f"blocked retry recovery {name} is invalid"
+                )
+            integer_identity[name] = value
+        attempt_number = integer_identity["attempt_number"]
+        fresh_attempt_number = attempt_number + 1
+        if (
+            type(max_task_attempts_before) is not int
+            or max_task_attempts_before != attempt_number
+            or type(max_task_attempts_after) is not int
+            or max_task_attempts_after != fresh_attempt_number
+        ):
+            raise QuackClientError(
+                "blocked retry recovery must admit exactly one fresh attempt"
+            )
+        execution_route = prior.get("execution_route_binding")
+        if not isinstance(execution_route, Mapping):
+            raise QuackClientError(
+                "blocked retry recovery execution route is absent"
+            )
+        route = dict(execution_route)
+        route_policy_id = route.get("policy_id")
+        route_origin_revision = route.get("task_revision")
+        if (
+            route.get("task_cid") != task
+            or type(route_policy_id) is not str
+            or not route_policy_id
+            or type(route_origin_revision) is not int
+            or route_origin_revision < 1
+            or prior.get("execution_route_policy_id") != route_policy_id
+            or prior.get("execution_route_origin_revision")
+            != route_origin_revision
+        ):
+            raise QuackClientError(
+                "blocked retry recovery execution route lineage is invalid"
+            )
+        if type(now_ms) is not int or now_ms < 0:
+            raise QuackClientError(
+                "blocked retry recovery now_ms must be a fixed integer"
+            )
+
+        source_completion_receipt_id = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(prior)
+        ).hexdigest()
+        route_binding_cid = content_identity(
+            {"task_execution_route_binding": route}
+        )
+        exact_identity = {**text_identity, **integer_identity}
+        reason = TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON
+        recovery_receipt = {
+            "schema": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+            "operation": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
+            **exact_identity,
+            "terminal_operation": prior["operation"],
+            "terminal_reason": terminal_reason,
+            "source_completion_receipt_id": (
+                source_completion_receipt_id
+            ),
+            **normalized_references,
+            "recovered_from_revision": expected_task_revision,
+            "max_task_attempts_before": max_task_attempts_before,
+            "max_task_attempts_after": max_task_attempts_after,
+            "attempt_refunded": False,
+            "fresh_attempt_number": fresh_attempt_number,
+            "queue_reason": reason,
+            "backoff_ms": 0,
+            "retry_not_before_ms": now_ms,
+            "control_expected_status": "blocked",
+            "control_expected_revision": expected_task_revision,
+            "execution_route_binding": route,
+            "execution_route_binding_cid": route_binding_cid,
+            "execution_route_policy_id": route_policy_id,
+            "execution_route_origin_revision": route_origin_revision,
+        }
+        body["completion_receipt"] = recovery_receipt
+        body_json = canonical_json_bytes(body).decode("utf-8")
+        extension = {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": task,
+            "expected_task_revision": expected_task_revision,
+            **exact_identity,
+            "delay_ms": 0,
+            "started_at_ms": now_ms,
+            "retry_not_before_ms": now_ms,
+            "selection_penalty": 0,
+            "consecutive_failures": attempt_number,
+            "reason": reason,
+            "expected_queue_revision": -1,
+            "expected_queue_attempt": 0,
+        }
+        extension_json = canonical_json_bytes(extension).decode("utf-8")
+        resolution_cid = content_identity(
+            {
+                "typed_retry_cooldown": extension,
+                "started_at_ms": now_ms,
+            }
+        )
+        parameters = {
+            **extension,
+            "schema": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+            "operation": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
+            "expected_task_status": "blocked",
+            "terminal_operation": prior["operation"],
+            "terminal_reason": terminal_reason,
+            "source_completion_receipt_id": (
+                source_completion_receipt_id
+            ),
+            **normalized_references,
+            "execution_route_binding_cid": route_binding_cid,
+            "execution_route_policy_id": route_policy_id,
+            "execution_route_origin_revision": route_origin_revision,
+            "fresh_attempt_number": fresh_attempt_number,
+            "max_task_attempts_before": max_task_attempts_before,
+            "max_task_attempts_after": max_task_attempts_after,
+            "attempt_refunded": False,
+            "reason": reason,
+            "resolution_cid": resolution_cid,
+            "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "extension_json": extension_json,
+            "status": "retrying",
+            "body_json": body_json,
+        }
+        command_digest = hashlib.sha256(
+            canonical_json_bytes(parameters)
+        ).hexdigest()
+        session = self._require_session()
+        live = self.load_generation()
+        command = StateCommand(
+            command_id=f"cmd:blocked-retry-recovery:{command_digest}",
+            command_kind=CommandKind.CLAIM,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=(
+                f"executor-blocked-retry-recovery:{command_digest}"
+            ),
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters=parameters,
+        )
+
+        def apply_recovery(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            observed = _fetch_all(
+                txn.execute_named_operation(
+                    "executor_retry_cooldown_by_task",
+                    (values["task_cid"],),
+                )
+            )
+            if observed:
+                raise OptimisticConflictError(
+                    "blocked retry recovery cooldown absence became stale"
+                )
+            queue_result = txn.execute_named_operation(
+                "executor_insert_retry_cooldown",
+                (
+                    values["task_cid"],
+                    values["claim_id"],
+                    values["resolution_cid"],
+                    values["owner_session_id"],
+                    values["fence_epoch"],
+                    values["fencing_token"],
+                    0,
+                    values["attempt_number"],
+                    "released",
+                    values["started_at_ms"],
+                    values["reason"],
+                    values["retry_not_before_ms"],
+                    values["owner_session_id"],
+                    values["fence_epoch"],
+                    1,
+                    values["extension_schema"],
+                    values["extension_json"],
+                    -1,
+                ),
+            )
+            if _fetch_one(queue_result) is None:
+                raise OptimisticConflictError(
+                    "blocked retry recovery cooldown absence CAS failed"
+                )
+            expected = int(values["expected_task_revision"])
+            task_result = txn.execute_named_operation(
+                "executor_cas_task_status_receipt",
+                (
+                    "retrying",
+                    expected + 1,
+                    self._clock(),
+                    values["body_json"],
+                    values["task_cid"],
+                    expected,
+                ),
+            )
+            if _fetch_one(task_result) is None:
+                raise OptimisticConflictError(
+                    "blocked retry recovery task CAS failed"
+                )
+            return {
+                "schema": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
+                "operation": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
+                "task_cid": values["task_cid"],
+                "attempt_id": values["attempt_id"],
+                "attempt_number": values["attempt_number"],
+                "fresh_attempt_number": values["fresh_attempt_number"],
+                "task_revision": expected + 1,
+                "queue_revision": 1,
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "source_completion_receipt_id": values[
+                    "source_completion_receipt_id"
+                ],
+                "operator_handoff_receipt_id": values[
+                    "operator_handoff_receipt_id"
+                ],
+                "sidecar_evidence_id": values["sidecar_evidence_id"],
+                "max_task_attempts_before": values[
+                    "max_task_attempts_before"
+                ],
+                "max_task_attempts_after": values[
+                    "max_task_attempts_after"
+                ],
+                "attempt_refunded": False,
+                "execution_route_binding_cid": values[
+                    "execution_route_binding_cid"
+                ],
+                "execution_route_policy_id": values[
+                    "execution_route_policy_id"
+                ],
+                "execution_route_origin_revision": values[
+                    "execution_route_origin_revision"
+                ],
                 "store_revision_before": generation.revision,
             }
 
