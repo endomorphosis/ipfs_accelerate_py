@@ -10563,6 +10563,65 @@ class PortalImplementationSupervisor:
         event_log_repair = self.ensure_event_log_file()
         update_maintenance_phase("state_file_repair")
         state_file_repair = self.ensure_state_file()
+        interrupted_implementation_reconciliation: dict[str, Any] = {
+            "reconciled": False,
+            "blocked": False,
+            "reason": "no_active_protected_attempt",
+        }
+        active_protected_attempt = (
+            self.config.state_path.parent
+            / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+        )
+        if active_protected_attempt.exists():
+            if implementation_maintenance_lease is None:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": (
+                        "interrupted_implementation_reconciliation_requires_"
+                        "maintenance_lease"
+                    ),
+                    "event_log_repair": event_log_repair,
+                    "state_file_repair": state_file_repair,
+                    "interrupted_implementation_reconciliation": (
+                        interrupted_implementation_reconciliation
+                    ),
+                    "retained_generated_checkout_recovery": (
+                        retained_generated_checkout_recovery
+                    ),
+                }
+            update_maintenance_phase(
+                "interrupted_implementation_reconciliation"
+            )
+            interrupted_implementation_reconciliation = (
+                self._reconcile_interrupted_implementation_after_shutdown(
+                    preacquired_implementation_lock=(
+                        implementation_maintenance_lease
+                    ),
+                )
+            )
+            if not (
+                interrupted_implementation_reconciliation.get("reconciled")
+                is True
+                and interrupted_implementation_reconciliation.get("blocked")
+                is False
+            ):
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(
+                        interrupted_implementation_reconciliation.get("reason")
+                        or "interrupted_implementation_reconciliation_blocked"
+                    ),
+                    "event_log_repair": event_log_repair,
+                    "state_file_repair": state_file_repair,
+                    "interrupted_implementation_reconciliation": (
+                        interrupted_implementation_reconciliation
+                    ),
+                    "retained_generated_checkout_recovery": (
+                        retained_generated_checkout_recovery
+                    ),
+                }
         update_maintenance_phase("implementation_protected_path_guard")
         protected_path_guard = self._implementation_protected_maintenance_guard()
         if protected_path_guard.get("blocked", False):
@@ -10572,6 +10631,9 @@ class PortalImplementationSupervisor:
                 "reason": str(protected_path_guard.get("reason") or ""),
                 "event_log_repair": event_log_repair,
                 "state_file_repair": state_file_repair,
+                "interrupted_implementation_reconciliation": (
+                    interrupted_implementation_reconciliation
+                ),
                 "protected_path_guard": protected_path_guard,
                 "retained_generated_checkout_recovery": (
                     retained_generated_checkout_recovery
@@ -10736,6 +10798,9 @@ class PortalImplementationSupervisor:
                 "guardrail_unblock_count": len(guardrail_releases),
                 "retained_generated_checkout_recovery": (
                     retained_generated_checkout_recovery
+                ),
+                "interrupted_implementation_reconciliation": (
+                    interrupted_implementation_reconciliation
                 ),
             }
         update_maintenance_phase("retry_dependency_guardrails")
@@ -10997,6 +11062,9 @@ class PortalImplementationSupervisor:
             "worktree_cleanup": worktree_cleanup,
             "retained_generated_checkout_recovery": (
                 retained_generated_checkout_recovery
+            ),
+            "interrupted_implementation_reconciliation": (
+                interrupted_implementation_reconciliation
             ),
         }
 
@@ -16960,12 +17028,18 @@ class PortalImplementationSupervisor:
 
     def _reconcile_interrupted_implementation_after_shutdown(
         self,
+        *,
+        preacquired_implementation_lock: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Close an interrupted attempt only after proving it is quiescent."""
 
         try:
             daemon = self._build_worktree_reconciliation_daemon()
-            return daemon.reconcile_quiesced_active_attempt()
+            return daemon.reconcile_quiesced_active_attempt(
+                preacquired_implementation_lock=(
+                    preacquired_implementation_lock
+                ),
+            )
         except Exception as exc:
             logger.exception(
                 "Could not reconcile interrupted implementation during "

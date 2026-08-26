@@ -199,6 +199,33 @@ def _protected_git_worktree_daemon(
     return daemon, repo, workspace, protected
 
 
+def _protected_git_worktree_supervisor(
+    daemon: PortalImplementationDaemon,
+    repo: Path,
+) -> PortalImplementationSupervisor:
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(daemon.todo_path),
+            "--state-dir",
+            str(daemon.state_path.parent),
+            "--worktree-root",
+            str(daemon.worktree_root),
+            "--merge-target-branch",
+            daemon.resolved_merge_target_branch,
+            "--implementation-protected-path",
+            POLICY_PATH,
+        ]
+    )
+    return PortalImplementationSupervisor(
+        supervisor_config_from_args(
+            args,
+            repo_root=repo,
+            state_path=daemon.state_path,
+        )
+    )
+
+
 def _temporary_shared_merge(
     repo: Path,
     protected: Path,
@@ -4131,8 +4158,219 @@ def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(
     result = supervisor.run_once(include_refill=False)
 
     assert result["maintenance_blocked"] is True
-    assert result["reason"] == "implementation_protected_path_attempt_active"
+    assert result["reason"] == "protected_path_reconciliation_blocked"
+    recovery = result["interrupted_implementation_reconciliation"]
+    assert (
+        recovery["protected_path_reconciliation"]["reason"]
+        == "implementation_protected_path_snapshot_invalid"
+    )
+    assert (
+        tmp_path
+        / "state"
+        / "implementation-protected-path-incident.json"
+    ).exists()
     assert not (tmp_path / "state" / "implementation.lock").exists()
+
+
+def test_supervisor_reconciles_dead_protected_attempt_before_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    _persist_stale_implementation_lock(daemon, task)
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    for method_name in (
+        "detect_stale_worktrees",
+        "reconcile_orphaned_worktree_pool_metadata",
+        "repair_stale_active_execution_state",
+        "release_completed_leftover_execution",
+        "repair_main_checkout_merge_state",
+        "repair_generated_dirty_checkouts",
+        "reconcile_backlogged_worktrees",
+        "recover_already_merged_reconciliation_candidates",
+        "cleanup_backlogged_worktrees",
+        "ensure_strategy_file",
+        "ensure_todo_board_for_refill",
+        "migrate_legacy_objective_goal_completion",
+        "reconcile_objective_task_janitor",
+    ):
+        monkeypatch.setattr(
+            supervisor,
+            method_name,
+            lambda *_args, **_kwargs: {},
+        )
+    for method_name in (
+        "record_reconciliation_guardrails",
+        "release_completed_guardrail_blocks",
+        "record_retry_budget_guardrails",
+        "record_dependency_guardrails",
+    ):
+        monkeypatch.setattr(
+            supervisor,
+            method_name,
+            lambda *_args, **_kwargs: [],
+        )
+    monkeypatch.setattr(
+        supervisor,
+        "is_stuck",
+        lambda *_args, **_kwargs: (False, ""),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = supervisor.run_once(include_refill=False)
+
+    recovery = result["interrupted_implementation_reconciliation"]
+    assert result["stuck"] is False
+    assert "maintenance_blocked" not in result
+    assert recovery["reconciled"] is True
+    assert recovery["blocked"] is False
+    assert recovery["reason"] == "quiesced_active_attempt_reconciled"
+    assert recovery["stale_lock_cleared"] is False
+    assert (
+        recovery["protected_path_reconciliation"]["reason"]
+        == "crash_reconciliation_unchanged"
+    )
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    assert not daemon._implementation_protected_incident_path().exists()
+    state = PortalTaskState.load(daemon.state_path)
+    assert state.implementation_in_progress is False
+    assert state.active_task_id == ""
+    lifecycle = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert lifecycle is not None
+    assert lifecycle.is_terminal
+    assert not daemon._implementation_lock_path().exists()
+
+
+def test_supervisor_preserves_protected_attempt_for_live_lifecycle_owner(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        current_process_birth(),
+    )
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    snapshot_path = daemon._implementation_protected_active_snapshot_path()
+    lifecycle_path = daemon.worktree_lifecycle.workspace_path_for(workspace)
+    before = {
+        "snapshot": snapshot_path.read_bytes(),
+        "state": daemon.state_path.read_bytes(),
+        "lifecycle": lifecycle_path.read_bytes(),
+    }
+
+    result = supervisor.run_once(include_refill=False)
+
+    recovery = result["interrupted_implementation_reconciliation"]
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "worktree_lifecycle_reconciliation_blocked"
+    assert recovery["reconciled"] is False
+    assert recovery["blocked"] is True
+    assert (
+        recovery["worktree_lifecycle_reconciliation"]["reason"]
+        == "worktree_lifecycle_owner_still_active"
+    )
+    assert snapshot_path.read_bytes() == before["snapshot"]
+    assert daemon.state_path.read_bytes() == before["state"]
+    assert lifecycle_path.read_bytes() == before["lifecycle"]
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert not daemon._implementation_lock_path().exists()
+
+
+def test_supervisor_latches_mutated_protected_attempt_before_guard(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    snapshot_path = daemon._implementation_protected_active_snapshot_path()
+    before = {
+        "snapshot": snapshot_path.read_bytes(),
+        "state": daemon.state_path.read_bytes(),
+    }
+    protected.write_text("implementation-time mutation\n", encoding="utf-8")
+
+    result = supervisor.run_once(include_refill=False)
+
+    recovery = result["interrupted_implementation_reconciliation"]
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "protected_path_reconciliation_blocked"
+    assert recovery["reconciled"] is False
+    assert recovery["blocked"] is True
+    assert (
+        recovery["protected_path_reconciliation"]["reason"]
+        == "implementation_protected_path_mutated"
+    )
+    assert snapshot_path.read_bytes() == before["snapshot"]
+    assert daemon.state_path.read_bytes() == before["state"]
+    lifecycle = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert lifecycle is not None
+    assert lifecycle.is_terminal
+    assert daemon._implementation_protected_incident_path().exists()
+    assert not daemon._implementation_lock_path().exists()
 
 
 def test_supervisor_live_daemon_lock_blocks_objective_refill_before_mutation(

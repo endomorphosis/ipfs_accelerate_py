@@ -13958,7 +13958,11 @@ class PortalImplementationDaemon:
             )
         return result
 
-    def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
+    def reconcile_quiesced_active_attempt(
+        self,
+        *,
+        preacquired_implementation_lock: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Finalize an interrupted attempt after proving no worker owns it.
 
         Supervisor shutdown can terminate the daemon between provider exit and
@@ -14002,7 +14006,33 @@ class PortalImplementationDaemon:
                 result,
             )
             return result
-        if lock is not None and self._implementation_lock_owner_is_active(lock):
+        borrowed_maintenance_lock = preacquired_implementation_lock is not None
+        if borrowed_maintenance_lock:
+            expected_lock = dict(preacquired_implementation_lock or {})
+            try:
+                expected_pid = int(expected_lock.get("pid") or 0)
+            except (TypeError, ValueError):
+                expected_pid = 0
+            if (
+                lock != expected_lock
+                or expected_lock.get("lease_role") != "supervisor_maintenance"
+                or not str(expected_lock.get("lease_id") or "")
+                or expected_pid != os.getpid()
+                or lock is None
+                or not self._implementation_lock_owner_is_active(lock)
+            ):
+                result = {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "preacquired_implementation_lock_mismatch",
+                    "lock_path": str(lock_path),
+                }
+                self._record_event(
+                    "implementation_shutdown_reconciliation_blocked",
+                    result,
+                )
+                return result
+        elif lock is not None and self._implementation_lock_owner_is_active(lock):
             result = {
                 "reconciled": False,
                 "blocked": True,
@@ -14130,12 +14160,38 @@ class PortalImplementationDaemon:
             return result
 
         stale_lock_cleared = False
-        if lock_path.exists():
+        if lock_path.exists() and not borrowed_maintenance_lock:
             stale_lock_cleared = self._clear_stale_lock(
                 lock_path,
                 lock_kind="implementation",
                 metadata=lock,
             )
+
+        if borrowed_maintenance_lock and load_json_dict(lock_path) != dict(
+            preacquired_implementation_lock or {}
+        ):
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "preacquired_implementation_lock_changed",
+                "lock_path": str(lock_path),
+                "reconciled_at": reconciled_at,
+                "task_id": task_id,
+                "attempt": attempt,
+                "attempt_recovery": attempt_recovery,
+                "task_claim_reconciliation": task_claim_reconciliation,
+                "protected_path_reconciliation": (
+                    protected_path_reconciliation
+                ),
+                "worktree_lifecycle_reconciliation": (
+                    worktree_lifecycle_reconciliation
+                ),
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
 
         result = {
             "reconciled": True,
