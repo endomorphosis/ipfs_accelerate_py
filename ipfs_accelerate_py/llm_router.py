@@ -3171,19 +3171,11 @@ def _safe_cid_filename(cid: str) -> str:
 
 
 def _cid_for_bytes(data: bytes) -> str:
-    # Prefer multiformats CIDv1 (raw, sha2-256) when available.
-    try:
-        from multiformats import CID, multihash  # type: ignore
+    """Address exact bytes through the sealed dependency-free CID profile."""
 
-        mh = multihash.digest(data, "sha2-256")
-        try:
-            cid = CID("base32", 1, "raw", mh)
-        except TypeError:
-            # Older constructor variant.
-            cid = CID("base32", "raw", mh)
-        return str(cid)
-    except Exception:
-        return "sha256_" + hashlib.sha256(data).hexdigest()
+    from .utils.cid_utils import cid_for_bytes
+
+    return cid_for_bytes(data, codec="raw")
 
 
 def _cid_for_text(text: str) -> str:
