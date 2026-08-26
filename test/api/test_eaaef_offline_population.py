@@ -5,6 +5,7 @@ import inspect
 import json
 import os
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -24,6 +25,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     eaaef_casf_bootstrap_lifecycle as casf_lifecycle,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    eaaef_casf_owner_management as casf_management,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     eaaef_offline_population as offline,
@@ -1755,6 +1759,101 @@ def test_persistent_casf_bootstrap_aborts_after_final_record_failure(
     assert lifecycle.inspect_process_birth(birth.pid) != birth
     assert concrete.committed_generation_ids() == ()
     assert not (generation_dir / ".control.duckdb.state-owner.json").exists()
+
+
+def test_persistent_casf_bootstrap_owner_reattaches_and_stops_privately(
+    repo_root: Path,
+    tmp_path: Path,
+) -> None:
+    if not DatabaseTaskSource.available():
+        pytest.skip("DuckDB unavailable")
+    population = _population(repo_root)
+    snapshot_bindings = _concrete_snapshot_bindings()
+    original_lifecycle = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+        snapshot_bindings=snapshot_bindings,
+        startup_timeout_seconds=60,
+        operation_timeout_seconds=180,
+        shutdown_timeout_seconds=30,
+    )
+    registry_root = tmp_path / "persistent-casf-reattach"
+    owner = bind_eaaef_casf_bootstrap_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        owner_lifecycle=original_lifecycle,
+    )
+    generation_id = "eaaef-persistent-reattach-001"
+    request = lifecycle._build_offline_population_request(
+        generation_id=generation_id,
+        population=population,
+    )
+    owner.materialize_offline_population(request, population=population)
+
+    generation_dir = registry_root / "generations" / generation_id
+    binding = EAAEFCASFBootstrapBinding(
+        generation_id=generation_id,
+        source_head=population.source_head,
+        source_tree=population.source_tree,
+        source_forest_root=population.source_forest_root,
+        board_cid=population.board_cid,
+        population_cid=population.population_cid,
+        bootstrap_population_cid=population.bootstrap_population_cid,
+        plan_r1_cid=population.plan_r1_cid,
+        database_path=generation_dir / "control.duckdb",
+        owner_state_dir=generation_dir / "casf-owner",
+    )
+    broker = original_lifecycle._brokers[generation_id]
+    owner_birth = dict(broker.start_receipt["owner_process_birth"])
+
+    # Simulate loss of every inherited caller descriptor and Python object.
+    broker.close_descriptors()
+    original_lifecycle._forget_broker(generation_id, broker)
+    time.sleep(0.1)
+    assert broker.process.poll() is None
+    assert lifecycle.inspect_process_birth(owner_birth["pid"]).to_dict() == owner_birth
+
+    recovered = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+        snapshot_bindings=snapshot_bindings,
+        startup_timeout_seconds=60,
+        operation_timeout_seconds=180,
+        shutdown_timeout_seconds=30,
+    )
+    status = recovered.reattach_committed_owner(binding)
+    assert status["phase"] == "committed"
+    assert status["owner_process_birth"] == owner_birth
+    assert status["owner_process_alive"] is True
+    assert recovered.committed_owner_status(generation_id) == status
+    assert recovered.committed_generation_ids() == (generation_id,)
+    boundary = json.dumps(status, sort_keys=True)
+    for forbidden in (
+        "database_path",
+        "control.duckdb",
+        "transport_token",
+        "management.key",
+        "SELECT ",
+    ):
+        assert forbidden not in boundary
+
+    result = recovered.shutdown_committed_owner(generation_id)
+    assert result["committed_owner_stopped"] is True
+    assert result["exclusive_owner_lease_released"] is True
+    assert result["task_state_mutated"] is False
+    assert broker.wait_dead(30)
+    assert lifecycle.inspect_process_birth(owner_birth["pid"]) is None
+    assert not (generation_dir / ".control.duckdb.state-owner.json").exists()
+    assert recovered.committed_generation_ids() == ()
+
+    owner_state = binding.owner_state_dir
+    assert stat.S_IMODE(owner_state.stat().st_mode) == 0o700
+    for name in (
+        casf_management.MANAGEMENT_CAPSULE_NAME,
+        casf_management.MANAGEMENT_KEY_NAME,
+        casf_management.MANAGEMENT_STOP_INTENT_NAME,
+        casf_management.MANAGEMENT_STOP_RESULT_NAME,
+    ):
+        artifact = owner_state / name
+        assert artifact.is_file()
+        assert stat.S_IMODE(artifact.stat().st_mode) == 0o600
 
 
 def test_persistent_casf_bootstrap_releases_lease_when_caller_dies(
