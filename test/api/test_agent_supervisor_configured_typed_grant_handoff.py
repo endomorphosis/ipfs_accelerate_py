@@ -22751,3 +22751,803 @@ def test_aseh_r27_absent_target_foreign_recovery_near_misses_fail_closed(
             changed,
             item=item,
         )
+
+
+def _aseh_r28_structural_chain() -> list[dict[str, object]]:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R28_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        receipt_cid = (
+            aseh_operator.ASEH_R28_EXACT_R1_R27_RECEIPT_CIDS[index]
+            if index < len(aseh_operator.ASEH_R28_EXACT_R1_R27_RECEIPT_CIDS)
+            else "sha256:" + ("8" * 64)
+        )
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": receipt_cid,
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+    return chain
+
+
+def _aseh_r28_policy_fixture(
+    *,
+    head: str,
+    tree: str,
+    witness: dict[str, str],
+) -> dict[str, object]:
+    policy: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R28_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": aseh_operator.PROGRAM,
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 28,
+        "authorization_basis": (
+            "validated_r1_r27_chain_plus_observed_r28_candidate_witness"
+        ),
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "prior_receipt_count": len(
+            aseh_operator.ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS
+        ),
+        "prior_receipt_cids": list(
+            aseh_operator.ASEH_R28_EXACT_R1_R27_RECEIPT_CIDS
+        ),
+        "prior_receipt_chain_cid": aseh_operator._identity(
+            list(aseh_operator.ASEH_R28_EXACT_R1_R27_RECEIPT_CIDS)
+        ),
+        "previous_receipt_cid": (
+            aseh_operator.ASEH_R28_EXACT_R27_REPAIR_RECEIPT_CID
+        ),
+        "candidate_base_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": head,
+        "candidate_tree": tree,
+        "candidate_authorization_witness_cid": aseh_operator._identity(witness),
+        "executor_contract_cid": aseh_operator._identity(
+            aseh_operator._r27_historical_live_validation_executor_contract()
+        ),
+        "logical_argv_sha256": aseh_operator._identity(
+            list(aseh_operator._r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": (
+            aseh_operator.ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        ),
+        "validation_subject_tree": (
+            aseh_operator.ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        ),
+    }
+    policy["policy_admission_cid"] = aseh_operator._identity(policy)
+    return policy
+
+
+def test_aseh_r28_initial_health_requires_exact_r1_r28_chain() -> None:
+    chain = _aseh_r28_structural_chain()
+    assert aseh_operator._admit_exact_r28_transition_chain(chain) == chain
+    assert tuple(item["receipt_cid"] for item in chain[:-1]) == (
+        aseh_operator.ASEH_R28_EXACT_R1_R27_RECEIPT_CIDS
+    )
+    assert chain[-2]["receipt_cid"] == (
+        "sha256:40c52be7c0ae15c82f2c3f639c808c7c32c9a47276ed4fca60130515d695abd9"
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="R28"):
+        aseh_operator._admit_exact_r28_transition_chain(chain[:-1])
+    rewritten = json.loads(json.dumps(chain))
+    rewritten[-2]["receipt_cid"] = "sha256:" + ("f" * 64)
+    rewritten[-1]["previous_receipt_cid"] = rewritten[-2]["receipt_cid"]
+    with pytest.raises(aseh_operator.OperatorError, match="vector"):
+        aseh_operator._admit_exact_r28_transition_chain(rewritten)
+
+
+def test_aseh_r28_exact_r27_initial_health_failure_is_pure_and_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: pytest.fail(
+            "pure R28 failure validation reread runtime evidence"
+        ),
+    )
+    observation = aseh_operator._r28_expected_r27_terminal_observation()
+    record = dict(observation["terminal_record"])
+    record_cid = record.pop("record_cid")
+    unsigned_observation = dict(observation)
+    observation_cid = unsigned_observation.pop("receipt_cid")
+    control = aseh_operator._r28_expected_r27_control_failure_receipt()
+    unsigned_control = dict(control)
+    control_cid = unsigned_control.pop("receipt_cid")
+
+    assert record_cid == aseh_operator._identity(record)
+    assert observation_cid == aseh_operator._identity(unsigned_observation)
+    assert control_cid == aseh_operator._identity(unsigned_control)
+    assert observation["terminal_record"]["stage"] == "initial_health"
+    assert observation["terminal_record"]["owner_start_attempted"] is True
+    assert observation["terminal_record"]["owner_identity_observed"] is True
+    assert observation["terminal_record"]["scheduler_birth_observed"] is True
+    evidence = aseh_operator._r28_expected_r27_initial_health_failure_evidence()
+    assert evidence["scheduler_returncode"] is None
+    assert evidence["sealed_owner_child_returncode"] == 78
+    assert evidence["r27_retry_authorized"] is False
+    assert (
+        aseh_operator._validate_r28_r27_initial_health_failure_evidence(evidence)
+        == evidence
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "terminal-stage",
+        "terminal-retry",
+        "control-reason",
+        "permission-cid",
+        "scheduler-returncode",
+        "r27-retry",
+    ],
+)
+def test_aseh_r28_initial_health_failure_near_misses_fail_closed(
+    mutation: str,
+) -> None:
+    changed = json.loads(
+        json.dumps(
+            aseh_operator._r28_expected_r27_initial_health_failure_evidence()
+        )
+    )
+    if mutation == "terminal-stage":
+        changed["terminal_observation"]["terminal_record"]["stage"] = "running"
+    elif mutation == "terminal-retry":
+        changed["terminal_observation"]["retry_authorized"] = True
+    elif mutation == "control-reason":
+        changed["control_failure_receipt"]["reason_code"] = "other"
+    elif mutation == "permission-cid":
+        changed["owner_start_permission_receipt_cid"] = "sha256:" + ("a" * 64)
+    elif mutation == "scheduler-returncode":
+        changed["scheduler_returncode"] = 0
+    else:
+        changed["r27_retry_authorized"] = True
+    unsigned = dict(changed)
+    unsigned.pop("evidence_cid")
+    changed["evidence_cid"] = aseh_operator._identity(unsigned)
+    with pytest.raises(aseh_operator.OperatorError, match="R28"):
+        aseh_operator._validate_r28_r27_initial_health_failure_evidence(changed)
+
+
+def test_aseh_r28_failure_loader_reads_exact_receipts_without_duckdb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal_directory = tmp_path / "terminal"
+    permission_directory = tmp_path / "permission"
+    control_path = tmp_path / "control.json"
+    terminal_path = terminal_directory / (
+        aseh_operator.ASEH_R28_EXACT_R27_TERMINAL_OBSERVATION_CID[7:] + ".json"
+    )
+    permission_path = permission_directory / (
+        aseh_operator.ASEH_R28_EXACT_R27_OWNER_START_PERMISSION_RECEIPT_CID[7:]
+        + ".json"
+    )
+    observed_paths: list[Path] = []
+
+    def read(path: Path, **_kwargs: object) -> dict[str, object]:
+        observed_paths.append(path)
+        if path == terminal_path:
+            return aseh_operator._r28_expected_r27_terminal_observation()
+        if path == permission_path:
+            return {"permission": "fixture"}
+        if path == control_path:
+            return aseh_operator._r28_expected_r27_control_failure_receipt()
+        raise AssertionError(f"unexpected R28 receipt path: {path}")
+
+    def admit_permission(
+        value: object,
+        *,
+        expected_bindings: dict[str, str],
+    ) -> dict[str, object]:
+        assert value == {"permission": "fixture"}
+        assert expected_bindings["repair_transition_receipt_cid"] == (
+            aseh_operator.ASEH_R28_EXACT_R27_REPAIR_RECEIPT_CID
+        )
+        assert expected_bindings["materialized_launch_admission_cid"] == (
+            aseh_operator.ASEH_R28_EXACT_R27_MATERIALIZED_LAUNCH_ADMISSION_CID
+        )
+        return {
+            "receipt_cid": (
+                aseh_operator.ASEH_R28_EXACT_R27_OWNER_START_PERMISSION_RECEIPT_CID
+            ),
+            "owner_start_attempted": False,
+            "retry_authorized": False,
+            "database_content_mutated": False,
+            "database_metadata_mutated": False,
+            "wal_mutated": False,
+        }
+
+    monkeypatch.setattr(aseh_operator, "_secure_runtime_json", read)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r23_owner_start_permission_receipt",
+        admit_permission,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_offline_database_guard",
+        lambda *_args, **_kwargs: pytest.fail("R28 failure loader touched DuckDB"),
+    )
+
+    evidence = aseh_operator._r28_r27_initial_health_failure_evidence(
+        paths={
+            "sealed_owner_terminal_observations": terminal_directory,
+            "owner_start_permission_receipts": permission_directory,
+            "inbox_failure_receipt": control_path,
+        }
+    )
+    assert evidence == (
+        aseh_operator._r28_expected_r27_initial_health_failure_evidence()
+    )
+    assert observed_paths == [terminal_path, permission_path, control_path]
+
+
+def test_aseh_r28_receipt_identity_binds_exact_failure_and_r27_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    policy = _aseh_r28_policy_fixture(head=head, tree=tree, witness=witness)
+    historical: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA,
+        "active_policy_cid": policy["policy_admission_cid"],
+        "authorizing_receipt_cid": None,
+        "returncode": 0,
+        "terminal_class": "verified_success",
+    }
+    historical["evidence_cid"] = aseh_operator._identity(historical)
+    inherited_failure = {"evidence_cid": "sha256:" + ("2" * 64)}
+    inherited_preflight = {"evidence_cid": "sha256:" + ("3" * 64)}
+    inherited_proof = {"semantic_admission_cid": "sha256:" + ("4" * 64)}
+    inherited_terminal = {"evidence_cid": "sha256:" + ("5" * 64)}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r25_projection_recovery_failure_evidence",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r26_r25_preflight_failure_evidence",
+        lambda value: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r26_projection_recovery_prestart_admission",
+        lambda value, **_kwargs: dict(value),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r27_r26_terminal_failure_evidence",
+        lambda value: dict(value),
+    )
+    receipt: dict[str, object] = {
+        "schema": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_SCHEMA
+        ),
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R28"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 28,
+        "bootstrap_receipt_id": policy["bootstrap_receipt_id"],
+        "previous_receipt_cid": (
+            aseh_operator.ASEH_R28_EXACT_R27_REPAIR_RECEIPT_CID
+        ),
+        "plan_root_cid": "sha256:" + ("6" * 64),
+        "repository_tree_id": "7" * 40,
+        "base_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "base_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        ),
+        "repair_head": head,
+        "repair_tree": tree,
+        "changed_paths": list(
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("8" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R27"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_AUTHORITY
+        ),
+        "validation_results": [],
+        "candidate_authorization_witness": witness,
+        "sealed_validation_executor_contract": (
+            aseh_operator._r28_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": policy,
+        "historical_live_execution_evidence": historical,
+        "projection_recovery_failure_evidence": inherited_failure,
+        "r25_preflight_failure_evidence": inherited_preflight,
+        "projection_recovery_prestart_admission": inherited_proof,
+        "r26_terminal_failure_evidence": inherited_terminal,
+        "r27_initial_health_failure_evidence": (
+            aseh_operator._r28_expected_r27_initial_health_failure_evidence()
+        ),
+        "terminal_success_criteria": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert set(receipt) == (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_RECEIPT_FIELDS
+    )
+    assert (
+        aseh_operator
+        ._repair_sealed_owner_initial_health_scheduler_exit_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    changed = json.loads(json.dumps(receipt))
+    changed["r27_initial_health_failure_evidence"]["r27_retry_authorized"] = True
+    unsigned_failure = dict(changed["r27_initial_health_failure_evidence"])
+    unsigned_failure.pop("evidence_cid")
+    changed["r27_initial_health_failure_evidence"]["evidence_cid"] = (
+        aseh_operator._identity(unsigned_failure)
+    )
+    unsigned_receipt = dict(changed)
+    unsigned_receipt.pop("receipt_cid")
+    changed["receipt_cid"] = aseh_operator._identity(unsigned_receipt)
+    with pytest.raises(aseh_operator.OperatorError, match="R28"):
+        aseh_operator._repair_sealed_owner_initial_health_scheduler_exit_transition_receipt_id(
+            changed
+        )
+
+
+def test_aseh_r28_transition_wrappers_select_exact_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+
+    def run(**kwargs: object) -> list[dict[str, object]]:
+        calls.append(("run", int(kwargs["_revision"])))
+        return [{"revision": kwargs["_revision"]}]
+
+    def validate(
+        _receipt: object,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        calls.append(("validate", int(kwargs["_revision"])))
+        return {"revision": kwargs["_revision"]}
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_docker_create_readiness_vendor_resolver_transition_validations",
+        run,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_docker_create_readiness_vendor_resolver_transition",
+        validate,
+    )
+    witness = {"head": "a" * 40}
+    run_r28 = (
+        aseh_operator
+        ._run_repair_sealed_owner_initial_health_scheduler_exit_transition_validations
+    )
+    validate_r28 = (
+        aseh_operator
+        ._validate_repair_sealed_owner_initial_health_scheduler_exit_transition
+    )
+    assert run_r28(
+        candidate_head="a" * 40,
+        candidate_tree="b" * 40,
+        authorization_witness=witness,
+    ) == [{"revision": 28}]
+    assert validate_r28(
+        {},
+        bootstrap={},
+        previous_receipt={},
+        rerun_validations=False,
+    ) == {"revision": 28}
+    assert calls == [("run", 28), ("validate", 28)]
+
+
+def test_aseh_r28_launch_assertion_binds_initial_health_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain = _aseh_r28_structural_chain()
+    base_head = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+    )
+    base_tree = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+    )
+    candidate_head = "c" * 40
+    candidate_tree = "d" * 40
+    chain[-2].update(
+        {
+            "repair_head": base_head,
+            "repair_tree": base_tree,
+            "receipt_cid": aseh_operator.ASEH_R28_EXACT_R27_REPAIR_RECEIPT_CID,
+        }
+    )
+    active = chain[-1]
+    active.update(
+        {
+            "repair_head": candidate_head,
+            "repair_tree": candidate_tree,
+            "previous_receipt_cid": chain[-2]["receipt_cid"],
+            "projection_recovery_failure_evidence_cid": "sha256:" + ("9" * 64),
+            "r25_preflight_failure_evidence_cid": "sha256:" + ("a" * 64),
+            "r27_initial_health_failure_evidence_cid": (
+                aseh_operator._r28_expected_r27_initial_health_failure_evidence()[
+                    "evidence_cid"
+                ]
+            ),
+        }
+    )
+    admission: dict[str, object] = {
+        "runtime_source_head": candidate_head,
+        "runtime_repository_tree_id": candidate_tree,
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "projection_matches_events": True,
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base_head
+            if args == ("show", "-s", "--format=%P", candidate_head)
+            else ""
+        ),
+    )
+
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    changed = json.loads(json.dumps(admission))
+    changed["repair_transition"][
+        "r27_initial_health_failure_evidence_cid"
+    ] = "sha256:" + ("e" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R28"):
+        aseh_operator._assert_exact_run_launch_admission(
+            changed,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+
+
+def test_aseh_r28_exact_candidate_without_receipt_fails_pre_duckdb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r28_population_requires_policy",
+        lambda _population: True,
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R28 pre-DuckDB"):
+        aseh_operator._prequalify_r28_historical_live_launch(
+            paths={
+                "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": (
+                    tmp_path / "absent-r28.json"
+                )
+            },
+            population={},
+            bootstrap={},
+        )
+
+
+def test_aseh_r28_projects_one_bound_r23_owner_permission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain = _aseh_r28_structural_chain()
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+    )
+    base_tree = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+    )
+    head = "c" * 40
+    tree = "d" * 40
+    witness = _aseh_r22_witness(head, tree)
+    chain[-6]["receipt_cid"] = (
+        aseh_operator.ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    )
+    chain[-5].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+            ),
+            "receipt_cid": aseh_operator.ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-6]["receipt_cid"],
+        }
+    )
+    chain[-4].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_TREE
+            ),
+            "receipt_cid": aseh_operator.ASEH_R26_EXACT_R25_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-5]["receipt_cid"],
+        }
+    )
+    chain[-3].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            ),
+            "receipt_cid": aseh_operator.ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-4]["receipt_cid"],
+        }
+    )
+    chain[-2].update(
+        {
+            "repair_head": base,
+            "repair_tree": base_tree,
+            "receipt_cid": aseh_operator.ASEH_R28_EXACT_R27_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-3]["receipt_cid"],
+        }
+    )
+    active = chain[-1]
+    active.update(
+        {
+            "base_head": base,
+            "repair_head": head,
+            "repair_tree": tree,
+            "previous_receipt_cid": chain[-2]["receipt_cid"],
+            "candidate_authorization_witness": witness,
+            "projection_recovery_failure_evidence_cid": "sha256:" + ("9" * 64),
+            "r25_preflight_failure_evidence_cid": "sha256:" + ("a" * 64),
+            "r27_initial_health_failure_evidence_cid": (
+                aseh_operator._r28_expected_r27_initial_health_failure_evidence()[
+                    "evidence_cid"
+                ]
+            ),
+        }
+    )
+    admission: dict[str, object] = {
+        "runtime_source_head": head,
+        "runtime_repository_tree_id": tree,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "historical_live_authorizing_receipt_cid": active["receipt_cid"],
+        "projection_matches_events": True,
+    }
+    admission["admission_cid"] = aseh_operator._identity(admission)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base if args == ("show", "-s", "--format=%P", head) else ""
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    board = SimpleNamespace(
+        resolved_database_program=lambda: SimpleNamespace(
+            store_id="data/aseh/control.duckdb"
+        )
+    )
+    context = (
+        aseh_operator._r23_owner_start_permission_context_from_launch_admission(
+            board=board,
+            launch_admission=admission,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+        )
+    )
+    assert context is not None
+    assert context["repair_transition_receipt_cid"] == active["receipt_cid"]
+    assert chain[-2]["receipt_cid"] == (
+        aseh_operator.ASEH_R28_EXACT_R27_REPAIR_RECEIPT_CID
+    )
+    assert chain[-6]["receipt_cid"] == (
+        aseh_operator.ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    )
+
+
+def test_aseh_r28_prequalification_precedes_continuity_and_duckdb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap_path = tmp_path / "bootstrap.json"
+    repair_path = tmp_path / "repair-r1.json"
+    repair_path.touch()
+    bootstrap = {
+        "source_head": "0" * 40,
+        "repository_tree_id": "1" * 40,
+        "plan_root_cid": "sha256:" + ("2" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("3" * 64)},
+        "source_identities": {},
+        "bootstrap_receipt_id": "sha256:" + ("4" * 64),
+    }
+    population = {
+        "source_head": "5" * 40,
+        "repository_tree_id": "6" * 40,
+        "plan_root_cid": "sha256:" + ("7" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("8" * 64)},
+        "source_identities": {},
+    }
+    events: list[str] = []
+    monkeypatch.setattr(aseh_operator, "_population", lambda *_args: population)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: bootstrap if path == bootstrap_path else {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _value: bootstrap["bootstrap_receipt_id"],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_prequalify_r28_historical_live_launch",
+        lambda **_kwargs: events.append("qualify-r28") or {"qualified": True},
+    )
+    for revision in range(20, 28):
+        monkeypatch.setattr(
+            aseh_operator,
+            f"_prequalify_r{revision}_historical_live_launch",
+            lambda **_kwargs: pytest.fail("older qualifier ran after R28"),
+        )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_transition",
+        lambda *_args, **_kwargs: {"repair_head": "9" * 40},
+    )
+
+    def continuity(*_args: object, **kwargs: object) -> None:
+        assert kwargs["r28_projection_recovery_prequalification"] == {
+            "qualified": True
+        }
+        events.append("read-continuity")
+        raise aseh_operator.OperatorError("continuity sentinel")
+
+    monkeypatch.setattr(aseh_operator, "_read_continuity_state", continuity)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_projection_matches_events_on_disposable_copy",
+        lambda *_args: pytest.fail("DuckDB replay ran before R28 qualification"),
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="continuity sentinel"):
+        aseh_operator._admit_materialized_launch(
+            object(),
+            {},
+            {
+                "bootstrap_receipt": bootstrap_path,
+                "repair_transition_receipt": repair_path,
+            },
+        )
+    assert events == ["qualify-r28", "read-continuity"]
+
+
+def test_aseh_r27_delegates_r28_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r27_path = tmp_path / "repair-r27.json"
+    r27_path.touch()
+    r28_path = tmp_path / "repair-r28.json"
+    full_prior = _aseh_r28_structural_chain()[:-1]
+    r26_chain = full_prior[:-1]
+    r26_chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    r27_receipt = dict(full_prior[-1])
+    r27_transition = {
+        **r27_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_HEAD
+        ),
+        "repair_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_INITIAL_HEALTH_SCHEDULER_EXIT_TRANSITION_BASE_TREE
+        ),
+    }
+    sentinel = {"delegated": "r28"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r27_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition",
+        lambda *_args, **_kwargs: r27_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_owner_initial_health_scheduler_exit_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R28_EXACT_R1_R27_RECEIPT_CIDS)
+            else pytest.fail("R27 did not delegate the exact R1-R27 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R27 materialized suffix ran before R28 delegation"
+        ),
+    )
+    result = aseh_operator._authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
+        board=object(),
+        config={},
+        paths={
+            "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": r27_path,
+            "repair_sealed_owner_initial_health_scheduler_exit_transition_receipt": r28_path,
+        },
+        bootstrap={},
+        bootstrap_id="bootstrap",
+        head="9" * 40,
+        previous_receipt=r26_chain[-1],
+        previous_transition=r26_chain[-1],
+        prior_receipt_chain=r26_chain,
+        authorization_directory_fd=90,
+    )
+    assert result == sentinel
