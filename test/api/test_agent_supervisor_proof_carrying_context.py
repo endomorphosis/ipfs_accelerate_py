@@ -10,12 +10,22 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
 from ipfs_accelerate_py.agent_supervisor.context.planner_doctor_context import (
+    CONSERVATIVE_SOURCE_PREVIEW_BYTES,
+    EXACT_SOURCE_PREVIEW_BYTES,
+    PROOF_CARRYING_MANDATORY_COVERAGE,
     PlannerDoctorContextAuthorityError,
     PlannerDoctorContextError,
     PlannerDoctorContextRequest,
     ProofCarryingCapsuleClass,
     compile_planner_doctor_context,
     compile_proof_carrying_context,
+)
+
+_OPTIONAL_SOURCE_TEXT = (
+    "def target():\n"
+    "    value = 1\n"
+    "    return value\n"
+    + ("# optional context line retained only by exact capsules\n" * 12)
 )
 
 
@@ -57,7 +67,7 @@ def _request(**kwargs) -> PlannerDoctorContextRequest:
         optional_source_snippets=(
             {
                 "path": "pkg/mod.py",
-                "text": "def target(): return 1",
+                "text": _OPTIONAL_SOURCE_TEXT,
                 "handle": "h:capsule",
             },
         ),
@@ -72,14 +82,22 @@ def test_exact_capsule_keeps_affected_interfaces_and_required_coverage() -> None
         _request(capsule_class=ProofCarryingCapsuleClass.EXACT)
     )
     kinds = {ref.kind for ref in capsule.capsule.evidence}
-    assert "affected_interfaces" in kinds
+    for kind in PROOF_CARRYING_MANDATORY_COVERAGE:
+        assert kind in kinds
     assert "open_obligations" in kinds or "open_obligation" in kinds or any(
         "obligation" in ref.kind for ref in capsule.capsule.evidence
     )
-    assert "allowed_effects" in kinds
-    assert "validation" in kinds
     assert capsule.metadata["capsule_class"] == "exact"
+    assert capsule.metadata["mandatory_coverage"] == list(
+        PROOF_CARRYING_MANDATORY_COVERAGE
+    )
+    assert capsule.metadata["source_preview_limit"] == EXACT_SOURCE_PREVIEW_BYTES
     assert capsule.token_budget["input_tokens"] <= capsule.token_budget["max_input_tokens"]
+    source_refs = [
+        ref for ref in capsule.capsule.evidence if ref.kind == "optional_source"
+    ]
+    assert source_refs
+    assert all((ref.metadata or {}).get("body_embedded") for ref in source_refs)
 
 
 def test_conservative_capsule_is_cheaper_than_exact_when_optional_source_present() -> None:
@@ -93,7 +111,25 @@ def test_conservative_capsule_is_cheaper_than_exact_when_optional_source_present
         _request(capsule_class=ProofCarryingCapsuleClass.OPAQUE)
     )
     assert opaque.token_budget["input_tokens"] <= conservative.token_budget["input_tokens"]
-    assert conservative.token_budget["input_tokens"] <= exact.token_budget["input_tokens"] + 8
+    assert conservative.token_budget["input_tokens"] <= exact.token_budget["input_tokens"]
+    assert opaque.token_budget["input_tokens"] < exact.token_budget["input_tokens"]
+    assert conservative.metadata["source_preview_limit"] == CONSERVATIVE_SOURCE_PREVIEW_BYTES
+    assert opaque.metadata["source_preview_limit"] == 0
+    exact_source = [
+        ref for ref in exact.capsule.evidence if ref.kind == "optional_source"
+    ]
+    conservative_source = [
+        ref for ref in conservative.capsule.evidence if ref.kind == "optional_source"
+    ]
+    opaque_source = [
+        ref for ref in opaque.capsule.evidence if ref.kind == "optional_source"
+    ]
+    assert exact_source and conservative_source and opaque_source
+    assert all((ref.metadata or {}).get("body_embedded") for ref in exact_source)
+    assert all(
+        (ref.metadata or {}).get("body_embedded") is False for ref in opaque_source
+    )
+    assert all((ref.metadata or {}).get("handle") == "h:capsule" for ref in opaque_source)
 
 
 def test_opaque_capsule_compresses_proofs_and_source_to_handles() -> None:
@@ -201,3 +237,16 @@ def test_existing_compiler_still_accepts_non_proof_carrying_requests() -> None:
         )
     )
     assert capsule.required_core_fields
+
+
+def test_opaque_compile_does_not_mutate_request_snippets() -> None:
+    request = _request(capsule_class=ProofCarryingCapsuleClass.OPAQUE)
+    original = tuple(dict(item) for item in request.optional_source_snippets)
+    compile_proof_carrying_context(request)
+    assert tuple(dict(item) for item in request.optional_source_snippets) == original
+    assert any(item.get("text") for item in request.optional_source_snippets)
+
+
+def test_missing_expected_tree_id_is_rejected_as_stale() -> None:
+    with pytest.raises(PlannerDoctorContextError, match="stale"):
+        compile_proof_carrying_context(_request(expected_tree_id=""))
