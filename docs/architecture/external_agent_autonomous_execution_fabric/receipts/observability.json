@@ -1,0 +1,22 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/qualification-receipt@1",
+  "task_id": "EAAEF-133",
+  "task_alias": "EAAEF-133",
+  "evidence_mode": "contract_fail_closed",
+  "qualification_scope": "offline_observability_contract_only",
+  "task_completion_claimed": false,
+  "production_qualification_claimed": false,
+  "live_runtime_invoked": false,
+  "contract_result": "pass",
+  "cases": [
+    "events_bind_run_task_attempt_fence",
+    "secrets_rejected",
+    "steer_requires_authority_id"
+  ],
+  "unqualified_requirements": [
+    "cursor_continuity_under_restart",
+    "pause_resume_cancel_under_restart",
+    "bounded_metrics_cardinality",
+    "terminal_accounting_under_restart"
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "arm_set_cid": "baguqeerans75uz2gaygl5355txt4o3npzztm7bhlr5v2qep6dqhuthqphpga",
+  "authorizes_execution": false,
+  "campaign_cid": "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+  "campaign_sha256": "sha256:2343a829752380b36c09a98cf92b4ee1eb4d3ea7850a46b600a6297d7e05fc93",
+  "decision": "no_go",
+  "disposition": "typed_not_run",
+  "execution_status": "not_run",
+  "experiment_key_count": 16,
+  "heldout_cid": "baguqeeradclawgay34f4o4n4vgqlhtmwg7kbvxbqkuxmkoc2hbwj4ix63haq",
+  "input_binding": {
+    "campaign_input_root_cid": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+    "campaign_input_root_sha256": "sha256:4d69a1d529b938bf0d01a24d44107638c079132883f3fb9ceffeb895dcebbe79",
+    "completion_authoritative": false,
+    "descendant_execution_authorized": false,
+    "manifest_cid": "baguqeeraw4k4u62ddeg2cvpn6qjqn3nwd2mdzrczc373zgtt67hbkgkrlbaq",
+    "pgir_205_forest": [
+      {
+        "commit": "011b7fd2bf15b380089944d2487989220a343338",
+        "parents": [
+          "20ef9e48d59b505b04e6236a9a31aaba287c36fd"
+        ],
+        "role": "implementation",
+        "subject": "PGIR-205: Issue a superseding campaign input freeze",
+        "tree": "947e573d8d5ad299c8348e5a5bd507439bed4427"
+      },
+      {
+        "commit": "b4cd376393002c5a7daccdd8cac5c744ac6bf8aa",
+        "parents": [
+          "20ef9e48d59b505b04e6236a9a31aaba287c36fd",
+          "011b7fd2bf15b380089944d2487989220a343338"
+        ],
+        "role": "merge",
+        "subject": "Merge commit '011b7fd2bf15b380089944d2487989220a343338' into agent/pgir-successor-current-supervisor-20260825",
+        "tree": "947e573d8d5ad299c8348e5a5bd507439bed4427"
+      },
+      {
+        "commit": "f2e8d607de2396f15681ec2b6edb546b68c9952a",
+        "parents": [
+          "b4cd376393002c5a7daccdd8cac5c744ac6bf8aa"
+        ],
+        "role": "completion",
+        "subject": "PGIR-205: mark todo completed",
+        "tree": "24ddf9e4b9a02811c2505c6a47311add63f76d60"
+      }
+    ],
+    "plan_admission_receipt_cid": "baguqeeranh57nf23krpy5qwgrivpnp2z7o2a5gcdzulvm73ekbb6upk6rwda",
+    "portability_receipt_cid": "baguqeera2ua47f7yht3oijt5vg4nzjsgnd7d75w5tdfw52fg6hj6v4tbmqfa",
+    "result_cid": "baguqeerarcuvejfqyjsfbqdtel67wu2lhjec3oh27enlqbxsvgyfbytsgd2q",
+    "result_identity": "RESULT(PGIR-205)",
+    "result_sha256": "sha256:88a95224b0c26450c07322fdfb534b3a482db8faf91ab806f2a9b050e27230f5",
+    "revision_set_cid": "baguqeeraukisqjimylkyns2gr7af5imn4pmkv45gnja52c5vug4shc7lj7sq",
+    "verification_receipt_cid": "baguqeeraxjwl7huyq2d5py3itpji5epx5om5a65f53vathq3jcmkfvxrr5sa"
+  },
+  "lease_eligible": false,
+  "observed_effects": {
+    "checkpoint_created": false,
+    "evaluation_invoked": false,
+    "gpu_probe_performed": false,
+    "hidden_labels_opened": false,
+    "network_accessed": false,
+    "optimizer_steps": 0,
+    "promotion_attempted": false,
+    "proof_invoked": false,
+    "reducer_cas_attempted": false,
+    "resource_lease_acquired": false,
+    "resource_lease_requested": false,
+    "training_started": false,
+    "weights_created": false
+  },
+  "reason_codes": [
+    "no_rights_admitted_training_rows",
+    "corpus_not_materialized",
+    "required_holdouts_insufficient",
+    "tokenizer_not_admitted",
+    "historical_semantic_baseline_not_currently_qualified",
+    "integrated_evidence_does_not_authorize_execution",
+    "portability_no_go"
+  ],
+  "schema": "PGIRControlledCampaign@2",
+  "seed_cid": "baguqeeraah5a7f52jylz7csjkl47sja7mwzocdx6bbu7wy7q3tuoggnamhza",
+  "task_binding": {
+    "current_task_cid": "baguqeerafze3wxxiomo4rhuxaguuk35d4tj4lrp2jtuj6jcinxnokczuctca",
+    "current_task_key": "task/v1/2e49bb5ee8731dc89e9701a9456fa3e4d3c5c5fa4ce89f24486ddae50b3414c4",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "controlled-comparisons-v2",
+    "task_id": "PGIR-206",
+    "title": "Re-run R1-R6 on the superseding freeze"
+  },
+  "training_admitted_rows": 0
+}

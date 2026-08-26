@@ -1,0 +1,101 @@
+{
+  "automated_descendant_count": 0,
+  "campaign_input_root_cid": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+  "candidate_checkpoint": null,
+  "completion_authoritative": false,
+  "decision": "no_go",
+  "decision_cid": "baguqeeraxlp6azus5brolzyypub6hraj44fcfgm6zzq34rda7y2lo37hf6eq",
+  "dependency_task_cids": {
+    "PGIR-072": "baguqeeraarlt745ftpwax4tdovajsxrgp5r72fkudlbs5kmg3q2cbqow6mpq",
+    "PGIR-090": "baguqeeragt5xhqov2e5vna6pp2zmghhrqhq2v4qzl36a3aucytrcom2erkta",
+    "PGIR-100": "baguqeerainaqx5w72m2epc7wsolk3elqihpcganr6d3lrsuzseldzkqngija",
+    "PGIR-206": "baguqeerafze3wxxiomo4rhuxaguuk35d4tj4lrp2jtuj6jcinxnokczuctca"
+  },
+  "disposition": "qualified_no_go",
+  "execution_authorized": false,
+  "execution_status": "not_run",
+  "hidden_tests_opened": false,
+  "manifest_cid": "baguqeerakjdbcdj4sxmpob63bjxc72rur3boch2kh4ol4e7f4nju36cqbzsq",
+  "next_task_ids": [
+    "PGIR-212"
+  ],
+  "objective_id": "PGIR-G110",
+  "objective_revision": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+  "parent_goal": "PGIR-G110",
+  "pgir_206_forest": [
+    {
+      "commit": "0373c2968b9b46b43ee9f564051182df137c08e4",
+      "parents": [
+        "c03180fbbd64b225a121fcc7be046bd0beab8918"
+      ],
+      "role": "implementation",
+      "subject": "PGIR-206: Re-run R1-R6 on the superseding freeze",
+      "tree": "387f92d22fe7804a11436d2382b7592308233234"
+    },
+    {
+      "commit": "efd5bc4107a595ba7b56632faa7d2f6c82f249d8",
+      "parents": [
+        "c03180fbbd64b225a121fcc7be046bd0beab8918",
+        "0373c2968b9b46b43ee9f564051182df137c08e4"
+      ],
+      "role": "merge",
+      "subject": "Merge commit '0373c2968b9b46b43ee9f564051182df137c08e4' into agent/pgir-successor-current-supervisor-20260825",
+      "tree": "387f92d22fe7804a11436d2382b7592308233234"
+    },
+    {
+      "commit": "ef4a74b362386578858d368a8e7420238e4c897d",
+      "parents": [
+        "efd5bc4107a595ba7b56632faa7d2f6c82f249d8"
+      ],
+      "role": "completion",
+      "subject": "PGIR-206: mark todo completed",
+      "tree": "556e95765e90f00025eecefb8048a655956d70a3"
+    }
+  ],
+  "pgir_206_result_cid": "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq",
+  "promotion_authorized": false,
+  "publication_authorized": false,
+  "qualified_claim_emitted": false,
+  "reason_codes": [
+    "no_rights_admitted_training_rows",
+    "corpus_not_materialized",
+    "required_holdouts_insufficient",
+    "tokenizer_not_admitted",
+    "historical_semantic_baseline_not_currently_qualified",
+    "integrated_evidence_does_not_authorize_execution",
+    "portability_no_go",
+    "pgir_206_execution_not_authorized",
+    "pgir_206_typed_not_run",
+    "no_candidate_checkpoint",
+    "publication_not_authorized"
+  ],
+  "recipe_cid": "baguqeeraimjhwwo5x5ljjjkg3jzw3bs2nfbmr6sayioeksoogsyogkdo2xga",
+  "recursive_repository": {
+    "nested_commit": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+    "nested_tree": "7169c2a67929044a02350bc26d0a51c853a4981b",
+    "outer_commit": "ef4a74b362386578858d368a8e7420238e4c897d",
+    "outer_tree": "556e95765e90f00025eecefb8048a655956d70a3"
+  },
+  "result_cid": "baguqeerazscvywfxjxbbeg2ltwyauyc6sxnyt4cjkivv46aefgowp3u6qbaa",
+  "result_graph_cid": "baguqeeralwlykkhim733fswfozup6n2zwh5wqtbqjlw2pmwaivzwe2h4eruq",
+  "result_identity": "RESULT(PGIR-207)",
+  "result_sha256": "sha256:cc855c58b74dc2121b4b9db00a605e95db89f049522b5e7804299d67ee9e8040",
+  "rollback": "retain this immutable terminal qualification; only a separately reviewed manual plan may supersede it",
+  "schema": "pgir-task-result@1",
+  "source_tree_id": "556e95765e90f00025eecefb8048a655956d70a3",
+  "subgoal": "final-decision-report-v2",
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  },
+  "task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+  "task_id": "PGIR-207",
+  "task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+  "training_admitted_rows": 0,
+  "verification_cid": "baguqeerabyupqg57erg6q63uucf5qjkklgbpbakmo4nyjv4esvmoey6yjkrq"
+}

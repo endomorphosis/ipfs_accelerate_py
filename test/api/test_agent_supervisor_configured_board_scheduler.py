@@ -1681,10 +1681,11 @@ def test_sealed_bootstrap_denies_missing_native_dependency_pin(
     assert result.returncode == 78
 
 
-def test_sealed_bootstrap_admits_implementation_supervisor_when_eaaef_191_is_admitted(
+def test_sealed_bootstrap_requires_verified_eaaef_191_not_an_admission_word(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Independently signed EAAEF-191 selects the admitted native-authority gate."""
+    """A tracked decision word cannot select the native-authority gate."""
 
     receipt_dir = (
         tmp_path
@@ -1715,9 +1716,14 @@ def test_sealed_bootstrap_admits_implementation_supervisor_when_eaaef_191_is_adm
         repo_root=tmp_path,
     )
     assert command[9] == (
-        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
     )
-    denied = multi_runner_module.build_sealed_control_plane_module_command(
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_eaaef_host_receipt_admitted",
+        lambda _root, task_id, **_identity: task_id == "EAAEF-191",
+    )
+    admitted = multi_runner_module.build_sealed_control_plane_module_command(
         python_executable=sys.executable,
         pin=control_plane_pin,
         descriptor=control_plane_launch.descriptor,
@@ -1726,9 +1732,10 @@ def test_sealed_bootstrap_admits_implementation_supervisor_when_eaaef_191_is_adm
             "implementation_supervisor"
         ),
         argv=("--help",),
+        repo_root=tmp_path,
     )
-    assert denied[9] == (
-        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
+    assert admitted[9] == (
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
     )
 
 
@@ -2184,12 +2191,14 @@ def test_detached_unreaped_coordinator_preserves_pid_projection(
         lambda **_kwargs: (b"tracked", "sha256:tracked"),
     )
     sealed_descriptor = os.open(os.devnull, os.O_RDONLY)
-    pin = SimpleNamespace(capsule_root=str(tmp_path / "authority" / "capsule"))
+    capsule_parent = tmp_path / "authority"
+    capsule_parent.mkdir()
+    pin = SimpleNamespace(capsule_root=str(capsule_parent / "capsule"))
     sealed = SimpleNamespace(descriptor=sealed_descriptor)
     monkeypatch.setattr(
         scheduler_module,
         "_materialize_plan_bound_control_plane",
-        lambda _board: (pin, sealed, tmp_path / "authority"),
+        lambda _board: (pin, sealed, capsule_parent),
     )
     monkeypatch.setattr(
         scheduler_module,
@@ -2201,13 +2210,6 @@ def test_detached_unreaped_coordinator_preserves_pid_projection(
         "_plan_bound_coordinator_module_argv",
         lambda *_args, **_kwargs: [],
     )
-    cleanup_calls: list[object] = []
-    monkeypatch.setattr(
-        scheduler_module,
-        "_cleanup_plan_bound_control_plane",
-        lambda *_args, **_kwargs: cleanup_calls.append((_args, _kwargs)),
-    )
-
     class StartedProcess:
         pid = 444444
 
@@ -2233,10 +2235,8 @@ def test_detached_unreaped_coordinator_preserves_pid_projection(
     )
     monkeypatch.setattr(
         scheduler_module,
-        "_terminate_plan_bound_coordinator",
-        lambda _process: (_ for _ in ()).throw(
-            ConfiguredBoardError("coordinator remained unreaped")
-        ),
+        "_fence_exact_coordinator_group",
+        lambda _process, *, observed_start_ticks: False,
     )
 
     with pytest.raises(RuntimeError, match="PID publication failed") as captured:
@@ -2245,11 +2245,14 @@ def test_detached_unreaped_coordinator_preserves_pid_projection(
             implement=False,
             duration_seconds=1.0,
         )
-    assert any("coordinator remained unreaped" in note for note in captured.value.__notes__)
+    assert any(
+        "could not be exactly fenced" in note
+        for note in captured.value.__notes__
+    )
     pid_path = board.path(board.runtime_paths["state"]) / "configured-board-master.pid"
     assert pid_path.exists()
     assert pid_path.read_bytes() == b"444444\n"
-    assert cleanup_calls == []
+    assert capsule_parent.is_dir()
     pid_path.unlink()
 
 
@@ -3277,7 +3280,16 @@ def test_detached_launch_default_output_remains_the_full_plan(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    board = SimpleNamespace()
+    board = SimpleNamespace(
+        board_namespace="default-output-test",
+        payload={
+            "launch_policy": {
+                "blockers": [],
+                "bypass_prohibited": True,
+                "live_multi_supervisor_allowed": True,
+            }
+        },
+    )
     projection_repair = {
         "enabled": False,
         "repaired": False,
@@ -3858,6 +3870,87 @@ def test_v3_population_scopes_display_attempts_to_canonical_revision(
     assert legacy_revision.ready_records == ()
 
 
+def test_eaaef_status_overlay_never_falls_back_to_historical_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    database_path = tmp_path / "run-v15/control.duckdb"
+    database_path.parent.mkdir(parents=True)
+    connection = duckdb.connect(str(database_path))
+    try:
+        connection.execute("CREATE TABLE tasks (task_alias VARCHAR, status VARCHAR)")
+        connection.execute("INSERT INTO tasks VALUES ('EAAEF-000', 'completed')")
+    finally:
+        connection.close()
+    projection_path = tmp_path / "runtime/task-status-projection.json"
+    projection_path.parent.mkdir(parents=True)
+    projection_path.write_text(
+        json.dumps({"statuses": {"EAAEF-001": "completed"}}) + "\n",
+        encoding="utf-8",
+    )
+    original_projection = projection_path.read_bytes()
+    board = SimpleNamespace(
+        payload={
+            "bootstrap_database_program": {
+                "store_id": "run-v15/control.duckdb",
+            }
+        },
+        runtime_paths={"state": "runtime"},
+        path=lambda relative: tmp_path / str(relative),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_eaaef_plan_bound_profile",
+        lambda _board: True,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_eaaef_live_quack_status_overlay",
+        lambda _board: {},
+    )
+
+    assert scheduler_module._eaaef_task_status_overlay(board) == {}
+    assert projection_path.read_bytes() == original_projection
+
+
+def test_eaaef_status_overlay_does_not_promote_raw_live_quack_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = SimpleNamespace()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_eaaef_live_quack_status_overlay",
+        lambda _board: {"EAAEF-000": "completed"},
+    )
+
+    assert scheduler_module._eaaef_task_status_overlay(board) == {}
+
+
+def test_eaaef_population_never_imports_raw_quack_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = load_configured_board(
+        REPO_ROOT / "config/external_agent_autonomous_execution_fabric_scheduler.json",
+        repo_root=REPO_ROOT,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_eaaef_live_quack_status_overlay",
+        lambda _board: {"EAAEF-000": "completed"},
+    )
+    source_head = _git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+
+    population = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        task_state_snapshots=(),
+    )
+
+    assert "EAAEF-000" not in population.completed_task_ids
+    assert population.completed_task_ids == ()
+
+
 def test_v3_population_rejects_unbacked_mismatched_task_identity(
     tmp_path: Path,
 ) -> None:
@@ -3938,6 +4031,34 @@ def test_v3_population_rejects_malformed_task_identity_projection(
                 },
             ),
         )
+
+
+def test_v3_materializer_ignores_managed_daemon_latest_log_alias(
+    tmp_path: Path,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    state_root = board.path(board.runtime_paths["state"])
+    state_root.mkdir(parents=True, exist_ok=True)
+    log_path = state_root / "test_managed_daemon.20260826.log"
+    _write(log_path, "managed daemon output\n")
+    (state_root / "test_managed_daemon.latest.log").symlink_to(log_path.name)
+
+    receipt = materialize_configured_board_execution_plan(
+        board,
+        now_ms=PLAN_NOW,
+        host_capacity_snapshot=_host_capacity(lanes=1),
+        provider_capacity_snapshots=_provider_capacity(lanes=1),
+    )
+
+    assert receipt is not None
+    assert tuple(
+        task_id
+        for execution_slice in receipt.slice_manifest.slices
+        for task_id in execution_slice.task_ids
+    ) == ("TEST-A",)
 
 
 def test_v3_materializer_rejects_unsafe_or_ambiguous_attempt_state(
@@ -5449,6 +5570,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         accepted_control_plane_pin=control_plane_pin,
         accepted_control_plane_descriptor=control_plane_launch.descriptor,
     )
+    implementation_branch = str(launch_plan["implementation_branch"])
     children = tuple(
         multi_runner_module.PlanBoundSupervisorChild.from_cli_record(
             launch_plan["argv"][index + 1]
@@ -5486,7 +5608,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             implement=True,
             max_task_attempts=board.payload["max_task_attempts"],
             worktree_root=board.path(board.runtime_paths["worktrees"]),
-            merge_target_branch=board.merge_target_branch,
+            merge_target_branch=implementation_branch,
             merge_queue_dir=board.path(board.runtime_paths["merge_queue"]),
             task_shard_count=1,
             task_shard_index=0,
@@ -5508,6 +5630,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             plan_bound_task_source_revision=child.task_source_revision,
             plan_bound_configuration_root=child.configuration_root,
             plan_bound_accepted_tree_root=repo,
+            board_namespace=board.board_namespace,
             accepted_control_plane_pin=control_plane_pin,
             accepted_control_plane_descriptor=control_plane_launch.descriptor,
         )
@@ -6141,6 +6264,12 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             pid = os.fork()
             if pid == 0:  # pragma: no branch - isolated production boundary
                 try:
+                    # The production runner applies this sealed environment
+                    # before it starts a plan-bound child.  This fixture
+                    # invokes the entry point directly after ``fork()``, so
+                    # mirror that boundary in the child without changing the
+                    # pytest parent's later recovery and assertion context.
+                    os.environ.update(launch_plan["environment"])
                     child_rc = supervisor_module._run_plan_bound_daemon_child(
                         helper_argv
                     )
@@ -7131,6 +7260,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 cwd=str(repo.resolve()),
             )
             recovery_env = recovery_profile.launch_environment(0)
+            recovery_env.update(launch_plan["environment"])
             recovery_env.update(
                 {
                     "_ASE3_TEST_SOURCE_ROOT": str(REPO_ROOT),
@@ -7435,21 +7565,41 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 else:
                     assert durable_request.failure_count == 0
                 if crash_task_id == "TEST-A":
-                    assert _git(repo, "show", "main:src/test-a.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-a.py",
+                    ).stdout == (
                         "VALUE = 'TEST-A'\n"
                     )
                 elif wave_scenario == "crash_serialized_merge_confirmed":
-                    assert _git(repo, "show", "main:src/test-b.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-b.py",
+                    ).stdout == (
                         "VALUE = 'TEST-B'\n"
                     )
-                    assert _git(repo, "show", "main:src/test-a.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-a.py",
+                    ).stdout == (
                         "VALUE = 'TEST-A'\n"
                     )
                 else:
-                    assert _git(repo, "show", "main:src/test-b.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-b.py",
+                    ).stdout == (
                         "VALUE = 'already-present'\n"
                     )
-                    assert _git(repo, "show", "main:src/test-a.py").stdout == (
+                    assert _git(
+                        repo,
+                        "show",
+                        f"{implementation_branch}:src/test-a.py",
+                    ).stdout == (
                         "VALUE = 'TEST-A'\n"
                     )
                 if wave_scenario == "crash_serialized_merge_confirmed":
@@ -7479,18 +7629,23 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     assert integration_proof.get("integration_commit") == (
                         merge_result.get("merge_commit")
                     )
-                    final_head = _git(
+                    assert receipt_payload.get("target_branch") == (
+                        implementation_branch
+                    )
+                    final_target_head = _git(
                         repo,
                         "rev-parse",
-                        "main",
+                        implementation_branch,
                     ).stdout.strip()
-                    assert receipt_payload.get("target_commit") == final_head
+                    assert receipt_payload.get("target_commit") == (
+                        final_target_head
+                    )
                     _git(
                         repo,
                         "merge-base",
                         "--is-ancestor",
                         str(integration_proof["integration_commit"]),
-                        final_head,
+                        final_target_head,
                     )
             provider_invocations = [
                 json.loads(line)["task_id"]
@@ -7676,10 +7831,18 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             {"task_id": "TEST-A", "status": "completed", "failure_count": 0},
             {"task_id": "TEST-B", "status": "completed", "failure_count": 0},
         ]
-        assert _git(repo, "show", "main:src/test-a.py").stdout == (
+        assert _git(
+            repo,
+            "show",
+            f"{implementation_branch}:src/test-a.py",
+        ).stdout == (
             "VALUE = 'TEST-A'\n"
         )
-        assert _git(repo, "show", "main:src/test-b.py").stdout == (
+        assert _git(
+            repo,
+            "show",
+            f"{implementation_branch}:src/test-b.py",
+        ).stdout == (
             "VALUE = 'TEST-B'\n"
         )
     elif wave_scenario == "repeated_no_change_cleanup":

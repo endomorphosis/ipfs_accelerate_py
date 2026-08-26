@@ -1,59 +1,141 @@
 #!/usr/bin/env python3
-"""Independently sign the current EAAEF-191 admission or no-go bundle.
+"""Prepare and publish the separately reviewed EAAEF-191 admission bundle.
 
-Uses the trusted local-operator profile and host lifecycle root. The
-prospective supervisor does not sign. The bundle may be admitted when 182-190
-are independently admitted; configured-board-launch still does not start here.
+Admission preparation captures the host evidence once and emits the exact
+review object. Diagnostic observation preparation instead reloads one explicit
+immutable no-go capture and cannot enter publication. Neither path reads a
+reviewer key. Publication accepts externally produced operator and
+security-reviewer signatures, revalidates every captured child, and creates
+the two final artifacts without replacing either one.
 """
 
 from __future__ import annotations
 
-import base64
+import argparse
 import json
 import os
 import stat
+import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
-    ed25519_did_key,
-    lifecycle_root_identity_did,
+from ipfs_accelerate_py.agent_supervisor.validation.eaaef_authority_registry import (
+    EAAEFAuthorityNotFound,
+    EAAEFAuthorityRegistry,
+    EAAEFAuthorityRegistryError,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
-    BUNDLE_SIGNATURES_PATH,
-    BUNDLE_SIGNATURES_SCHEMA,
+    BUNDLE_SCHEMA,
+    EARLY_FRONTIER_TASK_IDS,
+    HOST_ADMISSION_OBSERVATION_SCHEMA,
+    HOST_ADMISSION_OBSERVATION_SCOPE,
+    HOST_ADMISSION_OBSERVATION_TASK_IDS,
     RECEIPT_DIR,
     RECEIPT_FILES,
-    TRUSTED_OPERATOR_DIDS,
-    TRUSTED_SECURITY_REVIEWER_DIDS,
+    RECEIPT_SCHEMA,
+    _source_identity,
     admission_bundle_review_payload,
     admission_bundle_target_decision,
     cid,
-    collect_and_write,
-    load_admission_bundle_signatures,
+    collect_host_admission_receipts,
+    load_current_host_admission_observation,
+    materialize_host_evidence,
+    source_addressed_admission_bundle_logical_paths,
+    source_addressed_child_receipt_logical_path,
     verify_admission_bundle_receipt,
+    verify_admission_bundle_signatures_payload,
+    verify_prebootstrap_admission_statement,
+    write_host_admission_receipts,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_admission import (
+    ExternalAgentBootstrapAdmissionError,
 )
 
-OPERATOR_KEY = (
-    Path.home()
-    / ".ipfs_accelerate"
-    / "agent_supervisor"
-    / "local_profile"
-    / "local_dev_profile.key"
+PREPARED_REVIEW_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-admission-bundle-prepared-review@1"
 )
-LIFECYCLE_KEY = (
-    Path.home()
-    / ".local"
-    / "state"
-    / "ipfs_accelerate_py"
-    / "local-profile-root-registry"
-    / "lifecycle_root_ed25519.key"
+OBSERVATION_PREPARED_REVIEW_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "eaaef-admission-bundle-observation-review@1"
 )
+_PREPARED_REVIEW_FIELDS = frozenset(
+    {"schema", "review", "bundle_template", "prepared_cid"}
+)
+_CHILD_TASK_IDS = tuple(
+    task_id for task_id in RECEIPT_FILES if task_id != "EAAEF-191"
+)
+AUTHORITY_ROOT_OVERRIDE: Path | None = None
+
+
+def _require_clean_source_checkout() -> None:
+    """Reject source drift while allowing only generated receipt staging."""
+
+    allowed = tuple(
+        RECEIPT_DIR / filename for filename in RECEIPT_FILES.values()
+    ) + (RECEIPT_DIR / "admission_bundle.signatures.json",)
+    pathspecs = [
+        ".",
+        *(
+            ":(top,exclude,literal)" + path.relative_to(ROOT).as_posix()
+            for path in allowed
+        ),
+    ]
+    completed = subprocess.run(
+        [
+            "/usr/bin/git",
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--",
+            *pathspecs,
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "LC_ALL": "C",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        },
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("EAAEF-191 source cleanliness is unavailable")
+    if completed.stdout.strip():
+        raise RuntimeError("EAAEF-191 source checkout has non-receipt changes")
+    index = subprocess.run(
+        ["/usr/bin/git", "ls-files", "-v", "-z", "--", "."],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "LC_ALL": "C",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        },
+    )
+    if index.returncode != 0:
+        raise RuntimeError("EAAEF-191 source index state is unavailable")
+    entries = (entry for entry in index.stdout.split("\0") if entry)
+    if any(entry[0].islower() or entry.startswith("S ") for entry in entries):
+        raise RuntimeError(
+            "EAAEF-191 source index hides assume-unchanged or skip-worktree paths"
+        )
 
 
 def _canonical(value: object) -> bytes:
@@ -66,41 +148,172 @@ def _canonical(value: object) -> bytes:
     ).encode("utf-8")
 
 
-def _sign(key_path: Path, payload: object) -> tuple[str, str]:
-    key = Ed25519PrivateKey.from_private_bytes(key_path.read_bytes())
-    did = ed25519_did_key(key.public_key())
-    signature = base64.b64encode(key.sign(_canonical(payload))).decode("ascii")
-    return did, signature
+def _load_ceremony_artifact(path: str | Path, *, noun: str) -> dict[str, Any]:
+    """Load one reviewer-supplied object without following its final link."""
 
-
-def issue() -> dict[str, str]:
-    collect_and_write()
-    child_receipts = {
-        task_id: json.loads(
-            (RECEIPT_DIR / filename).read_text(encoding="utf-8")
+    selected = Path(path).expanduser()
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(selected, flags)
+    except OSError as exc:
+        raise RuntimeError(f"{noun} is unavailable or unsafe") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) & 0o022
+            or before.st_size <= 0
+            or before.st_size > 4 * 1024 * 1024
+        ):
+            raise RuntimeError(f"{noun} is unsafe")
+        raw = os.read(descriptor, before.st_size + 1)
+        after = os.fstat(descriptor)
+        pathname = os.lstat(selected)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
         )
-        for task_id, filename in RECEIPT_FILES.items()
-        if task_id != "EAAEF-191"
+        if (
+            len(raw) != before.st_size
+            or stat.S_ISLNK(pathname.st_mode)
+            or tuple(getattr(before, name) for name in stable_fields)
+            != tuple(getattr(after, name) for name in stable_fields)
+            or (before.st_dev, before.st_ino, before.st_size)
+            != (pathname.st_dev, pathname.st_ino, pathname.st_size)
+        ):
+            raise RuntimeError(f"{noun} changed while read")
+    finally:
+        os.close(descriptor)
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"{noun} is invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{noun} is not an object")
+    return payload
+
+
+def _load_current_child_receipts() -> dict[str, dict[str, Any]]:
+    receipts: dict[str, dict[str, Any]] = {}
+    for task_id in _CHILD_TASK_IDS:
+        path = RECEIPT_DIR / RECEIPT_FILES[task_id]
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"{task_id} child receipt is unavailable") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"{task_id} child receipt is not an object")
+        receipts[task_id] = payload
+    return receipts
+
+
+def _review_components(
+    *,
+    child_receipts: Mapping[str, Mapping[str, Any]],
+    bundle_template: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Recompute the exact review from canonical current child receipts."""
+
+    if set(child_receipts) != set(_CHILD_TASK_IDS):
+        raise RuntimeError("EAAEF-191 child receipt set differs")
+    template_body = {
+        key: value for key, value in bundle_template.items() if key != "receipt_cid"
     }
-    unsigned_bundle = json.loads(
-        (RECEIPT_DIR / RECEIPT_FILES["EAAEF-191"]).read_text(encoding="utf-8")
-    )
-    evidence = unsigned_bundle.get("evidence") or {}
-    child_decisions = {
-        task_id: str(receipt.get("decision") or "")
-        for task_id, receipt in child_receipts.items()
-    }
-    child_receipt_cids = {
-        task_id: str(receipt.get("receipt_cid") or "")
-        for task_id, receipt in child_receipts.items()
+    if (
+        bundle_template.get("schema") != BUNDLE_SCHEMA
+        or bundle_template.get("task_id") != "EAAEF-191"
+        or bundle_template.get("receipt_name") != RECEIPT_FILES["EAAEF-191"]
+        or bundle_template.get("receipt_cid") != cid(template_body)
+        or bundle_template.get("process_started") is not False
+        or bundle_template.get("supervisor_process_started") is not False
+        or bundle_template.get("self_signed") is not False
+    ):
+        raise RuntimeError("EAAEF-191 bundle template identity differs")
+    source_head = str(bundle_template.get("source_head") or "")
+    source_tree = str(bundle_template.get("source_tree") or "")
+    board_namespace = str(bundle_template.get("board_namespace") or "")
+    board_cid = str(bundle_template.get("board_cid") or "")
+    child_decisions: dict[str, str] = {}
+    child_receipt_cids: dict[str, str] = {}
+    for task_id in _CHILD_TASK_IDS:
+        receipt = child_receipts[task_id]
+        body = {key: value for key, value in receipt.items() if key != "receipt_cid"}
+        if (
+            receipt.get("schema") != RECEIPT_SCHEMA
+            or receipt.get("task_id") != task_id
+            or receipt.get("receipt_name") != RECEIPT_FILES[task_id]
+            or receipt.get("receipt_cid") != cid(body)
+            or receipt.get("source_head") != source_head
+            or receipt.get("source_tree") != source_tree
+            or receipt.get("board_namespace") != board_namespace
+            or receipt.get("board_cid") != board_cid
+            or receipt.get("process_started") is not False
+            or receipt.get("supervisor_process_started") is not False
+            or receipt.get("self_signed") is not False
+        ):
+            raise RuntimeError(f"{task_id} child receipt identity differs")
+        child_decisions[task_id] = str(receipt.get("decision") or "")
+        child_receipt_cids[task_id] = str(receipt.get("receipt_cid") or "")
+
+    evidence = bundle_template.get("evidence")
+    if not isinstance(evidence, Mapping):
+        raise RuntimeError("EAAEF-191 bundle template evidence differs")
+    raw_template_children = evidence.get("child_receipt_cids")
+    if not isinstance(raw_template_children, Mapping) or {
+        str(key): str(value) for key, value in raw_template_children.items()
+    } != child_receipt_cids:
+        raise RuntimeError("EAAEF-191 bundle child identities differ")
+    bootstrap_evidence = child_receipts["EAAEF-180"].get("evidence")
+    if not isinstance(bootstrap_evidence, Mapping):
+        raise RuntimeError("EAAEF-191 bootstrap evidence differs")
+    inventory_items = bootstrap_evidence.get("items")
+    if not isinstance(inventory_items, list):
+        raise RuntimeError("EAAEF-191 blocker inventory differs")
+    inventory_blockers = {
+        str(item.get("blocker") or "")
+        for item in inventory_items
+        if isinstance(item, Mapping)
     }
     open_host_gates = [
-        str(item) for item in evidence.get("inventory_open_host_gated") or ()
+        str(item.get("blocker") or "")
+        for item in inventory_items
+        if isinstance(item, Mapping)
+        and item.get("class") == "host_gated_external_authority"
     ]
+    if list(evidence.get("inventory_open_host_gated") or ()) != open_host_gates:
+        raise RuntimeError("EAAEF-191 open host-gate inventory differs")
+    bootstrap_statement = bootstrap_evidence.get("bootstrap_admission_statement")
     bootstrap_cid = str(evidence.get("bootstrap_admission_statement_cid") or "")
     materialization_cid = str(evidence.get("materialization_receipt_cid") or "")
+    try:
+        verified_statement = verify_prebootstrap_admission_statement(
+            statement=bootstrap_statement,
+            expected_source_head=source_head,
+            expected_source_tree=source_tree,
+            expected_board_namespace=board_namespace,
+            expected_board_cid=board_cid,
+            expected_materialization_receipt_cid=materialization_cid,
+        )
+    except (ExternalAgentBootstrapAdmissionError, TypeError, ValueError) as exc:
+        raise RuntimeError("EAAEF-191 pre-bootstrap statement differs") from exc
+    if (
+        verified_statement.get("statement_cid") != bootstrap_cid
+        or not set(verified_statement.get("blockers") or ()).issubset(
+            inventory_blockers
+        )
+    ):
+        raise RuntimeError("EAAEF-191 pre-bootstrap statement identity differs")
     decision = admission_bundle_target_decision(
         child_decisions=child_decisions,
+        bootstrap_admission_preflight_valid=True,
         bootstrap_admission_statement_cid=bootstrap_cid,
         materialization_receipt_cid=materialization_cid,
     )
@@ -109,131 +322,433 @@ def issue() -> dict[str, str]:
         child_receipt_cids=child_receipt_cids,
         decision=decision,
         launch_plan_allowed=False,
-        source_head=str(unsigned_bundle.get("source_head") or ""),
-        source_tree=str(unsigned_bundle.get("source_tree") or ""),
-        board_namespace=str(unsigned_bundle.get("board_namespace") or ""),
-        board_cid=str(unsigned_bundle.get("board_cid") or ""),
+        source_head=source_head,
+        source_tree=source_tree,
+        board_namespace=board_namespace,
+        board_cid=board_cid,
         bootstrap_admission_statement_cid=bootstrap_cid,
         materialization_receipt_cid=materialization_cid,
         inventory_open_host_gated=open_host_gates,
     )
-    operator_did, operator_signature = _sign(OPERATOR_KEY, review)
-    if operator_did not in TRUSTED_OPERATOR_DIDS:
-        raise RuntimeError(f"operator DID is not trusted: {operator_did}")
-    reviewer_payload = {
-        **review,
-        "operator_did": operator_did,
-        "operator_signature": operator_signature,
-    }
-    reviewer_did, reviewer_signature = _sign(LIFECYCLE_KEY, reviewer_payload)
-    if reviewer_did not in TRUSTED_SECURITY_REVIEWER_DIDS:
-        raise RuntimeError(f"lifecycle root DID is not trusted: {reviewer_did}")
-    if reviewer_did != lifecycle_root_identity_did():
-        raise RuntimeError("lifecycle root DID drifted")
-    artifact = {
-        "schema": BUNDLE_SIGNATURES_SCHEMA,
-        "operator_did": operator_did,
-        "operator_signature": operator_signature,
-        "security_reviewer_did": reviewer_did,
-        "security_reviewer_signature": reviewer_signature,
-        "payload_sha256": cid(review),
-        "supervisor_signed": False,
-        "configured_board_launch": False,
+    return {
+        "review": review,
         "decision": decision,
+        "child_decisions": child_decisions,
+        "child_receipt_cids": child_receipt_cids,
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "board_namespace": board_namespace,
+        "board_cid": board_cid,
+        "bootstrap_admission_statement_cid": bootstrap_cid,
+        "materialization_receipt_cid": materialization_cid,
+        "inventory_open_host_gated": open_host_gates,
     }
-    BUNDLE_SIGNATURES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if BUNDLE_SIGNATURES_PATH.exists():
-        os.chmod(BUNDLE_SIGNATURES_PATH, stat.S_IRUSR | stat.S_IWUSR)
-        BUNDLE_SIGNATURES_PATH.unlink()
-    BUNDLE_SIGNATURES_PATH.write_text(
-        json.dumps(artifact, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+
+
+def _require_current_identity(components: Mapping[str, Any]) -> dict[str, str]:
+    current = _source_identity()
+    expected = {
+        field: str(components.get(field) or "")
+        for field in ("source_head", "source_tree", "board_namespace", "board_cid")
+    }
+    if current != expected:
+        raise RuntimeError("EAAEF-191 prepared source or board is not current")
+    return current
+
+
+def prepare() -> dict[str, Any]:
+    """Capture once and return the unsigned object for external review."""
+
+    _require_clean_source_checkout()
+    identity_before = _source_identity()
+    materialize = materialize_host_evidence()
+    receipts = collect_host_admission_receipts()
+    write_host_admission_receipts(receipts, task_ids=_CHILD_TASK_IDS)
+    bundle_template = dict(receipts["EAAEF-191"])
+    components = _review_components(
+        child_receipts={
+            task_id: dict(receipts[task_id]) for task_id in _CHILD_TASK_IDS
+        },
+        bundle_template=bundle_template,
     )
-    os.chmod(BUNDLE_SIGNATURES_PATH, stat.S_IRUSR)
-    # Do not collect a second time here.  The DuckDB/Quack qualification
-    # carries observation timing, so a new probe has a different receipt CID
-    # and would invalidate the signatures that bind the exact first capture.
-    verified_signatures = load_admission_bundle_signatures(
-        child_decisions=child_decisions,
-        child_receipt_cids=child_receipt_cids,
-        decision=decision,
+    if _require_current_identity(components) != identity_before:
+        raise RuntimeError("EAAEF-191 source changed during preparation")
+    _require_clean_source_checkout()
+    prepared: dict[str, Any] = {
+        "schema": PREPARED_REVIEW_SCHEMA,
+        "review": components["review"],
+        "bundle_template": bundle_template,
+    }
+    prepared["prepared_cid"] = cid(prepared)
+    return {
+        "prepared_review": prepared,
+        "review": components["review"],
+        "decision": components["decision"],
+        "child_receipt_cids": components["child_receipt_cids"],
+        "host_evidence": materialize.get("decisions"),
+        "published": False,
+        "independent_signature_present": False,
+        "process_started": False,
+        "configured_board_launch": False,
+    }
+
+
+def prepare_observation(*, full_observation_cid: str) -> dict[str, Any]:
+    """Prepare one immutable no-go observation for diagnostic review only.
+
+    This path deliberately does not materialize host evidence, read signing
+    keys, write staging receipts, open the control database, invoke a
+    provider, or publish authority.  Its output uses a schema that the final
+    admission publisher does not accept.
+    """
+
+    identity = _source_identity()
+    loaded = load_current_host_admission_observation(
+        source_head=identity["source_head"],
+        observation_cid=full_observation_cid,
+        authority_root=AUTHORITY_ROOT_OVERRIDE,
+    )
+    observation = loaded.get("observation")
+    if not isinstance(observation, Mapping):
+        raise RuntimeError("EAAEF-191 full observation is unavailable")
+    expected_identity = {
+        field: str(identity.get(field) or "")
+        for field in ("source_head", "source_tree", "board_namespace", "board_cid")
+    }
+    observed_identity = {
+        field: str(observation.get(field) or "") for field in expected_identity
+    }
+    task_ids = list(observation.get("task_ids") or ())
+    child_decisions = observation.get("child_decisions")
+    child_receipt_cids = observation.get("child_receipt_cids")
+    typed_missing_task_ids = list(observation.get("typed_missing_task_ids") or ())
+    no_go_task_ids = list(observation.get("no_go_task_ids") or ())
+    direct_completion_eligible_task_ids = list(
+        observation.get("direct_completion_eligible_task_ids") or ()
+    )
+    owner_transaction_eligible_task_ids = list(
+        observation.get("casf_owner_transaction_eligible_task_ids") or ()
+    )
+    if (
+        loaded.get("valid") is not True
+        or observation.get("schema") != HOST_ADMISSION_OBSERVATION_SCHEMA
+        or observation.get("scope") != HOST_ADMISSION_OBSERVATION_SCOPE
+        or observation.get("observation_kind") != "typed_no_go"
+        or observation.get("observation_cid") != full_observation_cid
+        or observed_identity != expected_identity
+        or task_ids != list(HOST_ADMISSION_OBSERVATION_TASK_IDS)
+        or not isinstance(child_decisions, Mapping)
+        or set(child_decisions) != set(HOST_ADMISSION_OBSERVATION_TASK_IDS)
+        or not isinstance(child_receipt_cids, Mapping)
+        or set(child_receipt_cids) != set(HOST_ADMISSION_OBSERVATION_TASK_IDS)
+        or typed_missing_task_ids != [
+            task_id
+            for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+            if task_id not in {*EARLY_FRONTIER_TASK_IDS, "EAAEF-191"}
+        ]
+        or no_go_task_ids != ["EAAEF-191"]
+        or direct_completion_eligible_task_ids
+        or owner_transaction_eligible_task_ids != list(EARLY_FRONTIER_TASK_IDS)
+        or observation.get("decision") != "no_go"
+        or observation.get("observation_only") is not True
+        or observation.get("admission_authority") is not False
+        or observation.get("live_admission_allowed") is not False
+        or observation.get("live_launch_allowed") is not False
+        or observation.get("eaaef_191_authority") is not False
+        or observation.get("direct_task_completion_allowed") is not False
+        or observation.get("direct_database_binding_allowed") is not False
+        or observation.get("casf_owner_binding_required") is not True
+        or observation.get("process_started") is not False
+        or observation.get("supervisor_process_started") is not False
+        or observation.get("configured_board_launch") is not False
+        or observation.get("provider_invoked") is not False
+        or observation.get("control_database_opened") is not False
+        or observation.get("database_state_observed") is not False
+        or observation.get("staging_receipts_written") is not False
+    ):
+        raise RuntimeError(
+            "EAAEF-191 full observation is not a current observation-only no-go"
+        )
+    prepared: dict[str, Any] = {
+        "schema": OBSERVATION_PREPARED_REVIEW_SCHEMA,
+        "purpose": "external_diagnostic_review_only",
+        "source_head": expected_identity["source_head"],
+        "source_tree": expected_identity["source_tree"],
+        "board_namespace": expected_identity["board_namespace"],
+        "board_cid": expected_identity["board_cid"],
+        "full_observation_cid": full_observation_cid,
+        "full_observation_logical_path": str(loaded.get("logical_path") or ""),
+        "early_frontier_observation_cid": str(
+            observation.get("early_frontier_observation_cid") or ""
+        ),
+        "early_frontier_observation_logical_path": str(
+            observation.get("early_frontier_observation_logical_path") or ""
+        ),
+        "task_ids": task_ids,
+        "child_decisions": {
+            task_id: str(child_decisions[task_id]) for task_id in task_ids
+        },
+        "child_receipt_cids": {
+            task_id: str(child_receipt_cids[task_id]) for task_id in task_ids
+        },
+        "typed_missing_task_ids": typed_missing_task_ids,
+        "no_go_task_ids": no_go_task_ids,
+        "decision": "no_go",
+        "observation_only": True,
+        "admission_authority": False,
+        "live_admission_allowed": False,
+        "live_launch_allowed": False,
+        "eaaef_191_authority": False,
+        "publishable": False,
+        "independent_signature_present": False,
+        "direct_task_completion_allowed": False,
+        "direct_completion_eligible_task_ids": direct_completion_eligible_task_ids,
+        "casf_owner_transaction_eligible_task_ids": (
+            owner_transaction_eligible_task_ids
+        ),
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": str(
+            observation.get("database_binding_blocker") or ""
+        ),
+        "process_started": False,
+        "supervisor_process_started": False,
+        "configured_board_launch": False,
+        "provider_invoked": False,
+        "control_database_opened": False,
+        "database_state_observed": False,
+        "staging_receipts_written": False,
+        "published": False,
+    }
+    prepared["prepared_cid"] = cid(prepared)
+    return prepared
+
+
+def _validate_prepared_review(prepared: object) -> dict[str, Any]:
+    if not isinstance(prepared, Mapping):
+        raise RuntimeError("prepared EAAEF-191 review is not an object")
+    value = dict(prepared)
+    body = {key: item for key, item in value.items() if key != "prepared_cid"}
+    if (
+        set(value) != _PREPARED_REVIEW_FIELDS
+        or value.get("schema") != PREPARED_REVIEW_SCHEMA
+        or value.get("prepared_cid") != cid(body)
+        or not isinstance(value.get("review"), Mapping)
+        or not isinstance(value.get("bundle_template"), Mapping)
+    ):
+        raise RuntimeError("prepared EAAEF-191 review identity differs")
+    return value
+
+
+def publish(
+    *,
+    prepared_review: Mapping[str, Any],
+    signatures: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Revalidate, verify two external reviewers, and publish create-once."""
+
+    _require_clean_source_checkout()
+    prepared = _validate_prepared_review(prepared_review)
+    child_receipts = _load_current_child_receipts()
+    components = _review_components(
+        child_receipts=child_receipts,
+        bundle_template=dict(prepared["bundle_template"]),
+    )
+    if _canonical(components["review"]) != _canonical(prepared["review"]):
+        raise RuntimeError("prepared EAAEF-191 review differs from current evidence")
+    identity_before = _require_current_identity(components)
+    if components["decision"] != "admitted":
+        raise RuntimeError("EAAEF-191 no-go evidence cannot consume final authority")
+    signature_artifact = dict(signatures)
+    verified_signatures = verify_admission_bundle_signatures_payload(
+        signature_artifact,
+        child_decisions=components["child_decisions"],
+        child_receipt_cids=components["child_receipt_cids"],
+        decision=components["decision"],
         launch_plan_allowed=False,
-        source_head=str(unsigned_bundle.get("source_head") or ""),
-        source_tree=str(unsigned_bundle.get("source_tree") or ""),
-        board_namespace=str(unsigned_bundle.get("board_namespace") or ""),
-        board_cid=str(unsigned_bundle.get("board_cid") or ""),
-        bootstrap_admission_statement_cid=bootstrap_cid,
-        materialization_receipt_cid=materialization_cid,
-        inventory_open_host_gated=open_host_gates,
-        signatures_path=BUNDLE_SIGNATURES_PATH,
+        source_head=components["source_head"],
+        source_tree=components["source_tree"],
+        board_namespace=components["board_namespace"],
+        board_cid=components["board_cid"],
+        bootstrap_admission_statement_cid=components[
+            "bootstrap_admission_statement_cid"
+        ],
+        materialization_receipt_cid=components["materialization_receipt_cid"],
+        inventory_open_host_gated=components["inventory_open_host_gated"],
     )
     if not all(verified_signatures.values()):
-        raise RuntimeError("new admission-bundle signatures did not verify")
-    bundle_evidence = {
-        **evidence,
-        **verified_signatures,
-        "child_receipt_cids": child_receipt_cids,
-        "independent_signature_present": True,
-    }
+        raise RuntimeError("separate EAAEF-191 reviewer signatures are invalid")
+    bundle_template = dict(prepared["bundle_template"])
+    evidence = dict(bundle_template["evidence"])
+    evidence.update(
+        {
+            **verified_signatures,
+            "child_receipt_cids": components["child_receipt_cids"],
+            "independent_signature_present": True,
+        }
+    )
     bundle = {
-        **unsigned_bundle,
-        "decision": decision,
-        "evidence": bundle_evidence,
+        **bundle_template,
+        "decision": components["decision"],
+        "evidence": evidence,
     }
     bundle.pop("receipt_cid", None)
     bundle["receipt_cid"] = cid(bundle)
-    bundle_path = RECEIPT_DIR / RECEIPT_FILES["EAAEF-191"]
-    bundle_path.write_text(
-        json.dumps(bundle, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    if bundle.get("decision") != decision:
-        raise RuntimeError(
-            f"signed bundle decision drifted: expected {decision} got {bundle.get('decision')}"
+    bundle_logical, signatures_logical = (
+        source_addressed_admission_bundle_logical_paths(
+            source_head=components["source_head"],
         )
-    if not bundle["evidence"].get("independent_signature_present"):
-        raise RuntimeError("signed bundle did not verify on collect")
-    if bundle["evidence"].get("launch_plan_allowed") is True:
-        raise RuntimeError("issuer must not start live launch")
-    if bundle.get("process_started") is True or bundle.get("supervisor_process_started") is True:
-        raise RuntimeError("issuer started a supervisor")
+    )
+    child_artifacts = tuple(
+        (
+            source_addressed_child_receipt_logical_path(
+                source_head=components["source_head"],
+                task_id=task_id,
+            ),
+            child_receipts[task_id],
+        )
+        for task_id in _CHILD_TASK_IDS
+    )
+    if _require_current_identity(components) != identity_before:
+        raise RuntimeError("EAAEF-191 source changed before publication")
+    source_artifacts = {
+        **{task_id: child_receipts[task_id] for task_id in _CHILD_TASK_IDS},
+        "EAAEF-191": bundle,
+        "EAAEF-191.signatures": signature_artifact,
+    }
     verification = verify_admission_bundle_receipt(
         receipt_dir=RECEIPT_DIR,
-        expected_source_head=str(bundle.get("source_head") or ""),
-        expected_source_tree=str(bundle.get("source_tree") or ""),
-        expected_board_namespace=str(bundle.get("board_namespace") or ""),
-        expected_board_cid=str(bundle.get("board_cid") or ""),
-    )
-    expected_blockers = (
-        []
-        if decision == "admitted"
-        else ["EAAEF-191 closed admission preconditions are not admitted"]
+        expected_source_head=components["source_head"],
+        expected_source_tree=components["source_tree"],
+        expected_board_namespace=components["board_namespace"],
+        expected_board_cid=components["board_cid"],
+        require_source_addressed=True,
+        source_artifacts=source_artifacts,
     )
     if (
-        verification.get("decision") != decision
-        or verification.get("target_decision") != decision
-        or verification.get("blockers") != expected_blockers
+        verification.get("admitted") is not True
+        or verification.get("decision") != "admitted"
+        or verification.get("target_decision") != "admitted"
+        or verification.get("blockers") != []
     ):
         raise RuntimeError(
-            "final signed bundle did not verify against the captured receipts: "
+            "final EAAEF-191 bundle did not verify: "
             + json.dumps(verification, sort_keys=True)
         )
+    try:
+        registry = EAAEFAuthorityRegistry(
+            repo_root=ROOT,
+            authority_root=AUTHORITY_ROOT_OVERRIDE,
+        )
+        with registry.ceremony():
+            _require_clean_source_checkout()
+            # The persisted verifier intentionally treats the pre-bootstrap
+            # no-go as a historical ordering fact.  Establish that fact while
+            # it is still current at the create-once ceremony boundary.
+            live_components = _review_components(
+                child_receipts=child_receipts,
+                bundle_template=dict(prepared["bundle_template"]),
+            )
+            if _canonical(live_components["review"]) != _canonical(
+                prepared["review"]
+            ):
+                raise RuntimeError(
+                    "prepared EAAEF-191 review expired before publication"
+                )
+            child_preexisting: dict[Path, bool] = {}
+            for child_path, _child_receipt in child_artifacts:
+                try:
+                    registry.read_json(child_path)
+                except EAAEFAuthorityNotFound:
+                    child_preexisting[child_path] = False
+                else:
+                    child_preexisting[child_path] = True
+            try:
+                registry.read_json(signatures_logical)
+            except EAAEFAuthorityNotFound:
+                signatures_created = True
+            else:
+                signatures_created = False
+            try:
+                registry.read_json(bundle_logical)
+            except EAAEFAuthorityNotFound:
+                bundle_created = True
+            else:
+                bundle_created = False
+            for child_path, child_receipt in child_artifacts:
+                registry.publish_json(child_path, child_receipt)
+            registry.publish_json(signatures_logical, signature_artifact)
+            if _require_current_identity(components) != identity_before:
+                raise RuntimeError("EAAEF-191 source changed before final commit")
+            registry.publish_json(bundle_logical, bundle)
+            if _require_current_identity(components) != identity_before:
+                raise RuntimeError("EAAEF-191 source changed during publication")
+    except EAAEFAuthorityRegistryError as exc:
+        raise RuntimeError(f"EAAEF-191 authority registry rejected publication: {exc}") from exc
+    bundle_path = registry.physical_path(bundle_logical)
+    signatures_path = registry.physical_path(signatures_logical)
+    child_snapshots_created = sum(
+        not child_preexisting[path] for path, _payload in child_artifacts
+    )
     return {
-        "operator_did": operator_did,
-        "security_reviewer_did": reviewer_did,
-        "payload_sha256": artifact["payload_sha256"],
-        "signatures_path": str(BUNDLE_SIGNATURES_PATH.relative_to(ROOT)),
-        "decision": decision,
-        "independent_signature_present": "true",
-        "configured_board_launch": "false",
-        "collection": json.dumps(
-            {**child_decisions, "EAAEF-191": decision}, sort_keys=True
-        ),
+        "operator_did": verified_signatures["operator_did"],
+        "security_reviewer_did": verified_signatures["security_reviewer_did"],
+        "payload_sha256": cid(components["review"]),
+        "bundle_path": str(bundle_path),
+        "signatures_path": str(signatures_path),
+        "decision": components["decision"],
+        "published": True,
+        "bundle_created": bundle_created,
+        "signatures_created": signatures_created,
+        "child_snapshots_created": child_snapshots_created,
+        "independent_signature_present": True,
+        "configured_board_launch": False,
+        "process_started": False,
     }
 
 
+def issue(
+    *,
+    prepared_review: Mapping[str, Any],
+    signatures: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Backward-compatible programmatic name for the publish phase."""
+
+    return publish(prepared_review=prepared_review, signatures=signatures)
+
+
 def main() -> int:
-    print(json.dumps(issue(), indent=2, sort_keys=True))
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("prepare")
+    observation_parser = subparsers.add_parser("prepare-observation")
+    observation_parser.add_argument(
+        "--full-observation-cid",
+        required=True,
+        help="exact current immutable full-host-admission observation CID",
+    )
+    publish_parser = subparsers.add_parser("publish")
+    publish_parser.add_argument("--prepared", type=Path, required=True)
+    publish_parser.add_argument("--signatures", type=Path, required=True)
+    arguments = parser.parse_args()
+    if arguments.command == "prepare":
+        result = prepare()
+    elif arguments.command == "prepare-observation":
+        result = prepare_observation(
+            full_observation_cid=arguments.full_observation_cid
+        )
+    else:
+        result = publish(
+            prepared_review=_load_ceremony_artifact(
+                arguments.prepared,
+                noun="prepared EAAEF-191 review",
+            ),
+            signatures=_load_ceremony_artifact(
+                arguments.signatures,
+                noun="EAAEF-191 signature artifact",
+            ),
+        )
+    print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
 

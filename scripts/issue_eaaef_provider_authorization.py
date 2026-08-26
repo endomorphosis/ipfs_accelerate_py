@@ -21,26 +21,30 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ipfs_accelerate_py import agent_implementation_route as routes
+from ipfs_accelerate_py.agent_supervisor.control.eaaef_provider_authority import (
+    EAAEF_PROVIDER_LEGACY_PROFILE_DIR,
+    EAAEF_PROVIDER_LIFECYCLE_DIR,
+    EAAEF_PROVIDER_PROFILE_ROOT,
+    eaaef_provider_profile_candidates,
+)
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
+    PROFILE_FILENAME,
+    LocalProfileWrongRepository,
     ed25519_did_key,
     export_local_profile_lifecycle_witness,
     initialize_local_profile,
     lifecycle_root_identity_did,
+    load_local_profile,
 )
 
-PROFILE_DIR = (
-    Path.home()
-    / ".ipfs_accelerate"
-    / "agent_supervisor"
-    / "eaaef-route-profile"
-)
-LIFECYCLE_DIR = (
-    Path.home()
-    / ".ipfs_accelerate"
-    / "agent_supervisor"
-    / "eaaef-route-lifecycle"
-)
+from ipfs_accelerate_py import agent_implementation_route as routes
+
+# ``PROFILE_DIR`` remains the exact legacy location so already issued,
+# independently signed authority stays usable.  New repository/baseline
+# identities are isolated below ``PROFILE_ROOT``.
+PROFILE_DIR = EAAEF_PROVIDER_LEGACY_PROFILE_DIR
+PROFILE_ROOT = EAAEF_PROVIDER_PROFILE_ROOT
+LIFECYCLE_DIR = EAAEF_PROVIDER_LIFECYCLE_DIR
 
 
 def _canonical(value: object) -> bytes:
@@ -72,6 +76,43 @@ def _write_stable(path: Path, payload: bytes) -> None:
     os.chmod(path, stat.S_IRUSR)
 
 
+def _profile_directory_for_source(
+    *,
+    repository_cid: str,
+    baseline_commit: str,
+) -> Path:
+    """Select an exact source profile without rotating another repository.
+
+    The legacy directory is reused only when its fully verified profile binds
+    this exact repository CID *and* baseline commit.  A repository change (or
+    the rarer same-tree/different-HEAD case) receives a new directory instead
+    of attempting ``force`` rotation across incompatible authority.
+    """
+
+    source_specific, *legacy_candidates = eaaef_provider_profile_candidates(
+        repository_cid=repository_cid,
+        baseline_commit=baseline_commit,
+        profile_root=PROFILE_ROOT,
+        legacy_profile_dir=PROFILE_DIR,
+    )
+    if source_specific.exists():
+        return source_specific
+    if not legacy_candidates:
+        return source_specific
+    legacy = legacy_candidates[0]
+    if not (legacy / PROFILE_FILENAME).is_file():
+        return source_specific
+    try:
+        profile = load_local_profile(
+            repository_cid=repository_cid,
+            profile_dir=legacy,
+            lifecycle_dir=LIFECYCLE_DIR,
+        )
+    except LocalProfileWrongRepository:
+        return source_specific
+    return legacy if profile.baseline_commit == baseline_commit else source_specific
+
+
 def issue() -> dict[str, str]:
     source_head = _git("rev-parse", "HEAD")
     source_tree = _git("rev-parse", "HEAD^{tree}")
@@ -83,12 +124,16 @@ def issue() -> dict[str, str]:
     repository_cid = "sha256:" + hashlib.sha256(
         f"eaaef-v1:{source_tree}".encode()
     ).hexdigest()
+    profile_dir = _profile_directory_for_source(
+        repository_cid=repository_cid,
+        baseline_commit=source_head,
+    )
     event_time_ms = int(time.time() * 1000)
     effects = ("edit", "isolated_worktree", "test")
     profile = initialize_local_profile(
         repository_cid=repository_cid,
         baseline_commit=source_head,
-        profile_dir=PROFILE_DIR,
+        profile_dir=profile_dir,
         lifecycle_dir=LIFECYCLE_DIR,
         effect_bounds=effects,
         route_id=routes._EAAEF_AGENT_IMPLEMENTATION_ROUTE_ID,
@@ -121,7 +166,7 @@ def issue() -> dict[str, str]:
         base_head=source_head,
         base_tree=source_tree,
         nonce=nonce,
-        profile_dir=PROFILE_DIR,
+        profile_dir=profile_dir,
         lifecycle_dir=LIFECYCLE_DIR,
         observed_at_ms=event_time_ms,
         expires_at_ms=event_time_ms + 10 * 60 * 1000,
@@ -172,7 +217,7 @@ def issue() -> dict[str, str]:
         authorized_at_ms=event_time_ms,
         fallback_implementer_identity="codex",
     )
-    key_path = PROFILE_DIR / "local_dev_profile.key"
+    key_path = profile_dir / "local_dev_profile.key"
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     reviewer_key = Ed25519PrivateKey.from_private_bytes(key_path.read_bytes())

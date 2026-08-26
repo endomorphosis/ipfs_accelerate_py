@@ -291,6 +291,7 @@ from ..validation.validation_runtime import (
     sealed_validation_python_runner,
     validation_environment_for_runner,
     validation_python_launcher_environment,
+    validation_python_profile,
     validation_readonly_state_command,
     validation_shell_command,
 )
@@ -4740,6 +4741,14 @@ def _docker_external_validation_command(
 ]:
     """Build one fail-closed isolated candidate-validation invocation."""
 
+    if validation_python_profile(environment) == "raw-no-site":
+        # The pinned validation image owns a different Python/package forest
+        # from the host runner.  Until that forest has its own reviewed
+        # no-site profile, an external-isolation receipt cannot stand in for
+        # the host profile's exact ``-S`` launcher and approved roots.
+        raise ValidationRuntimeError(
+            "raw-no-site validation is unavailable in external isolation"
+        )
     config = validate_external_provider_isolation_config(isolation_value)
     workspace = workspace_path.resolve(strict=True)
     if not workspace.is_dir() or workspace == Path("/"):
@@ -37888,6 +37897,25 @@ class PortalImplementationDaemon:
                 cleanup_result=cleanup_result,
             )
 
+        # Keep isolated-worktree terminal failures on the same bounded wire
+        # contract as direct-checkout failures.  In particular, timeout
+        # salvage can run validation after the provider has terminated; that
+        # result must be projected before it is copied into the terminal event
+        # and before timeout/exception evidence augments the projection.
+        if (
+            returncode != 0
+            and validation_result.get("attempted") is True
+            and not (
+                validation_result.get("actionable_retry_evidence_schema")
+                == ACTIONABLE_RETRY_EVIDENCE_SCHEMA
+                and type(validation_result.get("actionable_retry_evidence"))
+                is dict
+            )
+        ):
+            validation_result = self._sanitize_failed_validation_result(
+                validation_result
+            )
+
         finished_at = utc_now()
         protected_mutation_scopes = {
             str(item.get("scope") or "")
@@ -51315,9 +51343,8 @@ class PortalImplementationDaemon:
                     module._load_object(receipt_path).get("source_head") or ""
                 )
             source_head = module._git("rev-parse", "HEAD")
-            overlay = snapshot_overlay_alias_status(
-                module._overlay_projection_path(config)
-            )
+            overlay_path = module._overlay_projection_path(config)
+            overlay = snapshot_overlay_alias_status(overlay_path)
             plan = plan_control_plane_identity_recovery(
                 source_head=source_head,
                 materialization_source_head=materialization_head,
@@ -51329,6 +51356,14 @@ class PortalImplementationDaemon:
                     "process_started": False,
                     "reason": plan.reason,
                     "action": plan.action.value,
+                    "historical_status_projection_retained_as_evidence": (
+                        overlay_path.is_file()
+                    ),
+                    "historical_status_projection_completed_count": (
+                        plan.overlay_completed
+                    ),
+                    "historical_status_projection_replayed": False,
+                    "historical_statuses_replayed": 0,
                     "ducklake_current_authority": False,
                 }
             mutation_dir = Path(
@@ -51430,8 +51465,12 @@ class PortalImplementationDaemon:
             "receipt_cid": str(receipt.get("receipt_cid") or ""),
             "source_head": str(receipt.get("source_head") or ""),
             "generation_recoveries": list(receipt.get("generation_recoveries") or ()),
-            "overlay_preserved": receipt.get("overlay_preserved") is True,
-            "overlay_restored": int(receipt.get("overlay_restored") or 0),
+            "historical_status_projection_retained_as_evidence": (
+                overlay_path.is_file()
+            ),
+            "historical_status_projection_completed_count": plan.overlay_completed,
+            "historical_status_projection_replayed": False,
+            "historical_statuses_replayed": 0,
             "ducklake_current_authority": False,
         }
 
@@ -52929,6 +52968,7 @@ class PortalImplementationDaemon:
                 pass
 
     @staticmethod
+    @sealed_validation_python_runner
     def _authority_validation_command_runner(
         *,
         spec: Any,
@@ -52948,6 +52988,7 @@ class PortalImplementationDaemon:
             "started_at": started_at,
             "authority_validation_isolation": contract,
         }
+        raw_no_site = validation_python_profile(environment) == "raw-no-site"
         if not __class__._unix_stream_socket_permitted():
             try:
                 local_environment = validation_environment_for_runner(
@@ -53002,6 +53043,19 @@ class PortalImplementationDaemon:
                 )
             )
             return local_result
+        if raw_no_site:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 75,
+                "output": "",
+                "error": "authority_validation_isolation_unavailable",
+                "reason": (
+                    "raw_no_site_authority_validation_requires_host_"
+                    "sealed_runner"
+                ),
+                "infrastructure_failure": True,
+            }
         if contract.get("available") is not True:
             return {
                 **base,
@@ -53783,6 +53837,11 @@ class PortalImplementationDaemon:
     ) -> tuple[str, str]:
         """Bind Python validation to configured package roots in the worktree."""
 
+        if validation_python_profile(os.environ) == "raw-no-site":
+            return (
+                command,
+                "preserved raw no-site validation PYTHONPATH",
+            )
         if "PYTHONPATH=" in command or not re.search(
             r"(?:^|[\s;&|])(?:[^\s;&|]*/)?(?:python(?:3(?:\.\d+)*)?|pytest)"
             r"(?=$|[\s;&|])",
@@ -55101,16 +55160,30 @@ class PortalImplementationDaemon:
                         check=False,
                     )
                 continue
-            if not self._is_git_worktree(checkout):
-                failures.append(
-                    {
-                        "path": relative,
-                        "reason": "isolated_submodule_checkout_missing",
-                        "commit": commit,
-                    }
-                )
-                continue
-            if not self._git_commit_exists_in_repo(checkout, commit):
+            checkout_materialized = self._is_git_worktree(checkout)
+            verification_checkout = checkout
+            if not checkout_materialized:
+                # Recovery publication worktrees intentionally avoid
+                # materializing every configured submodule.  The isolated
+                # child merge has already advanced its CAS-protected target
+                # ref; verify the exact object in the canonical checkout and
+                # then publish only the parent gitlink.
+                verification_checkout = (
+                    self.repo_root / relative
+                ).resolve()
+                if not self._is_git_worktree(verification_checkout):
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": "isolated_submodule_checkout_missing",
+                            "commit": commit,
+                        }
+                    )
+                    continue
+            if not self._git_commit_exists_in_repo(
+                verification_checkout,
+                commit,
+            ):
                 failures.append(
                     {
                         "path": relative,
@@ -55119,48 +55192,59 @@ class PortalImplementationDaemon:
                     }
                 )
                 continue
-            status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=all"],
-                cwd=checkout,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if status.returncode != 0 or status.stdout.strip():
-                # Soft-clean detached attempt dirt so a successful isolated
-                # merge can still publish the parent gitlink (CIG shared trees).
-                subprocess.run(
-                    ["git", "reset", "--hard", "HEAD"],
-                    cwd=checkout,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                subprocess.run(
-                    ["git", "clean", "-fd"],
-                    cwd=checkout,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
+            if checkout_materialized:
                 status = subprocess.run(
-                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    [
+                        "git",
+                        "status",
+                        "--porcelain",
+                        "--untracked-files=all",
+                    ],
                     cwd=checkout,
                     text=True,
                     capture_output=True,
                     check=False,
                 )
-            if status.returncode != 0 or status.stdout.strip():
-                failures.append(
-                    {
-                        "path": relative,
-                        "reason": "isolated_submodule_checkout_dirty",
-                        "commit": commit,
-                        "status": status.stdout[-4000:],
-                        "stderr": status.stderr[-4000:],
-                    }
-                )
-                continue
+                if status.returncode != 0 or status.stdout.strip():
+                    # Soft-clean detached attempt dirt so a successful
+                    # isolated merge can still publish the parent gitlink.
+                    subprocess.run(
+                        ["git", "reset", "--hard", "HEAD"],
+                        cwd=checkout,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    subprocess.run(
+                        ["git", "clean", "-fd"],
+                        cwd=checkout,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    status = subprocess.run(
+                        [
+                            "git",
+                            "status",
+                            "--porcelain",
+                            "--untracked-files=all",
+                        ],
+                        cwd=checkout,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                if status.returncode != 0 or status.stdout.strip():
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": "isolated_submodule_checkout_dirty",
+                            "commit": commit,
+                            "status": status.stdout[-4000:],
+                            "stderr": status.stderr[-4000:],
+                        }
+                    )
+                    continue
             tracked = subprocess.run(
                 ["git", "ls-files", "--stage", "--", relative],
                 cwd=workspace,
@@ -55352,6 +55436,18 @@ class PortalImplementationDaemon:
                         "commit": commit,
                         "aligned": True,
                         "reason": "parent_gitlink_already_published",
+                    }
+                )
+                continue
+            if not self._is_git_worktree(checkout):
+                alignments.append(
+                    {
+                        "path": relative,
+                        "commit": commit,
+                        "aligned": True,
+                        "reason": (
+                            "parent_gitlink_published_without_materialized_checkout"
+                        ),
                     }
                 )
                 continue
@@ -55775,12 +55871,36 @@ class PortalImplementationDaemon:
             }
         paths = changed_paths
 
-        align_before = subprocess.run(
-            ["git", "submodule", "update", "--init", "--checkout", "--", *paths],
-            cwd=workspace,
-            text=True,
-            capture_output=True,
-            check=False,
+        # An ephemeral target worktree may not have materialized its child
+        # checkout.  Initializing it at the rejected post-merge gitlink can be
+        # impossible (the durable object can live only in the canonical
+        # submodule store) and is unnecessary: there is no child worktree dirt
+        # to protect.  Align only existing checkouts before the parent reset,
+        # then realign that same materialized set at the accepted pre-merge
+        # gitlinks after the reset.
+        materialized_paths = [
+            path
+            for path in paths
+            if self._is_git_worktree((workspace / path).resolve())
+        ]
+        align_before = (
+            subprocess.run(
+                [
+                    "git",
+                    "submodule",
+                    "update",
+                    "--init",
+                    "--checkout",
+                    "--",
+                    *materialized_paths,
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if materialized_paths
+            else subprocess.CompletedProcess([], 0, "", "")
         )
         if align_before.returncode != 0:
             return {
@@ -55826,12 +55946,29 @@ class PortalImplementationDaemon:
                 "stdout": reset.stdout[-1000:],
                 "stderr": reset.stderr[-1000:],
             }
-        align_after = subprocess.run(
-            ["git", "submodule", "update", "--init", "--checkout", "--", *paths],
-            cwd=workspace,
-            text=True,
-            capture_output=True,
-            check=False,
+        # Preserve the workspace's original materialization boundary.  A
+        # successful parent reset is already sufficient for an uninitialized
+        # child: trying to clone it here can fail when the accepted gitlink is
+        # available only in the canonical submodule object store, even though
+        # the parent transaction has been rolled back correctly.
+        align_after = (
+            subprocess.run(
+                [
+                    "git",
+                    "submodule",
+                    "update",
+                    "--init",
+                    "--checkout",
+                    "--",
+                    *materialized_paths,
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if materialized_paths
+            else subprocess.CompletedProcess([], 0, "", "")
         )
         result: dict[str, Any] = {
             "attempted": True,
@@ -60072,9 +60209,17 @@ class PortalImplementationDaemon:
         allowed_paths: list[Path] = []
         allowed_dirs: list[Path] = []
         if self.objective_path is not None:
-            allowed_paths.append(self.objective_path)
+            relative = self._repository_context_path(
+                Path(self.objective_path)
+            )
+            if relative:
+                allowed_paths.append(Path(relative))
         if self.objective_bundle_dir is not None:
-            allowed_dirs.append(self.objective_bundle_dir)
+            relative = self._repository_context_path(
+                Path(self.objective_bundle_dir)
+            )
+            if relative:
+                allowed_dirs.append(Path(relative))
         if not allowed_paths and not allowed_dirs:
             return []
         results = resolve_append_only_markdown_conflicts(
@@ -66201,7 +66346,11 @@ class PortalImplementationDaemon:
             key = (task_id, attempt)
             if event_type == "implementation_started":
                 inflight[key] = event
-            elif event_type in {"implementation_finished", "implementation_provider_exhausted"}:
+            elif event_type in {
+                "implementation_finished",
+                "implementation_provider_exhausted",
+                "implementation_state_recovered",
+            }:
                 inflight.pop(key, None)
 
         return list(inflight.values())
@@ -96572,6 +96721,7 @@ def main(argv: list[str] | None = None) -> None:
             program is not None
             and str(authority_mode or "").strip().lower() == "quack"
             and bootstrap_fd < 3
+            and _IMPORTED_CONTROL_PLANE_CAPSULE is not None
         ):
             from .eaaef_host_admitted_daemon_gateway import (
                 build_eaaef_host_admitted_command_gateway,
@@ -96585,10 +96735,22 @@ def main(argv: list[str] | None = None) -> None:
                 repo_root=REPO_ROOT,
                 program=program,
                 owner_session_id=owner_session,
+                expected_source_head=(
+                    _IMPORTED_CONTROL_PLANE_CAPSULE.source_head
+                ),
+                expected_source_tree=(
+                    _IMPORTED_CONTROL_PLANE_CAPSULE.source_tree
+                ),
             )
             dispatcher_factory = (
                 build_eaaef_host_admitted_container_dispatcher_factory(
-                    repo_root=REPO_ROOT
+                    repo_root=REPO_ROOT,
+                    expected_source_head=(
+                        _IMPORTED_CONTROL_PLANE_CAPSULE.source_head
+                    ),
+                    expected_source_tree=(
+                        _IMPORTED_CONTROL_PLANE_CAPSULE.source_tree
+                    ),
                 )
             )
         typed_task_source: Any = None

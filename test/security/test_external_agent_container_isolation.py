@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
+import hashlib
+import json
+from pathlib import Path
 
+import pytest
 from ipfs_accelerate_py.agent_supervisor.containers import checkpoint as checkpoint_mod
 from ipfs_accelerate_py.agent_supervisor.containers.checkpoint import (
     CHECKPOINT_SCHEMA,
@@ -23,7 +26,9 @@ from ipfs_accelerate_py.agent_supervisor.containers.oci_runner import (
     OciRunnerTrustError,
     build_oci_run_spec,
 )
-
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 
 IMAGE_DIGEST = "sha256:" + ("a" * 64)
 _RESOURCES = ResourceBounds(
@@ -33,6 +38,83 @@ _RESOURCES = ResourceBounds(
     timeout_seconds=7200,
     gpu_count=0,
 )
+RECEIPT = (
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "architecture"
+    / "external_agent_autonomous_execution_fabric"
+    / "receipts"
+    / "container.json"
+)
+ARTIFACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1"
+)
+PRODUCER_ARGV = (
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/security/test_external_agent_container_isolation.py",
+)
+RECEIPT_FIELDS = {
+    "artifact_cid",
+    "checkpoint_contract_validated",
+    "cleanup_observed_on_live_runtime",
+    "default_deny_contract",
+    "evidence_mode",
+    "host_engine_probe_invoked",
+    "live_engine_invoked",
+    "live_runtime_invoked",
+    "producer_argv",
+    "producer_source_cid",
+    "production_qualification_claimed",
+    "qualification_scope",
+    "qualification_status",
+    "resource_bounds",
+    "schema",
+    "task_completion_claimed",
+    "task_id",
+}
+
+
+def _producer_source_cid() -> str:
+    return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def _validate_receipt(payload: dict[str, object]) -> None:
+    assert set(payload) == RECEIPT_FIELDS
+    assert payload["schema"] == ARTIFACT_SCHEMA
+    assert payload["task_id"] == "EAAEF-055"
+    assert payload["evidence_mode"] == "contract_fail_closed"
+    assert payload["qualification_scope"] == "offline_container_isolation_contract_only"
+    assert payload["qualification_status"] == "not_live_qualified"
+    assert payload["task_completion_claimed"] is False
+    assert payload["production_qualification_claimed"] is False
+    assert payload["live_runtime_invoked"] is False
+    assert payload["live_engine_invoked"] is False
+    assert payload["host_engine_probe_invoked"] is False
+    assert payload["cleanup_observed_on_live_runtime"] is False
+    assert payload["producer_argv"] == list(PRODUCER_ARGV)
+    assert payload["producer_source_cid"] == _producer_source_cid()
+    unsealed = dict(payload)
+    artifact_cid = unsealed.pop("artifact_cid")
+    assert artifact_cid == content_identity(unsealed)
+
+
+def _write_receipt(payload: dict[str, object]) -> dict[str, object]:
+    sealed = {
+        **payload,
+        "producer_argv": list(PRODUCER_ARGV),
+        "producer_source_cid": _producer_source_cid(),
+    }
+    sealed["artifact_cid"] = content_identity(sealed)
+    _validate_receipt(sealed)
+    RECEIPT.parent.mkdir(parents=True, exist_ok=True)
+    RECEIPT.write_text(
+        json.dumps(sealed, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return sealed
 
 
 def _profile(**changes: object) -> ContainerExecutionProfile:
@@ -130,3 +212,52 @@ def test_checkpoint_contracts_exist_without_starting_containers() -> None:
         recover(checkpoint, next_fence=1)
     assert not hasattr(recover, "start_container")
     assert build_oci_run_spec(_profile()).live_engine_invoked is False
+
+
+def test_write_offline_container_isolation_receipt() -> None:
+    spec = build_oci_run_spec(_profile())
+    assert spec.live_engine_invoked is False
+    assert spec.network == "none"
+    assert spec.read_only is True
+    assert spec.cap_drop == ("ALL",)
+    assert spec.no_new_privileges is True
+    checkpoint = ContainerCheckpoint(
+        attempt_id="attempt:offline-receipt",
+        worktree_id="worktree:eaaef-055",
+        fence_token=1,
+        lane_id="lane:0",
+        owner_alive=False,
+    )
+    assert recover(checkpoint, next_fence=2).fence_token == 2
+
+    receipt = _write_receipt(
+        {
+            "schema": ARTIFACT_SCHEMA,
+            "task_id": "EAAEF-055",
+            "evidence_mode": "contract_fail_closed",
+            "qualification_scope": "offline_container_isolation_contract_only",
+            "qualification_status": "not_live_qualified",
+            "task_completion_claimed": False,
+            "production_qualification_claimed": False,
+            "live_runtime_invoked": False,
+            "live_engine_invoked": False,
+            "host_engine_probe_invoked": False,
+            "cleanup_observed_on_live_runtime": False,
+            "checkpoint_contract_validated": True,
+            "default_deny_contract": {
+                "cap_drop": ["ALL"],
+                "docker_socket_mounted": False,
+                "network": "none",
+                "no_new_privileges": True,
+                "privileged": False,
+                "read_only": True,
+            },
+            "resource_bounds": {
+                "cpu_millicores": spec.cpu_millicores,
+                "disk_mib": spec.disk_mib,
+                "ram_mib": spec.ram_mib,
+                "timeout_seconds": spec.timeout_seconds,
+            },
+        }
+    )
+    _validate_receipt(receipt)

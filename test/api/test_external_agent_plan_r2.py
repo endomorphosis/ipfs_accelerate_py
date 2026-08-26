@@ -867,12 +867,7 @@ def test_plan_r2_publication_recovers_exact_partial_replay(
         trusted_capability_reviewer_dids=[reviewer],
         now_ms=NOW_MS,
     )
-    authority_root = tmp_path / r2.EAAEF_AUTHORITY_REGISTRY_PREFIX
-    authority_root.mkdir(parents=True, mode=0o700)
-    current = tmp_path
-    for part in Path(r2.EAAEF_AUTHORITY_REGISTRY_PREFIX).parts:
-        current /= part
-        current.chmod(0o700)
+    authority_root = tmp_path.parent / f"{tmp_path.name}-authority"
     receipt_path = r2.plan_r2_transition_receipt_relative_path(
         str(authorization["source_head"]),
         str(authorization["plan_root_cid"]),
@@ -883,6 +878,7 @@ def test_plan_r2_publication_recovers_exact_partial_replay(
         receipt_path,
         receipt,
         noun="Plan R2 transition receipt",
+        authority_root=authority_root,
     )
     first = r2.publish_plan_r2_transition_result(
         tmp_path,
@@ -893,6 +889,7 @@ def test_plan_r2_publication_recovers_exact_partial_replay(
         trusted_operator_dids=[operator],
         trusted_security_reviewer_dids=[security],
         now_ms=NOW_MS,
+        authority_root=authority_root,
     )
     replay = r2.publish_plan_r2_transition_result(
         tmp_path,
@@ -903,6 +900,7 @@ def test_plan_r2_publication_recovers_exact_partial_replay(
         trusted_operator_dids=[operator],
         trusted_security_reviewer_dids=[security],
         now_ms=NOW_MS,
+        authority_root=authority_root,
     )
     assert replay == first
     tampered = deepcopy(receipt)
@@ -916,4 +914,5 @@ def test_plan_r2_publication_recovers_exact_partial_replay(
             receipt_path,
             tampered,
             noun="Plan R2 transition receipt",
+            authority_root=authority_root,
         )

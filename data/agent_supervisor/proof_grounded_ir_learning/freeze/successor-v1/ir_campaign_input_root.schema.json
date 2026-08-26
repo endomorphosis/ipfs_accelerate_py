@@ -1,0 +1,656 @@
+{
+  "$id": "https://schemas.ipfs-accelerate.local/agent-supervisor/ir-campaign-input-root-v2.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "IRCampaignInputRoot@2 successor-v1 root superseding the immutable IRCampaignInputRoot@1 PGIR-014 freeze. Learned execution stays closed unless every named gate passes.",
+  "properties": {
+    "bindings": {
+      "additionalProperties": false,
+      "properties": {
+        "compiler": { "$ref": "#/$defs/binding" },
+        "corpus": { "$ref": "#/$defs/binding" },
+        "decompiler": { "$ref": "#/$defs/binding" },
+        "example_contracts": { "$ref": "#/$defs/binding" },
+        "gap_matrix": { "$ref": "#/$defs/binding" },
+        "lineage": { "$ref": "#/$defs/binding" },
+        "policy": { "$ref": "#/$defs/binding" },
+        "rights": { "$ref": "#/$defs/binding" },
+        "schema_registry": { "$ref": "#/$defs/binding" },
+        "source_snapshots": { "$ref": "#/$defs/binding" },
+        "split": { "$ref": "#/$defs/binding" },
+        "tokenizer_policy": { "$ref": "#/$defs/binding" }
+      },
+      "required": [
+        "compiler",
+        "corpus",
+        "decompiler",
+        "example_contracts",
+        "gap_matrix",
+        "lineage",
+        "policy",
+        "rights",
+        "schema_registry",
+        "source_snapshots",
+        "split",
+        "tokenizer_policy"
+      ],
+      "type": "object"
+    },
+    "canonicalization": {
+      "additionalProperties": false,
+      "properties": {
+        "cid": { "const": "CIDv1/base32/dag-json/sha2-256" },
+        "identity_projection": { "type": "string" },
+        "json": { "type": "string" },
+        "rendering": { "type": "string" }
+      },
+      "required": ["cid", "identity_projection", "json", "rendering"],
+      "type": "object"
+    },
+    "contract_version": { "const": 2 },
+    "gates": {
+      "additionalProperties": false,
+      "properties": {
+        "corpus": { "$ref": "#/$defs/gate" },
+        "current_baseline": { "$ref": "#/$defs/gate" },
+        "holdouts": { "$ref": "#/$defs/gate" },
+        "integrated_evidence": { "$ref": "#/$defs/gate" },
+        "portability": { "$ref": "#/$defs/gate" },
+        "rights": { "$ref": "#/$defs/gate" },
+        "tokenizer": { "$ref": "#/$defs/gate" }
+      },
+      "required": [
+        "corpus",
+        "current_baseline",
+        "holdouts",
+        "integrated_evidence",
+        "portability",
+        "rights",
+        "tokenizer"
+      ],
+      "type": "object"
+    },
+    "integrated_evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "completion_authoritative": { "const": false },
+        "decision": { "const": "permanent_no_go" },
+        "file": { "$ref": "#/$defs/fileBinding" },
+        "fresh_verifier_run": { "$ref": "#/$defs/freshVerifierRun" },
+        "later_forest": { "$ref": "#/$defs/laterForest" },
+        "pgir_205_execution_authorized": { "const": false },
+        "predecessor_acceptance_cids": {
+          "additionalProperties": false,
+          "properties": {
+            "PGIR-208": { "$ref": "#/$defs/dagJsonCid" },
+            "PGIR-209": { "$ref": "#/$defs/dagJsonCid" },
+            "PGIR-210": { "$ref": "#/$defs/dagJsonCid" }
+          },
+          "required": ["PGIR-208", "PGIR-209", "PGIR-210"],
+          "type": "object"
+        },
+        "result_identity": { "const": "RESULT(PGIR-211)" },
+        "supersession_chain": {
+          "items": { "enum": ["PGIR-208", "PGIR-210", "PGIR-211"] },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "acceptance_cid",
+        "completion_authoritative",
+        "decision",
+        "file",
+        "fresh_verifier_run",
+        "later_forest",
+        "pgir_205_execution_authorized",
+        "predecessor_acceptance_cids",
+        "result_identity",
+        "supersession_chain"
+      ],
+      "type": "object"
+    },
+    "interface": {
+      "const": "proof-grounded-ir-learning/campaign-input-root/v2"
+    },
+    "objective_id": { "const": "PGIR-205" },
+    "objective_revision": { "$ref": "#/$defs/dagJsonCid" },
+    "qualification": {
+      "additionalProperties": false,
+      "properties": {
+        "corpus_materialized": { "type": "boolean" },
+        "decision": { "enum": ["admitted", "no_go"] },
+        "descendant_execution_authorized": { "type": "boolean" },
+        "insufficient_holdouts": {
+          "items": { "type": "string" },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "leakage_passed": { "type": "boolean" },
+        "lease_barrier": { "enum": ["closed", "open"] },
+        "reason_codes": {
+          "items": { "pattern": "^[a-z][a-z0-9_]*$", "type": "string" },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "rights_quarantined_rows": { "minimum": 0, "type": "integer" },
+        "training_admitted_rows": { "minimum": 0, "type": "integer" },
+        "training_task_eligible_count": { "minimum": 0, "type": "integer" }
+      },
+      "required": [
+        "corpus_materialized",
+        "decision",
+        "descendant_execution_authorized",
+        "insufficient_holdouts",
+        "leakage_passed",
+        "lease_barrier",
+        "reason_codes",
+        "rights_quarantined_rows",
+        "training_admitted_rows",
+        "training_task_eligible_count"
+      ],
+      "type": "object"
+    },
+    "referential_integrity": {
+      "additionalProperties": false,
+      "properties": {
+        "all_required_bindings_present": { "const": true },
+        "compiler_alias_resolved": { "type": "boolean" },
+        "decompiler_alias_resolved": { "type": "boolean" },
+        "hidden_labels_accessed": { "const": false },
+        "required_binding_names": {
+          "items": { "type": "string" },
+          "minItems": 12,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "source_or_split_mutated": { "const": false },
+        "unresolved_identities": {
+          "items": { "type": "string" },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "all_required_bindings_present",
+        "compiler_alias_resolved",
+        "decompiler_alias_resolved",
+        "hidden_labels_accessed",
+        "required_binding_names",
+        "source_or_split_mutated",
+        "unresolved_identities"
+      ],
+      "type": "object"
+    },
+    "repository": {
+      "additionalProperties": false,
+      "properties": {
+        "datasets_commit": { "$ref": "#/$defs/gitOid" },
+        "datasets_tree_id": { "$ref": "#/$defs/gitOid" },
+        "repository_id": {
+          "pattern": "^repository:sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_set_id": { "const": "SRCSET-1" },
+        "source_revision": { "$ref": "#/$defs/gitOid" },
+        "source_tree_id": { "$ref": "#/$defs/gitOid" }
+      },
+      "required": [
+        "datasets_commit",
+        "datasets_tree_id",
+        "repository_id",
+        "source_set_id",
+        "source_revision",
+        "source_tree_id"
+      ],
+      "type": "object"
+    },
+    "root_cid": { "$ref": "#/$defs/dagJsonCid" },
+    "root_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "schema": { "const": "IRCampaignInputRoot@2" },
+    "supersession": {
+      "additionalProperties": false,
+      "properties": {
+        "immutable": { "const": true },
+        "previous_root_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "previous_root_file": { "$ref": "#/$defs/fileBinding" },
+        "previous_root_path": { "type": "string" },
+        "previous_root_schema": { "const": "IRCampaignInputRoot@1" },
+        "replacement_policy": { "const": "supersede_never_overwrite" }
+      },
+      "required": [
+        "immutable",
+        "previous_root_cid",
+        "previous_root_file",
+        "previous_root_path",
+        "previous_root_schema",
+        "replacement_policy"
+      ],
+      "type": "object"
+    },
+    "task_id": { "const": "PGIR-205" }
+  },
+  "required": [
+    "bindings",
+    "canonicalization",
+    "contract_version",
+    "gates",
+    "integrated_evidence",
+    "interface",
+    "objective_id",
+    "objective_revision",
+    "qualification",
+    "referential_integrity",
+    "repository",
+    "root_cid",
+    "root_sha256",
+    "schema",
+    "supersession",
+    "task_id"
+  ],
+  "title": "IRCampaignInputRoot@2 successor-v1",
+  "type": "object",
+  "$defs": {
+    "binding": {
+      "additionalProperties": false,
+      "properties": {
+        "admission_decision": { "type": "string" },
+        "admitted_lineage_groups": {
+          "items": { "type": "string" },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "authority_commits": {
+          "additionalProperties": false,
+          "properties": {
+            "ipfs_accelerate_py": { "$ref": "#/$defs/gitOid" },
+            "ipfs_datasets_py": { "$ref": "#/$defs/gitOid" }
+          },
+          "required": ["ipfs_accelerate_py", "ipfs_datasets_py"],
+          "type": "object"
+        },
+        "binding_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "closed_authority_vocabulary": { "type": "boolean" },
+        "configuration_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "entrypoint": { "type": "string" },
+        "file": {
+          "oneOf": [
+            { "$ref": "#/$defs/fileBinding" },
+            { "$ref": "#/$defs/legacyFileBinding" }
+          ]
+        },
+        "files": {
+          "items": { "$ref": "#/$defs/legacyFileBinding" },
+          "type": "array"
+        },
+        "graph_id": { "type": "string" },
+        "hidden_test_commitment": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "holdout_report": { "$ref": "#/$defs/fileBinding" },
+        "holdouts": { "$ref": "#/$defs/holdouts" },
+        "implementation_commit": { "$ref": "#/$defs/gitOid" },
+        "interface": { "type": "string" },
+        "learned_stages": { "type": "array" },
+        "leakage_passed": { "type": "boolean" },
+        "manifest_id": { "type": "string" },
+        "materialized": { "type": "boolean" },
+        "materialized_row_count": { "minimum": 0, "type": "integer" },
+        "materialized_source_rows": { "minimum": 0, "type": "integer" },
+        "matrix_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "matrix_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "measured_adapter_raw_cid": { "$ref": "#/$defs/rawCid" },
+        "objective_revision": { "$ref": "#/$defs/dagJsonCid" },
+        "pinset_id": { "type": "string" },
+        "policy_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "policy_id": { "type": "string" },
+        "policy_revision": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "protected_paths": {
+          "items": { "type": "string" },
+          "type": "array"
+        },
+        "quarantined_source_count": { "minimum": 0, "type": "integer" },
+        "rendering_spec_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "repository_commit": { "$ref": "#/$defs/gitOid" },
+        "result_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "result_file": { "$ref": "#/$defs/fileBinding" },
+        "result_identity": { "type": "string" },
+        "schema_ids": {
+          "items": { "type": "string" },
+          "type": "array"
+        },
+        "selected_datasets_commit": { "$ref": "#/$defs/gitOid" },
+        "selected_repository_tree": { "$ref": "#/$defs/gitOid" },
+        "source_count": { "minimum": 0, "type": "integer" },
+        "source_manifest_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "source_result_identity": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_set_id": { "type": "string" },
+        "status": { "type": "string" },
+        "strict_unknown_fields": { "type": "boolean" },
+        "symbolic_alias": { "type": "string" },
+        "task_id": { "type": "string" },
+        "task_ids": {
+          "items": { "type": "string" },
+          "type": "array"
+        },
+        "training_admitted_rows": { "minimum": 0, "type": "integer" },
+        "training_authorized": { "type": "boolean" },
+        "tree_oid": { "$ref": "#/$defs/gitOid" },
+        "unknown_token_behavior": { "type": "string" },
+        "uses_model": { "type": "boolean" }
+      },
+      "required": ["binding_cid"],
+      "type": "object"
+    },
+    "fileBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "git_blob": { "$ref": "#/$defs/gitOid" },
+        "path": { "minLength": 1, "type": "string" },
+        "raw_cid": {
+          "pattern": "^bafkrei[a-z2-7]{52}$",
+          "type": "string"
+        },
+        "repository": { "enum": ["ipfs_accelerate_py", "ipfs_datasets_py"] },
+        "revision": { "$ref": "#/$defs/gitOid" },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size_bytes": { "minimum": 0, "type": "integer" }
+      },
+      "required": [
+        "git_blob",
+        "path",
+        "raw_cid",
+        "repository",
+        "revision",
+        "sha256",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "freshVerifierRun": {
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": { "const": 0 },
+        "mode": { "const": "network" },
+        "run_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "stdout": { "$ref": "#/$defs/pgir211Stdout" }
+      },
+      "required": ["exit_code", "mode", "run_cid", "stdout"],
+      "type": "object"
+    },
+    "gate": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "adjudication_identity": { "type": "string" },
+        "admission_decision": { "type": "string" },
+        "admitted_source_rows": { "minimum": 0, "type": "integer" },
+        "baseline_file": { "$ref": "#/$defs/fileBinding" },
+        "completion_authoritative": { "type": "boolean" },
+        "current_input_qualified_r1_cid": {
+          "type": ["string", "null"]
+        },
+        "decision": { "type": "string" },
+        "documented_no_go_required": { "type": "boolean" },
+        "failed_holdouts": {
+          "items": { "type": "string" },
+          "type": "array"
+        },
+        "file": { "$ref": "#/$defs/fileBinding" },
+        "fresh_verifier_mode": { "type": "string" },
+        "fresh_verifier_run_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "hidden_labels_accessed": { "type": "boolean" },
+        "hidden_test_commitment": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "holdout_report": { "$ref": "#/$defs/fileBinding" },
+        "leakage_passed": { "type": "boolean" },
+        "materialized": { "type": "boolean" },
+        "materialized_source_rows": { "minimum": 0, "type": "integer" },
+        "missing_nested_commits": {
+          "items": { "$ref": "#/$defs/gitOid" },
+          "type": "array"
+        },
+        "missing_outer_commits": {
+          "items": { "$ref": "#/$defs/gitOid" },
+          "type": "array"
+        },
+        "passed": { "type": "boolean" },
+        "pgir_205_execution_authorized": { "type": "boolean" },
+        "policy_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "receipt_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "required_holdouts": {
+          "items": { "type": "string" },
+          "type": "array"
+        },
+        "result_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "result_file": { "$ref": "#/$defs/fileBinding" },
+        "result_identity": { "type": "string" },
+        "retirement_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "retirement_file": { "$ref": "#/$defs/fileBinding" },
+        "status": { "type": "string" },
+        "training_admitted_rows": { "minimum": 0, "type": "integer" },
+        "training_authorized": { "type": "boolean" },
+        "training_eligible": { "type": "boolean" }
+      },
+      "required": ["passed"],
+      "type": "object"
+    },
+    "holdoutDisposition": {
+      "additionalProperties": false,
+      "properties": {
+        "count": { "minimum": 0, "type": "integer" },
+        "status": { "type": "string" }
+      },
+      "required": ["count", "status"],
+      "type": "object"
+    },
+    "holdouts": {
+      "additionalProperties": false,
+      "properties": {
+        "compiler": { "$ref": "#/$defs/holdoutDisposition" },
+        "cross_reference": { "$ref": "#/$defs/holdoutDisposition" },
+        "domain": { "$ref": "#/$defs/holdoutDisposition" },
+        "exception": { "$ref": "#/$defs/holdoutDisposition" },
+        "length": { "$ref": "#/$defs/holdoutDisposition" },
+        "lineage": { "$ref": "#/$defs/holdoutDisposition" },
+        "notation": { "$ref": "#/$defs/holdoutDisposition" },
+        "premise": { "$ref": "#/$defs/holdoutDisposition" },
+        "proof_library": { "$ref": "#/$defs/holdoutDisposition" },
+        "publication": { "$ref": "#/$defs/holdoutDisposition" },
+        "rare_operator": { "$ref": "#/$defs/holdoutDisposition" },
+        "time": { "$ref": "#/$defs/holdoutDisposition" },
+        "type": { "$ref": "#/$defs/holdoutDisposition" }
+      },
+      "required": [
+        "compiler",
+        "cross_reference",
+        "domain",
+        "exception",
+        "length",
+        "lineage",
+        "notation",
+        "premise",
+        "proof_library",
+        "publication",
+        "rare_operator",
+        "time",
+        "type"
+      ],
+      "type": "object"
+    },
+    "legacyFileBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "git_blob": { "$ref": "#/$defs/gitOid" },
+        "path": { "minLength": 1, "type": "string" },
+        "raw_cid": { "$ref": "#/$defs/rawCid" },
+        "repository": { "enum": ["ipfs_accelerate_py", "ipfs_datasets_py"] },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size_bytes": { "minimum": 0, "type": "integer" }
+      },
+      "required": [
+        "git_blob",
+        "path",
+        "raw_cid",
+        "repository",
+        "sha256",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "laterForest": {
+      "additionalProperties": false,
+      "properties": {
+        "circular_self_reference_avoided": { "const": true },
+        "containing_commit_claimed": { "const": false },
+        "integrated_target": { "$ref": "#/$defs/repositoryCommit" },
+        "nested": { "$ref": "#/$defs/nestedCommit" },
+        "note": { "type": "string" },
+        "outer_commits": {
+          "items": { "$ref": "#/$defs/outerCommit" },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "result_identity": { "const": "RESULT(PGIR-211)" },
+        "schema": {
+          "const": "proof-grounded-ir-learning/pgir-211-later-forest@1"
+        }
+      },
+      "required": [
+        "circular_self_reference_avoided",
+        "containing_commit_claimed",
+        "integrated_target",
+        "nested",
+        "note",
+        "outer_commits",
+        "result_identity",
+        "schema"
+      ],
+      "type": "object"
+    },
+    "liveNetwork": {
+      "additionalProperties": false,
+      "properties": {
+        "matched": { "const": 21 },
+        "receipt_replay_used_as_substitute": { "const": false },
+        "requested": { "const": 21 },
+        "transport": { "type": "string" }
+      },
+      "required": [
+        "matched",
+        "receipt_replay_used_as_substitute",
+        "requested",
+        "transport"
+      ],
+      "type": "object"
+    },
+    "nestedCommit": {
+      "additionalProperties": false,
+      "properties": {
+        "commit": { "$ref": "#/$defs/gitOid" },
+        "parents": {
+          "items": { "$ref": "#/$defs/gitOid" },
+          "type": "array"
+        },
+        "tree": { "$ref": "#/$defs/gitOid" }
+      },
+      "required": ["commit", "parents", "tree"],
+      "type": "object"
+    },
+    "outerCommit": {
+      "additionalProperties": false,
+      "properties": {
+        "commit": { "$ref": "#/$defs/gitOid" },
+        "gitlink": { "$ref": "#/$defs/gitOid" },
+        "parents": {
+          "items": { "$ref": "#/$defs/gitOid" },
+          "type": "array"
+        },
+        "role": { "enum": ["implementation", "merge", "completion"] },
+        "subject": { "type": "string" },
+        "task_id": { "const": "PGIR-211" },
+        "tree": { "$ref": "#/$defs/gitOid" }
+      },
+      "required": [
+        "commit",
+        "gitlink",
+        "parents",
+        "role",
+        "subject",
+        "task_id",
+        "tree"
+      ],
+      "type": "object"
+    },
+    "pgir211Stdout": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance_cid": { "$ref": "#/$defs/dagJsonCid" },
+        "completion_authoritative": { "const": false },
+        "component_verified": { "const": true },
+        "decision": { "const": "permanent_no_go" },
+        "live_network": { "$ref": "#/$defs/liveNetwork" },
+        "pgir_205_execution_authorized": { "const": false },
+        "verified": { "const": true }
+      },
+      "required": [
+        "acceptance_cid",
+        "completion_authoritative",
+        "component_verified",
+        "decision",
+        "live_network",
+        "pgir_205_execution_authorized",
+        "verified"
+      ],
+      "type": "object"
+    },
+    "repositoryCommit": {
+      "additionalProperties": false,
+      "properties": {
+        "commit": { "$ref": "#/$defs/gitOid" },
+        "gitlink": { "$ref": "#/$defs/gitOid" },
+        "tree": { "$ref": "#/$defs/gitOid" }
+      },
+      "required": ["commit", "gitlink", "tree"],
+      "type": "object"
+    },
+    "dagJsonCid": {
+      "pattern": "^baguqeera[a-z2-7]{52}$",
+      "type": "string"
+    },
+    "gitOid": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "rawCid": {
+      "pattern": "^bafkrei[a-z2-7]{52}$",
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schema": "proof-grounded-ir-learning/successor-source-chain-acceptance/v2",
+  "task_id": "PGIR-210",
+  "result_identity": "RESULT(PGIR-210)",
+  "decision": "superseding_permanent_no_go",
+  "completion_authoritative": false,
+  "pgir_205_execution_authorized": false,
+  "superseded_pg_208": {
+    "result_identity": "RESULT(PGIR-208)",
+    "path": "data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/source-chain-acceptance/source_chain_acceptance.json",
+    "source_sha256": "sha256:3091c41a89bcbfbd3744f6ae85b9d92c125a014143acc44777287ce634eb1af6",
+    "source_raw_cid": "bafkreibqshcbvcn4x66torhwv2c3twjmcjnacqkdvtceo5zipttdj2y26y",
+    "acceptance_sha256": "sha256:0d22663c6577ac4203bfcacca63df5fc77caeabbcca7123e83b9e29f662b3003",
+    "acceptance_cid": "baguqeeraburgmpdfo6weea57zlgkmppv7r34v2v3zstrepudxhrj6zrlgabq"
+  },
+  "source_population": {
+    "candidate_source_rows": 7173,
+    "training_admitted_rows": 0,
+    "materialized_source_rows": 0,
+    "materialized_derived_artifacts": 0,
+    "historical_derived_artifacts_observational_only": 38690
+  },
+  "proof_scope": {
+    "payload_count": 14,
+    "historical_campaign_root_input_count": 10,
+    "citation_count": 21,
+    "network_replay_required": true,
+    "offline_replay_permitted": false,
+    "sealed_payload_git_revision": "8736a0023d5d3afe4d0e5b044a3e4480966a8bf7",
+    "all_sealed_paths_must_remain_byte_identical_through_pgir_204": true
+  },
+  "forest": {
+    "compare_and_swap": {
+      "decision": "adjudicated_serial_three_task_chain",
+      "tasks": [
+        {"task_id":"PGIR-200","old_gitlink":"c30ccbec997868b061c4cadac38d30468c46ea2d","new_gitlink":"0566a833e795b0f0596251c2e7e8ca7d8ec27836","implementation":{"commit":"511ae84626a38dc43ed2851ca4a16c67ff1ac4ca","tree":"197b6471baea6e86c0ec049f5b8c34082d552ec4","parents":["ef3497886fc8b31cfd8f0a5ac45a8026fae0aee3"]},"merge":{"commit":"2d5eee99c31f3649515d6ca076765f8080096af9","tree":"197b6471baea6e86c0ec049f5b8c34082d552ec4","parents":["ef3497886fc8b31cfd8f0a5ac45a8026fae0aee3","511ae84626a38dc43ed2851ca4a16c67ff1ac4ca"]},"completion":{"commit":"1289be82793e590324bb4a830e0bd2584a70ec08","tree":"c05fd5121bd3220025212adcdad7d1bed159dd37","parents":["2d5eee99c31f3649515d6ca076765f8080096af9"]}},
+        {"task_id":"PGIR-201","old_gitlink":"0566a833e795b0f0596251c2e7e8ca7d8ec27836","new_gitlink":"8cc72c77736d3ff2db7cc2530e619bf09b5be027","implementation":{"commit":"b189f26e316d1bf6f7760bcfcef3e1d705011a6d","tree":"fbc96645c5860f17f93b249bbe97e6fa8085f5aa","parents":["1289be82793e590324bb4a830e0bd2584a70ec08"]},"merge":{"commit":"e15127fc8e9de97cd6efa576d836ea995d301dc4","tree":"fbc96645c5860f17f93b249bbe97e6fa8085f5aa","parents":["1289be82793e590324bb4a830e0bd2584a70ec08","b189f26e316d1bf6f7760bcfcef3e1d705011a6d"]},"completion":{"commit":"c70dbcaed6bb66eb42517bb040f2d9602ab69a66","tree":"9656c43406e8ab00f757a80fe902fe9d674f1e45","parents":["e15127fc8e9de97cd6efa576d836ea995d301dc4"]}},
+        {"task_id":"PGIR-202","old_gitlink":"8cc72c77736d3ff2db7cc2530e619bf09b5be027","new_gitlink":"8736a0023d5d3afe4d0e5b044a3e4480966a8bf7","implementation":{"commit":"f38fffb9b96ac06d7894ece8eb6030dc2b35bb83","tree":"e882922764c6df3a7b3101e7b1ac80563e2cf4e4","parents":["c70dbcaed6bb66eb42517bb040f2d9602ab69a66"]},"merge":{"commit":"633411fa297bf5a315b6b7c1dccdd4c4a61626c2","tree":"e882922764c6df3a7b3101e7b1ac80563e2cf4e4","parents":["c70dbcaed6bb66eb42517bb040f2d9602ab69a66","f38fffb9b96ac06d7894ece8eb6030dc2b35bb83"]},"completion":{"commit":"249e7fcac0d8e6e6baa0034ee4bb5b24034c74f5","tree":"be65228bcf951461ee143d8d9fdbd376233a8d16","parents":["633411fa297bf5a315b6b7c1dccdd4c4a61626c2"]}}
+      ]
+    },
+    "nested": {
+      "sealed_commit": "8736a0023d5d3afe4d0e5b044a3e4480966a8bf7",
+      "sealed_tree": "33ff339e87858fba7ee812db16fbc8c8565716ca",
+      "intervening_task": "PGIR-204",
+      "current_commit": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+      "current_tree": "7169c2a67929044a02350bc26d0a51c853a4981b",
+      "sealed_paths": [
+        {"path":"data/ir_learning/corpora/successor-v1/rights_manifest.json"},{"path":"data/ir_learning/corpora/successor-v1/quarantine_manifest.json"},{"path":"data/ir_learning/corpora/successor-v1/source_releases.json"},{"path":"data/ir_learning/corpora/successor-v1/replay_receipt.json"},{"path":"data/ir_learning/corpora/successor-v1/corpus_manifest.json"},{"path":"data/ir_learning/corpora/successor-v1/count_receipt.json"},{"path":"data/ir_learning/corpora/successor-v1/lineage_graph.json"},{"path":"data/ir_learning/corpora/successor-v1/load_receipt.json"},{"path":"data/ir_learning/corpora/successor-v1/corpus_root.json"},{"path":"data/ir_learning/splits/successor-v1/holdout_report.json"},{"path":"data/ir_learning/splits/successor-v1/leakage_report.json"},{"path":"data/ir_learning/splits/successor-v1/ir_split_manifest.json"},{"path":"data/ir_learning/splits/successor-v1/replay_receipt.json"},{"path":"data/ir_learning/splits/successor-v1/split_root.json"}
+      ]
+    },
+    "outer_observation": {"commit":"1d5c543e1f3471d273c8504390c44fc7c63ad20a","tree":"35ebc540a95f85105884258b7e7bc630da7d1a45","gitlink":"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6"}
+  },
+  "verifier_source_identity": {"path":"scripts/verify_proof_grounded_ir_learning_successor_source_chain_v2.py","sha256":"sha256:13b1cfbad8cd963f8aa834a60cae017f1a380654d15101550412403efad0a53f","raw_cid":"bafkreiatwhh3vwgnsy7yvkbuuygk4al7di4amvgrkeavkbasia7pvuffh4"},
+  "portability_no_go": {"status":"portability_no_go","observation_time":"2026-08-25T18:49:52Z","observation_method":"git for-each-ref --contains <commit> --format=%(refname) refs/remotes in both outer and nested repositories; no remote-tracking ref contained these commits","missing_outer_commits":["effac002de038c02ef94cdb8e1b1b2c9a0a8d2e3","1ceb7183b16b3358dd956ebcd4917955e017ef7f","edb419c80275757cbedac8c6731e49f85ad58d88","fdf3839bc11c60c7e0b801397499a7b4ce0d4634","a0f54e787e141d6d03fcef56b7d48ff42ce516f1","b9c7aaece6c75b1413a6a951f647ca409834dff9"],"missing_nested_commits":["8736a0023d5d3afe4d0e5b044a3e4480966a8bf7","2a06dfe8546cdde78ff6d101a94708be0e6bf6e6"],"pgir_205_execution_authorized":false,"effect":"PGIR-205 remains fail-closed: no materialization, training, promotion, or execution authority follows from this receipt."},
+  "acceptance_sha256": "sha256:e4680bd9157ca7a45a4b74626605f4a83c985c59c24bea0d13b9bda04d736d55",
+  "acceptance_cid": "baguqeera4ruaxwivpst2iwslorrgmbpuva6jqxczyjf6uditxg62atltnvkq"
+}

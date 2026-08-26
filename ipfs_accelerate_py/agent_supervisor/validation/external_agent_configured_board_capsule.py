@@ -10,9 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
-import stat
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
@@ -26,6 +24,11 @@ from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     LocalProfileTampered,
     verify_did_key_signature,
 )
+from ipfs_accelerate_py.agent_supervisor.validation.eaaef_authority_registry import (
+    EAAEFAuthorityConflict,
+    EAAEFAuthorityRegistry,
+    EAAEFAuthorityRegistryError,
+)
 from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_admission import (
     EAAEF_AUTHORITY_REGISTRY_PREFIX,
     EAAEF_BOARD_NAMESPACE,
@@ -33,7 +36,6 @@ from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_adm
     EAAEF_OPERATIONAL_COMMAND_FABRIC_SHARD_ID,
     EAAEF_SIGNED_COMMAND_FABRIC_PROFILE_SCHEMA,
     ExternalAgentBootstrapAdmissionError,
-    _publish_create_once_repo_json,
     external_agent_bootstrap_admission_relative_path,
     verify_external_agent_bootstrap_admission,
 )
@@ -429,92 +431,32 @@ def _read_stable_repo_json(
     relative_value: object,
     *,
     noun: str,
+    authority_root: str | Path | None = None,
 ) -> tuple[dict[str, Any], str]:
-    """Read one owner-only, no-link JSON record without following a swap."""
+    """Read one immutable logical authority record from platform state."""
 
     if not isinstance(relative_value, str) or not relative_value:
         raise ExternalAgentConfiguredBoardCapsuleError(f"{noun} path is missing")
-    relative = Path(relative_value)
-    if relative.is_absolute() or ".." in relative.parts:
-        raise ExternalAgentConfiguredBoardCapsuleError(
-            f"{noun} path is not repository-relative"
-        )
-    canonical_root = root.resolve(strict=True)
-    current = canonical_root
-    for part in relative.parts[:-1]:
-        current /= part
-        try:
-            metadata = os.lstat(current)
-        except OSError as exc:
-            raise ExternalAgentConfiguredBoardCapsuleError(
-                f"{noun} parent is unavailable"
-            ) from exc
-        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-            raise ExternalAgentConfiguredBoardCapsuleError(
-                f"{noun} parent is linked or non-directory"
-            )
-    path = canonical_root / relative
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(path, flags)
-    except OSError as exc:
-        raise ExternalAgentConfiguredBoardCapsuleError(f"{noun} is unavailable") from exc
-    try:
-        before = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(before.st_mode)
-            or before.st_uid != os.geteuid()
-            or before.st_nlink != 1
-            or before.st_size <= 0
-            or before.st_size > 4_194_304
-            or stat.S_IMODE(before.st_mode) & 0o077
-        ):
-            raise ExternalAgentConfiguredBoardCapsuleError(
-                f"{noun} is not an owner-only single-link regular file"
-            )
-        chunks: list[bytes] = []
-        remaining = before.st_size
-        while remaining:
-            chunk = os.read(descriptor, min(65_536, remaining))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        after = os.fstat(descriptor)
-        pathname = os.lstat(path)
-    finally:
-        os.close(descriptor)
-    def identity(item: os.stat_result) -> tuple[int, ...]:
-        return (
-            item.st_dev,
-            item.st_ino,
-            item.st_mode,
-            item.st_uid,
-            item.st_nlink,
-            item.st_size,
-            item.st_mtime_ns,
-            item.st_ctime_ns,
+        registry = EAAEFAuthorityRegistry(
+            repo_root=root,
+            authority_root=authority_root,
         )
-    raw = b"".join(chunks)
-    if (
-        len(raw) != before.st_size
-        or identity(before) != identity(after)
-        or identity(before) != identity(pathname)
-        or stat.S_ISLNK(pathname.st_mode)
-    ):
+        value = registry.read_json(str(relative_value))
+    except EAAEFAuthorityRegistryError as exc:
         raise ExternalAgentConfiguredBoardCapsuleError(
-            f"{noun} changed during stable read"
-        )
-    try:
-        value = json.loads(
-            raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ExternalAgentConfiguredBoardCapsuleError(
-            f"{noun} is invalid JSON"
+            f"{noun} authority registry read failed: {exc}"
         ) from exc
-    if not isinstance(value, dict):
-        raise ExternalAgentConfiguredBoardCapsuleError(f"{noun} is not an object")
+    raw = (
+        json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+    )
     return value, "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
@@ -1536,6 +1478,7 @@ def verify_external_agent_configured_board_live_seal(
     now_ms: int,
     expected_active_plan_root_cid: str = "",
     plan_r2_repository: object | None = None,
+    authority_root: str | Path | None = None,
 ) -> VerifiedExternalAgentConfiguredBoardLiveSeal:
     """Re-open and join post-freeze evidence at a process-birth boundary.
 
@@ -1606,6 +1549,7 @@ def verify_external_agent_configured_board_live_seal(
         root,
         admission_path.as_posix(),
         noun="bootstrap admission receipt",
+        authority_root=authority_root,
     )
     try:
         admission = verify_external_agent_bootstrap_admission(
@@ -1630,6 +1574,7 @@ def verify_external_agent_configured_board_live_seal(
         root,
         capsule_path.as_posix(),
         noun="configured-board launch capsule",
+        authority_root=authority_root,
     )
     capsule = verify_external_agent_configured_board_capsule(
         capsule_receipt,
@@ -1674,16 +1619,19 @@ def verify_external_agent_configured_board_live_seal(
             root,
             authorization_path.as_posix(),
             noun="Plan R2 transition authorization",
+            authority_root=authority_root,
         )
         transition_receipt, transition_receipt_file_sha256 = _read_stable_repo_json(
             root,
             transition_receipt_path.as_posix(),
             noun="Plan R2 transition receipt",
+            authority_root=authority_root,
         )
         state_observation, state_observation_file_sha256 = _read_stable_repo_json(
             root,
             state_observation_path.as_posix(),
             noun="Plan R2 state observation",
+            authority_root=authority_root,
         )
         try:
             transition_verification = validate_plan_r2_launch_transition(
@@ -1853,6 +1801,7 @@ def publish_external_agent_configured_board_capsule(
     *,
     trusted_reviewer_dids: Sequence[str],
     now_ms: int,
+    authority_root: str | Path | None = None,
 ) -> dict[str, Any]:
     verification = verify_external_agent_configured_board_capsule(
         capsule,
@@ -1869,14 +1818,20 @@ def publish_external_agent_configured_board_capsule(
         str(active_plan.get("plan_root_cid") or ""),
     )
     try:
-        _publish_create_once_repo_json(
-            repo_root,
-            relative_path,
-            capsule,
-            noun="configured-board capsule",
+        registry = EAAEFAuthorityRegistry(
+            repo_root=repo_root,
+            authority_root=authority_root,
         )
-    except ExternalAgentBootstrapAdmissionError as exc:
-        raise ExternalAgentConfiguredBoardCapsuleError(str(exc)) from exc
+        registry.publish_json(relative_path, capsule)
+    except EAAEFAuthorityConflict as exc:
+        raise ExternalAgentConfiguredBoardCapsuleError(
+            "refusing to overwrite immutable configured-board capsule with "
+            "different bytes"
+        ) from exc
+    except EAAEFAuthorityRegistryError as exc:
+        raise ExternalAgentConfiguredBoardCapsuleError(
+            f"configured-board capsule registry rejected publication: {exc}"
+        ) from exc
     return verification
 
 

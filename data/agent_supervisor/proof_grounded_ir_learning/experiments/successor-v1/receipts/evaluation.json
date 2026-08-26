@@ -1,0 +1,110 @@
+{
+  "best_test_selection": false,
+  "campaign_cid": "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+  "evaluation_invoked": false,
+  "experiment_key_count": 16,
+  "experiment_keys": [
+    {
+      "arm_id": "R1",
+      "experiment_key": "R1/seed-0",
+      "seed": 0
+    },
+    {
+      "arm_id": "R2",
+      "experiment_key": "R2/seed-32",
+      "seed": 32
+    },
+    {
+      "arm_id": "R2",
+      "experiment_key": "R2/seed-33",
+      "seed": 33
+    },
+    {
+      "arm_id": "R2",
+      "experiment_key": "R2/seed-34",
+      "seed": 34
+    },
+    {
+      "arm_id": "R3",
+      "experiment_key": "R3/seed-32",
+      "seed": 32
+    },
+    {
+      "arm_id": "R3",
+      "experiment_key": "R3/seed-33",
+      "seed": 33
+    },
+    {
+      "arm_id": "R3",
+      "experiment_key": "R3/seed-34",
+      "seed": 34
+    },
+    {
+      "arm_id": "R4",
+      "experiment_key": "R4/seed-32",
+      "seed": 32
+    },
+    {
+      "arm_id": "R4",
+      "experiment_key": "R4/seed-33",
+      "seed": 33
+    },
+    {
+      "arm_id": "R4",
+      "experiment_key": "R4/seed-34",
+      "seed": 34
+    },
+    {
+      "arm_id": "R5",
+      "experiment_key": "R5/seed-32",
+      "seed": 32
+    },
+    {
+      "arm_id": "R5",
+      "experiment_key": "R5/seed-33",
+      "seed": 33
+    },
+    {
+      "arm_id": "R5",
+      "experiment_key": "R5/seed-34",
+      "seed": 34
+    },
+    {
+      "arm_id": "R6",
+      "experiment_key": "R6/seed-32",
+      "seed": 32
+    },
+    {
+      "arm_id": "R6",
+      "experiment_key": "R6/seed-33",
+      "seed": 33
+    },
+    {
+      "arm_id": "R6",
+      "experiment_key": "R6/seed-34",
+      "seed": 34
+    }
+  ],
+  "hidden_labels_opened": false,
+  "hidden_test_access": false,
+  "hidden_test_selection": false,
+  "hidden_test_tuning": false,
+  "measured_cell_count": 0,
+  "metric_cell_count": 192,
+  "metrics_cid": "baguqeera4caljyd6lrh4wpzg24uieyzplikodbkgathqciinfg3vtkkf4qza",
+  "reason_code": "admission_closed",
+  "receipt_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+  "receipt_sha256": "sha256:91e749080f3db477a0510794bbcfc0d0c04f70d00d00dabd83cc329ead2e9c46",
+  "schema": "PGIRExperimentEvaluationReceipt@2",
+  "status": "not_run",
+  "target_attainment_claim_count": 0,
+  "task_binding": {
+    "current_task_cid": "baguqeerafze3wxxiomo4rhuxaguuk35d4tj4lrp2jtuj6jcinxnokczuctca",
+    "current_task_key": "task/v1/2e49bb5ee8731dc89e9701a9456fa3e4d3c5c5fa4ce89f24486ddae50b3414c4",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "controlled-comparisons-v2",
+    "task_id": "PGIR-206",
+    "title": "Re-run R1-R6 on the superseding freeze"
+  }
+}

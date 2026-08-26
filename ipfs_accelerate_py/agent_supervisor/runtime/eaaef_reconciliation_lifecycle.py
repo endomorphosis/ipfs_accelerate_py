@@ -7,13 +7,14 @@ not open DuckDB, read a Quack token, accept SQL, or infer completion from an
 older generation.  Database effects are delegated to one exact typed owner
 adapter; Plan R2 is applied through :class:`ExternalAgentStateRepository`.
 
-The current accelerator tree does not yet provide the portfolio bootstrap
-effect required by ``EAAEFTypedReconciliationOwner@1``.  Its statically named
-facade reports the missing production bindings and refuses every effect.  The
-final CASF merge must replace that blocker facade with a narrow adapter over
-its exclusive typed owner.  Until it does, the public commands fail closed
-after producing a useful preflight and a fresh authority request.  Stale EAAEF
-receipts are never rebound.
+The current accelerator tree provides a separately qualified CASF/Quack
+bootstrap adapter for a long-lived host to bind explicitly.  That bounded
+``EAAEFBootstrapReconciliationOwner@1`` capability cannot satisfy the
+``EAAEFTypedReconciliationOwner@1`` production gate.  The statically named
+production facade reports the remaining bindings and refuses every effect.
+Public one-shot materialization therefore remains behind the production gate;
+preflight can report bootstrap readiness independently.  Stale EAAEF receipts
+are never rebound.
 """
 
 from __future__ import annotations
@@ -41,20 +42,29 @@ from ..entrypoints.local_profile import (
 )
 from ..planning.external_agent_plan_r2 import (
     ExternalAgentPlanR2Error,
+    PLAN_R2_TRANSITION_STATEMENT_SCHEMA,
+    assemble_plan_r2_transition_authorization,
     plan_r2_operational_capability_signing_payload,
     prepare_plan_r2_transition_approval,
     prepare_plan_r2_transition_authorization,
+    seal_plan_r2_operational_capability,
+    seal_plan_r2_transition_approval,
+    verify_plan_r2_operational_capability,
+    verify_plan_r2_transition_authorization,
 )
 from ..task_sources.external_agent_state_repository import (
     AUTHORIZED_PLAN_R2_REPOSITORY_INTERFACE,
     ExternalAgentStateRepository,
 )
 from ..validation.plan_r2_remote_owner_admission import (
+    MAX_PLAN_R2_REMOTE_CAPABILITY_LIFETIME_MS,
     MAX_PLAN_R2_REMOTE_REQUEST_BYTES,
     PLAN_R2_REMOTE_CLIENT_GATEWAY_INTERFACE,
     PLAN_R2_REMOTE_WIRE_CHANNEL_INTERFACE,
     PlanR2RemoteOwnerAdmissionError,
     VerifiedPlanR2RemoteOwnerAdmission,
+    plan_r2_remote_owner_capability_signing_payload,
+    seal_plan_r2_remote_owner_capability,
     verify_plan_r2_remote_owner_admission,
 )
 from .plan_r2_remote_owner import (
@@ -71,6 +81,9 @@ EAAEF_BOOTSTRAP_TASK_COUNT: Final = 22
 EAAEF_PLAN_R2_TASK_COUNT: Final = 94
 EAAEF_GOAL_COUNT: Final = 20
 EAAEF_GOAL_EDGE_COUNT: Final = 18
+EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE: Final = (
+    "EAAEFBootstrapReconciliationOwner@1"
+)
 EAAEF_RECONCILIATION_OWNER_INTERFACE: Final = "EAAEFTypedReconciliationOwner@1"
 EAAEF_RECONCILIATION_LIFECYCLE_INTERFACE: Final = "EAAEFReconciliationLifecycle@1"
 EAAEF_RECONCILIATION_ROOT: Final = (
@@ -121,6 +134,15 @@ EAAEF_OFFLINE_POPULATION_RECEIPT_SCHEMA: Final = (
 EAAEF_OWNER_QUALIFICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-typed-owner-qualification@1"
 )
+EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-owner-qualification@1"
+)
+EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE: Final = (
+    "EAAEFCASFBootstrapOwnerLifecycle@1"
+)
+EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS: Final = (
+    "persistent_quack_handoff_source_complete_cutover_unqualified"
+)
 EAAEF_TYPED_TASK_SOURCE_INTERFACE: Final = "TypedDatabaseTaskSource@1"
 EAAEF_LAUNCH_REQUEST_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-reconciliation-launch-request@1"
@@ -148,6 +170,10 @@ EAAEF_UNSIGNED_AUTHORITY_REQUEST_SCHEMA: Final = (
 )
 EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-plan-r2-signing-request@1"
+)
+EAAEF_PLAN_R2_REMOTE_OWNER_SIGNING_REQUEST_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "eaaef-plan-r2-remote-owner-signing-request@1"
 )
 EAAEF_STATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-reconciliation-generation-state@1"
@@ -322,6 +348,56 @@ _FRESH_TRUST_FIELDS: Final = frozenset(
         "trust_bundle_cid",
     }
 )
+_PLAN_R2_SIGNING_REQUEST_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "stage",
+        "board_namespace",
+        "source_head",
+        "source_tree",
+        "source_forest_root",
+        "statement_cid",
+        "unsigned_plan_r2_statement",
+        "signing_payloads",
+        "required_signature_fields",
+        "deferred_external_signature",
+        "authority_valid",
+        "launch_allowed",
+        "trust_roots_read",
+        "signing_key_read",
+        "signature_created",
+        "authority_mutated",
+        "provider_process_started",
+        "request_cid",
+    }
+)
+_PLAN_R2_REMOTE_OWNER_SIGNING_REQUEST_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "stage",
+        "board_namespace",
+        "source_head",
+        "source_tree",
+        "source_forest_root",
+        "stage_one_request_cid",
+        "statement_cid",
+        "trust_bundle_cid",
+        "authorization",
+        "plan_r2_operational_capability",
+        "remote_owner_signing_payload",
+        "required_signature_fields",
+        "stage_two_verified_at_ms",
+        "external_signatures_verified",
+        "authority_valid",
+        "launch_allowed",
+        "trust_roots_read",
+        "signing_key_read",
+        "signature_created",
+        "authority_mutated",
+        "provider_process_started",
+        "request_cid",
+    }
+)
 _OWNER_QUALIFICATION_FIELDS: Final = frozenset(
     {
         "schema",
@@ -340,6 +416,28 @@ _OWNER_QUALIFICATION_FIELDS: Final = frozenset(
         "status_operation",
         "stop_tracks_operation",
         "launch_modes",
+        "database_authority_crossing_allowed",
+        "filesystem_path_authority_crossing_allowed",
+        "transport_token_authority_crossing_allowed",
+        "sql_crossing_allowed",
+        "provider_launch_allowed",
+        "qualification_cid",
+    }
+)
+_BOOTSTRAP_OWNER_QUALIFICATION_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "interface",
+        "source_forest_root",
+        "materialization_operation",
+        "bootstrap_materialization_mode",
+        "bootstrap_materialization_before_owner_start",
+        "offline_population_includes_execution_contracts",
+        "direct_database_mutation_after_owner_start",
+        "exclusive_owner_lifecycle_interface",
+        "exclusive_owner_lifecycle_qualification_status",
+        "bootstrap_owner_ready",
+        "bootstrap_owner_blockers",
         "database_authority_crossing_allowed",
         "filesystem_path_authority_crossing_allowed",
         "transport_token_authority_crossing_allowed",
@@ -2348,7 +2446,7 @@ def verify_compiled_eaaef_population_commitments(
         ) from exc
     if observed_contract_counts != {
         "task_dependencies": 270,
-        "task_outputs": 415,
+        "task_outputs": 430,
         "task_validations": 117,
         "task_acceptance": 116,
     }:
@@ -2507,6 +2605,11 @@ def _verified_trust_lists(trust_roots: Mapping[str, Any]) -> dict[str, tuple[str
         ):
             raise EAAEFReconciliationIdentityError(
                 f"fresh EAAEF trust roots {field_name} are not exact"
+            )
+        for identity_did in raw:
+            _require_ed25519_did(
+                identity_did,
+                f"fresh EAAEF trust roots {field_name} identity",
             )
         result[field_name] = tuple(raw)
         all_dids.extend(raw)
@@ -2830,6 +2933,702 @@ def build_fresh_plan_r2_signing_request_projection(
     return value
 
 
+def _verify_current_plan_r2_signing_request(
+    request: Mapping[str, Any],
+    *,
+    population: CompiledEAAEFPopulation,
+    bootstrap_snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Rebuild stage one from its public inputs and require byte-equivalent JSON."""
+
+    value = _verify_self_addressed_object(
+        request,
+        fields=_PLAN_R2_SIGNING_REQUEST_FIELDS,
+        cid_field="request_cid",
+        noun="fresh Plan-R2 stage-one signing request",
+    )
+    payloads = value.get("signing_payloads")
+    if not isinstance(payloads, Mapping) or set(payloads) != {
+        "independent_operator",
+        "independent_security_reviewer",
+        "independent_plan_r2_capability_reviewer",
+    }:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-one signing payloads are not exact"
+        )
+    operator = payloads.get("independent_operator")
+    security = payloads.get("independent_security_reviewer")
+    capability = payloads.get("independent_plan_r2_capability_reviewer")
+    if not all(isinstance(item, Mapping) for item in (operator, security, capability)):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-one signing payloads are incomplete"
+        )
+    issued_at_ms = operator.get("issued_at_ms")
+    expires_at_ms = operator.get("expires_at_ms")
+    if type(issued_at_ms) is not int or type(expires_at_ms) is not int:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-one signing lifetime is invalid"
+        )
+    rebuilt = build_fresh_plan_r2_signing_request_projection(
+        population=population,
+        bootstrap_snapshot=bootstrap_snapshot,
+        operator_identity_did=str(operator.get("identity_did") or ""),
+        security_reviewer_identity_did=str(security.get("identity_did") or ""),
+        capability_reviewer_identity_did=str(
+            capability.get("reviewer_identity_did") or ""
+        ),
+        issued_at_ms=issued_at_ms,
+        expires_at_ms=expires_at_ms,
+    )
+    if value != rebuilt:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-one signing request differs from the current source"
+        )
+    return value
+
+
+def _require_seven_plan_r2_role_identities(
+    *,
+    authorization: Mapping[str, Any],
+    capability: Mapping[str, Any],
+    remote_reviewer_identity_did: object,
+    authorized_principal_identity_did: object,
+    independent_approver_identity_did: object,
+    trust: Mapping[str, Sequence[str]],
+) -> tuple[str, str, str]:
+    operator_approval = authorization.get("operator_approval")
+    security_approval = authorization.get("security_approval")
+    if not isinstance(operator_approval, Mapping) or not isinstance(
+        security_approval, Mapping
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 transition approvals are incomplete"
+        )
+    operator = _require_ed25519_did(
+        operator_approval.get("identity_did"),
+        "fresh Plan-R2 operator identity",
+    )
+    security = _require_ed25519_did(
+        security_approval.get("identity_did"),
+        "fresh Plan-R2 security reviewer identity",
+    )
+    capability_reviewer = _require_ed25519_did(
+        capability.get("reviewer_identity_did"),
+        "fresh Plan-R2 capability reviewer identity",
+    )
+    remote_reviewer = _require_ed25519_did(
+        remote_reviewer_identity_did,
+        "fresh Plan-R2 remote reviewer identity",
+    )
+    authorized_principal = _require_ed25519_did(
+        authorized_principal_identity_did,
+        "fresh Plan-R2 authorized principal identity",
+    )
+    independent_approver = _require_ed25519_did(
+        independent_approver_identity_did,
+        "fresh Plan-R2 independent approver identity",
+    )
+    owner_principal = _require_ed25519_did(
+        authorization.get("owner_principal_did"),
+        "fresh Plan-R2 owner principal identity",
+    )
+    if (
+        operator not in trust["operator_dids"]
+        or security not in trust["security_reviewer_dids"]
+        or capability_reviewer not in trust["plan_r2_capability_reviewer_dids"]
+        or remote_reviewer not in trust["remote_reviewer_dids"]
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 signing identities are not independently trusted"
+        )
+    identities = {
+        owner_principal,
+        operator,
+        security,
+        capability_reviewer,
+        remote_reviewer,
+        authorized_principal,
+        independent_approver,
+    }
+    if len(identities) != 7:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 authority requires seven distinct decoded did:key roles"
+        )
+    return remote_reviewer, authorized_principal, independent_approver
+
+
+def _stage_one_request_from_signed_authority(
+    *,
+    authorization: Mapping[str, Any],
+    capability: Mapping[str, Any],
+    population: CompiledEAAEFPopulation,
+) -> dict[str, Any]:
+    """Recover the exact public stage-one request from its verified signed forms."""
+
+    operator_approval = authorization.get("operator_approval")
+    security_approval = authorization.get("security_approval")
+    if not isinstance(operator_approval, Mapping) or not isinstance(
+        security_approval, Mapping
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 signed approvals cannot reconstruct stage one"
+        )
+    statement = _unsigned_plan_r2_statement_from_authorization(authorization)
+    operator_payload = dict(operator_approval)
+    operator_payload.pop("signature", None)
+    security_payload = dict(security_approval)
+    security_payload.pop("signature", None)
+    capability_payload = dict(capability)
+    capability_payload.pop("reviewer_signature", None)
+    capability_payload.pop("capability_cid", None)
+    value = {
+        "schema": EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA,
+        "stage": "transition_approvals_and_operational_capability",
+        "board_namespace": EAAEF_BOARD_NAMESPACE,
+        "source_head": population.source_head,
+        "source_tree": population.source_tree,
+        "source_forest_root": population.source_forest_root,
+        "statement_cid": statement.get("statement_cid"),
+        "unsigned_plan_r2_statement": statement,
+        "signing_payloads": {
+            "independent_operator": operator_payload,
+            "independent_security_reviewer": security_payload,
+            "independent_plan_r2_capability_reviewer": capability_payload,
+        },
+        "required_signature_fields": {
+            "independent_operator": "signature",
+            "independent_security_reviewer": "signature",
+            "independent_plan_r2_capability_reviewer": "reviewer_signature",
+        },
+        "deferred_external_signature": (
+            "independent_plan_r2_remote_transport_reviewer_after_signed_"
+            "authorization_and_operational_capability"
+        ),
+        "authority_valid": False,
+        "launch_allowed": False,
+        "trust_roots_read": False,
+        "signing_key_read": False,
+        "signature_created": False,
+        "authority_mutated": False,
+        "provider_process_started": False,
+    }
+    value["request_cid"] = _cid(value)
+    return value
+
+
+def _unsigned_plan_r2_statement_from_authorization(
+    authorization: Mapping[str, Any],
+) -> dict[str, Any]:
+    statement = dict(authorization)
+    statement.pop("operator_approval", None)
+    statement.pop("security_approval", None)
+    statement.pop("authorization_cid", None)
+    statement["schema"] = PLAN_R2_TRANSITION_STATEMENT_SCHEMA
+    return statement
+
+
+def _bootstrap_snapshot_from_signed_plan_r2_statement(
+    authorization: Mapping[str, Any],
+    *,
+    population: CompiledEAAEFPopulation,
+) -> dict[str, Any]:
+    """Reconstruct the public bootstrap inputs carried by the signed statement."""
+
+    value = {
+        "schema": EAAEF_BOOTSTRAP_SNAPSHOT_SCHEMA,
+        "source_head": authorization.get("source_head"),
+        "source_tree": authorization.get("source_tree"),
+        "source_forest_root": authorization.get("source_generation_cid"),
+        "board_cid": population.board_cid,
+        "reconciliation_population_cid": population.population_cid,
+        "bootstrap_population_cid": population.bootstrap_population_cid,
+        "bootstrap_task_count": EAAEF_BOOTSTRAP_TASK_COUNT,
+        "held_task_count": EAAEF_PLAN_R2_TASK_COUNT,
+        "terminal_statuses_imported": 0,
+        "bootstrap_materialization_mode": "offline_before_exclusive_owner_start",
+        "bootstrap_owner_absent_during_materialization": True,
+        "owner_started_after_bootstrap": True,
+        "direct_database_mutation_after_owner_start": False,
+        "bootstrap_admission_cid": authorization.get("bootstrap_admission_cid"),
+        "r1_launch_capsule_cid": authorization.get("r1_launch_capsule_cid"),
+        "quack_owner_qualification_cid": authorization.get(
+            "quack_owner_qualification_cid"
+        ),
+        "quack_command_fabric_qualification_cid": authorization.get(
+            "quack_command_fabric_qualification_cid"
+        ),
+        "owner_principal_did": authorization.get("owner_principal_did"),
+        "shard_id": authorization.get("shard_id"),
+        "store_id": authorization.get("store_id"),
+        "owner_generation": authorization.get("owner_generation"),
+        "expected_epoch": authorization.get("expected_epoch"),
+        "fencing_token": authorization.get("fencing_token"),
+        "lease_id": authorization.get("lease_id"),
+        "expected_version": authorization.get("expected_version"),
+        "expected_active_plan_cid": authorization.get("expected_active_plan_cid"),
+        "expected_active_plan_root_cid": authorization.get(
+            "expected_active_plan_root_cid"
+        ),
+        "expected_active_plan_revision": authorization.get(
+            "expected_active_plan_revision"
+        ),
+        "expected_event_cursor": authorization.get("expected_event_cursor"),
+        "expected_semantic_root_cid": authorization.get(
+            "expected_semantic_root_cid"
+        ),
+        "request_id": authorization.get("request_id"),
+        "idempotency_key": authorization.get("idempotency_key"),
+        "deadline_ms": authorization.get("deadline_ms"),
+        "issued_at_ms": authorization.get("issued_at_ms"),
+        "expires_at_ms": authorization.get("expires_at_ms"),
+        "one_use_nonce": authorization.get("one_use_nonce"),
+    }
+    value["snapshot_cid"] = _cid(value)
+    return value
+
+
+def _require_canonical_signed_plan_r2_statement(
+    authorization: Mapping[str, Any],
+    *,
+    population: CompiledEAAEFPopulation,
+) -> dict[str, Any]:
+    """Recompute every current Plan-R2 frontier and population commitment."""
+
+    try:
+        expected = build_unsigned_fresh_plan_r2_statement(
+            population=population,
+            bootstrap_snapshot=_bootstrap_snapshot_from_signed_plan_r2_statement(
+                authorization,
+                population=population,
+            ),
+        )
+    except EAAEFReconciliationError as exc:
+        raise EAAEFReconciliationIdentityError(
+            "fresh signed Plan-R2 statement cannot be reconstructed canonically"
+        ) from exc
+    actual = _unsigned_plan_r2_statement_from_authorization(authorization)
+    if actual != expected:
+        raise EAAEFReconciliationIdentityError(
+            "fresh signed Plan-R2 frontier or population commitments are noncanonical"
+        )
+    return expected
+
+
+def _remote_owner_signing_payload_from_signed_authority(
+    *,
+    authorization: Mapping[str, Any],
+    capability: Mapping[str, Any],
+    remote_reviewer_identity_did: str,
+    authorized_principal_identity_did: str,
+    independent_approver_identity_did: str,
+    request_channel_id: str,
+    response_channel_id: str,
+    issued_at_ms: int,
+    expires_at_ms: int,
+    issuance_nonce: str,
+) -> dict[str, Any]:
+    try:
+        return dict(
+            plan_r2_remote_owner_capability_signing_payload(
+                source_head=str(authorization.get("source_head") or ""),
+                source_tree=str(authorization.get("source_tree") or ""),
+                board_namespace=str(authorization.get("board_namespace") or ""),
+                plan_root_cid=str(authorization.get("plan_root_cid") or ""),
+                population_cid=str(authorization.get("population_cid") or ""),
+                plan_r2_authorization_cid=str(
+                    authorization.get("authorization_cid") or ""
+                ),
+                plan_r2_operational_capability_cid=str(
+                    capability.get("capability_cid") or ""
+                ),
+                quack_command_fabric_qualification_cid=str(
+                    authorization.get("quack_command_fabric_qualification_cid")
+                    or ""
+                ),
+                owner_principal_did=str(
+                    authorization.get("owner_principal_did") or ""
+                ),
+                shard_id=str(authorization.get("shard_id") or ""),
+                store_id=str(authorization.get("store_id") or ""),
+                owner_generation=authorization.get("owner_generation"),
+                epoch=authorization.get("expected_epoch"),
+                fence=authorization.get("fencing_token"),
+                authorized_principal_did=authorized_principal_identity_did,
+                independent_approver_did=independent_approver_identity_did,
+                request_channel_id=request_channel_id,
+                response_channel_id=response_channel_id,
+                reviewer_did=remote_reviewer_identity_did,
+                issued_at_ms=issued_at_ms,
+                expires_at_ms=expires_at_ms,
+                issuance_nonce=issuance_nonce,
+            )
+        )
+    except (PlanR2RemoteOwnerAdmissionError, TypeError, ValueError) as exc:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 remote-owner signing payload is invalid"
+        ) from exc
+
+
+def _require_remote_signing_lifetime(
+    *,
+    issued_at_ms: object,
+    expires_at_ms: object,
+    now_ms: object,
+    authorization: Mapping[str, Any],
+    capability: Mapping[str, Any],
+) -> tuple[int, int, int]:
+    if (
+        type(issued_at_ms) is not int
+        or type(expires_at_ms) is not int
+        or type(now_ms) is not int
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 remote-owner signing lifetime is invalid"
+        )
+    issued = int(issued_at_ms)
+    expires = int(expires_at_ms)
+    now = int(now_ms)
+    if (
+        issued < 1
+        or now < 1
+        or issued < int(authorization.get("issued_at_ms") or 0)
+        or issued < int(capability.get("issued_at_ms") or 0)
+        or issued > now
+        or now >= expires
+        or expires - issued > MAX_PLAN_R2_REMOTE_CAPABILITY_LIFETIME_MS
+        or expires > int(authorization.get("expires_at_ms") or 0)
+        or expires > int(capability.get("expires_at_ms") or 0)
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 remote-owner signing lifetime is invalid"
+        )
+    return issued, expires, now
+
+
+def build_fresh_plan_r2_stage_two_signing_request(
+    *,
+    population: CompiledEAAEFPopulation,
+    bootstrap_snapshot: Mapping[str, Any],
+    stage_one_request: Mapping[str, Any],
+    trust_roots: Mapping[str, Any],
+    operator_signature: str,
+    security_reviewer_signature: str,
+    capability_reviewer_signature: str,
+    remote_reviewer_identity_did: str,
+    authorized_principal_identity_did: str,
+    independent_approver_identity_did: str,
+    request_channel_id: str,
+    response_channel_id: str,
+    remote_issued_at_ms: int,
+    remote_expires_at_ms: int,
+    remote_issuance_nonce: str,
+    now_ms: int,
+) -> dict[str, Any]:
+    """Verify stage-one signatures and print the final public signing payload."""
+
+    stage_one = _verify_current_plan_r2_signing_request(
+        stage_one_request,
+        population=population,
+        bootstrap_snapshot=bootstrap_snapshot,
+    )
+    trust = _verified_trust_lists(trust_roots)
+    payloads = stage_one["signing_payloads"]
+    statement = stage_one["unsigned_plan_r2_statement"]
+    try:
+        operator_approval = seal_plan_r2_transition_approval(
+            statement,
+            payloads["independent_operator"],
+            signature=operator_signature,
+        )
+        security_approval = seal_plan_r2_transition_approval(
+            statement,
+            payloads["independent_security_reviewer"],
+            signature=security_reviewer_signature,
+        )
+        authorization = assemble_plan_r2_transition_authorization(
+            statement,
+            operator_approval=operator_approval,
+            security_approval=security_approval,
+            trusted_operator_dids=trust["operator_dids"],
+            trusted_security_reviewer_dids=trust["security_reviewer_dids"],
+            now_ms=now_ms,
+        )
+        verify_plan_r2_transition_authorization(
+            authorization,
+            trusted_operator_dids=trust["operator_dids"],
+            trusted_security_reviewer_dids=trust["security_reviewer_dids"],
+            now_ms=now_ms,
+        )
+        capability = seal_plan_r2_operational_capability(
+            payloads["independent_plan_r2_capability_reviewer"],
+            reviewer_signature=capability_reviewer_signature,
+        )
+        verify_plan_r2_operational_capability(
+            capability,
+            trusted_reviewer_dids=trust["plan_r2_capability_reviewer_dids"],
+            now_ms=now_ms,
+        )
+    except (ExternalAgentPlanR2Error, KeyError, TypeError, ValueError) as exc:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-one external signatures were rejected"
+        ) from exc
+    recovered_stage_one = _stage_one_request_from_signed_authority(
+        authorization=authorization,
+        capability=capability,
+        population=population,
+    )
+    if recovered_stage_one != stage_one:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 signed artifacts differ from the exact stage-one request"
+        )
+    remote_reviewer, authorized_principal, independent_approver = (
+        _require_seven_plan_r2_role_identities(
+            authorization=authorization,
+            capability=capability,
+            remote_reviewer_identity_did=remote_reviewer_identity_did,
+            authorized_principal_identity_did=authorized_principal_identity_did,
+            independent_approver_identity_did=independent_approver_identity_did,
+            trust=trust,
+        )
+    )
+    issued, expires, verified_at = _require_remote_signing_lifetime(
+        issued_at_ms=remote_issued_at_ms,
+        expires_at_ms=remote_expires_at_ms,
+        now_ms=now_ms,
+        authorization=authorization,
+        capability=capability,
+    )
+    remote_payload = _remote_owner_signing_payload_from_signed_authority(
+        authorization=authorization,
+        capability=capability,
+        remote_reviewer_identity_did=remote_reviewer,
+        authorized_principal_identity_did=authorized_principal,
+        independent_approver_identity_did=independent_approver,
+        request_channel_id=request_channel_id,
+        response_channel_id=response_channel_id,
+        issued_at_ms=issued,
+        expires_at_ms=expires,
+        issuance_nonce=remote_issuance_nonce,
+    )
+    value = {
+        "schema": EAAEF_PLAN_R2_REMOTE_OWNER_SIGNING_REQUEST_SCHEMA,
+        "stage": "remote_owner_capability",
+        "board_namespace": EAAEF_BOARD_NAMESPACE,
+        "source_head": population.source_head,
+        "source_tree": population.source_tree,
+        "source_forest_root": population.source_forest_root,
+        "stage_one_request_cid": stage_one["request_cid"],
+        "statement_cid": stage_one["statement_cid"],
+        "trust_bundle_cid": trust_roots["trust_bundle_cid"],
+        "authorization": authorization,
+        "plan_r2_operational_capability": capability,
+        "remote_owner_signing_payload": remote_payload,
+        "required_signature_fields": {
+            "independent_plan_r2_remote_transport_reviewer": "reviewer_signature"
+        },
+        "stage_two_verified_at_ms": verified_at,
+        "external_signatures_verified": True,
+        "authority_valid": False,
+        "launch_allowed": False,
+        "trust_roots_read": True,
+        "signing_key_read": False,
+        "signature_created": False,
+        "authority_mutated": False,
+        "provider_process_started": False,
+    }
+    value["request_cid"] = _cid(value)
+    return value
+
+
+def _verify_current_plan_r2_stage_two_signing_request(
+    request: Mapping[str, Any],
+    *,
+    population: CompiledEAAEFPopulation,
+    stage_one_request: Mapping[str, Any],
+    trust_roots: Mapping[str, Any],
+    now_ms: int,
+) -> dict[str, Any]:
+    value = _verify_self_addressed_object(
+        request,
+        fields=_PLAN_R2_REMOTE_OWNER_SIGNING_REQUEST_FIELDS,
+        cid_field="request_cid",
+        noun="fresh Plan-R2 stage-two signing request",
+    )
+    expected_static = {
+        "schema": EAAEF_PLAN_R2_REMOTE_OWNER_SIGNING_REQUEST_SCHEMA,
+        "stage": "remote_owner_capability",
+        "board_namespace": EAAEF_BOARD_NAMESPACE,
+        "source_head": population.source_head,
+        "source_tree": population.source_tree,
+        "source_forest_root": population.source_forest_root,
+        "trust_bundle_cid": trust_roots.get("trust_bundle_cid"),
+        "required_signature_fields": {
+            "independent_plan_r2_remote_transport_reviewer": "reviewer_signature"
+        },
+        "external_signatures_verified": True,
+        "authority_valid": False,
+        "launch_allowed": False,
+        "trust_roots_read": True,
+        "signing_key_read": False,
+        "signature_created": False,
+        "authority_mutated": False,
+        "provider_process_started": False,
+    }
+    mismatched = sorted(
+        field_name
+        for field_name, expected in expected_static.items()
+        if value.get(field_name) != expected
+    )
+    if mismatched:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-two request differs from current source/trust: "
+            + ", ".join(mismatched)
+        )
+    authorization = value.get("authorization")
+    capability = value.get("plan_r2_operational_capability")
+    remote_payload = value.get("remote_owner_signing_payload")
+    if not all(
+        isinstance(item, Mapping)
+        for item in (authorization, capability, remote_payload)
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-two signed inputs are incomplete"
+        )
+    trust = _verified_trust_lists(trust_roots)
+    try:
+        verification = verify_plan_r2_transition_authorization(
+            authorization,
+            trusted_operator_dids=trust["operator_dids"],
+            trusted_security_reviewer_dids=trust["security_reviewer_dids"],
+            now_ms=now_ms,
+        )
+        verify_plan_r2_operational_capability(
+            capability,
+            trusted_reviewer_dids=trust["plan_r2_capability_reviewer_dids"],
+            now_ms=now_ms,
+        )
+    except (ExternalAgentPlanR2Error, TypeError, ValueError) as exc:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-two signed inputs were rejected"
+        ) from exc
+    if value.get("statement_cid") != verification.get("statement_cid"):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-two statement identity differs"
+        )
+    recovered_stage_one = _stage_one_request_from_signed_authority(
+        authorization=authorization,
+        capability=capability,
+        population=population,
+    )
+    if (
+        recovered_stage_one != dict(stage_one_request)
+        or value.get("stage_one_request_cid") != stage_one_request.get("request_cid")
+        or value.get("stage_one_request_cid") != recovered_stage_one["request_cid"]
+        or value.get("statement_cid") != recovered_stage_one["statement_cid"]
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-two request relabels its stage-one provenance"
+        )
+    remote_reviewer, authorized_principal, independent_approver = (
+        _require_seven_plan_r2_role_identities(
+            authorization=authorization,
+            capability=capability,
+            remote_reviewer_identity_did=remote_payload.get("reviewer_did"),
+            authorized_principal_identity_did=remote_payload.get(
+                "authorized_principal_did"
+            ),
+            independent_approver_identity_did=remote_payload.get(
+                "independent_approver_did"
+            ),
+            trust=trust,
+        )
+    )
+    issued, expires, _verified_at = _require_remote_signing_lifetime(
+        issued_at_ms=remote_payload.get("issued_at_ms"),
+        expires_at_ms=remote_payload.get("expires_at_ms"),
+        now_ms=now_ms,
+        authorization=authorization,
+        capability=capability,
+    )
+    stage_two_verified_at_ms = value.get("stage_two_verified_at_ms")
+    if (
+        type(stage_two_verified_at_ms) is not int
+        or int(stage_two_verified_at_ms) < issued
+        or int(stage_two_verified_at_ms) > now_ms
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-two verification time is invalid"
+        )
+    expected_remote_payload = _remote_owner_signing_payload_from_signed_authority(
+        authorization=authorization,
+        capability=capability,
+        remote_reviewer_identity_did=remote_reviewer,
+        authorized_principal_identity_did=authorized_principal,
+        independent_approver_identity_did=independent_approver,
+        request_channel_id=str(remote_payload.get("request_channel_id") or ""),
+        response_channel_id=str(remote_payload.get("response_channel_id") or ""),
+        issued_at_ms=issued,
+        expires_at_ms=expires,
+        issuance_nonce=str(remote_payload.get("issuance_nonce") or ""),
+    )
+    if dict(remote_payload) != expected_remote_payload:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 stage-two remote-owner payload differs"
+        )
+    return value
+
+
+def finalize_fresh_plan_r2_signing_request(
+    *,
+    population: CompiledEAAEFPopulation,
+    bootstrap_snapshot: Mapping[str, Any],
+    stage_one_request: Mapping[str, Any],
+    stage_two_request: Mapping[str, Any],
+    trust_roots: Mapping[str, Any],
+    remote_reviewer_signature: str,
+    now_ms: int,
+) -> dict[str, Any]:
+    """Verify the last detached signature and return the fully signed bundle."""
+
+    stage_one = _verify_current_plan_r2_signing_request(
+        stage_one_request,
+        population=population,
+        bootstrap_snapshot=bootstrap_snapshot,
+    )
+    stage_two = _verify_current_plan_r2_stage_two_signing_request(
+        stage_two_request,
+        population=population,
+        stage_one_request=stage_one,
+        trust_roots=trust_roots,
+        now_ms=now_ms,
+    )
+    try:
+        remote_capability = dict(
+            seal_plan_r2_remote_owner_capability(
+                stage_two["remote_owner_signing_payload"],
+                reviewer_signature=remote_reviewer_signature,
+            )
+        )
+    except (PlanR2RemoteOwnerAdmissionError, KeyError, TypeError, ValueError) as exc:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 remote-owner external signature was rejected"
+        ) from exc
+    bundle = assemble_fresh_authority_bundle(
+        authorization=stage_two["authorization"],
+        plan_r2_operational_capability=stage_two[
+            "plan_r2_operational_capability"
+        ],
+        plan_r2_remote_owner_capability=remote_capability,
+    )
+    verified = verify_fresh_authority_bundle(
+        bundle,
+        population=population,
+        trust_roots=trust_roots,
+        now_ms=now_ms,
+    )
+    return verified.signed_bundle()
+
+
 def build_unsigned_fresh_authority_request(
     *,
     population: CompiledEAAEFPopulation,
@@ -2916,6 +3715,10 @@ def verify_fresh_authority_bundle(
         raise EAAEFReconciliationIdentityError(
             "Plan-R2 authorization is stale or belongs to another source"
         )
+    _require_canonical_signed_plan_r2_statement(
+        authorization,
+        population=population,
+    )
     raw_tasks = authorization.get("tasks")
     if not isinstance(raw_tasks, list) or len(raw_tasks) != EAAEF_TASK_COUNT:
         raise EAAEFReconciliationIdentityError(
@@ -3092,6 +3895,118 @@ def apply_plan_r2_through_existing_repository(
 
 
 @runtime_checkable
+class EAAEFBootstrapReconciliationOwner(Protocol):
+    """Exact owner-absent/offline-commit/owner-start bootstrap boundary.
+
+    This protocol cannot apply Plan R2, launch a supervisor, report production
+    status, or stop tracks.  A production owner may implement this protocol in
+    addition to :class:`EAAEFTypedReconciliationOwner`, but the two
+    qualifications remain independent.
+    """
+
+    BOOTSTRAP_INTERFACE: str
+
+    def bootstrap_reconciliation_qualification(self) -> Mapping[str, Any]:
+        """Return exact qualification for only the bounded bootstrap effect."""
+
+    def materialize_offline_population(
+        self,
+        request: Mapping[str, Any],
+        *,
+        population: CompiledEAAEFPopulation,
+    ) -> Mapping[str, Any]:
+        """Materialize 22+94 while owner-absent, then start the owner."""
+
+
+def _qualified_bootstrap_reconciliation_owner(
+    owner: object | None,
+    *,
+    source_forest_root: str = "",
+) -> tuple[EAAEFBootstrapReconciliationOwner, dict[str, Any]]:
+    """Return one owner and the same qualification mapping that was validated."""
+
+    if (
+        owner is None
+        or not isinstance(owner, EAAEFBootstrapReconciliationOwner)
+        or getattr(owner, "BOOTSTRAP_INTERFACE", "")
+        != EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+    ):
+        raise EAAEFReconciliationBlocked(
+            "bootstrap_portfolio_materialization_owner_unavailable: CASF must provide "
+            "EAAEFBootstrapReconciliationOwner@1 over its persistent exclusive owner"
+        )
+    qualification = owner.bootstrap_reconciliation_qualification()
+    if not isinstance(qualification, Mapping):
+        raise EAAEFReconciliationBlocked(
+            "bootstrap reconciliation owner has no qualification"
+        )
+    value = dict(qualification)
+    body = dict(value)
+    qualification_cid = str(body.pop("qualification_cid", ""))
+    required = {
+        "schema": EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA,
+        "interface": EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
+        "materialization_operation": (
+            "materialize_offline_22_plus_94_then_start_owner"
+        ),
+        "bootstrap_materialization_mode": (
+            "offline_before_exclusive_owner_start"
+        ),
+        "bootstrap_materialization_before_owner_start": True,
+        "offline_population_includes_execution_contracts": True,
+        "direct_database_mutation_after_owner_start": False,
+        "exclusive_owner_lifecycle_interface": (
+            EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE
+        ),
+        "exclusive_owner_lifecycle_qualification_status": (
+            EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS
+        ),
+        "bootstrap_owner_ready": True,
+        "bootstrap_owner_blockers": [],
+        "database_authority_crossing_allowed": False,
+        "filesystem_path_authority_crossing_allowed": False,
+        "transport_token_authority_crossing_allowed": False,
+        "sql_crossing_allowed": False,
+        "provider_launch_allowed": False,
+    }
+    mismatched = sorted(
+        field_name
+        for field_name, expected in required.items()
+        if value.get(field_name) != expected
+    )
+    observed_forest = str(value.get("source_forest_root") or "")
+    if not _SHA256_RE.fullmatch(observed_forest) or (
+        source_forest_root and observed_forest != source_forest_root
+    ):
+        mismatched.append("source_forest_root")
+    if (
+        set(value) != _BOOTSTRAP_OWNER_QUALIFICATION_FIELDS
+        or qualification_cid != _cid(body)
+        or mismatched
+    ):
+        raise EAAEFReconciliationBlocked(
+            "bootstrap reconciliation owner qualification differs: "
+            + ", ".join(sorted(set(mismatched or ["shape_or_cid"])))
+        )
+    _assert_no_boundary_authority(value)
+    return owner, value
+
+
+def require_bootstrap_reconciliation_owner(
+    owner: object | None,
+    *,
+    source_forest_root: str = "",
+) -> EAAEFBootstrapReconciliationOwner:
+    """Admit only the persistent CASF/Quack bootstrap capability."""
+
+    qualified_owner, _qualification = _qualified_bootstrap_reconciliation_owner(
+        owner,
+        source_forest_root=source_forest_root,
+    )
+    return qualified_owner
+
+
+@runtime_checkable
 class EAAEFTypedReconciliationOwner(Protocol):
     """Exact final-CASF adapter; no database authority crosses this protocol."""
 
@@ -3215,6 +4130,39 @@ def resolve_production_reconciliation_owner(
             "typed_portfolio_materialization_owner_unavailable: exact opener is absent"
         )
     return require_typed_reconciliation_owner(
+        opener(repo_root=Path(repo_root).resolve(strict=True))
+    )
+
+
+def resolve_bootstrap_reconciliation_owner(
+    repo_root: str | Path,
+) -> EAAEFBootstrapReconciliationOwner:
+    """Resolve only an explicitly bound, statically named bootstrap owner.
+
+    The default source tree deliberately has no opener.  In particular, this
+    resolver never derives snapshot bindings, registry paths, or owner
+    authority from ambient or historical artifacts.
+    """
+
+    module_name = (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.typed_eaaef_reconciliation_owner"
+    )
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name == module_name:
+            raise EAAEFReconciliationBlocked(
+                "bootstrap_portfolio_materialization_owner_unavailable: missing "
+                "typed_eaaef_reconciliation_owner CASF bootstrap adapter"
+            ) from exc
+        raise
+    opener = getattr(module, "open_eaaef_bootstrap_reconciliation_owner", None)
+    if not callable(opener):
+        raise EAAEFReconciliationBlocked(
+            "bootstrap_portfolio_materialization_owner_unavailable: exact "
+            "bootstrap opener is absent"
+        )
+    return require_bootstrap_reconciliation_owner(
         opener(repo_root=Path(repo_root).resolve(strict=True))
     )
 
@@ -3459,7 +4407,7 @@ def _build_offline_population_request(
         raise EAAEFReconciliationIdentityError("fresh generation id is invalid")
     request = {
         "schema": EAAEF_OFFLINE_POPULATION_REQUEST_SCHEMA,
-        "interface": EAAEF_RECONCILIATION_OWNER_INTERFACE,
+        "interface": EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
         "operation": "materialize_offline_22_plus_94_then_start_owner",
         "generation_id": generation_id,
         "board_namespace": EAAEF_BOARD_NAMESPACE,
@@ -3499,7 +4447,7 @@ def _validate_offline_population_receipt(
     value = dict(receipt)
     required = {
         "schema": EAAEF_OFFLINE_POPULATION_RECEIPT_SCHEMA,
-        "interface": EAAEF_RECONCILIATION_OWNER_INTERFACE,
+        "interface": EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
         "request_cid": request["request_cid"],
         "generation_id": request["generation_id"],
         "source_forest_root": population.source_forest_root,
@@ -3620,7 +4568,7 @@ def prepare_fresh_generation(
     *,
     repo_root: str | Path,
     state_root: str | Path,
-    owner: EAAEFTypedReconciliationOwner,
+    owner: EAAEFBootstrapReconciliationOwner,
     generation_id: str = "",
     now_ms: int | None = None,
 ) -> dict[str, Any]:
@@ -3631,7 +4579,7 @@ def prepare_fresh_generation(
     import_evidence = _require_production_source_policy(root, forest=sealed)
     board = _json_object(root / EAAEF_BOARD_PATH, noun="EAAEF task board")
     population = compile_fresh_eaaef_population(board, forest=sealed, repo_root=root)
-    typed_owner = require_typed_reconciliation_owner(
+    bootstrap_owner = require_bootstrap_reconciliation_owner(
         owner,
         source_forest_root=population.source_forest_root,
     )
@@ -3670,7 +4618,7 @@ def prepare_fresh_generation(
             repo_root=root,
         )
         receipt, snapshot = _validate_offline_population_receipt(
-            typed_owner.materialize_offline_population(
+            bootstrap_owner.materialize_offline_population(
                 request,
                 population=population,
             ),
@@ -4204,6 +5152,7 @@ def preflight_reconciliation(
     trust_roots: Mapping[str, Any] | None = None,
     bootstrap_snapshot: Mapping[str, Any] | None = None,
     owner: object | None = None,
+    bootstrap_owner: object | None = None,
     now_ms: int | None = None,
 ) -> dict[str, Any]:
     """Return current forest/population and exact production blockers."""
@@ -4249,11 +5198,28 @@ def preflight_reconciliation(
                 blockers.append(f"fresh_authority_rejected:{type(exc).__name__}:{exc}")
     if stale_bindings:
         blockers.append("stale_bindings_rejected:" + ",".join(sorted(stale_bindings)))
+    expected_forest_root = population.source_forest_root if population else ""
+    bootstrap_owner_ready = False
+    bootstrap_qualification: dict[str, Any] | None = None
+    try:
+        _qualified_bootstrap_owner, bootstrap_qualification = (
+            _qualified_bootstrap_reconciliation_owner(
+                bootstrap_owner if bootstrap_owner is not None else owner,
+                source_forest_root=expected_forest_root,
+            )
+        )
+        bootstrap_owner_ready = True
+    except EAAEFReconciliationBlocked:
+        blockers.append(
+            "bootstrap_portfolio_materialization_owner_unavailable_until_casf_binding"
+        )
+    production_owner_ready = False
     try:
         require_typed_reconciliation_owner(
             owner,
-            source_forest_root=(population.source_forest_root if population else ""),
+            source_forest_root=expected_forest_root,
         )
+        production_owner_ready = True
     except EAAEFReconciliationBlocked:
         blockers.append(
             "typed_portfolio_materialization_owner_unavailable_until_final_casf_adapter"
@@ -4271,6 +5237,12 @@ def preflight_reconciliation(
         "unsigned_authority_request": unsigned_request,
         "stale_bindings": sorted(stale_bindings),
         "blockers": blockers,
+        "bootstrap_owner_ready": bootstrap_owner_ready,
+        "production_owner_ready": production_owner_ready,
+        "bootstrap_owner_qualification": bootstrap_qualification,
+        "required_bootstrap_owner_interface": (
+            EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+        ),
         "required_owner_interface": EAAEF_RECONCILIATION_OWNER_INTERFACE,
         "required_typed_task_source_interface": EAAEF_TYPED_TASK_SOURCE_INTERFACE,
         "required_plan_r2_repository_interface": AUTHORIZED_PLAN_R2_REPOSITORY_INTERFACE,
@@ -4331,6 +5303,20 @@ def _authority_from_args(
     )
 
 
+def _current_signing_population(repo_root: Path) -> CompiledEAAEFPopulation:
+    """Requalify the exact current source before every print-only ceremony phase."""
+
+    selected_forest = inspect_current_repository_forest(repo_root)
+    sealed_forest = _require_sealed_forest(selected_forest)
+    _require_production_source_policy(repo_root, forest=selected_forest)
+    board = _json_object(repo_root / EAAEF_BOARD_PATH, noun="EAAEF task board")
+    return compile_fresh_eaaef_population(
+        board,
+        forest=sealed_forest,
+        repo_root=repo_root,
+    )
+
+
 def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -4371,6 +5357,60 @@ def _argument_parser() -> argparse.ArgumentParser:
     )
     signing_request.add_argument("--issued-at-ms", required=True, type=int)
     signing_request.add_argument("--expires-at-ms", required=True, type=int)
+    signing_stage_two = commands.add_parser(
+        "signing-stage-two",
+        help="Verify stage-one signatures and print the remote-owner signing payload.",
+        description=(
+            "Rebuild the exact stage-one request against the current sealed source, "
+            "verify externally supplied operator/security/capability signatures and "
+            "independent trust roots, then print one self-addressed remote-owner "
+            "signing request. No key, owner, database, state, provider, or supervisor "
+            "is opened."
+        ),
+    )
+    signing_stage_two.add_argument("--stage-one-request", required=True)
+    signing_stage_two.add_argument("--bootstrap-snapshot", required=True)
+    signing_stage_two.add_argument("--trust-roots", required=True)
+    signing_stage_two.add_argument("--operator-signature", required=True)
+    signing_stage_two.add_argument("--security-reviewer-signature", required=True)
+    signing_stage_two.add_argument(
+        "--plan-r2-capability-reviewer-signature",
+        required=True,
+    )
+    signing_stage_two.add_argument(
+        "--remote-reviewer-identity-did",
+        required=True,
+    )
+    signing_stage_two.add_argument(
+        "--authorized-principal-identity-did",
+        required=True,
+    )
+    signing_stage_two.add_argument(
+        "--independent-approver-identity-did",
+        required=True,
+    )
+    signing_stage_two.add_argument("--request-channel-id", required=True)
+    signing_stage_two.add_argument("--response-channel-id", required=True)
+    signing_stage_two.add_argument("--remote-issued-at-ms", required=True, type=int)
+    signing_stage_two.add_argument("--remote-expires-at-ms", required=True, type=int)
+    signing_stage_two.add_argument("--remote-issuance-nonce", required=True)
+    signing_stage_two.add_argument("--now-ms", required=True, type=int)
+    signing_finalize = commands.add_parser(
+        "signing-finalize",
+        help="Verify the remote signature and print the fresh signed authority bundle.",
+        description=(
+            "Requalify the exact current source, verify one self-addressed stage-two "
+            "request and its externally supplied remote-reviewer signature, then print "
+            "the fully verified signed authority bundle. No key, owner, database, "
+            "state, provider, or supervisor is opened."
+        ),
+    )
+    signing_finalize.add_argument("--stage-one-request", required=True)
+    signing_finalize.add_argument("--stage-two-request", required=True)
+    signing_finalize.add_argument("--bootstrap-snapshot", required=True)
+    signing_finalize.add_argument("--trust-roots", required=True)
+    signing_finalize.add_argument("--remote-reviewer-signature", required=True)
+    signing_finalize.add_argument("--now-ms", required=True, type=int)
     materialize = commands.add_parser(
         "materialize",
         help=(
@@ -4413,25 +5453,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             except EAAEFReconciliationBlocked:
                 owner = None
+            try:
+                bootstrap_owner: EAAEFBootstrapReconciliationOwner | None = (
+                    resolve_bootstrap_reconciliation_owner(repo_root)
+                )
+            except EAAEFReconciliationBlocked:
+                bootstrap_owner = None
             result = preflight_reconciliation(
                 repo_root,
                 authority=authority,
                 trust_roots=trust_roots,
                 bootstrap_snapshot=bootstrap_snapshot,
                 owner=owner,
+                bootstrap_owner=bootstrap_owner,
             )
             _print_json(result)
             return 0 if result["valid"] else 2
         if args.command == "signing-request":
-            selected_forest = inspect_current_repository_forest(repo_root)
-            sealed_forest = _require_sealed_forest(selected_forest)
-            _require_production_source_policy(repo_root, forest=selected_forest)
-            board = _json_object(repo_root / EAAEF_BOARD_PATH, noun="EAAEF task board")
-            population = compile_fresh_eaaef_population(
-                board,
-                forest=sealed_forest,
-                repo_root=repo_root,
-            )
+            population = _current_signing_population(repo_root)
             result = build_fresh_plan_r2_signing_request_projection(
                 population=population,
                 bootstrap_snapshot=load_fresh_bootstrap_snapshot(
@@ -4444,6 +5483,58 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 issued_at_ms=args.issued_at_ms,
                 expires_at_ms=args.expires_at_ms,
+            )
+            _print_json(result)
+            return 0
+        if args.command == "signing-stage-two":
+            result = build_fresh_plan_r2_stage_two_signing_request(
+                population=_current_signing_population(repo_root),
+                bootstrap_snapshot=load_fresh_bootstrap_snapshot(
+                    args.bootstrap_snapshot
+                ),
+                stage_one_request=_json_object(
+                    Path(args.stage_one_request).resolve(strict=True),
+                    noun="fresh Plan-R2 stage-one signing request",
+                ),
+                trust_roots=load_fresh_trust_roots(args.trust_roots),
+                operator_signature=args.operator_signature,
+                security_reviewer_signature=args.security_reviewer_signature,
+                capability_reviewer_signature=(
+                    args.plan_r2_capability_reviewer_signature
+                ),
+                remote_reviewer_identity_did=args.remote_reviewer_identity_did,
+                authorized_principal_identity_did=(
+                    args.authorized_principal_identity_did
+                ),
+                independent_approver_identity_did=(
+                    args.independent_approver_identity_did
+                ),
+                request_channel_id=args.request_channel_id,
+                response_channel_id=args.response_channel_id,
+                remote_issued_at_ms=args.remote_issued_at_ms,
+                remote_expires_at_ms=args.remote_expires_at_ms,
+                remote_issuance_nonce=args.remote_issuance_nonce,
+                now_ms=args.now_ms,
+            )
+            _print_json(result)
+            return 0
+        if args.command == "signing-finalize":
+            result = finalize_fresh_plan_r2_signing_request(
+                population=_current_signing_population(repo_root),
+                bootstrap_snapshot=load_fresh_bootstrap_snapshot(
+                    args.bootstrap_snapshot
+                ),
+                stage_one_request=_json_object(
+                    Path(args.stage_one_request).resolve(strict=True),
+                    noun="fresh Plan-R2 stage-one signing request",
+                ),
+                stage_two_request=_json_object(
+                    Path(args.stage_two_request).resolve(strict=True),
+                    noun="fresh Plan-R2 stage-two signing request",
+                ),
+                trust_roots=load_fresh_trust_roots(args.trust_roots),
+                remote_reviewer_signature=args.remote_reviewer_signature,
+                now_ms=args.now_ms,
             )
             _print_json(result)
             return 0
@@ -4510,12 +5601,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "CompiledEAAEFPopulation",
+    "EAAEFBootstrapReconciliationOwner",
     "EAAEFReconciliationBlocked",
     "EAAEFReconciliationError",
     "EAAEFReconciliationIdentityError",
     "EAAEFTypedReconciliationOwner",
     "EAAEF_BOARD_NAMESPACE",
     "EAAEF_BOOTSTRAP_TASK_COUNT",
+    "EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA",
+    "EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE",
+    "EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE",
+    "EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS",
     "EAAEF_BOARD_SOURCE_SCHEMA",
     "EAAEF_FRESH_AUTHORITY_SCHEMA",
     "EAAEF_FRESH_TRUST_SCHEMA",
@@ -4523,6 +5619,7 @@ __all__ = [
     "EAAEF_FOREST_SCHEMA",
     "EAAEF_GOAL_EDGE_COUNT",
     "EAAEF_GOAL_COUNT",
+    "EAAEF_PLAN_R2_REMOTE_OWNER_SIGNING_REQUEST_SCHEMA",
     "EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA",
     "EAAEF_PLAN_R2_TASK_COUNT",
     "EAAEF_RECONCILIATION_OWNER_INTERFACE",
@@ -4533,10 +5630,12 @@ __all__ = [
     "apply_plan_r2_through_existing_repository",
     "assemble_fresh_authority_bundle",
     "build_fresh_plan_r2_signing_request_projection",
+    "build_fresh_plan_r2_stage_two_signing_request",
     "build_unsigned_fresh_authority_request",
     "build_unsigned_fresh_plan_r2_statement",
     "build_typed_owner_materialization_request",
     "compile_fresh_eaaef_population",
+    "finalize_fresh_plan_r2_signing_request",
     "inspect_current_repository_forest",
     "inspect_process_birth",
     "launch_reconciliation_supervisor",
@@ -4547,7 +5646,9 @@ __all__ = [
     "preflight_reconciliation",
     "prepare_fresh_generation",
     "reconciliation_status",
+    "require_bootstrap_reconciliation_owner",
     "require_typed_reconciliation_owner",
+    "resolve_bootstrap_reconciliation_owner",
     "resolve_production_reconciliation_owner",
     "stop_reconciliation_generation",
     "verify_fresh_authority_bundle",

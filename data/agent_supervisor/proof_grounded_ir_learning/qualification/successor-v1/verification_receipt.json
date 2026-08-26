@@ -1,0 +1,101 @@
+{
+  "all_integrity_checks_passed": true,
+  "authorizes_execution": false,
+  "authorizes_promotion": false,
+  "authorizes_publication": false,
+  "checks": [
+    {
+      "check_id": "recursive-repository-forest",
+      "evidence": "ef4a74b362386578858d368a8e7420238e4c897d",
+      "status": "passed"
+    },
+    {
+      "check_id": "pgir-206-implementation-merge-completion",
+      "evidence": "ef4a74b362386578858d368a8e7420238e4c897d",
+      "status": "passed"
+    },
+    {
+      "check_id": "pgir-206-result",
+      "evidence": "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq",
+      "status": "passed"
+    },
+    {
+      "check_id": "pgir-206-manifest",
+      "evidence": "baguqeerao2izb4i6bv7ffg3flharhjlph35gpwl4rbekzrrwm3n25mibqxsq",
+      "status": "passed"
+    },
+    {
+      "check_id": "acceptance-16-resolved",
+      "evidence": "baguqeerapltdxyv6hybhm6zvksll7ycq456wldia7kn7cuinkpzxwmadsdgq",
+      "status": "passed"
+    },
+    {
+      "check_id": "report-sections-32-resolved",
+      "evidence": "baguqeerax6zzh4e4lmvs74yefb4r3s2p67vldwvz3zehcn2pfk5i3mjjjjoa",
+      "status": "passed"
+    },
+    {
+      "check_id": "evaluation-typed-not-run",
+      "evidence": "baguqeeraefsi42lozgje55up3zgewp7byhthwtuybryn2pt7ghrkfkhkk5oq",
+      "status": "passed"
+    },
+    {
+      "check_id": "proof-typed-not-run",
+      "evidence": "baguqeerawm7cktq2mhi4ekggswdmchgelq663sxcltudgpjylsoj64vbftxq",
+      "status": "passed"
+    },
+    {
+      "check_id": "terminal-no-go-decision",
+      "evidence": "baguqeeraxlp6azus5brolzyypub6hraj44fcfgm6zzq34rda7y2lo37hf6eq",
+      "status": "passed"
+    },
+    {
+      "check_id": "promotion-pointer-unchanged",
+      "evidence": "baguqeeraec36m23c3dblgwyf2xciafjg6eeo26iadlh4nyvqflmnnkg24kka",
+      "status": "passed"
+    },
+    {
+      "check_id": "publication-not-attempted",
+      "evidence": "baguqeera6koc4d5ir5gd45c2gudna4ik4i37s3qd7eeakxv4x7emaig3xd4a",
+      "status": "passed"
+    },
+    {
+      "check_id": "complete-result-graph-16x28",
+      "evidence": "baguqeeralwlykkhim733fswfozup6n2zwh5wqtbqjlw2pmwaivzwe2h4eruq",
+      "status": "passed"
+    },
+    {
+      "check_id": "qualification-recipe",
+      "evidence": "baguqeeraimjhwwo5x5ljjjkg3jzw3bs2nfbmr6sayioeksoogsyogkdo2xga",
+      "status": "passed"
+    },
+    {
+      "check_id": "sealed-artifact-manifest-14",
+      "evidence": "baguqeerakjdbcdj4sxmpob63bjxc72rur3boch2kh4ol4e7f4nju36cqbzsq",
+      "status": "passed"
+    },
+    {
+      "check_id": "following-board-pgir-212-blocked",
+      "evidence": "PGIR-212",
+      "status": "passed"
+    }
+  ],
+  "decision": "no_go",
+  "decision_cid": "baguqeeraxlp6azus5brolzyypub6hraj44fcfgm6zzq34rda7y2lo37hf6eq",
+  "manifest_cid": "baguqeerakjdbcdj4sxmpob63bjxc72rur3boch2kh4ol4e7f4nju36cqbzsq",
+  "result_graph_cid": "baguqeeralwlykkhim733fswfozup6n2zwh5wqtbqjlw2pmwaivzwe2h4eruq",
+  "schema": "PGIRQualificationVerificationReceipt@1",
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  },
+  "verification_cid": "baguqeerabyupqg57erg6q63uucf5qjkklgbpbakmo4nyjv4esvmoey6yjkrq",
+  "verification_sha256": "sha256:0e28f81bbf244de87b74a08bd8254a5982f0814c771b84d7849558e263d84aa3",
+  "verification_verdict": "verified_terminal_no_go",
+  "verifier_interface": "pgir-terminal-qualification-independent-verifier/v1"
+}

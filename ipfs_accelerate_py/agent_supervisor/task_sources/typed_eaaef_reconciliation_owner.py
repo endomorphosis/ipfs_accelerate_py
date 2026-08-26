@@ -1,19 +1,25 @@
 """Statically named, non-production EAAEF reconciliation-owner facade.
 
 The EAAEF lifecycle resolves this exact module name so integration can report
-the missing final-CASF bindings deterministically.  This facade intentionally
-does not open a database, read a credential, inspect or signal a process,
-start a provider, or sign authority.  Every effect method fails closed.
+the missing final-CASF bindings deterministically.  The default facade does
+not open a database, read a credential, inspect or signal a process, start a
+provider, or sign authority.  Every effect method fails closed.
 
-Its qualification is evidence, not an admission: the status and blockers are
-deliberately incompatible with the production qualification required by the
-public lifecycle.
+The separately exported CASF bootstrap adapter implements only the distinct
+``EAAEFBootstrapReconciliationOwner@1`` guarded
+owner-absent/offline-commit/owner-start prefix.  Its bootstrap opener is inert
+when called with only ``repo_root``: a long-lived host must also bind the exact
+private registry root, sealed source forest, and unsigned snapshot bindings.
+Those inputs create no production or signing authority.  The bootstrap adapter
+is never accepted as the production owner needed for independently signed Plan
+R2, production status, track stop, or supervisor launch.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, ClassVar, Final
@@ -151,11 +157,113 @@ def open_eaaef_typed_reconciliation_owner(
     return NonProductionEAAEFTypedReconciliationOwner()
 
 
+from .eaaef_casf_bootstrap_owner import (  # noqa: E402
+    EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA,
+    EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
+    EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS,
+    EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE,
+    EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
+    EAAEF_CASF_BOOTSTRAP_REGISTRY_SCHEMA,
+    EAAEF_CASF_OWNER_ABORT_RECEIPT_SCHEMA,
+    EAAEF_CASF_OWNER_ABSENCE_ATTESTATION_SCHEMA,
+    EAAEF_CASF_OWNER_COMMIT_RECEIPT_SCHEMA,
+    EAAEF_CASF_OWNER_START_RECEIPT_SCHEMA,
+    EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS,
+    CASFBootstrapEAAEFTypedReconciliationOwner,
+    EAAEFCASFBootstrapBinding,
+    EAAEFCASFBootstrapOwnerError,
+    EAAEFCASFBootstrapOwnerGuard,
+    EAAEFCASFBootstrapOwnerLifecycle,
+    EAAEFCASFBootstrapRegistry,
+    bind_eaaef_casf_bootstrap_owner,
+)
+
+
+def open_eaaef_bootstrap_reconciliation_owner(
+    *,
+    repo_root: Path,
+    registry_root: Path | None = None,
+    source_forest_root: str = "",
+    snapshot_bindings: object | None = None,
+    startup_timeout_seconds: float = 180.0,
+    operation_timeout_seconds: float = 180.0,
+    shutdown_timeout_seconds: float = 30.0,
+) -> CASFBootstrapEAAEFTypedReconciliationOwner | None:
+    """Open the bounded owner only from a complete explicit host binding.
+
+    The statically named lifecycle resolver supplies only ``repo_root``.  That
+    call intentionally returns ``None`` so the normal command path remains a
+    typed no-go rather than deriving paths or owner inputs from environment,
+    argv, cached receipts, or historical DuckDB rows.  A long-lived host may
+    call this function directly with all three additional bindings and retain
+    the returned object across prepare, authenticated reattachment, and exact
+    stop.
+    """
+
+    if registry_root is None and snapshot_bindings is None and not source_forest_root:
+        return None
+    if (
+        registry_root is None
+        or snapshot_bindings is None
+        or type(source_forest_root) is not str
+        or not source_forest_root
+    ):
+        raise EAAEFCASFBootstrapOwnerError(
+            "CASF bootstrap opener requires the complete explicit host binding"
+        )
+    from ..runtime.eaaef_casf_bootstrap_lifecycle import (
+        EAAEFCASFBootstrapSnapshotBindings,
+        QuackEAAEFCASFBootstrapOwnerLifecycle,
+    )
+
+    if type(snapshot_bindings) is not EAAEFCASFBootstrapSnapshotBindings:
+        raise EAAEFCASFBootstrapOwnerError(
+            "CASF bootstrap opener snapshot bindings are not exact"
+        )
+    selected_registry = Path(registry_root)
+    lexical_registry = Path(os.path.abspath(selected_registry))
+    if not selected_registry.is_absolute() or selected_registry != lexical_registry:
+        raise EAAEFCASFBootstrapOwnerError(
+            "CASF bootstrap opener registry root is not an exact absolute path"
+        )
+    selected_repo = Path(repo_root).resolve(strict=True)
+    lifecycle = QuackEAAEFCASFBootstrapOwnerLifecycle(
+        snapshot_bindings=snapshot_bindings,
+        startup_timeout_seconds=startup_timeout_seconds,
+        operation_timeout_seconds=operation_timeout_seconds,
+        shutdown_timeout_seconds=shutdown_timeout_seconds,
+    )
+    return bind_eaaef_casf_bootstrap_owner(
+        repo_root=selected_repo,
+        registry_root=selected_registry,
+        source_forest_root=source_forest_root,
+        owner_lifecycle=lifecycle,
+    )
+
 __all__ = [
+    "CASFBootstrapEAAEFTypedReconciliationOwner",
     "DATABASE_TASK_SOURCE_INTERFACE",
+    "EAAEFCASFBootstrapBinding",
+    "EAAEFCASFBootstrapOwnerError",
+    "EAAEFCASFBootstrapOwnerGuard",
+    "EAAEFCASFBootstrapOwnerLifecycle",
+    "EAAEFCASFBootstrapRegistry",
     "EAAEFTypedReconciliationOwnerUnavailable",
+    "EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA",
+    "EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE",
+    "EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS",
+    "EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE",
+    "EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE",
+    "EAAEF_CASF_BOOTSTRAP_REGISTRY_SCHEMA",
+    "EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS",
+    "EAAEF_CASF_OWNER_ABSENCE_ATTESTATION_SCHEMA",
+    "EAAEF_CASF_OWNER_ABORT_RECEIPT_SCHEMA",
+    "EAAEF_CASF_OWNER_COMMIT_RECEIPT_SCHEMA",
+    "EAAEF_CASF_OWNER_START_RECEIPT_SCHEMA",
     "EAAEF_OWNER_PRODUCTION_BLOCKERS",
     "EAAEF_RECONCILIATION_OWNER_INTERFACE",
     "NonProductionEAAEFTypedReconciliationOwner",
+    "bind_eaaef_casf_bootstrap_owner",
+    "open_eaaef_bootstrap_reconciliation_owner",
     "open_eaaef_typed_reconciliation_owner",
 ]

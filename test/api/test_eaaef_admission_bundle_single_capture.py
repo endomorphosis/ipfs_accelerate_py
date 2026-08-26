@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
+import stat
 import subprocess
+import time
 from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     ed25519_did_key,
 )
 from ipfs_accelerate_py.agent_supervisor.validation import eaaef_host_admission
+from ipfs_accelerate_py.agent_supervisor.validation import (
+    external_agent_bootstrap_admission as bootstrap_admission,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 ISSUER_PATH = ROOT / "scripts/issue_eaaef_admission_bundle.py"
@@ -31,17 +36,53 @@ def _load_issuer() -> object:
     return module
 
 
-def _write_raw_private_key(
-    path: Path,
-    key: Ed25519PrivateKey,
-) -> None:
-    path.write_bytes(
-        key.private_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PrivateFormat.Raw,
-            encryption_algorithm=serialization.NoEncryption(),
-        )
+def _prebootstrap_statement(
+    *,
+    source_head: str,
+    source_tree: str,
+    board_cid: str,
+    materialization_cid: str,
+) -> dict[str, object]:
+    issued_at_ms = int(time.time() * 1000)
+    value: dict[str, object] = {
+        field: "" for field in bootstrap_admission._STATEMENT_FIELDS
+    }
+    value.update(
+        {
+            "schema": bootstrap_admission.EAAEF_BOOTSTRAP_ADMISSION_STATEMENT_SCHEMA,
+            "task_id": "EAAEF-000",
+            "board_namespace": (
+                "external-agent-autonomous-execution-fabric-v1"
+            ),
+            "decision": "no_go",
+            "outcome": "mutation_not_admitted",
+            "blockers": ["EAAEF-191 host admission bundle pending"],
+            "board_cid": board_cid,
+            "source_head": source_head,
+            "source_tree": source_tree,
+            "materialization_receipt_cid": materialization_cid,
+            "materialization_store_generation": "eaaef-test-run-v1",
+            "materialization_database_program_binding_cid": (
+                "sha256:" + "6" * 64
+            ),
+            "materialization_bootstrap_profile_cid": "sha256:" + "7" * 64,
+            "materialization_operational_profile_cid": "sha256:" + "8" * 64,
+            "provider_qualification_expires_at_ms": 0,
+            "provider_maximum_parallel_workers": 0,
+            "provider_maximum_parallel_containers": 0,
+            "provider_task_dispatch_admitted": False,
+            "quack_qualification_expires_at_ms": 0,
+            "quack_epoch": 0,
+            "quack_fence": 0,
+            "authority": dict(bootstrap_admission._EXPECTED_AUTHORITY),
+            "one_use_nonce": "single-capture-prebootstrap",
+            "issued_at_ms": issued_at_ms,
+            "expires_at_ms": issued_at_ms + 3_600_000,
+        }
     )
+    value.pop("statement_cid", None)
+    value["statement_cid"] = bootstrap_admission._cid(value)
+    return value
 
 
 def _child_receipt(
@@ -53,6 +94,7 @@ def _child_receipt(
     source_tree: str,
     board_namespace: str,
     board_cid: str,
+    bootstrap_statement: Mapping[str, object],
 ) -> dict[str, object]:
     decision = {
         "EAAEF-180": "inventory",
@@ -72,7 +114,23 @@ def _child_receipt(
         "board_namespace": board_namespace,
         "board_cid": board_cid,
         # Every hypothetical collection produces a different child identity.
-        "evidence": {"volatile_capture": capture},
+        "evidence": {
+            "volatile_capture": capture,
+            "bootstrap_admission_statement": (
+                dict(bootstrap_statement) if task_id == "EAAEF-180" else None
+            ),
+            "items": (
+                [
+                    {
+                        "blocker": "EAAEF-191 host admission bundle pending",
+                        "class": "host_gated_external_authority",
+                        "closing_task_ids": ["EAAEF-191"],
+                    }
+                ]
+                if task_id == "EAAEF-180"
+                else None
+            ),
+        },
     }
     receipt["receipt_cid"] = eaaef_host_admission.cid(receipt)
     return receipt
@@ -83,6 +141,7 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     issuer = _load_issuer()
+    monkeypatch.setattr(issuer, "_require_clean_source_checkout", lambda: None)
     process_attempts: list[str] = []
 
     def reject_process(*_args: object, **_kwargs: object) -> None:
@@ -94,34 +153,24 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
     monkeypatch.setattr(os, "posix_spawn", reject_process)
     monkeypatch.setattr(os, "posix_spawnp", reject_process)
     monkeypatch.setattr(os, "system", reject_process)
+    tmp_path.chmod(0o700)
     receipt_dir = tmp_path / "receipts"
-    receipt_dir.mkdir()
-    signatures_path = receipt_dir / "admission_bundle.signatures.json"
+    receipt_dir.mkdir(mode=0o700)
+    receipt_dir.chmod(0o700)
     operator_key = Ed25519PrivateKey.generate()
     reviewer_key = Ed25519PrivateKey.generate()
-    operator_key_path = tmp_path / "operator.key"
-    reviewer_key_path = tmp_path / "reviewer.key"
-    _write_raw_private_key(operator_key_path, operator_key)
-    _write_raw_private_key(reviewer_key_path, reviewer_key)
     operator_did = ed25519_did_key(operator_key.public_key())
     reviewer_did = ed25519_did_key(reviewer_key.public_key())
 
     monkeypatch.setattr(issuer, "ROOT", tmp_path)
     monkeypatch.setattr(issuer, "RECEIPT_DIR", receipt_dir)
-    monkeypatch.setattr(issuer, "BUNDLE_SIGNATURES_PATH", signatures_path)
-    monkeypatch.setattr(issuer, "OPERATOR_KEY", operator_key_path)
-    monkeypatch.setattr(issuer, "LIFECYCLE_KEY", reviewer_key_path)
-    monkeypatch.setattr(issuer, "TRUSTED_OPERATOR_DIDS", (operator_did,))
+    authority_root = tmp_path.parent / f"{tmp_path.name}-authority"
+    final_dir = authority_root / "host-admission"
     monkeypatch.setattr(
-        issuer,
-        "TRUSTED_SECURITY_REVIEWER_DIDS",
-        (reviewer_did,),
+        issuer, "AUTHORITY_ROOT_OVERRIDE", authority_root
     )
-    monkeypatch.setattr(
-        issuer,
-        "lifecycle_root_identity_did",
-        lambda: reviewer_did,
-    )
+    monkeypatch.setattr(eaaef_host_admission, "ROOT", tmp_path)
+    monkeypatch.setattr(eaaef_host_admission, "RECEIPT_DIR", receipt_dir)
     monkeypatch.setattr(
         eaaef_host_admission,
         "TRUSTED_OPERATOR_DIDS",
@@ -137,16 +186,35 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
     source_tree = "2" * 40
     board_namespace = "external-agent-autonomous-execution-fabric-v1"
     board_cid = "sha256:" + "3" * 64
-    bootstrap_cid = "sha256:" + "4" * 64
     materialization_cid = "sha256:" + "5" * 64
+    observed_identity = {
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "board_namespace": board_namespace,
+        "board_cid": board_cid,
+    }
+    monkeypatch.setattr(issuer, "_source_identity", lambda: dict(observed_identity))
+    bundle_path, signatures_path = (
+        eaaef_host_admission.source_addressed_admission_bundle_paths(
+            final_dir=final_dir,
+            source_head=source_head,
+        )
+    )
+    bootstrap_statement = _prebootstrap_statement(
+        source_head=source_head,
+        source_tree=source_tree,
+        board_cid=board_cid,
+        materialization_cid=materialization_cid,
+    )
+    bootstrap_cid = str(bootstrap_statement["statement_cid"])
     collection_count = 0
     captured_child_cids: list[dict[str, str]] = []
 
-    def collect_once() -> dict[str, object]:
+    def collect_once() -> dict[str, dict[str, object]]:
         nonlocal collection_count
         collection_count += 1
+        receipts: dict[str, dict[str, object]] = {}
         child_cids: dict[str, str] = {}
-        child_decisions: dict[str, str] = {}
         for task_id, filename in issuer.RECEIPT_FILES.items():
             if task_id == "EAAEF-191":
                 continue
@@ -158,13 +226,10 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
                 source_tree=source_tree,
                 board_namespace=board_namespace,
                 board_cid=board_cid,
+                bootstrap_statement=bootstrap_statement,
             )
-            (receipt_dir / filename).write_text(
-                json.dumps(receipt, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
+            receipts[task_id] = receipt
             child_cids[task_id] = str(receipt["receipt_cid"])
-            child_decisions[task_id] = str(receipt["decision"])
         captured_child_cids.append(child_cids)
         unsigned_bundle: dict[str, object] = {
             "schema": eaaef_host_admission.BUNDLE_SCHEMA,
@@ -190,67 +255,126 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
                 "security_reviewer_did": "",
                 "independent_signature_present": False,
                 "prospective_supervisor_signature_rejected": True,
-                "inventory_open_host_gated": [],
+                "inventory_open_host_gated": [
+                    "EAAEF-191 host admission bundle pending"
+                ],
             },
         }
         unsigned_bundle["receipt_cid"] = eaaef_host_admission.cid(
             unsigned_bundle
         )
-        (receipt_dir / issuer.RECEIPT_FILES["EAAEF-191"]).write_text(
-            json.dumps(unsigned_bundle, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        return {
-            "decisions": {**child_decisions, "EAAEF-191": "no_go"},
-            "process_started": False,
-            "configured_board_launch": False,
-            "live_launch_allowed": False,
-        }
+        receipts["EAAEF-191"] = unsigned_bundle
+        return receipts
 
-    signed_reviews: list[dict[str, object]] = []
-    original_review = issuer.admission_bundle_review_payload
-
-    def capture_signed_review(**arguments: object) -> dict[str, object]:
-        signed_reviews.append(
-            {
-                **arguments,
-                "child_receipt_cids": dict(
-                    arguments["child_receipt_cids"]  # type: ignore[arg-type]
-                ),
-            }
-        )
-        return original_review(**arguments)
-
-    monkeypatch.setattr(issuer, "collect_and_write", collect_once)
+    monkeypatch.setattr(issuer, "collect_host_admission_receipts", collect_once)
     monkeypatch.setattr(
         issuer,
-        "admission_bundle_review_payload",
-        capture_signed_review,
+        "materialize_host_evidence",
+        lambda: {"decisions": {"capture": "test"}},
     )
 
-    result = issuer.issue()
+    prepared_result = issuer.prepare()
+    prepared = prepared_result["prepared_review"]
+    review = prepared_result["review"]
+    drift_path = receipt_dir / issuer.RECEIPT_FILES["EAAEF-182"]
+    original_child = drift_path.read_bytes()
+    drifted_child = json.loads(original_child)
+    drifted_child["evidence"]["volatile_capture"] = 99
+    drifted_child.pop("receipt_cid")
+    drifted_child["receipt_cid"] = eaaef_host_admission.cid(drifted_child)
+    drift_path.write_text(
+        json.dumps(drifted_child, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="bundle child identities differ"):
+        issuer.publish(prepared_review=prepared, signatures={})
+    drift_path.write_bytes(original_child)
+    operator_signature = base64.b64encode(
+        operator_key.sign(issuer._canonical(review))
+    ).decode("ascii")
+    reviewer_payload = {
+        **review,
+        "operator_did": operator_did,
+        "operator_signature": operator_signature,
+    }
+    reviewer_signature = base64.b64encode(
+        reviewer_key.sign(issuer._canonical(reviewer_payload))
+    ).decode("ascii")
+    signatures = {
+        "schema": eaaef_host_admission.BUNDLE_SIGNATURES_SCHEMA,
+        "operator_did": operator_did,
+        "operator_signature": operator_signature,
+        "security_reviewer_did": reviewer_did,
+        "security_reviewer_signature": reviewer_signature,
+        "payload_sha256": eaaef_host_admission.cid(review),
+        "supervisor_signed": False,
+        "configured_board_launch": False,
+        "decision": prepared_result["decision"],
+    }
+    observed_identity["source_head"] = "9" * 40
+    with pytest.raises(RuntimeError, match="prepared source or board is not current"):
+        issuer.publish(prepared_review=prepared, signatures=signatures)
+    assert not bundle_path.exists()
+    assert not signatures_path.exists()
+    observed_identity["source_head"] = source_head
+    real_verifier = issuer.verify_admission_bundle_receipt
+    monkeypatch.setattr(
+        issuer,
+        "verify_admission_bundle_receipt",
+        lambda **_kwargs: {
+            "admitted": False,
+            "decision": "admitted",
+            "target_decision": "admitted",
+            "blockers": ["forced final-verification failure"],
+        },
+    )
+    with pytest.raises(RuntimeError, match="did not verify"):
+        issuer.publish(prepared_review=prepared, signatures=signatures)
+    assert not bundle_path.exists()
+    assert not signatures_path.exists()
+    monkeypatch.setattr(issuer, "verify_admission_bundle_receipt", real_verifier)
+    real_time = eaaef_host_admission.time.time
+    monkeypatch.setattr(
+        eaaef_host_admission.time,
+        "time",
+        lambda: (int(bootstrap_statement["expires_at_ms"]) + 1) / 1000,
+    )
+    with pytest.raises(RuntimeError, match="pre-bootstrap statement differs"):
+        issuer.publish(prepared_review=prepared, signatures=signatures)
+    assert not bundle_path.exists()
+    assert not signatures_path.exists()
+    monkeypatch.setattr(eaaef_host_admission.time, "time", real_time)
+    result = issuer.publish(
+        prepared_review=prepared,
+        signatures=signatures,
+    )
 
     assert collection_count == 1
     assert len(captured_child_cids) == 1
-    assert len(signed_reviews) == 1
-    signed_child_cids = signed_reviews[0]["child_receipt_cids"]
+    signed_child_cids = review["child_receipt_cids"]
     assert isinstance(signed_child_cids, Mapping)
     assert dict(signed_child_cids) == captured_child_cids[0]
 
-    final_bundle = json.loads(
-        (receipt_dir / issuer.RECEIPT_FILES["EAAEF-191"]).read_text(
-            encoding="utf-8"
-        )
-    )
+    final_bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     assert final_bundle["evidence"]["child_receipt_cids"] == dict(
         signed_child_cids
     )
-    for task_id, filename in issuer.RECEIPT_FILES.items():
-        receipt = json.loads((receipt_dir / filename).read_text(encoding="utf-8"))
+    for task_id, _filename in issuer.RECEIPT_FILES.items():
+        receipt_path = (
+            bundle_path
+            if task_id == "EAAEF-191"
+            else eaaef_host_admission.source_addressed_child_receipt_path(
+                final_dir=final_dir,
+                source_head=source_head,
+                task_id=task_id,
+            )
+        )
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
         assert receipt["process_started"] is False
         assert receipt["supervisor_process_started"] is False
         if task_id != "EAAEF-191":
             assert receipt["receipt_cid"] == signed_child_cids[task_id]
+            assert stat.S_IMODE(receipt_path.stat().st_mode) == 0o400
 
     hypothetical_second_cids = {
         task_id: str(
@@ -262,6 +386,7 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
                 source_tree=source_tree,
                 board_namespace=board_namespace,
                 board_cid=board_cid,
+                bootstrap_statement=bootstrap_statement,
             )["receipt_cid"]
         )
         for task_id, filename in issuer.RECEIPT_FILES.items()
@@ -275,6 +400,352 @@ def test_issue_finalizes_one_capture_without_recollecting_volatile_children(
     signatures = json.loads(signatures_path.read_text(encoding="utf-8"))
     assert signatures["supervisor_signed"] is False
     assert signatures["configured_board_launch"] is False
+    assert stat.S_IMODE(bundle_path.stat().st_mode) == 0o400
+    assert stat.S_IMODE(signatures_path.stat().st_mode) == 0o400
     assert result["decision"] == "admitted"
-    assert result["configured_board_launch"] == "false"
+    assert result["configured_board_launch"] is False
+    repeated = issuer.publish(
+        prepared_review=prepared,
+        signatures=signatures,
+    )
+    assert repeated["bundle_created"] is False
+    assert repeated["signatures_created"] is False
+    assert collection_count == 1
     assert process_attempts == []
+
+    for task_id, filename in issuer.RECEIPT_FILES.items():
+        if task_id == "EAAEF-191":
+            continue
+        changed = _child_receipt(
+            task_id=task_id,
+            filename=filename,
+            capture=2,
+            source_head=source_head,
+            source_tree=source_tree,
+            board_namespace=board_namespace,
+            board_cid=board_cid,
+            bootstrap_statement=bootstrap_statement,
+        )
+        (receipt_dir / filename).write_text(
+            json.dumps(changed, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    immutable_verification = eaaef_host_admission.verify_admission_bundle_receipt(
+        receipt_dir=receipt_dir,
+        expected_source_head=source_head,
+        expected_source_tree=source_tree,
+        expected_board_namespace=board_namespace,
+        expected_board_cid=board_cid,
+        require_source_addressed=True,
+        final_dir=final_dir,
+        final_root=authority_root,
+        include_verified_artifacts=True,
+    )
+    assert immutable_verification["admitted"] is True
+    assert immutable_verification["blockers"] == []
+    historical_verification = eaaef_host_admission.verify_admission_bundle_receipt(
+        receipt_dir=receipt_dir,
+        expected_source_head=source_head,
+        expected_source_tree=source_tree,
+        expected_board_namespace=board_namespace,
+        expected_board_cid=board_cid,
+        prebootstrap_statement_now_ms=(
+            int(bootstrap_statement["expires_at_ms"]) + 1
+        ),
+        require_source_addressed=True,
+        final_dir=final_dir,
+        final_root=authority_root,
+    )
+    assert historical_verification["admitted"] is True
+    assert historical_verification["blockers"] == []
+    assert (
+        immutable_verification["verified_artifacts"]["EAAEF-182"][
+            "evidence"
+        ]["volatile_capture"]
+        == 1
+    )
+
+
+def test_publish_refuses_to_consume_final_authority_for_a_no_go(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_issuer()
+    monkeypatch.setattr(issuer, "_require_clean_source_checkout", lambda: None)
+    monkeypatch.setattr(
+        issuer,
+        "_validate_prepared_review",
+        lambda _prepared: {
+            "review": {"capture": "exact"},
+            "bundle_template": {},
+        },
+    )
+    monkeypatch.setattr(issuer, "_load_current_child_receipts", lambda: {})
+    monkeypatch.setattr(
+        issuer,
+        "_review_components",
+        lambda **_kwargs: {
+            "review": {"capture": "exact"},
+            "decision": "no_go",
+        },
+    )
+    monkeypatch.setattr(
+        issuer,
+        "_require_current_identity",
+        lambda _components: ("head", "tree", "board"),
+    )
+
+    with pytest.raises(RuntimeError, match="no-go evidence cannot consume"):
+        issuer.publish(prepared_review={}, signatures={})
+
+    assert not (tmp_path / "final").exists()
+
+
+def _diagnostic_full_observation(
+    *,
+    source_head: str,
+    source_tree: str,
+    board_namespace: str,
+    board_cid: str,
+    observation_cid: str,
+) -> dict[str, object]:
+    task_ids = list(eaaef_host_admission.HOST_ADMISSION_OBSERVATION_TASK_IDS)
+    decisions = {
+        task_id: (
+            "inventory"
+            if task_id == "EAAEF-180"
+            else "bound_unadmitted"
+            if task_id == "EAAEF-181"
+            else "admitted"
+            if task_id in {"EAAEF-182", "EAAEF-183"}
+            else "no_go"
+            if task_id == "EAAEF-191"
+            else "typed_missing"
+        )
+        for task_id in task_ids
+    }
+    child_cids = {
+        task_id: "sha256:" + format(index + 1, "064x")
+        for index, task_id in enumerate(task_ids)
+    }
+    early_cid = "sha256:" + "b" * 64
+    return {
+        "schema": eaaef_host_admission.HOST_ADMISSION_OBSERVATION_SCHEMA,
+        "scope": eaaef_host_admission.HOST_ADMISSION_OBSERVATION_SCOPE,
+        "observation_kind": "typed_no_go",
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "board_namespace": board_namespace,
+        "board_cid": board_cid,
+        "observation_cid": observation_cid,
+        "early_frontier_observation_cid": early_cid,
+        "early_frontier_observation_logical_path": (
+            "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
+            "authority/host-admission/observations/early-frontier.json"
+        ),
+        "task_ids": task_ids,
+        "child_decisions": decisions,
+        "child_receipt_cids": child_cids,
+        "typed_missing_task_ids": [
+            task_id for task_id in task_ids if decisions[task_id] == "typed_missing"
+        ],
+        "no_go_task_ids": ["EAAEF-191"],
+        "decision": "no_go",
+        "observation_only": True,
+        "admission_authority": False,
+        "live_admission_allowed": False,
+        "live_launch_allowed": False,
+        "eaaef_191_authority": False,
+        "direct_task_completion_allowed": False,
+        "direct_completion_eligible_task_ids": [],
+        "casf_owner_transaction_eligible_task_ids": list(
+            eaaef_host_admission.EARLY_FRONTIER_TASK_IDS
+        ),
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": "CASF owner transaction required",
+        "process_started": False,
+        "supervisor_process_started": False,
+        "configured_board_launch": False,
+        "provider_invoked": False,
+        "control_database_opened": False,
+        "database_state_observed": False,
+        "staging_receipts_written": False,
+    }
+
+
+def test_prepare_observation_is_pure_deterministic_and_not_publishable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_issuer()
+    source_head = "1" * 40
+    source_tree = "2" * 40
+    board_namespace = "external-agent-autonomous-execution-fabric-v1"
+    board_cid = "sha256:" + "3" * 64
+    observation_cid = "sha256:" + "4" * 64
+    identity = {
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "board_namespace": board_namespace,
+        "board_cid": board_cid,
+    }
+    observation = _diagnostic_full_observation(
+        **identity,
+        observation_cid=observation_cid,
+    )
+    calls: list[dict[str, object]] = []
+
+    def load_observation(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return {
+            "valid": True,
+            "logical_path": "authority/host-admission/observations/full.json",
+            "observation": dict(observation),
+        }
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("diagnostic observation preparation attempted an effect")
+
+    monkeypatch.setattr(issuer, "_source_identity", lambda: dict(identity))
+    monkeypatch.setattr(
+        issuer, "load_current_host_admission_observation", load_observation
+    )
+    monkeypatch.setattr(issuer, "materialize_host_evidence", forbidden)
+    monkeypatch.setattr(issuer, "collect_host_admission_receipts", forbidden)
+    monkeypatch.setattr(issuer, "write_host_admission_receipts", forbidden)
+    monkeypatch.setattr(issuer, "RECEIPT_DIR", tmp_path)
+    authority_root = tmp_path / "authority"
+    monkeypatch.setattr(issuer, "AUTHORITY_ROOT_OVERRIDE", authority_root)
+
+    first = issuer.prepare_observation(full_observation_cid=observation_cid)
+    second = issuer.prepare_observation(full_observation_cid=observation_cid)
+
+    assert first == second
+    assert first["schema"] == issuer.OBSERVATION_PREPARED_REVIEW_SCHEMA
+    assert first["decision"] == "no_go"
+    assert first["purpose"] == "external_diagnostic_review_only"
+    assert first["observation_only"] is True
+    assert first["admission_authority"] is False
+    assert first["live_admission_allowed"] is False
+    assert first["live_launch_allowed"] is False
+    assert first["eaaef_191_authority"] is False
+    assert first["publishable"] is False
+    assert first["direct_task_completion_allowed"] is False
+    assert first["direct_completion_eligible_task_ids"] == []
+    assert first["casf_owner_transaction_eligible_task_ids"] == list(
+        eaaef_host_admission.EARLY_FRONTIER_TASK_IDS
+    )
+    assert first["direct_database_binding_allowed"] is False
+    assert first["process_started"] is False
+    assert first["provider_invoked"] is False
+    assert first["control_database_opened"] is False
+    assert first["staging_receipts_written"] is False
+    assert first["prepared_cid"] == eaaef_host_admission.cid(
+        {key: value for key, value in first.items() if key != "prepared_cid"}
+    )
+    assert calls == [
+        {
+            "source_head": source_head,
+            "observation_cid": observation_cid,
+            "authority_root": authority_root,
+        },
+        {
+            "source_head": source_head,
+            "observation_cid": observation_cid,
+            "authority_root": authority_root,
+        },
+    ]
+    assert list(tmp_path.iterdir()) == []
+    with pytest.raises(RuntimeError, match="prepared EAAEF-191 review identity"):
+        issuer._validate_prepared_review(first)
+    monkeypatch.setattr(issuer, "_require_clean_source_checkout", lambda: None)
+    with pytest.raises(RuntimeError, match="prepared EAAEF-191 review identity"):
+        issuer.publish(prepared_review=first, signatures={})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("decision", "admitted"),
+        ("observation_only", False),
+        ("admission_authority", True),
+        ("live_admission_allowed", True),
+        ("live_launch_allowed", True),
+        ("eaaef_191_authority", True),
+        ("direct_task_completion_allowed", True),
+        ("direct_completion_eligible_task_ids", ["EAAEF-180"]),
+        ("casf_owner_transaction_eligible_task_ids", ["EAAEF-180"]),
+        ("direct_database_binding_allowed", True),
+        ("casf_owner_binding_required", False),
+        ("process_started", True),
+        ("provider_invoked", True),
+        ("control_database_opened", True),
+        ("database_state_observed", True),
+        ("staging_receipts_written", True),
+    ],
+)
+def test_prepare_observation_rejects_authority_or_effect_claims(
+    field: str,
+    value: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_issuer()
+    identity = {
+        "source_head": "1" * 40,
+        "source_tree": "2" * 40,
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "board_cid": "sha256:" + "3" * 64,
+    }
+    observation_cid = "sha256:" + "4" * 64
+    observation = _diagnostic_full_observation(
+        **identity,
+        observation_cid=observation_cid,
+    )
+    observation[field] = value
+    monkeypatch.setattr(issuer, "_source_identity", lambda: dict(identity))
+    monkeypatch.setattr(
+        issuer,
+        "load_current_host_admission_observation",
+        lambda **_kwargs: {
+            "valid": True,
+            "logical_path": "authority/host-admission/observations/full.json",
+            "observation": observation,
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="current observation-only no-go"):
+        issuer.prepare_observation(full_observation_cid=observation_cid)
+
+
+def test_source_cleanliness_rejects_non_receipt_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_issuer()
+    receipt_dir = (
+        tmp_path
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "receipts/host_admission"
+    )
+    monkeypatch.setattr(issuer, "ROOT", tmp_path)
+    monkeypatch.setattr(issuer, "RECEIPT_DIR", receipt_dir)
+    observed: list[list[str]] = []
+
+    def dirty(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        observed.append(argv)
+        return subprocess.CompletedProcess(
+            args=argv,
+            returncode=0,
+            stdout=" M ipfs_accelerate_py/agent_supervisor/runtime/runner.py\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(issuer.subprocess, "run", dirty)
+
+    with pytest.raises(RuntimeError, match="non-receipt changes"):
+        issuer._require_clean_source_checkout()
+    assert observed and any(
+        item.startswith(":(top,exclude,literal)")
+        for item in observed[0]
+    )

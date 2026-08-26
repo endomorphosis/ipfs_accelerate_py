@@ -1,14 +1,16 @@
-"""Host-admitted Quack daemon gateway for EAAEF plan-bound children.
+"""Fail-closed Quack gateway scaffolding for EAAEF plan-bound children.
 
-Independently signed EAAEF-191/182/188/189 receipts admit this process to
-talk to the live loopback Quack owner.  The gateway is a closed
-``QuackDaemonCommandGateway@1`` subclass: components never expose SQL, a
-database path, or Portal.  Create-once lane artifacts remain unpublished;
-this overlay does not invent signatures.
+This module is not production authority.  The existing local coordinator,
+execution and container proposal seams are source-only scaffolding and remain
+disabled even if host receipts become available.  A future implementation
+must replace those seams with the already typed operational capability,
+signed-command service and independently reviewed merge path before changing
+the explicit runtime gate below.
 """
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import importlib
 import json
@@ -18,7 +20,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
@@ -26,8 +27,7 @@ from typing import Any, ClassVar
 
 from ..runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
-    _eaaef_host_receipt,
-    _eaaef_host_receipt_admitted,
+    _eaaef_source_addressed_host_receipts,
 )
 from ..runtime.quack_state_server import TOKEN_FILENAME_SUFFIX
 from ..runtime.worker_network_dispatch import EAAEF_BOARD_NAMESPACE
@@ -45,13 +45,14 @@ from .external_agent_container_dispatcher import (
     EXTERNAL_AGENT_CONTAINER_VERIFICATION_RECEIPT_SCHEMA,
     EXTERNAL_AGENT_CONTAINER_WORKER_DISPATCHER_INTERFACE,
     EXTERNAL_AGENT_HOST_MERGE_ADMISSION_SCHEMA,
-    ExternalAgentContainerWorkPacket,
     ExternalAgentContainerWorkerDispatcher,
+    ExternalAgentContainerWorkPacket,
 )
 
 _ADMITTED_DUCKDB_VERSION = "1.5.5"
 _OWNER_HANDLE = "secret-handle:eaaef-quack-owner-v1"
-_REQUIRED_RECEIPTS = ("EAAEF-191", "EAAEF-189", "EAAEF-188")
+_REQUIRED_RECEIPTS = ("EAAEF-191", "EAAEF-189", "EAAEF-188", "EAAEF-182")
+_SOURCE_ONLY_SCAFFOLDING_RUNTIME_ENABLED = False
 # Exact closed CAS template. Quack ATTACH exposes tasks as a view, so UPDATE
 # must run on the exclusive owner's local file connection via the mutation inbox.
 _CAS_TASK_STATUS_SQL = (
@@ -75,16 +76,6 @@ _OWNED_RELATIVE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/handoff/contracts.py",
     "test/api/test_external_agent_handoff_contracts.py",
 )
-_DUCKDB_RECEIPT = (
-    Path("docs")
-    / "architecture"
-    / "external_agent_autonomous_execution_fabric"
-    / "receipts"
-    / "host_admission"
-    / "duckdb_quack_155.json"
-)
-
-
 def _task_body(item: Mapping[str, Any]) -> Mapping[str, Any]:
     body = item.get("body")
     if isinstance(body, Mapping):
@@ -120,11 +111,41 @@ def _cid(value: object) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
-def _host_admitted(repo_root: Path) -> bool:
-    return all(
-        _eaaef_host_receipt_admitted(repo_root, task_id)
-        for task_id in _REQUIRED_RECEIPTS
+def _host_admitted(
+    repo_root: Path,
+    *,
+    expected_source_head: str,
+    expected_source_tree: str,
+) -> bool:
+    receipts = _eaaef_source_addressed_host_receipts(
+        repo_root,
+        expected_source_head=expected_source_head,
+        expected_source_tree=expected_source_tree,
     )
+    return bool(
+        receipts is not None
+        and all(
+            receipts.get(task_id, {}).get("decision") == "admitted"
+            for task_id in _REQUIRED_RECEIPTS
+        )
+    )
+
+
+def _command_fabric_live(
+    receipts: Mapping[str, Mapping[str, Any]],
+) -> bool:
+    receipt = receipts.get("EAAEF-188")
+    evidence = receipt.get("evidence") if isinstance(receipt, Mapping) else None
+    if not isinstance(evidence, Mapping):
+        return False
+    try:
+        from ..validation.eaaef_host_admission import (
+            command_fabric_endpoints_live,
+        )
+
+        return command_fabric_endpoints_live(evidence)
+    except Exception:
+        return False
 
 
 def _sql_literal(value: str) -> str:
@@ -155,7 +176,247 @@ def _admitted_home_directory(quack_extension: Path) -> Path | None:
     return None
 
 
-def _connect_admitted_duckdb(duckdb: Any, quack_extension: Path) -> Any:
+def _required_memfd_seals() -> int:
+    try:
+        return (
+            fcntl.F_SEAL_SEAL
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_WRITE
+        )
+    except AttributeError as exc:
+        raise QuackDaemonGatewayError(
+            "EAAEF-182 requires Linux immutable memfd seals"
+        ) from exc
+
+
+class _SealedDuckDBExtensions:
+    """Owner-private aliases for immutable in-memory extension copies."""
+
+    def __init__(
+        self,
+        *,
+        directory: tempfile.TemporaryDirectory[str],
+        httpfs_fd: int,
+        quack_fd: int,
+    ) -> None:
+        self._directory = directory
+        self._httpfs_fd = int(httpfs_fd)
+        self._quack_fd = int(quack_fd)
+        self._closed = False
+        root = Path(directory.name)
+        self.httpfs_path = root / "httpfs.duckdb_extension"
+        self.quack_path = root / "quack.duckdb_extension"
+
+    @staticmethod
+    def _assert_alias(*, path: Path, descriptor: int) -> None:
+        required_seals = _required_memfd_seals()
+        try:
+            descriptor_metadata = os.fstat(descriptor)
+            directory_metadata = os.lstat(path.parent)
+            alias_metadata = os.lstat(path)
+            observed_target = os.readlink(path)
+            observed_seals = int(
+                fcntl.fcntl(descriptor, fcntl.F_GET_SEALS)
+            )
+        except (OSError, ValueError) as exc:
+            raise QuackDaemonGatewayError(
+                "EAAEF-182 sealed extension alias is unavailable"
+            ) from exc
+        expected_target = f"/proc/self/fd/{descriptor}"
+        if (
+            not stat.S_ISREG(descriptor_metadata.st_mode)
+            or descriptor_metadata.st_size <= 0
+            or not stat.S_ISDIR(directory_metadata.st_mode)
+            or directory_metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(directory_metadata.st_mode) != 0o700
+            or not stat.S_ISLNK(alias_metadata.st_mode)
+            or alias_metadata.st_uid != os.geteuid()
+            or observed_target != expected_target
+            or observed_seals & required_seals != required_seals
+        ):
+            raise QuackDaemonGatewayError(
+                "EAAEF-182 sealed extension alias changed"
+            )
+
+    def load_paths(self) -> tuple[Path, Path]:
+        if self._closed:
+            raise QuackDaemonGatewayError(
+                "EAAEF-182 sealed extension set is closed"
+            )
+        self._assert_alias(path=self.httpfs_path, descriptor=self._httpfs_fd)
+        self._assert_alias(path=self.quack_path, descriptor=self._quack_fd)
+        return self.httpfs_path, self.quack_path
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        for descriptor in (self._httpfs_fd, self._quack_fd):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        try:
+            self._directory.cleanup()
+        except OSError:
+            pass
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
+
+def _copy_verified_extension_to_memfd(
+    source: Path,
+    *,
+    expected_sha256: str,
+) -> int:
+    """Copy one stable admitted file into a write-sealed anonymous inode."""
+
+    try:
+        memfd_flags = os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+        descriptor = os.memfd_create(source.name, memfd_flags)
+    except (AttributeError, OSError) as exc:
+        raise QuackDaemonGatewayError(
+            "EAAEF-182 cannot create an immutable extension copy"
+        ) from exc
+    source_descriptor = -1
+    try:
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        source_descriptor = os.open(source, flags)
+        before = os.fstat(source_descriptor)
+        linked_before = os.stat(source, follow_symlinks=False)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        before_identity = tuple(
+            getattr(before, field) for field in stable_fields
+        )
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_size <= 0
+            or before.st_size > 1024 * 1024 * 1024
+            or before_identity
+            != tuple(getattr(linked_before, field) for field in stable_fields)
+        ):
+            raise OSError("admitted extension source is not stable")
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(source_descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+            remaining = memoryview(chunk)
+            while remaining:
+                written = os.write(descriptor, remaining)
+                if written <= 0:
+                    raise OSError("short write while sealing extension")
+                remaining = remaining[written:]
+        after = os.fstat(source_descriptor)
+        linked_after = os.stat(source, follow_symlinks=False)
+        after_identity = tuple(
+            getattr(after, field) for field in stable_fields
+        )
+        if (
+            before_identity != after_identity
+            or after_identity
+            != tuple(getattr(linked_after, field) for field in stable_fields)
+            or "sha256:" + digest.hexdigest() != expected_sha256
+        ):
+            raise OSError("admitted extension changed while sealed")
+        os.fsync(descriptor)
+        os.fchmod(descriptor, stat.S_IRUSR)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        required_seals = _required_memfd_seals()
+        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, required_seals)
+        if (
+            int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+            & required_seals
+            != required_seals
+        ):
+            raise OSError("immutable extension seals are incomplete")
+        return descriptor
+    except (OSError, ValueError) as exc:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise QuackDaemonGatewayError(
+            "EAAEF-182 extension source differs from immutable evidence"
+        ) from exc
+    finally:
+        if source_descriptor >= 0:
+            os.close(source_descriptor)
+
+
+def _seal_admitted_extensions(
+    *,
+    quack_path: Path,
+    quack_sha256: str,
+    httpfs_path: Path,
+    httpfs_sha256: str,
+) -> _SealedDuckDBExtensions:
+    directory: tempfile.TemporaryDirectory[str] | None = None
+    httpfs_fd = -1
+    quack_fd = -1
+    try:
+        directory = tempfile.TemporaryDirectory(prefix="eaaef-sealed-extensions-")
+        root = Path(directory.name)
+        os.chmod(root, 0o700)
+        httpfs_fd = _copy_verified_extension_to_memfd(
+            httpfs_path,
+            expected_sha256=httpfs_sha256,
+        )
+        quack_fd = _copy_verified_extension_to_memfd(
+            quack_path,
+            expected_sha256=quack_sha256,
+        )
+        os.symlink(
+            f"/proc/self/fd/{httpfs_fd}",
+            root / "httpfs.duckdb_extension",
+        )
+        os.symlink(
+            f"/proc/self/fd/{quack_fd}",
+            root / "quack.duckdb_extension",
+        )
+        sealed = _SealedDuckDBExtensions(
+            directory=directory,
+            httpfs_fd=httpfs_fd,
+            quack_fd=quack_fd,
+        )
+        sealed.load_paths()
+        return sealed
+    except Exception:
+        for descriptor in (httpfs_fd, quack_fd):
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+        if directory is not None:
+            directory.cleanup()
+        raise
+
+
+def _connect_admitted_duckdb(
+    duckdb: Any,
+    extensions: _SealedDuckDBExtensions,
+) -> Any:
     """Open an in-memory client that can ATTACH without installing extensions.
 
     Isolated ``python -I -S -B`` children have an empty HOME, so DuckDB cannot
@@ -163,53 +424,187 @@ def _connect_admitted_duckdb(duckdb: Any, quack_extension: Path) -> Any:
     pinned sibling artifact and disable autoinstall instead.
     """
 
-    httpfs = _admitted_httpfs_extension(quack_extension)
+    if type(extensions) is not _SealedDuckDBExtensions:
+        raise QuackDaemonGatewayError(
+            "EAAEF-182 connection requires exact sealed extension authority"
+        )
     connection = duckdb.connect(":memory:")
-    home = _admitted_home_directory(quack_extension)
-    if home is not None:
-        connection.execute(f"SET home_directory='{_sql_literal(str(home))}'")
-    connection.execute("SET autoinstall_known_extensions=false")
-    connection.execute(f"LOAD '{_sql_literal(str(httpfs))}'")
-    connection.execute(f"LOAD '{_sql_literal(str(quack_extension))}'")
-    return connection
-
-
-def _import_admitted_duckdb(repo_root: Path) -> Any:
-    path = Path(repo_root) / _DUCKDB_RECEIPT
     try:
-        receipt = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise QuackDaemonGatewayError("EAAEF-182 DuckDB receipt is unreadable") from exc
-    if not isinstance(receipt, dict) or receipt.get("decision") != "admitted":
+        connection.execute("SET autoinstall_known_extensions=false")
+        connection.execute("SET autoload_known_extensions=false")
+        httpfs, _quack = extensions.load_paths()
+        connection.execute(f"LOAD '{_sql_literal(str(httpfs))}'")
+        _httpfs, quack = extensions.load_paths()
+        connection.execute(f"LOAD '{_sql_literal(str(quack))}'")
+        return connection
+    except Exception:
+        close = getattr(connection, "close", None)
+        if callable(close):
+            close()
+        raise
+
+
+def _import_admitted_duckdb(receipt: Mapping[str, Any]) -> Any:
+    """Import only the DuckDB/Quack artifacts bound by immutable EAAEF-182."""
+
+    from ..validation.eaaef_host_admission import (
+        APPROVED_IMPORT_ROOT,
+        REQUIRED_QUACK,
+        REQUIRED_QUACK_EXTENSION_FINGERPRINT,
+        REQUIRED_QUACK_EXTENSION_VERSION,
+        REQUIRED_QUACK_PLATFORM,
+        _stable_regular_file_sha256,
+    )
+
+    if receipt.get("decision") != "admitted":
         raise QuackDaemonGatewayError("EAAEF-182 DuckDB receipt is not admitted")
     evidence = receipt.get("evidence") if isinstance(receipt.get("evidence"), Mapping) else {}
     observed = str(evidence.get("observed_duckdb") or "")
     module_path = Path(str(evidence.get("observed_module_path") or ""))
-    if observed != _ADMITTED_DUCKDB_VERSION or not module_path.is_file():
-        raise QuackDaemonGatewayError(
-            "EAAEF-182 did not pin DuckDB 1.5.5 at an existing module path"
+    native_module_path = Path(
+        str(evidence.get("observed_native_module_path") or "")
+    )
+    probe = evidence.get("quack_probe")
+    extension_observation = (
+        probe.get("extension") if isinstance(probe, Mapping) else None
+    )
+    extension = Path(
+        str(
+            extension_observation.get("install_path")
+            if isinstance(extension_observation, Mapping)
+            else ""
         )
+    )
+    httpfs = Path(str(evidence.get("httpfs_extension_path") or ""))
+    expected_files = {
+        module_path: str(evidence.get("observed_module_sha256") or ""),
+        native_module_path: str(
+            evidence.get("observed_native_module_sha256") or ""
+        ),
+        extension: str(evidence.get("quack_extension_sha256") or ""),
+        httpfs: str(evidence.get("httpfs_extension_sha256") or ""),
+    }
+    required_fingerprint = str(
+        evidence.get("required_quack_extension_fingerprint") or ""
+    )
+    observed_fingerprint = str(
+        probe.get("extension_fingerprint") if isinstance(probe, Mapping) else ""
+    )
+    try:
+        approved_import_root = APPROVED_IMPORT_ROOT.resolve(strict=True)
+        canonical_paths = all(
+            path.resolve(strict=True) == path for path in expected_files
+        )
+        module_path.relative_to(approved_import_root)
+        native_module_path.relative_to(approved_import_root)
+        approved_module_paths = True
+    except (OSError, RuntimeError, ValueError):
+        canonical_paths = False
+        approved_module_paths = False
+    extension_version = str(
+        extension_observation.get("extension_version")
+        if isinstance(extension_observation, Mapping)
+        else ""
+    )
+    installed_from = str(
+        extension_observation.get("installed_from")
+        if isinstance(extension_observation, Mapping)
+        else ""
+    )
+    observed_platform = "-".join(
+        (
+            str(probe.get("platform_name") or "") if isinstance(probe, Mapping) else "",
+            str(probe.get("platform_machine") or "")
+            if isinstance(probe, Mapping)
+            else "",
+        )
+    )
+    if (
+        observed != _ADMITTED_DUCKDB_VERSION
+        or evidence.get("required_duckdb") != _ADMITTED_DUCKDB_VERSION
+        or evidence.get("required_quack") != REQUIRED_QUACK
+        or evidence.get("required_quack_extension_version")
+        != REQUIRED_QUACK_EXTENSION_VERSION
+        or evidence.get("required_quack_platform") != REQUIRED_QUACK_PLATFORM
+        or evidence.get("under_approved_import_root") is not True
+        or not approved_module_paths
+        or not canonical_paths
+        or any(not path.is_absolute() for path in expected_files)
+        or len(expected_files) != 4
+        or native_module_path.parent != module_path.parent.parent
+        or not extension.name
+        or httpfs != extension.with_name("httpfs.duckdb_extension")
+        or required_fingerprint != REQUIRED_QUACK_EXTENSION_FINGERPRINT
+        or required_fingerprint != observed_fingerprint
+        or not isinstance(probe, Mapping)
+        or probe.get("passes_health_check") is not True
+        or installed_from != "core"
+        or extension_version != REQUIRED_QUACK_EXTENSION_VERSION
+        or observed_platform != REQUIRED_QUACK_PLATFORM
+    ):
+        raise QuackDaemonGatewayError(
+            "EAAEF-182 DuckDB/Quack path or capability pins are incomplete"
+        )
+
+    try:
+        if any(
+            len(expected) != 71
+            or not expected.startswith("sha256:")
+            or any(
+                character not in "0123456789abcdef"
+                for character in expected[7:]
+            )
+            or _stable_regular_file_sha256(path) != expected
+            for path, expected in expected_files.items()
+        ):
+            raise QuackDaemonGatewayError(
+                "EAAEF-182 DuckDB/Quack file digest differs"
+            )
+    except OSError as exc:
+        raise QuackDaemonGatewayError(
+            "EAAEF-182 DuckDB/Quack pinned file is unavailable"
+        ) from exc
     site_packages = module_path.parent.parent
     if str(site_packages) not in sys.path:
         sys.path.insert(0, str(site_packages))
     duckdb = importlib.import_module("duckdb")
+    native_duckdb = importlib.import_module("_duckdb")
     version = str(getattr(duckdb, "__version__", "") or "")
-    if version != _ADMITTED_DUCKDB_VERSION:
+    imported_module_path = Path(
+        str(getattr(duckdb, "__file__", "") or "")
+    ).resolve()
+    imported_native_path = Path(
+        str(getattr(native_duckdb, "__file__", "") or "")
+    ).resolve()
+    if (
+        version != _ADMITTED_DUCKDB_VERSION
+        or imported_module_path != module_path
+        or imported_native_path != native_module_path
+    ):
         raise QuackDaemonGatewayError(
-            f"imported DuckDB {version!r} is not the admitted 1.5.5 pin"
+            "imported DuckDB module is not the admitted 1.5.5 path pin"
         )
-    extension = Path(
-        str(
-            ((evidence.get("quack_probe") or {}).get("extension") or {}).get(
-                "install_path"
+    try:
+        if any(
+            _stable_regular_file_sha256(path) != expected
+            for path, expected in expected_files.items()
+        ):
+            raise QuackDaemonGatewayError(
+                "EAAEF-182 DuckDB/Quack file changed during import"
             )
-            or ""
-        )
+    except OSError as exc:
+        raise QuackDaemonGatewayError(
+            "EAAEF-182 DuckDB/Quack file changed during import"
+        ) from exc
+    if _admitted_httpfs_extension(extension) != httpfs:
+        raise QuackDaemonGatewayError("admitted httpfs extension path differs")
+    sealed_extensions = _seal_admitted_extensions(
+        quack_path=extension,
+        quack_sha256=expected_files[extension],
+        httpfs_path=httpfs,
+        httpfs_sha256=expected_files[httpfs],
     )
-    if not extension.is_file():
-        raise QuackDaemonGatewayError("admitted Quack extension file is absent")
-    _admitted_httpfs_extension(extension)
-    return duckdb, extension
+    return duckdb, sealed_extensions
 
 
 def _submit_owner_mutation(
@@ -219,49 +614,12 @@ def _submit_owner_mutation(
     parameters: Sequence[Any],
     timeout_seconds: float = _OWNER_MUTATION_TIMEOUT_SECONDS,
 ) -> int:
-    """Ask the exclusive owner to apply one allowlisted DML statement."""
+    """Reject the historical bare-SQL owner inbox until signed fabric exists."""
 
-    if " ".join(str(sql).split()) != _CAS_TASK_STATUS_SQL:
-        raise QuackDaemonGatewayError("owner mutation SQL is not the closed CAS template")
-    try:
-        metadata = os.lstat(mutation_dir)
-    except OSError as exc:
-        raise QuackDaemonGatewayError("Quack owner mutation inbox is absent") from exc
-    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-        raise QuackDaemonGatewayError("Quack owner mutation inbox is not a directory")
-    request_id = uuid.uuid4().hex
-    request_path = mutation_dir / f"{request_id}.request.json"
-    done_path = mutation_dir / f"{request_id}.done.json"
-    request_path.write_text(
-        json.dumps({"parameters": list(parameters), "sql": sql}, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
+    del mutation_dir, sql, parameters, timeout_seconds
+    raise QuackDaemonGatewayError(
+        "bare owner mutation CAS is disabled; the signed command fabric is required"
     )
-    deadline = time.monotonic() + float(timeout_seconds)
-    while time.monotonic() < deadline:
-        if done_path.is_file():
-            try:
-                payload = json.loads(done_path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise QuackDaemonGatewayError(
-                    "owner mutation receipt is unreadable"
-                ) from exc
-            try:
-                request_path.unlink(missing_ok=True)
-                done_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            if payload.get("ok") is not True:
-                raise QuackDaemonGatewayError(
-                    "owner mutation failed: " + str(payload.get("error") or "unknown")
-                )
-            return int(payload.get("rowcount") or 0)
-        time.sleep(0.05)
-    try:
-        request_path.unlink(missing_ok=True)
-    except OSError:
-        pass
-    raise QuackDaemonGatewayError("timed out waiting for the Quack owner to apply CAS")
 
 
 def _resolve_owner_token(handle: str, *, vault_dir: Path) -> str:
@@ -400,13 +758,17 @@ def _focused_test_paths(body: Mapping[str, Any], *, owned: Sequence[str]) -> tup
 
 
 def _load_task_spec(
-    repo_root: Path, *, task_cid: str, task_id: str
+    repo_root: Path,
+    *,
+    duckdb: Any,
+    extensions: _SealedDuckDBExtensions,
+    task_cid: str,
+    task_id: str,
 ) -> dict[str, Any]:
     """Load owned files and focused tests from the live Quack task row."""
 
     body: Mapping[str, Any] = {}
     try:
-        duckdb, extension = _import_admitted_duckdb(repo_root)
         generation = "run-v14"
         vault = (
             Path(repo_root)
@@ -415,7 +777,7 @@ def _load_task_spec(
             / "live/state/quack-owner"
         )
         token = _resolve_owner_token(_OWNER_HANDLE, vault_dir=vault)
-        connection = _connect_admitted_duckdb(duckdb, extension)
+        connection = _connect_admitted_duckdb(duckdb, extensions)
         try:
             connection.execute(
                 "ATTACH 'quack:127.0.0.1:19495' AS control_plane (TYPE QUACK, TOKEN ?)",
@@ -1263,6 +1625,9 @@ class EAAEFHostAdmittedCommandGateway(QuackDaemonCommandGateway):
         owner_session_id: str,
         client: QuackStateClient,
         mutation_dir: Path,
+        runtime_extensions: _SealedDuckDBExtensions,
+        expected_source_head: str,
+        expected_source_tree: str,
     ) -> None:
         self.capability = _HostAdmittedCapability(
             command_endpoint=str(program.quack_endpoint),
@@ -1274,6 +1639,9 @@ class EAAEFHostAdmittedCommandGateway(QuackDaemonCommandGateway):
         self._owner_session_id = owner_session_id
         self._client = client
         self._mutation_dir = Path(mutation_dir)
+        self._runtime_extensions = runtime_extensions
+        self._expected_source_head = expected_source_head
+        self._expected_source_tree = expected_source_tree
         self._attempts: dict[str, dict[str, Any]] = {}
         self._claims: dict[str, dict[str, Any]] = {}
         self._attached = False
@@ -1307,7 +1675,11 @@ class EAAEFHostAdmittedCommandGateway(QuackDaemonCommandGateway):
             )
 
     def require_production_admission(self) -> Mapping[str, Any]:
-        if not _host_admitted(self._repo_root):
+        if not _host_admitted(
+            self._repo_root,
+            expected_source_head=self._expected_source_head,
+            expected_source_tree=self._expected_source_tree,
+        ):
             raise QuackDaemonGatewayError(
                 "EAAEF host receipts no longer admit this daemon gateway"
             )
@@ -1340,6 +1712,7 @@ class EAAEFHostAdmittedCommandGateway(QuackDaemonCommandGateway):
                     detach()
         finally:
             self._attached = False
+            self._runtime_extensions.close()
 
     @property
     def attached(self) -> bool:
@@ -1351,11 +1724,26 @@ def build_eaaef_host_admitted_command_gateway(
     repo_root: Path,
     program: DatabaseProgramConfig,
     owner_session_id: str,
+    expected_source_head: str,
+    expected_source_tree: str,
 ) -> EAAEFHostAdmittedCommandGateway | None:
-    """Return a live gateway when independently signed host receipts admit it."""
+    """Keep source-only gateway scaffolding unreachable at runtime."""
+
+    if not _SOURCE_ONLY_SCAFFOLDING_RUNTIME_ENABLED:
+        return None
 
     root = Path(repo_root)
-    if not _host_admitted(root):
+    receipts = _eaaef_source_addressed_host_receipts(
+        root,
+        expected_source_head=expected_source_head,
+        expected_source_tree=expected_source_tree,
+    )
+    if receipts is None or any(
+        receipts.get(task_id, {}).get("decision") != "admitted"
+        for task_id in _REQUIRED_RECEIPTS
+    ):
+        return None
+    if not _command_fabric_live(receipts):
         return None
     if (
         program.authority_mode != "quack"
@@ -1363,8 +1751,10 @@ def build_eaaef_host_admitted_command_gateway(
         or str(program.endpoint_secret_handle or "") != _OWNER_HANDLE
     ):
         return None
-    duckdb, extension = _import_admitted_duckdb(root)
-    bundle = _eaaef_host_receipt(root, "EAAEF-191") or {}
+    duckdb, extensions = _import_admitted_duckdb(
+        receipts.get("EAAEF-182", {})
+    )
+    bundle = receipts.get("EAAEF-191", {})
     binding_cid = str(bundle.get("receipt_cid") or _cid({"gateway": "eaaef-host-admitted"}))
     generation = str(program.store_generation or "eaaef-run-v14")
     run_dir = generation.removeprefix("eaaef-")
@@ -1382,7 +1772,7 @@ def build_eaaef_host_admitted_command_gateway(
         token = _resolve_owner_token(handle, vault_dir=vault_dir)
         if not str(uri).startswith("quack:127.0.0.1:") or "'" in uri or "\x00" in uri:
             raise QuackDaemonGatewayError("host-admitted Quack URI is not loopback")
-        connection = _connect_admitted_duckdb(duckdb, extension)
+        connection = _connect_admitted_duckdb(duckdb, extensions)
         connection.execute(
             f"ATTACH '{uri}' AS control_plane (TYPE QUACK, TOKEN ?)",
             [token],
@@ -1403,24 +1793,48 @@ def build_eaaef_host_admitted_command_gateway(
         owner_session_id=owner_session_id or "eaaef-host-admitted-daemon",
         client=client,
         mutation_dir=mutation_dir,
+        runtime_extensions=extensions,
+        expected_source_head=expected_source_head,
+        expected_source_tree=expected_source_tree,
     )
 
 
 def build_eaaef_host_admitted_container_dispatcher_factory(
     *,
     repo_root: Path,
+    expected_source_head: str,
+    expected_source_tree: str,
 ) -> Any | None:
-    """Return a dispatcher factory when host receipts admit container dispatch."""
+    """Keep source-only dispatcher scaffolding unreachable at runtime."""
+
+    if not _SOURCE_ONLY_SCAFFOLDING_RUNTIME_ENABLED:
+        return None
 
     root = Path(repo_root)
-    if not (
-        _eaaef_host_receipt_admitted(root, "EAAEF-191")
-        and _eaaef_host_receipt_admitted(root, "EAAEF-189")
-        and _eaaef_host_receipt_admitted(root, "EAAEF-185")
-        and _eaaef_host_receipt_admitted(root, "EAAEF-186")
-        and _eaaef_host_receipt_admitted(root, "EAAEF-187")
+    receipts = _eaaef_source_addressed_host_receipts(
+        root,
+        expected_source_head=expected_source_head,
+        expected_source_tree=expected_source_tree,
+    )
+    required = (
+        "EAAEF-191",
+        "EAAEF-189",
+        "EAAEF-185",
+        "EAAEF-186",
+        "EAAEF-187",
+        "EAAEF-188",
+        "EAAEF-182",
+    )
+    if receipts is None or any(
+        receipts.get(task_id, {}).get("decision") != "admitted"
+        for task_id in required
     ):
         return None
+    if not _command_fabric_live(receipts):
+        return None
+    duckdb, extensions = _import_admitted_duckdb(
+        receipts.get("EAAEF-182", {})
+    )
 
     def factory(
         *,
@@ -1487,7 +1901,11 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
 
         def qualification_guard(packet: ExternalAgentContainerWorkPacket) -> Mapping[str, Any]:
             spec = _load_task_spec(
-                root, task_cid=packet.task_cid, task_id=packet.task_id
+                root,
+                duckdb=duckdb,
+                extensions=extensions,
+                task_cid=packet.task_cid,
+                task_id=packet.task_id,
             )
             worktree = _git_worktree(
                 root,
@@ -1517,7 +1935,11 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             del reservation
             try:
                 spec = _load_task_spec(
-                    root, task_cid=packet.task_cid, task_id=packet.task_id
+                    root,
+                    duckdb=duckdb,
+                    extensions=extensions,
+                    task_cid=packet.task_cid,
+                    task_id=packet.task_id,
                 )
                 launched = _run_admitted_grok_container(
                     packet=packet, repo_root=root, spec=spec
@@ -1562,7 +1984,11 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             proposal: Mapping[str, Any],
         ) -> Mapping[str, Any]:
             spec = _load_task_spec(
-                root, task_cid=packet.task_cid, task_id=packet.task_id
+                root,
+                duckdb=duckdb,
+                extensions=extensions,
+                task_cid=packet.task_cid,
+                task_id=packet.task_id,
             )
             worktree = _git_worktree(
                 root,
@@ -1605,7 +2031,11 @@ def build_eaaef_host_admitted_container_dispatcher_factory(
             effect: Mapping[str, Any],
         ) -> Mapping[str, Any] | None:
             spec = _load_task_spec(
-                root, task_cid=packet.task_cid, task_id=packet.task_id
+                root,
+                duckdb=duckdb,
+                extensions=extensions,
+                task_cid=packet.task_cid,
+                task_id=packet.task_id,
             )
             return _host_merge_admission(
                 packet=packet,

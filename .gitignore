@@ -13,6 +13,9 @@ state/*
 *model_functionality*
 *.json
 !config/external_agent_autonomous_execution_fabric_bootstrap.json
+!docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json
+!docs/architecture/external_agent_autonomous_execution_fabric/proposals/stack_compatibility_manifest.r2.json
+!docs/architecture/external_agent_autonomous_execution_fabric/receipts/stack_compatibility_verification.json
 !docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/
 !docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/*.json
 !test/fixtures/agent_supervisor_prompt_entrypoints/manifest.json
@@ -313,3 +316,12 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !docs/architecture/residual_intelligence_inventory/*.json
 !benchmarks/agent_supervisor/residual_intelligence/*.json
 /data/agent_supervisor/residual_intelligence_foundry/
+
+# Proof-Grounded IR Learning successor controls and immutable evidence.
+# The historical campaign stays untouched; only the successor-v1 generation
+# is admitted through the repository's broad JSON ignore policy.
+!config/agent_supervisor_proof_grounded_ir_learning_successor_scheduler.json
+!data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/**/*.json
+!data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/**/*.json
+!data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/**/*.json
+/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/

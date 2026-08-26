@@ -6,12 +6,17 @@ paths, sibling repo paths, and mutable branch checkouts as released artifacts.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 
 
 RECEIPT = (
@@ -25,6 +30,35 @@ RECEIPT = (
 
 DIGEST_A = "sha256:" + "1" * 64
 DIGEST_B = "sha256:" + "2" * 64
+ARTIFACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1"
+)
+PRODUCER_ARGV = (
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/packaging/test_external_agent_clean_install.py",
+)
+RECEIPT_FIELDS = {
+    "artifact_cid",
+    "clean_environment_created",
+    "descriptor_admitted",
+    "evidence_mode",
+    "fixture_artifact_descriptors",
+    "live_eight_container_qualification",
+    "live_runtime_invoked",
+    "pip_install_invoked",
+    "producer_argv",
+    "producer_source_cid",
+    "production_qualification_claimed",
+    "qualification_scope",
+    "qualification_status",
+    "refused",
+    "schema",
+    "task_completion_claimed",
+    "task_id",
+}
 
 
 class CleanInstallError(ValueError):
@@ -77,7 +111,38 @@ def admit_clean_install(spec: Mapping[str, Any]) -> Mapping[str, Any]:
     }
 
 
+def _producer_source_cid() -> str:
+    return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def _validate_receipt(payload: dict[str, object]) -> None:
+    assert set(payload) == RECEIPT_FIELDS
+    assert payload["schema"] == ARTIFACT_SCHEMA
+    assert payload["task_id"] == "EAAEF-164"
+    assert payload["evidence_mode"] == "contract_fail_closed"
+    assert payload["qualification_scope"] == "artifact_descriptor_admission_only"
+    assert payload["qualification_status"] == "not_live_qualified"
+    assert payload["task_completion_claimed"] is False
+    assert payload["production_qualification_claimed"] is False
+    assert payload["live_runtime_invoked"] is False
+    assert payload["live_eight_container_qualification"] is False
+    assert payload["pip_install_invoked"] is False
+    assert payload["clean_environment_created"] is False
+    assert payload["producer_argv"] == list(PRODUCER_ARGV)
+    assert payload["producer_source_cid"] == _producer_source_cid()
+    unsealed = dict(payload)
+    artifact_cid = unsealed.pop("artifact_cid")
+    assert artifact_cid == content_identity(unsealed)
+
+
 def _write_receipt(payload: dict[str, object]) -> dict[str, object]:
+    payload = {
+        **payload,
+        "producer_argv": list(PRODUCER_ARGV),
+        "producer_source_cid": _producer_source_cid(),
+    }
+    payload["artifact_cid"] = content_identity(payload)
+    _validate_receipt(payload)
     RECEIPT.parent.mkdir(parents=True, exist_ok=True)
     RECEIPT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload
@@ -125,19 +190,25 @@ def test_admit_clean_install_refuses_editable_sibling_and_branch() -> None:
 
     payload = _write_receipt(
         {
-            "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
+            "schema": ARTIFACT_SCHEMA,
             "task_id": "EAAEF-164",
             "evidence_mode": "contract_fail_closed",
+            "qualification_scope": "artifact_descriptor_admission_only",
+            "qualification_status": "not_live_qualified",
+            "task_completion_claimed": False,
+            "production_qualification_claimed": False,
             "live_runtime_invoked": False,
             "live_eight_container_qualification": False,
             "pip_install_invoked": False,
-            "admitted": True,
+            "clean_environment_created": False,
+            "descriptor_admitted": True,
             "refused": ["editable_egg_link", "pip_-e", "sibling_repo", "mutable_branch"],
-            "artifacts": list(admitted["artifacts"]),
+            "fixture_artifact_descriptors": list(admitted["artifacts"]),
         }
     )
+    _validate_receipt(payload)
     saved = json.loads(RECEIPT.read_text(encoding="utf-8"))
     assert saved["evidence_mode"] == "contract_fail_closed"
     assert saved["pip_install_invoked"] is False
     assert saved["live_runtime_invoked"] is False
-    assert payload["admitted"] is True
+    assert payload["descriptor_admitted"] is True

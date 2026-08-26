@@ -327,6 +327,36 @@ def _git(cwd: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+def _fast_forward_daemon_merge_target(
+    daemon: TodoImplementationDaemon,
+    repo: Path,
+    selected_branch: str,
+) -> str:
+    """Advance the exact board-isolated target without mutating ambient main."""
+
+    target_branch = daemon.resolved_merge_target_branch
+    target_commit = _git(repo, "rev-parse", f"{target_branch}^{{commit}}")
+    candidate = _git(repo, "rev-parse", f"{selected_branch}^{{commit}}")
+    assert (
+        _git(
+            repo,
+            "merge-base",
+            "--is-ancestor",
+            target_commit,
+            candidate,
+        )
+        == ""
+    )
+    _git(
+        repo,
+        "update-ref",
+        f"refs/heads/{target_branch}",
+        candidate,
+        target_commit,
+    )
+    return candidate
+
+
 def _build_unit_test_implementation_command(
     daemon: TodoImplementationDaemon,
     workspace: Path,
@@ -1204,6 +1234,8 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
 
 
 def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import cli_provider_balance
+
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -1234,9 +1266,19 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
         "which",
-        lambda name: f"/usr/local/bin/{name}" if name in {"codex", "copilot"} else None,
+        lambda name: "/usr/local/bin/copilot" if name == "copilot" else None,
     )
     monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: False)
+    monkeypatch.setattr(
+        cli_provider_balance,
+        "probe_all_cli_provider_readiness",
+        lambda: {
+            "copilot": {
+                "binary_available": True,
+                "authenticated": False,
+            }
+        },
+    )
 
     with pytest.raises(
         RuntimeError,
@@ -1847,6 +1889,8 @@ def test_git_gc_aggressive_timeout_aborts_repack_and_defers_retry(
 
 
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import cli_provider_balance
+
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -1881,15 +1925,24 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
         "which",
-        lambda name: f"/usr/local/bin/{name}" if name in {"codex", "copilot"} else None,
+        lambda name: "/usr/local/bin/copilot" if name == "copilot" else None,
     )
     monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: True)
+    monkeypatch.setattr(
+        cli_provider_balance,
+        "probe_all_cli_provider_readiness",
+        lambda: {
+            "copilot": {
+                "binary_available": True,
+                "authenticated": True,
+            }
+        },
+    )
 
-    with pytest.raises(
-        RuntimeError,
-        match="Automatic implementation requires authenticated Grok 4.5",
-    ):
-        _build_unit_test_implementation_command(daemon, repo)
+    command = _build_unit_test_implementation_command(daemon, repo)
+
+    assert command[:2] == ["bash", "-lc"]
+    assert "/usr/local/bin/copilot" in command
 
 
 def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktrees(tmp_path):
@@ -6196,7 +6249,22 @@ def test_stale_submodule_rebase_preserves_candidate_for_overlapping_advance(
     )
 
     assert merge_result["merged"] is True
-    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert (
+        _git(
+            repo,
+            "merge-base",
+            "--is-ancestor",
+            candidate,
+            daemon.resolved_merge_target_branch,
+        )
+        == ""
+    )
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", candidate, "main"],
+        cwd=repo,
+        capture_output=True,
+        check=False,
+    ).returncode != 0
     assert _git(repo, "rev-parse", "main:libs/child") == target_submodule_commit
 
 
@@ -7299,11 +7367,15 @@ def test_merge_candidate_v3_threads_completion_cids_into_todo_mutation(
         }
 
     def integrate_candidate(selected_branch, *_args, **_kwargs):
-        _git(repo, "merge", "--ff-only", selected_branch)
+        merge_commit = _fast_forward_daemon_merge_target(
+            daemon,
+            repo,
+            selected_branch,
+        )
         return {
             "merged": True,
             "returncode": 0,
-            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+            "merge_commit": merge_commit,
         }
 
     monkeypatch.setattr(
@@ -7406,11 +7478,15 @@ def test_merge_candidate_v3_refuses_markdown_completion_when_revision_changes_at
             yield taskboard
 
     def integrate_candidate(selected_branch, *_args, **_kwargs):
-        _git(repo, "merge", "--ff-only", selected_branch)
+        merge_commit = _fast_forward_daemon_merge_target(
+            daemon,
+            repo,
+            selected_branch,
+        )
         return {
             "merged": True,
             "returncode": 0,
-            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+            "merge_commit": merge_commit,
         }
 
     monkeypatch.setattr(
@@ -7540,11 +7616,15 @@ def test_merge_candidate_v3_refuses_atomic_bundle_completion_when_member_revisio
             yield taskboard
 
     def integrate_candidate(selected_branch, *_args, **_kwargs):
-        _git(repo, "merge", "--ff-only", selected_branch)
+        merge_commit = _fast_forward_daemon_merge_target(
+            daemon,
+            repo,
+            selected_branch,
+        )
         return {
             "merged": True,
             "returncode": 0,
-            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+            "merge_commit": merge_commit,
         }
 
     monkeypatch.setattr(
@@ -7674,7 +7754,7 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
     )
 
     def resolver_integrates_branch(selected_branch, *_args, **_kwargs):
-        _git(repo, "merge", "--no-ff", "--no-edit", selected_branch)
+        _fast_forward_daemon_merge_target(daemon, repo, selected_branch)
         _git(repo, "branch", "-D", selected_branch)
         return {
             "attempted": True,
@@ -7714,7 +7794,22 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
     assert result["post_callback_ancestry_reconciliation"]["previous_reason"] == (
         "merge_branch_missing_after_resolver"
     )
-    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert (
+        _git(
+            repo,
+            "merge-base",
+            "--is-ancestor",
+            candidate,
+            daemon.resolved_merge_target_branch,
+        )
+        == ""
+    )
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", candidate, "main"],
+        cwd=repo,
+        capture_output=True,
+        check=False,
+    ).returncode != 0
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
 
 
@@ -8241,6 +8336,10 @@ def test_merge_train_rolls_back_parent_when_verified_submodule_result_disappears
     monkeypatch,
 ):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
+    # The isolated merge worktree has to materialize this local test-only
+    # submodule URL before it can restore the pre-merge gitlink.
+    _git(repo, "config", "protocol.file.allow", "always")
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
     baseline = _git(repo, "rev-parse", "main")
     branch_name = "implementation/ref-044-atomic"
     state_dir = tmp_path / "state"
@@ -8312,10 +8411,19 @@ def test_merge_train_rolls_back_parent_when_verified_submodule_result_disappears
     assert result["submodule_durability_preflight"]["verified"] is True
     assert result["missing_changed_submodule_paths"] == ["libs/child"]
     assert result["submodule_failure_rollback"]["rolled_back"] is True
-    assert _git(repo, "rev-parse", "main") == target_before
+    assert (
+        _git(repo, "rev-parse", daemon.resolved_merge_target_branch)
+        == target_before
+    )
     assert (
         subprocess.run(
-            ["git", "merge-base", "--is-ancestor", candidate, "main"],
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                candidate,
+                daemon.resolved_merge_target_branch,
+            ],
             cwd=repo,
             capture_output=True,
             check=False,
@@ -8376,7 +8484,8 @@ def test_merge_train_does_not_complete_when_parent_omits_reconciled_gitlink(
         *_args,
         **_kwargs,
     ):
-        target_before = _git(repo, "rev-parse", "main")
+        target_branch = daemon.resolved_merge_target_branch
+        target_before = _git(repo, "rev-parse", target_branch)
         target_tree = _git(repo, "rev-parse", f"{target_before}^{{tree}}")
         merge_commit = _git(
             repo,
@@ -8392,11 +8501,14 @@ def test_merge_train_does_not_complete_when_parent_omits_reconciled_gitlink(
         _git(
             repo,
             "update-ref",
-            "refs/heads/main",
+            f"refs/heads/{target_branch}",
             merge_commit,
             target_before,
         )
-        assert _git(repo, "rev-parse", "main:libs/child") == target_submodule
+        assert (
+            _git(repo, "rev-parse", f"{target_branch}:libs/child")
+            == target_submodule
+        )
         return {
             "attempted": True,
             "merged": True,
@@ -8457,13 +8569,38 @@ def test_merge_train_does_not_complete_when_parent_omits_reconciled_gitlink(
         invariant["integrated_handoff_proof"]["reason"]
         == "changed_submodule_gitlink_not_integrated"
     )
-    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert (
+        _git(
+            repo,
+            "merge-base",
+            "--is-ancestor",
+            candidate,
+            daemon.resolved_merge_target_branch,
+        )
+        == ""
+    )
+    assert (
+        _git(
+            repo,
+            "rev-parse",
+            f"{daemon.resolved_merge_target_branch}:libs/child",
+        )
+        == target_submodule
+    )
     assert _git(repo, "rev-parse", "main:libs/child") == target_submodule
-    assert _git(repo, "rev-parse", "main:libs/child") != reconciled_submodule
+    assert (
+        _git(
+            repo,
+            "rev-parse",
+            f"{daemon.resolved_merge_target_branch}:libs/child",
+        )
+        != reconciled_submodule
+    )
     assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
 
     # Candidate containment alone is also insufficient: the parent must record
     # the exact child reconciliation commit produced by this merge.
+    _git(repo, "checkout", daemon.resolved_merge_target_branch)
     _git(
         repo,
         "update-index",
@@ -8590,7 +8727,15 @@ def test_implementation_daemon_submodule_gitlink_reconciliation_uses_verified_re
     assert _git(submodule, "merge-base", "--is-ancestor", ours, selected) == ""
     assert _git(submodule, "merge-base", "--is-ancestor", theirs, selected) == ""
     assert _git(submodule, "rev-parse", "HEAD") == ours
-    assert _git(repo, "rev-parse", "HEAD:libs/child") == selected
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == ours
+    assert (
+        _git(
+            repo,
+            "rev-parse",
+            f"{daemon.resolved_merge_target_branch}:libs/child",
+        )
+        == selected
+    )
 
     diagnostic = json.loads((state_dir / "submodule-merge-diagnostics.json").read_text(encoding="utf-8"))
     assert diagnostic["schema_version"] == 1
@@ -9158,8 +9303,16 @@ def test_merge_anchors_submodule_to_target_gitlink_without_advancing_ambient_mai
         check=False,
     ).returncode != 0
     assert _git(submodule, "rev-parse", "main") == ambient_main
-    assert _git(submodule, "rev-parse", "HEAD") == integrated_commit
-    assert _git(repo, "rev-parse", "main:libs/child") == integrated_commit
+    assert _git(submodule, "rev-parse", "HEAD") == target_gitlink
+    assert _git(repo, "rev-parse", "main:libs/child") == target_gitlink
+    assert (
+        _git(
+            repo,
+            "rev-parse",
+            f"{daemon.resolved_merge_target_branch}:libs/child",
+        )
+        == integrated_commit
+    )
     assert _git(repo, "status", "--porcelain") == ""
 
 
@@ -10042,7 +10195,22 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     assert first["reason"] == "submodule_merge_failed"
     assert first["submodule_merge_results"][0]["reason"] == "submodule_checkout_dirty"
     assert first["submodule_failure_rollback"]["reason"] == "parent_gitlinks_unchanged"
-    assert _git(repo, "merge-base", "--is-ancestor", implementation_commit, "main") == ""
+    assert (
+        _git(
+            repo,
+            "merge-base",
+            "--is-ancestor",
+            implementation_commit,
+            daemon.resolved_merge_target_branch,
+        )
+        == ""
+    )
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", implementation_commit, "main"],
+        cwd=repo,
+        capture_output=True,
+        check=False,
+    ).returncode != 0
     checkpoint_path = state_dir / "merge_checkpoints" / "implementation-auto-116.json"
     assert checkpoint_path.exists()
     checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
@@ -10068,8 +10236,16 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     assert reconciliation[-1]["reason"] == "implementation_commit_already_merged"
     assert reconciliation[-1]["submodule_merge_results"][0]["merged"] is True
     assert _git(submodule, "rev-parse", "main") == ambient_main
-    assert _git(submodule, "rev-parse", "HEAD") == submodule_commit
-    assert _git(repo, "rev-parse", "main:libs/child") == submodule_commit
+    assert _git(submodule, "rev-parse", "HEAD") == ambient_main
+    assert (
+        _git(
+            repo,
+            "rev-parse",
+            f"{daemon.resolved_merge_target_branch}:libs/child",
+        )
+        == submodule_commit
+    )
+    assert _git(repo, "rev-parse", "main:libs/child") != submodule_commit
     assert not checkpoint_path.exists()
 
 
@@ -10470,7 +10646,10 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
         "stalled_without_active_worker": False,
     }
 
-    loop._write_status("running", child=SimpleNamespace(pid=99))
+    loop._write_status(
+        "running",
+        child=SimpleNamespace(pid=99, identity_process_birth=None),
+    )
 
     status = json.loads((state_dir / "supervisor_status.json").read_text(encoding="utf-8"))
     assert status["active_worker_count"] == 2
@@ -13117,6 +13296,34 @@ def _seal_ordered_grok_codex_route(monkeypatch) -> None:
     )
 
 
+def _assert_packaged_ordered_grok_codex_command(
+    command: list[str],
+) -> tuple[list[str], list[str]]:
+    """Assert the sealed route stays inside the one packaged fallback runner."""
+
+    expected_runner = (
+        Path(implementation_daemon_module.__file__).resolve().parents[1]
+        / "provider_fallback_runner.py"
+    )
+    assert command[:2] == [sys.executable, str(expected_runner)]
+    assert command[command.index("--primary-provider") + 1] == "grok"
+    assert command[command.index("--fallback-provider") + 1] == "codex"
+    assert (
+        command[command.index("--fallback-policy") + 1]
+        == implementation_daemon_module.GROK_QUOTA_ONLY_FALLBACK_POLICY
+    )
+    primary_command = json.loads(
+        command[command.index("--primary-command-json") + 1]
+    )
+    fallback_command = json.loads(
+        command[command.index("--fallback-command-json") + 1]
+    )
+    assert primary_command[primary_command.index("--model") + 1] == "grok-4.6"
+    assert "--require-terminal-quota-frame" in primary_command
+    assert fallback_command[:2] == ["/usr/local/bin/codex", "exec"]
+    return primary_command, fallback_command
+
+
 def _clear_ordered_grok_codex_route(monkeypatch) -> None:
     """Give legacy custom-resolver tests an explicit unsealed environment."""
 
@@ -13315,13 +13522,7 @@ def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
 
     command = _build_unit_test_implementation_command(daemon, repo)
 
-    assert command[0] == sys.executable
-    assert command[1:3] == [
-        "-m",
-        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
-    ]
-    assert command[command.index("--model") + 1] == "grok-4.6"
-    assert "--canonical-legacy-preflight-route" in command
+    _assert_packaged_ordered_grok_codex_command(command)
     assert daemon._current_implementation_provider_labels() == {
         "grok",
         "xai",
@@ -13415,6 +13616,11 @@ def test_ordered_grok_route_fails_closed_when_primary_is_unavailable(
     )
     monkeypatch.setattr(
         implementation_daemon_module,
+        "_grok_binary",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
         "_goose_meta_spark_available",
         lambda: False,
     )
@@ -13452,8 +13658,8 @@ def test_ordered_grok_route_fails_closed_when_primary_is_unavailable(
     )
 
     with pytest.raises(
-        RuntimeError,
-        match="Automatic implementation requires authenticated Grok 4.5",
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="cannot implement a task that requires independent Codex review",
     ):
         _build_unit_test_implementation_command(daemon, repo, task=task)
 
@@ -13502,8 +13708,11 @@ def test_legacy_quota_route_preserves_explicit_command_overrides(
         implementation_command=constructor_command,
     )
 
-    command = _build_unit_test_implementation_command(daemon, repo)
-    assert command == shlex.split(constructor_command or ambient_command)
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match=expected,
+    ):
+        _build_unit_test_implementation_command(daemon, repo)
 
 
 def test_legacy_quota_route_honors_task_declared_codex(
@@ -13546,8 +13755,11 @@ def test_legacy_quota_route_honors_task_declared_codex(
         metadata={"Provider role": "codex-implement"},
     )
 
-    command = _build_unit_test_implementation_command(daemon, repo, task=task)
-    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="sealed Grok/Codex route rejects task provider override",
+    ):
+        _build_unit_test_implementation_command(daemon, repo, task=task)
 
 
 @pytest.mark.parametrize(
@@ -13621,8 +13833,8 @@ def test_ordered_codex_fallback_rejects_non_proof_grok_latches(
     )
 
     with pytest.raises(
-        RuntimeError,
-        match="requires the Grok Build CLI",
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="sealed quota-only route requires a ready Grok primary",
     ):
         _build_unit_test_implementation_command(daemon, repo)
 
@@ -13686,13 +13898,7 @@ def test_ordered_quota_route_uses_runner_owned_exact_fallback_authority(
         task=task,
         attempt=1,
     )
-    assert command[1:3] == [
-        "-m",
-        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
-    ]
-    assert command[command.index("--model") + 1] == "grok-4.6"
-    assert "--codex-fallback-command-json" in command
-    assert "--canonical-legacy-preflight-route" in command
+    _assert_packaged_ordered_grok_codex_command(command)
 
 
 def test_ordered_fallback_is_embedded_in_single_runner_invocation(
@@ -13759,12 +13965,7 @@ def test_ordered_fallback_is_embedded_in_single_runner_invocation(
         task=task,
         attempt=1,
     )
-    assert command[1:3] == [
-        "-m",
-        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
-    ]
-    assert "--codex-fallback-command-json" in command
-    assert "--canonical-legacy-preflight-route" in command
+    _assert_packaged_ordered_grok_codex_command(command)
 
 
 def test_ordered_fallback_does_not_create_daemon_side_task_authority(
@@ -13845,15 +14046,8 @@ def test_ordered_fallback_does_not_create_daemon_side_task_authority(
         )
         for task in tasks
     ]
-    assert all(
-        command[1:3]
-        == [
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
-        ]
-        for command in commands
-    )
-    assert all("--canonical-legacy-preflight-route" in command for command in commands)
+    for command in commands:
+        _assert_packaged_ordered_grok_codex_command(command)
 
 
 def test_ordered_quota_classifier_excludes_supervisor_log_headers(
@@ -14004,12 +14198,11 @@ def test_ordered_grok_route_uses_grok_when_codex_is_missing(
         implement=True,
     )
 
-    command = _build_unit_test_implementation_command(daemon, repo)
-
-    assert command[1:3] == [
-        "-m",
-        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
-    ]
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="sealed quota-only route requires the Codex CLI fallback",
+    ):
+        _build_unit_test_implementation_command(daemon, repo)
 
 
 def test_ordered_grok_route_fails_closed_when_both_providers_are_unavailable(
@@ -14052,14 +14245,19 @@ def test_ordered_grok_route_fails_closed_when_both_providers_are_unavailable(
         implement=True,
     )
 
-    with pytest.raises(RuntimeError, match="requires the Grok Build CLI"):
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="sealed quota-only route requires the Codex CLI fallback",
+    ):
         _build_unit_test_implementation_command(daemon, repo)
 
 
-def test_legacy_auto_fails_closed_without_grok_quota_authority(
+def test_unsealed_auto_uses_ready_codex_when_grok_is_unavailable(
     tmp_path,
     monkeypatch,
 ):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import cli_provider_balance
+
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
@@ -14082,6 +14280,11 @@ def test_legacy_auto_fails_closed_without_grok_quota_authority(
     )
     monkeypatch.setattr(
         implementation_daemon_module,
+        "_grok_binary",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
         "_goose_meta_spark_available",
         lambda: False,
     )
@@ -14089,6 +14292,11 @@ def test_legacy_auto_fails_closed_without_grok_quota_authority(
         implementation_daemon_module.shutil,
         "which",
         lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        cli_provider_balance,
+        "probe_all_cli_provider_readiness",
+        lambda: {},
     )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
@@ -14104,11 +14312,9 @@ def test_legacy_auto_fails_closed_without_grok_quota_authority(
         "copilot",
         "provider",
     }
-    with pytest.raises(
-        RuntimeError,
-        match="Automatic implementation requires authenticated Grok 4.5",
-    ):
-        _build_unit_test_implementation_command(daemon, repo)
+    command = _build_unit_test_implementation_command(daemon, repo)
+
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
 
 
 def test_task_declared_grok_partial_ordered_route_fails_closed(
@@ -15999,10 +16205,7 @@ def test_implementation_supervisor_repoints_mismatched_managed_pid_to_matching_d
             implement=True,
         )
     )
-    matching_command = (
-        f"python {daemon_script} --state-dir {state_dir} --state-prefix portal "
-        f"--todo-path {todo_path} --implement"
-    )
+    matching_command = " ".join(supervisor._build_daemon_command())
 
     monkeypatch.setattr(supervisor_module, "process_is_running", lambda pid: int(pid) in {111, 222})
     monkeypatch.setattr(
@@ -16595,7 +16798,7 @@ def test_generated_dirty_repair_owns_checkout_lock_and_defers_foreign_owner(
 
     assert repaired["committed_count"] == 1
     assert repaired["selected_path_count"] == 1
-    assert not checkout_mutation_lock_path(repo).exists()
+    assert not supervisor._repo_merge_lock_path().exists()
     assert _git(repo, "log", "-1", "--pretty=%ae") == (
         BACKLOG_REFINERY_AUTHOR_EMAIL
     )
@@ -16608,7 +16811,7 @@ def test_generated_dirty_repair_owns_checkout_lock_and_defers_foreign_owner(
         "# Generated board\n\n## AUTO-002 Deferred\n",
         encoding="utf-8",
     )
-    lock_path = checkout_mutation_lock_path(repo)
+    lock_path = supervisor._repo_merge_lock_path()
     lock_path.write_text(
         json.dumps(
             {
@@ -16673,7 +16876,7 @@ def test_managed_daemon_fences_supervisor_protected_recovery_journal(
     observed: dict[str, object] = {}
 
     def inspect_supervisor_journal() -> dict[str, object]:
-        lock_path = checkout_mutation_lock_path(repo)
+        lock_path = supervisor._repo_merge_lock_path()
         journal_before = lock_path.read_bytes()
         observed["daemon_context_empty_before"] = (
             daemon._current_checkout_mutation_lease() is None
@@ -16706,7 +16909,7 @@ def test_managed_daemon_fences_supervisor_protected_recovery_journal(
     assert observed["journal_unchanged"] is True
     assert observed["daemon_context_empty_before"] is True
     assert observed["daemon_context_empty_after"] is True
-    assert not checkout_mutation_lock_path(repo).exists()
+    assert not supervisor._repo_merge_lock_path().exists()
 
 
 def test_daemon_recovery_journal_preserves_legacy_and_repository_fences(
@@ -16770,7 +16973,7 @@ def test_daemon_recovery_journal_preserves_legacy_and_repository_fences(
             "protected_recovery_intent": intent,
         }
     )
-    lock_path = checkout_mutation_lock_path(repo)
+    lock_path = daemon._repo_merge_lock_path()
 
     # Ownerless journals predate the owner tag and remain recoverable.
     lock_path.write_text(
@@ -19365,6 +19568,38 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
     assert any(event["type"] == "implementation_state_recovered" for event in events)
 
 
+def test_implementation_state_recovery_closes_the_durable_inflight_event(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": "ACCEL-999",
+            "attempt": 1,
+            "worktree_path": str(repo / "worktrees" / "accel-999-attempt-1"),
+        },
+    )
+    daemon._record_event(
+        "implementation_state_recovered",
+        {
+            "task_id": "ACCEL-999",
+            "attempt": 1,
+            "reason": "inflight_process_missing",
+        },
+    )
+
+    assert daemon._inflight_implementation_events() == []
+    assert daemon._find_live_inflight_implementation() is None
+
+
 def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -20973,9 +21208,12 @@ def test_completion_artifact_refresh_is_explicit_argv_without_shell(
 def test_completion_artifact_refresh_wraps_launch_failure(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
+    real_run = subprocess.run
 
-    def fail_to_start(*_args, **_kwargs):
-        raise FileNotFoundError("missing-verifier")
+    def fail_to_start(command, *args, **kwargs):
+        if command == ["missing-verifier"]:
+            raise FileNotFoundError("missing-verifier")
+        return real_run(command, *args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", fail_to_start)
     supervisor = TodoImplementationSupervisor(
@@ -25123,7 +25361,7 @@ def test_completion_recovery_uses_landed_rewrite_without_remerging_deleted_branc
                 "implementation_commit": landed_commit,
                 "integration_ref": integration_commit,
                 "integration_commit": integration_commit,
-                "target_branch": "main",
+                "target_branch": daemon.resolved_merge_target_branch,
                 "reasons": [],
             },
         },
@@ -27500,7 +27738,7 @@ def test_implementation_daemon_acquires_checkout_lease_before_merge_preamble(
     def assert_checkout_owned(operation: str) -> None:
         lease = daemon._current_checkout_mutation_lease()
         assert lease is not None
-        assert lease.lock_path == checkout_mutation_lock_path(repo)
+        assert lease.lock_path == daemon._repo_merge_lock_path()
         published = json.loads(lease.lock_path.read_text(encoding="utf-8"))
         assert published["lease_id"] == lease.lease_id
         assert published["operation"] == "merge_branch_to_main"
@@ -27554,7 +27792,7 @@ def test_implementation_daemon_acquires_checkout_lease_before_merge_preamble(
         "repair_stale_submodule_worktree_configs",
         "rebase_stale_submodule_pointers",
     ]
-    assert not checkout_mutation_lock_path(repo).exists()
+    assert not daemon._repo_merge_lock_path().exists()
 
 
 def test_implementation_daemon_live_checkout_lease_preserves_todo_bytes(
@@ -27592,7 +27830,7 @@ def test_implementation_daemon_live_checkout_lease_preserves_todo_bytes(
         repo_root=repo,
         task_header_prefix="## ACCEL-",
     )
-    lock_path = checkout_mutation_lock_path(repo)
+    lock_path = daemon._repo_merge_lock_path()
     lock_path.write_text(
         json.dumps(
             checkout_lock_metadata(
@@ -27687,7 +27925,7 @@ def test_implementation_daemon_board_write_and_commit_share_one_checkout_lease(
     assert len(acquired) == 1
     assert len(released) == 1
     assert acquired == [("mark_tasks_completed", released[0])]
-    assert not checkout_mutation_lock_path(repo).exists()
+    assert not daemon._repo_merge_lock_path().exists()
     assert _git(repo, "status", "--porcelain") == ""
 
 
@@ -27743,7 +27981,7 @@ def test_implementation_daemon_reacquires_after_pending_lease_is_absent(
     assert callback_lease_ids
     assert callback_lease_ids != [stale_lease.lease_id]
     assert daemon._current_checkout_mutation_lease() is None
-    assert not checkout_mutation_lock_path(repo).exists()
+    assert not daemon._repo_merge_lock_path().exists()
 
 
 def test_implementation_daemon_pending_lease_preserves_replacement(
@@ -27944,7 +28182,7 @@ def test_implementation_daemon_retains_dirty_protected_completion_lease_until_re
     assert retained_lease.metadata["protected_recovery_owner"] == (
         "implementation_daemon"
     )
-    assert checkout_mutation_lock_path(repo).exists()
+    assert daemon._repo_merge_lock_path().exists()
     assert "todo.md" in _git(repo, "status", "--porcelain", "--", "todo.md")
     unexpected_mutations: list[str] = []
     blocked = daemon._run_checkout_mutation_transaction(
@@ -27992,7 +28230,7 @@ def test_implementation_daemon_retains_dirty_protected_completion_lease_until_re
     if remove_retained_lease:
         assert recovered_callback_lease_ids != [retained_lease.lease_id]
     assert daemon._current_checkout_mutation_lease() is None
-    assert not checkout_mutation_lock_path(repo).exists()
+    assert not daemon._repo_merge_lock_path().exists()
     assert _git(repo, "status", "--porcelain") == ""
 
 
@@ -28063,7 +28301,7 @@ def test_implementation_daemon_retains_dirty_protected_reopen_lease_until_recove
     assert failed["durable"] is False
     assert failed["checkout_mutation_lease_retained"] is True
     assert daemon._current_checkout_mutation_lease() is not None
-    assert checkout_mutation_lock_path(repo).exists()
+    assert daemon._repo_merge_lock_path().exists()
     assert "todo.md" in _git(repo, "status", "--porcelain", "--", "todo.md")
 
     monkeypatch.setattr(
@@ -28083,7 +28321,7 @@ def test_implementation_daemon_retains_dirty_protected_reopen_lease_until_recove
     assert recovered["checkout_mutation_lease_recovered"] is True
     assert recovered["checkout_mutation_lease_retained"] is False
     assert daemon._current_checkout_mutation_lease() is None
-    assert not checkout_mutation_lock_path(repo).exists()
+    assert not daemon._repo_merge_lock_path().exists()
     assert _git(repo, "status", "--porcelain") == ""
     author, subject = _git(
         repo,
@@ -28147,7 +28385,7 @@ def test_implementation_daemon_retains_lease_until_protected_board_gitlink_recov
     assert failed["reason"] == "protected_board_commit_incomplete"
     assert failed["checkout_mutation_lease_retained"] is True
     assert "libs/child" in failed["dirty_protected_paths"]
-    assert checkout_mutation_lock_path(repo).exists()
+    assert daemon._repo_merge_lock_path().exists()
     assert "libs/child" in _git(
         repo,
         "status",
@@ -28170,7 +28408,7 @@ def test_implementation_daemon_retains_lease_until_protected_board_gitlink_recov
     ] is True
     assert recovered["durable"] is True
     assert recovered["checkout_mutation_lease_recovered"] is True
-    assert not checkout_mutation_lock_path(repo).exists()
+    assert not daemon._repo_merge_lock_path().exists()
     assert _git(repo, "status", "--porcelain") == ""
     assert _git(submodule, "status", "--porcelain") == ""
 
@@ -28671,7 +28909,10 @@ def test_implementation_supervisor_cleans_merged_worktree_with_deleted_configure
     monkeypatch.setattr(
         supervisor,
         "_target_ref_has_path",
-        lambda relative, target_ref: relative == "external/ipfs_datasets" and target_ref == "main",
+        lambda relative, target_ref: (
+            relative == "external/ipfs_datasets"
+            and target_ref == supervisor.config.merge_target_branch
+        ),
     )
 
     result = supervisor.cleanup_backlogged_worktrees()
@@ -31011,9 +31252,12 @@ def test_implementation_supervisor_validates_current_task_before_recovered_merge
     assert recovered["validation_result"]["proposal_gate"]["accepted"] is True
     assert result["processed"][0]["validated_before_merge"] is True
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
-    assert (repo / "feature.py").read_text(
-        encoding="utf-8"
-    ) == 'VALUE = "feature"\n'
+    assert _git(
+        repo,
+        "show",
+        f"{recovered['merge_result']['target_branch']}:feature.py",
+    ) == 'VALUE = "feature"'
+    assert not (repo / "feature.py").exists()
     managed_events = [
         json.loads(line)
         for line in (state_dir / "accel_events.jsonl").read_text(
@@ -31142,9 +31386,12 @@ def test_implementation_supervisor_run_once_reconciles_candidate_under_maintenan
     assert recovered["validation_result"]["passed"] is True
     assert recovered["validation_result"]["proposal_gate"]["accepted"] is True
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
-    assert (repo / "feature.py").read_text(
-        encoding="utf-8"
-    ) == 'VALUE = "feature"\n'
+    assert _git(
+        repo,
+        "show",
+        f"{recovered['merge_result']['target_branch']}:feature.py",
+    ) == 'VALUE = "feature"'
+    assert not (repo / "feature.py").exists()
     assert _git(repo, "status", "--short") == ""
 
 
@@ -33558,13 +33805,26 @@ def test_implementation_daemon_deterministically_repairs_objective_heap_merge(tm
         1,
     )
 
-    assert result["merged"] is True
+    assert result["merged"] is True, json.dumps(result, indent=2, sort_keys=True)
     assert result["deterministic_conflict_repair"][0]["resolved"] is True
     assert daemon._unmerged_worktree_paths(repo) == set()
-    text = objective_path.read_text(encoding="utf-8")
+    text = _git(
+        repo,
+        "show",
+        f"{daemon.resolved_merge_target_branch}:objective-heap.md",
+    )
     assert "## VAIOS-G002 Feature goal" in text
     assert "## VAIOS-G003 Main goal" in text
-    assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-objective", "HEAD") == ""
+    assert _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        "implementation/auto-objective",
+        daemon.resolved_merge_target_branch,
+    ) == ""
+    assert "## VAIOS-G002 Feature goal" not in objective_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_implementation_daemon_deterministically_repairs_launch_readiness_merge(tmp_path):
@@ -33741,8 +34001,22 @@ def test_readiness_doc_and_heap_name_the_same_launch_validation_gate():
         "tests/test_virtual_ai_os_launch_readiness_gate.py",
     }
     assert daemon._unmerged_worktree_paths(repo) == set()
-    doc_text = doc_path.read_text(encoding="utf-8")
-    test_text = test_path.read_text(encoding="utf-8")
+    doc_text = _git(
+        repo,
+        "show",
+        (
+            f"{daemon.resolved_merge_target_branch}:"
+            "docs/launch/phone_desktop_glasses_readiness.md"
+        ),
+    )
+    test_text = _git(
+        repo,
+        "show",
+        (
+            f"{daemon.resolved_merge_target_branch}:"
+            "tests/test_virtual_ai_os_launch_readiness_gate.py"
+        ),
+    )
     assert "`HAO-436` / `MGW-274` / `VAI-340`" in doc_text
     assert "2026-06-23-hao-436-launch-readiness-gate.md" in doc_text
     assert "2026-06-23-mgw-274-launch-readiness-gate.md" in doc_text
@@ -33750,10 +34024,16 @@ def test_readiness_doc_and_heap_name_the_same_launch_validation_gate():
     assert "MGW_274_RECEIPT_PATH" in test_text
     assert "assert term in hao_source" in test_text
     assert "assert term in mgw_source" in test_text
-    assert _git(repo, "merge-base", "--is-ancestor", "implementation/mgw-launch", "HEAD") == ""
+    assert _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        "implementation/mgw-launch",
+        daemon.resolved_merge_target_branch,
+    ) == ""
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(tmp_path):
+def test_implementation_daemon_isolates_ambient_dirty_checkout_from_merge_target(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -33802,13 +34082,15 @@ def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(t
         1,
     )
 
-    assert result["merged"] is False
-    assert result["reason"] == "main_checkout_dirty_conflict"
-    assert result["dirty_paths"] == ["blocked.txt"]
-    assert result["llm_merge_resolver"]["applied"] is True
-    prompt = capture_path.read_text(encoding="utf-8")
-    assert "main_checkout_dirty_conflict" in prompt
-    assert "Dirty paths: blocked.txt" in prompt
+    assert result["merged"] is True
+    assert result["target_branch"] == daemon.resolved_merge_target_branch
+    assert target.read_text(encoding="utf-8") == "local dirty\n"
+    assert _git(
+        repo,
+        "show",
+        f"{daemon.resolved_merge_target_branch}:blocked.txt",
+    ) == "branch"
+    assert not capture_path.exists()
 
 
 def test_implementation_daemon_restores_generated_dirty_checkout_overlap_without_llm(tmp_path):
@@ -33864,13 +34146,22 @@ def test_implementation_daemon_restores_generated_dirty_checkout_overlap_without
     )
 
     assert result["merged"] is True
-    assert result["restored_generated_dirty_overlap"][0]["path"] == "data/track/discovery/generated.md"
-    assert result["restored_generated_dirty_overlap"][0]["restored"] is True
-    assert discovery.read_text(encoding="utf-8") == "branch generated\n"
+    assert result["restored_generated_dirty_overlap"] == []
+    assert discovery.read_text(encoding="utf-8") == "local generated\n"
+    assert _git(
+        repo,
+        "show",
+        (
+            f"{daemon.resolved_merge_target_branch}:"
+            "data/track/discovery/generated.md"
+        ),
+    ) == "branch generated"
     assert not capture_path.exists()
 
 
-def test_implementation_daemon_reconciles_generated_dirty_submodule_overlap_without_llm(tmp_path):
+def test_implementation_daemon_defers_ambient_generated_submodule_dirt(
+    tmp_path,
+):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     submodule_todo = submodule / "docs" / "child.todo.md"
     submodule_todo.parent.mkdir()
@@ -33934,13 +34225,23 @@ def test_implementation_daemon_reconciles_generated_dirty_submodule_overlap_with
         1,
     )
 
-    assert result["merged"] is True
-    assert result["generated_submodule_reconciliation"][0]["reconciled"] is True
-    assert result["generated_submodule_reconciliation"][0]["generated_commit"]["committed"] is True
-    assert result["generated_submodule_reconciliation"][0]["submodule_merge"]["merged"] is True
+    assert result["merged"] is False
+    assert result["reason"] == "submodule_merge_failed"
+    assert result["generated_submodule_reconciliation"] == []
+    assert result["submodule_merge_results"][0]["reason"] == (
+        "submodule_checkout_dirty"
+    )
+    assert result["submodule_merge_results"][0]["dirty_paths"] == [
+        "docs/child.todo.md"
+    ]
+    assert result["submodule_failure_rollback"]["rolled_back"] is True, (
+        json.dumps(result, indent=2, sort_keys=True)
+    )
     assert not capture_path.exists()
-    assert _git(repo, "status", "--porcelain", "--", "libs/child") == ""
-    assert _git(submodule, "status", "--porcelain") == ""
+    assert "libs/child" in _git(repo, "status", "--porcelain")
+    assert _git(submodule, "status", "--porcelain") == (
+        "M docs/child.todo.md"
+    )
 
 
 def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_path):
@@ -33979,7 +34280,10 @@ def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_pat
         ),
         llm_merge_resolver_timeout_seconds=5,
     )
-    workspace_result = daemon._prepare_main_merge_workspace("main", "implementation/auto-004")
+    workspace_result = daemon._prepare_main_merge_workspace(
+        daemon.resolved_merge_target_branch,
+        "implementation/auto-004",
+    )
     workspace = Path(str(workspace_result["path"]))
     (workspace / "blocked.txt").write_text("dirty managed worktree\n", encoding="utf-8")
 
@@ -33998,7 +34302,13 @@ def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_pat
 
     assert result["merged"] is True
     assert result["llm_workspace_resolver"]["applied"] is True
-    assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-004", "main") == ""
+    assert _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        "implementation/auto-004",
+        daemon.resolved_merge_target_branch,
+    ) == ""
     prompt = capture_path.read_text(encoding="utf-8")
     assert "main_merge_worktree_dirty" in prompt
     assert "Dirty paths: blocked.txt" in prompt
@@ -34420,8 +34730,19 @@ def test_implementation_daemon_accepts_resolver_committed_merge(tmp_path):
 
     assert result["merged"] is True
     assert result["llm_merge_commit_result"]["reason"] == "resolver_committed_merge"
-    assert target.read_text(encoding="utf-8") == "resolved by resolver\n"
-    assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-merge", "HEAD") == ""
+    assert target.read_text(encoding="utf-8") == "main\n"
+    assert _git(
+        repo,
+        "show",
+        f"{daemon.resolved_merge_target_branch}:conflict.txt",
+    ) == "resolved by resolver"
+    assert _git(
+        repo,
+        "merge-base",
+        "--is-ancestor",
+        "implementation/auto-merge",
+        daemon.resolved_merge_target_branch,
+    ) == ""
 
 
 def test_implementation_daemon_invokes_llm_resolver_for_submodule_merge_conflict(tmp_path):

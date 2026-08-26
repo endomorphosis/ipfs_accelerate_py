@@ -1,0 +1,39 @@
+{
+  "artifact_cid": "baguqeeragbvvinox5bvr2lwjynnffddhakym6whjhomyhnemdazjgwveblqa",
+  "checkpoint_contract_validated": true,
+  "cleanup_observed_on_live_runtime": false,
+  "default_deny_contract": {
+    "cap_drop": [
+      "ALL"
+    ],
+    "docker_socket_mounted": false,
+    "network": "none",
+    "no_new_privileges": true,
+    "privileged": false,
+    "read_only": true
+  },
+  "evidence_mode": "contract_fail_closed",
+  "host_engine_probe_invoked": false,
+  "live_engine_invoked": false,
+  "live_runtime_invoked": false,
+  "producer_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/security/test_external_agent_container_isolation.py"
+  ],
+  "producer_source_cid": "sha256:68492f8b4481f162121c10a54e5cb15425e6296633df5f7ae9b41ba1f2bdf9d7",
+  "production_qualification_claimed": false,
+  "qualification_scope": "offline_container_isolation_contract_only",
+  "qualification_status": "not_live_qualified",
+  "resource_bounds": {
+    "cpu_millicores": 4000,
+    "disk_mib": 16384,
+    "ram_mib": 8192,
+    "timeout_seconds": 7200
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1",
+  "task_completion_claimed": false,
+  "task_id": "EAAEF-055"
+}

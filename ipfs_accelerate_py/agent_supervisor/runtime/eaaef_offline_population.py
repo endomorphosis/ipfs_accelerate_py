@@ -43,7 +43,7 @@ DATABASE_TASK_SOURCE_INTERFACE: Final = "DatabaseTaskSource@1"
 
 _EXPECTED_EXECUTION_CONTRACT_COUNTS: Final = {
     "task_dependencies": 270,
-    "task_outputs": 415,
+    "task_outputs": 430,
     "task_validations": 117,
     "task_acceptance": 116,
 }

@@ -1,0 +1,39 @@
+{
+  "baseline": {
+    "nested_gitlink": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+    "nested_tree": "7169c2a67929044a02350bc26d0a51c853a4981b",
+    "outer_commit": "20ef9e48d59b505b04e6236a9a31aaba287c36fd",
+    "outer_tree": "dcc71e6806dc12d32b0ae5f7655a60572c40ec30"
+  },
+  "effect": "PGIR-205 remains fail-closed: no materialization, training, promotion, or execution authority follows from this freeze.",
+  "ended_at_utc": "2026-08-26T05:09:33.958960+00:00",
+  "inherited_pgir_211_missing_outer_commits": [
+    "04fbb09b4a8b34e77d11bd8da6642e0978baa02c",
+    "597a0285738c5878eed462593fd75e18715ff7f8"
+  ],
+  "later_forest_commits": [
+    "59cdab5572cac092fb42398fe908a424e54d9c4e",
+    "d48759e84dadff1d0dec2e43ee8ad19c534682d7",
+    "20ef9e48d59b505b04e6236a9a31aaba287c36fd"
+  ],
+  "missing_nested_commits": [],
+  "missing_outer_commits": [
+    "04fbb09b4a8b34e77d11bd8da6642e0978baa02c",
+    "20ef9e48d59b505b04e6236a9a31aaba287c36fd",
+    "597a0285738c5878eed462593fd75e18715ff7f8",
+    "59cdab5572cac092fb42398fe908a424e54d9c4e",
+    "d48759e84dadff1d0dec2e43ee8ad19c534682d7"
+  ],
+  "nested_current_remote_refs": [
+    "refs/remotes/origin/HEAD",
+    "refs/remotes/origin/main"
+  ],
+  "observation_method": "git for-each-ref --contains <commit> --format=%(refname) refs/remotes in the current outer and nested repositories; local stale remote-tracking refs are insufficient for a fresh recursive checkout",
+  "pgir_205_execution_authorized": false,
+  "receipt_cid": "baguqeera2ua47f7yht3oijt5vg4nzjsgnd7d75w5tdfw52fg6hj6v4tbmqfa",
+  "receipt_sha256": "sha256:d501cf97f83cf6e4267da9b8dca64668fe3ff6dd98cb6ee8a6f1d3eaf261640a",
+  "schema": "proof-grounded-ir-learning/pgir-205-portability-receipt@1",
+  "started_at_utc": "2026-08-26T05:09:33.658120+00:00",
+  "status": "portability_no_go",
+  "task_id": "PGIR-205"
+}

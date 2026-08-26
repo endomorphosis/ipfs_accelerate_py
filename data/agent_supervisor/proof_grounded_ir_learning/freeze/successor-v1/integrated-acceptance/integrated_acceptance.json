@@ -1,0 +1,870 @@
+{
+  "acceptance_cid": "baguqeeram562re6snweb5nuinwprb4ehccvkin7kpylihktizlirsss7pllq",
+  "acceptance_identity_derivation": "canonical DAG-JSON/SHA-256 of this document after omitting acceptance_sha256 and acceptance_cid; the RESULT(PGIR-211) supersession row uses a field-name pointer and contains no derived self value",
+  "acceptance_sha256": "sha256:677da893d26d881eb6886d9f10f08710aaa437ea7e1683aa68cad1194a5f7ad7",
+  "canonical_closure": {
+    "README.md": {
+      "path": "README.md",
+      "raw_cid": "bafkreih4n7mtz7kth3mf6prtzvoshzxtd4xbvcjvh5qkhaepdly5vyouyi",
+      "sha256": "sha256:fc6fd93cfd533ed85f3e33cd5d23e6f31f2e1a89353f60a3808f1af1dae1d4c2",
+      "size_bytes": 1540
+    },
+    "capture_evidence.py": {
+      "path": "capture_evidence.py",
+      "raw_cid": "bafkreifeh2nnbocok27n3zfbv7vyz3nm3k7wmgwihqxupu56u5wq6co64i",
+      "sha256": "sha256:a43e9ad0b84e56bedde4a1afeb8cedacdabf661ac83c2f47d3bea76d0f09dee2",
+      "size_bytes": 39835
+    },
+    "component_verification_receipt.json": {
+      "path": "component_verification_receipt.json",
+      "raw_cid": "bafkreidwyh5etijycoznig4sqvccr65pedqvli4xdcyxnbakvp6b5gafpa",
+      "sha256": "sha256:76c1fa49a13813b2d41b92854428fbaf20e155a39718b176840aabfc1e980578",
+      "size_bytes": 173855
+    },
+    "historical_closure_receipt.json": {
+      "path": "historical_closure_receipt.json",
+      "raw_cid": "bafkreifmw7wnew3uor6wfdgm5u4fjimbhpkduiy7b4yjk7s42y7ly64o2a",
+      "sha256": "sha256:acb7ecd25b74747d628ccced3854a1813bd43a231f0f30957e5cd63ebc7b8ed0",
+      "size_bytes": 92923
+    },
+    "network_receipt.json": {
+      "path": "network_receipt.json",
+      "raw_cid": "bafkreibouydmua27syvs5smoch4uxs7fq4jgybpnrusjzmvelh2mws7hfy",
+      "sha256": "sha256:2ea606ca035f962b2ec98e11f94bcbe587126c05ed8d249cb2a459f4cb4be72e",
+      "size_bytes": 5937329
+    },
+    "portability_receipt.json": {
+      "path": "portability_receipt.json",
+      "raw_cid": "bafkreigcz6gwnbzun4g5jbl2im4e737qnmvw4vbvcbjsweq2nszqmphbmy",
+      "sha256": "sha256:c2cf8d6687346f0dd4857a43384feff06b2b6e543510532b121a6cb3063ce166",
+      "size_bytes": 1565443
+    },
+    "test_receipt.json": {
+      "path": "test_receipt.json",
+      "raw_cid": "bafkreic3a753ol4pxjikhypnwe4n5sr73ew6rlywg6vn7ilff53jl3ez74",
+      "sha256": "sha256:5b07fbb72f8fba50a3e1edb138deca3fd92de8af1637aadfa1652f7695ec99ff",
+      "size_bytes": 199785
+    }
+  },
+  "capture_startup_environment": {
+    "entrypoint_directory": "data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/integrated-acceptance",
+    "executable": "/usr/bin/python3.12",
+    "forbidden_modules_loaded": [],
+    "hermetic": false,
+    "meta_path": [
+      "_frozen_importlib.BuiltinImporter",
+      "_frozen_importlib.FrozenImporter",
+      "_frozen_importlib_external.PathFinder"
+    ],
+    "no_site": true,
+    "no_user_site": true,
+    "pythonpath": "/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "shared_package_roots_are_raw_not_pth_processed": true,
+    "sys_path_tail": [
+      "/home/barberb/.local/lib/python3.12/site-packages",
+      "/usr/local/lib/python3.12/dist-packages",
+      "/usr/lib/python3/dist-packages",
+      "/usr/lib/python312.zip",
+      "/usr/lib/python3.12",
+      "/usr/lib/python3.12/lib-dynload"
+    ]
+  },
+  "completion_authoritative": false,
+  "component_results": {
+    "component_verification": {
+      "component_verified": true
+    },
+    "historical": {
+      "campaign": {
+        "binding_count": 12,
+        "inventories": {
+          "baseline_recursive": {
+            "artifact_validation_receipt_cid": "baguqeerapro3c5roqitkvbeg5zxkpcleeawrsnzp4jay744rzzazrq57kbva",
+            "bundle_cid": "baguqeerar3jycpkvsx45hnfnd7u4bh37p2lkvsnl373w2b2ogaj2ixxuwhkq",
+            "capability_receipt_cid": "baguqeerambrs2h4t34he6spelik6co6jec53vkgfnkr2remr4bnyz4bn6yia",
+            "dirty_snapshot_mismatch": {
+              "compiler_observations": [
+                {
+                  "git_blob": "e4271aef7274c54716bedc84594caf15c5175b02",
+                  "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+                  "raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+                  "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+                  "sha256": "sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12",
+                  "size_bytes": 33859
+                },
+                {
+                  "git_blob": "e4271aef7274c54716bedc84594caf15c5175b02",
+                  "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+                  "raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+                  "revision": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+                  "sha256": "sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12",
+                  "size_bytes": 33859
+                },
+                {
+                  "git_blob": "e4271aef7274c54716bedc84594caf15c5175b02",
+                  "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+                  "raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+                  "revision": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+                  "sha256": "sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12",
+                  "size_bytes": 33859
+                }
+              ],
+              "declared_unsealed_snapshot_raw_cid": "bafkreiazl2bdiqresmibt4tjhqhgfd66utqvu4drn642rpykn36yarx6em",
+              "immutable_committed_snapshot_raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+              "matches": false,
+              "snapshot_observations": [
+                {
+                  "compiler_raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+                  "git_blob": "cc55b284fb3748b920655c67862ae9b6596479d7",
+                  "path": "ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json",
+                  "raw_cid": "bafkreicciunw2qwzjarl4bmmctpnvwr2dwyis55ps4k2i7v7qrtg5zjfda",
+                  "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+                  "sha256": "sha256:42451b6d42d94822be058c14dedada3a1db08977af9715a47ebf84666ee52518",
+                  "size_bytes": 4338
+                },
+                {
+                  "compiler_raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+                  "git_blob": "cc55b284fb3748b920655c67862ae9b6596479d7",
+                  "path": "ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json",
+                  "raw_cid": "bafkreicciunw2qwzjarl4bmmctpnvwr2dwyis55ps4k2i7v7qrtg5zjfda",
+                  "revision": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+                  "sha256": "sha256:42451b6d42d94822be058c14dedada3a1db08977af9715a47ebf84666ee52518",
+                  "size_bytes": 4338
+                },
+                {
+                  "compiler_raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+                  "git_blob": "cc55b284fb3748b920655c67862ae9b6596479d7",
+                  "path": "ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json",
+                  "raw_cid": "bafkreicciunw2qwzjarl4bmmctpnvwr2dwyis55ps4k2i7v7qrtg5zjfda",
+                  "revision": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+                  "sha256": "sha256:42451b6d42d94822be058c14dedada3a1db08977af9715a47ebf84666ee52518",
+                  "size_bytes": 4338
+                }
+              ],
+              "status": "historical_dirty_checkout_unsealed_mismatch"
+            },
+            "distinct_cid_count": 29,
+            "embedded_log_count": 6,
+            "proposal_cids": [
+              "baguqeera4jz46uxax5saxk275bjptynipdhjyw4kksen445eqznk5hoqclba",
+              "baguqeera4orjzamfvz5o7qotkalha4r4h2twyxnw2xwrmsuti2pieyhflasa",
+              "baguqeeradttvo5ivx6rxy3upfekzdabwrkdyv5zbzrkog3bscohpagmuv4va"
+            ],
+            "result_cid": "baguqeerabt5f2oxnlybr33a6azszdctygqthph2ww5wrk2dcqxutym4j6yjq",
+            "source_binding_receipt_cids": [
+              "baguqeerabbgrmhjhxu7ty5zhqlcc4uia5uwfo3ugikteqf6r3qmrokierbuq",
+              "baguqeerasiihzlunix2qwifuwv6dxig3j4vy5x36ye6jsmjg5fbb5ahue7ca"
+            ],
+            "source_manifest_cid": "baguqeerasownoxqyrppw3ft3us3yvd26ghvqnjl74nr2rw5o7sm3sjehip7a",
+            "summary_cid": "baguqeerasr4hxpxwkhe64btsxu56moh7v7ww2a6covaavjd7qnzb4xgl5cpq",
+            "supervisor_inventory_cid": "baguqeerablvf72zunpjvbievbspxqnc4eqgxneqjwrg5v6imr7edavovmwca",
+            "task_identity_replays": [
+              {
+                "canonical_task_cid": "baguqeeraa3ltwmsx2hkyxhigmfkadmyfy2js7cir3jl2kticrqexsemd75rq",
+                "canonical_task_key": "task/v1/06d73b3257d1d58b9d06615401b305c6932f8911da57a54d028c09791183ff63",
+                "material": {
+                  "schema": "ipfs_accelerate_py/agent-supervisor/task-identity@1",
+                  "semantic": {
+                    "acceptance": [
+                      "all 1",
+                      "717 and 3",
+                      "616 commits are enumerated; directions/counts/digests reproduce; every residual dirty submodule is explicit"
+                    ],
+                    "outputs": [
+                      "`data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json`"
+                    ],
+                    "title": "record source history and live authority"
+                  }
+                },
+                "semantic_fingerprint": "06d73b3257d1d58b9d06615401b305c6932f8911da57a54d028c09791183ff63",
+                "source": {
+                  "git_blob": "2d2415a29fc2fd28a649c11d0ea6dbe8fb1e839f",
+                  "path": "docs/architecture/proof_grounded_ir_learning.todo.md",
+                  "raw_cid": "bafkreihn6zzkp5qd6qad4d7tttiu4nrnujszcjvigb23s73kuggq4f44g4",
+                  "repository": "ipfs_accelerate_py",
+                  "revision": "8b42722897be2d2b88e416a40370c6a56b04bad8",
+                  "sha256": "sha256:edf672a7f603f4003e0ff39cd14e362da2659126a83075b97f6aa18d0e179c37",
+                  "size_bytes": 89326
+                },
+                "task_id": "PGIR-001"
+              },
+              {
+                "canonical_task_cid": "baguqeeraqps5qlahfst4tnamkjac7xxwun52ngvlike676yvldpsye5fwb3q",
+                "canonical_task_key": "task/v1/83e5d82c072ca7c9b40c52402fdef6a37ba69aab4289effb1558df2c13a5b077",
+                "material": {
+                  "schema": "ipfs_accelerate_py/agent-supervisor/task-identity@1",
+                  "semantic": {
+                    "acceptance": [
+                      "all 1",
+                      "717 and 3",
+                      "616 commits are enumerated; directions/counts/digests reproduce; every residual dirty submodule is explicit"
+                    ],
+                    "outputs": [
+                      "data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json"
+                    ],
+                    "title": "record source history and live authority"
+                  }
+                },
+                "semantic_fingerprint": "83e5d82c072ca7c9b40c52402fdef6a37ba69aab4289effb1558df2c13a5b077",
+                "source": {
+                  "git_blob": "49b030a1c0f4df62cc3e01d8d3e57382cc2aa85e",
+                  "path": "docs/architecture/proof_grounded_ir_learning.todo.md",
+                  "raw_cid": "bafkreidljpmonipl3up7fyayd6v6pce4twfjog7dhx6liushgiptwozqtm",
+                  "repository": "ipfs_accelerate_py",
+                  "revision": "52756763d98e0a1b9ef40bcf842e41f79039886c",
+                  "sha256": "sha256:6b4bd8e6a1ebdd1ff2e0181fabe7889c9d8a971be33dfcb45247321f3b3b309b",
+                  "size_bytes": 90978
+                },
+                "task_id": "PGIR-001"
+              },
+              {
+                "canonical_task_cid": "baguqeerac34yqkahhsfvoijyo3hbe3ff2u3o6o754367xnm6tpmzf7iqcmhq",
+                "canonical_task_key": "task/v1/16f98828073c8b57213876ce126ca5d536ef3bfde6fdfbb59e9bd992fd10130f",
+                "material": {
+                  "schema": "ipfs_accelerate_py/agent-supervisor/task-identity@1",
+                  "semantic": {
+                    "acceptance": [
+                      "all a1 roles have one disposition and evidence path; parallel compiler/checkpoint meanings and unresolved roles are explicit"
+                    ],
+                    "outputs": [
+                      "ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/modules.json"
+                    ],
+                    "title": "inventory canonical semantic implementations"
+                  }
+                },
+                "semantic_fingerprint": "16f98828073c8b57213876ce126ca5d536ef3bfde6fdfbb59e9bd992fd10130f",
+                "source": {
+                  "git_blob": "83222f6e464139016aa6ff1d974760ee851826f5",
+                  "path": "docs/architecture/proof_grounded_ir_learning.todo.md",
+                  "raw_cid": "bafkreidhj735gsxeces4cec66gqkxj6r4bicfbfcfubxmtd3vsjm7mxlea",
+                  "repository": "ipfs_accelerate_py",
+                  "revision": "04fbb09b4a8b34e77d11bd8da6642e0978baa02c",
+                  "sha256": "sha256:674ff7d34ae41125c1105ef1a0aba7d1e0502284a22d03764c7bac92cfb2eb20",
+                  "size_bytes": 102946
+                },
+                "task_id": "PGIR-002"
+              },
+              {
+                "canonical_task_cid": "baguqeeras4bk5tvbfa6rtebnga6ptgb33ek6przxsmpcjsm4z3ew65kxd23a",
+                "canonical_task_key": "task/v1/9702aecea1283d19902d303cf9983bd915e7c737931e24c99ccec96f75571eb6",
+                "material": {
+                  "schema": "ipfs_accelerate_py/agent-supervisor/task-identity@1",
+                  "semantic": {
+                    "acceptance": [
+                      "canonical provider/proof/checker trust boundaries and absent training/promotion surfaces are explicit"
+                    ],
+                    "outputs": [
+                      "docs/architecture/proof_grounded_ir_learning/inventory/supervisor.json"
+                    ],
+                    "title": "inventory canonical supervisor learning infrastructure"
+                  }
+                },
+                "semantic_fingerprint": "9702aecea1283d19902d303cf9983bd915e7c737931e24c99ccec96f75571eb6",
+                "source": {
+                  "git_blob": "83222f6e464139016aa6ff1d974760ee851826f5",
+                  "path": "docs/architecture/proof_grounded_ir_learning.todo.md",
+                  "raw_cid": "bafkreidhj735gsxeces4cec66gqkxj6r4bicfbfcfubxmtd3vsjm7mxlea",
+                  "repository": "ipfs_accelerate_py",
+                  "revision": "04fbb09b4a8b34e77d11bd8da6642e0978baa02c",
+                  "sha256": "sha256:674ff7d34ae41125c1105ef1a0aba7d1e0502284a22d03764c7bac92cfb2eb20",
+                  "size_bytes": 102946
+                },
+                "task_id": "PGIR-003"
+              },
+              {
+                "canonical_task_cid": "baguqeerapirjayw3xlmm3j47uh3dzcpwto7cxdit2xwbppuvz4ir7lgihl3q",
+                "canonical_task_key": "task/v1/7a229062dbbad8cda79fa1f63c89f69bbe2b8d13d5ec17be95cf111facc83af7",
+                "material": {
+                  "schema": "ipfs_accelerate_py/agent-supervisor/task-identity@1",
+                  "semantic": {
+                    "acceptance": [
+                      "every selected category has a result; first failed assertion and setup cause are retained; repair tasks cannot weaken gates"
+                    ],
+                    "outputs": [
+                      "data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json"
+                    ],
+                    "title": "seal focused pre-change test evidence and repair prerequisites"
+                  }
+                },
+                "semantic_fingerprint": "7a229062dbbad8cda79fa1f63c89f69bbe2b8d13d5ec17be95cf111facc83af7",
+                "source": {
+                  "git_blob": "4413bff53b2bd541dc7fee74c8b066b1b8e7fd0d",
+                  "path": "docs/architecture/proof_grounded_ir_learning.todo.md",
+                  "raw_cid": "bafkreibvwkh747zgyryweakcs4q3fprcmksvi7gb5pknmef6a33dujghgq",
+                  "repository": "ipfs_accelerate_py",
+                  "revision": "597a0285738c5878eed462593fd75e18715ff7f8",
+                  "sha256": "sha256:35b28ffe7f26c4716201429721b2be2262a5547cc1ebd4d610be06f63a24c734",
+                  "size_bytes": 102916
+                },
+                "task_id": "PGIR-005"
+              }
+            ],
+            "test_receipt_cids": [
+              "baguqeeray6vfewxu4uhzjttspwrmeshmswm3gcfqknvhpwtkvveb2ahdud4a",
+              "baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q",
+              "baguqeera2x4rdczh5bft26uv6c7p7nhvfaxsfppiohc3tor6rih6flsz3byq"
+            ]
+          },
+          "gap_matrix_cid": "baguqeeraspldjlypaoamdclucjsbktrmkramzhe3kra7tip5h3e5s5zkfnia",
+          "module_inventory_sha256": "532e1c8b60fcf77515e772368f80475d2f62ba1545490826c3baeea1b402920b",
+          "pinset_repository_count": 21,
+          "release_inventory_sha256": "f58457d29289d5140bfc63596f28a4648e2bad1ea6222e7b62d22e8cf9b95bb6",
+          "source_revision_manifest_cid": "baguqeerasownoxqyrppw3ft3us3yvd26ghvqnjl74nr2rw5o7sm3sjehip7a",
+          "source_revision_result_identity": "sha256:86f7c07cf7b62847b81315b6529942da7647acf9922f32cf5ccef9d8bb221e9c",
+          "supervisor_inventory_cid": "baguqeerablvf72zunpjvbievbspxqnc4eqgxneqjwrg5v6imr7edavovmwca"
+        },
+        "objective": {
+          "canonical_task_cid": "baguqeeralbl2yjo6l5gazcmslpzqtu67un4txk3wwpjr45thh5sckwq67yhq",
+          "canonical_task_key": "task/v1/5857ac25de5f4c0c89925bf309d3dfa3793bab76b3d31e76673f64255a1efe0f",
+          "material": {
+            "schema": "ipfs_accelerate_py/agent-supervisor/task-identity@1",
+            "semantic": {
+              "acceptance": [
+                "full referential integrity and reproducible cids; zero training task eligible on unresolved rights/leakage/compiler identity"
+              ],
+              "outputs": [
+                "data/agent_supervisor/proof_grounded_ir_learning/freeze"
+              ],
+              "title": "freeze semantic campaign inputs"
+            }
+          },
+          "protected_unbound_path": "docs/architecture/proof_grounded_ir_learning.todo.md",
+          "semantic_fingerprint": "5857ac25de5f4c0c89925bf309d3dfa3793bab76b3d31e76673f64255a1efe0f",
+          "source": {
+            "git_blob": "83222f6e464139016aa6ff1d974760ee851826f5",
+            "path": "docs/architecture/proof_grounded_ir_learning.todo.md",
+            "raw_cid": "bafkreidhj735gsxeces4cec66gqkxj6r4bicfbfcfubxmtd3vsjm7mxlea",
+            "repository": "ipfs_accelerate_py",
+            "revision": "04fbb09b4a8b34e77d11bd8da6642e0978baa02c",
+            "sha256": "sha256:674ff7d34ae41125c1105ef1a0aba7d1e0502284a22d03764c7bac92cfb2eb20",
+            "size_bytes": 102946
+          },
+          "task_id": "PGIR-014"
+        },
+        "rebuild": {
+          "derived_count": 38690,
+          "hidden_inputs_loaded": false,
+          "materialized_source_rows": 0,
+          "source_count": 7173,
+          "source_release_count": 2,
+          "split_assignment_count": 7173,
+          "split_example_count": 7173,
+          "split_manifest_digest": "047b263b85067aa3dad6760f623c2855fbaf776d565ec9c273c49425fcc14eb4"
+        },
+        "record_occurrences": 44,
+        "semantics": {
+          "example_contract_schema_id_count": 15,
+          "measured_adapter_mismatch": {
+            "declared_raw_cid": "bafkreife5avbe5esju4frufsogvzlaew5x5qw5h4qlefvgx2qdbamqsyny",
+            "matches": false,
+            "observations": [
+              {
+                "git_blob": "0a716b4b669adf93e0df0eeacfb561317a2c87e6",
+                "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py",
+                "raw_cid": "bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha",
+                "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+                "sha256": "sha256:b53132370e69680894285db17be810217bb7e4e26a4573f22aa248912a80dd38",
+                "size_bytes": 70724
+              },
+              {
+                "git_blob": "0a716b4b669adf93e0df0eeacfb561317a2c87e6",
+                "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py",
+                "raw_cid": "bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha",
+                "revision": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+                "sha256": "sha256:b53132370e69680894285db17be810217bb7e4e26a4573f22aa248912a80dd38",
+                "size_bytes": 70724
+              },
+              {
+                "git_blob": "0a716b4b669adf93e0df0eeacfb561317a2c87e6",
+                "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py",
+                "raw_cid": "bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha",
+                "revision": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+                "sha256": "sha256:b53132370e69680894285db17be810217bb7e4e26a4573f22aa248912a80dd38",
+                "size_bytes": 70724
+              }
+            ],
+            "observed_raw_cid": "bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha",
+            "status": "typed_permanent_no_go"
+          },
+          "opaque_policy_revision": {
+            "field": "campaign.bindings.policy.policy_revision",
+            "status": "opaque_non_authoritative_no_derivation_contract",
+            "value": "sha256:27c8da23ef92ab263ac0c144f2414fd40bdb30aace98b88f7dd76d36db26e142"
+          },
+          "schema_id_count": 6,
+          "semantic_commit_count": 5,
+          "tokenizer_authorized": false
+        },
+        "unique_paths": 41
+      },
+      "r1": {
+        "capabilities": {
+          "arm_identity_cid": "baguqeeraylvbngffosmvcvwowelspcdbbk5wom5itjvfanbzty4eioxsauhq",
+          "capability_record_cids": {
+            "hammer_cvc5": "baguqeeraduzlawq2p6dpelvkeazcrdqpu3v6xc5zgrairerwnmo6qtny6qtq",
+            "lean": "baguqeeracwkrj7rpa57nlxawxuoypacc2zrsvsjg62mao7mhjrxi7hxlhmvq",
+            "multiformats": "baguqeerag76b2f73qkvlzbekne3subendlqptqht2fhbvnfmse24esv5l22a",
+            "python": "baguqeeraxjr2bybez6rjbfwu7appc56vzuu7iaophte3detxnva7iinwcpna"
+          },
+          "replacement_capabilities": {
+            "git_blob": "2841705347a2cfb8fd0e74a74ba3c6d9425120e4",
+            "path": "ipfs_datasets_py/workspace/benchmarks/semantic-roundtrip-compositions/replacement_capabilities.json",
+            "raw_cid": "bafkreieqvoq57m26iyqge4hd5s6zjts2yiuzgg4ot67wwcszmhsvjolpji",
+            "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+            "sha256": "sha256:90aba1dfb35e46206270e3ecbd94ce5ac229931b8e9fbf6b0a5961e554b96f4a",
+            "size_bytes": 380840
+          },
+          "selected_implementations": [
+            {
+              "adapter_id": "typed_deontic",
+              "git_blob": "f9a936598649f5dbb737af20195dcd5a9d10a291",
+              "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py",
+              "raw_cid": "bafkreig2yeibug44tbffleyvju4zvo62thdqkpht3n2qn6guefkvbv7z2a",
+              "revision": "275807f04c9e4f6a8129fab639e8378c1168981c",
+              "sha256": "sha256:dac1101a1b9c984a5593154d399abbda99c7053cf3db7506f8d4215550d7f9d0",
+              "size_bytes": 9496
+            },
+            {
+              "adapter_id": "source_withheld_paraphrase",
+              "git_blob": "e7e93c5f4965e0fe42497f0b22f57635b22af173",
+              "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/realizers/source_withheld_paraphrase.py",
+              "raw_cid": "bafkreifrmafgdy5wajq7sepxxatwc2mnnubqt2c7kwped456vukyptfi6y",
+              "revision": "224a4f68d98b5bfb6bcdf619f001bdf4985591ac",
+              "sha256": "sha256:b1600a61e3b60261f911f7b82761698d6d0309e85f559e41f3bead1587cca8f6",
+              "size_bytes": 9899
+            },
+            {
+              "adapter_id": "coordinate_runner",
+              "git_blob": "d278c660ebbbbc064e60c9acd8572dc0637deb40",
+              "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/replacement_matrix.py",
+              "raw_cid": "bafkreigxa4dwxkqipox36emw7m3qyd7axxb3cqwfv4ckiniewtw5ftix6u",
+              "revision": "2dca522faff7abe7e295f4c615ab3bf31f80dd4b",
+              "sha256": "sha256:d707076baa087bafbf1196fb370c0fe0bdc3b142c5af04a43504b4edd2cd17f5",
+              "size_bytes": 95688
+            }
+          ]
+        },
+        "case_count": 13,
+        "case_ids": [
+          "exception_with_window",
+          "legal_doc_1",
+          "exec_order_1",
+          "corp_policy_1",
+          "construction_contract",
+          "missing_temporal",
+          "low_confidence_object",
+          "contradictory_modality",
+          "legal_doc_2",
+          "privacy_act_amendment",
+          "fed_reg_1",
+          "dept_memo_1",
+          "hr_handbook"
+        ],
+        "compared_fields": "all compact deterministic case fields excluding only compiler.latency_seconds and decompiler.latency_seconds",
+        "compiler_all_matched": true,
+        "corpus_split": {
+          "corpus_root": {
+            "git_blob": "4ed0d041d0bbd101abc0a7d53f1ec6e8aabe6df5",
+            "path": "ipfs_datasets_py/data/ir_learning/corpora/corpus_root.json",
+            "raw_cid": "bafkreigfium7io3zkcqew6iwpz5wdpti2nmlera3rpvycdcuwgyqvmwj3u",
+            "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+            "sha256": "sha256:c54519f43b7950a04b79167e7b61be68d358b2441b8beb810c54b1b10ab2c9dd",
+            "size_bytes": 1763
+          },
+          "lineage_graph_cid": "bafkreia5jirpcpummrddhczxebz554lkd7wrq4o5ynizjlgbczyzuwhakq",
+          "manifest_cid": "bafkreiha35x7mcukzzb5x67hmykwsny5wipf5jb4do5gpsl24mxvix55n4",
+          "source_contract_equivalence": {
+            "current": {
+              "git_blob": "b5ff8fc95b1c8c77a3d94ccd2d8d093ff0f8a715",
+              "raw_cid": "bafkreibydplsze2efe2baegv2xet4bet3qu23ymkaisqbc52khddtowmzi",
+              "revision": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+              "sha256": "sha256:381bd72c934429341010d5d5c93e0493dc29ade18a0225008bba51c639baccca",
+              "size_bytes": 32159
+            },
+            "current_additive_suffix": {
+              "classification": "module_export_list_only",
+              "raw_cid": "bafkreibhjytvqbexc2kvztq6ra2mko4q7zzetchu3tw6g6tgtqlfpujc5i",
+              "sha256": "sha256:274e2758049716955cce1e8834c53b90fe724988f4dcede37a669c1657d122ea",
+              "size_bytes": 533
+            },
+            "historical": {
+              "git_blob": "7109b47372c94f3097c2712247b4863f4b0ad438",
+              "raw_cid": "bafkreiayt677jwhvlz3rxawpigqym25tuk53lsbn2pabmg3q65ymg7c6zu",
+              "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+              "sha256": "sha256:189fbff4d8f55e771b82cf41a1866bb3a2bbb5c82dd3c0161b70f770c37c5ecd",
+              "size_bytes": 31626
+            },
+            "path": "ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/source_lineage.py",
+            "relevant_projection": {
+              "current_without_additive_export": {
+                "raw_cid": "bafkreiayt677jwhvlz3rxawpigqym25tuk53lsbn2pabmg3q65ymg7c6zu",
+                "sha256": "sha256:189fbff4d8f55e771b82cf41a1866bb3a2bbb5c82dd3c0161b70f770c37c5ecd",
+                "size_bytes": 31626
+              },
+              "definition": "exact historical module bytes; current bytes after removing the bound additive __all__ suffix",
+              "equal": true,
+              "historical": {
+                "raw_cid": "bafkreiayt677jwhvlz3rxawpigqym25tuk53lsbn2pabmg3q65ymg7c6zu",
+                "sha256": "sha256:189fbff4d8f55e771b82cf41a1866bb3a2bbb5c82dd3c0161b70f770c37c5ecd",
+                "size_bytes": 31626
+              }
+            }
+          },
+          "split_manifest": {
+            "git_blob": "558c43b6f9359c135f0c06892e2bf7a4bd2a85f2",
+            "path": "ipfs_datasets_py/data/ir_learning/splits/ir_split_manifest.json",
+            "raw_cid": "bafkreie6kuvenupykd6qivosywy5q6aqa575gxvyr2uetzsn4jajbpawp4",
+            "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+            "sha256": "sha256:9e552a46d1f850fd0455d2c5b1d87810077fd35eb88ea849e64de24090bc167f",
+            "size_bytes": 395278
+          },
+          "split_root": {
+            "git_blob": "9e767ec3ecd0ba8b80a4408d8945767caf142c3d",
+            "path": "ipfs_datasets_py/data/ir_learning/splits/split_root.json",
+            "raw_cid": "bafkreifvelyv6jmx5veqf4nptn7tvlc3qvizhuujg2o7odgp3jooq6mptu",
+            "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+            "sha256": "sha256:b522f15f2597ed4902f1af9b7f3aac5b855193d289369df70ccfda5ce8798f9d",
+            "size_bytes": 1398
+          }
+        },
+        "decompiler_all_matched": true,
+        "hidden_fixture_loaded": false,
+        "loaded_sources": {
+          "holdout": {
+            "bytes_read": false,
+            "current_git_blob": "bb626a456605acc992b4a816fdcf22acc224005d",
+            "path": "ipfs_datasets_py/tests/fixtures/semantic_roundtrip/holdout_cases.json",
+            "r1_git_blob": "bb626a456605acc992b4a816fdcf22acc224005d"
+          },
+          "loaded_records": [
+            {
+              "current_git_blob": "6e83f40d96dc4b745162769ee78aa7f48fa6aa2f",
+              "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/deterministic_baseline.py",
+              "r1_git_blob": "6e83f40d96dc4b745162769ee78aa7f48fa6aa2f",
+              "raw_cid": "bafkreifhhrhrp3sdblseysdhbuw3xtqcbz5ubu7ahbkgfdioijvmqsnbje",
+              "sha256": "sha256:a73c4f17ee430ae44c48670d2dbbce020e7b40d3e03854628d0e426ac849a149",
+              "size_bytes": 45361
+            },
+            {
+              "current_git_blob": "e4271aef7274c54716bedc84594caf15c5175b02",
+              "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+              "r1_git_blob": "e4271aef7274c54716bedc84594caf15c5175b02",
+              "raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+              "sha256": "sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12",
+              "size_bytes": 33859
+            },
+            {
+              "current_git_blob": "525cd32ebb2f832dc56a1cdaf15dfb915ac6bf0b",
+              "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py",
+              "r1_git_blob": "525cd32ebb2f832dc56a1cdaf15dfb915ac6bf0b",
+              "raw_cid": "bafkreih2ju5hvcdwcni3wtxjy2dksmjp5qvo2ipofghkq73ygk2tnnkmke",
+              "sha256": "sha256:fa4d3a7a88761351bb4ee9c686a9312fec2aed21ee298ea87f7832b536b54c51",
+              "size_bytes": 12386
+            },
+            {
+              "current_git_blob": "52d46eed7311826f7beabc3f5ea6cead2f49a7f8",
+              "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_roundtrip.py",
+              "r1_git_blob": "52d46eed7311826f7beabc3f5ea6cead2f49a7f8",
+              "raw_cid": "bafkreid2wn2of5alfxwu6oqgcl7kanjsuqgnapkdpgfglbnc3wxeyu34ny",
+              "sha256": "sha256:7ab374e2f40b2ded4f3a0612fea03532a40cd03d43798a6585a2ddae4c537c6e",
+              "size_bytes": 27010
+            },
+            {
+              "current_git_blob": "1bf4da481ff84ccb3554ae0dd1126dfc4cbffb6b",
+              "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_contracts.py",
+              "r1_git_blob": "1bf4da481ff84ccb3554ae0dd1126dfc4cbffb6b",
+              "raw_cid": "bafkreigwn3h2ulewptnebiopjobjg2ruaopdrtg3gbcenbuxut4qv4uejm",
+              "sha256": "sha256:d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+              "size_bytes": 109257
+            },
+            {
+              "current_git_blob": "2ee2d28d09d06f6538154045182018bd0e2826e1",
+              "path": "ipfs_datasets_py/tests/fixtures/semantic_roundtrip/pilot_cases.json",
+              "r1_git_blob": "2ee2d28d09d06f6538154045182018bd0e2826e1",
+              "raw_cid": "bafkreidngtg5cojnhkmwj4coijqpoixao25hxfwdzxjpywlusrqhk3hrm4",
+              "sha256": "sha256:6d34cdd1392d3a9964f04e4260f722e076ba7b96c3cdd2fc59749460756cf167",
+              "size_bytes": 14580
+            },
+            {
+              "current_git_blob": "bb626a456605acc992b4a816fdcf22acc224005d",
+              "path": "ipfs_datasets_py/tests/fixtures/semantic_roundtrip/repair_dev_cases.json",
+              "r1_git_blob": "bb626a456605acc992b4a816fdcf22acc224005d",
+              "raw_cid": "bafkreickaddpda2fuwh2p675vg6vw2jpliixhhrhanz2yk72hyqcol5zfu",
+              "sha256": "sha256:4a00c6f18345a58fa7fbfda9bd5b692f5a11739e270373ac2bfa3e20272fb92d",
+              "size_bytes": 20030
+            }
+          ]
+        }
+      },
+      "retirement": {
+        "decision": "retired",
+        "file_count": 7,
+        "manifest_cid": "baguqeera5ozoenmh6thpjua23i4inzixolmrux4fp46puffyk7j55wil3xma",
+        "retirement_cid": "baguqeeraw4nh2c7xxamku4juzt5257krzlzuaxe64vl5cuz4h4c4iwm6xdjq"
+      },
+      "successor": {
+        "candidate_source_rows": 7173,
+        "hidden_inputs_loaded": false,
+        "historical_derived_artifacts": 38690,
+        "in_scope_holdout_count": 13,
+        "materialized_derived_artifacts": 0,
+        "materialized_source_rows": 0,
+        "population_counts": {
+          "dutch-law": 4999,
+          "patent": 2174
+        },
+        "release_count": 21,
+        "split_assignment_count": 0,
+        "training_admitted_rows": 0,
+        "training_eligible_rows": 0
+      }
+    },
+    "network_capture": {
+      "exact_revision_hashes_matched": 21,
+      "response_count": 21
+    },
+    "portability": {
+      "nested": {
+        "candidate_count": 15,
+        "missing_count": 0,
+        "ref_count": 762
+      },
+      "outer": {
+        "candidate_count": 32,
+        "missing_count": 2,
+        "ref_count": 222
+      },
+      "status": "portability_no_go"
+    },
+    "tests": {
+      "focused_collected": 34,
+      "focused_passed": 34,
+      "supplementary_collected": 3,
+      "supplementary_passed": 3,
+      "test_results_authority": "observed_behavior_only",
+      "toolchain_integrity_status": "test_toolchain_integrity_no_go",
+      "toolchain_record_mismatches": [
+        {
+          "declared_hash": "sha256=j-MzP6VPofsu5aNDw0rkhpGH7p0glkFLMJdCeYXVdvs",
+          "declared_size": 221,
+          "distribution": "huggingface-hub",
+          "integrity_disposition": "unused_closure_record_mismatch",
+          "loaded_during_tests": false,
+          "observed_hash": "sha256=5bSIHcQgVxzWgepj7HjmFjaEoWPlLsf7U2RwIpFqMqg",
+          "observed_size": 325,
+          "path": "../../../bin/hf",
+          "test_relevant": false
+        },
+        {
+          "declared_hash": "sha256=Ehy5jXRZap5dsyaaS-cTG67uqzdUtZlqmybCKJEIY6o",
+          "declared_size": 29856,
+          "distribution": "pytest-asyncio",
+          "integrity_disposition": "test_toolchain_integrity_no_go",
+          "loaded_during_tests": true,
+          "observed_hash": "sha256=ukfCWkoisReJHpIUlAcpxBr5NtPa-7GLQoTeiojtM3U",
+          "observed_size": 38200,
+          "path": "pytest_asyncio/plugin.py",
+          "test_relevant": true
+        }
+      ]
+    }
+  },
+  "containing_commit_claimed": false,
+  "decision": "permanent_no_go",
+  "execution_environment_defects": {
+    "test_results_authority": "observed_behavior_only",
+    "toolchain_integrity_status": "test_toolchain_integrity_no_go",
+    "toolchain_record_mismatches": [
+      {
+        "declared_hash": "sha256=j-MzP6VPofsu5aNDw0rkhpGH7p0glkFLMJdCeYXVdvs",
+        "declared_size": 221,
+        "distribution": "huggingface-hub",
+        "integrity_disposition": "unused_closure_record_mismatch",
+        "loaded_during_tests": false,
+        "observed_hash": "sha256=5bSIHcQgVxzWgepj7HjmFjaEoWPlLsf7U2RwIpFqMqg",
+        "observed_size": 325,
+        "path": "../../../bin/hf",
+        "test_relevant": false
+      },
+      {
+        "declared_hash": "sha256=Ehy5jXRZap5dsyaaS-cTG67uqzdUtZlqmybCKJEIY6o",
+        "declared_size": 29856,
+        "distribution": "pytest-asyncio",
+        "integrity_disposition": "test_toolchain_integrity_no_go",
+        "loaded_during_tests": true,
+        "observed_hash": "sha256=ukfCWkoisReJHpIUlAcpxBr5NtPa-7GLQoTeiojtM3U",
+        "observed_size": 38200,
+        "path": "pytest_asyncio/plugin.py",
+        "test_relevant": true
+      }
+    ]
+  },
+  "historical_recursive_defects": {
+    "mismatches": [
+      {
+        "declared_raw_cid": "bafkreife5avbe5esju4frufsogvzlaew5x5qw5h4qlefvgx2qdbamqsyny",
+        "matches": false,
+        "observations": [
+          {
+            "git_blob": "0a716b4b669adf93e0df0eeacfb561317a2c87e6",
+            "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py",
+            "raw_cid": "bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha",
+            "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+            "sha256": "sha256:b53132370e69680894285db17be810217bb7e4e26a4573f22aa248912a80dd38",
+            "size_bytes": 70724
+          },
+          {
+            "git_blob": "0a716b4b669adf93e0df0eeacfb561317a2c87e6",
+            "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py",
+            "raw_cid": "bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha",
+            "revision": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+            "sha256": "sha256:b53132370e69680894285db17be810217bb7e4e26a4573f22aa248912a80dd38",
+            "size_bytes": 70724
+          },
+          {
+            "git_blob": "0a716b4b669adf93e0df0eeacfb561317a2c87e6",
+            "path": "ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py",
+            "raw_cid": "bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha",
+            "revision": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+            "sha256": "sha256:b53132370e69680894285db17be810217bb7e4e26a4573f22aa248912a80dd38",
+            "size_bytes": 70724
+          }
+        ],
+        "observed_raw_cid": "bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha",
+        "status": "typed_permanent_no_go"
+      },
+      {
+        "compiler_observations": [
+          {
+            "git_blob": "e4271aef7274c54716bedc84594caf15c5175b02",
+            "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+            "raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+            "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+            "sha256": "sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12",
+            "size_bytes": 33859
+          },
+          {
+            "git_blob": "e4271aef7274c54716bedc84594caf15c5175b02",
+            "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+            "raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+            "revision": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+            "sha256": "sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12",
+            "size_bytes": 33859
+          },
+          {
+            "git_blob": "e4271aef7274c54716bedc84594caf15c5175b02",
+            "path": "ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py",
+            "raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+            "revision": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+            "sha256": "sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12",
+            "size_bytes": 33859
+          }
+        ],
+        "declared_unsealed_snapshot_raw_cid": "bafkreiazl2bdiqresmibt4tjhqhgfd66utqvu4drn642rpykn36yarx6em",
+        "immutable_committed_snapshot_raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+        "matches": false,
+        "snapshot_observations": [
+          {
+            "compiler_raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+            "git_blob": "cc55b284fb3748b920655c67862ae9b6596479d7",
+            "path": "ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json",
+            "raw_cid": "bafkreicciunw2qwzjarl4bmmctpnvwr2dwyis55ps4k2i7v7qrtg5zjfda",
+            "revision": "9313a20a3d7281e4ee9e8efdf907795c89ff4b65",
+            "sha256": "sha256:42451b6d42d94822be058c14dedada3a1db08977af9715a47ebf84666ee52518",
+            "size_bytes": 4338
+          },
+          {
+            "compiler_raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+            "git_blob": "cc55b284fb3748b920655c67862ae9b6596479d7",
+            "path": "ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json",
+            "raw_cid": "bafkreicciunw2qwzjarl4bmmctpnvwr2dwyis55ps4k2i7v7qrtg5zjfda",
+            "revision": "b20bd9e3cfae79e8888929daf64f52b2f8a5689a",
+            "sha256": "sha256:42451b6d42d94822be058c14dedada3a1db08977af9715a47ebf84666ee52518",
+            "size_bytes": 4338
+          },
+          {
+            "compiler_raw_cid": "bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci",
+            "git_blob": "cc55b284fb3748b920655c67862ae9b6596479d7",
+            "path": "ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json",
+            "raw_cid": "bafkreicciunw2qwzjarl4bmmctpnvwr2dwyis55ps4k2i7v7qrtg5zjfda",
+            "revision": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+            "sha256": "sha256:42451b6d42d94822be058c14dedada3a1db08977af9715a47ebf84666ee52518",
+            "size_bytes": 4338
+          }
+        ],
+        "status": "historical_dirty_checkout_unsealed_mismatch"
+      }
+    ],
+    "opaque_links": [
+      {
+        "field": "campaign.bindings.policy.policy_revision",
+        "status": "opaque_non_authoritative_no_derivation_contract",
+        "value": "sha256:27c8da23ef92ab263ac0c144f2414fd40bdb30aace98b88f7dd76d36db26e142"
+      }
+    ]
+  },
+  "permanent_no_go_reason_codes": [
+    "remote_commit_population_incomplete",
+    "historical_measured_adapter_cid_mismatch",
+    "historical_policy_revision_opaque",
+    "historical_dirty_snapshot_cid_unsealed_mismatch",
+    "test_toolchain_loaded_record_mismatch",
+    "test_toolchain_unused_console_record_mismatch",
+    "zero_rights_admitted_materialized_rows",
+    "tokenizer_not_admitted",
+    "current_baseline_retired"
+  ],
+  "pgir_205_execution_authorized": false,
+  "portability_no_go": {
+    "missing_nested_commits": [],
+    "missing_outer_commits": [
+      "04fbb09b4a8b34e77d11bd8da6642e0978baa02c",
+      "597a0285738c5878eed462593fd75e18715ff7f8"
+    ],
+    "pgir_205_execution_authorized": false,
+    "status": "portability_no_go"
+  },
+  "predecessor_acceptance_cids": {
+    "PGIR-208": "baguqeeraburgmpdfo6weea57zlgkmppv7r34v2v3zstrepudxhrj6zrlgabq",
+    "PGIR-209": "baguqeerauh6r5lk47ecfmu5zjujmadrjiohd2ixkczcnurc33izkkvf2nb7q",
+    "PGIR-210": "baguqeera4ruaxwivpst2iwslorrgmbpuva6jqxczyjf6uditxg62atltnvkq"
+  },
+  "result_identity": "RESULT(PGIR-211)",
+  "schema": "proof-grounded-ir-learning/successor-integrated-acceptance/v2",
+  "supersession_chain": [
+    {
+      "acceptance_cid": "baguqeeraburgmpdfo6weea57zlgkmppv7r34v2v3zstrepudxhrj6zrlgabq",
+      "result_identity": "RESULT(PGIR-208)"
+    },
+    {
+      "acceptance_cid": "baguqeera4ruaxwivpst2iwslorrgmbpuva6jqxczyjf6uditxg62atltnvkq",
+      "result_identity": "RESULT(PGIR-210)"
+    },
+    {
+      "result_identity": "RESULT(PGIR-211)",
+      "self_reference_field": "acceptance_cid"
+    }
+  ],
+  "target": {
+    "nested_gitlink": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+    "nested_tree": "7169c2a67929044a02350bc26d0a51c853a4981b",
+    "outer_commit": "75791d58beeab140c2a3ebaf9789705b3e75c151",
+    "outer_tree": "e092bc48487226229c0df5c47029c3db36004e18"
+  },
+  "task_id": "PGIR-211",
+  "unresolved_links": [
+    {
+      "field": "campaign.bindings.policy.policy_revision",
+      "status": "opaque_non_authoritative_no_derivation_contract",
+      "value": "sha256:27c8da23ef92ab263ac0c144f2414fd40bdb30aace98b88f7dd76d36db26e142"
+    }
+  ],
+  "verifier_source": {
+    "containing_commit_claimed": false,
+    "path": "scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py",
+    "prospective_git_blob": "712be25b94e24cfa2e53a02140bb1885210103c5",
+    "raw_cid": "bafkreidu6n2fiblftquo6jezxv6yedl34a4ssf6g2yn56cjtyetcidccii",
+    "sha256": "sha256:74f3745405659c28ef2499bd7d820d7be0392917c6d61bdf0933c126240c4242",
+    "size_bytes": 197030
+  }
+}

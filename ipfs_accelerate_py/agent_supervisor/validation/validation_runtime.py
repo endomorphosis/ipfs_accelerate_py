@@ -34,6 +34,9 @@ from typing import Any
 VALIDATION_PATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PATH"
 VALIDATION_PYTHON_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
+VALIDATION_PYTHON_PROFILE_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_PROFILE"
+)
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
 VALIDATION_CARGO_HOME_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_CARGO_HOME"
 VALIDATION_RUSTUP_HOME_ENV = (
@@ -69,7 +72,7 @@ PROVIDER_PROTECTED_STATE_ROOT_ENV = (
 )
 VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "validation-filesystem-boundary@1"
+    "validation-filesystem-boundary@2"
 )
 PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -115,12 +118,13 @@ _RUNTIME_ID_ENV = "IPFS_ACCELERATE_VALIDATION_RUNTIME_ID"
 _CANCELLATION_ID_ENV = "IPFS_ACCELERATE_VALIDATION_CANCELLATION_ID"
 _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
     "ipfs_accelerate_py/agent-supervisor/"
-    "nested-validation-python-launcher@3;"
+    "nested-validation-python-launcher@4;"
     "seals=write,grow,shrink,seal;"
     "handoff=explicit-self-fd;"
     "shell-startup=privileged-no-bash-env;"
-    "user-site=interpreter-s-flag;"
-    "pythonpath=task-local-then-approved;"
+    "entrypoints=canonical-python-basename-and-bare-pytest;"
+    "site-policy=mode-bound-interpreter-flag;"
+    "pythonpath=mode-bound-task-local-or-exact-approved;"
     "ruff=active-distribution-content-stat-sealed-memfd-exact-module"
 )
 _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
@@ -215,13 +219,15 @@ class ValidationFilesystemBoundaryReceipt:
 
     landlock_abi: int
     policy_sha256: str
+    python_site_policy: str
 
     def to_dict(self, *, applied: bool = True) -> dict[str, object]:
         return {
             "schema": VALIDATION_FILESYSTEM_BOUNDARY_SCHEMA,
-            "mode": "landlock-read-only-host-v1",
+            "mode": "landlock-read-only-host-v2",
             "landlock_abi": self.landlock_abi,
             "policy_sha256": self.policy_sha256,
+            "python_site_policy": self.python_site_policy,
             "applied": bool(applied),
             "proof_reuse_control_state_read_only": bool(applied),
             "proof_reuse_state_write_exception": (
@@ -1555,11 +1561,24 @@ def validation_readonly_state_command(
         sort_keys=True,
         separators=(",", ":"),
     )
+    python_profile = validation_python_profile(environment)
+    interpreter_flags = ["-I"]
+    if python_profile == "raw-no-site":
+        interpreter_flags.append("-S")
     receipt = ValidationFilesystemBoundaryReceipt(
         landlock_abi=abi,
-        policy_sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+        policy_sha256=hashlib.sha256(
+            _canonical_json(
+                {
+                    "launcher_source": source,
+                    "python_profile": python_profile,
+                    "interpreter_flags": interpreter_flags,
+                }
+            ).encode("utf-8")
+        ).hexdigest(),
+        python_site_policy=python_profile,
     )
-    return [executable, "-I", "-c", source, policy, *argv], receipt
+    return [executable, *interpreter_flags, "-c", source, policy, *argv], receipt
 
 
 def provider_readonly_state_command(
@@ -1755,9 +1774,29 @@ def provider_readonly_state_command(
     return [executable, "-I", "-c", source, policy, *argv], receipt
 
 
-def _validation_python_launcher_mode(*, sealed: bool = False) -> str:
+def validation_python_profile(
+    environment: Mapping[str, object],
+) -> str:
+    raw = str(environment.get(VALIDATION_PYTHON_PROFILE_ENV) or "").strip()
+    if raw in {"", "default"}:
+        return "default"
+    if raw != "raw-no-site":
+        raise ValidationRuntimeError(
+            f"{VALIDATION_PYTHON_PROFILE_ENV} must be default or raw-no-site"
+        )
+    return raw
+
+
+def _validation_python_launcher_mode(
+    *,
+    sealed: bool = False,
+    no_site: bool = False,
+) -> str:
     delivery = "sealed-memfd" if sealed else "canonical-direct"
-    return f"{sys.platform}:{delivery}"
+    site_policy = ":site-policy=no-site" if no_site else ""
+    # Keep delivery as the final component.  Cache/receipt consumers use that
+    # suffix to decide whether immutable-launcher evidence is mandatory.
+    return f"{sys.platform}{site_policy}:{delivery}"
 
 
 def _validation_python_launcher_policy_sha256(mode: str) -> str:
@@ -1893,6 +1932,15 @@ def validation_environment_for_runner(
     """Bind runner-specific launcher policy before scheduler cache lookup."""
 
     result = {str(key): str(value) for key, value in environment.items()}
+    no_site = validation_python_profile(result) == "raw-no-site"
+    if (
+        no_site
+        and sys.platform.startswith("linux")
+        and not runner_requires_sealed_validation_python(runner)
+    ):
+        raise ValidationRuntimeError(
+            "raw-no-site validation requires a sealed Python runner"
+        )
     if (
         not sys.platform.startswith("linux")
         or not runner_requires_sealed_validation_python(runner)
@@ -1924,7 +1972,10 @@ def validation_environment_for_runner(
                 VALIDATION_RUFF_EXECUTABLE_STAT_ENV: ruff_stat,
             }
         )
-    mode = _validation_python_launcher_mode(sealed=True)
+    mode = _validation_python_launcher_mode(
+        sealed=True,
+        no_site=no_site,
+    )
     result.update(
         {
             VALIDATION_PYTHON_LAUNCHER_MODE_ENV: mode,
@@ -1938,6 +1989,7 @@ def validation_environment_for_runner(
                     ruff_sha256=(
                         ruff_snapshot[1] if ruff_snapshot is not None else ""
                     ),
+                    no_site=no_site,
                 )
             ).hexdigest(),
         }
@@ -1952,6 +2004,8 @@ def build_validation_environment(
 
     source = os.environ if environment is None else environment
     python_executable = validation_python_executable(source)
+    profile = validation_python_profile(source)
+    no_site = profile == "raw-no-site"
     result = {
         key: str(source[key])
         for key in sorted(VALIDATION_ENVIRONMENT_ALLOWLIST)
@@ -2018,10 +2072,12 @@ def build_validation_environment(
     python_path = _runtime_python_path_entries(source)
     if python_path:
         result["PYTHONPATH"] = os.pathsep.join(python_path)
+    if no_site:
+        result[VALIDATION_PYTHON_PROFILE_ENV] = profile
     interpreter_sha256, interpreter_stat = (
         _validation_python_interpreter_identity(python_executable)
     )
-    launcher_mode = _validation_python_launcher_mode()
+    launcher_mode = _validation_python_launcher_mode(no_site=no_site)
     result.update(
         {
             VALIDATION_PYTHON_LAUNCHER_MODE_ENV: launcher_mode,
@@ -2061,6 +2117,7 @@ def _validation_python_launcher_source(
     executable: str,
     approved_pythonpath: str,
     ruff_sha256: str,
+    no_site: bool,
 ) -> bytes:
     """Render a launcher that discovers Ruff beside its sealed parent FD."""
 
@@ -2100,6 +2157,16 @@ def _validation_python_launcher_source(
         "env=dict(os.environ)\n"
         f"[env.pop(key,None) for key in {(VALIDATION_RUFF_EXECUTABLE_ENV, VALIDATION_RUFF_EXECUTABLE_MODE_ENV, VALIDATION_RUFF_EXECUTABLE_SHA256_ENV, VALIDATION_RUFF_EXECUTABLE_STAT_ENV)!r}]\n"
         "os.execve(fd,['ruff',*sys.argv[3:]],env)\n"
+    )
+    ruff_site_flag = "-S " if no_site else ""
+    pythonpath_guard = (
+        'if [[ "$requested" != "$approved" ]]; then\n'
+        "    printf '%s\\n' "
+        "ipfs-accelerate-validation-python-error:unapproved-pythonpath >&2\n"
+        "    exit 75\n"
+        "fi\n"
+        if no_site
+        else ""
     )
 
     return (
@@ -2155,10 +2222,11 @@ def _validation_python_launcher_source(
         f"        printf '%s\\n' {shlex.quote(VALIDATION_RUFF_UNAVAILABLE_MARKER)} >&2\n"
         "        exit 75\n"
         "    fi\n"
-        '    exec "$executable" -I -c "$ruff_broker" '
+        f'    exec "$executable" -I {ruff_site_flag}-c "$ruff_broker" '
         '"$original_launcher_path" "$ruff_sha256" "$@"\n'
         "fi\n"
         'requested="${PYTHONPATH-}"\n'
+        f"{pythonpath_guard}"
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then\n'
         '    if [[ -n "$requested" ]]; then\n'
         '        export PYTHONPATH="$requested:$approved"\n'
@@ -2166,7 +2234,7 @@ def _validation_python_launcher_source(
         '        export PYTHONPATH="$approved"\n'
         "    fi\n"
         "fi\n"
-        'exec "$executable" -s "$@"\n'
+        f'exec "$executable" {"-S" if no_site else "-s"} "$@"\n'
     ).encode()
 
 
@@ -2254,7 +2322,9 @@ def validation_python_launcher_environment(
     procfs descriptor.  A child can replace ``PYTHONPATH`` for workspace-local
     imports, but the launcher appends the roots already admitted by
     :func:`build_validation_environment`.  ``PYTHONNOUSERSITE`` remains set, so
-    Python never rediscovers packages through a child-controlled HOME.
+    Python never rediscovers packages through a child-controlled HOME.  A
+    reviewed no-site mode uses ``-S`` and relies only on explicitly admitted
+    package roots.
 
     The descriptor stays open only for the yielded subprocess lifetime and is
     closed on every exit path.  Linux fails closed if immutable delivery cannot
@@ -2295,8 +2365,10 @@ def validation_python_launcher_environment(
     )
     rendered_executable = str(resolved_executable)
     approved_pythonpath = str(child_environment.get("PYTHONPATH") or "")
+    no_site = validation_python_profile(child_environment) == "raw-no-site"
     expected_mode = _validation_python_launcher_mode(
-        sealed=sys.platform.startswith("linux")
+        sealed=sys.platform.startswith("linux"),
+        no_site=no_site,
     )
     recorded_mode = str(
         child_environment.get(VALIDATION_PYTHON_LAUNCHER_MODE_ENV) or ""
@@ -2411,6 +2483,7 @@ def validation_python_launcher_environment(
         executable=rendered_executable,
         approved_pythonpath=approved_pythonpath,
         ruff_sha256=(ruff_snapshot[1] if ruff_snapshot is not None else ""),
+        no_site=no_site,
     )
     content_sha256 = hashlib.sha256(identity_payload).hexdigest()
     if recorded_content_sha256 != content_sha256:
@@ -2477,10 +2550,71 @@ _SHELL_CONTROL_TOKEN = re.compile(r"[;&|()]+")
 _PYTHON_MODULE_FLAG = re.compile(r"^-[^-]*m$")
 _PYTHON_COMPACT_RUFF_MODULE = re.compile(r"^-[^-]*mruff(?:\.|$)")
 _RUFF_MODULE_NAME = re.compile(r"^ruff(?:\.|$)")
+_PYTHON_EXECUTABLE_NAME = re.compile(r"^python(?:3(?:\.\d+)*)?$")
+_PYTEST_EXECUTABLE_NAMES = frozenset({"pytest", "py.test"})
 _DYNAMIC_SHELL_COMMAND_WORD = re.compile(r"[$*?\[\]{}~]")
 _COMMAND_WRAPPERS = frozenset(
     {"chrt", "command", "env", "ionice", "nice", "nohup", "setsid", "stdbuf", "timeout"}
 )
+
+
+def _is_python_executable_token(value: object) -> bool:
+    """Recognize every supported Python-basename spelling without running it."""
+
+    return bool(_PYTHON_EXECUTABLE_NAME.fullmatch(Path(str(value)).name))
+
+
+def _is_pytest_executable_token(value: object) -> bool:
+    """Recognize pytest console-script basenames without trusting a shebang."""
+
+    return Path(str(value)).name in _PYTEST_EXECUTABLE_NAMES
+
+
+def _canonical_python_launcher_names(
+    environment: Mapping[str, object] | None = None,
+) -> frozenset[str]:
+    """Return bare names that are safely redirected to the approved Python."""
+
+    canonical = Path(validation_python_executable(environment)).name
+    names = {"python", "python3"}
+    if _is_python_executable_token(canonical):
+        names.add(canonical)
+    return frozenset(names)
+
+
+def _env_split_string_arguments(arguments: Sequence[str]) -> tuple[str, ...]:
+    """Expand GNU env split-string spellings for static wrapper inspection."""
+
+    expanded: list[str] = []
+    env_seen = False
+    for index, part in enumerate(arguments):
+        if _SHELL_CONTROL_TOKEN.fullmatch(part):
+            env_seen = False
+            continue
+        if Path(part).name == "env":
+            env_seen = True
+            continue
+        if not env_seen:
+            continue
+        split_text = ""
+        if part in {"-S", "--split-string"} and index + 1 < len(arguments):
+            split_text = arguments[index + 1]
+        elif part.startswith("--split-string="):
+            split_text = part.partition("=")[2]
+        elif part.startswith("-") and not part.startswith("--") and "S" in part[1:]:
+            suffix = part.partition("S")[2]
+            split_text = suffix or (
+                arguments[index + 1] if index + 1 < len(arguments) else ""
+            )
+        if not split_text:
+            continue
+        try:
+            expanded.extend(shlex.split(split_text))
+        except ValueError as exc:
+            raise ValidationRuntimeError(
+                "invalid env split-string validation argv"
+            ) from exc
+    return tuple(expanded)
 
 
 def _ruff_module_indices(
@@ -2531,6 +2665,7 @@ def _shell_command_segments(
 def validation_shell_command(command: str) -> list[str]:
     """Return a non-login, non-interactive Bash invocation for reviewed text."""
 
+    canonical_python_names = _canonical_python_launcher_names()
     text = str(command).strip()
     if (
         len(text) >= 2
@@ -2590,7 +2725,10 @@ def validation_shell_command(command: str) -> list[str]:
                 )
                 if (
                     len(nested) > 1
-                    and nested_command in {"python", "python3", "pytest"}
+                    and (
+                        _is_python_executable_token(nested_command)
+                        or _is_pytest_executable_token(nested_command)
+                    )
                 ):
                     flattened.extend(nested)
                     command_word_expected = False
@@ -2636,7 +2774,8 @@ def validation_shell_command(command: str) -> list[str]:
         if (
             _ruff_module_indices(embedded)
             or any(Path(part).name == "ruff" for part in embedded)
-            or any(Path(part).name in {"python", "python3"} for part in embedded)
+            or any(_is_python_executable_token(part) for part in embedded)
+            or any(_is_pytest_executable_token(part) for part in embedded)
         ):
             raise ValidationRuntimeError(
                 "embedded Python or Ruff validation arguments are not permitted"
@@ -2651,7 +2790,7 @@ def validation_shell_command(command: str) -> list[str]:
             command_start += 1
         if (
             command_start >= module_index
-            or leading[command_start] not in {"python", "python3"}
+            or leading[command_start] not in canonical_python_names
         ):
             raise ValidationRuntimeError(
                 "Ruff validation must use the sealed python or python3 launcher"
@@ -2667,6 +2806,15 @@ def validation_shell_command(command: str) -> list[str]:
         raise ValidationRuntimeError(
             "direct Ruff validation requires the sealed Python launcher"
         )
+    split_env_argv = _env_split_string_arguments(leading)
+    if any(_is_python_executable_token(part) for part in split_env_argv):
+        raise ValidationRuntimeError(
+            "wrapped Python validation commands are not permitted"
+        )
+    if any(_is_pytest_executable_token(part) for part in split_env_argv):
+        raise ValidationRuntimeError(
+            "wrapped pytest validation commands are not permitted"
+        )
     for segment in _shell_command_segments(leading):
         command_index = 0
         while (
@@ -2680,12 +2828,19 @@ def validation_shell_command(command: str) -> list[str]:
             raise ValidationRuntimeError(
                 "dynamic validation command names are not permitted"
             )
+        command_name = segment[command_index]
         for later in segment[command_index + 1 :]:
-            if Path(later).name in {"python", "python3"}:
+            if _is_python_executable_token(later):
                 raise ValidationRuntimeError(
                     "wrapped Python validation commands are not permitted"
                 )
-        command_name = segment[command_index]
+            if (
+                _is_pytest_executable_token(later)
+                and command_name not in canonical_python_names
+            ):
+                raise ValidationRuntimeError(
+                    "wrapped pytest validation commands are not permitted"
+                )
         if Path(command_name).name in _COMMAND_WRAPPERS and any(
             _DYNAMIC_SHELL_COMMAND_WORD.search(argument)
             for argument in segment[command_index + 1 :]
@@ -2693,12 +2848,16 @@ def validation_shell_command(command: str) -> list[str]:
             raise ValidationRuntimeError(
                 "dynamic wrapped validation command names are not permitted"
             )
-        if Path(command_name).name in {"python", "python3"} and command_name not in {
-            "python",
-            "python3",
-        }:
+        if (
+            _is_python_executable_token(command_name)
+            and command_name not in canonical_python_names
+        ):
             raise ValidationRuntimeError(
                 "validation Python must use the sealed python or python3 launcher"
+            )
+        if _is_pytest_executable_token(command_name) and command_name != "pytest":
+            raise ValidationRuntimeError(
+                "validation pytest must use the sealed bare pytest launcher"
             )
     # A reviewed command may prepend workspace-local import roots with an
     # assignment such as ``PYTHONPATH=src:. python -m pytest``.  Bash applies
@@ -2708,18 +2867,39 @@ def validation_shell_command(command: str) -> list[str]:
     # the reviewed text and append them inside every guarded Python launcher.
     # This retains the command's intentional workspace imports while keeping
     # the pinned pytest/runtime packages available.
+    versioned_python_names = tuple(
+        sorted(canonical_python_names.difference({"python", "python3"}))
+    )
+    versioned_python_functions = "".join(
+        f'{name}() {{ _ipfs_accelerate_validation_python "$@"; }}; '
+        for name in versioned_python_names
+    )
+    readonly_python_names = " ".join(
+        ("_ipfs_accelerate_validation_python", *sorted(canonical_python_names), "pytest")
+    )
     guarded = (
         f"readonly {_CHILD_PYTHON_ENV}; "
         '_IPFS_ACCELERATE_SEALED_PYTHON="${PYTHON}"; '
         "readonly _IPFS_ACCELERATE_SEALED_PYTHON; "
         '_IPFS_ACCELERATE_APPROVED_PYTHONPATH="${PYTHONPATH-}"; '
         "readonly _IPFS_ACCELERATE_APPROVED_PYTHONPATH; "
+        f'if [[ "${{{VALIDATION_PYTHON_PROFILE_ENV}-}}" == raw-no-site ]]; '
+        "then _IPFS_ACCELERATE_VALIDATION_NO_SITE=1; "
+        "else _IPFS_ACCELERATE_VALIDATION_NO_SITE=0; fi; "
+        "readonly _IPFS_ACCELERATE_VALIDATION_NO_SITE; "
         "_ipfs_accelerate_validation_python() { "
         'local requested="${PYTHONPATH-}"; '
         'local approved="${_IPFS_ACCELERATE_APPROVED_PYTHONPATH}"; '
         'local -a prefix=(); '
+        'if [[ "${_IPFS_ACCELERATE_VALIDATION_NO_SITE}" == 1 '
+        '&& "$requested" != "$approved" ]]; then '
+        "printf '%s\\n' "
+        "ipfs-accelerate-validation-python-error:unapproved-pythonpath >&2; "
+        "return 75; fi; "
         f'if [[ "${{_IPFS_ACCELERATE_SEALED_PYTHON}}" '
-        f'== "${{{_CHILD_PYTHON_ENV}}}" ]]; then prefix=(-s); fi; '
+        f'== "${{{_CHILD_PYTHON_ENV}}}" ]]; then '
+        'if [[ "${_IPFS_ACCELERATE_VALIDATION_NO_SITE}" == 1 ]]; then '
+        'prefix=(-S); else prefix=(-s); fi; fi; '
         'if [[ -n "$approved" && "$requested" != "$approved" ]]; then '
         'if [[ -n "$requested" ]]; then '
         'PYTHONPATH="$requested:$approved" '
@@ -2734,14 +2914,19 @@ def validation_shell_command(command: str) -> list[str]:
         "}; "
         'python() { _ipfs_accelerate_validation_python "$@"; }; '
         'python3() { _ipfs_accelerate_validation_python "$@"; }; '
+        f"{versioned_python_functions}"
         'pytest() { _ipfs_accelerate_validation_python -m pytest "$@"; }; '
-        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; "
+        f"readonly -f {readonly_python_names}; "
         f"{text}"
     )
     return ["/bin/bash", "--noprofile", "--norc", "-c", guarded]
 
 
-def validation_argv_command(command: Sequence[str]) -> list[str]:
+def validation_argv_command(
+    command: Sequence[str],
+    *,
+    environment: Mapping[str, object] | None = None,
+) -> list[str]:
     """Normalize an argv validation without permitting a login shell.
 
     Most argv validations execute directly.  Historical callers may have
@@ -2752,26 +2937,18 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
     directory is intentionally absent from the restricted executable PATH.
     """
 
+    source = os.environ if environment is None else environment
+    canonical_python_names = _canonical_python_launcher_names(source)
+    site_flag = (
+        "-S"
+        if validation_python_profile(source) == "raw-no-site"
+        else "-s"
+    )
     parts = [str(part) for part in command]
     if not parts or not parts[0]:
         raise ValidationRuntimeError("validation argv must not be empty")
     executable_name = Path(parts[0]).name
-    split_env_argv: list[str] = []
-    for index, part in enumerate(parts):
-        split_text = ""
-        if part in {"-S", "--split-string"} and index + 1 < len(parts):
-            split_text = parts[index + 1]
-        elif part.startswith("--split-string="):
-            split_text = part.partition("=")[2]
-        elif part.startswith("-S") and len(part) > 2:
-            split_text = part[2:]
-        if split_text:
-            try:
-                split_env_argv.extend(shlex.split(split_text))
-            except ValueError as exc:
-                raise ValidationRuntimeError(
-                    "invalid env split-string validation argv"
-                ) from exc
+    split_env_argv = _env_split_string_arguments(parts)
     embedded_argv: list[str] = []
     for part in parts:
         if not any(character.isspace() for character in part):
@@ -2782,7 +2959,13 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
             raise ValidationRuntimeError(
                 "invalid embedded validation argv"
             ) from exc
-    ruff_argv = [parts, split_env_argv, embedded_argv]
+    # A direct shell argv carries reviewed command text as one whitespace-rich
+    # field.  Let validation_shell_command parse that field in context instead
+    # of misclassifying its inner canonical Python as an outer wrapper.
+    embedded_direct_argv = (
+        [] if executable_name in {"bash", "sh"} else embedded_argv
+    )
+    ruff_argv = [parts, split_env_argv, embedded_direct_argv]
     if (
         any(Path(part).name == "ruff" for argv in ruff_argv for part in argv)
         or any(_ruff_module_indices(argv) for argv in ruff_argv)
@@ -2790,30 +2973,49 @@ def validation_argv_command(command: Sequence[str]) -> list[str]:
         raise ValidationRuntimeError(
             "direct argv Ruff validation requires the sealed string-command launcher"
         )
-    if executable_name in {"python", "python3"} and parts[0] not in {
-        "python",
-        "python3",
-    }:
+    if executable_name not in {"bash", "sh"} and any(
+        Path(part).name in {"bash", "sh"} for part in parts[1:]
+    ):
+        raise ValidationRuntimeError(
+            "wrapped validation shells are not permitted"
+        )
+    if (
+        _is_python_executable_token(executable_name)
+        and parts[0] not in canonical_python_names
+    ):
         raise ValidationRuntimeError(
             "direct argv Python must use the canonical launcher name"
         )
     if any(
-        Path(part).name in {"python", "python3"}
-        for part in parts[1:]
+        _is_python_executable_token(part)
+        for argv in (parts[1:], split_env_argv, embedded_direct_argv)
+        for part in argv
     ):
         raise ValidationRuntimeError(
             "wrapped direct argv Python validation is not permitted"
         )
-    if parts[0] in {"python", "python3"}:
-        return [validation_python_executable(), "-s", *parts[1:]]
-    if parts[0] == "pytest":
+    if parts[0] in canonical_python_names:
+        return [validation_python_executable(source), site_flag, *parts[1:]]
+    if _is_pytest_executable_token(executable_name):
+        if parts[0] != "pytest":
+            raise ValidationRuntimeError(
+                "direct argv pytest must use the canonical bare launcher name"
+            )
         return [
-            validation_python_executable(),
-            "-s",
+            validation_python_executable(source),
+            site_flag,
             "-m",
             "pytest",
             *parts[1:],
         ]
+    if any(
+        _is_pytest_executable_token(part)
+        for argv in (parts[1:], split_env_argv, embedded_direct_argv)
+        for part in argv
+    ):
+        raise ValidationRuntimeError(
+            "wrapped direct argv pytest validation is not permitted"
+        )
     if executable_name not in {"bash", "sh"}:
         if any(Path(part).name in {"bash", "sh"} for part in parts[1:]):
             raise ValidationRuntimeError(
@@ -3132,7 +3334,7 @@ def run_hermetic_validation_process(
 
 
 VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/validation-environment-contract@1"
+    "ipfs_accelerate_py/agent-supervisor/validation-environment-contract@2"
 )
 
 
@@ -3144,6 +3346,8 @@ def canonical_validation_environment_contract(
     source = os.environ if environment is None else environment
     child = build_validation_environment(source)
     path = str(child["PATH"])
+    pythonpath = str(child.get("PYTHONPATH") or "")
+    python_profile = validation_python_profile(child)
     formal_toolchain = formal_toolchain_deployment_manifest(source)
     return {
         "schema": VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA,
@@ -3161,6 +3365,21 @@ def canonical_validation_environment_contract(
         "inherited_path_ignored": True,
         "writable_toolchain_paths_rejected": True,
         "python_interpreter": child["PYTHON"],
+        "python_profile": python_profile,
+        "python_site_initialization": (
+            "disabled" if python_profile == "raw-no-site" else "enabled"
+        ),
+        "python_user_site_disabled": True,
+        "pythonpath": pythonpath,
+        "pythonpath_entries": tuple(
+            entry for entry in pythonpath.split(os.pathsep) if entry
+        ),
+        "python_launcher_mode": child[
+            VALIDATION_PYTHON_LAUNCHER_MODE_ENV
+        ],
+        "python_launcher_policy_sha256": child[
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+        ],
         "required_python_modules": (),
         "formal_toolchain_contract_sha256": formal_toolchain.get(
             "manifest_sha256", ""

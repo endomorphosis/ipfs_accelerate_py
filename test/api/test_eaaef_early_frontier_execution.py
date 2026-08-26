@@ -89,12 +89,12 @@ def test_collector_cli_keeps_full_evidence_behind_explicit_scope(
 @pytest.mark.parametrize(
     ("argv", "expected"),
     [
-        ([], "early_frontier"),
+        ([], "immutable_observation"),
         (["--early-frontier"], "early_frontier"),
         (["--full-bootstrap"], "full_bootstrap"),
     ],
 )
-def test_supervisor_cli_keeps_full_bootstrap_behind_explicit_scope(
+def test_supervisor_cli_defaults_to_immutable_observation(
     argv: list[str],
     expected: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -339,83 +339,36 @@ def test_missing_docker_cli_is_typed_missing_without_endpoint_fallback(
     }
 
 
-def test_early_frontier_supervisor_never_collects_or_completes_later_tasks(
+@pytest.mark.parametrize("scope", ("early_frontier", "full_bootstrap"))
+def test_legacy_mutable_supervisor_scopes_fail_before_any_effect(
+    scope: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runner = _load_script(RUNNER, "tested_eaaef_early_frontier_runner")
+    runner = _load_script(
+        RUNNER,
+        f"tested_eaaef_disabled_legacy_runner_{scope}",
+    )
     database = tmp_path / "run-v-test/control.duckdb"
-    completed_aliases: list[str] = []
+    status = tmp_path / "status.json"
 
-    class Lease:
-        fence_token = 7
-
-        def release(self, *, fence_token: int) -> None:
-            assert fence_token == self.fence_token
-
-    ready = tuple(
-        SimpleNamespace(task_alias=task_id, status="todo")
-        for task_id in (*EARLY, *LATER, "EAAEF-010")
-    )
-
-    class Source:
-        def __init__(self, path: Path, *, install_schema: bool) -> None:
-            assert path == database
-            assert install_schema is False
-
-        def __enter__(self) -> Source:
-            return self
-
-        def __exit__(self, *_exc: object) -> None:
-            return None
-
-        def get_task(self, _alias: str) -> None:
-            return None
-
-        def ready_tasks(self, *, limit: int) -> SimpleNamespace:
-            assert limit == 1000
-            return SimpleNamespace(tasks=ready)
-
-        def list_tasks(self, *, limit: int) -> SimpleNamespace:
-            assert limit == 1000
-            return SimpleNamespace(tasks=ready)
-
-    monkeypatch.setattr(runner, "ROOT", tmp_path)
-    monkeypatch.setattr(runner, "STATUS_PATH", tmp_path / "status.json")
-    monkeypatch.setattr(runner, "_active_control_db", lambda: database)
-    monkeypatch.setattr(runner, "_acquire_state_owner_lease", lambda _path: Lease())
-    monkeypatch.setattr(
-        runner,
+    for name in (
+        "_active_control_db",
+        "_acquire_state_owner_lease",
         "_collect_host_admission",
-        lambda: {"decisions": {task_id: "test" for task_id in EARLY}},
-    )
-    monkeypatch.setattr(
-        runner,
         "_collect_full_host_admission",
-        _forbidden("full host-evidence collection"),
-    )
-    monkeypatch.setattr(
-        runner,
         "_current_host_admission_identity",
-        lambda: {
-            "source_head": "1" * 40,
-            "source_tree": "2" * 40,
-            "board_namespace": "test",
-            "board_cid": "sha256:" + "3" * 64,
-        },
-    )
-    monkeypatch.setattr(runner, "_database_task_source_class", lambda: Source)
-    monkeypatch.setattr(runner, "_write_status", lambda _payload: None)
+        "_database_task_source_class",
+        "_write_status",
+    ):
+        monkeypatch.setattr(runner, name, _forbidden(name))
+    monkeypatch.setattr(runner, "STATUS_PATH", status)
 
-    def complete(_source: Source, alias: str, _identity: dict[str, str]) -> dict:
-        completed_aliases.append(alias)
-        return {"task_id": alias, "status": "completed", "changed": True}
+    with pytest.raises(
+        RuntimeError,
+        match="legacy mutable EAAEF host-admission scope is disabled",
+    ):
+        runner.run_once(scope=scope)
 
-    monkeypatch.setattr(runner, "_complete", complete)
-
-    result = runner.run_once()
-
-    assert result["execution_scope"] == "early_frontier"
-    assert completed_aliases == list(EARLY)
-    assert not set(completed_aliases).intersection(LATER)
-    assert set(result["blocked_held"]) == {*LATER, "EAAEF-010"}
+    assert not database.exists()
+    assert not status.exists()
