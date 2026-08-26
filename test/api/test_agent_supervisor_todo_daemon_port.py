@@ -11385,6 +11385,50 @@ def test_implementation_daemon_main_accepts_shared_merge_queue_dir(
     assert captured["strict_task_sharding"] is True
 
 
+def test_lgcvf_daemon_diagnostic_is_bounded_staged_and_secret_free(capfd):
+    sentinel = "must-not-cross-lgcvf-daemon-diagnostic"
+
+    with pytest.raises(KeyError, match=sentinel):
+        implementation_daemon_module._lgcvf_daemon_call(
+            "owner_bootstrap",
+            lambda: (_ for _ in ()).throw(KeyError(sentinel)),
+        )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=owner_bootstrap type=KeyError\n"
+    )
+    assert sentinel not in captured.err
+    assert len(captured.err.encode("ascii")) <= 160
+
+
+def test_lgcvf_daemon_diagnostic_collapses_untrusted_metadata(capfd):
+    sentinel = "must-not-cross-lgcvf-daemon-metadata"
+
+    class DiagnosticTypeName(str):
+        def __str__(self):
+            return sentinel
+
+    class DiagnosticSentinelError(Exception):
+        pass
+
+    DiagnosticSentinelError.__name__ = DiagnosticTypeName("RuntimeError")
+    implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
+        sentinel,
+        DiagnosticSentinelError(sentinel),
+    )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=unknown type=BaseException\n"
+    )
+    assert sentinel not in captured.err
+
+
 def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
     parsed = argparse.Namespace(
         todo_path=tmp_path / "tasks.todo.md",

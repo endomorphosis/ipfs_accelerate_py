@@ -118072,6 +118072,100 @@ TodoTaskState = PortalTaskState
 TodoImplementationDaemon = PortalImplementationDaemon
 
 
+_LGCVF_DAEMON_DIAGNOSTIC_PHASES = frozenset(
+    {
+        "argument_parse",
+        "credential_capture",
+        "daemon_construct",
+        "owner_attach",
+        "owner_bootstrap",
+        "path_resolution",
+        "portal_bind",
+        "process_security",
+        "program_config",
+        "runtime_pass",
+    }
+)
+_LGCVF_DAEMON_DIAGNOSTIC_TYPES = frozenset(
+    {
+        "AssertionError",
+        "AttributeError",
+        "BrokenPipeError",
+        "ConfiguredBoardError",
+        "ConnectionError",
+        "ConnectionRefusedError",
+        "ConnectionResetError",
+        "DatabaseImplementationAuthorityError",
+        "DatabaseImplementationDaemonError",
+        "DatabaseProgramConfigError",
+        "EOFError",
+        "FileNotFoundError",
+        "ImportError",
+        "IsADirectoryError",
+        "KeyError",
+        "LookupError",
+        "ModuleNotFoundError",
+        "NotADirectoryError",
+        "NotImplementedError",
+        "OSError",
+        "OverflowError",
+        "PermissionError",
+        "ProcessLookupError",
+        "QuackClientError",
+        "QuackClientIdentityError",
+        "QuackClientTransportError",
+        "RuntimeError",
+        "StateAuthorityProcessIsolationError",
+        "StateOwnerBootstrapError",
+        "SupervisorSchedulerConfigError",
+        "TimeoutError",
+        "TransactionError",
+        "TypeError",
+        "TypedStateOwnerError",
+        "UnboundLocalError",
+        "ValueError",
+    }
+)
+
+
+def _emit_lgcvf_daemon_diagnostic(phase: str, exc: BaseException) -> None:
+    """Emit one bounded, detail-free failure class for sealed live recovery."""
+
+    safe_phase = (
+        phase if phase in _LGCVF_DAEMON_DIAGNOSTIC_PHASES else "unknown"
+    )
+    safe_type = type(exc).__name__
+    if (
+        type(safe_type) is not str
+        or safe_type not in _LGCVF_DAEMON_DIAGNOSTIC_TYPES
+    ):
+        safe_type = "BaseException"
+    record = (
+        f"lgcvf-daemon-diagnostic@1 phase={safe_phase} type={safe_type}\n"
+    ).encode("ascii")
+    if len(record) > 160:
+        record = (
+            b"lgcvf-daemon-diagnostic@1 "
+            b"phase=unknown type=BaseException\n"
+        )
+    try:
+        os.write(2, record)
+    except BaseException:
+        pass
+
+
+def _lgcvf_daemon_call(phase: str, operation: Callable[[], Any]) -> Any:
+    """Run one daemon boundary and preserve a secret-free failure stage."""
+
+    try:
+        return operation()
+    except SystemExit:
+        raise
+    except BaseException as exc:
+        _emit_lgcvf_daemon_diagnostic(phase, exc)
+        raise
+
+
 def main(argv: list[str] | None = None) -> None:
     # ``execve`` resets Linux's dumpable flag.  A live Quack daemon retains
     # the in-memory attach credential, so re-establish the kernel boundary
@@ -118081,9 +118175,15 @@ def main(argv: list[str] | None = None) -> None:
         harden_state_authority_process,
     )
 
-    harden_state_authority_process()
-    capture_state_authority_credentials()
-    args = parse_args(argv)
+    _lgcvf_daemon_call(
+        "process_security",
+        harden_state_authority_process,
+    )
+    _lgcvf_daemon_call(
+        "credential_capture",
+        capture_state_authority_credentials,
+    )
+    args = _lgcvf_daemon_call("argument_parse", lambda: parse_args(argv))
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -118093,10 +118193,18 @@ def main(argv: list[str] | None = None) -> None:
     if args.llm_merge_resolver_timeout_seconds is not None:
         os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
 
-    program = database_program_from_daemon_namespace(args)
-    db_paths = resolve_database_implementation_paths(
-        args,
-        authority_mode=program.authority_mode if program is not None else "",
+    program = _lgcvf_daemon_call(
+        "program_config",
+        lambda: database_program_from_daemon_namespace(args),
+    )
+    db_paths = _lgcvf_daemon_call(
+        "path_resolution",
+        lambda: resolve_database_implementation_paths(
+            args,
+            authority_mode=(
+                program.authority_mode if program is not None else ""
+            ),
+        ),
     )
     database_path = db_paths["database_path"]
     if database_path is None and program is not None and program.store_id:
@@ -118195,11 +118303,21 @@ def main(argv: list[str] | None = None) -> None:
                 request_state_owner_bootstrap,
             )
 
-            credentials = request_state_owner_bootstrap(
-                bootstrap_fd,
-                client_id=f"database-implementation-daemon:{owner_session_id}",
-                store_id=str(
-                    getattr(args, "state_owner_bootstrap_store_id", "") or ""
+            credentials = _lgcvf_daemon_call(
+                "owner_bootstrap",
+                lambda: request_state_owner_bootstrap(
+                    bootstrap_fd,
+                    client_id=(
+                        f"database-implementation-daemon:{owner_session_id}"
+                    ),
+                    store_id=str(
+                        getattr(
+                            args,
+                            "state_owner_bootstrap_store_id",
+                            "",
+                        )
+                        or ""
+                    ),
                 ),
             )
             state_owner_bootstrap_credentials = credentials
@@ -118235,7 +118353,8 @@ def main(argv: list[str] | None = None) -> None:
                     client,
                     execution_route_policy=credentials.execution_route_policy,
                 )
-            except BaseException:
+            except BaseException as exc:
+                _emit_lgcvf_daemon_diagnostic("owner_attach", exc)
                 client.close()
                 raise
             finally:
@@ -118288,16 +118407,20 @@ def main(argv: list[str] | None = None) -> None:
                 ),
                 quack_command_gateway=quack_command_gateway,
             )
-        except BaseException:
+        except BaseException as exc:
+            _emit_lgcvf_daemon_diagnostic("daemon_construct", exc)
             if typed_task_source is not None:
                 typed_task_source.close()
             raise
-        bind_database_portal_execution_from_args(
-            daemon,
-            args,
-            repo_root=REPO_ROOT,
-            portal_daemon_class=PortalImplementationDaemon,
-            external_agent_container_dispatcher_factory=dispatcher_factory,
+        _lgcvf_daemon_call(
+            "portal_bind",
+            lambda: bind_database_portal_execution_from_args(
+                daemon,
+                args,
+                repo_root=REPO_ROOT,
+                portal_daemon_class=PortalImplementationDaemon,
+                external_agent_container_dispatcher_factory=dispatcher_factory,
+            ),
         )
     else:
         daemon = PortalImplementationDaemon(
@@ -118413,7 +118536,7 @@ def main(argv: list[str] | None = None) -> None:
             return
         last_idle_info_at: float | None = None
         while True:
-            result = daemon.run_once()
+            result = _lgcvf_daemon_call("runtime_pass", daemon.run_once)
             materialize_database_task_state_compatibility_projection(
                 daemon,
                 state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
