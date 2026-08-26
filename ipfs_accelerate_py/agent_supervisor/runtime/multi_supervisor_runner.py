@@ -190,6 +190,14 @@ STALE_DETACHED_MASTER_PID_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "stale-detached-master-pid-quarantine@1"
 )
+STALE_LGCVF_LIVE_SUPERVISOR_PID_DECISION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "stale-lgcvf-live-supervisor-pid-quarantine-decision@1"
+)
+STALE_LGCVF_LIVE_SUPERVISOR_PID_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "stale-lgcvf-live-supervisor-pid-quarantine@1"
+)
 _LEGACY_MASTER_PID_PAYLOAD = re.compile(rb"[1-9][0-9]*\n")
 _LEGACY_MASTER_PID_MAX_BYTES = 32
 SEALED_CONTROL_PLANE_MODULES = frozenset(
@@ -5797,7 +5805,14 @@ def _pid_projection_audit_evidence(
     }
 
 
-def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, Any]:
+def _quarantine_stale_pid_projection_locked(
+    pid_path: Path,
+    *,
+    decision_schema: str,
+    receipt_schema: str,
+    projection_label: str,
+    authority_binding: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Quarantine one exact legacy PID after an ESRCH-only absence proof.
 
     The caller holds ``serialized_lock_update(pid_path)``.  Signal zero probes
@@ -5806,39 +5821,62 @@ def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, An
     """
 
     path = Path(pid_path)
+    binding = dict(authority_binding or {})
+    reserved_binding_fields = {
+        "schema",
+        "producer",
+        "model_created",
+        "completion_authority",
+        "decision",
+        "outcome",
+        "legacy_pid",
+        "source_projection",
+        "quarantine_projection",
+        "quarantine_path",
+        "liveness_evidence",
+        "observed_at_unix_ns",
+        "decision_receipt_id",
+        "receipt_id",
+    }
+    if set(binding) & reserved_binding_fields:
+        raise ValueError(f"{projection_label} authority binding is invalid")
     try:
         payload, evidence = _read_stable_regular_bytes(
             path,
             max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
         )
     except _StableArtifactReadError as exc:
-        raise ValueError(f"unsafe detached master PID projection: {exc}") from exc
+        raise ValueError(f"unsafe {projection_label} projection: {exc}") from exc
     if payload is None:
-        raise ValueError("detached master PID projection disappeared during recovery")
+        raise ValueError(
+            f"{projection_label} projection disappeared during recovery"
+        )
     if (
         int(evidence.get("uid", -1)) != os.geteuid()
         or int(evidence.get("link_count", -1)) != 1
         or not stat.S_ISREG(int(evidence.get("mode", 0)))
     ):
         raise ValueError(
-            "detached master PID projection is not an owned single-link regular file"
+            f"{projection_label} projection is not an owned single-link regular file"
         )
     if _LEGACY_MASTER_PID_PAYLOAD.fullmatch(payload) is None:
-        raise ValueError("detached master PID projection is not a strict legacy PID")
+        raise ValueError(
+            f"{projection_label} projection is not a strict legacy PID"
+        )
     legacy_pid = int(payload[:-1].decode("ascii"))
     try:
         os.kill(legacy_pid, 0)
     except ProcessLookupError as exc:
         if exc.errno != errno.ESRCH:
             raise ValueError(
-                "detached master PID liveness is unknown"
+                f"{projection_label} liveness is unknown"
             ) from exc
     except PermissionError as exc:
-        raise ValueError("detached master PID liveness is unknown") from exc
+        raise ValueError(f"{projection_label} liveness is unknown") from exc
     except OSError as exc:
-        raise ValueError("detached master PID liveness is unknown") from exc
+        raise ValueError(f"{projection_label} liveness is unknown") from exc
     else:
-        raise ValueError("detached master PID projection names a live process")
+        raise ValueError(f"{projection_label} projection names a live process")
 
     # Bind the absence proof to the still-identical projection before any
     # pathname mutation.  A non-cooperating replacement fails closed.
@@ -5849,19 +5887,24 @@ def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, An
         )
     except _StableArtifactReadError as exc:
         raise ValueError(
-            f"detached master PID projection changed after liveness proof: {exc}"
+            f"{projection_label} projection changed after liveness proof: {exc}"
         ) from exc
     if confirmed_payload != payload or confirmed_evidence != evidence:
-        raise ValueError("detached master PID projection changed after liveness proof")
+        raise ValueError(
+            f"{projection_label} projection changed after liveness proof"
+        )
 
     observed_at_unix_ns = time.time_ns()
+    quarantine_key_payload = {
+        "legacy_pid": legacy_pid,
+        "projection": _pid_projection_audit_evidence(evidence),
+        "observed_at_unix_ns": observed_at_unix_ns,
+    }
+    if binding:
+        quarantine_key_payload["authority_binding"] = binding
     quarantine_key = hashlib.sha256(
         json.dumps(
-            {
-                "legacy_pid": legacy_pid,
-                "projection": _pid_projection_audit_evidence(evidence),
-                "observed_at_unix_ns": observed_at_unix_ns,
-            },
+            quarantine_key_payload,
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
@@ -5880,7 +5923,7 @@ def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, An
             os.lstat(target)
         except FileNotFoundError:
             continue
-        raise ValueError("detached master PID quarantine target already exists")
+        raise ValueError(f"{projection_label} quarantine target already exists")
 
     liveness_evidence = {
         "operation": "os.kill",
@@ -5890,7 +5933,7 @@ def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, An
         "errno_number": errno.ESRCH,
     }
     decision = {
-        "schema": STALE_DETACHED_MASTER_PID_DECISION_SCHEMA,
+        "schema": decision_schema,
         "producer": "multi-supervisor-runner@1",
         "model_created": False,
         "completion_authority": False,
@@ -5901,6 +5944,7 @@ def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, An
         "liveness_evidence": liveness_evidence,
         "observed_at_unix_ns": observed_at_unix_ns,
     }
+    decision.update(binding)
     decision["decision_receipt_id"] = content_identity(decision)
     # Publish the decision first: a crash can leave an authorization without
     # an outcome claim, but can never leave an unaudited quarantine.
@@ -5911,11 +5955,15 @@ def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, An
         max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
     )
     if latest_payload != payload or latest_evidence != evidence:
-        raise ValueError("detached master PID projection changed before quarantine")
+        raise ValueError(
+            f"{projection_label} projection changed before quarantine"
+        )
     try:
         os.rename(path, quarantine_path)
     except OSError as exc:
-        raise ValueError("cannot atomically quarantine stale master PID") from exc
+        raise ValueError(
+            f"cannot atomically quarantine stale {projection_label}"
+        ) from exc
     _fsync_pid_projection_parent(path)
 
     quarantined_payload, quarantined_evidence = _read_stable_regular_bytes(
@@ -5940,16 +5988,20 @@ def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, An
             for field in stable_fields
         )
     ):
-        raise ValueError("quarantined master PID projection identity changed")
+        raise ValueError(
+            f"quarantined {projection_label} projection identity changed"
+        )
     try:
         os.lstat(path)
     except FileNotFoundError:
         pass
     else:
-        raise ValueError("stale master PID pathname remained after quarantine")
+        raise ValueError(
+            f"stale {projection_label} pathname remained after quarantine"
+        )
 
     receipt = {
-        "schema": STALE_DETACHED_MASTER_PID_RECEIPT_SCHEMA,
+        "schema": receipt_schema,
         "producer": "multi-supervisor-runner@1",
         "model_created": False,
         "completion_authority": False,
@@ -5963,9 +6015,61 @@ def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, An
         "liveness_evidence": liveness_evidence,
         "observed_at_unix_ns": observed_at_unix_ns,
     }
+    receipt.update(binding)
     receipt["receipt_id"] = content_identity(receipt)
     _publish_private_pid_audit(receipt_path, receipt)
     return receipt
+
+
+def _quarantine_stale_detached_master_pid_locked(
+    pid_path: Path,
+) -> dict[str, Any]:
+    """Preserve the detached-master v1 audit shape during exact recovery."""
+
+    return _quarantine_stale_pid_projection_locked(
+        pid_path,
+        decision_schema=STALE_DETACHED_MASTER_PID_DECISION_SCHEMA,
+        receipt_schema=STALE_DETACHED_MASTER_PID_RECEIPT_SCHEMA,
+        projection_label="detached master PID",
+    )
+
+
+def _require_lgcvf_live_supervisor_pid_binding(
+    *,
+    lane_name: str,
+    admission_id: str,
+) -> None:
+    """Require the exact authority fields admitted into lane PID recovery."""
+
+    if lane_name not in LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES:
+        raise ValueError("LGCVF live supervisor lane identity is invalid")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", admission_id) is None:
+        raise ValueError("LGCVF live supervisor admission identity is invalid")
+
+
+def _quarantine_stale_lgcvf_live_supervisor_pid_locked(
+    pid_path: Path,
+    *,
+    lane_name: str,
+    admission_id: str,
+) -> dict[str, Any]:
+    """Quarantine one dead lane root bound to admitted LGCVF authority."""
+
+    _require_lgcvf_live_supervisor_pid_binding(
+        lane_name=lane_name,
+        admission_id=admission_id,
+    )
+    return _quarantine_stale_pid_projection_locked(
+        pid_path,
+        decision_schema=STALE_LGCVF_LIVE_SUPERVISOR_PID_DECISION_SCHEMA,
+        receipt_schema=STALE_LGCVF_LIVE_SUPERVISOR_PID_RECEIPT_SCHEMA,
+        projection_label="LGCVF live supervisor PID",
+        authority_binding={
+            "projection_role": "lgcvf_live_supervisor",
+            "lane_name": lane_name,
+            "configured_board_live_admission_id": admission_id,
+        },
+    )
 
 
 def _reserve_owned_pid_projection_locked(
@@ -6003,6 +6107,37 @@ def _reserve_owned_pid_projection(
 
     path = Path(pid_path)
     with serialized_lock_update(path):
+        return _reserve_owned_pid_projection_locked(path)
+
+
+def _reserve_lgcvf_live_supervisor_pid_projection(
+    pid_path: Path,
+    *,
+    lane_name: str,
+    admission_id: str,
+) -> tuple[int, tuple[int, int]]:
+    """Recover one dead admitted lane root, then reserve its exact pathname."""
+
+    _require_lgcvf_live_supervisor_pid_binding(
+        lane_name=lane_name,
+        admission_id=admission_id,
+    )
+    path = Path(pid_path)
+    with serialized_lock_update(path):
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise ValueError(
+                "cannot inspect LGCVF live supervisor PID projection"
+            ) from exc
+        else:
+            _quarantine_stale_lgcvf_live_supervisor_pid_locked(
+                path,
+                lane_name=lane_name,
+                admission_id=admission_id,
+            )
         return _reserve_owned_pid_projection_locked(path)
 
 
@@ -8036,7 +8171,19 @@ def start_track(
         )
     resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
     resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
-    if plan_bound_dispatch or lgcvf_live_dispatch:
+    if lgcvf_live_dispatch:
+        assert configured_board_live_context is not None
+        (
+            pid_reservation_fd,
+            pid_reservation_identity,
+        ) = _reserve_lgcvf_live_supervisor_pid_projection(
+            resolved.supervisor_pid_path,
+            lane_name=lgcvf_owner_session_id,
+            admission_id=(
+                configured_board_live_context.admission.admission_id
+            ),
+        )
+    elif plan_bound_dispatch:
         (
             pid_reservation_fd,
             pid_reservation_identity,

@@ -2597,6 +2597,194 @@ def test_lgcvf_foreground_refuses_master_substitution_after_esrch(
     assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
 
 
+def test_lgcvf_live_supervisor_reservation_quarantines_dead_legacy_pid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "lgcvf_lane_0_supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    stale_pid = 3627056
+    pid_path.write_text(f"{stale_pid}\n", encoding="ascii")
+    stale_inode = os.lstat(pid_path).st_ino
+    admission_id = "sha256:" + "a" * 64
+    probes: list[tuple[int, int]] = []
+
+    def absent_probe(pid: int, signal_number: int) -> None:
+        probes.append((pid, signal_number))
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    descriptor, identity = (
+        multi_runner_module._reserve_lgcvf_live_supervisor_pid_projection(
+            pid_path,
+            lane_name="lgcvf-quack-lane-0",
+            admission_id=admission_id,
+        )
+    )
+    try:
+        assert pid_path.read_bytes() == b""
+        assert stat.S_IMODE(os.lstat(pid_path).st_mode) == 0o600
+        multi_runner_module._publish_reserved_pid_projection(
+            pid_path,
+            descriptor,
+            identity,
+            os.getpid(),
+        )
+        assert pid_path.read_text(encoding="ascii") == f"{os.getpid()}\n"
+    finally:
+        os.close(descriptor)
+        multi_runner_module._discard_reserved_pid_projection(
+            pid_path,
+            identity,
+        )
+
+    assert probes == [(stale_pid, 0)]
+    quarantines = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.quarantine")
+    )
+    decisions = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.decision.json")
+    )
+    receipts = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.receipt.json")
+    )
+    assert len(quarantines) == len(decisions) == len(receipts) == 1
+    assert quarantines[0].read_text(encoding="ascii") == f"{stale_pid}\n"
+    assert os.lstat(quarantines[0]).st_ino == stale_inode
+    decision = json.loads(decisions[0].read_text(encoding="utf-8"))
+    receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+    assert decision["schema"] == (
+        multi_runner_module.STALE_LGCVF_LIVE_SUPERVISOR_PID_DECISION_SCHEMA
+    )
+    assert receipt["schema"] == (
+        multi_runner_module.STALE_LGCVF_LIVE_SUPERVISOR_PID_RECEIPT_SCHEMA
+    )
+    for artifact in (decision, receipt):
+        assert artifact["projection_role"] == "lgcvf_live_supervisor"
+        assert artifact["lane_name"] == "lgcvf-quack-lane-0"
+        assert artifact["configured_board_live_admission_id"] == admission_id
+        assert artifact["legacy_pid"] == stale_pid
+        assert artifact["liveness_evidence"]["errno"] == "ESRCH"
+    assert receipt["decision_receipt_id"] == decision["decision_receipt_id"]
+    claimed_decision_id = decision.pop("decision_receipt_id")
+    claimed_receipt_id = receipt.pop("receipt_id")
+    assert claimed_decision_id == multi_runner_module.content_identity(decision)
+    assert claimed_receipt_id == multi_runner_module.content_identity(receipt)
+
+
+@pytest.mark.parametrize("liveness", ("live", "unknown"))
+def test_lgcvf_live_supervisor_reservation_refuses_live_or_unknown_pid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    liveness: str,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "lgcvf_lane_0_supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3627056\n", encoding="ascii")
+
+    def probe(_pid: int, signal_number: int) -> None:
+        assert signal_number == 0
+        if liveness == "unknown":
+            raise PermissionError(errno.EPERM, "not permitted")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", probe)
+    with pytest.raises(ValueError, match=liveness):
+        multi_runner_module._reserve_lgcvf_live_supervisor_pid_projection(
+            pid_path,
+            lane_name="lgcvf-quack-lane-0",
+            admission_id="sha256:" + "a" * 64,
+        )
+    assert pid_path.read_bytes() == b"3627056\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+@pytest.mark.parametrize("unsafe_kind", ("malformed", "symlink", "hardlink"))
+def test_lgcvf_live_supervisor_reservation_refuses_unsafe_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_kind: str,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "lgcvf_lane_0_supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    outside = tmp_path / "outside-supervisor.pid"
+    outside.write_text("3627056\n", encoding="ascii")
+    if unsafe_kind == "malformed":
+        pid_path.write_text("3627056", encoding="ascii")
+    elif unsafe_kind == "symlink":
+        pid_path.symlink_to(outside)
+    else:
+        os.link(outside, pid_path)
+
+    def unexpected_probe(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unsafe lane PID reached liveness proof")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", unexpected_probe)
+    with pytest.raises(ValueError):
+        multi_runner_module._reserve_lgcvf_live_supervisor_pid_projection(
+            pid_path,
+            lane_name="lgcvf-quack-lane-0",
+            admission_id="sha256:" + "a" * 64,
+        )
+    assert outside.read_bytes() == b"3627056\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+def test_lgcvf_live_supervisor_reservation_refuses_post_esrch_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "lgcvf_lane_0_supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3627056\n", encoding="ascii")
+    original_read = multi_runner_module._read_stable_regular_bytes
+    reads = 0
+
+    def substitute_on_confirmation(*args: object, **kwargs: object):
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            pid_path.unlink()
+            pid_path.write_text("3627056\n", encoding="ascii")
+        return original_read(*args, **kwargs)
+
+    def absent_probe(_pid: int, _signal_number: int) -> None:
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_read_stable_regular_bytes",
+        substitute_on_confirmation,
+    )
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    with pytest.raises(ValueError, match="changed after liveness proof"):
+        multi_runner_module._reserve_lgcvf_live_supervisor_pid_projection(
+            pid_path,
+            lane_name="lgcvf-quack-lane-0",
+            admission_id="sha256:" + "a" * 64,
+        )
+    assert reads == 2
+    assert pid_path.read_bytes() == b"3627056\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+def test_plan_bound_pid_reservation_does_not_recover_dead_existing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "lane-0" / "plan-bound-supervisor.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3627056\n", encoding="ascii")
+
+    def unexpected_probe(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("strict plan-bound reservation probed a legacy PID")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", unexpected_probe)
+    with pytest.raises(ValueError, match="unsafe existing file"):
+        multi_runner_module._reserve_owned_pid_projection(pid_path)
+    assert pid_path.read_bytes() == b"3627056\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
 def test_non_plan_detach_quarantines_dead_legacy_pid_before_spawn(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -538,7 +539,7 @@ def test_lgcvf_live_runner_binds_policy_from_capsule_to_lane_argv(
         )
 
 
-def test_lgcvf_live_runner_passes_one_bootstrap_listener_to_lane_supervisor(
+def test_lgcvf_live_runner_recovers_stale_pid_and_passes_bootstrap_listener(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     state_owner_bootstrap_listener: socket.socket,
@@ -574,8 +575,20 @@ def test_lgcvf_live_runner_passes_one_bootstrap_listener_to_lane_supervisor(
             str(lane_index),
         ),
     )
+    lane_dir.mkdir(parents=True)
+    stale_pid = 3670455
+    track.supervisor_pid_path.write_text(
+        f"{stale_pid}\n",
+        encoding="ascii",
+    )
+    stale_inode = os.lstat(track.supervisor_pid_path).st_ino
+    liveness_probes: list[tuple[int, int]] = []
     built_commands: list[dict[str, object]] = []
     popen_calls: list[dict[str, object]] = []
+
+    def absent_probe(pid: int, signal_number: int) -> None:
+        liveness_probes.append((pid, signal_number))
+        raise ProcessLookupError(errno.ESRCH, "no such process")
 
     def build_command(**kwargs: object) -> list[str]:
         built_commands.append(dict(kwargs))
@@ -665,6 +678,7 @@ def test_lgcvf_live_runner_passes_one_bootstrap_listener_to_lane_supervisor(
         "_capture_lgcvf_live_gated_process_identity",
         capture_identity,
     )
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
     monkeypatch.setattr(multi_runner_module.subprocess, "Popen", popen)
 
     process = multi_runner_module.start_track(
@@ -676,6 +690,33 @@ def test_lgcvf_live_runner_passes_one_bootstrap_listener_to_lane_supervisor(
     )
     try:
         assert len(popen_calls) == 1
+        assert liveness_probes == [(stale_pid, 0)]
+        assert track.supervisor_pid_path.read_text(encoding="ascii") == (
+            f"{FakeProcess.pid}\n"
+        )
+        quarantines = list(
+            lane_dir.glob(
+                f".{track.supervisor_pid_path.name}.stale-*.quarantine"
+            )
+        )
+        receipts = list(
+            lane_dir.glob(
+                f".{track.supervisor_pid_path.name}.stale-*.receipt.json"
+            )
+        )
+        assert len(quarantines) == len(receipts) == 1
+        assert quarantines[0].read_text(encoding="ascii") == (
+            f"{stale_pid}\n"
+        )
+        assert os.lstat(quarantines[0]).st_ino == stale_inode
+        receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+        assert receipt["schema"] == (
+            multi_runner_module.STALE_LGCVF_LIVE_SUPERVISOR_PID_RECEIPT_SCHEMA
+        )
+        assert receipt["lane_name"] == lane_name
+        assert receipt["configured_board_live_admission_id"] == (
+            context.admission.admission_id
+        )
         inherited = tuple(popen_calls[0]["pass_fds"])
         assert state_owner_bootstrap_listener.fileno() in inherited
         assert set(context.pass_fds) < set(inherited)
