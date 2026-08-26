@@ -7709,18 +7709,23 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     assert integration_proof.get("integration_commit") == (
                         merge_result.get("merge_commit")
                     )
-                    final_head = _git(
+                    assert receipt_payload.get("target_branch") == (
+                        implementation_branch
+                    )
+                    final_target_head = _git(
                         repo,
                         "rev-parse",
                         implementation_branch,
                     ).stdout.strip()
-                    assert receipt_payload.get("target_commit") == final_head
+                    assert receipt_payload.get("target_commit") == (
+                        final_target_head
+                    )
                     _git(
                         repo,
                         "merge-base",
                         "--is-ancestor",
                         str(integration_proof["integration_commit"]),
-                        final_head,
+                        final_target_head,
                     )
             provider_invocations = [
                 json.loads(line)["task_id"]

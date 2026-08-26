@@ -28,6 +28,9 @@ from ipfs_accelerate_py.agent_supervisor.containers.oci_runner import (
     EngineAdmission,
     build_oci_run_spec,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 
 
 RECEIPT = (
@@ -41,6 +44,38 @@ RECEIPT = (
 
 ROOTLESS_SOCK = "unix:///run/user/1000/docker.sock"
 LIFECYCLE = ("create", "start", "checkpoint", "stop", "cleanup")
+ARTIFACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1"
+)
+PRODUCER_ARGV = (
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_container_lifecycle.py",
+)
+RECEIPT_FIELDS = {
+    "artifact_cid",
+    "candidate_engine_mode",
+    "candidate_rootless_socket",
+    "docker_socket_mounted",
+    "evidence_mode",
+    "host_engine_probe_invoked",
+    "lifecycle_stages",
+    "live_eight_container_qualification",
+    "live_engine_invoked",
+    "live_runtime_invoked",
+    "network_policy",
+    "privileged",
+    "producer_argv",
+    "producer_source_cid",
+    "production_qualification_claimed",
+    "qualification_scope",
+    "qualification_status",
+    "schema",
+    "task_completion_claimed",
+    "task_id",
+}
 
 
 def _digest(label: str) -> str:
@@ -57,7 +92,38 @@ def _probe_live_engine(admission: EngineAdmission) -> bool:
     return False
 
 
+def _producer_source_cid() -> str:
+    return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def _validate_receipt(payload: dict[str, object]) -> None:
+    assert set(payload) == RECEIPT_FIELDS
+    assert payload["schema"] == ARTIFACT_SCHEMA
+    assert payload["task_id"] == "EAAEF-143"
+    assert payload["evidence_mode"] == "contract_fail_closed"
+    assert payload["qualification_scope"] == "offline_container_lifecycle_contract_only"
+    assert payload["qualification_status"] == "not_live_qualified"
+    assert payload["task_completion_claimed"] is False
+    assert payload["production_qualification_claimed"] is False
+    assert payload["live_runtime_invoked"] is False
+    assert payload["live_engine_invoked"] is False
+    assert payload["live_eight_container_qualification"] is False
+    assert payload["host_engine_probe_invoked"] is False
+    assert payload["producer_argv"] == list(PRODUCER_ARGV)
+    assert payload["producer_source_cid"] == _producer_source_cid()
+    unsealed = dict(payload)
+    artifact_cid = unsealed.pop("artifact_cid")
+    assert artifact_cid == content_identity(unsealed)
+
+
 def _write_receipt(payload: dict[str, object]) -> dict[str, object]:
+    payload = {
+        **payload,
+        "producer_argv": list(PRODUCER_ARGV),
+        "producer_source_cid": _producer_source_cid(),
+    }
+    payload["artifact_cid"] = content_identity(payload)
+    _validate_receipt(payload)
     RECEIPT.parent.mkdir(parents=True, exist_ok=True)
     RECEIPT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload
@@ -157,21 +223,26 @@ def test_create_start_checkpoint_stop_cleanup_contracts_fail_closed() -> None:
 
     payload = _write_receipt(
         {
-            "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
+            "schema": ARTIFACT_SCHEMA,
             "task_id": "EAAEF-143",
             "evidence_mode": "contract_fail_closed",
+            "qualification_scope": "offline_container_lifecycle_contract_only",
+            "qualification_status": "not_live_qualified",
+            "task_completion_claimed": False,
+            "production_qualification_claimed": False,
             "live_runtime_invoked": False,
             "live_eight_container_qualification": False,
             "live_engine_invoked": False,
-            "rootless_socket": ROOTLESS_SOCK,
-            "engine_admission_rootless_supported": admission.rootless_supported,
-            "engine_admission_rootless_verified": admission.rootless_verified,
+            "host_engine_probe_invoked": False,
+            "candidate_rootless_socket": ROOTLESS_SOCK,
+            "candidate_engine_mode": spec.engine_mode.value,
             "lifecycle_stages": list(LIFECYCLE),
             "docker_socket_mounted": False,
             "network_policy": "deny",
             "privileged": False,
         }
     )
+    _validate_receipt(payload)
     saved = json.loads(RECEIPT.read_text(encoding="utf-8"))
     assert saved["evidence_mode"] == "contract_fail_closed"
     assert saved["live_engine_invoked"] is False

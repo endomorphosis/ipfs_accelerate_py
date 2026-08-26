@@ -1,0 +1,41 @@
+{
+  "artifact_cid": "baguqeerai2hlgl3bm5iirqrciu74arxdjhomdqkpa5t4q2b6dybdl7fd7abq",
+  "clean_environment_created": false,
+  "descriptor_admitted": true,
+  "evidence_mode": "contract_fail_closed",
+  "fixture_artifact_descriptors": [
+    {
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "kind": "wheel",
+      "name": "ipfs_accelerate_py-0.0.0-py3-none-any.whl"
+    },
+    {
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "kind": "sdist",
+      "name": "ipfs_datasets_py-0.0.0.tar.gz"
+    }
+  ],
+  "live_eight_container_qualification": false,
+  "live_runtime_invoked": false,
+  "pip_install_invoked": false,
+  "producer_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/packaging/test_external_agent_clean_install.py"
+  ],
+  "producer_source_cid": "sha256:afad5872b2209b057417476b9758650c5d557ff002c3533908bed55d69ba20fd",
+  "production_qualification_claimed": false,
+  "qualification_scope": "artifact_descriptor_admission_only",
+  "qualification_status": "not_live_qualified",
+  "refused": [
+    "editable_egg_link",
+    "pip_-e",
+    "sibling_repo",
+    "mutable_branch"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1",
+  "task_completion_claimed": false,
+  "task_id": "EAAEF-164"
+}

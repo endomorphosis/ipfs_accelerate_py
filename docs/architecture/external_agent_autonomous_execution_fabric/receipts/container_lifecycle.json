@@ -1,0 +1,34 @@
+{
+  "artifact_cid": "baguqeeraqpbi2gcqaqdtxnhzh3ptnscoucbo2bkow6ezr4ggor2uvmudlgqa",
+  "candidate_engine_mode": "rootless_engine",
+  "candidate_rootless_socket": "unix:///run/user/1000/docker.sock",
+  "docker_socket_mounted": false,
+  "evidence_mode": "contract_fail_closed",
+  "host_engine_probe_invoked": false,
+  "lifecycle_stages": [
+    "create",
+    "start",
+    "checkpoint",
+    "stop",
+    "cleanup"
+  ],
+  "live_eight_container_qualification": false,
+  "live_engine_invoked": false,
+  "live_runtime_invoked": false,
+  "network_policy": "deny",
+  "privileged": false,
+  "producer_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_container_lifecycle.py"
+  ],
+  "producer_source_cid": "sha256:36f836904c3ca71d520efbd207eb3614a9fe8a4b9662f86fe249a8bebf0fa75f",
+  "production_qualification_claimed": false,
+  "qualification_scope": "offline_container_lifecycle_contract_only",
+  "qualification_status": "not_live_qualified",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1",
+  "task_completion_claimed": false,
+  "task_id": "EAAEF-143"
+}
