@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import select
+import stat
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,7 @@ from ipfs_accelerate_py.llm_router import (  # noqa: E402
     AgentCLIProviderResult,
     AgentCLIStderrSanitizer,
     LLMRouterError,
+    _grok_cli_auth_path,
     classify_grok_agent_cli_failure,
     probe_grok_codex_agent_route_readiness,
     route_agent_cli_failure,
@@ -74,6 +76,7 @@ classify_grok_failure = classify_grok_agent_cli_failure
 _ProviderStderrSanitizer = AgentCLIStderrSanitizer
 _PROVIDER_STDERR_LINE_LIMIT = AGENT_CLI_STDERR_LINE_LIMIT
 _PROVIDER_ROUTE_SCHEMA = AGENT_CLI_PROVIDER_ROUTE_SCHEMA
+_MAX_PROJECTED_GROK_AUTH_BYTES = 256 * 1024
 
 
 @dataclass(frozen=True)
@@ -104,13 +107,13 @@ def _provider_boundary_receipt_path(route_receipt_path: Path) -> Path:
 
 
 def _provider_profile_paths(original_home: Path) -> tuple[Path, ...]:
-    configured = (
-        os.environ.get("CODEX_HOME", "").strip(),
-        os.environ.get("GROK_HOME", "").strip(),
-    )
+    """Return legacy writable profiles; Grok auth is projected separately."""
+
+    configured_codex = os.environ.get("CODEX_HOME", "").strip()
     candidates = (
-        Path(configured[0]).expanduser() if configured[0] else original_home / ".codex",
-        Path(configured[1]).expanduser() if configured[1] else original_home / ".grok",
+        Path(configured_codex).expanduser()
+        if configured_codex
+        else original_home / ".codex",
     )
     profiles: list[Path] = []
     for candidate in candidates:
@@ -121,6 +124,129 @@ def _provider_profile_paths(original_home: Path) -> tuple[Path, ...]:
         if resolved.is_dir():
             profiles.append(resolved)
     return tuple(dict.fromkeys(profiles))
+
+
+def _project_private_grok_auth(private_home: Path) -> Path | None:
+    """Copy admitted file auth into the child-only provider home.
+
+    Live schedulers deliberately replace ``HOME`` with a DuckDB qualification
+    directory.  Router readiness can still find the operator's OAuth cache by
+    uid, but the provider Landlock boundary must not grant the whole operator
+    home merely to preserve that decision.  Project only a bounded, private,
+    owner-controlled ``auth.json`` into this invocation's ephemeral home.
+    """
+
+    source = Path(_grok_cli_auth_path()).expanduser()
+    if not source.is_absolute():
+        raise ValidationRuntimeError("Grok auth projection is not absolute")
+    try:
+        unresolved = source.absolute()
+        resolved = source.resolve(strict=True)
+        source_entry = source.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "Grok auth projection is unavailable"
+        ) from exc
+    if unresolved != resolved or not stat.S_ISREG(source_entry.st_mode):
+        raise ValidationRuntimeError(
+            "Grok auth projection must be a non-symlink regular file"
+        )
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(source, flags)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "Grok auth projection could not be opened safely"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_nlink != 1
+            or before.st_size < 1
+            or before.st_size > _MAX_PROJECTED_GROK_AUTH_BYTES
+            or resolved.name != "auth.json"
+            or (before.st_dev, before.st_ino)
+            != (source_entry.st_dev, source_entry.st_ino)
+        ):
+            raise ValidationRuntimeError(
+                "Grok auth projection must be private, owned, and bounded"
+            )
+        chunks: list[bytes] = []
+        remaining = int(before.st_size)
+        while remaining:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                raise ValidationRuntimeError(
+                    "Grok auth projection changed while it was read"
+                )
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        if (
+            before.st_dev,
+            before.st_ino,
+            before.st_mode,
+            before.st_uid,
+            before.st_size,
+            before.st_nlink,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        ) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_mode,
+            after.st_uid,
+            after.st_size,
+            after.st_nlink,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise ValidationRuntimeError(
+                "Grok auth projection changed while it was read"
+            )
+        payload = b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+    grok_home = private_home / ".grok"
+    grok_home.mkdir(mode=0o700)
+    destination = grok_home / "auth.json"
+    write_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        destination_descriptor = os.open(destination, write_flags, 0o600)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            "private Grok auth projection could not be created"
+        ) from exc
+    try:
+        offset = 0
+        while offset < len(payload):
+            written = os.write(destination_descriptor, payload[offset:])
+            if written <= 0:
+                raise ValidationRuntimeError(
+                    "private Grok auth projection is incomplete"
+                )
+            offset += written
+        os.fchmod(destination_descriptor, 0o600)
+    finally:
+        os.close(destination_descriptor)
+    return grok_home
 
 
 def _prepare_provider_boundary_runtime(
@@ -166,7 +292,7 @@ def _prepare_provider_boundary_runtime(
     ):
         (private_home / relative).mkdir(mode=0o700, parents=True, exist_ok=True)
     profile_by_name = {profile.name: profile for profile in profiles}
-    for name in (".codex", ".grok"):
+    for name in (".codex",):
         profile = profile_by_name.get(name)
         if profile is not None:
             (private_home / name).symlink_to(profile, target_is_directory=True)
@@ -186,7 +312,8 @@ def _prepare_provider_boundary_runtime(
         }
     )
     codex_profile = profile_by_name.get(".codex")
-    grok_profile = profile_by_name.get(".grok")
+    grok_profile = _project_private_grok_auth(private_home)
+    child_environment.pop("GROK_HOME", None)
     if codex_profile is not None:
         child_environment["CODEX_HOME"] = str(codex_profile)
     if grok_profile is not None:
