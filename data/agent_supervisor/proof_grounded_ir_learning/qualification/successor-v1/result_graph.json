@@ -1,0 +1,397 @@
+{
+  "dependency_first_order": [
+    "PGIR-072",
+    "PGIR-090",
+    "PGIR-100",
+    "PGIR-111",
+    "PGIR-200",
+    "PGIR-201",
+    "PGIR-202",
+    "PGIR-203",
+    "PGIR-204",
+    "PGIR-208",
+    "PGIR-209",
+    "PGIR-210",
+    "PGIR-211",
+    "PGIR-205",
+    "PGIR-206",
+    "PGIR-207"
+  ],
+  "edge_count": 28,
+  "edges": [
+    {
+      "dependency": "PGIR-111",
+      "dependent": "PGIR-200",
+      "edge_id": "PGIR-200->PGIR-111"
+    },
+    {
+      "dependency": "PGIR-200",
+      "dependent": "PGIR-201",
+      "edge_id": "PGIR-201->PGIR-200"
+    },
+    {
+      "dependency": "PGIR-201",
+      "dependent": "PGIR-202",
+      "edge_id": "PGIR-202->PGIR-201"
+    },
+    {
+      "dependency": "PGIR-202",
+      "dependent": "PGIR-203",
+      "edge_id": "PGIR-203->PGIR-202"
+    },
+    {
+      "dependency": "PGIR-202",
+      "dependent": "PGIR-204",
+      "edge_id": "PGIR-204->PGIR-202"
+    },
+    {
+      "dependency": "PGIR-200",
+      "dependent": "PGIR-208",
+      "edge_id": "PGIR-208->PGIR-200"
+    },
+    {
+      "dependency": "PGIR-201",
+      "dependent": "PGIR-208",
+      "edge_id": "PGIR-208->PGIR-201"
+    },
+    {
+      "dependency": "PGIR-202",
+      "dependent": "PGIR-208",
+      "edge_id": "PGIR-208->PGIR-202"
+    },
+    {
+      "dependency": "PGIR-202",
+      "dependent": "PGIR-209",
+      "edge_id": "PGIR-209->PGIR-202"
+    },
+    {
+      "dependency": "PGIR-204",
+      "dependent": "PGIR-209",
+      "edge_id": "PGIR-209->PGIR-204"
+    },
+    {
+      "dependency": "PGIR-204",
+      "dependent": "PGIR-210",
+      "edge_id": "PGIR-210->PGIR-204"
+    },
+    {
+      "dependency": "PGIR-208",
+      "dependent": "PGIR-210",
+      "edge_id": "PGIR-210->PGIR-208"
+    },
+    {
+      "dependency": "PGIR-209",
+      "dependent": "PGIR-211",
+      "edge_id": "PGIR-211->PGIR-209"
+    },
+    {
+      "dependency": "PGIR-210",
+      "dependent": "PGIR-211",
+      "edge_id": "PGIR-211->PGIR-210"
+    },
+    {
+      "dependency": "PGIR-200",
+      "dependent": "PGIR-205",
+      "edge_id": "PGIR-205->PGIR-200"
+    },
+    {
+      "dependency": "PGIR-201",
+      "dependent": "PGIR-205",
+      "edge_id": "PGIR-205->PGIR-201"
+    },
+    {
+      "dependency": "PGIR-202",
+      "dependent": "PGIR-205",
+      "edge_id": "PGIR-205->PGIR-202"
+    },
+    {
+      "dependency": "PGIR-203",
+      "dependent": "PGIR-205",
+      "edge_id": "PGIR-205->PGIR-203"
+    },
+    {
+      "dependency": "PGIR-204",
+      "dependent": "PGIR-205",
+      "edge_id": "PGIR-205->PGIR-204"
+    },
+    {
+      "dependency": "PGIR-208",
+      "dependent": "PGIR-205",
+      "edge_id": "PGIR-205->PGIR-208"
+    },
+    {
+      "dependency": "PGIR-209",
+      "dependent": "PGIR-205",
+      "edge_id": "PGIR-205->PGIR-209"
+    },
+    {
+      "dependency": "PGIR-210",
+      "dependent": "PGIR-205",
+      "edge_id": "PGIR-205->PGIR-210"
+    },
+    {
+      "dependency": "PGIR-211",
+      "dependent": "PGIR-205",
+      "edge_id": "PGIR-205->PGIR-211"
+    },
+    {
+      "dependency": "PGIR-205",
+      "dependent": "PGIR-206",
+      "edge_id": "PGIR-206->PGIR-205"
+    },
+    {
+      "dependency": "PGIR-072",
+      "dependent": "PGIR-207",
+      "edge_id": "PGIR-207->PGIR-072"
+    },
+    {
+      "dependency": "PGIR-090",
+      "dependent": "PGIR-207",
+      "edge_id": "PGIR-207->PGIR-090"
+    },
+    {
+      "dependency": "PGIR-100",
+      "dependent": "PGIR-207",
+      "edge_id": "PGIR-207->PGIR-100"
+    },
+    {
+      "dependency": "PGIR-206",
+      "dependent": "PGIR-207",
+      "edge_id": "PGIR-207->PGIR-206"
+    }
+  ],
+  "graph_cid": "baguqeeralwlykkhim733fswfozup6n2zwh5wqtbqjlw2pmwaivzwe2h4eruq",
+  "graph_sha256": "sha256:5d978528e867f7b2cac57668ff3759b1fb684c304aeda7b2c045736268fc2469",
+  "historical_leaf_count": 4,
+  "interface": "proof-grounded-ir-learning/complete-result-graph/v1",
+  "node_count": 16,
+  "nodes": [
+    {
+      "dependency_first_position": 0,
+      "depends_on": [],
+      "disposition": "historical_completed",
+      "evidence_cid": "baguqeerazlsqaghk6m2c2ru3qbrsfprv7b5nbc5oa5lvfxz6d4b6qqgxpvra",
+      "historical_leaf": true,
+      "node_id": "result:PGIR-072",
+      "result_identity": "RESULT(PGIR-072)",
+      "task_cid": "baguqeeraarlt745ftpwax4tdovajsxrgp5r72fkudlbs5kmg3q2cbqow6mpq",
+      "task_id": "PGIR-072"
+    },
+    {
+      "dependency_first_position": 1,
+      "depends_on": [],
+      "disposition": "historical_completed",
+      "evidence_cid": "bafkreigwdei25h3eg2k2l6gp6ak5tbkbcfabi6vsoqzrzv6k6mpm73lhge",
+      "historical_leaf": true,
+      "node_id": "result:PGIR-090",
+      "result_identity": "RESULT(PGIR-090)",
+      "task_cid": "baguqeeragt5xhqov2e5vna6pp2zmghhrqhq2v4qzl36a3aucytrcom2erkta",
+      "task_id": "PGIR-090"
+    },
+    {
+      "dependency_first_position": 2,
+      "depends_on": [],
+      "disposition": "historical_completed",
+      "evidence_cid": "baguqeerainaqx5w72m2epc7wsolk3elqihpcganr6d3lrsuzseldzkqngija",
+      "historical_leaf": true,
+      "node_id": "result:PGIR-100",
+      "result_identity": "RESULT(PGIR-100)",
+      "task_cid": "baguqeerainaqx5w72m2epc7wsolk3elqihpcganr6d3lrsuzseldzkqngija",
+      "task_id": "PGIR-100"
+    },
+    {
+      "dependency_first_position": 3,
+      "depends_on": [],
+      "disposition": "historical_qualified_no_go",
+      "evidence_cid": "baguqeeraejs56hwzs3bqtgzoayrc2fxwgfnhcsxjthi4dh7gh64wptlkfhwa",
+      "historical_leaf": true,
+      "node_id": "result:PGIR-111",
+      "result_identity": "RESULT(PGIR-111)",
+      "task_cid": "baguqeerad2idzhwzfqlyxjh7u34bczkyutsvq7oxcmuaglupr436gqfo6kga",
+      "task_id": "PGIR-111"
+    },
+    {
+      "dependency_first_position": 4,
+      "depends_on": [
+        "PGIR-111"
+      ],
+      "disposition": "permanent_no_go",
+      "evidence_cid": "baguqeerav4mx4d6smnpejeqs3i3mayqmlimpdwaeqmz7prpdpgphp2i5srwq",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-200",
+      "result_identity": "RESULT(PGIR-200)",
+      "task_cid": null,
+      "task_id": "PGIR-200"
+    },
+    {
+      "dependency_first_position": 5,
+      "depends_on": [
+        "PGIR-200"
+      ],
+      "disposition": "not_materialized",
+      "evidence_cid": "baguqeera5mphxryqluiqps6ciehcjs6twc6hrltfwdtpy47wtkkg7ifqwvwa",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-201",
+      "result_identity": "RESULT(PGIR-201)",
+      "task_cid": null,
+      "task_id": "PGIR-201"
+    },
+    {
+      "dependency_first_position": 6,
+      "depends_on": [
+        "PGIR-201"
+      ],
+      "disposition": "permanent_no_go",
+      "evidence_cid": "baguqeera456gtyfkktybzrjbujmp2mqy6i2bins372xgdsgvaahdcvpxy7aq",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-202",
+      "result_identity": "RESULT(PGIR-202)",
+      "task_cid": null,
+      "task_id": "PGIR-202"
+    },
+    {
+      "dependency_first_position": 7,
+      "depends_on": [
+        "PGIR-202"
+      ],
+      "disposition": "permanently_deterministic_only",
+      "evidence_cid": "baguqeera2wxw5woodrk5534uu6wzwhxu7e3c3glizd4ns6bofd32qx43yhbq",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-203",
+      "result_identity": "RESULT(PGIR-203)",
+      "task_cid": null,
+      "task_id": "PGIR-203"
+    },
+    {
+      "dependency_first_position": 8,
+      "depends_on": [
+        "PGIR-202"
+      ],
+      "disposition": "retired",
+      "evidence_cid": "baguqeeraw4nh2c7xxamku4juzt5257krzlzuaxe64vl5cuz4h4c4iwm6xdjq",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-204",
+      "result_identity": "RESULT(PGIR-204)",
+      "task_cid": null,
+      "task_id": "PGIR-204"
+    },
+    {
+      "dependency_first_position": 9,
+      "depends_on": [
+        "PGIR-200",
+        "PGIR-201",
+        "PGIR-202"
+      ],
+      "disposition": "qualified_no_go",
+      "evidence_cid": "baguqeeraburgmpdfo6weea57zlgkmppv7r34v2v3zstrepudxhrj6zrlgabq",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-208",
+      "result_identity": "RESULT(PGIR-208)",
+      "task_cid": null,
+      "task_id": "PGIR-208"
+    },
+    {
+      "dependency_first_position": 10,
+      "depends_on": [
+        "PGIR-202",
+        "PGIR-204"
+      ],
+      "disposition": "qualified_no_go",
+      "evidence_cid": "baguqeerauh6r5lk47ecfmu5zjujmadrjiohd2ixkczcnurc33izkkvf2nb7q",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-209",
+      "result_identity": "RESULT(PGIR-209)",
+      "task_cid": null,
+      "task_id": "PGIR-209"
+    },
+    {
+      "dependency_first_position": 11,
+      "depends_on": [
+        "PGIR-204",
+        "PGIR-208"
+      ],
+      "disposition": "qualified_no_go",
+      "evidence_cid": "baguqeera4ruaxwivpst2iwslorrgmbpuva6jqxczyjf6uditxg62atltnvkq",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-210",
+      "result_identity": "RESULT(PGIR-210)",
+      "task_cid": null,
+      "task_id": "PGIR-210"
+    },
+    {
+      "dependency_first_position": 12,
+      "depends_on": [
+        "PGIR-209",
+        "PGIR-210"
+      ],
+      "disposition": "qualified_no_go",
+      "evidence_cid": "baguqeeram562re6snweb5nuinwprb4ehccvkin7kpylihktizlirsss7pllq",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-211",
+      "result_identity": "RESULT(PGIR-211)",
+      "task_cid": null,
+      "task_id": "PGIR-211"
+    },
+    {
+      "dependency_first_position": 13,
+      "depends_on": [
+        "PGIR-200",
+        "PGIR-201",
+        "PGIR-202",
+        "PGIR-203",
+        "PGIR-204",
+        "PGIR-208",
+        "PGIR-209",
+        "PGIR-210",
+        "PGIR-211"
+      ],
+      "disposition": "frozen_no_go",
+      "evidence_cid": "baguqeerarcuvejfqyjsfbqdtel67wu2lhjec3oh27enlqbxsvgyfbytsgd2q",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-205",
+      "result_identity": "RESULT(PGIR-205)",
+      "task_cid": null,
+      "task_id": "PGIR-205"
+    },
+    {
+      "dependency_first_position": 14,
+      "depends_on": [
+        "PGIR-205"
+      ],
+      "disposition": "typed_not_run",
+      "evidence_cid": "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-206",
+      "result_identity": "RESULT(PGIR-206)",
+      "task_cid": null,
+      "task_id": "PGIR-206"
+    },
+    {
+      "dependency_first_position": 15,
+      "depends_on": [
+        "PGIR-072",
+        "PGIR-090",
+        "PGIR-100",
+        "PGIR-206"
+      ],
+      "disposition": "qualified_no_go",
+      "evidence_cid": "baguqeeraxlp6azus5brolzyypub6hraj44fcfgm6zzq34rda7y2lo37hf6eq",
+      "historical_leaf": false,
+      "node_id": "result:PGIR-207",
+      "result_identity": "RESULT(PGIR-207)",
+      "task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+      "task_id": "PGIR-207"
+    }
+  ],
+  "root_node_id": "result:PGIR-207",
+  "schema": "PGIRCompleteResultGraph@1",
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  }
+}

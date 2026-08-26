@@ -1,0 +1,79 @@
+{
+  "acceptance_cid": "baguqeerapltdxyv6hybhm6zvksll7ycq456wldia7kn7cuinkpzxwmadsdgq",
+  "campaign_input_root_cid": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+  "decision_cid": "baguqeeraxlp6azus5brolzyypub6hraj44fcfgm6zzq34rda7y2lo37hf6eq",
+  "depends_on": [
+    "PGIR-072",
+    "PGIR-090",
+    "PGIR-100",
+    "PGIR-206"
+  ],
+  "evaluation_cid": "baguqeeraefsi42lozgje55up3zgewp7byhthwtuybryn2pt7ghrkfkhkk5oq",
+  "hidden_test_selection": false,
+  "interface": "proof-grounded-ir-learning/qualification-recipe/v2",
+  "lease_policy": "LEASE-DEFAULT",
+  "missing_metric_as_zero": false,
+  "pgir_206_forest": [
+    {
+      "commit": "0373c2968b9b46b43ee9f564051182df137c08e4",
+      "parents": [
+        "c03180fbbd64b225a121fcc7be046bd0beab8918"
+      ],
+      "role": "implementation",
+      "subject": "PGIR-206: Re-run R1-R6 on the superseding freeze",
+      "tree": "387f92d22fe7804a11436d2382b7592308233234"
+    },
+    {
+      "commit": "efd5bc4107a595ba7b56632faa7d2f6c82f249d8",
+      "parents": [
+        "c03180fbbd64b225a121fcc7be046bd0beab8918",
+        "0373c2968b9b46b43ee9f564051182df137c08e4"
+      ],
+      "role": "merge",
+      "subject": "Merge commit '0373c2968b9b46b43ee9f564051182df137c08e4' into agent/pgir-successor-current-supervisor-20260825",
+      "tree": "387f92d22fe7804a11436d2382b7592308233234"
+    },
+    {
+      "commit": "ef4a74b362386578858d368a8e7420238e4c897d",
+      "parents": [
+        "efd5bc4107a595ba7b56632faa7d2f6c82f249d8"
+      ],
+      "role": "completion",
+      "subject": "PGIR-206: mark todo completed",
+      "tree": "556e95765e90f00025eecefb8048a655956d70a3"
+    }
+  ],
+  "pgir_206_manifest_cid": "baguqeerao2izb4i6bv7ffg3flharhjlph35gpwl4rbekzrrwm3n25mibqxsq",
+  "pgir_206_result_cid": "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq",
+  "promotion_cid": "baguqeeraec36m23c3dblgwyf2xciafjg6eeo26iadlh4nyvqflmnnkg24kka",
+  "proof_cid": "baguqeerawm7cktq2mhi4ekggswdmchgelq663sxcltudgpjylsoj64vbftxq",
+  "publication_cid": "baguqeera6koc4d5ir5gd45c2gudna4ik4i37s3qd7eeakxv4x7emaig3xd4a",
+  "reason_codes": [
+    "no_rights_admitted_training_rows",
+    "corpus_not_materialized",
+    "required_holdouts_insufficient",
+    "tokenizer_not_admitted",
+    "historical_semantic_baseline_not_currently_qualified",
+    "integrated_evidence_does_not_authorize_execution",
+    "portability_no_go",
+    "pgir_206_execution_not_authorized",
+    "pgir_206_typed_not_run",
+    "no_candidate_checkpoint",
+    "publication_not_authorized"
+  ],
+  "recipe_cid": "baguqeeraimjhwwo5x5ljjjkg3jzw3bs2nfbmr6sayioeksoogsyogkdo2xga",
+  "recipe_sha256": "sha256:43127b59ddbf5694a546da736d865a6942c8fa40c21c4549ce34b0e3286ed5cc",
+  "resource_profile": "RP-CPU-M",
+  "result_graph_cid": "baguqeeralwlykkhim733fswfozup6n2zwh5wqtbqjlw2pmwaivzwe2h4eruq",
+  "schema": "PGIRQualificationRecipe@2",
+  "sections_cid": "baguqeerax6zzh4e4lmvs74yefb4r3s2p67vldwvz3zehcn2pfk5i3mjjjjoa",
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  }
+}

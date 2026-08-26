@@ -1,0 +1,31 @@
+{
+  "authority_granted": false,
+  "authorizes_promotion": false,
+  "campaign_cid": "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+  "checked_proof_count": 0,
+  "hidden_labels_opened": false,
+  "kernel_check_count": 0,
+  "nondifferentiable": true,
+  "pgir_206_result_cid": "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq",
+  "proof_attempt_count": 0,
+  "proof_cid": "baguqeerawm7cktq2mhi4ekggswdmchgelq663sxcltudgpjylsoj64vbftxq",
+  "proof_invocation_count": 0,
+  "proof_invoked": false,
+  "proof_results": [],
+  "proof_sha256": "sha256:b33e254e1a61d1c228c69586c11cc45c3dedcae25ce8333d385c9c9f72a12cef",
+  "schema": "PGIRQualificationProofReceipt@1",
+  "source_receipt_cid": "baguqeeraa55wxtbh2s63j22qgytbnsfjpatnstg4vun4nqg5qlvu3fgcx36a",
+  "status": "verified_typed_not_run",
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  },
+  "timeout_as_falsehood": false,
+  "training_receipt_cid": "baguqeeral5izctrs4pkjsiwmodfufnvgcsvmvz3fucarh5atlduzta7aaiaa",
+  "verifier_interface": "pgir-terminal-qualification-proof/v1"
+}
