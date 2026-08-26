@@ -15750,6 +15750,9 @@ def test_aseh_r20_pre_duckdb_exact_candidate_without_receipt_fails_before_databa
     monkeypatch.setattr(
         aseh_operator, "_r22_population_requires_policy", lambda _value: False
     )
+    monkeypatch.setattr(
+        aseh_operator, "_r23_population_requires_policy", lambda _value: False
+    )
     for name in (
         "_read_continuity_state",
         "_projection_matches_events_on_disposable_copy",
@@ -15821,6 +15824,9 @@ def test_aseh_r20_pre_duckdb_qualification_precedes_continuity_state_read(
         aseh_operator, "_r22_population_requires_policy", lambda _value: False
     )
     monkeypatch.setattr(
+        aseh_operator, "_r23_population_requires_policy", lambda _value: False
+    )
+    monkeypatch.setattr(
         aseh_operator,
         "_validate_repair_transition",
         lambda *_args, **_kwargs: {"repair_head": "9" * 40},
@@ -15883,6 +15889,9 @@ def test_aseh_r20_pre_duckdb_qualifies_once_before_receipt_reread(
     )
     monkeypatch.setattr(
         aseh_operator, "_r22_population_requires_policy", lambda _value: False
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_r23_population_requires_policy", lambda _value: False
     )
     monkeypatch.setattr(
         aseh_operator, "_load_exact_r19_receipt_chain", lambda _paths: prior_chain
@@ -16176,6 +16185,9 @@ def _configure_aseh_r20_materialized_launch(
     )
     monkeypatch.setattr(
         aseh_operator, "_r22_population_requires_policy", lambda _value: False
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_r23_population_requires_policy", lambda _value: False
     )
     monkeypatch.setattr(
         aseh_operator,
@@ -16834,6 +16846,11 @@ def _configure_aseh_r21_owner_runner_entry(
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_r23_owner_start_permission_context_from_launch_admission",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_assert_candidate_authorization_witness",
         lambda *_args, **_kwargs: None,
     )
@@ -16935,6 +16952,7 @@ def _configure_aseh_r21_start_retry(
     decisions: list[dict[str, object]] = []
     control_failures: list[dict[str, object]] = []
     builds: list[_AsehR21FakeServer] = []
+    observations: list[tuple[str, object | None]] = []
     baseline_database = {
         "availability": "observed",
         "sha256": "sha256:" + ("1" * 64),
@@ -16947,8 +16965,10 @@ def _configure_aseh_r21_start_retry(
         paths: object,
         server: _AsehR21FakeServer,
         expected_lifecycle: str,
+        r23_permission_context: object | None = None,
     ) -> dict[str, object]:
         del paths
+        observations.append((expected_lifecycle, r23_permission_context))
         events.append(f"{server.name}:observe:{expected_lifecycle}")
         assert server.lifecycle.value == expected_lifecycle
         if expected_lifecycle == "failed":
@@ -17019,6 +17039,11 @@ def _configure_aseh_r21_start_retry(
         "_r21_owner_start_contention_observation",
         observe,
     )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(aseh_operator, "_build_server", build)
     monkeypatch.setattr(
         aseh_operator,
@@ -17040,6 +17065,7 @@ def _configure_aseh_r21_start_retry(
         "decisions": decisions,
         "control_failures": control_failures,
         "builds": builds,
+        "observations": observations,
     }
 
 
@@ -17989,6 +18015,119 @@ def test_aseh_r21_owner_start_cleanup_proof_rejection_matrix(
     )
 
 
+def test_aseh_r23_permission_admission_runs_once_before_exact_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    original = _aseh_r21_migration_failure(TimeoutError("lock timeout"))
+    first = _AsehR21FakeServer("first", original, events, live)
+    retry = _AsehR21FakeServer(
+        "retry",
+        _aseh_r21_fake_identity("retry"),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch,
+        initial=first,
+        retry=retry,
+    )
+    context["board"] = SimpleNamespace(
+        resolved_database_program=lambda: SimpleNamespace(
+            store_id="data/aseh/control.duckdb"
+        )
+    )
+    witness = {"sealed": "witness"}
+    permission_context = {
+        "candidate_head": "a" * 40,
+        "candidate_tree": "b" * 40,
+        "candidate_authorization_witness": witness,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition_receipt_cid": "sha256:" + ("2" * 64),
+        "materialized_launch_admission_cid": "sha256:" + ("3" * 64),
+        "store_id": "data/aseh/control.duckdb",
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+
+    returned, identity, recovery = (
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=context["board"],
+            paths=context["paths"],
+            server=first,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness=witness,
+            failure={},
+            failure_event=threading.Event(),
+            r23_permission_context=permission_context,
+        )
+    )
+
+    assert returned is retry
+    assert identity is retry.outcome
+    assert recovery is not None
+    assert context["observations"] == [
+        ("created", permission_context),
+        ("failed", None),
+    ]
+    assert first.start_calls == 1
+    assert retry.start_calls == 1
+    assert [item["decision"] for item in context["decisions"]] == [
+        "retry_admitted",
+        "recovered",
+    ]
+
+
+def test_aseh_r23_context_rejection_is_not_an_attempted_observation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first = _AsehR21FakeServer(
+        "first",
+        _aseh_r21_fake_identity("first"),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch,
+        initial=first,
+    )
+    permission_context = {
+        "candidate_head": "a" * 40,
+        "candidate_tree": "b" * 40,
+        "candidate_authorization_witness": {"sealed": "witness"},
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition_receipt_cid": "sha256:" + ("2" * 64),
+        "materialized_launch_admission_cid": "sha256:" + ("3" * 64),
+        "store_id": "data/aseh/not-the-authoritative-store.duckdb",
+    }
+
+    with pytest.raises(aseh_operator.OperatorError, match="context differs"):
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=context["board"],
+            paths=context["paths"],
+            server=first,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={"sealed": "witness"},
+            failure={},
+            failure_event=threading.Event(),
+            r23_permission_context=permission_context,
+        )
+
+    assert first.start_calls == 0
+    assert context["observations"] == []
+    assert context["decisions"] == []
+    assert context["control_failures"] == []
+    assert context["builds"] == []
+
+
 def test_aseh_r21_owner_start_recovery_decision_is_create_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -18082,6 +18221,670 @@ def test_aseh_r21_owner_start_file_and_lock_observations_are_fail_closed(
             )
     finally:
         os.close(directory_fd)
+
+
+@pytest.mark.parametrize(
+    ("initial_mode", "expected_changed", "expected_fchmod_calls"),
+    [(0o664, True, 1), (0o600, False, 0)],
+)
+def test_aseh_r23_database_permission_hardening_is_exact_and_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    initial_mode: int,
+    expected_changed: bool,
+    expected_fchmod_calls: int,
+) -> None:
+    database = tmp_path / "control.duckdb"
+    payload = b"sealed-r23-owner-state"
+    database.write_bytes(payload)
+    database.chmod(initial_mode)
+    before = database.stat()
+    before_digest = hashlib.sha256(payload).hexdigest()
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0),
+    )
+    original_fchmod = aseh_operator.os.fchmod
+    fchmod_calls: list[int] = []
+
+    def record_fchmod(descriptor: int, mode: int) -> None:
+        fchmod_calls.append(mode)
+        original_fchmod(descriptor, mode)
+
+    monkeypatch.setattr(aseh_operator.os, "fchmod", record_fchmod)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    try:
+        post, observation = (
+            aseh_operator._r23_harden_owner_start_database_permissions(
+                directory_fd,
+                name=database.name,
+                candidate_head="a" * 40,
+                candidate_tree="b" * 40,
+                candidate_authorization_witness={"sealed": "witness"},
+            )
+        )
+    finally:
+        os.close(directory_fd)
+
+    after = database.stat()
+    assert stat.S_IMODE(after.st_mode) == 0o600
+    assert fchmod_calls == ([0o600] if expected_fchmod_calls else [])
+    assert observation["mode_before"] == initial_mode
+    assert observation["mode_after"] == 0o600
+    assert observation["mode_changed"] is expected_changed
+    assert observation["fsync_performed"] is expected_changed
+    assert observation["content_mutated"] is False
+    assert observation["sha256_before"] == f"sha256:{before_digest}"
+    assert observation["sha256_after"] == f"sha256:{before_digest}"
+    assert post["sha256"] == f"sha256:{before_digest}"
+    assert (
+        after.st_dev,
+        after.st_ino,
+        after.st_uid,
+        after.st_gid,
+        after.st_nlink,
+        after.st_size,
+        after.st_atime_ns,
+        after.st_mtime_ns,
+    ) == (
+        before.st_dev,
+        before.st_ino,
+        before.st_uid,
+        before.st_gid,
+        before.st_nlink,
+        before.st_size,
+        before.st_atime_ns,
+        before.st_mtime_ns,
+    )
+    assert database.read_bytes() == payload
+
+
+@pytest.mark.parametrize(
+    "unsafe_mode",
+    [0o644, 0o660, 0o666, 0o602, 0o620, 0o777, 0o4600],
+)
+def test_aseh_r23_database_permission_hardening_rejects_other_modes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_mode: int,
+) -> None:
+    database = tmp_path / "control.duckdb"
+    database.write_bytes(b"sealed-r23-owner-state")
+    database.chmod(unsafe_mode)
+    before = database.stat()
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="identity is unsafe"):
+            aseh_operator._r23_harden_owner_start_database_permissions(
+                directory_fd,
+                name=database.name,
+                candidate_head="a" * 40,
+                candidate_tree="b" * 40,
+                candidate_authorization_witness={"sealed": "witness"},
+            )
+    finally:
+        os.close(directory_fd)
+    after = database.stat()
+    assert stat.S_IMODE(after.st_mode) == stat.S_IMODE(before.st_mode)
+    assert database.read_bytes() == b"sealed-r23-owner-state"
+
+
+def test_aseh_r23_owner_start_observations_reject_fifo_without_blocking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "control.duckdb"
+    wal = tmp_path / "control.duckdb.wal"
+    os.mkfifo(database, mode=0o600)
+    os.mkfifo(wal, mode=0o600)
+    original_open = os.open
+
+    def bounded_fifo_open(
+        path: object,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if path in {database.name, wal.name}:
+            assert flags & os.O_NONBLOCK, "FIFO observation must be nonblocking"
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(aseh_operator.os, "open", bounded_fifo_open)
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0),
+    )
+    started = time.monotonic()
+    try:
+        with pytest.raises(aseh_operator.OperatorError, match="identity is unsafe"):
+            aseh_operator._r23_harden_owner_start_database_permissions(
+                directory_fd,
+                name=database.name,
+                candidate_head="a" * 40,
+                candidate_tree="b" * 40,
+                candidate_authorization_witness={"sealed": "witness"},
+            )
+        with pytest.raises(aseh_operator.OperatorError, match="identity is unsafe"):
+            aseh_operator._r21_owner_start_file_observation(
+                directory_fd,
+                wal.name,
+            )
+    finally:
+        os.close(directory_fd)
+    assert time.monotonic() - started < 1.0
+
+
+def _aseh_r23_permission_receipt_fixture() -> tuple[
+    dict[str, object], dict[str, str]
+]:
+    observation: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R23_OWNER_START_PERMISSION_OBSERVATION_SCHEMA,
+        "availability": "observed",
+        "name": "control.duckdb",
+        "device": 1,
+        "inode": 2,
+        "uid": os.geteuid(),
+        "gid": os.getegid(),
+        "nlink": 1,
+        "size_bytes": 3,
+        "atime_ns": 4,
+        "mtime_ns": 5,
+        "ctime_before_ns": 6,
+        "ctime_after_ns": 7,
+        "mode_before": 0o664,
+        "mode_after": 0o600,
+        "mode_changed": True,
+        "fsync_performed": True,
+        "sha256_before": "sha256:" + ("1" * 64),
+        "sha256_after": "sha256:" + ("1" * 64),
+        "content_mutated": False,
+    }
+    observation["observation_cid"] = aseh_operator._identity(observation)
+    lock_order = ["owner", "migration", "intent", "database"]
+    lock_names = [
+        ".control.duckdb.state-owner.lock",
+        ".control.duckdb.migration.lock",
+        ".control.duckdb.intent.lock",
+        ".control.duckdb.lock",
+    ]
+    locks = [
+        {
+            "lock_class": lock_class,
+            "name": lock_names[index],
+            "device": 10,
+            "inode": 20 + index,
+            "mode": stat.S_IFREG | 0o600,
+            "uid": os.geteuid(),
+            "nlink": 1,
+            "acquired_nonblocking": True,
+        }
+        for index, lock_class in enumerate(lock_order)
+    ]
+    endpoints = {
+        "paths_absent": {
+            "owner_marker": True,
+            "typed_command_socket": True,
+            "grant_broker_socket": True,
+            "typed_command_token": True,
+        },
+        "listener_absence_samples": [
+            "connection_refused",
+            "connection_refused",
+        ],
+    }
+    bindings = {
+        "candidate_head": "a" * 40,
+        "candidate_tree": "b" * 40,
+        "candidate_authorization_witness_cid": "sha256:" + ("2" * 64),
+        "bootstrap_receipt_id": "sha256:" + ("3" * 64),
+        "repair_transition_receipt_cid": "sha256:" + ("4" * 64),
+        "materialized_launch_admission_cid": "sha256:" + ("5" * 64),
+        "store_id": "data/aseh/control.duckdb",
+    }
+    receipt: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R23_OWNER_START_PERMISSION_RECEIPT_SCHEMA,
+        "program_id": aseh_operator.PROGRAM,
+        "authority": "non_authoritative_observability",
+        **bindings,
+        "lock_order": lock_order,
+        "locks": locks,
+        "wal_observation": {
+            "schema": aseh_operator.ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA,
+            "availability": "absent",
+        },
+        "endpoints_before": endpoints,
+        "endpoints_after": json.loads(json.dumps(endpoints)),
+        "database_permission_observation": observation,
+        "database_content_mutated": False,
+        "database_metadata_mutated": True,
+        "wal_mutated": False,
+        "owner_start_attempted": False,
+        "retry_authorized": False,
+        "observed_at_ns": 123456789,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    return receipt, bindings
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "extra-observation-field",
+        "truthy-endpoint-string",
+        "malformed-lock",
+        "nonmapping-paths",
+        "swapped-authority-cid",
+        "foreign-uid",
+        "oversized-database",
+        "noop-ctime-drift",
+    ],
+)
+def test_aseh_r23_permission_receipt_nested_grammar_is_closed(
+    mutation: str,
+) -> None:
+    receipt, bindings = _aseh_r23_permission_receipt_fixture()
+    if mutation == "extra-observation-field":
+        receipt["database_permission_observation"]["secret"] = "not-admitted"
+        observation = receipt["database_permission_observation"]
+        unsigned_observation = dict(observation)
+        unsigned_observation.pop("observation_cid")
+        observation["observation_cid"] = aseh_operator._identity(
+            unsigned_observation
+        )
+    elif mutation == "truthy-endpoint-string":
+        receipt["endpoints_before"]["paths_absent"]["owner_marker"] = "yes"
+        receipt["endpoints_after"] = json.loads(
+            json.dumps(receipt["endpoints_before"])
+        )
+    elif mutation == "malformed-lock":
+        receipt["locks"][0]["acquired_nonblocking"] = "yes"
+    elif mutation == "nonmapping-paths":
+        receipt["endpoints_before"]["paths_absent"] = []
+        receipt["endpoints_after"] = json.loads(
+            json.dumps(receipt["endpoints_before"])
+        )
+    elif mutation == "swapped-authority-cid":
+        receipt["bootstrap_receipt_id"] = "sha256:" + ("9" * 64)
+    elif mutation == "foreign-uid":
+        receipt["database_permission_observation"]["uid"] = os.geteuid() + 1
+    elif mutation == "oversized-database":
+        receipt["database_permission_observation"]["size_bytes"] = (
+            8 * 1024 * 1024 * 1024 + 1
+        )
+    else:
+        observation = receipt["database_permission_observation"]
+        observation["mode_before"] = 0o600
+        observation["mode_after"] = 0o600
+        observation["mode_changed"] = False
+        observation["fsync_performed"] = False
+        observation["ctime_after_ns"] = observation["ctime_before_ns"] + 1
+        receipt["database_metadata_mutated"] = False
+    if mutation in {"foreign-uid", "oversized-database", "noop-ctime-drift"}:
+        observation = receipt["database_permission_observation"]
+        unsigned_observation = dict(observation)
+        unsigned_observation.pop("observation_cid")
+        observation["observation_cid"] = aseh_operator._identity(
+            unsigned_observation
+        )
+    unsigned = dict(receipt)
+    unsigned.pop("receipt_cid")
+    receipt["receipt_cid"] = aseh_operator._identity(unsigned)
+
+    with pytest.raises(aseh_operator.OperatorError, match="R23"):
+        aseh_operator._validate_r23_owner_start_permission_receipt(
+            receipt,
+            expected_bindings=bindings,
+        )
+
+
+def _aseh_r23_owner_start_observation_fixture(
+    tmp_path: Path,
+    *,
+    database_mode: int,
+) -> tuple[dict[str, Path], SimpleNamespace, dict[str, object]]:
+    database = tmp_path / "control.duckdb"
+    database.write_bytes(b"sealed-r23-owner-state")
+    database.chmod(database_mode)
+    owner = tmp_path / "owner"
+    owner.mkdir(mode=0o700)
+    server = SimpleNamespace(
+        lifecycle=SimpleNamespace(value="created"),
+        identity=None,
+        config=SimpleNamespace(host="127.0.0.1", port=43210),
+        owner_marker_path=lambda: database.with_name(
+            f".{database.name}.state-owner.json"
+        ),
+        typed_command_socket_path=lambda: owner / "typed-owner.sock",
+        typed_command_token_path=lambda: owner / "typed-owner.token",
+    )
+    paths = {
+        "database": database,
+        "owner": owner,
+        "owner_start_permission_receipts": tmp_path / "permission-receipts",
+    }
+    witness = {"sealed": "witness"}
+    context: dict[str, object] = {
+        "candidate_head": "a" * 40,
+        "candidate_tree": "b" * 40,
+        "candidate_authorization_witness": witness,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition_receipt_cid": "sha256:" + ("2" * 64),
+        "materialized_launch_admission_cid": "sha256:" + ("3" * 64),
+        "store_id": "data/aseh/control.duckdb",
+    }
+    return paths, server, context
+
+
+def test_aseh_r23_permission_receipt_failure_blocks_owner_start_and_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths, server, context = _aseh_r23_owner_start_observation_fixture(
+        tmp_path,
+        database_mode=0o664,
+    )
+    start_calls: list[str] = []
+    builds: list[str] = []
+    recovery_decisions: list[dict[str, object]] = []
+    control_failures: list[dict[str, object]] = []
+    server.start = lambda: start_calls.append("start")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_listener_absence_samples",
+        lambda *_args, **_kwargs: [
+            "connection_refused",
+            "connection_refused",
+        ],
+    )
+
+    def reject_receipt(**_kwargs: object) -> None:
+        raise aseh_operator.OperatorError("injected R23 receipt failure")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r23_publish_owner_start_permission_receipt",
+        reject_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_build_server",
+        lambda *_args: builds.append("build"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_publish_owner_start_recovery_decision",
+        lambda **kwargs: recovery_decisions.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r22_publish_owner_start_baseline_decision",
+        lambda **_kwargs: {"decision": "non_retried"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_record_control_failure",
+        lambda *_args, **kwargs: control_failures.append(dict(kwargs)),
+    )
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="injected R23 receipt failure",
+    ):
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=SimpleNamespace(
+                resolved_database_program=lambda: SimpleNamespace(
+                    store_id="data/aseh/control.duckdb"
+                )
+            ),
+            paths=paths,
+            server=server,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={"sealed": "witness"},
+            failure={},
+            failure_event=threading.Event(),
+            r23_permission_context=context,
+        )
+
+    assert stat.S_IMODE(paths["database"].stat().st_mode) == 0o600
+    assert start_calls == []
+    assert builds == []
+    assert recovery_decisions == []
+    assert control_failures[-1]["reason_code"] == (
+        "state_owner_start_baseline_unavailable"
+    )
+
+
+def test_aseh_r23_permission_receipt_is_published_with_all_locks_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths, server, context = _aseh_r23_owner_start_observation_fixture(
+        tmp_path,
+        database_mode=0o664,
+    )
+    database = paths["database"]
+    original_publisher = (
+        aseh_operator._r23_publish_owner_start_permission_receipt
+    )
+    publications: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_listener_absence_samples",
+        lambda *_args, **_kwargs: [
+            "connection_refused",
+            "connection_refused",
+        ],
+    )
+
+    def publish_with_lock_proof(**kwargs: object) -> dict[str, object]:
+        owner_lock = database.with_name(
+            f".{database.name}{quack_state_server_module.OWNER_LOCK_SUFFIX}"
+        )
+        owner_descriptor = os.open(
+            owner_lock,
+            os.O_RDWR | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(
+                    owner_descriptor,
+                    fcntl.LOCK_EX | fcntl.LOCK_NB,
+                )
+        finally:
+            os.close(owner_descriptor)
+        directory_fd = os.open(
+            tmp_path,
+            os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0),
+        )
+        try:
+            for lock_class, name in (
+                ("migration", f".{database.name}.migration.lock"),
+                ("intent", f".{database.name}.intent.lock"),
+                ("database", f".{database.name}.lock"),
+            ):
+                with pytest.raises(aseh_operator.OperatorError, match="contended"):
+                    with aseh_operator._r21_nonblocking_named_lock(
+                        directory_fd,
+                        name=name,
+                        lock_class=lock_class,
+                    ):
+                        pytest.fail(f"{lock_class} lock was not held")
+        finally:
+            os.close(directory_fd)
+        receipt = original_publisher(**kwargs)
+        publications.append(receipt)
+        return receipt
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r23_publish_owner_start_permission_receipt",
+        publish_with_lock_proof,
+    )
+
+    observation = aseh_operator._r21_owner_start_contention_observation(
+        paths=paths,
+        server=server,
+        expected_lifecycle="created",
+        r23_permission_context=context,
+    )
+
+    assert observation["schema"] == (
+        aseh_operator.ASEH_R23_OWNER_START_CONTENTION_OBSERVATION_SCHEMA
+    )
+    assert observation["database_permission_observation"]["mode_before"] == 0o664
+    assert observation["database_permission_observation"]["mode_after"] == 0o600
+    assert len(publications) == 1
+    receipt_path = (
+        paths["owner_start_permission_receipts"]
+        / f"{publications[0]['receipt_cid'][7:]}.json"
+    )
+    assert receipt_path.is_file()
+    assert stat.S_IMODE(database.stat().st_mode) == 0o600
+
+
+def test_aseh_r23_post_hardening_wal_race_fails_before_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths, server, context = _aseh_r23_owner_start_observation_fixture(
+        tmp_path,
+        database_mode=0o600,
+    )
+    original_observer = aseh_operator._r21_owner_start_file_observation
+    wal_reads: list[str] = []
+    publications: list[object] = []
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_listener_absence_samples",
+        lambda *_args, **_kwargs: [
+            "connection_refused",
+            "connection_refused",
+        ],
+    )
+
+    def observe_file(directory_fd: int, name: str) -> dict[str, object]:
+        if name.endswith(".wal"):
+            wal_reads.append(name)
+            if len(wal_reads) == 2:
+                return {
+                    "schema": (
+                        aseh_operator.ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA
+                    ),
+                    "availability": "observed",
+                    "sha256": "sha256:" + ("9" * 64),
+                }
+        return original_observer(directory_fd, name)
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_owner_start_file_observation",
+        observe_file,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r23_publish_owner_start_permission_receipt",
+        lambda **kwargs: publications.append(kwargs),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="WAL changed"):
+        aseh_operator._r21_owner_start_contention_observation(
+            paths=paths,
+            server=server,
+            expected_lifecycle="created",
+            r23_permission_context=context,
+        )
+
+    assert len(wal_reads) == 2
+    assert publications == []
+    assert stat.S_IMODE(paths["database"].stat().st_mode) == 0o600
+
+
+def test_aseh_r23_post_hardening_database_name_swap_fails_before_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths, server, context = _aseh_r23_owner_start_observation_fixture(
+        tmp_path,
+        database_mode=0o600,
+    )
+    database = paths["database"]
+    displaced = tmp_path / "displaced-control.duckdb"
+    original_hardener = (
+        aseh_operator._r23_harden_owner_start_database_permissions
+    )
+    publications: list[object] = []
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_listener_absence_samples",
+        lambda *_args, **_kwargs: [
+            "connection_refused",
+            "connection_refused",
+        ],
+    )
+
+    def harden_then_swap(*args: object, **kwargs: object) -> object:
+        result = original_hardener(*args, **kwargs)
+        database.rename(displaced)
+        database.write_bytes(b"replacement-r23-owner-state")
+        database.chmod(0o600)
+        return result
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r23_harden_owner_start_database_permissions",
+        harden_then_swap,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r23_publish_owner_start_permission_receipt",
+        lambda **kwargs: publications.append(kwargs),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="name changed"):
+        aseh_operator._r21_owner_start_contention_observation(
+            paths=paths,
+            server=server,
+            expected_lifecycle="created",
+            r23_permission_context=context,
+        )
+
+    assert publications == []
+    assert displaced.read_bytes() == b"sealed-r23-owner-state"
+    assert database.read_bytes() == b"replacement-r23-owner-state"
 
 
 def test_aseh_r21_owner_start_endpoint_alias_is_admitted_only_with_all_locks_held(
@@ -18933,6 +19736,233 @@ def test_aseh_r21_delegates_r22_before_suffix_admission(
             previous_receipt=r20_chain[-1],
             previous_transition=r20_chain[-1],
             prior_receipt_chain=r20_chain,
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
+
+
+def _aseh_r23_structural_chain() -> list[dict[str, object]]:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R23_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        receipt_cid = (
+            aseh_operator.ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS[index]
+            if index < 22
+            else "sha256:" + ("f" * 64)
+        )
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": receipt_cid,
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+    return chain
+
+
+def test_aseh_r23_database_permission_requires_exact_r1_r23_chain() -> None:
+    chain = _aseh_r23_structural_chain()
+    assert aseh_operator._admit_exact_r23_transition_chain(chain) == chain
+
+    with pytest.raises(aseh_operator.OperatorError, match="R23"):
+        aseh_operator._admit_exact_r23_transition_chain(chain[:-1])
+    rewritten = [dict(item) for item in chain]
+    rewritten[20]["receipt_cid"] = "sha256:" + ("e" * 64)
+    rewritten[21]["previous_receipt_cid"] = rewritten[20]["receipt_cid"]
+    with pytest.raises(aseh_operator.OperatorError, match="vector"):
+        aseh_operator._admit_exact_r23_transition_chain(rewritten)
+    unlinked = [dict(item) for item in chain]
+    unlinked[-1]["previous_receipt_cid"] = "sha256:" + ("d" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R23"):
+        aseh_operator._admit_exact_r23_transition_chain(unlinked)
+
+
+def test_aseh_r23_database_permission_matrix_is_globally_registered() -> None:
+    matrix = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_VALIDATIONS
+    )
+    registered = {
+        tuple(tuple(command) for command in candidate)
+        for candidate in aseh_operator._receipt_validation_matrices()
+    }
+
+    assert tuple(tuple(command) for command in matrix) in registered
+    for command in matrix:
+        parsed = aseh_operator._parse_receipt_validation_python_command(
+            command,
+            require_known=True,
+        )
+        if aseh_operator.ASEH_RECEIPT_VALIDATION_PYTHON in command:
+            assert parsed is not None
+
+
+def test_aseh_r23_exact_launch_builds_one_bound_permission_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain = _aseh_r23_structural_chain()
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+    )
+    head = "a" * 40
+    tree = "b" * 40
+    witness = _aseh_r22_witness(head, tree)
+    chain[-2]["repair_head"] = base
+    active = chain[-1]
+    active.update(
+        {
+            "base_head": base,
+            "repair_head": head,
+            "repair_tree": tree,
+            "candidate_authorization_witness": witness,
+        }
+    )
+    admission: dict[str, object] = {
+        "runtime_source_head": head,
+        "runtime_repository_tree_id": tree,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "historical_live_authorizing_receipt_cid": active["receipt_cid"],
+    }
+    admission["admission_cid"] = aseh_operator._identity(admission)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base if args == ("show", "-s", "--format=%P", head) else ""
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    board = SimpleNamespace(
+        resolved_database_program=lambda: SimpleNamespace(
+            store_id="data/aseh/control.duckdb"
+        )
+    )
+
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=head,
+        candidate_tree=tree,
+    )
+    context = (
+        aseh_operator._r23_owner_start_permission_context_from_launch_admission(
+            board=board,
+            launch_admission=admission,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+        )
+    )
+    assert context == {
+        "candidate_head": head,
+        "candidate_tree": tree,
+        "candidate_authorization_witness": witness,
+        "bootstrap_receipt_id": admission["bootstrap_receipt_id"],
+        "repair_transition_receipt_cid": active["receipt_cid"],
+        "materialized_launch_admission_cid": admission["admission_cid"],
+        "store_id": "data/aseh/control.duckdb",
+    }
+
+    swapped = dict(admission)
+    swapped["historical_live_authorizing_receipt_cid"] = (
+        "sha256:" + ("9" * 64)
+    )
+    swapped["admission_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in swapped.items()
+            if key != "admission_cid"
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R23"):
+        aseh_operator._r23_owner_start_permission_context_from_launch_admission(
+            board=board,
+            launch_admission=swapped,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+        )
+
+
+def test_aseh_r22_delegates_r23_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r22_path = tmp_path / "repair-r22.json"
+    r22_path.touch()
+    r23_path = tmp_path / "repair-r23.json"
+    full_prior = _aseh_r23_structural_chain()[:-1]
+    r21_chain = full_prior[:-1]
+    r21_chain[-1]["repair_head"] = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+    )
+    r22_receipt = dict(full_prior[-1])
+    r22_transition = {
+        **r22_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+        ),
+    }
+    sentinel = {"delegated": "r23"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r22_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_terminal_observability_transition",
+        lambda *_args, **_kwargs: r22_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_owner_database_permission_hardening_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS)
+            else pytest.fail("R22 did not delegate the exact R1-R22 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R22 materialized suffix ran before R23 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_sealed_owner_terminal_observability_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_terminal_observability_transition_receipt": (
+                    r22_path
+                ),
+                "repair_sealed_owner_database_permission_hardening_transition_receipt": (
+                    r23_path
+                ),
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="9" * 40,
+            previous_receipt=r21_chain[-1],
+            previous_transition=r21_chain[-1],
+            prior_receipt_chain=r21_chain,
             authorization_directory_fd=90,
         )
     )

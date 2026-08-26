@@ -111,6 +111,10 @@ ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r22-historical-live-policy-admission@1"
 )
+ASEH_R23_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r23-historical-live-policy-admission@1"
+)
 ASEH_R19_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
     "sha256:48e0aded2d74a8ff1f9ed8d5b9e0af8ad73072fd9d9f5152e9c1af0544828c82"
 )
@@ -119,6 +123,9 @@ ASEH_R20_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
 )
 ASEH_R21_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
     "sha256:20ad7d1854db122fc87449ba686d9ecf0f282e31f3843e2fcb6ed39417022de6"
+)
+ASEH_R22_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:af758b159fdaec7d3e5decec97111c03d9e05e6b85a75e56a54a488caa17de70"
 )
 ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -139,6 +146,18 @@ ASEH_R22_OWNER_START_BASELINE_FAILURE_EVIDENCE_SCHEMA: Final = (
 ASEH_R22_OWNER_START_BASELINE_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r22-owner-start-baseline-decision@1"
+)
+ASEH_R23_OWNER_START_PERMISSION_OBSERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r23-owner-start-permission-observation@1"
+)
+ASEH_R23_OWNER_START_PERMISSION_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r23-owner-start-permission-receipt@1"
+)
+ASEH_R23_OWNER_START_CONTENTION_OBSERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r23-owner-start-contention-observation@1"
 )
 ASEH_R21_OWNER_START_RECOVERY_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -2431,6 +2450,77 @@ REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_NON_SUCCESS: Final = (
     "reduced validation, database mutation, or self-authorized promotion is "
     "rejected."
 )
+REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-sealed-owner-database-permission-hardening-"
+    "transition@1"
+)
+REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD: Final = (
+    "257a653af0a719218e3242d694e264273fe761e4"
+)
+REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_CHANGED_PATHS: Final = (
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        (
+            "aseh_r21_owner_start or aseh_sealed_owner_terminal or "
+            "aseh_r22_terminal_observability or "
+            "aseh_r23_ or "
+            "repair_sealed_owner_database_permission_hardening_transition or "
+            "delegates_r23_before_suffix_admission"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue repairing the existing canonical supervisor so the sole sealed "
+    "owner can tighten the exact legacy 0664 DuckDB file to 0600 only while "
+    "all canonical owner-start locks and residual-authority absence proofs hold"
+)
+REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SUCCESS: Final = (
+    "The exact published R22 child retains the immutable R1-R22 receipt vector, "
+    "reuses the unchanged historical-live executor before DuckDB access, and "
+    "admits only an idempotent 0600 file or an exact 0664-to-0600 metadata "
+    "tightening after owner, migration, intent, and database locks plus absent "
+    "WAL, marker, sockets, token, and listener are positively observed; file "
+    "identity, size, atime, mtime, and content digest must remain unchanged."
+)
+REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R22 parent, changed sibling, rewritten receipt, non-adjacent "
+    "chain, foreign or replaceable file, unexpected mode, present WAL or "
+    "residual authority, contended lock, changed inode or bytes, unrecorded "
+    "hardening, owner attempt before admission, extra retry, reduced validation, "
+    "content mutation, or self-authorized promotion is rejected."
+)
 ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS: Final = (
     "sha256:498dae56cef1484c43a318a88dd02155ecf56a4de9b611085ca0098fbc3cf9d8",
     "sha256:e08514ca997ab6aaf6dffe566124fe6fb7b6c4824b4cd6b0dfc90274141a24ca",
@@ -2459,6 +2549,10 @@ ASEH_R21_EXACT_R1_R20_RECEIPT_CIDS: Final = (
 ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS: Final = (
     *ASEH_R21_EXACT_R1_R20_RECEIPT_CIDS,
     "sha256:744e90925e5c1598f00fc60470cb53a35f7b2c61d4d968e6decfde4f3e5b8312",
+)
+ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS: Final = (
+    *ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS,
+    "sha256:1304e435814213cdff538ce5f8d4a27e47b4183876d556c2502c33be74489109",
 )
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
@@ -2515,6 +2609,10 @@ ASEH_R21_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R22_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R21_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SCHEMA,
+)
+ASEH_R23_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R22_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -2633,6 +2731,9 @@ REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_RECEIPT_FIELDS: Final
 )
 REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_RECEIPT_FIELDS
+)
+REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -4019,6 +4120,67 @@ def _repair_sealed_owner_terminal_observability_transition_receipt_id(
     return receipt_id
 
 
+def _repair_sealed_owner_database_permission_hardening_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-23 database-permission receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    policy_value = payload.get("historical_live_policy_admission")
+    evidence_value = payload.get("historical_live_execution_evidence")
+    policy = (
+        _validate_r23_historical_live_policy_admission_record(policy_value)
+        if isinstance(policy_value, Mapping)
+        else None
+    )
+    evidence = dict(evidence_value) if isinstance(evidence_value, Mapping) else {}
+    unsigned_evidence = dict(evidence)
+    evidence_cid = str(unsigned_evidence.pop("evidence_cid", "") or "")
+    if (
+        payload.get("schema")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 23
+        or payload.get("terminal_success_criteria")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r23_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+        or not isinstance(policy, Mapping)
+        or policy.get("bootstrap_receipt_id")
+        != payload.get("bootstrap_receipt_id")
+        or policy.get("previous_receipt_cid")
+        != payload.get("previous_receipt_cid")
+        or policy.get("candidate_head") != payload.get("repair_head")
+        or policy.get("candidate_tree") != payload.get("repair_tree")
+        or policy.get("candidate_authorization_witness_cid")
+        != _identity(dict(witness))
+        or evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or evidence.get("authorizing_receipt_cid") is not None
+        or evidence.get("returncode") != 0
+        or evidence.get("terminal_class") != "verified_success"
+        or evidence_cid != _identity(unsigned_evidence)
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner database-permission schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair sealed-owner database-permission CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -4237,6 +4399,9 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r22 = globals().get(
         "REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS"
     )
+    r23 = globals().get(
+        "REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
@@ -4247,6 +4412,7 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         *((r20,) if isinstance(r20, Sequence) else ()),
         *((r21,) if isinstance(r21, Sequence) else ()),
         *((r22,) if isinstance(r22, Sequence) else ()),
+        *((r23,) if isinstance(r23, Sequence) else ()),
     )
 
 
@@ -5042,6 +5208,66 @@ def _r22_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
             "historical_live_route": _r19_historical_live_executor_contract(),
             "scope": (
                 "r22_authorization_pre_duckdb_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _r23_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend immutable R22 without adding an executor or live route."""
+
+    parent = _r22_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if parent_cid != ASEH_R22_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID:
+        raise OperatorError("historical R22 validation contract drifted")
+    matrix = (
+        REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_VALIDATIONS
+    )
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r23_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r23-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 23,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": _r19_historical_live_executor_contract(),
+            "scope": (
+                "r23_authorization_pre_duckdb_and_materialized_launch_"
                 "admission_only"
             ),
         }
@@ -5909,6 +6135,222 @@ def _admit_r22_historical_live_policy_admission(
     return supplied
 
 
+def _validate_r23_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed R23 policy bound to immutable R1-R22 receipts."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R23 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "policy_revision",
+        "authorization_basis",
+        "bootstrap_receipt_id",
+        "prior_receipt_count",
+        "prior_receipt_cids",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_base_head",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    unsigned = dict(supplied)
+    policy_admission_cid = str(
+        unsigned.pop("policy_admission_cid", "") or ""
+    )
+    digest_fields = (
+        "bootstrap_receipt_id",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+    )
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R23_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 23
+        or supplied.get("authorization_basis")
+        != "validated_r1_r22_chain_plus_observed_r23_candidate_witness"
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R22_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or supplied.get("prior_receipt_cids")
+        != list(ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS)
+        or supplied.get("prior_receipt_chain_cid")
+        != _identity(list(ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS))
+        or supplied.get("previous_receipt_cid")
+        != ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS[-1]
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(supplied.get(field) or ""),
+            )
+            is None
+            for field in digest_fields
+        )
+        or supplied.get("candidate_base_head")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or supplied.get("executor_contract_cid")
+        != _identity(_r19_sealed_receipt_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_admission_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R23 historical live policy admission differs")
+    return supplied
+
+
+def _r23_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build R23 live authority from the exact immutable R1-R22 vector."""
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None:
+        raise OperatorError("R23 historical live bootstrap identity is invalid")
+    admitted_chain = _admit_exact_r22_transition_chain(list(prior_chain))
+    receipt_cids = tuple(str(item["receipt_cid"]) for item in admitted_chain)
+    if (
+        receipt_cids != ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS
+        or any(
+            item.get("bootstrap_receipt_id") != bootstrap_receipt_id
+            for item in admitted_chain
+        )
+        or admitted_chain[-1].get("repair_head")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError("R23 historical live prior receipt vector differs")
+    witness = dict(candidate_authorization_witness)
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+        or re.fullmatch(
+            r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*",
+            str(witness.get("branch_ref") or ""),
+        )
+        is None
+        or ".." in str(witness.get("branch_ref") or "")
+        or "//" in str(witness.get("branch_ref") or "")
+        or str(witness.get("branch_ref") or "").endswith(("/", ".lock"))
+        or witness.get("status_digest") != _identity(b"")
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", witness[field]) is None
+            for field in (
+                "index_entries_digest",
+                "index_flags_digest",
+                "status_digest",
+                "head_reflog_digest",
+                "branch_reflog_digest",
+            )
+        )
+    ):
+        raise OperatorError(
+            "R23 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    admission: dict[str, Any] = {
+        "schema": ASEH_R23_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 23,
+        "authorization_basis": (
+            "validated_r1_r22_chain_plus_observed_r23_candidate_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_cids": list(receipt_cids),
+        "prior_receipt_chain_cid": _identity(list(receipt_cids)),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r23_historical_live_policy_admission_record(admission)
+
+
+def _admit_r23_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit only R23's deterministic record for the supplied exact inputs."""
+
+    supplied = _validate_r23_historical_live_policy_admission_record(value)
+    expected = _r23_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+    )
+    if supplied != expected:
+        raise OperatorError("R23 historical live policy admission is unknown")
+    return supplied
+
+
 def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
     """Return the only admitted historical-live policy revision."""
 
@@ -5921,6 +6363,8 @@ def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
         return 21
     if schema == ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
         return 22
+    if schema == ASEH_R23_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 23
     raise OperatorError("historical live policy schema is unknown")
 
 
@@ -6137,20 +6581,26 @@ def _r19_active_policy_scope(
         declared=_r11_historical_live_docker_command(),
     )
     policy = (
-        _validate_r22_historical_live_policy_admission_record(policy_admission)
-        if revision == 22
+        _validate_r23_historical_live_policy_admission_record(policy_admission)
+        if revision == 23
         else (
-            _validate_r21_historical_live_policy_admission_record(
+            _validate_r22_historical_live_policy_admission_record(
                 policy_admission
             )
-            if revision == 21
+            if revision == 22
             else (
-                _validate_r20_historical_live_policy_admission_record(
+                _validate_r21_historical_live_policy_admission_record(
                     policy_admission
                 )
-                if revision == 20
-                else _validate_r19_historical_live_policy_admission_record(
-                    policy_admission
+                if revision == 21
+                else (
+                    _validate_r20_historical_live_policy_admission_record(
+                        policy_admission
+                    )
+                    if revision == 20
+                    else _validate_r19_historical_live_policy_admission_record(
+                        policy_admission
+                    )
                 )
             )
         )
@@ -6361,6 +6811,29 @@ def _r22_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r23_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R23 suffix argv without broadening prior matrices."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_VALIDATIONS
+        )
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R23 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -6402,28 +6875,33 @@ def _admit_sealed_receipt_validation_executor_contract(
     r20 = _r20_sealed_receipt_validation_executor_contract()
     r21 = _r21_sealed_receipt_validation_executor_contract()
     r22 = _r22_sealed_receipt_validation_executor_contract()
-    if supplied not in (r16, r17, r18, r19, r20, r21, r22):
+    r23 = _r23_sealed_receipt_validation_executor_contract()
+    if supplied not in (r16, r17, r18, r19, r20, r21, r22, r23):
         raise OperatorError("sealed validation executor contract is unknown")
     if (
         (
-            _r22_validation_executor_class(command)
-            if supplied == r22
+            _r23_validation_executor_class(command)
+            if supplied == r23
             else (
-                _r21_validation_executor_class(command)
-                if supplied == r21
+                _r22_validation_executor_class(command)
+                if supplied == r22
                 else (
-                    _r20_validation_executor_class(command)
-                    if supplied == r20
+                    _r21_validation_executor_class(command)
+                    if supplied == r21
                     else (
-                        _r19_validation_executor_class(command)
-                        if supplied == r19
+                        _r20_validation_executor_class(command)
+                        if supplied == r20
                         else (
-                            _r18_validation_executor_class(command)
-                            if supplied == r18
+                            _r19_validation_executor_class(command)
+                            if supplied == r19
                             else (
-                                _r17_validation_executor_class(command)
-                                if supplied == r17
-                                else _r16_validation_executor_class(command)
+                                _r18_validation_executor_class(command)
+                                if supplied == r18
+                                else (
+                                    _r17_validation_executor_class(command)
+                                    if supplied == r17
+                                    else _r16_validation_executor_class(command)
+                                )
                             )
                         )
                     )
@@ -11704,7 +12182,7 @@ def _validate_r19_historical_live_execution_evidence(
 
     revision = _historical_live_policy_revision(policy_admission)
     policy = (
-        _admit_r22_historical_live_policy_admission(
+        _admit_r23_historical_live_policy_admission(
             policy_admission,
             bootstrap_receipt_id=bootstrap_receipt_id,
             prior_chain=prior_chain,
@@ -11713,9 +12191,9 @@ def _validate_r19_historical_live_execution_evidence(
             candidate_authorization_witness=candidate_authorization_witness,
             executor_contract=executor_contract,
         )
-        if revision == 22
+        if revision == 23
         else (
-            _admit_r21_historical_live_policy_admission(
+            _admit_r22_historical_live_policy_admission(
                 policy_admission,
                 bootstrap_receipt_id=bootstrap_receipt_id,
                 prior_chain=prior_chain,
@@ -11724,9 +12202,9 @@ def _validate_r19_historical_live_execution_evidence(
                 candidate_authorization_witness=candidate_authorization_witness,
                 executor_contract=executor_contract,
             )
-            if revision == 21
+            if revision == 22
             else (
-                _admit_r20_historical_live_policy_admission(
+                _admit_r21_historical_live_policy_admission(
                     policy_admission,
                     bootstrap_receipt_id=bootstrap_receipt_id,
                     prior_chain=prior_chain,
@@ -11735,15 +12213,27 @@ def _validate_r19_historical_live_execution_evidence(
                     candidate_authorization_witness=candidate_authorization_witness,
                     executor_contract=executor_contract,
                 )
-                if revision == 20
-                else _admit_r19_historical_live_policy_admission(
-                    policy_admission,
-                    bootstrap_receipt_id=bootstrap_receipt_id,
-                    prior_chain=prior_chain,
-                    candidate_head=candidate_head,
-                    candidate_tree=candidate_tree,
-                    candidate_authorization_witness=candidate_authorization_witness,
-                    executor_contract=executor_contract,
+                if revision == 21
+                else (
+                    _admit_r20_historical_live_policy_admission(
+                        policy_admission,
+                        bootstrap_receipt_id=bootstrap_receipt_id,
+                        prior_chain=prior_chain,
+                        candidate_head=candidate_head,
+                        candidate_tree=candidate_tree,
+                        candidate_authorization_witness=candidate_authorization_witness,
+                        executor_contract=executor_contract,
+                    )
+                    if revision == 20
+                    else _admit_r19_historical_live_policy_admission(
+                        policy_admission,
+                        bootstrap_receipt_id=bootstrap_receipt_id,
+                        prior_chain=prior_chain,
+                        candidate_head=candidate_head,
+                        candidate_tree=candidate_tree,
+                        candidate_authorization_witness=candidate_authorization_witness,
+                        executor_contract=executor_contract,
+                    )
                 )
             )
         )
@@ -12132,36 +12622,47 @@ def _run_r19_historical_live_validation(
     active_policy_value = active_policy["policy_admission"]
     active_schema = active_policy_value.get("schema")
     revision = (
-        22
-        if active_schema == ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        23
+        if active_schema == ASEH_R23_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
         else (
-            21
-            if active_schema == ASEH_R21_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+            22
+            if active_schema == ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
             else (
-                20
+                21
                 if active_schema
-                == ASEH_R20_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
-                else 19
+                == ASEH_R21_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+                else (
+                    20
+                    if active_schema
+                    == ASEH_R20_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+                    else 19
+                )
             )
         )
     )
     policy_admission = (
-        _validate_r22_historical_live_policy_admission_record(
+        _validate_r23_historical_live_policy_admission_record(
             active_policy["policy_admission"]
         )
-        if revision == 22
+        if revision == 23
         else (
-            _validate_r21_historical_live_policy_admission_record(
+            _validate_r22_historical_live_policy_admission_record(
                 active_policy["policy_admission"]
             )
-            if revision == 21
+            if revision == 22
             else (
-                _validate_r20_historical_live_policy_admission_record(
+                _validate_r21_historical_live_policy_admission_record(
                     active_policy["policy_admission"]
                 )
-                if revision == 20
-                else _validate_r19_historical_live_policy_admission_record(
-                    active_policy["policy_admission"]
+                if revision == 21
+                else (
+                    _validate_r20_historical_live_policy_admission_record(
+                        active_policy["policy_admission"]
+                    )
+                    if revision == 20
+                    else _validate_r19_historical_live_policy_admission_record(
+                        active_policy["policy_admission"]
+                    )
                 )
             )
         )
@@ -12554,32 +13055,40 @@ def _qualify_r19_historical_live_policy(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run and admit the exact historical live route under one typed fence."""
 
-    if _revision not in {19, 20, 21, 22}:
+    if _revision not in {19, 20, 21, 22, 23}:
         raise OperatorError("historical live policy revision is invalid")
     executor_contract = _r19_sealed_receipt_validation_executor_contract()
     policy_builder = (
-        _r22_historical_live_policy_admission
-        if _revision == 22
+        _r23_historical_live_policy_admission
+        if _revision == 23
         else (
-            _r21_historical_live_policy_admission
-            if _revision == 21
+            _r22_historical_live_policy_admission
+            if _revision == 22
             else (
-                _r20_historical_live_policy_admission
-                if _revision == 20
-                else _r19_historical_live_policy_admission
+                _r21_historical_live_policy_admission
+                if _revision == 21
+                else (
+                    _r20_historical_live_policy_admission
+                    if _revision == 20
+                    else _r19_historical_live_policy_admission
+                )
             )
         )
     )
     policy_admitter = (
-        _admit_r22_historical_live_policy_admission
-        if _revision == 22
+        _admit_r23_historical_live_policy_admission
+        if _revision == 23
         else (
-            _admit_r21_historical_live_policy_admission
-            if _revision == 21
+            _admit_r22_historical_live_policy_admission
+            if _revision == 22
             else (
-                _admit_r20_historical_live_policy_admission
-                if _revision == 20
-                else _admit_r19_historical_live_policy_admission
+                _admit_r21_historical_live_policy_admission
+                if _revision == 21
+                else (
+                    _admit_r20_historical_live_policy_admission
+                    if _revision == 20
+                    else _admit_r19_historical_live_policy_admission
+                )
             )
         )
     )
@@ -12754,6 +13263,32 @@ def _qualify_r22_pre_duckdb_historical_live_policy(
         policy_admission=policy_admission,
         authorizing_receipt_cid=authorizing_receipt_cid,
         _revision=22,
+    )
+
+
+def _qualify_r23_pre_duckdb_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Qualify R23 through R22's unchanged pre-DuckDB live route."""
+
+    return _qualify_r19_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        policy_admission=policy_admission,
+        authorizing_receipt_cid=authorizing_receipt_cid,
+        _revision=23,
     )
 
 
@@ -13416,6 +13951,43 @@ def _admit_exact_r22_transition_chain(
     return chain
 
 
+def _admit_exact_r23_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit immutable R1-R22 plus one exact adjacent R23 receipt."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R23_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R23 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R23_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R23 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R23 repair transition chain differs")
+        chain.append(item)
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in chain[:-1]
+    ) != ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS:
+        raise OperatorError("R23 historical receipt vector differs")
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -13753,6 +14325,35 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R22 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [
+        REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r23_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r22_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r22_admitted.get("repair_head")
+            != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r22_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r22_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current R23 candidate lacks its exact admitted validation seal"
+            )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -13962,6 +14563,19 @@ def _r22_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS[
+            -2
+        ]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r23_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R23 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_VALIDATIONS[
             -2
         ]
     ):
@@ -15099,16 +15713,25 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     authorization_witness: Mapping[str, str],
     _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16-R22 repair matrix against committed bytes."""
+    """Run the bounded R16-R23 repair matrix against committed bytes."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21, 22}:
+    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23}:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 22:
+    if _revision == 23:
+        matrix = (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r23_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r23_validation_working_tree_scope
+        executor_class_for = _r23_validation_executor_class
+    elif _revision == 22:
         matrix = REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS
         executor_contract_value = (
             _r22_sealed_receipt_validation_executor_contract()
@@ -15494,6 +16117,22 @@ def _run_repair_sealed_owner_terminal_observability_transition_validations(
     )
 
 
+def _run_repair_sealed_owner_database_permission_hardening_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R23 suffix through the existing typed executors."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=23,
+    )
+
+
 def _observe_repair_provider_cleanup_fence_known_baseline(
 ) -> dict[str, Any]:
     """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
@@ -15790,8 +16429,19 @@ def _paths(board: Any) -> dict[str, Path]:
         / "bootstrap"
         / "bootstrap-repair-sealed-owner-terminal-observability-transition.json"
     )
+    result[
+        "repair_sealed_owner_database_permission_hardening_transition_receipt"
+    ] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-sealed-owner-database-permission-hardening-"
+        "transition.json"
+    )
     result["owner_start_recovery_decisions"] = (
         result["evidence"] / "control-plane" / "owner-start-recovery"
+    )
+    result["owner_start_permission_receipts"] = (
+        result["evidence"] / "control-plane" / "owner-start-permission"
     )
     result["sealed_owner_terminal_observations"] = (
         result["evidence"] / "control-plane" / "sealed-owner-terminal"
@@ -17822,6 +18472,24 @@ def _validate_repair_sealed_owner_terminal_observability_transition(
         previous_receipt=previous_receipt,
         rerun_validations=rerun_validations,
         _revision=22,
+    )
+
+
+def _validate_repair_sealed_owner_database_permission_hardening_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 23 chained to the immutable R22 receipt."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=23,
     )
 
 
@@ -20505,12 +21173,43 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     rerun_validations: bool,
     _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit one immutable transition in the exact R16-R22 suffix."""
+    """Admit one immutable transition in the exact R16-R23 suffix."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21, 22}:
+    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23}:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 22:
+    if _revision == 23:
+        receipt_id = (
+            _repair_sealed_owner_database_permission_hardening_transition_receipt_id(
+                receipt
+            )
+        )
+        previous_receipt_id = (
+            _repair_sealed_owner_terminal_observability_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+        )
+        changed_paths_value = (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_AUTHORITY
+        )
+        commands = (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r23_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
+        )
+        executor_class_for = _r23_validation_executor_class
+        scope_for = _r23_validation_working_tree_scope
+    elif _revision == 22:
         receipt_id = (
             _repair_sealed_owner_terminal_observability_transition_receipt_id(
                 receipt
@@ -21182,6 +21881,32 @@ def _load_exact_r21_receipt_chain(
     return admitted
 
 
+def _load_exact_r22_receipt_chain(
+    paths: Mapping[str, Path],
+) -> list[Mapping[str, Any]]:
+    """Load, self-CID-admit, and vector-bind raw R1-R22 receipts."""
+
+    chain = list(_load_exact_r21_receipt_chain(paths))
+    r22_path = paths.get(
+        "repair_sealed_owner_terminal_observability_transition_receipt"
+    )
+    if not isinstance(r22_path, Path) or not r22_path.is_file():
+        raise OperatorError("R23 historical live prior R22 receipt is absent")
+    r22_receipt = _secure_runtime_json(
+        r22_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    _repair_sealed_owner_terminal_observability_transition_receipt_id(
+        r22_receipt
+    )
+    admitted = _admit_exact_r22_transition_chain([*chain, r22_receipt])
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in admitted
+    ) != ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS:
+        raise OperatorError("R23 historical live prior receipt vector differs")
+    return admitted
+
+
 def _admit_active_r19_policy_identity(
     *,
     paths: Mapping[str, Path],
@@ -21374,6 +22099,32 @@ def _r22_population_requires_policy(
     )
 
 
+def _r23_population_requires_policy(
+    population: Mapping[str, Any],
+) -> bool:
+    """Recognize the exact committed R23 child before its receipt exists."""
+
+    head = str(population.get("source_head") or "")
+    tree = str(population.get("repository_tree_id") or "")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    return (
+        _git("show", "-s", "--format=%P", head).split()
+        == [
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+        ]
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD,
+            head,
+        )
+        == REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_CHANGED_PATHS
+    )
+
+
 def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     receipt: Mapping[str, Any],
     *,
@@ -21395,6 +22146,9 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     )
     r22_path = paths.get(
         "repair_sealed_owner_terminal_observability_transition_receipt"
+    )
+    r23_path = paths.get(
+        "repair_sealed_owner_database_permission_hardening_transition_receipt"
     )
     if (
         isinstance(r19_path, Path) and r19_path.is_file()
@@ -21426,6 +22180,15 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     if (
         isinstance(r22_path, Path) and r22_path.is_file()
     ) or _r22_population_requires_policy(population):
+        return _validate_repair_provider_cleanup_fence_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=False,
+        )
+    if (
+        isinstance(r23_path, Path) and r23_path.is_file()
+    ) or _r23_population_requires_policy(population):
         return _validate_repair_provider_cleanup_fence_transition(
             receipt,
             bootstrap=bootstrap,
@@ -21856,6 +22619,151 @@ def _prequalify_r22_historical_live_launch(
             "R22 historical live receipt changed during prequalification"
         )
     exact_chain = _admit_exact_r22_transition_chain(
+        [*prior_chain, first_receipt]
+    )
+    return {
+        "receipt": first_receipt,
+        "receipt_cid": receipt_cid,
+        "prior_chain": prior_chain,
+        "exact_chain": exact_chain,
+        "transition": transition,
+        "policy_admission": policy,
+        "stored_evidence": stored_evidence,
+        "fresh_evidence": fresh_evidence,
+        "candidate_authorization_witness_cid": _identity(dict(witness)),
+    }
+
+
+def _prequalify_r23_historical_live_launch(
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Qualify R23 through R22's route before canonical DuckDB access."""
+
+    if not _r23_population_requires_policy(population):
+        return None
+    r23_path = paths.get(
+        "repair_sealed_owner_database_permission_hardening_transition_receipt"
+    )
+    if not isinstance(r23_path, Path) or not r23_path.is_file():
+        raise OperatorError(
+            "active R23 pre-DuckDB historical-live policy receipt is absent"
+        )
+    prior_chain = _load_exact_r22_receipt_chain(paths)
+    r22_receipt = prior_chain[-1]
+    first_receipt = _secure_runtime_json(
+        r23_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    receipt_cid = (
+        _repair_sealed_owner_database_permission_hardening_transition_receipt_id(
+            first_receipt
+        )
+    )
+    transition = (
+        _validate_repair_sealed_owner_database_permission_hardening_transition(
+            first_receipt,
+            bootstrap=bootstrap,
+            previous_receipt=r22_receipt,
+            rerun_validations=False,
+        )
+    )
+    current_head = str(population.get("source_head") or "")
+    current_tree = str(population.get("repository_tree_id") or "")
+    witness = transition.get("candidate_authorization_witness")
+    if (
+        current_head != transition.get("repair_head")
+        or current_tree != transition.get("repair_tree")
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "active R23 historical-live policy does not bind the current tree"
+        )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="before R23 pre-DuckDB historical live qualification",
+    )
+    bootstrap_receipt_id = _bootstrap_receipt_id(bootstrap)
+    executor_contract = _r19_sealed_receipt_validation_executor_contract()
+    policy_value = first_receipt.get("historical_live_policy_admission")
+    policy = _admit_r23_historical_live_policy_admission(
+        policy_value if isinstance(policy_value, Mapping) else {},
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+    )
+    stored_evidence_value = first_receipt.get(
+        "historical_live_execution_evidence"
+    )
+    if not isinstance(stored_evidence_value, Mapping):
+        raise OperatorError(
+            "active R23 historical-live stored execution evidence is absent"
+        )
+    stored_evidence = _validate_r19_historical_live_execution_evidence(
+        stored_evidence_value,
+        policy_admission=policy,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+        environment_identity=_r11_command_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            _r11_historical_live_docker_command(),
+            checkout=Path("/sealed-checkout"),
+        ),
+        returncode=int(stored_evidence_value.get("returncode", 78)),
+        stdout_digest=str(stored_evidence_value.get("stdout_digest") or ""),
+        stderr_digest=str(stored_evidence_value.get("stderr_digest") or ""),
+        authorizing_receipt_cid=None,
+    )
+    admitted_policy, fresh_evidence = (
+        _qualify_r23_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_receipt_id,
+            prior_chain=prior_chain,
+            candidate_head=current_head,
+            candidate_tree=current_tree,
+            candidate_authorization_witness=witness,
+            policy_admission=policy,
+            authorizing_receipt_cid=receipt_cid,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="after R23 pre-DuckDB historical live qualification",
+    )
+    second_receipt = _secure_runtime_json(
+        r23_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    second_receipt_cid = (
+        _repair_sealed_owner_database_permission_hardening_transition_receipt_id(
+            second_receipt
+        )
+    )
+    if (
+        second_receipt != first_receipt
+        or second_receipt_cid != receipt_cid
+        or admitted_policy != policy
+        or fresh_evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or fresh_evidence.get("authorizing_receipt_cid") != receipt_cid
+    ):
+        raise OperatorError(
+            "R23 historical live receipt changed during prequalification"
+        )
+    exact_chain = _admit_exact_r23_transition_chain(
         [*prior_chain, first_receipt]
     )
     return {
@@ -24524,6 +25432,22 @@ def _authorize_repair_sealed_owner_terminal_observability_transition_if_applicab
             head,
         )
         expected_chain = [*prior_chain, receipt]
+        r23_result = (
+            _authorize_repair_sealed_owner_database_permission_hardening_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r23_result is not None:
+            return r23_result
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = _admit_exact_r22_transition_chain(
@@ -24680,6 +25604,253 @@ def _authorize_repair_sealed_owner_terminal_observability_transition_if_applicab
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R22 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_sealed_owner_database_permission_hardening_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one exact R23 child through R22's sealed live route."""
+
+    r23_path = paths.get(
+        "repair_sealed_owner_database_permission_hardening_transition_receipt"
+    )
+    if not isinstance(r23_path, Path):
+        return None
+    prior_chain = _admit_exact_r22_transition_chain(
+        list(prior_receipt_chain)
+    )
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in prior_chain
+    ) != ASEH_R23_EXACT_R1_R22_RECEIPT_CIDS:
+        raise OperatorError(
+            "bootstrap repair database-permission prior vector differs"
+        )
+    prior_receipt = prior_chain[-1]
+    transition_binding_fields = (
+        "schema",
+        "task_id",
+        "transition_revision",
+        "base_head",
+        "base_tree",
+        "repair_head",
+        "repair_tree",
+        "changed_paths",
+        "patch_digest",
+        "previous_receipt_cid",
+        "candidate_authorization_witness",
+        "sealed_validation_executor_contract",
+        "receipt_cid",
+    )
+    if (
+        prior_receipt != previous_receipt
+        or any(
+            previous_transition.get(field) != prior_receipt.get(field)
+            for field in transition_binding_fields
+        )
+        or previous_transition.get("repair_head")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError(
+            "bootstrap repair database-permission prior chain differs"
+        )
+    if r23_path.is_file():
+        receipt = _secure_runtime_json(
+            r23_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = (
+            _validate_repair_sealed_owner_database_permission_hardening_transition(
+                receipt,
+                bootstrap=bootstrap,
+                previous_receipt=previous_receipt,
+                rerun_validations=receipt.get("repair_head") == head,
+            )
+        )
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition["repair_head"]),
+            head,
+        )
+        expected_chain = [*prior_chain, receipt]
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = _admit_exact_r23_transition_chain(
+            current_admission.get("repair_transition_chain")
+        )
+        admitted_continuity = current_admission.get("canonical_continuity")
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head")
+            != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in admitted_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or (
+                "sealed_owner_terminal_observability_to_"
+                "sealed_owner_database_permission_hardening"
+            )
+            not in admitted_continuity
+            or current_admission.get(
+                "historical_live_authorizing_receipt_cid"
+            )
+            != receipt.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current admission does not retain the R23 database-permission "
+                "repair"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission[
+                "runtime_source_head"
+            ],
+        }
+    base_head = (
+        REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+    )
+    if _git("show", "-s", "--format=%P", head).split() != [base_head]:
+        return None
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair database-permission changed paths differ"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    validation_results = (
+        _run_repair_sealed_owner_database_permission_hardening_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R23 validation before live qualification",
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r23_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R23 live qualification before receipt publication",
+    )
+    receipt = {
+        "schema": (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
+        ),
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R23"
+        ),
+        "program_id": PROGRAM,
+        "transition_revision": 23,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": _git("rev-parse", f"{base_head}^{{tree}}"),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R22"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r23_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": historical_policy,
+        "historical_live_execution_evidence": historical_evidence,
+        "terminal_success_criteria": (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_sealed_owner_database_permission_hardening_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R23 receipt publication",
+    )
+    _atomic_json_create(
+        r23_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R23 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -26987,14 +28158,23 @@ def _admit_materialized_launch(
         paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
     )
     receipt_id = _bootstrap_receipt_id(bootstrap)
-    r22_prequalification = _prequalify_r22_historical_live_launch(
+    r23_prequalification = _prequalify_r23_historical_live_launch(
         paths=paths,
         population=population,
         bootstrap=bootstrap,
     )
+    r22_prequalification = (
+        None
+        if r23_prequalification is not None
+        else _prequalify_r22_historical_live_launch(
+            paths=paths,
+            population=population,
+            bootstrap=bootstrap,
+        )
+    )
     r21_prequalification = (
         None
-        if r22_prequalification is not None
+        if r23_prequalification is not None or r22_prequalification is not None
         else _prequalify_r21_historical_live_launch(
             paths=paths,
             population=population,
@@ -27003,7 +28183,11 @@ def _admit_materialized_launch(
     )
     r20_prequalification = (
         None
-        if r22_prequalification is not None or r21_prequalification is not None
+        if (
+            r23_prequalification is not None
+            or r22_prequalification is not None
+            or r21_prequalification is not None
+        )
         else _prequalify_r20_historical_live_launch(
             paths=paths,
             population=population,
@@ -27150,6 +28334,9 @@ def _admit_materialized_launch(
             sealed_owner_terminal_observability_transition: (
                 dict[str, Any] | None
             ) = None
+            sealed_owner_database_permission_hardening_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -27163,6 +28350,7 @@ def _admit_materialized_launch(
             r20_receipt: dict[str, Any] | None = None
             r21_receipt: dict[str, Any] | None = None
             r22_receipt: dict[str, Any] | None = None
+            r23_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -28022,6 +29210,99 @@ def _admit_materialized_launch(
                 )
                 r22_receipt = dict(raw_r22_receipt)
                 active_transition = sealed_owner_terminal_observability_transition
+            if r23_prequalification is not None:
+                raw_r23_transition = r23_prequalification.get("transition")
+                raw_r23_receipt = r23_prequalification.get("receipt")
+                raw_r23_prior_chain = r23_prequalification.get("prior_chain")
+                if (
+                    historical_lifecycle_route_transition is None
+                    or r19_receipt is None
+                    or not isinstance(raw_r23_transition, Mapping)
+                    or not isinstance(raw_r23_receipt, Mapping)
+                    or not isinstance(raw_r23_prior_chain, list)
+                    or len(raw_r23_prior_chain)
+                    != len(ASEH_R22_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+                    or raw_r23_prior_chain[-4] != r19_receipt
+                ):
+                    raise OperatorError(
+                        "R23 pre-DuckDB transition prior chain differs"
+                    )
+                raw_r20_receipt = raw_r23_prior_chain[-3]
+                raw_r21_receipt = raw_r23_prior_chain[-2]
+                raw_r22_receipt = raw_r23_prior_chain[-1]
+                if (
+                    not isinstance(raw_r20_receipt, Mapping)
+                    or not isinstance(raw_r21_receipt, Mapping)
+                    or not isinstance(raw_r22_receipt, Mapping)
+                ):
+                    raise OperatorError(
+                        "R23 prior R20/R21/R22 receipt is invalid"
+                    )
+                admitted_r20_transition = (
+                    _validate_repair_pre_duckdb_historical_live_transition(
+                        raw_r20_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=r19_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                admitted_r21_transition = (
+                    _validate_repair_sealed_owner_startup_contention_recovery_transition(
+                        raw_r21_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=raw_r20_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                admitted_r22_transition = (
+                    _validate_repair_sealed_owner_terminal_observability_transition(
+                        raw_r22_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=raw_r21_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                if (
+                    admitted_r20_transition.get("base_head")
+                    != historical_lifecycle_route_transition.get("repair_head")
+                    or admitted_r20_transition.get("previous_receipt_cid")
+                    != historical_lifecycle_route_transition.get("receipt_cid")
+                    or admitted_r21_transition.get("base_head")
+                    != admitted_r20_transition.get("repair_head")
+                    or admitted_r21_transition.get("previous_receipt_cid")
+                    != admitted_r20_transition.get("receipt_cid")
+                    or admitted_r22_transition.get("base_head")
+                    != admitted_r21_transition.get("repair_head")
+                    or admitted_r22_transition.get("previous_receipt_cid")
+                    != admitted_r21_transition.get("receipt_cid")
+                    or raw_r23_transition.get("base_head")
+                    != admitted_r22_transition.get("repair_head")
+                    or raw_r23_transition.get("previous_receipt_cid")
+                    != admitted_r22_transition.get("receipt_cid")
+                ):
+                    raise OperatorError(
+                        "R23 database permission hardening does not extend "
+                        "admitted R22"
+                    )
+                pre_duckdb_historical_live_transition = dict(
+                    admitted_r20_transition
+                )
+                r20_receipt = dict(raw_r20_receipt)
+                sealed_owner_startup_contention_recovery_transition = dict(
+                    admitted_r21_transition
+                )
+                r21_receipt = dict(raw_r21_receipt)
+                sealed_owner_terminal_observability_transition = dict(
+                    admitted_r22_transition
+                )
+                r22_receipt = dict(raw_r22_receipt)
+                sealed_owner_database_permission_hardening_transition = dict(
+                    raw_r23_transition
+                )
+                r23_receipt = dict(raw_r23_receipt)
+                active_transition = (
+                    sealed_owner_database_permission_hardening_transition
+                )
             if (
                 historical_lifecycle_route_transition is None
                 and _r19_population_requires_policy(population)
@@ -28049,6 +29330,13 @@ def _admit_materialized_launch(
             ):
                 raise OperatorError(
                     "active R22 terminal-observability policy receipt is absent"
+                )
+            if (
+                sealed_owner_database_permission_hardening_transition is None
+                and _r23_population_requires_policy(population)
+            ):
+                raise OperatorError(
+                    "active R23 database-permission policy receipt is absent"
                 )
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -28157,6 +29445,7 @@ def _admit_materialized_launch(
                         if (
                             r21_prequalification is None
                             and r22_prequalification is None
+                            and r23_prequalification is None
                         ) or r21_receipt is None:
                             raise OperatorError(
                                 "R21 pre-DuckDB qualification bundle is absent"
@@ -28185,7 +29474,10 @@ def _admit_materialized_launch(
                             is not None
                         ):
                             if (
-                                r22_prequalification is None
+                                (
+                                    r22_prequalification is None
+                                    and r23_prequalification is None
+                                )
                                 or r22_receipt is None
                             ):
                                 raise OperatorError(
@@ -28210,6 +29502,37 @@ def _admit_materialized_launch(
                                 _validate_repair_sealed_owner_terminal_observability_transition
                             )
                             launch_previous_receipt = r21_receipt
+                            if (
+                                sealed_owner_database_permission_hardening_transition
+                                is not None
+                            ):
+                                if (
+                                    r23_prequalification is None
+                                    or r23_receipt is None
+                                ):
+                                    raise OperatorError(
+                                        "R23 pre-DuckDB qualification bundle "
+                                        "is absent"
+                                    )
+                                repair_transition_chain.append(
+                                    sealed_owner_database_permission_hardening_transition
+                                )
+                                launch_chain = _admit_exact_r23_transition_chain(
+                                    repair_transition_chain
+                                )
+                                launch_bundle = r23_prequalification
+                                launch_receipt = r23_receipt
+                                launch_transition = (
+                                    sealed_owner_database_permission_hardening_transition
+                                )
+                                launch_path = paths.get(
+                                    "repair_sealed_owner_database_permission_"
+                                    "hardening_transition_receipt"
+                                )
+                                launch_validator = (
+                                    _validate_repair_sealed_owner_database_permission_hardening_transition
+                                )
+                                launch_previous_receipt = r22_receipt
                     if not isinstance(launch_bundle, Mapping):
                         raise OperatorError(
                             "pre-DuckDB qualification bundle is absent"
@@ -28415,6 +29738,14 @@ def _admit_materialized_launch(
                     "sealed_owner_startup_contention_recovery_to_"
                     "sealed_owner_terminal_observability"
                 ] = sealed_owner_terminal_observability_transition
+            if (
+                sealed_owner_database_permission_hardening_transition
+                is not None
+            ):
+                continuity[
+                    "sealed_owner_terminal_observability_to_"
+                    "sealed_owner_database_permission_hardening"
+                ] = sealed_owner_database_permission_hardening_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -28546,12 +29877,19 @@ def _r21_owner_start_file_observation(
     if name in {"", ".", ".."} or "/" in name:
         raise OperatorError("R21 owner-start file name is invalid")
     nofollow = getattr(os, "O_NOFOLLOW", 0)
-    if not nofollow:
-        raise OperatorError("R21 owner-start file observation requires O_NOFOLLOW")
+    noatime = getattr(os, "O_NOATIME", 0)
+    if not nofollow or not noatime:
+        raise OperatorError(
+            "R21 owner-start file observation requires O_NOFOLLOW and O_NOATIME"
+        )
     try:
         descriptor = os.open(
             name,
-            os.O_RDONLY | os.O_CLOEXEC | nofollow,
+            os.O_RDONLY
+            | os.O_NONBLOCK
+            | os.O_CLOEXEC
+            | nofollow
+            | noatime,
             dir_fd=directory_fd,
         )
     except FileNotFoundError:
@@ -28600,6 +29938,7 @@ def _r21_owner_start_file_observation(
             value.st_uid,
             value.st_nlink,
             value.st_size,
+            value.st_atime_ns,
             value.st_mtime_ns,
             value.st_ctime_ns,
         )
@@ -28623,6 +29962,671 @@ def _r21_owner_start_file_observation(
         "ctime_ns": before.st_ctime_ns,
         "sha256": f"sha256:{digest.hexdigest()}",
     }
+
+
+def _r23_owner_start_file_stat_identity(
+    value: os.stat_result,
+    *,
+    include_mode: bool,
+    include_ctime: bool,
+) -> tuple[int, ...]:
+    """Return exact integer identity fields used by the R23 mode proof."""
+
+    fields = [
+        value.st_dev,
+        value.st_ino,
+        value.st_uid,
+        value.st_gid,
+        value.st_nlink,
+        value.st_size,
+        value.st_atime_ns,
+        value.st_mtime_ns,
+    ]
+    if include_mode:
+        fields.append(value.st_mode)
+    if include_ctime:
+        fields.append(value.st_ctime_ns)
+    return tuple(int(item) for item in fields)
+
+
+def _r23_hash_owner_start_descriptor(
+    descriptor: int,
+    *,
+    expected: os.stat_result,
+) -> tuple[str, os.stat_result]:
+    """Hash one exact stable descriptor without acquiring byte-write access."""
+
+    digest = hashlib.sha256()
+    offset = 0
+    deadline = time.monotonic() + 60.0
+    while offset < expected.st_size:
+        if time.monotonic() >= deadline:
+            raise OperatorError("R23 owner-start file hash timed out")
+        block = os.pread(
+            descriptor,
+            min(1024 * 1024, expected.st_size - offset),
+            offset,
+        )
+        if not block:
+            break
+        digest.update(block)
+        offset += len(block)
+    after = os.fstat(descriptor)
+    if (
+        offset != expected.st_size
+        or _r23_owner_start_file_stat_identity(
+            expected,
+            include_mode=True,
+            include_ctime=True,
+        )
+        != _r23_owner_start_file_stat_identity(
+            after,
+            include_mode=True,
+            include_ctime=True,
+        )
+    ):
+        raise OperatorError("R23 owner-start file changed while hashing")
+    return f"sha256:{digest.hexdigest()}", after
+
+
+def _r23_harden_owner_start_database_permissions(
+    directory_fd: int,
+    *,
+    name: str,
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Tighten only exact legacy 0664 bytes through a read-only file FD."""
+
+    if name != "control.duckdb":
+        raise OperatorError("R23 owner-start database name is not admitted")
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    noatime = getattr(os, "O_NOATIME", 0)
+    if not nofollow or not noatime:
+        raise OperatorError(
+            "R23 owner-start hardening requires O_NOFOLLOW and O_NOATIME"
+        )
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY
+            | os.O_NONBLOCK
+            | os.O_CLOEXEC
+            | nofollow
+            | noatime,
+            dir_fd=directory_fd,
+        )
+        before = os.fstat(descriptor)
+        named_before = os.stat(
+            name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        mode_before = stat.S_IMODE(before.st_mode)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > 8 * 1024 * 1024 * 1024
+            or mode_before not in {0o600, 0o664}
+            or _r23_owner_start_file_stat_identity(
+                before,
+                include_mode=True,
+                include_ctime=True,
+            )
+            != _r23_owner_start_file_stat_identity(
+                named_before,
+                include_mode=True,
+                include_ctime=True,
+            )
+        ):
+            raise OperatorError("R23 owner-start database identity is unsafe")
+        sha_before, stable_before = _r23_hash_owner_start_descriptor(
+            descriptor,
+            expected=before,
+        )
+        named_stable_before = os.stat(
+            name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if _r23_owner_start_file_stat_identity(
+            stable_before,
+            include_mode=True,
+            include_ctime=True,
+        ) != _r23_owner_start_file_stat_identity(
+            named_stable_before,
+            include_mode=True,
+            include_ctime=True,
+        ):
+            raise OperatorError("R23 owner-start database name changed")
+        _assert_candidate_authorization_witness(
+            candidate_authorization_witness,
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+            boundary="immediately before R23 database permission hardening",
+        )
+        mode_changed = mode_before == 0o664
+        if mode_changed:
+            os.fchmod(descriptor, 0o600)
+            os.fsync(descriptor)
+        after_mode = os.fstat(descriptor)
+        named_after_mode = os.stat(
+            name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            stat.S_IMODE(after_mode.st_mode) != 0o600
+            or _r23_owner_start_file_stat_identity(
+                stable_before,
+                include_mode=False,
+                include_ctime=False,
+            )
+            != _r23_owner_start_file_stat_identity(
+                after_mode,
+                include_mode=False,
+                include_ctime=False,
+            )
+            or _r23_owner_start_file_stat_identity(
+                after_mode,
+                include_mode=True,
+                include_ctime=True,
+            )
+            != _r23_owner_start_file_stat_identity(
+                named_after_mode,
+                include_mode=True,
+                include_ctime=True,
+            )
+        ):
+            raise OperatorError(
+                "R23 owner-start database identity changed during hardening"
+            )
+        sha_after, stable_after = _r23_hash_owner_start_descriptor(
+            descriptor,
+            expected=after_mode,
+        )
+        named_stable_after = os.stat(
+            name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            sha_after != sha_before
+            or (
+                not mode_changed
+                and stable_after.st_ctime_ns != stable_before.st_ctime_ns
+            )
+            or _r23_owner_start_file_stat_identity(
+                stable_after,
+                include_mode=True,
+                include_ctime=True,
+            )
+            != _r23_owner_start_file_stat_identity(
+                named_stable_after,
+                include_mode=True,
+                include_ctime=True,
+            )
+        ):
+            raise OperatorError(
+                "R23 owner-start database bytes changed during hardening"
+            )
+    except OSError as exc:
+        raise OperatorError(
+            "R23 owner-start database permission observation is unavailable"
+        ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    observation: dict[str, Any] = {
+        "schema": ASEH_R23_OWNER_START_PERMISSION_OBSERVATION_SCHEMA,
+        "availability": "observed",
+        "name": name,
+        "device": int(stable_after.st_dev),
+        "inode": int(stable_after.st_ino),
+        "uid": int(stable_after.st_uid),
+        "gid": int(stable_after.st_gid),
+        "nlink": int(stable_after.st_nlink),
+        "size_bytes": int(stable_after.st_size),
+        "atime_ns": int(stable_after.st_atime_ns),
+        "mtime_ns": int(stable_after.st_mtime_ns),
+        "ctime_before_ns": int(stable_before.st_ctime_ns),
+        "ctime_after_ns": int(stable_after.st_ctime_ns),
+        "mode_before": mode_before,
+        "mode_after": stat.S_IMODE(stable_after.st_mode),
+        "mode_changed": mode_changed,
+        "fsync_performed": mode_changed,
+        "sha256_before": sha_before,
+        "sha256_after": sha_after,
+        "content_mutated": False,
+    }
+    observation["observation_cid"] = _identity(observation)
+    post_observation = {
+        "schema": ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA,
+        "availability": "observed",
+        "device": int(stable_after.st_dev),
+        "inode": int(stable_after.st_ino),
+        "mode": int(stable_after.st_mode),
+        "uid": int(stable_after.st_uid),
+        "nlink": int(stable_after.st_nlink),
+        "size_bytes": int(stable_after.st_size),
+        "mtime_ns": int(stable_after.st_mtime_ns),
+        "ctime_ns": int(stable_after.st_ctime_ns),
+        "sha256": sha_after,
+    }
+    return post_observation, observation
+
+
+def _validate_r23_owner_start_permission_receipt(
+    value: Mapping[str, Any],
+    *,
+    expected_bindings: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Admit one secret-free R23 metadata-only runtime receipt."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R23 owner-start permission receipt is invalid")
+    receipt = dict(value)
+    observation = receipt.get("database_permission_observation")
+    locks = receipt.get("locks")
+    endpoints_before = receipt.get("endpoints_before")
+    endpoints_after = receipt.get("endpoints_after")
+    receipt_fields = {
+        "schema",
+        "program_id",
+        "authority",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "bootstrap_receipt_id",
+        "repair_transition_receipt_cid",
+        "materialized_launch_admission_cid",
+        "store_id",
+        "lock_order",
+        "locks",
+        "wal_observation",
+        "endpoints_before",
+        "endpoints_after",
+        "database_permission_observation",
+        "database_content_mutated",
+        "database_metadata_mutated",
+        "wal_mutated",
+        "owner_start_attempted",
+        "retry_authorized",
+        "observed_at_ns",
+        "receipt_cid",
+    }
+    observation_fields = {
+        "schema",
+        "availability",
+        "name",
+        "device",
+        "inode",
+        "uid",
+        "gid",
+        "nlink",
+        "size_bytes",
+        "atime_ns",
+        "mtime_ns",
+        "ctime_before_ns",
+        "ctime_after_ns",
+        "mode_before",
+        "mode_after",
+        "mode_changed",
+        "fsync_performed",
+        "sha256_before",
+        "sha256_after",
+        "content_mutated",
+        "observation_cid",
+    }
+    lock_fields = {
+        "lock_class",
+        "name",
+        "device",
+        "inode",
+        "mode",
+        "uid",
+        "nlink",
+        "acquired_nonblocking",
+    }
+    lock_order = ["owner", "migration", "intent", "database"]
+    lock_names = [
+        ".control.duckdb.state-owner.lock",
+        ".control.duckdb.migration.lock",
+        ".control.duckdb.intent.lock",
+        ".control.duckdb.lock",
+    ]
+    endpoint_fields = {"paths_absent", "listener_absence_samples"}
+    endpoint_path_fields = {
+        "owner_marker",
+        "typed_command_socket",
+        "grant_broker_socket",
+        "typed_command_token",
+    }
+    endpoints_valid = True
+    for endpoint in (endpoints_before, endpoints_after):
+        if not isinstance(endpoint, Mapping) or set(endpoint) != endpoint_fields:
+            endpoints_valid = False
+            break
+        paths_absent = endpoint.get("paths_absent")
+        samples = endpoint.get("listener_absence_samples")
+        if (
+            not isinstance(paths_absent, Mapping)
+            or set(paths_absent) != endpoint_path_fields
+            or any(
+                type(item) is not bool or item is not True
+                for item in paths_absent.values()
+            )
+            or samples != ["connection_refused", "connection_refused"]
+        ):
+            endpoints_valid = False
+            break
+    locks_valid = isinstance(locks, list) and len(locks) == len(lock_order)
+    if locks_valid:
+        for ordinal, lock in enumerate(locks):
+            if (
+                not isinstance(lock, Mapping)
+                or set(lock) != lock_fields
+                or lock.get("lock_class") != lock_order[ordinal]
+                or lock.get("name") != lock_names[ordinal]
+                or any(
+                    type(lock.get(field)) is not int or int(lock[field]) < 0
+                    for field in ("device", "inode", "mode", "uid", "nlink")
+                )
+                or not stat.S_ISREG(int(lock["mode"]))
+                or stat.S_IMODE(int(lock["mode"])) != 0o600
+                or lock.get("uid") != os.geteuid()
+                or lock.get("nlink") != 1
+                or lock.get("acquired_nonblocking") is not True
+            ):
+                locks_valid = False
+                break
+    bindings_valid = True
+    if expected_bindings is not None:
+        binding_fields = {
+            "candidate_head",
+            "candidate_tree",
+            "candidate_authorization_witness_cid",
+            "bootstrap_receipt_id",
+            "repair_transition_receipt_cid",
+            "materialized_launch_admission_cid",
+            "store_id",
+        }
+        if (
+            not isinstance(expected_bindings, Mapping)
+            or set(expected_bindings) != binding_fields
+            or any(
+                receipt.get(field) != expected_bindings.get(field)
+                for field in binding_fields
+            )
+        ):
+            bindings_valid = False
+    if (
+        set(receipt) != receipt_fields
+        or receipt.get("schema")
+        != ASEH_R23_OWNER_START_PERMISSION_RECEIPT_SCHEMA
+        or receipt.get("program_id") != PROGRAM
+        or receipt.get("authority") != "non_authoritative_observability"
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(receipt.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(receipt.get("candidate_tree") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(receipt.get("candidate_authorization_witness_cid") or ""),
+        )
+        is None
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(receipt.get(field) or ""),
+            )
+            is None
+            for field in (
+                "bootstrap_receipt_id",
+                "repair_transition_receipt_cid",
+                "materialized_launch_admission_cid",
+            )
+        )
+        or receipt.get("store_id") != "data/aseh/control.duckdb"
+        or receipt.get("lock_order") != lock_order
+        or not locks_valid
+        or not endpoints_valid
+        or endpoints_before != endpoints_after
+        or receipt.get("wal_observation")
+        != {
+            "schema": ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA,
+            "availability": "absent",
+        }
+        or not isinstance(observation, Mapping)
+        or set(observation) != observation_fields
+        or observation.get("schema")
+        != ASEH_R23_OWNER_START_PERMISSION_OBSERVATION_SCHEMA
+        or observation.get("availability") != "observed"
+        or observation.get("name") != "control.duckdb"
+        or observation.get("mode_before") not in {0o600, 0o664}
+        or observation.get("mode_after") != 0o600
+        or type(observation.get("mode_changed")) is not bool
+        or observation.get("mode_changed")
+        is not (observation.get("mode_before") == 0o664)
+        or (
+            observation.get("mode_changed") is False
+            and observation.get("ctime_before_ns")
+            != observation.get("ctime_after_ns")
+        )
+        or type(observation.get("fsync_performed")) is not bool
+        or observation.get("fsync_performed")
+        is not observation.get("mode_changed")
+        or observation.get("sha256_before")
+        != observation.get("sha256_after")
+        or observation.get("content_mutated") is not False
+        or any(
+            type(observation.get(field)) is not int
+            or int(observation[field]) < 0
+            for field in (
+                "device",
+                "inode",
+                "uid",
+                "gid",
+                "nlink",
+                "size_bytes",
+                "atime_ns",
+                "mtime_ns",
+                "ctime_before_ns",
+                "ctime_after_ns",
+                "mode_before",
+                "mode_after",
+            )
+        )
+        or observation.get("nlink") != 1
+        or observation.get("uid") != os.geteuid()
+        or int(observation.get("size_bytes", -1)) > 8 * 1024 * 1024 * 1024
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(observation.get(field) or ""),
+            )
+            is None
+            for field in ("sha256_before", "sha256_after", "observation_cid")
+        )
+        or observation.get("observation_cid")
+        != _identity(
+            {
+                key: item
+                for key, item in observation.items()
+                if key != "observation_cid"
+            }
+        )
+        or receipt.get("database_content_mutated") is not False
+        or receipt.get("database_metadata_mutated")
+        is not observation.get("mode_changed")
+        or receipt.get("wal_mutated") is not False
+        or receipt.get("owner_start_attempted") is not False
+        or receipt.get("retry_authorized") is not False
+        or type(receipt.get("observed_at_ns")) is not int
+        or int(receipt["observed_at_ns"]) <= 0
+        or not bindings_valid
+    ):
+        raise OperatorError("R23 owner-start permission receipt differs")
+    unsigned = dict(receipt)
+    receipt_cid = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_cid != _identity(unsigned):
+        raise OperatorError("R23 owner-start permission receipt CID differs")
+    return receipt
+
+
+def _validate_r23_owner_start_permission_context(
+    value: Mapping[str, Any],
+    *,
+    expected_head: str | None = None,
+    expected_tree: str | None = None,
+    expected_witness: Mapping[str, str] | None = None,
+    expected_store_id: str | None = None,
+) -> dict[str, Any]:
+    """Admit the exact immutable bindings before any permission mutation."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R23 owner-start permission context is invalid")
+    context = dict(value)
+    witness = context.get("candidate_authorization_witness")
+    if (
+        set(context)
+        != {
+            "candidate_head",
+            "candidate_tree",
+            "candidate_authorization_witness",
+            "bootstrap_receipt_id",
+            "repair_transition_receipt_cid",
+            "materialized_launch_admission_cid",
+            "store_id",
+        }
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(context.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(context.get("candidate_tree") or "")
+        )
+        is None
+        or not isinstance(witness, Mapping)
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(context.get(field) or ""))
+            is None
+            for field in (
+                "bootstrap_receipt_id",
+                "repair_transition_receipt_cid",
+                "materialized_launch_admission_cid",
+            )
+        )
+        or context.get("store_id") != "data/aseh/control.duckdb"
+        or (
+            expected_head is not None
+            and context.get("candidate_head") != expected_head
+        )
+        or (
+            expected_tree is not None
+            and context.get("candidate_tree") != expected_tree
+        )
+        or (
+            expected_witness is not None
+            and dict(witness) != dict(expected_witness)
+        )
+        or (
+            expected_store_id is not None
+            and context.get("store_id") != expected_store_id
+        )
+    ):
+        raise OperatorError("R23 owner-start permission context differs")
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=str(context["candidate_head"]),
+        expected_tree=str(context["candidate_tree"]),
+        boundary="before R23 owner-start database permission mutation",
+    )
+    context["candidate_authorization_witness"] = dict(witness)
+    return context
+
+
+def _r23_publish_owner_start_permission_receipt(
+    *,
+    paths: Mapping[str, Path],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    bootstrap_receipt_id: str,
+    repair_transition_receipt_cid: str,
+    materialized_launch_admission_cid: str,
+    store_id: str,
+    locks: Sequence[Mapping[str, Any]],
+    wal_observation: Mapping[str, Any],
+    endpoints_before: Mapping[str, Any],
+    endpoints_after: Mapping[str, Any],
+    database_permission_observation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Publish one create-only permission receipt before releasing locks."""
+
+    receipt: dict[str, Any] = {
+        "schema": ASEH_R23_OWNER_START_PERMISSION_RECEIPT_SCHEMA,
+        "program_id": PROGRAM,
+        "authority": "non_authoritative_observability",
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(
+            dict(candidate_authorization_witness)
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "repair_transition_receipt_cid": repair_transition_receipt_cid,
+        "materialized_launch_admission_cid": materialized_launch_admission_cid,
+        "store_id": store_id,
+        "lock_order": ["owner", "migration", "intent", "database"],
+        "locks": [dict(item) for item in locks],
+        "wal_observation": dict(wal_observation),
+        "endpoints_before": dict(endpoints_before),
+        "endpoints_after": dict(endpoints_after),
+        "database_permission_observation": dict(
+            database_permission_observation
+        ),
+        "database_content_mutated": False,
+        "database_metadata_mutated": bool(
+            database_permission_observation.get("mode_changed")
+        ),
+        "wal_mutated": False,
+        "owner_start_attempted": False,
+        "retry_authorized": False,
+        "observed_at_ns": time.time_ns(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    admitted = _validate_r23_owner_start_permission_receipt(
+        receipt,
+        expected_bindings={
+            "candidate_head": candidate_head,
+            "candidate_tree": candidate_tree,
+            "candidate_authorization_witness_cid": _identity(
+                dict(candidate_authorization_witness)
+            ),
+            "bootstrap_receipt_id": bootstrap_receipt_id,
+            "repair_transition_receipt_cid": repair_transition_receipt_cid,
+            "materialized_launch_admission_cid": (
+                materialized_launch_admission_cid
+            ),
+            "store_id": store_id,
+        },
+    )
+    directory = paths.get("owner_start_permission_receipts")
+    if not isinstance(directory, Path):
+        raise OperatorError("R23 owner-start permission receipt path is absent")
+    _atomic_json_create(
+        directory / f"{str(receipt['receipt_cid'])[7:]}.json",
+        receipt,
+    )
+    return admitted
 
 
 @contextmanager
@@ -28805,6 +30809,7 @@ def _r21_owner_start_contention_observation(
     paths: Mapping[str, Path],
     server: Any,
     expected_lifecycle: str,
+    r23_permission_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Observe an inert owner namespace while every canonical lock is held."""
 
@@ -28832,6 +30837,8 @@ def _r21_owner_start_contention_observation(
     except QuackStateServerOwnershipError as exc:
         raise OperatorError("R21 owner-start owner lock is unsafe") from exc
     locks: list[dict[str, Any]] = []
+    permission_observation: dict[str, Any] | None = None
+    permission_receipt: dict[str, Any] | None = None
     try:
         owner_handle.assert_canonical_parent()
         directory_fd = owner_handle.directory_fileno()
@@ -28870,28 +30877,171 @@ def _r21_owner_start_contention_observation(
                         directory_fd,
                         owner_marker_path.name,
                     )
-                    database_observation = _r21_owner_start_file_observation(
-                        directory_fd,
-                        database.name,
-                    )
-                    wal_observation = _r21_owner_start_file_observation(
-                        directory_fd,
-                        f"{database.name}.wal",
-                    )
-                    if database_observation.get("availability") != "observed":
-                        raise OperatorError("R21 owner-start database is absent")
-                    owner_handle.assert_canonical_parent()
-                    residual_paths_absent, listener_samples = (
-                        _r21_owner_start_endpoint_observation(
-                            paths=paths,
-                            server=server,
-                            marker_absent=marker_absent,
+                    if r23_permission_context is None:
+                        database_observation = (
+                            _r21_owner_start_file_observation(
+                                directory_fd,
+                                database.name,
+                            )
                         )
-                    )
+                        wal_observation = _r21_owner_start_file_observation(
+                            directory_fd,
+                            f"{database.name}.wal",
+                        )
+                        if database_observation.get("availability") != "observed":
+                            raise OperatorError("R21 owner-start database is absent")
+                        owner_handle.assert_canonical_parent()
+                        residual_paths_absent, listener_samples = (
+                            _r21_owner_start_endpoint_observation(
+                                paths=paths,
+                                server=server,
+                                marker_absent=marker_absent,
+                            )
+                        )
+                    else:
+                        context = (
+                            _validate_r23_owner_start_permission_context(
+                                r23_permission_context
+                            )
+                        )
+                        witness = context[
+                            "candidate_authorization_witness"
+                        ]
+                        wal_observation = _r21_owner_start_file_observation(
+                            directory_fd,
+                            f"{database.name}.wal",
+                        )
+                        if wal_observation.get("availability") != "absent":
+                            raise OperatorError(
+                                "R23 owner-start WAL must be absent before hardening"
+                            )
+                        paths_before, listeners_before = (
+                            _r21_owner_start_endpoint_observation(
+                                paths=paths,
+                                server=server,
+                                marker_absent=marker_absent,
+                            )
+                        )
+                        endpoints_before = {
+                            "paths_absent": paths_before,
+                            "listener_absence_samples": listeners_before,
+                        }
+                        owner_handle.assert_canonical_parent()
+                        database_observation, permission_observation = (
+                            _r23_harden_owner_start_database_permissions(
+                                directory_fd,
+                                name=database.name,
+                                candidate_head=str(context["candidate_head"]),
+                                candidate_tree=str(context["candidate_tree"]),
+                                candidate_authorization_witness=witness,
+                            )
+                        )
+                        owner_handle.assert_canonical_parent()
+                        marker_still_absent = _r21_path_absent(
+                            directory_fd,
+                            owner_marker_path.name,
+                        )
+                        paths_after, listeners_after = (
+                            _r21_owner_start_endpoint_observation(
+                                paths=paths,
+                                server=server,
+                                marker_absent=marker_still_absent,
+                            )
+                        )
+                        endpoints_after = {
+                            "paths_absent": paths_after,
+                            "listener_absence_samples": listeners_after,
+                        }
+                        wal_after = _r21_owner_start_file_observation(
+                            directory_fd,
+                            f"{database.name}.wal",
+                        )
+                        if wal_after != wal_observation:
+                            raise OperatorError(
+                                "R23 owner-start WAL changed during hardening"
+                            )
+                        database_after = _r21_owner_start_file_observation(
+                            directory_fd,
+                            database.name,
+                        )
+                        if database_after != database_observation:
+                            raise OperatorError(
+                                "R23 owner-start database name changed after "
+                                "hardening"
+                            )
+                        _assert_candidate_authorization_witness(
+                            witness,
+                            expected_head=str(context["candidate_head"]),
+                            expected_tree=str(context["candidate_tree"]),
+                            boundary=(
+                                "immediately before R23 database permission "
+                                "receipt publication"
+                            ),
+                        )
+                        permission_receipt = (
+                            _r23_publish_owner_start_permission_receipt(
+                                paths=paths,
+                                candidate_head=str(context["candidate_head"]),
+                                candidate_tree=str(context["candidate_tree"]),
+                                candidate_authorization_witness=witness,
+                                bootstrap_receipt_id=str(
+                                    context["bootstrap_receipt_id"]
+                                ),
+                                repair_transition_receipt_cid=str(
+                                    context["repair_transition_receipt_cid"]
+                                ),
+                                materialized_launch_admission_cid=str(
+                                    context["materialized_launch_admission_cid"]
+                                ),
+                                store_id=str(context["store_id"]),
+                                locks=locks,
+                                wal_observation=wal_observation,
+                                endpoints_before=endpoints_before,
+                                endpoints_after=endpoints_after,
+                                database_permission_observation=(
+                                    permission_observation
+                                ),
+                            )
+                        )
+                        database_after_receipt = (
+                            _r21_owner_start_file_observation(
+                                directory_fd,
+                                database.name,
+                            )
+                        )
+                        wal_after_receipt = (
+                            _r21_owner_start_file_observation(
+                                directory_fd,
+                                f"{database.name}.wal",
+                            )
+                        )
+                        if (
+                            database_after_receipt != database_observation
+                            or wal_after_receipt != wal_observation
+                        ):
+                            raise OperatorError(
+                                "R23 owner-start state changed after permission "
+                                "receipt publication"
+                            )
+                        _assert_candidate_authorization_witness(
+                            witness,
+                            expected_head=str(context["candidate_head"]),
+                            expected_tree=str(context["candidate_tree"]),
+                            boundary=(
+                                "after R23 database permission receipt before "
+                                "owner-start lock release"
+                            ),
+                        )
+                        residual_paths_absent = paths_after
+                        listener_samples = listeners_after
     finally:
         owner_handle.close()
     observation: dict[str, Any] = {
-        "schema": ASEH_R21_OWNER_START_CONTENTION_OBSERVATION_SCHEMA,
+        "schema": (
+            ASEH_R21_OWNER_START_CONTENTION_OBSERVATION_SCHEMA
+            if r23_permission_context is None
+            else ASEH_R23_OWNER_START_CONTENTION_OBSERVATION_SCHEMA
+        ),
         "lifecycle": lifecycle,
         "identity_absent": True,
         "lock_order": ["owner", "migration", "intent", "database"],
@@ -28902,6 +31052,11 @@ def _r21_owner_start_contention_observation(
         "listener_absence_samples": listener_samples,
         "observed_at_ns": time.time_ns(),
     }
+    if permission_observation is not None and permission_receipt is not None:
+        observation["database_permission_observation"] = permission_observation
+        observation["database_permission_receipt_cid"] = permission_receipt[
+            "receipt_cid"
+        ]
     observation["observation_cid"] = _identity(observation)
     return observation
 
@@ -29182,6 +31337,7 @@ def _r21_start_server_with_one_safe_retry(
     failure: dict[str, Any],
     failure_event: threading.Event,
     terminal_phase: dict[str, Any] | None = None,
+    r23_permission_context: Mapping[str, Any] | None = None,
 ) -> tuple[Any, Any, dict[str, Any] | None]:
     """Start a fresh owner, admitting at most one exact quiescent retry."""
 
@@ -29190,11 +31346,28 @@ def _r21_start_server_with_one_safe_retry(
     )
 
     configured_store = board.resolved_database_program().store_id
+    if r23_permission_context is not None:
+        r23_permission_context = (
+            _validate_r23_owner_start_permission_context(
+                r23_permission_context,
+                expected_head=candidate_head,
+                expected_tree=candidate_tree,
+                expected_witness=authorization_witness,
+                expected_store_id=configured_store,
+            )
+        )
+    baseline_arguments: dict[str, Any] = {
+        "paths": paths,
+        "server": server,
+        "expected_lifecycle": "created",
+    }
+    if r23_permission_context is not None:
+        baseline_arguments["r23_permission_context"] = (
+            r23_permission_context
+        )
     try:
         baseline = _r21_owner_start_contention_observation(
-            paths=paths,
-            server=server,
-            expected_lifecycle="created",
+            **baseline_arguments
         )
     except Exception as baseline_exc:
         baseline_evidence = _r22_owner_start_baseline_failure_evidence(
@@ -29212,6 +31385,18 @@ def _r21_start_server_with_one_safe_retry(
             error_type=type(baseline_exc).__name__,
         )
         raise
+    if r23_permission_context is not None:
+        permission_witness = r23_permission_context.get(
+            "candidate_authorization_witness"
+        )
+        if not isinstance(permission_witness, Mapping):
+            raise OperatorError("R23 owner-start permission witness is absent")
+        _assert_candidate_authorization_witness(
+            permission_witness,
+            expected_head=candidate_head,
+            expected_tree=candidate_tree,
+            boundary="after R23 permission admission immediately before owner start",
+        )
     _set_sealed_owner_terminal_phase(
         terminal_phase,
         "owner_start_attempt_1",
@@ -29337,12 +31522,18 @@ def _r21_start_server_with_one_safe_retry(
             error_type=type(build_exc).__name__,
         )
         raise
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R21 owner-start retry",
+    )
+    _set_sealed_owner_terminal_phase(
+        terminal_phase,
+        "owner_start_attempt_2",
+        owner_start_attempted=True,
+    )
     try:
-        _set_sealed_owner_terminal_phase(
-            terminal_phase,
-            "owner_start_attempt_2",
-            owner_start_attempted=True,
-        )
         identity = fresh_server.start()
     except Exception as retry_exc:
         retry_evidence = _r21_owner_start_failure_evidence(retry_exc, attempt=2)
@@ -29412,6 +31603,71 @@ def _r21_start_server_with_one_safe_retry(
             pass
         raise
     return fresh_server, identity, recovered
+
+
+def _r23_owner_start_permission_context_from_launch_admission(
+    *,
+    board: Any,
+    launch_admission: Mapping[str, Any],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+) -> dict[str, Any] | None:
+    """Project permission bindings from the already fully admitted R23 child."""
+
+    parents = _git("show", "-s", "--format=%P", candidate_head).split()
+    if parents != [
+        REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+    ]:
+        return None
+    if not isinstance(launch_admission, Mapping):
+        raise OperatorError("R23 materialized launch admission is invalid")
+    unsigned_admission = dict(launch_admission)
+    admission_cid = str(unsigned_admission.pop("admission_cid", "") or "")
+    if admission_cid != _identity(unsigned_admission):
+        raise OperatorError("R23 materialized launch admission CID differs")
+    chain = _admit_exact_r23_transition_chain(
+        launch_admission.get("repair_transition_chain")
+    )
+    transition = launch_admission.get("repair_transition")
+    current_witness = dict(candidate_authorization_witness)
+    if (
+        not isinstance(transition, Mapping)
+        or dict(transition) != dict(chain[-1])
+        or transition.get("schema")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
+        or transition.get("base_head")
+        != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_BASE_HEAD
+        or transition.get("repair_head") != candidate_head
+        or transition.get("repair_tree") != candidate_tree
+        or transition.get("candidate_authorization_witness")
+        != current_witness
+        or launch_admission.get("runtime_source_head") != candidate_head
+        or launch_admission.get("runtime_repository_tree_id")
+        != candidate_tree
+        or launch_admission.get("historical_live_authorizing_receipt_cid")
+        != transition.get("receipt_cid")
+    ):
+        raise OperatorError("R23 owner-start permission admission differs")
+    store_id = board.resolved_database_program().store_id
+    context = {
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness": current_witness,
+        "bootstrap_receipt_id": str(
+            launch_admission["bootstrap_receipt_id"]
+        ),
+        "repair_transition_receipt_cid": str(transition["receipt_cid"]),
+        "materialized_launch_admission_cid": admission_cid,
+        "store_id": store_id,
+    }
+    return _validate_r23_owner_start_permission_context(
+        context,
+        expected_head=candidate_head,
+        expected_tree=candidate_tree,
+        expected_witness=current_witness,
+        expected_store_id="data/aseh/control.duckdb",
+    )
 
 
 def _dedicated_process_group_birth(process: subprocess.Popen[Any]) -> int:
@@ -30953,6 +33209,15 @@ def _run_supervisor_owner_impl(
             candidate_head=candidate_head,
             candidate_tree=candidate_tree,
         )
+        r23_permission_context = (
+            _r23_owner_start_permission_context_from_launch_admission(
+                board=board,
+                launch_admission=launch_admission,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+                candidate_authorization_witness=authorization_witness,
+            )
+        )
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is not None:
         raise OperatorError("sealed validation authority survived admission")
     server = _build_server(board, paths)
@@ -30997,6 +33262,7 @@ def _run_supervisor_owner_impl(
                     failure=failure,
                     failure_event=failure_event,
                     terminal_phase=terminal_phase,
+                    r23_permission_context=r23_permission_context,
                 )
             )
             owner_started = True
