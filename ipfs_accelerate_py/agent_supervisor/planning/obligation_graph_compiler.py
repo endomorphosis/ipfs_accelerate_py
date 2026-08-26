@@ -3203,6 +3203,10 @@ class SemanticDischargeReason(str, Enum):
     SUCCESSORS_OPEN = "minimal_successors_open"
     OSCILLATION = "semantic_successor_oscillation"
     ANCESTRY_PRESERVED = "plan_ancestry_preserved"
+    IMPACT_CONSUMED = "semantic_impact_consumed"
+    SELECTED_CHECKS = "semantic_selected_checks"
+    REPAIR_CONSUMED = "semantic_repair_consumed"
+    SECOND_ORDER_OPEN = "semantic_second_order_open"
 
 
 @dataclass(frozen=True)
@@ -3253,6 +3257,33 @@ class SemanticDischargeEvidence:
             bool(self.interpolants_independently_validated),
         )
 
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any] | "SemanticDischargeEvidence"
+    ) -> "SemanticDischargeEvidence":
+        """Normalize a mapping or existing record into typed evidence."""
+
+        if isinstance(value, cls):
+            return value
+        if not isinstance(value, Mapping):
+            raise ObligationCompilationError("evidence must be SemanticDischargeEvidence")
+        return cls(
+            discharge_refs=tuple(value.get("discharge_refs") or ()),
+            invalidation_refs=tuple(value.get("invalidation_refs") or ()),
+            unsat_core_refs=tuple(value.get("unsat_core_refs") or ()),
+            counterexample_refs=tuple(value.get("counterexample_refs") or ()),
+            interpolant_refs=tuple(value.get("interpolant_refs") or ()),
+            interpolants_independently_validated=bool(
+                value.get("interpolants_independently_validated")
+            ),
+            covered_obligation_ids=tuple(value.get("covered_obligation_ids") or ()),
+            current_tree_id=str(value.get("current_tree_id") or ""),
+            evidence_tree_id=str(value.get("evidence_tree_id") or ""),
+            prior_successor_fingerprint=str(
+                value.get("prior_successor_fingerprint") or ""
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class SemanticSuccessor:
@@ -3287,6 +3318,12 @@ class PlannerDoctorSemanticDecision:
     missing_coverage: tuple[str, ...] = ()
     successor_fingerprint: str = ""
     plan_ancestry: tuple[str, ...] = ()
+    consumed_discharge_refs: tuple[str, ...] = ()
+    consumed_invalidation_refs: tuple[str, ...] = ()
+    impact_ids: tuple[str, ...] = ()
+    selected_check_ids: tuple[str, ...] = ()
+    repair_successor_ids: tuple[str, ...] = ()
+    second_order_obligation_ids: tuple[str, ...] = ()
 
     @property
     def graph_decision(self) -> ObligationGraphDecision:
@@ -3299,23 +3336,40 @@ class PlannerDoctorSemanticDecision:
 
 def _minimal_successors(evidence: SemanticDischargeEvidence) -> tuple[SemanticSuccessor, ...]:
     successors: list[SemanticSuccessor] = []
+    interpolant_refs = (
+        evidence.interpolant_refs if evidence.interpolants_independently_validated else ()
+    )
     for kind, refs in (
         ("unsat_core", evidence.unsat_core_refs),
         ("counterexample", evidence.counterexample_refs),
-        ("interpolant", evidence.interpolant_refs if evidence.interpolants_independently_validated else ()),
+        ("interpolant", interpolant_refs),
     ):
         for ref in refs:
-            obligation_id = f"obligation:successor:{kind}:{ref}"
             successors.append(
                 SemanticSuccessor(
                     successor_id=f"successor:{kind}:{ref}",
                     kind=kind,
                     source_ref=ref,
-                    obligation_id=obligation_id,
+                    obligation_id=f"obligation:successor:{kind}:{ref}",
                     minimal=True,
                 )
             )
     return tuple(successors)
+
+
+def _semantic_stage_ids(
+    evidence: SemanticDischargeEvidence,
+    successors: Sequence[SemanticSuccessor],
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """Derive impact, selected checks, repair, and second-order ids."""
+
+    impact = evidence.invalidation_refs
+    checks = [f"check:{ref}" for ref in evidence.invalidation_refs]
+    checks.extend(f"check:{item.kind}:{item.source_ref}" for item in successors)
+    selected = tuple(sorted(dict.fromkeys(checks)))
+    repair = tuple(item.successor_id for item in successors)
+    second_order = tuple(item.obligation_id for item in successors)
+    return impact, selected, repair, second_order
 
 
 def apply_semantic_discharge(
@@ -3327,30 +3381,14 @@ def apply_semantic_discharge(
 ) -> PlannerDoctorSemanticDecision:
     """Join discharge/invalidation evidence into Planner/Doctor decisions.
 
-    Missing coverage, stale roots, and unvalidated interpolants block. Unsat
-    cores, counterexamples, and independently validated interpolants emit
-    minimal successors. Plan ancestry is preserved, never rewritten.
+    Admission, completion, impact, selected checks, and repair consume the
+    current discharge and invalidation refs. Missing coverage, stale roots,
+    and unvalidated interpolants block. Unsat cores, counterexamples, and
+    independently validated interpolants emit minimal successors that remain
+    second-order until discharged. Plan ancestry is preserved, never rewritten.
     """
 
-    if isinstance(evidence, Mapping):
-        evidence = SemanticDischargeEvidence(
-            discharge_refs=tuple(evidence.get("discharge_refs") or ()),
-            invalidation_refs=tuple(evidence.get("invalidation_refs") or ()),
-            unsat_core_refs=tuple(evidence.get("unsat_core_refs") or ()),
-            counterexample_refs=tuple(evidence.get("counterexample_refs") or ()),
-            interpolant_refs=tuple(evidence.get("interpolant_refs") or ()),
-            interpolants_independently_validated=bool(
-                evidence.get("interpolants_independently_validated")
-            ),
-            covered_obligation_ids=tuple(evidence.get("covered_obligation_ids") or ()),
-            current_tree_id=str(evidence.get("current_tree_id") or ""),
-            evidence_tree_id=str(evidence.get("evidence_tree_id") or ""),
-            prior_successor_fingerprint=str(
-                evidence.get("prior_successor_fingerprint") or ""
-            ),
-        )
-    if not isinstance(evidence, SemanticDischargeEvidence):
-        raise ObligationCompilationError("evidence must be SemanticDischargeEvidence")
+    evidence = SemanticDischargeEvidence.from_mapping(evidence)
 
     ancestry = _ids(plan_ancestry, "plan_ancestry", required=False, preserve_order=True)
     required = _ids(required_obligation_ids, "required_obligation_ids", required=False)
@@ -3396,6 +3434,14 @@ def apply_semantic_discharge(
         reasons.append(SemanticDischargeReason.OSCILLATION.value)
         successors = ()
 
+    impact_ids, selected_check_ids, repair_ids, second_order_ids = _semantic_stage_ids(
+        evidence, successors
+    )
+    if impact_ids:
+        reasons.append(SemanticDischargeReason.IMPACT_CONSUMED.value)
+    if selected_check_ids:
+        reasons.append(SemanticDischargeReason.SELECTED_CHECKS.value)
+
     admitted = not blocked
     complete = admitted and not successors and not missing
     if admitted:
@@ -3404,6 +3450,8 @@ def apply_semantic_discharge(
         reasons.append(SemanticDischargeReason.COMPLETE.value)
     elif admitted and successors:
         reasons.append(SemanticDischargeReason.SUCCESSORS_OPEN.value)
+        reasons.append(SemanticDischargeReason.REPAIR_CONSUMED.value)
+        reasons.append(SemanticDischargeReason.SECOND_ORDER_OPEN.value)
 
     return PlannerDoctorSemanticDecision(
         admitted=admitted,
@@ -3415,6 +3463,12 @@ def apply_semantic_discharge(
         missing_coverage=missing,
         successor_fingerprint=fingerprint,
         plan_ancestry=ancestry,
+        consumed_discharge_refs=evidence.discharge_refs,
+        consumed_invalidation_refs=evidence.invalidation_refs,
+        impact_ids=impact_ids,
+        selected_check_ids=selected_check_ids,
+        repair_successor_ids=repair_ids,
+        second_order_obligation_ids=second_order_ids,
     )
 
 
