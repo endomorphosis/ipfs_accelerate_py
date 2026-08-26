@@ -34085,6 +34085,7 @@ class PortalImplementationDaemon:
             queue=self.merge_queue,
             target_branch=target_branch,
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
+            merge_lock_path=self._repo_merge_lock_path(),
             merge_callback=self._merge_train_callback,
             formal_verification_policy=self.formal_verification_policy,
             proof_gate=self.proof_gate,
@@ -65416,6 +65417,9 @@ class PortalImplementationDaemon:
                 result["lock_owner_pid"] = int(
                     existing.get("pid") or 0
                 )
+                existing_lease_id = existing.get("lease_id")
+                if isinstance(existing_lease_id, str) and existing_lease_id:
+                    result["lock_owner_lease_id"] = existing_lease_id
                 result["lock_owner_task_id"] = str(
                     existing.get("task_id") or ""
                 )

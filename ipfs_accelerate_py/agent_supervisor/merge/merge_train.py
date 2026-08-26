@@ -1040,6 +1040,9 @@ class MergeTrain:
             exact repository lease is reverified on every pass and never
             consumes the candidate's failure budget merely because another
             admitted owner remains active.
+        merge_lock_path: Exact repository merge lock used to verify a callback
+            lock-contention result.  Defaults to the repository-wide lock; a
+            board-scoped lock in the Git common directory is also accepted.
         merge_callback: Optional specialised merger.  It receives the claimed
             request and returns a merge-result mapping.
         state_dir: Train receipts/lease/worktrees directory.  Defaults beneath
@@ -1065,6 +1068,7 @@ class MergeTrain:
         max_attempts: int = 3,
         merge_lock_deferral_seconds: float = DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS,
         max_merge_lock_deferrals: int = DEFAULT_MAX_MERGE_LOCK_DEFERRALS,
+        merge_lock_path: Path | str | None = None,
         merge_callback: MergeCallback | None = None,
         state_dir: Path | str | None = None,
         git_timeout_seconds: float = 600.0,
@@ -1117,6 +1121,49 @@ class MergeTrain:
                 )
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
+        default_merge_lock_path = checkout_mutation_lock_path(
+            self.repo_root
+        ).resolve(strict=False)
+        if merge_lock_path is None:
+            resolved_merge_lock_path = default_merge_lock_path
+        else:
+            configured_merge_lock_path = Path(merge_lock_path)
+            if not configured_merge_lock_path.is_absolute():
+                raise ValueError("merge lock path must be absolute")
+            resolved_merge_lock_path = configured_merge_lock_path.resolve(
+                strict=False
+            )
+        lock_name = resolved_merge_lock_path.name
+        board_lock_prefix = "implementation-board-"
+        board_lock_suffix = "-merge.lock"
+        board_lock_digest = (
+            lock_name[
+                len(board_lock_prefix) : -len(board_lock_suffix)
+            ]
+            if lock_name.startswith(board_lock_prefix)
+            and lock_name.endswith(board_lock_suffix)
+            else ""
+        )
+        board_lock_name_valid = bool(
+            len(board_lock_digest) == 16
+            and all(
+                character in "0123456789abcdef"
+                for character in board_lock_digest
+            )
+        )
+        if (
+            resolved_merge_lock_path.parent
+            != default_merge_lock_path.parent
+            or (
+                resolved_merge_lock_path != default_merge_lock_path
+                and not board_lock_name_valid
+            )
+        ):
+            raise ValueError(
+                "merge lock path must be the default or a board-scoped "
+                "lock in the repository Git common directory"
+            )
+        self.merge_lock_path = resolved_merge_lock_path
         merge_lock_deferral_seconds = float(merge_lock_deferral_seconds)
         if not math.isfinite(merge_lock_deferral_seconds):
             raise ValueError("merge lock deferral cooldown must be finite")
@@ -5667,9 +5714,7 @@ class MergeTrain:
             or lock_owner_pid <= 0
         ):
             return {}
-        expected_path = checkout_mutation_lock_path(self.repo_root).resolve(
-            strict=False
-        )
+        expected_path = self.merge_lock_path
         callback_path_text = str(callback_result.get("lock_path") or "")
         if not callback_path_text:
             return {}
