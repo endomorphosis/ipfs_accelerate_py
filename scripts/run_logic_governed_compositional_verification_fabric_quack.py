@@ -374,6 +374,7 @@ SEALED_CONTINUITY_EXPECTED_IDENTITIES: Final = {
 }
 GIT_EXECUTABLE: Final = Path("/usr/bin/git")
 GIT_TIMEOUT_SECONDS: Final = 120.0
+MAX_RUNTIME_GITLINK_DEPTH: Final = 16
 
 
 class SuccessorOperatorError(RuntimeError):
@@ -2378,22 +2379,27 @@ def _git_text(root: Path, arguments: Sequence[str], *, noun: str) -> str:
         "LC_ALL": "C.UTF-8",
         "PATH": "/usr/bin:/bin",
     }
-    completed = subprocess.run(
-        [
-            str(GIT_EXECUTABLE),
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "core.fsmonitor=false",
-            *arguments,
-        ],
-        cwd=root,
-        env=environment,
-        text=True,
-        capture_output=True,
-        check=False,
-        timeout=GIT_TIMEOUT_SECONDS,
-    )
+    try:
+        completed = subprocess.run(
+            [
+                str(GIT_EXECUTABLE),
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.fsmonitor=false",
+                *arguments,
+            ],
+            cwd=root,
+            env=environment,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            capture_output=True,
+            check=False,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
+        raise SuccessorOperatorError(f"{noun} could not be observed") from exc
     if completed.returncode != 0:
         raise SuccessorOperatorError(
             f"{noun} failed: {(completed.stderr or completed.stdout)[-1000:].strip()}"
@@ -2448,13 +2454,104 @@ def _regular_git_blob_oid(path: Path, *, noun: str) -> str:
         os.close(descriptor)
 
 
+def _owned_directory_chain_identity(
+    repository: Path,
+    relative_path: Path,
+    *,
+    noun: str,
+) -> tuple[Path, Path, tuple[tuple[int, int, int, int, int, int], ...]]:
+    """Resolve one same-owner, symlink-free directory chain beneath a repository."""
+
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise SuccessorOperatorError(f"{noun} contains an unsafe gitlink path")
+    current = repository
+    identities: list[tuple[int, int, int, int, int, int]] = []
+    try:
+        for component in (None, *relative_path.parts):
+            if component is not None:
+                current = current / component
+            metadata = os.lstat(current)
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+            ):
+                raise SuccessorOperatorError(f"{noun} gitlink custody differs")
+            identities.append(
+                (
+                    metadata.st_dev,
+                    metadata.st_ino,
+                    metadata.st_mode,
+                    metadata.st_uid,
+                    metadata.st_mtime_ns,
+                    metadata.st_ctime_ns,
+                )
+            )
+        exact_repository = repository.resolve(strict=True)
+        exact_gitlink = current.resolve(strict=True)
+        exact_gitlink.relative_to(exact_repository)
+    except SuccessorOperatorError:
+        raise
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise SuccessorOperatorError(
+            f"{noun} gitlink custody cannot be resolved"
+        ) from exc
+    return exact_repository, exact_gitlink, tuple(identities)
+
+
+def _validate_ignored_runtime_inventory(
+    repository: Path,
+    *,
+    pathspecs: Sequence[str],
+    noun: str,
+) -> None:
+    ignored = _git_text(
+        repository,
+        (
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "-z",
+            "--",
+            *pathspecs,
+        ),
+        noun=f"{noun} ignored inventory",
+    )
+    for raw in ignored.split("\0"):
+        if not raw:
+            continue
+        relative_path = Path(raw)
+        path = repository / relative_path
+        try:
+            metadata = os.lstat(path)
+        except OSError as exc:
+            raise SuccessorOperatorError(
+                f"{noun} ignored object cannot be inspected"
+            ) from exc
+        if (
+            relative_path.suffix != ".pyc"
+            or "__pycache__" not in relative_path.parts
+            or not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+        ):
+            raise SuccessorOperatorError(
+                f"{noun} contains an ignored executable or data object"
+            )
+
+
 def _tracked_runtime_inventory(
     repository: Path,
     *,
     head: str,
     pathspecs: Sequence[str],
     noun: str,
+    _gitlink_depth: int = 0,
+    _gitlink_chain: frozenset[tuple[str, str]] = frozenset(),
 ) -> dict[str, Any]:
+    if _gitlink_depth > MAX_RUNTIME_GITLINK_DEPTH:
+        raise SuccessorOperatorError(f"{noun} gitlink nesting is too deep")
     if (
         _git_text(
             repository,
@@ -2491,19 +2588,156 @@ def _tracked_runtime_inventory(
         if relative_path.is_absolute() or ".." in relative_path.parts:
             raise SuccessorOperatorError(f"{noun} contains an unsafe tracked object")
         if object_type == "commit" and mode == "160000":
-            gitlink_path = repository / relative_path
-            metadata_status = os.lstat(gitlink_path)
-            with os.scandir(gitlink_path) as entries:
-                gitlink_is_empty = next(entries, None) is None
-            if (
-                not stat.S_ISDIR(metadata_status.st_mode)
-                or stat.S_ISLNK(metadata_status.st_mode)
-                or metadata_status.st_uid != os.geteuid()
-                or not gitlink_is_empty
-            ):
-                raise SuccessorOperatorError(
-                    f"{noun} uninitialized gitlink custody differs"
+            try:
+                (
+                    exact_repository_root,
+                    gitlink_path,
+                    initial_directory_chain,
+                ) = _owned_directory_chain_identity(
+                    repository,
+                    relative_path,
+                    noun=noun,
                 )
+                with os.scandir(gitlink_path) as entries:
+                    gitlink_is_empty = next(entries, None) is None
+            except OSError as exc:
+                raise SuccessorOperatorError(
+                    f"{noun} gitlink custody cannot be inspected"
+                ) from exc
+            if gitlink_is_empty:
+                try:
+                    (
+                        final_repository_root,
+                        final_gitlink_path,
+                        final_directory_chain,
+                    ) = _owned_directory_chain_identity(
+                        repository,
+                        relative_path,
+                        noun=noun,
+                    )
+                    with os.scandir(gitlink_path) as entries:
+                        gitlink_remains_empty = next(entries, None) is None
+                    (
+                        terminal_repository_root,
+                        terminal_gitlink_path,
+                        terminal_directory_chain,
+                    ) = _owned_directory_chain_identity(
+                        repository,
+                        relative_path,
+                        noun=noun,
+                    )
+                except OSError as exc:
+                    raise SuccessorOperatorError(
+                        f"{noun} gitlink custody cannot be revalidated"
+                    ) from exc
+                if (
+                    final_repository_root != exact_repository_root
+                    or final_gitlink_path != gitlink_path
+                    or final_directory_chain != initial_directory_chain
+                    or terminal_repository_root != exact_repository_root
+                    or terminal_gitlink_path != gitlink_path
+                    or terminal_directory_chain != initial_directory_chain
+                    or not gitlink_remains_empty
+                ):
+                    raise SuccessorOperatorError(
+                        f"{noun} uninitialized gitlink custody changed"
+                    )
+            else:
+                def observe_initialized_gitlink() -> tuple[Path, str, str]:
+                    nested_root = _git_text(
+                        gitlink_path,
+                        ("rev-parse", "--show-toplevel"),
+                        noun=f"{noun} initialized gitlink root",
+                    )
+                    nested_head = _git_text(
+                        gitlink_path,
+                        ("rev-parse", "--verify", "HEAD^{commit}"),
+                        noun=f"{noun} initialized gitlink HEAD",
+                    )
+                    nested_dirty = _git_text(
+                        gitlink_path,
+                        (
+                            "status",
+                            "--porcelain=v1",
+                            "--untracked-files=all",
+                            "--ignore-submodules=none",
+                        ),
+                        noun=f"{noun} initialized gitlink inventory",
+                    )
+                    try:
+                        observed_nested_root = Path(nested_root).resolve(strict=True)
+                    except (OSError, RuntimeError) as exc:
+                        raise SuccessorOperatorError(
+                            f"{noun} initialized gitlink root cannot be resolved"
+                        ) from exc
+                    return observed_nested_root, nested_head, nested_dirty
+
+                exact_nested_root = gitlink_path
+                gitlink_identity = (str(exact_nested_root), expected_oid)
+                if gitlink_identity in _gitlink_chain:
+                    raise SuccessorOperatorError(
+                        f"{noun} initialized gitlink cycle differs"
+                    )
+                nested_root, nested_head, nested_dirty = observe_initialized_gitlink()
+                if (
+                    nested_root != exact_nested_root
+                    or nested_head != expected_oid
+                    or nested_dirty
+                ):
+                    raise SuccessorOperatorError(
+                        f"{noun} initialized gitlink custody differs"
+                    )
+                _tracked_runtime_inventory(
+                    gitlink_path,
+                    head=expected_oid,
+                    pathspecs=(".",),
+                    noun=f"{noun} initialized gitlink {relative_path.as_posix()}",
+                    _gitlink_depth=_gitlink_depth + 1,
+                    _gitlink_chain=_gitlink_chain | {gitlink_identity},
+                )
+                (
+                    final_repository_root,
+                    final_gitlink_path,
+                    final_directory_chain,
+                ) = _owned_directory_chain_identity(
+                    repository,
+                    relative_path,
+                    noun=noun,
+                )
+                nested_root, nested_head, nested_dirty = observe_initialized_gitlink()
+                if (
+                    final_repository_root != exact_repository_root
+                    or final_gitlink_path != gitlink_path
+                    or final_directory_chain != initial_directory_chain
+                    or nested_root != exact_nested_root
+                    or nested_head != expected_oid
+                    or nested_dirty
+                ):
+                    raise SuccessorOperatorError(
+                        f"{noun} initialized gitlink custody changed"
+                    )
+                _validate_ignored_runtime_inventory(
+                    gitlink_path,
+                    pathspecs=(".",),
+                    noun=f"{noun} initialized gitlink {relative_path.as_posix()}",
+                )
+                (
+                    terminal_repository_root,
+                    terminal_gitlink_path,
+                    terminal_directory_chain,
+                ) = _owned_directory_chain_identity(
+                    repository,
+                    relative_path,
+                    noun=noun,
+                )
+                if (
+                    terminal_repository_root != exact_repository_root
+                    or terminal_gitlink_path != gitlink_path
+                    or terminal_directory_chain != initial_directory_chain
+                ):
+                    raise SuccessorOperatorError(
+                        f"{noun} initialized gitlink custody changed"
+                    )
             observed.append((relative_path.as_posix(), mode, expected_oid))
             continue
         if object_type == "blob" and mode == "120000":
@@ -2538,40 +2772,11 @@ def _tracked_runtime_inventory(
         if observed_oid != expected_oid:
             raise SuccessorOperatorError(f"{noun} tracked bytes differ from HEAD")
         observed.append((relative_path.as_posix(), mode, observed_oid))
-    ignored = _git_text(
+    _validate_ignored_runtime_inventory(
         repository,
-        (
-            "ls-files",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-            "-z",
-            "--",
-            *pathspecs,
-        ),
-        noun=f"{noun} ignored inventory",
+        pathspecs=pathspecs,
+        noun=noun,
     )
-    for raw in ignored.split("\0"):
-        if not raw:
-            continue
-        relative_path = Path(raw)
-        path = repository / relative_path
-        try:
-            metadata = os.lstat(path)
-        except OSError as exc:
-            raise SuccessorOperatorError(
-                f"{noun} ignored object cannot be inspected"
-            ) from exc
-        if (
-            relative_path.suffix != ".pyc"
-            or "__pycache__" not in relative_path.parts
-            or not stat.S_ISREG(metadata.st_mode)
-            or stat.S_ISLNK(metadata.st_mode)
-            or metadata.st_uid != os.geteuid()
-        ):
-            raise SuccessorOperatorError(
-                f"{noun} contains an ignored executable or data object"
-            )
     inventory_root = "sha256:" + hashlib.sha256(_canonical_bytes(observed)).hexdigest()
     return {
         "tracked_object_count": len(observed),

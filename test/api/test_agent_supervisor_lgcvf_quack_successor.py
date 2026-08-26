@@ -767,6 +767,256 @@ def test_generation_bound_controller_lock_rejects_run_directory_replacement(
     assert (generation / paths["controller_lock"].name).is_file()
 
 
+def test_runtime_inventory_admits_only_exact_clean_initialized_gitlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    parent = tmp_path / "parent"
+    nested = parent / "runtime" / "module"
+    nested.mkdir(parents=True)
+
+    def run_git(repository: Path, *arguments: str) -> str:
+        completed = subprocess.run(
+            [
+                str(operator.GIT_EXECUTABLE),
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "user.name=LGCVF Test",
+                "-c",
+                "user.email=lgcvf-test@example.invalid",
+                *arguments,
+            ],
+            cwd=repository,
+            env={
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_NO_REPLACE_OBJECTS": "1",
+                "LANG": "C.UTF-8",
+                "LC_ALL": "C.UTF-8",
+                "PATH": "/usr/bin:/bin",
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    run_git(parent, "init", "-q")
+    run_git(nested, "init", "-q")
+    nested.joinpath(".gitignore").write_text("ignored.data\n", encoding="utf-8")
+    nested.joinpath("payload.txt").write_text("sealed nested source\n", encoding="utf-8")
+    run_git(nested, "add", ".gitignore", "payload.txt")
+    run_git(nested, "commit", "-qm", "nested source")
+    nested_head = run_git(nested, "rev-parse", "HEAD")
+    run_git(
+        parent,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{nested_head},runtime/module",
+    )
+    run_git(parent, "commit", "-qm", "parent gitlink")
+    parent_head = run_git(parent, "rev-parse", "HEAD")
+
+    stowed_nested = tmp_path / "stowed-nested"
+    nested.rename(stowed_nested)
+    nested.mkdir()
+    empty_inventory = operator._tracked_runtime_inventory(
+        parent,
+        head=parent_head,
+        pathspecs=("runtime",),
+        noun="test runtime",
+    )
+    nested.rmdir()
+    stowed_nested.rename(nested)
+
+    inventory = operator._tracked_runtime_inventory(
+        parent,
+        head=parent_head,
+        pathspecs=("runtime",),
+        noun="test runtime",
+    )
+    assert inventory == empty_inventory
+    assert inventory["tracked_object_count"] == 1
+    assert str(inventory["tracked_inventory_root"]).startswith("sha256:")
+
+    with pytest.raises(operator.SuccessorOperatorError, match="nesting is too deep"):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+            _gitlink_depth=operator.MAX_RUNTIME_GITLINK_DEPTH + 1,
+        )
+    with pytest.raises(operator.SuccessorOperatorError, match="gitlink cycle differs"):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+            _gitlink_chain=frozenset({(str(nested.resolve()), nested_head)}),
+        )
+
+    runtime = parent / "runtime"
+    outside_runtime = tmp_path / "outside-runtime"
+    runtime.rename(outside_runtime)
+    runtime.symlink_to(outside_runtime, target_is_directory=True)
+    with pytest.raises(operator.SuccessorOperatorError, match="gitlink custody differs"):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+        )
+    runtime.unlink()
+    outside_runtime.rename(runtime)
+
+    nested.joinpath("untracked.txt").write_text("drift\n", encoding="utf-8")
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="initialized gitlink custody differs",
+    ):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+        )
+    nested.joinpath("untracked.txt").unlink()
+
+    nested.joinpath("payload.txt").write_text("tracked drift\n", encoding="utf-8")
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="initialized gitlink custody differs",
+    ):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+        )
+    nested.joinpath("payload.txt").write_text(
+        "sealed nested source\n", encoding="utf-8"
+    )
+
+    run_git(nested, "update-index", "--skip-worktree", "payload.txt")
+    with pytest.raises(operator.SuccessorOperatorError, match="special index flags"):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+        )
+    run_git(nested, "update-index", "--no-skip-worktree", "payload.txt")
+
+    nested.joinpath("ignored.data").write_text("ignored drift\n", encoding="utf-8")
+    with pytest.raises(operator.SuccessorOperatorError, match="ignored executable"):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+        )
+    nested.joinpath("ignored.data").unlink()
+
+    git_text = operator._git_text
+    injected_ignored_drift = False
+
+    def inject_ignored_drift_after_scan(
+        repository: Path,
+        arguments: tuple[str, ...],
+        *,
+        noun: str,
+    ) -> str:
+        nonlocal injected_ignored_drift
+        result = git_text(repository, arguments, noun=noun)
+        if (
+            repository == nested
+            and arguments[:3] == ("ls-files", "--others", "--ignored")
+            and not injected_ignored_drift
+        ):
+            injected_ignored_drift = True
+            nested.joinpath("ignored.data").write_text(
+                "late ignored drift\n", encoding="utf-8"
+            )
+        return result
+
+    monkeypatch.setattr(operator, "_git_text", inject_ignored_drift_after_scan)
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="ignored executable|initialized gitlink custody changed",
+    ):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+        )
+    assert injected_ignored_drift is True
+    nested.joinpath("ignored.data").unlink()
+    monkeypatch.setattr(operator, "_git_text", git_text)
+
+    nested.joinpath("payload.txt").write_text("alternate source\n", encoding="utf-8")
+    run_git(nested, "add", "payload.txt")
+    run_git(nested, "commit", "-qm", "alternate nested source")
+    alternate_head = run_git(nested, "rev-parse", "HEAD")
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="initialized gitlink custody differs",
+    ):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+        )
+    run_git(nested, "reset", "--hard", nested_head)
+
+    regular_git_blob_oid = operator._regular_git_blob_oid
+    switched_head = False
+
+    def switch_head_after_hash(path: Path, *, noun: str) -> str:
+        nonlocal switched_head
+        observed_oid = regular_git_blob_oid(path, noun=noun)
+        if path == nested / "payload.txt" and not switched_head:
+            switched_head = True
+            run_git(nested, "reset", "--hard", alternate_head)
+        return observed_oid
+
+    monkeypatch.setattr(operator, "_regular_git_blob_oid", switch_head_after_hash)
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="initialized gitlink custody changed",
+    ):
+        operator._tracked_runtime_inventory(
+            parent,
+            head=parent_head,
+            pathspecs=("runtime",),
+            noun="test runtime",
+        )
+    assert switched_head is True
+
+
+def test_git_observation_decode_failure_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+
+    def fail_decode(*_args: object, **_kwargs: object) -> None:
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(operator.subprocess, "run", fail_decode)
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="test Git observation could not be observed",
+    ):
+        operator._git_text(tmp_path, ("status",), noun="test Git observation")
+
+
 def test_live_launch_verifies_provenance_before_import_retarget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
