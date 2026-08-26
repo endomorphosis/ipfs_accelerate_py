@@ -1590,6 +1590,136 @@ def test_four_daemon_processes_claim_distinct_work(tmp_path: Path) -> None:
         idle.close()
 
 
+def _sparse_post_merge_history_fixture(
+    task: Any,
+    *,
+    current_operation: str,
+) -> tuple[Any, dict[str, Any]]:
+    semantic_body = {
+        key: value
+        for key, value in dict(task.body).items()
+        if key != "completion_receipt"
+    }
+    revision_numbers = (1, 5, 6, 7, 8)
+    statuses = ("ready", "in_progress", "retrying", "in_progress", "blocked")
+    operations = (
+        "database_materialize_task",
+        "database_claim",
+        "database_portal_retry",
+        "database_claim",
+        current_operation,
+    )
+    entries = [
+        {
+            "revision": revision,
+            "status": statuses[index],
+            "body": {
+                **semantic_body,
+                "completion_receipt": {
+                    "operation": operations[index],
+                },
+            },
+        }
+        for index, revision in enumerate(revision_numbers)
+    ]
+    projection_body = {
+        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        "task_cid": task.task_cid,
+        "revisions": entries,
+    }
+    projection = {
+        **projection_body,
+        "projection_cid": content_identity(projection_body),
+    }
+    current = replace(
+        task,
+        revision=revision_numbers[-1],
+        status=statuses[-1],
+        body=entries[-1]["body"],
+    )
+    return current, projection
+
+
+def test_post_merge_completion_crash_fence_allows_sparse_ordinary_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:sparse-ordinary-history",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        sparse_task, projection = _sparse_post_merge_history_fixture(
+            task,
+            current_operation="database_portal_terminal_failure",
+        )
+        assert [
+            entry["revision"] for entry in projection["revisions"]
+        ] == [1, 5, 6, 7, 8]
+        history_reads = 0
+
+        def sparse_history(_task_cid: str) -> dict[str, Any]:
+            nonlocal history_reads
+            history_reads += 1
+            return projection
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            sparse_history,
+        )
+
+        assert (
+            daemon._post_merge_completion_crash_recovery_context(
+                sparse_task,
+                require_current_blocked=True,
+            )
+            is None
+        )
+        assert history_reads == 0
+    finally:
+        daemon.close()
+
+
+def test_post_merge_completion_crash_fence_rejects_sparse_dedicated_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:sparse-dedicated-history",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        sparse_task, projection = _sparse_post_merge_history_fixture(
+            task,
+            current_operation=(
+                "database_portal_typed_deferral_budget_exhausted"
+            ),
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "task_revision_history_projection",
+            lambda _task_cid: projection,
+        )
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="malformed or stale canonical history",
+        ):
+            daemon._post_merge_completion_crash_recovery_context(
+                sparse_task,
+                require_current_blocked=True,
+            )
+    finally:
+        daemon.close()
+
+
 def test_post_merge_completion_crash_fence_excludes_proven_stale_snapshot(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1675,12 +1805,24 @@ def test_post_merge_completion_crash_fence_excludes_proven_stale_snapshot(
         assert context["canonical_task_revision"] == 7
         assert daemon._automatic_claim_exclusions() == {task.task_cid}
 
+        blocked_candidate = replace(
+            stale_task,
+            status="blocked",
+            body={
+                **semantic_body,
+                "completion_receipt": {
+                    "operation": (
+                        "database_portal_typed_deferral_budget_exhausted"
+                    ),
+                },
+            },
+        )
         with pytest.raises(
             DatabaseImplementationAuthorityError,
             match="malformed or stale canonical history",
         ):
             daemon._post_merge_completion_crash_recovery_context(
-                stale_task,
+                blocked_candidate,
                 require_current_blocked=True,
             )
         forged_task = replace(
