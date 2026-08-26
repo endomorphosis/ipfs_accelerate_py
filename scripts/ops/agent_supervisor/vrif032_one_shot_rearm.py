@@ -18,6 +18,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -556,6 +557,9 @@ def main() -> int:
         == safe_regular_bytes(script_path, maximum=131_072),
         "running rearm helper differs from its current-HEAD blob",
     )
+
+    root_text = str(root)
+    sys.path[:] = [root_text, *(entry for entry in sys.path if entry != root_text)]
 
     config_blob = git(root, "show", f"{head}:{CONFIG_PATH.as_posix()}", binary=True)
     try:
