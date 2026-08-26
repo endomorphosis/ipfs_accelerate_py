@@ -250,7 +250,7 @@ command-kind = "pytest"
 validation-command-sha256 = "ea59cc9c67aaf3f6876446ea61118092f43746f3d21973d7bbca201388dc0d2f"
 requirements = ["pytest>=8.0.0"]
 task = { board-namespace = "logic-governed-compositional-verification-fabric-v1", canonical-task-cid = "baguqeera22uu4o4ux6kzp4fgv5gxqupas3nhdjtbrtt73x2kc6mhtxkdbtwq", declared-outputs = ["ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py", "test/api/test_agent_supervisor_program_repair_egraph.py"] }
-baseline = { state = "present", sha256 = "7f78ec8d725080663c2eb98f058abf6df3b8e805eceefd0ea3cbc6b59b0634b5" }
+baseline = { state = "present", sha256 = "e5b4751b5bedc77e83a9b4b3dd5d2fc205a0862f3f86a9f2a7916d8afd95a61a" }
 
 [[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]
 target = "test/api/test_agent_supervisor_program_repair_cegis.py"
