@@ -141,6 +141,28 @@ tasks are blocked templates carrying `REBIND_REQUIRED_BY_EAAEF-009`, not
 schedulable work. Plan R2 must preserve completed R1 tasks, replace every
 sentinel with the verified semantic root, and materialize only the B frontier.
 
+### Reviewed Plan R1 ownership erratum
+
+The reviewed Plan R1 source assigns the reusable CASF bootstrap opener, typed
+owner adapters, reconciliation lifecycle, offline population projection,
+owner-local R1/Plan-R2 services and their focused validation to `EAAEF-000`.
+The offline population implementation and its focused validation are one
+ownership unit; the corrected projection therefore contains 397 owned paths
+and 430 task-output contracts. This is a source-ownership correction,
+not a live admission, Plan R2 transition, terminal task result or signature.
+It retains the `EAAEF-PLAN-R1` revision alias while producing new
+content-addressed source, board, task and plan identities; any previously
+prepared signing material is stale and a later ceremony must bind the new
+identities.
+
+`EAAEF-191` continues to own only its separate
+`scripts/issue_eaaef_admission_bundle.py` ceremony CLI and immutable admission
+bundle receipts. No lifecycle or Plan-R2 request path is shared between
+`EAAEF-000` and `EAAEF-191`: `EAAEF-000` already depends on `EAAEF-191`, so a
+reverse repeated-path dependency would create a cycle. The CASF canonical board
+and tip remain unchanged. The EAAEF CASF import manifest is instead a reviewed,
+source-owned EAAEF board input and cannot be mutated by a worker task.
+
 The preserved worker-profile and execution-profile `@1` contracts cannot
 represent Grok's required prompt, policy and provider-home mounts. Reviewed
 source now defines versioned `@2` contracts with those exact mount kinds,

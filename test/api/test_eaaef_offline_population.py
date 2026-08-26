@@ -624,7 +624,7 @@ def test_translation_is_exact_database_task_source_population(repo_root: Path) -
         "todo": 22,
     }
     assert sum(len(item["depends_on"]) for item in translated["tasks"]) == 270
-    assert sum(len(item["outputs"]) for item in translated["tasks"]) == 415
+    assert sum(len(item["outputs"]) for item in translated["tasks"]) == 430
     assert sum(len(item["validations"]) for item in translated["tasks"]) == 117
     assert sum(len(item["acceptance"]) for item in translated["tasks"]) == 116
     assert translated["terminal_statuses_imported"] == 0
@@ -725,7 +725,7 @@ def test_offline_materialization_preserves_all_contract_rows(
     assert receipt["task_status_counts"] == {"blocked": 94, "todo": 22}
     assert receipt["execution_contract_counts"] == {
         "task_dependencies": 270,
-        "task_outputs": 415,
+        "task_outputs": 430,
         "task_validations": 117,
         "task_acceptance": 116,
     }
@@ -736,7 +736,7 @@ def test_offline_materialization_preserves_all_contract_rows(
     assert len(page.tasks) == 116
     assert Counter(item.status for item in page.tasks) == {"blocked": 94, "todo": 22}
     assert sum(len(item.dependencies) for item in page.tasks) == 270
-    assert sum(len(item.outputs) for item in page.tasks) == 415
+    assert sum(len(item.outputs) for item in page.tasks) == 430
     assert sum(len(item.validations) for item in page.tasks) == 117
     assert sum(len(item.acceptance) for item in page.tasks) == 116
 

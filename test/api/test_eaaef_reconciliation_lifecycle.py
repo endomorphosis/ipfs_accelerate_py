@@ -491,7 +491,7 @@ def test_fresh_population_is_exact_22_plus_94_and_plan_r2_releases_all(
     assert Counter(item["status"] for item in population.plan_r2_tasks) == {"blocked": 94}
     assert population.execution_contract_counts == {
         "task_dependencies": 270,
-        "task_outputs": 415,
+        "task_outputs": 430,
         "task_validations": 117,
         "task_acceptance": 116,
     }
