@@ -79,6 +79,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import 
     render_grok_route_outcome,
     valid_grok_failure_receipt,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_executable_trust import (
+    resolve_codex_quota_fallback_executable,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.worker_container_execution_profile import (
     EAAEF_WORKER_CONTAINER_EXECUTION_PROFILE_SCHEMA_V2,
     WorkerContainerExecutionMount,
@@ -574,81 +577,6 @@ def _operating_system_account_home() -> Path:
 
         return Path(pwd.getpwuid(os.getuid()).pw_dir).resolve(strict=True)
     return Path.home().resolve(strict=True)
-
-
-def resolve_codex_quota_fallback_executable(
-    *,
-    workspace: str | Path,
-    configured: str = "",
-) -> str:
-    """Resolve a pinned executable that the Grok workspace cannot replace."""
-
-    workspace_path = Path(workspace).expanduser().resolve()
-    codex_candidate = str(configured or shutil.which("codex") or "").strip()
-    if not codex_candidate:
-        return ""
-    candidate_path = Path(codex_candidate).expanduser()
-    if not candidate_path.is_absolute():
-        resolved_from_path = shutil.which(codex_candidate)
-        if not resolved_from_path:
-            return ""
-        candidate_path = Path(resolved_from_path)
-    try:
-        resolved_candidate = candidate_path.resolve(strict=True)
-    except OSError:
-        return ""
-    candidate_entry = Path(os.path.abspath(candidate_path))
-    system_entries = {
-        Path("/usr/bin/codex"),
-        Path("/usr/local/bin/codex"),
-        Path("/usr/bin/codex.exe"),
-        Path("/usr/local/bin/codex.exe"),
-    }
-    package_roots = (
-        Path("/usr/lib/node_modules/@openai/codex"),
-        Path("/usr/local/lib/node_modules/@openai/codex"),
-    )
-    matched_root = next(
-        (
-            root
-            for root in package_roots
-            if resolved_candidate == root
-            or resolved_candidate.is_relative_to(root)
-        ),
-        resolved_candidate.parent
-        if resolved_candidate.parent in {Path("/usr/bin"), Path("/usr/local/bin")}
-        else None,
-    )
-    try:
-        trust_chain = (
-            [candidate_entry, candidate_entry.parent, resolved_candidate]
-            + (
-                list(resolved_candidate.parents)[
-                    : list(resolved_candidate.parents).index(matched_root) + 1
-                ]
-                if matched_root is not None and resolved_candidate != matched_root
-                else ([matched_root] if matched_root is not None else [])
-            )
-        )
-        trusted_chain = all(
-            path.lstat().st_uid == 0
-            and (path.is_symlink() or not path.stat().st_mode & 0o022)
-            for path in trust_chain
-        )
-    except (OSError, ValueError):
-        trusted_chain = False
-    if (
-        candidate_entry not in system_entries
-        or matched_root is None
-        or not trusted_chain
-        or not candidate_entry.is_file()
-        or not os.access(candidate_entry, os.X_OK)
-        or candidate_entry.is_relative_to(workspace_path)
-        or resolved_candidate.is_relative_to(workspace_path)
-        or candidate_entry.name.casefold() not in {"codex", "codex.exe"}
-    ):
-        return ""
-    return str(candidate_entry)
 
 
 def _resolve_trusted_grok_bin(*, configured: str, workspace: Path) -> str:

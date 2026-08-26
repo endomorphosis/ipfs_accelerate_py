@@ -29,7 +29,10 @@ from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
 from ipfs_accelerate_py.agent_supervisor.integrations import (
     llm_merge_resolver_fallback as merge_resolver_fallback,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime import provider_failure_policy
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    provider_executable_trust,
+    provider_failure_policy,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import (
     GROK_NOT_SIGNED_IN_GUIDANCE,
 )
@@ -522,6 +525,11 @@ def test_daemon_auth_or_quota_route_embeds_strict_terra_high_fallback(
         lambda name: "/opt/providers/codex" if name == "codex" else None,
     )
     monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/opt/providers/codex",
+    )
+    monkeypatch.setattr(
         grok_cli_runner,
         "resolve_codex_quota_fallback_executable",
         lambda **_kwargs: "/opt/providers/codex",
@@ -564,6 +572,11 @@ def test_daemon_quota_high_route_reaches_exact_typed_fallback_runner(
         implementation_daemon.shutil,
         "which",
         lambda name: "/opt/providers/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/opt/providers/codex",
     )
     monkeypatch.setattr(
         grok_cli_runner,
@@ -636,6 +649,11 @@ def test_daemon_quota_route_requires_trusted_codex_at_both_boundaries(
         implementation_daemon.shutil,
         "which",
         lambda name: "/opt/providers/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "",
     )
     monkeypatch.setattr(
         grok_cli_runner,
@@ -4224,6 +4242,11 @@ def test_quota_grok_command_authorizes_canonical_legacy_preflight(
         implementation_daemon,
         "_grok_cli_available",
         lambda: True,
+    )
+    monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
     )
     monkeypatch.setattr(
         grok_cli_runner,

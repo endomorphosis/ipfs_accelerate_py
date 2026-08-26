@@ -398,6 +398,58 @@ def test_lgcvf_bootstrap_daemon_omits_root_token_and_passes_sealed_prelaunch(
         os.close(native_descriptor)
 
 
+def test_direct_start_preserves_plan_bound_and_bootstrap_descriptors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The non-LGCVF daemon birth retains both accepted authority FDs."""
+
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 43210
+
+    def capture_popen(command: list[str], **kwargs: object) -> FakeProcess:
+        captured["command"] = command
+        captured.update(kwargs)
+        return FakeProcess()
+
+    supervisor = object.__new__(
+        supervisor_module.PortalImplementationSupervisor
+    )
+    supervisor.config = SimpleNamespace(
+        database_program=None,
+        repo_root=tmp_path,
+        state_dir=tmp_path,
+        state_prefix="test",
+        configured_board_live_context=None,
+        plan_bound_dispatch=True,
+        accepted_control_plane_descriptor=11,
+        state_owner_bootstrap_fd=12,
+    )
+    supervisor.ensure_managed_daemon_pid_file = lambda: {"blocked": False}
+    supervisor._build_daemon_command = lambda: ["python3", "daemon.py"]
+    supervisor._write_managed_daemon_identity = lambda **_kwargs: None
+    monkeypatch.setattr(
+        supervisor_module,
+        "_requires_eaaef_implementation_daemon_birth",
+        lambda _program: False,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "_managed_daemon_child_environment",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(supervisor_module.subprocess, "Popen", capture_popen)
+
+    process = supervisor._start_daemon()
+
+    assert process.pid == 43210
+    assert captured["command"] == ["python3", "daemon.py"]
+    assert captured["pass_fds"] == (11, 12)
+    assert captured["start_new_session"] is True
+
+
 def test_direct_supervisor_round_trips_embedded_one_writer_authority(
     tmp_path: Path,
 ) -> None:

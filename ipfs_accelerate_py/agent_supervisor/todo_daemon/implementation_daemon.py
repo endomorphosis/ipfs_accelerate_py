@@ -2937,7 +2937,7 @@ def _trusted_codex_quota_fallback_executable(
 ) -> str:
     """Resolve Codex through the same trust boundary used by the runner."""
 
-    from ..runtime.grok_cli_runner import (
+    from ..runtime.provider_executable_trust import (
         resolve_codex_quota_fallback_executable,
     )
 

@@ -361,6 +361,7 @@ def test_lgcvf_sealed_capsule_imports_real_daemon_main_dependency_closure(
     probe = r"""
 import importlib
 import sys
+from pathlib import Path
 
 archive = sys.argv[1]
 stdlib = [
@@ -403,6 +404,7 @@ forbidden = {
         "ipfs_accelerate_py.agent_supervisor.task_sources."
         "eaaef_borrowed_transaction"
     ),
+    "ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner",
 }
 if importlib.util.find_spec("cryptography") is not None:
     raise SystemExit(78)
@@ -421,11 +423,33 @@ if daemon._database_daemon_exact_container_callback(
     raise SystemExit(80)
 if forbidden.intersection(sys.modules) or "cryptography" in sys.modules:
     raise SystemExit(81)
+trusted_codex = daemon._trusted_codex_quota_fallback_executable(
+    workspace_path=Path(sys.argv[2]),
+)
+if not isinstance(trusted_codex, str):
+    raise SystemExit(82)
+if forbidden.intersection(sys.modules) or "cryptography" in sys.modules:
+    raise SystemExit(83)
+trust_module = sys.modules.get(
+    "ipfs_accelerate_py.agent_supervisor.runtime.provider_executable_trust"
+)
+trust_origin = getattr(trust_module, "__file__", "")
+if not isinstance(trust_origin, str) or not trust_origin.startswith(prefix):
+    raise SystemExit(84)
 daemon.main(["--help"])
 """
     try:
         completed = subprocess.run(
-            [sys.executable, "-I", "-S", "-B", "-c", probe, archive],
+            [
+                sys.executable,
+                "-I",
+                "-S",
+                "-B",
+                "-c",
+                probe,
+                archive,
+                str(tmp_path),
+            ],
             cwd=tmp_path,
             env={"PATH": os.environ.get("PATH", "")},
             pass_fds=(sealed.descriptor,),

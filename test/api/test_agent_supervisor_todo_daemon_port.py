@@ -13133,6 +13133,9 @@ def test_auto_provider_does_not_bypass_grok_capacity_latch(
 
 def _seal_ordered_grok_codex_route(monkeypatch) -> None:
     from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        provider_executable_trust,
+    )
 
     monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
@@ -13160,6 +13163,11 @@ def _seal_ordered_grok_codex_route(monkeypatch) -> None:
     )
     # The production resolver accepts only an installed, trusted executable.
     # Route-construction tests use a fixed inert path and never launch it.
+    monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
+    )
     monkeypatch.setattr(
         grok_cli_runner,
         "resolve_codex_quota_fallback_executable",
@@ -14365,6 +14373,9 @@ def test_quota_grok_command_authorizes_canonical_legacy_preflight(
     monkeypatch,
 ):
     from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        provider_executable_trust,
+    )
 
     grok_bin = tmp_path / "grok"
     grok_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
@@ -14378,6 +14389,11 @@ def test_quota_grok_command_authorizes_canonical_legacy_preflight(
         implementation_daemon_module,
         "_grok_cli_available",
         lambda: True,
+    )
+    monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
     )
     monkeypatch.setattr(
         grok_cli_runner,
