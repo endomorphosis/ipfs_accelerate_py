@@ -272,6 +272,8 @@ def _open_daemon(
     task_shard_index: int = 0,
     strict_task_sharding: bool = False,
     control_path: Path | None = None,
+    coordination_path: Path | None = None,
+    execution_path: Path | None = None,
     repo_root: Path | None = None,
     merge_target_ref: str = "HEAD",
     task_prefix: str = "",
@@ -285,8 +287,12 @@ def _open_daemon(
 ) -> DatabaseImplementationDaemon:
     database_path = control_path or (tmp_path / "control.duckdb")
     suffix = f"-{lane}" if lane else ""
-    coordination_path = tmp_path / f"coordination{suffix}.duckdb"
-    execution_path = tmp_path / f"execution{suffix}.duckdb"
+    resolved_coordination_path = coordination_path or (
+        tmp_path / f"coordination{suffix}.duckdb"
+    )
+    resolved_execution_path = execution_path or (
+        tmp_path / f"execution{suffix}.duckdb"
+    )
 
     def default_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
         if provider_calls is not None:
@@ -320,8 +326,8 @@ def _open_daemon(
 
     return DatabaseImplementationDaemon(
         database_path=database_path,
-        coordination_path=coordination_path,
-        execution_path=execution_path,
+        coordination_path=resolved_coordination_path,
+        execution_path=resolved_execution_path,
         owner_session_id=session,
         process_instance_id=process_instance_id,
         authority_mode="embedded",
@@ -14314,6 +14320,68 @@ def _post_merge_preauthorization(
     }
 
 
+def _post_merge_repair_recovery_evidence(
+    daemon: DatabaseImplementationDaemon,
+    failed: DatabaseTaskAttempt,
+    *,
+    request_id: str = "merge-request:portable-ordinary",
+    candidate_commit: str = "a" * 40,
+    repair_commit: str = "b" * 40,
+) -> dict[str, object]:
+    repair_receipt: dict[str, object] = {
+        "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+        "task_ids": [failed.task_alias],
+        "candidate_commit": candidate_commit,
+        "candidate_tree": "1" * 40,
+        "baseline_commit": "2" * 40,
+        "failed_integration_commit": "3" * 40,
+        "repair_parent_commit": "4" * 40,
+        "repair_commit": repair_commit,
+        "repair_tree": "5" * 40,
+        "entries": [
+            {
+                "path": "output.py",
+                "mode": "100644",
+                "object_type": "blob",
+                "object_id": "6" * 40,
+            }
+        ],
+        "validation": [
+            {
+                "task_id": failed.task_alias,
+                "passed": True,
+                "returncode": 0,
+                "validation_result_digests": ["sha256:" + "7" * 64],
+                "command_count": 1,
+                "log_sha256": "8" * 64,
+            }
+        ],
+        "rollback_target": "4" * 40,
+    }
+    repair_receipt["receipt_id"] = content_identity(repair_receipt)
+    evidence: dict[str, object] = {
+        "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+        "request_id": request_id,
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "candidate_commit": candidate_commit,
+        "repair_commit": repair_commit,
+        "repair_receipt_id": repair_receipt["receipt_id"],
+        "repair_receipt": repair_receipt,
+        "source_attempt_id": failed.attempt_id,
+        "source_claim_id": failed.claim_id,
+        "source_lease_id": failed.lease_id,
+        "source_fencing_token": failed.fencing_token,
+        "source_fence_epoch": failed.fence_epoch,
+        "source_binding_id": "sha256:" + "c" * 64,
+        "source_projection_immutable_digest": "sha256:" + "d" * 64,
+    }
+    evidence["evidence_id"] = daemon._database_portal_evidence_digest(
+        evidence
+    )
+    return evidence
+
+
 def test_preauthorize_accepts_wrapped_post_merge_terminal_reason(
     tmp_path: Path,
 ) -> None:
@@ -16807,6 +16875,302 @@ def _persist_legacy_empty_coordination_terminal(
             "control_expected_revision": int(task.revision),
         },
     )
+
+
+def test_terminal_coordination_projection_accepts_exact_producer_history(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:terminal-coordination-producer-history",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": "post_merge_declared_outputs_missing",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+
+        accepted = daemon._reconcile_failed_attempt_coordination(failed)
+        assert (
+            daemon._terminal_coordination_projection_state(failed, accepted)
+            == "accepted"
+        )
+
+        now["ms"] = 7_000
+        expired_now = daemon._reconcile_failed_attempt_coordination(failed)
+        assert expired_now["expired_now"] is True
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                expired_now,
+            )
+            == "expired"
+        )
+        historical = daemon._reconcile_failed_attempt_coordination(failed)
+        assert historical["claim_absent"] is False
+        assert historical["historical_expired"] is True
+        assert historical["successor"] == {}
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                historical,
+            )
+            == "expired"
+        )
+
+        legacy_historical = dict(historical)
+        legacy_historical.pop("claim_absent")
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                legacy_historical,
+            )
+            == "expired"
+        )
+        for tampered in (
+            {**historical, "claim_absent": True},
+            {**historical, "claim_absent": 0},
+            {**historical, "unexpected": False},
+            {**historical, "claim_id": "claim:foreign"},
+        ):
+            assert not daemon._terminal_coordination_projection_state(
+                failed,
+                tampered,
+            )
+    finally:
+        daemon.close()
+
+
+def test_ordinary_post_merge_recovery_uses_expired_portable_coordination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:ordinary-portable-source",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": (
+                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+
+        now["ms"] = 7_000
+        source_claim = daemon.coordinator.get_task_claim(failed.claim_id)
+        assert source_claim is not None
+        daemon.coordinator.expire_task_claim(source_claim, now_ms=now["ms"])
+        historical = daemon._reconcile_failed_attempt_coordination(failed)
+        assert historical["claim_absent"] is False
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                historical,
+            )
+            == "expired"
+        )
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason=(
+                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+            ),
+            coordination_evidence=historical,
+        )
+        assert terminal["status"] == "blocked"
+        evidence = _post_merge_repair_recovery_evidence(daemon, failed)
+        preauthorization = _post_merge_preauthorization(
+            daemon,
+            failed,
+            request_id=str(evidence["request_id"]),
+            candidate_commit=str(evidence["candidate_commit"]),
+        )
+        expires_at_ms = int(historical["expires_at_ms"])
+
+        daemon.close()
+        now["ms"] = expires_at_ms - 1
+        daemon = _open_daemon(
+            tmp_path,
+            session="session:ordinary-portable-replacement",
+            lease_ms=5_000,
+            clock_ms=lambda: now["ms"],
+            coordination_path=(
+                tmp_path / "coordination-ordinary-portable-replacement.duckdb"
+            ),
+            execution_path=tmp_path / "execution.duckdb",
+        )
+        assert daemon.coordinator.get_task_claim(failed.claim_id) is None
+        assert daemon.coordinator.get_task_attempt(failed.attempt_id) is None
+        assert daemon.coordinator.get_lease(failed.lease_id) is None
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="current terminal coordination fence",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                preauthorization
+            )
+
+        now["ms"] = max(7_001, expires_at_ms + 1)
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            preauthorization
+        )
+        assert authorized["authorized"] is True
+        assert authorized["task_status"] == "blocked"
+
+        blocked = daemon.task_source.get(failed.task_cid)
+        assert blocked is not None
+        control_receipt = dict(blocked.body["completion_receipt"])
+        original_get = daemon.task_source.get
+
+        def reject_forged_portable_receipt(
+            forged_receipt: Mapping[str, object],
+        ) -> None:
+            forged_task = replace(
+                blocked,
+                body={
+                    **blocked.body,
+                    "completion_receipt": dict(forged_receipt),
+                },
+            )
+            with monkeypatch.context() as receipt_patch:
+                receipt_patch.setattr(
+                    daemon.task_source,
+                    "get",
+                    lambda task_cid: (
+                        forged_task
+                        if task_cid == failed.task_cid
+                        else original_get(task_cid)
+                    ),
+                )
+                with pytest.raises(
+                    DatabaseImplementationConflictError,
+                    match="current terminal coordination fence",
+                ):
+                    daemon.preauthorize_post_merge_declared_output_recovery(
+                        preauthorization
+                    )
+
+        legacy_historical = dict(historical)
+        legacy_historical.pop("claim_absent")
+        assert (
+            daemon._terminal_coordination_projection_state(
+                failed,
+                legacy_historical,
+            )
+            == "expired"
+        )
+        reject_forged_portable_receipt(
+            {**control_receipt, "coordination": legacy_historical}
+        )
+        reject_forged_portable_receipt(
+            {
+                **control_receipt,
+                "reason": (
+                    DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON
+                ),
+            }
+        )
+
+        # The ordinary retry authority remains closed: only the exact
+        # post-merge transition may use the portable sealed fence.
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="has no coordination claim",
+        ):
+            daemon._reconcile_failed_attempt_coordination(failed)
+
+        original_portable_authority = (
+            daemon._post_merge_completion_portable_coordination_authority
+        )
+        race_checks: list[bool] = []
+
+        def supersede_before_cas(
+            attempt: DatabaseTaskAttempt,
+            *,
+            persisted: Mapping[str, object],
+        ) -> bool:
+            race_checks.append(True)
+            if len(race_checks) == 2:
+                return False
+            return original_portable_authority(
+                attempt,
+                persisted=persisted,
+            )
+
+        with monkeypatch.context() as race_patch:
+            race_patch.setattr(
+                daemon,
+                "_post_merge_completion_portable_coordination_authority",
+                supersede_before_cas,
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match=(
+                    "portable post-merge completion authority was superseded"
+                ),
+            ):
+                daemon.recover_blocked_post_merge_declared_outputs(evidence)
+        assert race_checks == [True, True]
+        still_blocked = daemon.task_source.get(failed.task_cid)
+        assert still_blocked is not None
+        assert still_blocked.status == "blocked"
+
+        portable_checks: list[bool] = []
+
+        def count_portable_rechecks(
+            attempt: DatabaseTaskAttempt,
+            *,
+            persisted: Mapping[str, object],
+        ) -> bool:
+            portable_checks.append(True)
+            return original_portable_authority(
+                attempt,
+                persisted=persisted,
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_post_merge_completion_portable_coordination_authority",
+            count_portable_rechecks,
+        )
+        recovered = daemon.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+        assert portable_checks == [True, True]
+        assert recovered["recovered"] is True
+        assert recovered["changed"] is True
+        assert recovered["status"] == "retrying"
+        assert recovered["coordination"] == historical
+        retrying = daemon.task_source.get(failed.task_cid)
+        assert retrying is not None
+        assert retrying.status == "retrying"
+    finally:
+        daemon.close()
 
 
 def test_preauthorize_accepts_legacy_empty_coordination_only_after_exact_expiry(
