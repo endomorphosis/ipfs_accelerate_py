@@ -9720,6 +9720,8 @@ class PortalImplementationDaemon:
         self,
         *,
         task_id: str,
+        canonical_task_key: str,
+        canonical_task_cid: str,
         attempt: int,
         workspace_path: Path,
         before: Mapping[str, Mapping[str, Any]],
@@ -9766,6 +9768,8 @@ class PortalImplementationDaemon:
         payload = {
             "reason": "implementation_protected_path_mutated",
             "task_id": task_id,
+            "canonical_task_key": canonical_task_key,
+            "canonical_task_cid": canonical_task_cid,
             "attempt": attempt,
             "workspace_path": str(workspace_path),
             "protected_paths": (
@@ -9801,10 +9805,13 @@ class PortalImplementationDaemon:
         workspace_path: Path,
         snapshot: Mapping[str, Mapping[str, Any]],
     ) -> None:
+        identity = self._identity_for_task(task)
         payload = {
             "schema": "implementation-protected-path-active-v1",
             "recorded_at": utc_now(),
             "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
             "attempt": attempt,
             "workspace_path": str(workspace_path.resolve()),
             "ephemeral_worktree": workspace_path.resolve() != self.repo_root.resolve(),
@@ -9819,6 +9826,8 @@ class PortalImplementationDaemon:
             "implementation_protected_path_snapshot_recorded",
             {
                 "task_id": task.task_id,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
                 "attempt": attempt,
                 "workspace_path": str(workspace_path),
                 "protected_paths": list(self.implementation_protected_paths),
@@ -10879,6 +10888,30 @@ class PortalImplementationDaemon:
         """Fail closed when any protected identity changes after agent execution."""
 
         resolved_task_id = task.task_id if task is not None else task_id
+        if task is not None:
+            resolved_identity = self._identity_for_task(task)
+            canonical_task_key = resolved_identity.canonical_task_key
+            canonical_task_cid = resolved_identity.canonical_task_cid
+        else:
+            active = load_json_dict(
+                self._implementation_protected_active_snapshot_path()
+            )
+            if (
+                isinstance(active, Mapping)
+                and active.get("schema")
+                == "implementation-protected-path-active-v1"
+                and active.get("task_id") == resolved_task_id
+                and active.get("attempt") == attempt
+            ):
+                canonical_task_key = str(
+                    active.get("canonical_task_key") or ""
+                )
+                canonical_task_cid = str(
+                    active.get("canonical_task_cid") or ""
+                )
+            else:
+                canonical_task_key = ""
+                canonical_task_cid = ""
         missing_ephemeral_before = (
             self._missing_ephemeral_workspace_shared_snapshot(
                 workspace_path,
@@ -10925,6 +10958,8 @@ class PortalImplementationDaemon:
                 return {}
             return self._implementation_protected_mutation_payload(
                 task_id=resolved_task_id,
+                canonical_task_key=canonical_task_key,
+                canonical_task_cid=canonical_task_cid,
                 attempt=attempt,
                 workspace_path=workspace_path,
                 before=comparison_before,
@@ -10963,6 +10998,8 @@ class PortalImplementationDaemon:
             ):
                 return self._implementation_protected_mutation_payload(
                     task_id=resolved_task_id,
+                    canonical_task_key=canonical_task_key,
+                    canonical_task_cid=canonical_task_cid,
                     attempt=attempt,
                     workspace_path=workspace_path,
                     before=comparison_before,
@@ -11044,6 +11081,8 @@ class PortalImplementationDaemon:
         if workspace_snapshot_changed and (not released or not stable):
             return self._implementation_protected_mutation_payload(
                 task_id=resolved_task_id,
+                canonical_task_key=canonical_task_key,
+                canonical_task_cid=canonical_task_cid,
                 attempt=attempt,
                 workspace_path=workspace_path,
                 before=comparison_before,
@@ -11097,6 +11136,8 @@ class PortalImplementationDaemon:
             return {}
         return self._implementation_protected_mutation_payload(
             task_id=resolved_task_id,
+            canonical_task_key=canonical_task_key,
+            canonical_task_cid=canonical_task_cid,
             attempt=attempt,
             workspace_path=workspace_path,
             before=comparison_before,
@@ -11363,6 +11404,12 @@ class PortalImplementationDaemon:
             or active.get("schema")
             != "implementation-protected-path-active-v1"
             or active.get("ephemeral_worktree") is not True
+            or not str(incident.get("canonical_task_key") or "")
+            or not str(incident.get("canonical_task_cid") or "")
+            or active.get("canonical_task_key")
+            != incident.get("canonical_task_key")
+            or active.get("canonical_task_cid")
+            != incident.get("canonical_task_cid")
             or auto_plan.get("class_codes")
             != ["workspace_protected_deletion"]
             or auto_plan.get("scopes") != ["workspace"]
@@ -11475,6 +11522,12 @@ class PortalImplementationDaemon:
         guard = {
             "schema": DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA,
             "task_id": task_id,
+            "canonical_task_key": str(
+                incident.get("canonical_task_key") or ""
+            ),
+            "canonical_task_cid": str(
+                incident.get("canonical_task_cid") or ""
+            ),
             "attempt": attempt,
             "workspace_path": workspace_value,
             "clearance_id": str(auto_plan.get("clearance_id") or ""),
@@ -11500,6 +11553,8 @@ class PortalImplementationDaemon:
         expected_fields = {
             "schema",
             "task_id",
+            "canonical_task_key",
+            "canonical_task_cid",
             "attempt",
             "workspace_path",
             "clearance_id",
@@ -11555,6 +11610,10 @@ class PortalImplementationDaemon:
             != "implementation-protected-path-active-v1"
             or active.get("ephemeral_worktree") is not True
             or active.get("task_id") != guard.get("task_id")
+            or active.get("canonical_task_key")
+            != guard.get("canonical_task_key")
+            or active.get("canonical_task_cid")
+            != guard.get("canonical_task_cid")
             or active.get("attempt") != guard.get("attempt")
             or active.get("workspace_path") != workspace_value
             or tuple(sorted(map(str, active.get("protected_paths") or [])))
@@ -24419,6 +24478,12 @@ class PortalImplementationDaemon:
             inflight_disposition = str(
                 inflight.get("_inflight_disposition") or ""
             )
+            inflight_task_key = str(
+                inflight.get("canonical_task_key") or ""
+            )
+            inflight_task_cid = str(
+                inflight.get("canonical_task_cid") or ""
+            )
             transient_reason = {
                 "verified_live": "inflight_implementation_owner_active",
                 "controlled_restart_recovery": (
@@ -24429,6 +24494,9 @@ class PortalImplementationDaemon:
                 "skipped": True,
                 "reason": transient_reason or "inflight_process",
                 "task_id": str(inflight.get("task_id") or task.task_id),
+                "task_cid": inflight_task_cid,
+                "canonical_task_key": inflight_task_key,
+                "canonical_task_cid": inflight_task_cid,
                 "attempt": int(inflight.get("attempt") or 0),
                 "worktree_path": str(inflight.get("worktree_path") or ""),
                 "inflight_evidence_reason": str(
@@ -38484,6 +38552,8 @@ class PortalImplementationDaemon:
             return {
                 "task_id": task.task_id,
                 "task_cid": identity.canonical_task_cid,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
                 "attempt": attempt,
                 "returncode": returncode,
                 "attempt_consumed": False,
@@ -38637,6 +38707,8 @@ class PortalImplementationDaemon:
                 {
                     "task_id": task.task_id,
                     "task_cid": identity.canonical_task_cid,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
                     "attempt": attempt,
                     "worktree_path": str(worktree_path),
                     "branch": branch_name,
@@ -42271,10 +42343,12 @@ class PortalImplementationDaemon:
                 ] = compact_project_dependency_preflight_receipt(
                     dependency_preflight
                 )
+        result_identity = self._identity_for_task(task)
         result = {
             "task_id": task.task_id,
-            "task_cid": self._canonical_ref(task),
-            "canonical_task_cid": self._canonical_ref(task),
+            "task_cid": result_identity.canonical_task_cid,
+            "canonical_task_key": result_identity.canonical_task_key,
+            "canonical_task_cid": result_identity.canonical_task_cid,
             "attempt": attempt,
             "returncode": returncode,
             "log_path": str(log_path),
@@ -44039,6 +44113,12 @@ class PortalImplementationDaemon:
         expected_identity = self._identity_for_task(task)
         expected_cid = expected_identity.canonical_task_cid
         expected_key = expected_identity.canonical_task_key
+        database_task_cid = str(
+            task.metadata.get("database task cid") or ""
+        ).strip()
+        database_task_key = str(
+            task.metadata.get("canonical task key") or ""
+        ).strip()
         for event in reversed(self._iter_events()):
             if (
                 event.get("type")
@@ -44099,11 +44179,18 @@ class PortalImplementationDaemon:
                     event.get("schema")
                     != DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA
                     or event.get("seed_id") != expected_seed_id
-                    or event.get("canonical_task_cid") != expected_cid
-                    or event.get("canonical_task_key") != expected_key
+                    or not database_task_cid
+                    or not database_task_key
+                    or task.metadata.get("canonical task cid")
+                    != database_task_cid
+                    or task.metadata.get("projection authority") != "false"
+                    or event.get("canonical_task_cid")
+                    != database_task_cid
+                    or event.get("canonical_task_key")
+                    != database_task_key
                     or retry.get("schema")
                     != DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA
-                    or retry.get("task_cid") != expected_cid
+                    or retry.get("task_cid") != database_task_cid
                     or retry.get("task_alias") != task.task_id
                     or retry.get("disposition") != "retry"
                     or retry.get("attempt_consumed") is not True
@@ -82759,6 +82846,13 @@ _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS = frozenset(
         "control_expected_revision",
     }
 )
+_DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS = frozenset(
+    {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+)
 _DATABASE_PORTAL_TYPED_DEFERRAL_EXHAUSTED_RECEIPT_FIELDS = frozenset(
     {
         "operation",
@@ -85018,7 +85112,11 @@ class DatabaseImplementationDaemon:
             pass
         elif (
             not isinstance(terminal_receipt, Mapping)
-            or set(terminal_receipt) != terminal_fields
+            or not self._receipt_has_exact_optional_execution_route_lineage(
+                terminal_receipt,
+                base_fields=terminal_fields,
+                task=task,
+            )
             or terminal_receipt.get("operation")
             != "database_portal_terminal_failure"
             or terminal_receipt.get("attempt_id") != latest.attempt_id
@@ -85227,7 +85325,11 @@ class DatabaseImplementationDaemon:
         task_revision = getattr(task, "revision", None)
         if (
             not isinstance(receipt, Mapping)
-            or set(receipt) != expected_fields
+            or not self._receipt_has_exact_optional_execution_route_lineage(
+                receipt,
+                base_fields=expected_fields,
+                task=task,
+            )
             or isinstance(task_revision, bool)
             or not isinstance(task_revision, int)
         ):
@@ -85623,6 +85725,134 @@ class DatabaseImplementationDaemon:
             lane_root_match is not None
             and lane_match.group(1) == lane_root_match.group(1)
         )
+
+    @classmethod
+    def _callback_recovery_projection_verification_root(
+        cls,
+        *,
+        configured_attempt_root: Path,
+        projection_path: Path,
+    ) -> Path:
+        """Resolve one current- or sibling-lane callback projection authority."""
+
+        source_attempt_root = projection_path.parent.parent
+        configured_lane_root = configured_attempt_root.parent
+        source_lane_root = source_attempt_root.parent
+        if (
+            not configured_attempt_root.is_absolute()
+            or not projection_path.is_absolute()
+            or any(part in {"", ".", ".."} for part in projection_path.parts[1:])
+            or not cls._portal_attempt_root_name_is_canonical(
+                configured_attempt_root
+            )
+            or not cls._portal_attempt_root_name_is_canonical(source_attempt_root)
+            or configured_lane_root.is_symlink()
+            or configured_attempt_root.is_symlink()
+            or source_lane_root.is_symlink()
+            or source_attempt_root.is_symlink()
+            or projection_path.parent.is_symlink()
+            or projection_path.is_symlink()
+            or re.fullmatch(r"[0-9a-f]{24}", projection_path.parent.name)
+            is None
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "callback recovery source projection authority is invalid"
+            )
+
+        try:
+            configured_attempt_root_resolved = configured_attempt_root.resolve(
+                strict=True
+            )
+            configured_lane_root_resolved = configured_lane_root.resolve(
+                strict=True
+            )
+            source_attempt_root_resolved = source_attempt_root.resolve(strict=True)
+            source_lane_root_resolved = source_lane_root.resolve(strict=True)
+            projection_path_resolved = projection_path.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                "callback recovery source projection authority is unavailable"
+            ) from exc
+
+        if source_attempt_root != configured_attempt_root:
+            raw_shared_state_root = configured_attempt_root.parent.parent
+            if (
+                raw_shared_state_root.is_symlink()
+                or source_attempt_root.parent.parent != raw_shared_state_root
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "callback recovery source projection is outside the shared state"
+                )
+            try:
+                shared_state_root = raw_shared_state_root.resolve(strict=True)
+                configured_relative = (
+                    configured_attempt_root_resolved.relative_to(shared_state_root)
+                )
+                source_relative = source_attempt_root_resolved.relative_to(
+                    shared_state_root
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "callback recovery source projection escaped shared authority"
+                ) from exc
+            configured_lane_match = re.fullmatch(
+                r"lane-([0-9]+)",
+                configured_relative.parts[0]
+                if configured_relative.parts
+                else "",
+            )
+            source_lane_match = re.fullmatch(
+                r"lane-([0-9]+)",
+                source_relative.parts[0] if source_relative.parts else "",
+            )
+            configured_attempt_match = re.fullmatch(
+                r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
+                configured_relative.parts[1]
+                if len(configured_relative.parts) > 1
+                else "",
+            )
+            source_attempt_match = re.fullmatch(
+                r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
+                source_relative.parts[1]
+                if len(source_relative.parts) > 1
+                else "",
+            )
+            if (
+                len(configured_relative.parts) != 2
+                or len(source_relative.parts) != 2
+                or configured_lane_match is None
+                or source_lane_match is None
+                or configured_attempt_match is None
+                or source_attempt_match is None
+                or configured_lane_match.group(1)
+                != configured_attempt_match.group(2)
+                or source_lane_match.group(1) != source_attempt_match.group(2)
+                or configured_attempt_match.group(1)
+                != source_attempt_match.group(1)
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "callback recovery source projection lane identity is invalid"
+                )
+
+        try:
+            projection_relative = projection_path_resolved.relative_to(
+                source_attempt_root_resolved
+            )
+        except ValueError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "callback recovery source projection escaped its authority"
+            ) from exc
+        if (
+            configured_attempt_root_resolved.parent
+            != configured_lane_root_resolved
+            or source_attempt_root_resolved.parent != source_lane_root_resolved
+            or projection_relative.parts
+            != (projection_path.parent.name, "task-projection.md")
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "callback recovery source projection authority changed"
+            )
+        return source_attempt_root_resolved
 
     def bind_merge_train_recovery(
         self,
@@ -88230,6 +88460,96 @@ class DatabaseImplementationDaemon:
                 "task source returned no execution-route binding"
             )
         return dict(value)
+
+    def _receipt_has_exact_optional_execution_route_lineage(
+        self,
+        receipt: Any,
+        *,
+        base_fields: Iterable[str],
+        task: Any,
+    ) -> bool:
+        """Validate a closed receipt with optional all-or-none route lineage.
+
+        Typed task sources carry the immutable launch route across every
+        control-status CAS.  Legacy sources omit it.  Recovery receipts must
+        accept both closed forms while rejecting partial, foreign, or
+        re-signed route fields.
+        """
+
+        if not isinstance(receipt, Mapping):
+            return False
+        required = set(base_fields)
+        fields = set(receipt)
+        carried = fields & _DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS
+        source = self.task_source
+        bind = getattr(
+            source,
+            "execution_route_binding_for_task",
+            None,
+        )
+        validate = getattr(
+            source,
+            "validate_execution_route_binding",
+            None,
+        )
+        no_policy_attribute = object()
+        try:
+            route_policy = getattr(
+                source,
+                "execution_route_policy",
+                no_policy_attribute,
+            )
+        except Exception:
+            # An unreadable policy is ambiguous authority, never evidence that
+            # route lineage may be omitted.
+            return False
+        route_authority_present = (
+            callable(bind) or callable(validate)
+            if route_policy is no_policy_attribute
+            else route_policy is not None
+        )
+        if (
+            carried not in (set(), set(_DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS))
+            or fields != required | carried
+        ):
+            return False
+        if not carried:
+            return not route_authority_present
+        binding = receipt.get("execution_route_binding")
+        if (
+            not route_authority_present
+            or not isinstance(binding, Mapping)
+            or not binding
+            or not callable(validate)
+        ):
+            return False
+        try:
+            normalized_value = validate(
+                binding,
+                task=task,
+                allow_claim_revision=True,
+            )
+        except Exception:
+            return False
+        if not isinstance(normalized_value, Mapping):
+            return False
+        normalized = dict(normalized_value)
+        policy_id = normalized.get("policy_id")
+        task_revision = normalized.get("task_revision")
+        if (
+            not normalized
+            or type(policy_id) is not str
+            or not policy_id.strip()
+            or type(task_revision) is not int
+        ):
+            return False
+        return bool(
+            dict(binding) == normalized
+            and type(receipt.get("execution_route_policy_id")) is str
+            and receipt.get("execution_route_policy_id") == policy_id
+            and type(receipt.get("execution_route_origin_revision")) is int
+            and receipt.get("execution_route_origin_revision") == task_revision
+        )
 
     def _shared_claim_binding_matches_attempt(
         self,
@@ -92396,13 +92716,19 @@ class DatabaseImplementationDaemon:
             if isinstance(body, Mapping)
             else None
         )
+        current_task = self.task_source.get(attempt.task_cid)
         terminal_reason = str(seed.get("terminal_reason") or "")
         if (
             set(entry) != {"revision", "status", "body"}
             or entry.get("status") != "blocked"
             or not isinstance(terminal_receipt, Mapping)
-            or set(terminal_receipt)
-            != _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
+            or not self._receipt_has_exact_optional_execution_route_lineage(
+                terminal_receipt,
+                base_fields=(
+                    _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS
+                ),
+                task=current_task,
+            )
             or terminal_receipt.get("operation")
             != "database_portal_terminal_failure"
             or terminal_receipt.get("attempt_id") != attempt.attempt_id
@@ -94628,6 +94954,11 @@ class DatabaseImplementationDaemon:
             if isinstance(capacity, Mapping)
             else None
         )
+        source_portal_task_cid = (
+            str(proof.get("task_revision_cid") or "")
+            if isinstance(proof, Mapping)
+            else ""
+        )
         if (
             set(raw) != expected_fields
             or raw.get("schema") != DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA
@@ -94714,7 +95045,18 @@ class DatabaseImplementationDaemon:
             or proof.get("attempt_consumed") is not True
             or proof.get("task_id") != attempt.task_alias
             or proof.get("attempt") != portal_attempt
-            or proof.get("task_revision_cid") != attempt.task_cid
+            or (
+                # This proof was issued inside Portal and therefore carries
+                # the source projection's path-local CID.  The outer receipt
+                # retains DuckDB identity authority in ``raw.task_cid`` and
+                # content-addresses this exact source-L proof chain.
+                source_portal_task_cid != attempt.task_cid
+                and re.fullmatch(
+                    r"b[a-z2-7]{20,}",
+                    source_portal_task_cid,
+                )
+                is None
+            )
             or proof.get("proof_id")
             != self._database_portal_evidence_digest(
                 {
@@ -102535,14 +102877,20 @@ class DatabaseImplementationDaemon:
             get_request = getattr(queue, "get", None)
             request = get_request(request_id) if callable(get_request) else None
             metadata = getattr(request, "metadata", None)
+            request_task_cid = str(
+                getattr(request, "canonical_task_id", "") or ""
+            )
+            request_task_key = str(
+                getattr(request, "canonical_task_key", "") or ""
+            )
             if (
                 request is None
                 or str(getattr(request, "status", "") or "") != "completed"
                 or str(getattr(request, "request_id", "") or "") != request_id
                 or str(getattr(request, "task_id", "") or "")
                 != qualification.get("task_ids", [""])[0]
-                or str(getattr(request, "canonical_task_id", "") or "")
-                != str(qualification.get("task_cid") or "")
+                or not request_task_cid
+                or not request_task_key
                 or str(getattr(request, "commit_sha", "") or "")
                 != str(qualification.get("candidate_commit") or "")
                 or not isinstance(metadata, Mapping)
@@ -102624,46 +102972,12 @@ class DatabaseImplementationDaemon:
                     "callback recovery source projection path is invalid"
                 )
             configured_attempt_root = portal_attempt_root_value
-            configured_lane_root = configured_attempt_root.parent
-            if (
-                not self._portal_attempt_root_name_is_canonical(
-                    configured_attempt_root
+            verification_root = (
+                self._callback_recovery_projection_verification_root(
+                    configured_attempt_root=configured_attempt_root,
+                    projection_path=projection_path,
                 )
-                or configured_lane_root.is_symlink()
-                or configured_attempt_root.is_symlink()
-                or projection_path.parent.is_symlink()
-                or projection_path.is_symlink()
-                or projection_path.parent.parent != configured_attempt_root
-                or re.fullmatch(r"[0-9a-f]{24}", projection_path.parent.name)
-                is None
-            ):
-                raise DatabasePortalBridgeError(
-                    "callback recovery source projection authority is invalid"
-                )
-            configured_attempt_root_resolved = (
-                configured_attempt_root.resolve(strict=True)
             )
-            configured_lane_root_resolved = configured_lane_root.resolve(
-                strict=True
-            )
-            projection_path_resolved = projection_path.resolve(strict=True)
-            try:
-                projection_relative = projection_path_resolved.relative_to(
-                    configured_attempt_root_resolved
-                )
-            except ValueError as exc:
-                raise DatabasePortalBridgeError(
-                    "callback recovery source projection escaped its authority"
-                ) from exc
-            if (
-                configured_attempt_root_resolved.parent
-                != configured_lane_root_resolved
-                or projection_relative.parts
-                != (projection_path.parent.name, "task-projection.md")
-            ):
-                raise DatabasePortalBridgeError(
-                    "callback recovery source projection authority changed"
-                )
             projection_root = projection_path.parent
             paths = DatabasePortalAttemptPaths(
                 root=projection_root,
@@ -102688,21 +103002,36 @@ class DatabaseImplementationDaemon:
                 raise DatabasePortalBridgeError(
                     "callback recovery source projection siblings changed"
                 )
-            binding = verify_database_portal_attempt_projection(
+            database_task_cid = (
+                str(task_metadata.get("database task cid") or "")
+                if isinstance(task_metadata, Mapping)
+                else ""
+            )
+            verify_database_portal_attempt_projection(
                 projection_path,
                 expected_task_alias=str(getattr(request, "task_id", "") or ""),
-                expected_task_cid=str(
-                    getattr(request, "canonical_task_id", "") or ""
-                ),
-                allowed_root=configured_attempt_root_resolved,
+                expected_task_cid=database_task_cid,
+                allowed_root=verification_root,
+            )
+            binding = dict(
+                DatabasePortalExecutionBridge._read_binding(paths.binding)
+            )
+            verifier = object.__new__(DatabasePortalExecutionBridge)
+            request_binding = verifier._portal_projection_request_binding(
+                request,
+                paths=paths,
+                binding=binding,
+                allowed_root=verification_root,
             )
             if (
-                binding.get("canonical_task_key")
-                != str(getattr(request, "canonical_task_key", "") or "")
-                or task_metadata.get("database attempt id")
-                != binding.get("attempt_id")
-                or task_metadata.get("database claim id")
-                != binding.get("claim_id")
+                request_binding is None
+                or request_binding.get("projection_task_cid")
+                != request_task_cid
+                or request_binding.get("projection_task_key")
+                != request_task_key
+                or request_binding.get("task_cid")
+                != binding.get("task_cid")
+                or qualification.get("task_cid") != binding.get("task_cid")
                 or evidence.get("source_attempt_id") != binding.get("attempt_id")
                 or evidence.get("source_claim_id") != binding.get("claim_id")
                 or evidence.get("source_lease_id") != binding.get("lease_id")
@@ -102713,8 +103042,7 @@ class DatabaseImplementationDaemon:
                 or evidence.get("source_projection_immutable_digest")
                 != binding.get("projection_immutable_digest")
                 or evidence.get("request_id") != request_id
-                or evidence.get("task_cid")
-                != str(getattr(request, "canonical_task_id", "") or "")
+                or evidence.get("task_cid") != binding.get("task_cid")
                 or evidence.get("task_alias")
                 != str(getattr(request, "task_id", "") or "")
                 or evidence.get("candidate_commit")
@@ -102757,13 +103085,13 @@ class DatabaseImplementationDaemon:
             train = object.__new__(MergeTrain)
             train.queue = queue
             train.receipt_dir = receipt_dir_resolved
-            verifier = object.__new__(DatabasePortalExecutionBridge)
             verifier.repository_root = repo
             verifier.merge_queue = queue
             verifier.merge_target_branch = branch
             projection = _DatabasePortalRecoveryProjection(
                 paths=paths,
                 binding=binding,
+                projected_task=request_binding["task"],
                 task_status="blocked",
             )
             source = verifier._callback_integration_source_evidence(
@@ -103065,8 +103393,9 @@ class DatabaseImplementationDaemon:
                 == value.get("integration_commit")
                 and isinstance(member, Mapping)
                 and member.get("task_id") == task_ids[0]
-                and member.get("canonical_task_cid")
-                == value.get("task_cid")
+                and bool(str(member.get("canonical_task_cid") or ""))
+                and member.get("canonical_task_key")
+                == train_receipt.get("canonical_task_id")
             )
 
         settlement_fields = {
@@ -103781,7 +104110,11 @@ class DatabaseImplementationDaemon:
                 or self._post_merge_completion_recovery_was_consumed(attempt)
                 or phase_reason != expected_reason
                 or not isinstance(receipt, Mapping)
-                or set(receipt) != terminal_fields
+                or not self._receipt_has_exact_optional_execution_route_lineage(
+                    receipt,
+                    base_fields=terminal_fields,
+                    task=task,
+                )
                 or receipt.get("operation")
                 != "database_portal_terminal_failure"
                 or receipt.get("attempt_id") != attempt.attempt_id

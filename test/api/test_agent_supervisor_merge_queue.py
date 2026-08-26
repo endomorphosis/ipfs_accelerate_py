@@ -1192,6 +1192,15 @@ def test_completed_requests_filters_exact_recovery_task_before_limit(
             task_id=f"TASK-{ordinal}",
             canonical_task_id=f"canonical-task-{ordinal}",
             commit_sha=f"{ordinal + 1:040x}",
+            metadata={
+                "schema": "example/merge-candidate@1",
+                "task": {
+                    "metadata": {
+                        "database task cid": f"database-task-{ordinal}",
+                        "canonical task cid": f"database-task-{ordinal}",
+                    }
+                }
+            },
         )
         original_claim = queue.claim_pending_request(
             pending.request_id,
@@ -1230,6 +1239,15 @@ def test_completed_requests_filters_exact_recovery_task_before_limit(
         reopen_reason="declared_outputs_not_on_target",
     )
     assert selected.canonical_task_id == "canonical-task-0"
+    [database_selected] = queue.completed_requests(
+        limit=1,
+        completion_schema=completion_schema,
+        completion_reason="post_merge_declared_outputs_repaired",
+        database_task_cid="database-task-0",
+        reopen_schema=reopen_schema,
+        reopen_reason="declared_outputs_not_on_target",
+    )
+    assert database_selected.canonical_task_id == "canonical-task-0"
     assert queue.completed_requests(
         limit=1,
         completion_schema=completion_schema,
@@ -1238,6 +1256,89 @@ def test_completed_requests_filters_exact_recovery_task_before_limit(
         reopen_schema=reopen_schema,
         reopen_reason="declared_outputs_not_on_target",
     ) == ()
+    assert queue.completed_requests(
+        limit=1,
+        database_task_cid="database-task-missing",
+    ) == ()
+
+
+def test_completed_requests_filters_callback_shape_before_limit(
+    tmp_path: Path,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    database_task_cid = "database-task-exact"
+    callback_schema = "example/merge-candidate@3"
+
+    def complete_row(
+        ordinal: int,
+        *,
+        schema: str,
+        completion_present: bool = False,
+    ) -> MergeRequest:
+        pending = queue.enqueue(
+            branch_name=f"candidate/{ordinal}",
+            task_id="TASK-EXACT",
+            canonical_task_id=f"local-task-{ordinal}",
+            commit_sha=f"{ordinal + 1:040x}",
+            metadata={
+                "schema": schema,
+                "task": {
+                    "metadata": {
+                        "database task cid": database_task_cid,
+                        "canonical task cid": database_task_cid,
+                    }
+                },
+            },
+        )
+        claimed = queue.claim_pending_request(
+            pending.request_id,
+            consumer_id="merge-train:callback-shape-query",
+        )
+        assert claimed is not None
+        queue.complete(
+            claimed,
+            metadata=(
+                {"schema": "example/completion@1", "reason": "decoy"}
+                if completion_present
+                else None
+            ),
+        )
+        completed = queue.get(pending.request_id)
+        assert completed is not None
+        return completed
+
+    older_callback = complete_row(0, schema=callback_schema)
+    complete_row(1, schema=callback_schema, completion_present=True)
+    complete_row(2, schema="example/unrelated-completion@1")
+    explicit_null = complete_row(3, schema=callback_schema)
+    with queue._connect() as connection:
+        explicit_null_metadata = dict(explicit_null.metadata)
+        explicit_null_metadata["completion"] = None
+        connection.execute(
+            "UPDATE merge_requests SET metadata_json=? WHERE request_id=?",
+            (
+                json.dumps(
+                    explicit_null_metadata,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                explicit_null.request_id,
+            ),
+        )
+        connection.commit()
+    newer_callback = complete_row(4, schema=callback_schema)
+
+    selected = queue.completed_requests(
+        limit=2,
+        metadata_schema=callback_schema,
+        require_completion_absent=True,
+        database_task_cid=database_task_cid,
+    )
+
+    assert [item.request_id for item in selected] == [
+        newer_callback.request_id,
+        older_callback.request_id,
+    ]
 
 
 def test_recovered_claim_increments_generation_and_fences_crashed_worker(

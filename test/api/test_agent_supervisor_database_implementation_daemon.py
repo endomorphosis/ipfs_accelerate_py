@@ -150,6 +150,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     open_database_implementation_daemon,
     parse_args,
     parse_task_text,
+    portal_task_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_database_implementation_daemon_from_args,
@@ -710,6 +711,7 @@ def _capacity_retry_receipt(
     attempt: DatabaseTaskAttempt,
     *,
     retry_not_before_ms: int = 2_000_000,
+    portal_task_cid: str = "",
 ) -> dict[str, object]:
     digest = daemon._database_portal_evidence_digest
     primary: dict[str, object] = {
@@ -777,7 +779,7 @@ def _capacity_retry_receipt(
         ),
         "task_id": attempt.task_alias,
         "attempt": 1,
-        "task_revision_cid": attempt.task_cid,
+        "task_revision_cid": portal_task_cid or attempt.task_cid,
         "logical_attempt_id": logical_id,
         "invocation_binding_id": invocation_id,
         "route_id": route_id,
@@ -6618,12 +6620,14 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
     provider_reset_ms: int,
 ) -> None:
     holder: dict[str, DatabaseImplementationDaemon] = {}
+    source_portal_task_cid = "baguqeera" + "a" * 52
 
     def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
         receipt = _capacity_retry_receipt(
             holder["daemon"],
             attempt,
             retry_not_before_ms=provider_reset_ms,
+            portal_task_cid=source_portal_task_cid,
         )
         raise DatabasePortalCapacityRetry(receipt)
 
@@ -6657,6 +6661,11 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
         assert evidence is not None
         assert evidence["typed_deferral_budget"] is None
         seed = evidence["typed_capacity_retry"]
+        assert seed["task_cid"] == source.task_cid
+        assert seed["post_dispatch_capacity_proof"][
+            "task_revision_cid"
+        ] == source_portal_task_cid
+        assert source_portal_task_cid != source.task_cid
         assert seed["portal_attempt"] == 1
         assert seed["retry_not_before_ms"] == provider_reset_ms
         assert seed["remaining_task_attempts"] == 2
@@ -14215,6 +14224,473 @@ def test_preauthorize_accepts_wrapped_post_merge_terminal_reason(
         daemon.close()
 
 
+def test_post_merge_recovery_accepts_complete_execution_route_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-execution-route-lineage",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": (
+                    DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason=(
+                DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+            ),
+            coordination_evidence=(
+                daemon._reconcile_failed_attempt_coordination(failed)
+            ),
+        )
+        assert terminal["status"] == "blocked"
+        blocked = daemon.task_source.get(failed.task_cid)
+        assert blocked is not None
+        route = {
+            "policy_id": "policy:sealed-route",
+            "task_revision": 1,
+        }
+        receipt = {
+            **blocked.body["completion_receipt"],
+            "execution_route_binding": route,
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": route["task_revision"],
+        }
+        routed = replace(
+            blocked,
+            body={**blocked.body, "completion_receipt": receipt},
+        )
+        original_get = daemon.task_source.get
+
+        def get_routed(task_cid: str) -> object:
+            return routed if task_cid == failed.task_cid else original_get(task_cid)
+
+        def validate_route(
+            value: object,
+            *,
+            task: object,
+            allow_claim_revision: bool,
+        ) -> Mapping[str, object]:
+            assert task is routed
+            assert allow_claim_revision is True
+            if not isinstance(value, Mapping) or dict(value) != route:
+                raise ValueError("foreign execution route")
+            return route
+
+        monkeypatch.setattr(daemon.task_source, "get", get_routed)
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda task: route if task is routed else {},
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "validate_execution_route_binding",
+            validate_route,
+            raising=False,
+        )
+
+        assert daemon.post_merge_completion_recovery_task_cids() == (
+            failed.task_cid,
+        )
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            _post_merge_preauthorization(daemon, failed)
+        )
+        assert authorized["authorized"] is True
+
+        partial_receipt = dict(receipt)
+        partial_receipt.pop("execution_route_policy_id")
+        partial = replace(
+            routed,
+            body={**routed.body, "completion_receipt": partial_receipt},
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "get",
+            lambda task_cid: (
+                partial if task_cid == failed.task_cid else original_get(task_cid)
+            ),
+        )
+        assert daemon.post_merge_completion_recovery_task_cids() == ()
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="no exact terminal failure control projection",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                _post_merge_preauthorization(daemon, failed)
+            )
+
+        stripped_receipt = {
+            key: value
+            for key, value in receipt.items()
+            if key
+            not in {
+                "execution_route_binding",
+                "execution_route_policy_id",
+                "execution_route_origin_revision",
+            }
+        }
+        stripped = replace(
+            routed,
+            body={**routed.body, "completion_receipt": stripped_receipt},
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "get",
+            lambda task_cid: (
+                stripped if task_cid == failed.task_cid else original_get(task_cid)
+            ),
+        )
+        assert daemon.post_merge_completion_recovery_task_cids() == ()
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="no exact terminal failure control projection",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                _post_merge_preauthorization(daemon, failed)
+            )
+    finally:
+        daemon.close()
+
+
+def test_base_only_execution_route_lineage_requires_a_legacy_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:base-only-execution-route-lineage",
+    )
+    try:
+        receipt = {"operation": "legacy-terminal"}
+        task = SimpleNamespace()
+        assert daemon._receipt_has_exact_optional_execution_route_lineage(
+            receipt,
+            base_fields={"operation"},
+            task=task,
+        )
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda _task: {
+                "policy_id": "policy:typed-route",
+                "task_revision": 1,
+            },
+            raising=False,
+        )
+        assert not daemon._receipt_has_exact_optional_execution_route_lineage(
+            receipt,
+            base_fields={"operation"},
+            task=task,
+        )
+    finally:
+        daemon.close()
+
+
+def test_base_only_execution_route_lineage_accepts_unsealed_typed_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:unsealed-typed-execution-route-lineage",
+    )
+    try:
+        task = SimpleNamespace()
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_policy",
+            None,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda _task: pytest.fail(
+                "unsealed typed source binding must not become route authority"
+            ),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "validate_execution_route_binding",
+            lambda *_args, **_kwargs: pytest.fail(
+                "unsealed typed source validator must not become route authority"
+            ),
+            raising=False,
+        )
+
+        assert daemon._receipt_has_exact_optional_execution_route_lineage(
+            {"operation": "legacy-terminal"},
+            base_fields={"operation"},
+            task=task,
+        )
+    finally:
+        daemon.close()
+
+
+def test_execution_route_lineage_sealed_policy_failure_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:sealed-execution-route-lineage-failure",
+    )
+    try:
+        task = SimpleNamespace()
+        route = {
+            "policy_id": "policy:sealed-route",
+            "task_revision": 1,
+        }
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_policy",
+            SimpleNamespace(policy_id=route["policy_id"]),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda _task: (_ for _ in ()).throw(
+                RuntimeError("sealed route binding is unavailable")
+            ),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "validate_execution_route_binding",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("sealed route validation is unavailable")
+            ),
+            raising=False,
+        )
+
+        assert not daemon._receipt_has_exact_optional_execution_route_lineage(
+            {"operation": "typed-terminal"},
+            base_fields={"operation"},
+            task=task,
+        )
+        assert not daemon._receipt_has_exact_optional_execution_route_lineage(
+            {
+                "operation": "typed-terminal",
+                "execution_route_binding": route,
+                "execution_route_policy_id": route["policy_id"],
+                "execution_route_origin_revision": route["task_revision"],
+            },
+            base_fields={"operation"},
+            task=task,
+        )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "normalized",
+    [
+        pytest.param({}, id="empty-binding"),
+        pytest.param({"mode": "typed"}, id="missing-policy-and-revision"),
+        pytest.param(
+            {"policy_id": "", "task_revision": 1},
+            id="empty-policy-id",
+        ),
+        pytest.param(
+            {"policy_id": 7, "task_revision": 1},
+            id="non-string-policy-id",
+        ),
+        pytest.param(
+            {"policy_id": "policy:typed-route", "task_revision": True},
+            id="boolean-task-revision",
+        ),
+        pytest.param(
+            {"policy_id": "policy:typed-route", "task_revision": "1"},
+            id="non-integer-task-revision",
+        ),
+    ],
+)
+def test_execution_route_lineage_rejects_empty_or_untyped_normalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    normalized: Mapping[str, object],
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:malformed-execution-route-lineage",
+    )
+    try:
+        binding = dict(normalized)
+        task = SimpleNamespace()
+        monkeypatch.setattr(
+            daemon.task_source,
+            "execution_route_binding_for_task",
+            lambda _task: binding,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "validate_execution_route_binding",
+            lambda _value, *, task, allow_claim_revision: normalized,
+            raising=False,
+        )
+        receipt = {
+            "operation": "typed-terminal",
+            "execution_route_binding": binding,
+            "execution_route_policy_id": normalized.get("policy_id"),
+            "execution_route_origin_revision": normalized.get("task_revision"),
+        }
+
+        assert not daemon._receipt_has_exact_optional_execution_route_lineage(
+            receipt,
+            base_fields={"operation"},
+            task=task,
+        )
+    finally:
+        daemon.close()
+
+
+def test_callback_recovery_projection_admits_exact_sibling_lane(
+    tmp_path: Path,
+) -> None:
+    shared_state = tmp_path / "state"
+    configured_root = (
+        shared_state
+        / "lane-1"
+        / "pcsm_lane_1_database_portal_attempts"
+    )
+    source_root = (
+        shared_state
+        / "lane-2"
+        / "pcsm_lane_2_database_portal_attempts"
+    )
+    configured_root.mkdir(parents=True)
+    attempt_root = source_root / ("a" * 24)
+    attempt_root.mkdir(parents=True)
+    projection = attempt_root / "task-projection.md"
+    projection.write_text("# projected task\n", encoding="utf-8")
+
+    verify_root = (
+        DatabaseImplementationDaemon
+        ._callback_recovery_projection_verification_root
+    )
+    verified = verify_root(
+        configured_attempt_root=configured_root,
+        projection_path=projection,
+    )
+
+    assert verified == source_root.resolve(strict=True)
+
+
+@pytest.mark.parametrize(
+    "source_parts",
+    [
+        ("foreign-state", "lane-2", "pcsm_lane_2_database_portal_attempts"),
+        ("state", "lane-2", "other_lane_2_database_portal_attempts"),
+        ("state", "lane-2", "pcsm_lane_3_database_portal_attempts"),
+    ],
+)
+def test_callback_recovery_projection_rejects_foreign_sibling_lane(
+    tmp_path: Path,
+    source_parts: tuple[str, ...],
+) -> None:
+    configured_root = (
+        tmp_path
+        / "state"
+        / "lane-1"
+        / "pcsm_lane_1_database_portal_attempts"
+    )
+    configured_root.mkdir(parents=True)
+    source_root = tmp_path.joinpath(*source_parts)
+    attempt_root = source_root / ("b" * 24)
+    attempt_root.mkdir(parents=True)
+    projection = attempt_root / "task-projection.md"
+    projection.write_text("# projected task\n", encoding="utf-8")
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="callback recovery source projection",
+    ):
+        DatabaseImplementationDaemon._callback_recovery_projection_verification_root(
+            configured_attempt_root=configured_root,
+            projection_path=projection,
+        )
+
+
+def test_callback_integration_authority_reloads_exact_sibling_lane_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from test.api import test_agent_supervisor_database_portal_bridge as bridge_tests
+
+    source_root = (
+        tmp_path
+        / "state"
+        / "lane-2"
+        / "vrif_lane_2_database_portal_attempts"
+    )
+    original_bridge = bridge_tests.DatabasePortalExecutionBridge
+
+    class SiblingProjectionBridge(original_bridge):
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            kwargs["attempt_root"] = source_root
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(
+        bridge_tests,
+        "DatabasePortalExecutionBridge",
+        SiblingProjectionBridge,
+    )
+    daemon, qualification, evidence, _train_path, _repo = (
+        bridge_tests._callback_integration_authority_fixture(tmp_path)
+    )
+    configured_root = (
+        tmp_path
+        / "state"
+        / "lane-1"
+        / "vrif_lane_1_database_portal_attempts"
+    )
+    configured_root.mkdir(parents=True)
+    daemon._merge_portal_attempt_root = configured_root
+
+    verified = daemon._verified_post_merge_callback_integration_receipt(
+        qualification,
+        recovery_evidence=evidence,
+    )
+    assert verified["receipt_id"] == qualification["receipt_id"]
+
+    foreign_root = (
+        tmp_path
+        / "state"
+        / "lane-3"
+        / "other_lane_3_database_portal_attempts"
+    )
+    foreign_root.mkdir(parents=True)
+    daemon._merge_portal_attempt_root = foreign_root
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="source authority is invalid",
+    ):
+        daemon._verified_post_merge_callback_integration_receipt(
+            qualification,
+            recovery_evidence=evidence,
+        )
+
+
 def test_preauthorize_uses_blocked_receipt_when_phase_omits_portal_flags(
     tmp_path: Path,
 ) -> None:
@@ -14984,6 +15460,7 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
                 "task_id": "VRIF-029",
                 "title": "Recover exact post-merge completion",
                 "outputs": [{"path": "recovered.txt"}],
+                "allowed_paths": ["recovered.txt"],
                 "validations": [{"argv": ["focused-recovery-validation"]}],
                 "acceptance": [{"criterion": "Recovery is complete"}],
             }
@@ -15008,7 +15485,7 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             merge_target_branch="main",
             task_header_prefix="## VRIF-",
         )
-        source_paths, _source_binding = (
+        source_paths, source_binding = (
             source_bridge._ensure_attempt_projection(
                 source_attempt,
                 source_record,
@@ -15019,11 +15496,22 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             path=source_paths.task_projection,
             task_header_prefix="## VRIF-",
         )
+        local_identity = portal_task_identity(
+            projected_task,
+            todo_path=source_paths.task_projection,
+        )
+        assert len(
+            {
+                str(source_binding["task_cid"]),
+                projected_task.canonical_task_cid,
+                local_identity.canonical_task_cid,
+            }
+        ) == 3
         request = queue.enqueue(
             branch_name="implementation/completion-recovery",
             task_id=source_attempt.task_alias,
-            canonical_task_id=source_attempt.task_cid,
-            canonical_task_key=str(projected_task.canonical_task_key),
+            canonical_task_id=local_identity.canonical_task_cid,
+            canonical_task_key=local_identity.canonical_task_key,
             commit_sha=candidate_commit,
             metadata={
                 "schema": (
@@ -15044,7 +15532,7 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
                 "task_header_prefix": "## VRIF-",
                 "task": asdict(projected_task),
                 "completion_task_cids": {
-                    source_attempt.task_alias: source_attempt.task_cid
+                    source_attempt.task_alias: local_identity.canonical_task_cid
                 },
                 "changed_submodule_paths": [],
             },

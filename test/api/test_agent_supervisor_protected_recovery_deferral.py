@@ -285,10 +285,13 @@ def _seed_inflight_state(
     worktree_path: Path,
     log_path: Path,
 ) -> tuple[PortalTaskState, dict[str, Any]]:
-    task_cid = "sha256:inflight-task"
+    identity = daemon._identity_for_task(_inflight_task())
+    task_key = identity.canonical_task_key
+    task_cid = identity.canonical_task_cid
     branch = "implementation/auto-001-attempt-1"
     state = PortalTaskState(
         active_task_id="AUTO-001",
+        active_task_key=task_key,
         active_task_cid=task_cid,
         active_attempt=1,
         active_phase="validating",
@@ -297,6 +300,7 @@ def _seed_inflight_state(
         active_branch=branch,
         implementation_in_progress=True,
         last_implementation_task_id="AUTO-001",
+        last_implementation_task_key=task_key,
         last_implementation_task_cid=task_cid,
         last_implementation_worktree_path=str(worktree_path),
         last_implementation_branch=branch,
@@ -305,6 +309,7 @@ def _seed_inflight_state(
     event = {
         "type": "implementation_started",
         "task_id": "AUTO-001",
+        "canonical_task_key": task_key,
         "canonical_task_cid": task_cid,
         "attempt": 1,
         "command": ["codex", "exec"],
@@ -321,9 +326,10 @@ def _seed_lifecycle(
     worktree_path: Path,
     owner: ProcessBirthIdentity,
 ) -> Any:
+    identity = daemon._identity_for_task(_inflight_task())
     return daemon.worktree_lifecycle.begin_preparing(
         task_id="AUTO-001",
-        canonical_task_cid="sha256:inflight-task",
+        canonical_task_cid=identity.canonical_task_cid,
         attempt=1,
         lane_id="test-lane",
         workspace_path=worktree_path,
@@ -447,6 +453,10 @@ def test_exact_inflight_owner_is_a_typed_pre_provider_deferral(
     result = daemon._run_implementation(_inflight_task(), state)
 
     assert result["reason"] == expected_reason
+    identity = daemon._identity_for_task(_inflight_task())
+    assert result["task_cid"] == identity.canonical_task_cid
+    assert result["canonical_task_key"] == identity.canonical_task_key
+    assert result["canonical_task_cid"] == identity.canonical_task_cid
     assert result["deferred"] is True
     assert result["attempt_consumed"] is False
     assert result["provider_dispatched"] is False
@@ -544,6 +554,10 @@ def test_unverifiable_inflight_lifecycle_keeps_generic_wait(
     result = daemon._run_implementation(_inflight_task(), state)
 
     assert result["reason"] == "inflight_process"
+    identity = daemon._identity_for_task(_inflight_task())
+    assert result["task_cid"] == identity.canonical_task_cid
+    assert result["canonical_task_key"] == identity.canonical_task_key
+    assert result["canonical_task_cid"] == identity.canonical_task_cid
     assert result["deferred"] is True
     assert result["attempt_consumed"] is False
     assert result["provider_dispatched"] is False

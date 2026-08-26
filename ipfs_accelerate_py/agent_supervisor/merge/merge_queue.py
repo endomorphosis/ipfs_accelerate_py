@@ -2793,9 +2793,12 @@ class MergeQueue:
         self,
         *,
         limit: int = 32,
+        metadata_schema: str = "",
+        require_completion_absent: bool = False,
         completion_schema: str = "",
         completion_reason: str = "",
         canonical_task_id: str = "",
+        database_task_cid: str = "",
         reopen_schema: str = "",
         reopen_reason: str = "",
         before_request_id: str = "",
@@ -2812,14 +2815,25 @@ class MergeQueue:
         if requested == 0:
             return ()
         target_sql, target_parameters = self._target_binding_sql()
+        request_schema = str(metadata_schema or "")
         schema = str(completion_schema or "")
         reason = str(completion_reason or "")
         task_cid = str(canonical_task_id or "")
+        database_cid = str(database_task_cid or "")
         false_reopen_schema = str(reopen_schema or "")
         false_reopen_reason = str(reopen_reason or "")
         cursor = str(before_request_id or "")
         completion_sql = ""
         completion_parameters: tuple[str, ...] = ()
+        if request_schema:
+            completion_sql += (
+                " AND json_extract_string(metadata_json, '$.schema') = ?"
+            )
+            completion_parameters += (request_schema,)
+        if require_completion_absent:
+            completion_sql += (
+                " AND NOT json_exists(metadata_json, '$.completion')"
+            )
         if schema:
             completion_sql += (
                 " AND json_extract_string(metadata_json, "
@@ -2835,6 +2849,14 @@ class MergeQueue:
         if task_cid:
             completion_sql += " AND canonical_task_id = ?"
             completion_parameters += (task_cid,)
+        if database_cid:
+            completion_sql += (
+                " AND json_extract_string(metadata_json, "
+                "'$.task.metadata.\"database task cid\"') = ?"
+                " AND json_extract_string(metadata_json, "
+                "'$.task.metadata.\"canonical task cid\"') = ?"
+            )
+            completion_parameters += (database_cid, database_cid)
         if false_reopen_schema:
             completion_sql += (
                 " AND json_extract_string(metadata_json, "

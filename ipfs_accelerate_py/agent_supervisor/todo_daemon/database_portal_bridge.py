@@ -1392,6 +1392,7 @@ class _DatabasePortalRecoveryProjection:
 
     paths: DatabasePortalAttemptPaths
     binding: Mapping[str, Any]
+    projected_task: Any
     task_status: str
 
 
@@ -3033,9 +3034,10 @@ class DatabasePortalExecutionBridge:
         """Resolve exact blocked-task completion rows outside the fair cursor.
 
         The database owner supplies the bounded latest-terminal task
-        identities.  Each identity is queried directly in the target-bound
-        durable queue with exact completion and reopen predicates.  Zero or
-        multiple rows fail closed for that task.
+        identities.  Queue rows use a distinct path-bound Portal identity, so
+        each bounded target snapshot is joined through the serialized task's
+        exact database metadata.  Zero or multiple rows fail closed for that
+        task; the fair cursor remains the fallback beyond this priority page.
         """
 
         if self.merge_queue is None:
@@ -3049,6 +3051,30 @@ class DatabasePortalExecutionBridge:
             or any(not item for item in normalized)
         ):
             return ()
+
+        def database_identity_matches(
+            item: Any,
+            database_task_cid: str,
+        ) -> bool:
+            item_metadata = getattr(item, "metadata", None)
+            task_payload = (
+                item_metadata.get("task")
+                if isinstance(item_metadata, Mapping)
+                else None
+            )
+            task_metadata = (
+                task_payload.get("metadata")
+                if isinstance(task_payload, Mapping)
+                else None
+            )
+            return bool(
+                isinstance(task_metadata, Mapping)
+                and task_metadata.get("database task cid")
+                == database_task_cid
+                and task_metadata.get("canonical task cid")
+                == database_task_cid
+            )
+
         selected: list[Any] = []
         for task_cid in normalized:
             repair_matches = tuple(
@@ -3058,22 +3084,30 @@ class DatabasePortalExecutionBridge:
                         _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA
                     ),
                     completion_reason="post_merge_declared_outputs_repaired",
-                    canonical_task_id=task_cid,
+                    database_task_cid=task_cid,
                     reopen_schema=FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
                     reopen_reason="declared_outputs_not_on_target",
                 )
                 or ()
             )
+            repair_matches = tuple(
+                item
+                for item in repair_matches
+                if database_identity_matches(item, task_cid)
+            )
             callback_candidates = tuple(
                 completed(
-                    limit=256,
-                    canonical_task_id=task_cid,
+                    limit=2,
+                    metadata_schema=_MERGE_CANDIDATE_SCHEMA,
+                    require_completion_absent=True,
+                    database_task_cid=task_cid,
                 )
                 or ()
             )
             callback_matches = tuple(
                 item
                 for item in callback_candidates
+                if database_identity_matches(item, task_cid)
                 if isinstance(getattr(item, "metadata", None), Mapping)
                 and item.metadata.get("schema")
                 == _MERGE_CANDIDATE_SCHEMA
@@ -3089,10 +3123,10 @@ class DatabasePortalExecutionBridge:
             matches = tuple(by_request_id.values())
             if (
                 len(matches) == 1
+                and database_identity_matches(matches[0], task_cid)
                 and str(
                     getattr(matches[0], "canonical_task_id", "") or ""
                 )
-                == task_cid
             ):
                 selected.append(matches[0])
         return tuple(selected)
@@ -3388,6 +3422,167 @@ class DatabasePortalExecutionBridge:
         # maintenance scanner's authority.
         return status if status in allowed_statuses else ""
 
+    def _portal_projection_request_binding(
+        self,
+        request: Any,
+        *,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        allowed_root: Path,
+    ) -> dict[str, Any] | None:
+        """Bind one queue-local identity to its DuckDB attempt projection.
+
+        A database projection deliberately has three identities: the
+        authoritative DuckDB identity in ``binding``, the parsed PortalTask
+        identity, and the path-bound projection-local identity used by queue
+        and lifecycle records.  They must not be equated.  Instead, verify the
+        exact serialized task against the immutable projection and resolve the
+        local identity through that projection's database binding.
+        """
+
+        metadata = getattr(request, "metadata", None)
+        task_payload = metadata.get("task") if isinstance(metadata, Mapping) else None
+        task_alias = str(getattr(request, "task_id", "") or "").strip()
+        local_task_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        ).strip()
+        local_task_key = str(
+            getattr(request, "canonical_task_key", "") or ""
+        ).strip()
+        if (
+            not isinstance(metadata, Mapping)
+            or metadata.get("schema") != _MERGE_CANDIDATE_SCHEMA
+            or metadata.get("bundle_work_order") is not None
+            or not isinstance(task_payload, Mapping)
+            or not task_alias
+            or not local_task_cid
+            or not local_task_key
+            or metadata.get("completion_task_cids")
+            != {task_alias: local_task_cid}
+            or task_payload.get("task_id") != task_alias
+        ):
+            return None
+        try:
+            verified_binding = verify_database_portal_attempt_projection(
+                paths.task_projection,
+                expected_task_alias=task_alias,
+                expected_task_cid=str(binding.get("task_cid") or ""),
+                allowed_root=allowed_root,
+            )
+            verified_projection_path = str(
+                verified_binding.get("projection_path") or ""
+            )
+            if (
+                verified_binding.get("verified") is not True
+                or verified_projection_path
+                != str(paths.task_projection.resolve(strict=True))
+                or any(
+                    binding.get(key) != value
+                    for key, value in verified_binding.items()
+                    if key not in {"verified", "projection_path"}
+                )
+            ):
+                return None
+            projection_text = self._verify_projection(paths, binding)
+
+            # Import lazily because implementation_daemon imports its runner,
+            # which in turn binds this bridge.
+            from .implementation_daemon import PortalTask, parse_task_text
+
+            projected_tasks = parse_task_text(
+                projection_text,
+                path=paths.task_projection,
+                task_header_prefix=f"## {task_alias}",
+            )
+            if len(projected_tasks) != 1:
+                return None
+            projected_task = projected_tasks[0]
+            field_names = set(PortalTask.__dataclass_fields__)
+            if set(task_payload) != field_names:
+                return None
+            queued_values = {
+                key: value
+                for key, value in task_payload.items()
+                if key in field_names
+            }
+            queued_values.setdefault("task_id", task_alias)
+            queued_values.setdefault("title", "queued implementation merge")
+            queued_values.setdefault("status", "todo")
+            queued_values.setdefault("completion", "manual")
+            queued_values.setdefault(
+                "priority",
+                str(getattr(request, "priority", "") or "P2"),
+            )
+            queued_values.setdefault("track", "ops")
+            queued_task = PortalTask(**queued_values)
+            projected_payload = {
+                field: getattr(projected_task, field) for field in field_names
+            }
+            queued_payload = {
+                field: getattr(queued_task, field) for field in field_names
+            }
+            # The status line is mutable lifecycle state.  The parser mirrors
+            # it into metadata, so exclude only those two status projections;
+            # every semantic field remains exact-bound.
+            for payload in (projected_payload, queued_payload):
+                payload.pop("status", None)
+                payload_metadata = payload.get("metadata")
+                if isinstance(payload_metadata, Mapping):
+                    normalized_metadata = dict(payload_metadata)
+                    normalized_metadata.pop("status", None)
+                    payload["metadata"] = normalized_metadata
+            local_key, local_cid = self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+                allowed_root=allowed_root,
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+
+        task_metadata = projected_task.metadata
+        expected_metadata = {
+            "database task cid": str(binding.get("task_cid") or ""),
+            "canonical task cid": str(binding.get("task_cid") or ""),
+            "canonical task key": str(binding.get("canonical_task_key") or ""),
+            "database attempt id": str(binding.get("attempt_id") or ""),
+            "database attempt number": str(binding.get("attempt_number") or ""),
+            "database claim id": str(binding.get("claim_id") or ""),
+            "database lease id": str(binding.get("lease_id") or ""),
+            "database owner session id": str(
+                binding.get("owner_session_id") or ""
+            ),
+            "database fencing token": str(binding.get("fencing_token")),
+            "database fence epoch": str(binding.get("fence_epoch")),
+            "projection authority": "false",
+        }
+        canonical_identity = str(
+            getattr(request, "canonical_identity", "") or ""
+        )
+        if (
+            projected_task.task_id != task_alias
+            or queued_payload != projected_payload
+            or any(
+                task_metadata.get(key) != value
+                for key, value in expected_metadata.items()
+            )
+            or local_cid != local_task_cid
+            or local_key != local_task_key
+            or (canonical_identity and canonical_identity != local_task_key)
+        ):
+            return None
+        return {
+            "task": projected_task,
+            "task_id": task_alias,
+            "task_cid": str(binding.get("task_cid") or ""),
+            "canonical_task_key": str(
+                binding.get("canonical_task_key") or ""
+            ),
+            "projection_task_cid": local_task_cid,
+            "projection_task_key": local_task_key,
+            "projection_path": str(paths.task_projection.resolve()),
+        }
+
     def _owned_post_merge_recovery_projection(
         self,
         request: Any,
@@ -3407,8 +3602,12 @@ class DatabasePortalExecutionBridge:
         if not isinstance(metadata, Mapping):
             return None
         task_alias = str(getattr(request, "task_id", "") or "")
-        task_cid = str(getattr(request, "canonical_task_id", "") or "")
-        task_key = str(getattr(request, "canonical_task_key", "") or "")
+        portal_task_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        )
+        portal_task_key = str(
+            getattr(request, "canonical_task_key", "") or ""
+        )
         commit_sha = str(getattr(request, "commit_sha", "") or "")
         queue_repository_id = str(
             getattr(self.merge_queue, "target_repository_id", "") or ""
@@ -3420,15 +3619,15 @@ class DatabasePortalExecutionBridge:
             or metadata.get("target_repository_id") != queue_repository_id
             or metadata.get("target_branch") != self.merge_target_branch
             or not task_alias
-            or not task_cid
-            or not task_key
+            or not portal_task_cid
+            or not portal_task_key
             or re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None
             or metadata.get("implementation_commit") != commit_sha
             or metadata.get("task_header_prefix") != self.task_header_prefix
             or self.repository_root is None
             or metadata.get("repo_root") != str(self.repository_root)
             or metadata.get("completion_task_cids")
-            != {task_alias: task_cid}
+            != {task_alias: portal_task_cid}
         ):
             return None
 
@@ -3439,11 +3638,6 @@ class DatabasePortalExecutionBridge:
         if (
             not isinstance(task_metadata, Mapping)
             or task_payload.get("task_id") != task_alias
-            or task_payload.get("canonical_task_cid") != task_cid
-            or task_payload.get("canonical_task_key") != task_key
-            or task_metadata.get("database task cid") != task_cid
-            or task_metadata.get("canonical task cid") != task_cid
-            or task_metadata.get("canonical task key") != task_key
             or task_metadata.get("projection authority") != "false"
         ):
             return None
@@ -3548,24 +3742,25 @@ class DatabasePortalExecutionBridge:
         ):
             return None
         try:
-            binding = verify_database_portal_attempt_projection(
+            verify_database_portal_attempt_projection(
                 projection,
                 expected_task_alias=task_alias,
-                expected_task_cid=task_cid,
                 allowed_root=verification_root,
             )
+            binding = dict(self._read_binding(paths.binding))
         except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
             return None
-        if (
-            binding.get("canonical_task_key") != task_key
-            or task_metadata.get("database attempt id")
-            != binding.get("attempt_id")
-            or task_metadata.get("database claim id")
-            != binding.get("claim_id")
-        ):
+        request_binding = self._portal_projection_request_binding(
+            request,
+            paths=paths,
+            binding=binding,
+            allowed_root=verification_root,
+        )
+        if request_binding is None:
             return None
+        database_task_cid = str(binding.get("task_cid") or "")
         task_status = self._current_recovery_task_status(
-            task_cid=task_cid,
+            task_cid=database_task_cid,
             task_alias=task_alias,
             allowed_statuses=allowed_task_statuses,
         )
@@ -3574,6 +3769,7 @@ class DatabasePortalExecutionBridge:
         return _DatabasePortalRecoveryProjection(
             paths=paths,
             binding=binding,
+            projected_task=request_binding["task"],
             task_status=task_status,
         )
 
@@ -3591,7 +3787,7 @@ class DatabasePortalExecutionBridge:
         source: dict[str, Any] = {
             "schema": _DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
             "request_id": str(getattr(request, "request_id", "") or ""),
-            "task_cid": str(getattr(request, "canonical_task_id", "") or ""),
+            "task_cid": str(binding.get("task_cid") or ""),
             "task_alias": str(getattr(request, "task_id", "") or ""),
             "candidate_commit": str(
                 getattr(request, "commit_sha", "") or ""
@@ -3692,7 +3888,7 @@ class DatabasePortalExecutionBridge:
         binding = projection.binding
         evidence: dict[str, Any] = {
             "request_id": str(getattr(request, "request_id", "") or ""),
-            "task_cid": str(getattr(request, "canonical_task_id", "") or ""),
+            "task_cid": str(binding.get("task_cid") or ""),
             "task_alias": task_alias,
             "candidate_commit": str(completion["candidate_commit"]),
             "source_attempt_id": str(binding.get("attempt_id") or ""),
@@ -4164,11 +4360,18 @@ class DatabasePortalExecutionBridge:
         if self.repository_root is None or self.merge_queue is None:
             return None
         task_alias = str(getattr(request, "task_id", "") or "")
-        task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        projected_task = projection.projected_task
+        projected_task_cid = str(
+            getattr(projected_task, "canonical_task_cid", "") or ""
+        )
+        projected_task_key = str(
+            getattr(projected_task, "canonical_task_key", "") or ""
+        )
         receipt_task_ids = repair_receipt.get("task_ids")
         if (
             not task_alias
-            or not task_cid
+            or not projected_task_cid
+            or not projected_task_key
             or not isinstance(receipt_task_ids, list)
             or receipt_task_ids != [task_alias]
         ):
@@ -4240,10 +4443,13 @@ class DatabasePortalExecutionBridge:
             except Exception:
                 return None
             if (
-                [str(getattr(task, "task_id", "") or "") for task in tasks]
+                tasks != [projected_task]
+                or [str(getattr(task, "task_id", "") or "") for task in tasks]
                 != [task_alias]
                 or str(getattr(tasks[0], "canonical_task_cid", "") or "")
-                != task_cid
+                != projected_task_cid
+                or str(getattr(tasks[0], "canonical_task_key", "") or "")
+                != projected_task_key
                 or not tuple(getattr(tasks[0], "validation", ()) or ())
             ):
                 return None
@@ -4572,8 +4778,13 @@ class DatabasePortalExecutionBridge:
 
         metadata = getattr(request, "metadata", None)
         task_alias = str(getattr(request, "task_id", "") or "")
-        task_cid = str(getattr(request, "canonical_task_id", "") or "")
-        task_key = str(getattr(request, "canonical_task_key", "") or "")
+        portal_task_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        )
+        portal_task_key = str(
+            getattr(request, "canonical_task_key", "") or ""
+        )
+        database_task_cid = str(projection.binding.get("task_cid") or "")
         canonical = str(getattr(request, "canonical_identity", "") or "")
         request_id = str(getattr(request, "request_id", "") or "")
         candidate = str(getattr(request, "commit_sha", "") or "")
@@ -4604,17 +4815,25 @@ class DatabasePortalExecutionBridge:
             or not isinstance(metadata, Mapping)
             or metadata.get("schema") != _MERGE_CANDIDATE_SCHEMA
             or "completion" in metadata
-            or not all((task_alias, task_cid, task_key, request_id))
-            or canonical != task_key
+            or not all(
+                (
+                    task_alias,
+                    portal_task_cid,
+                    portal_task_key,
+                    database_task_cid,
+                    request_id,
+                )
+            )
+            or canonical != portal_task_key
             or re.fullmatch(r"[0-9a-f]{40}", candidate) is None
             or re.fullmatch(r"[0-9a-f]{40}", baseline) is None
             or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", candidate_tree) is None
             or metadata.get("implementation_commit") != candidate
-            or completion_task_cids != {task_alias: task_cid}
+            or completion_task_cids != {task_alias: portal_task_cid}
             or not isinstance(task_payload, Mapping)
             or task_payload.get("task_id") != task_alias
-            or task_payload.get("canonical_task_cid") != task_cid
-            or task_payload.get("canonical_task_key") != task_key
+            or not str(task_payload.get("canonical_task_cid") or "")
+            or not str(task_payload.get("canonical_task_key") or "")
             or not isinstance(outputs, list)
             or not outputs
             or len(outputs) > 4096
@@ -4959,7 +5178,8 @@ class DatabasePortalExecutionBridge:
             or set(completion_error)
             != {"reason", "expected_task_cids", "receipt_task_cids"}
             or completion_error.get("reason") != "completion_receipt_binding_mismatch"
-            or completion_error.get("expected_task_cids") != {task_alias: task_cid}
+            or completion_error.get("expected_task_cids")
+            != {task_alias: portal_task_cid}
             or completion_error.get("receipt_task_cids") != {}
             or not isinstance(todo_result, Mapping)
             or set(todo_result) != todo_result_fields
@@ -5027,6 +5247,8 @@ class DatabasePortalExecutionBridge:
             for index, event in indexed
             if event.get("type") == "todo_status_updated"
             and event.get("task_id") == task_alias
+            and event.get("canonical_task_cid") == portal_task_cid
+            and event.get("canonical_task_key") == portal_task_key
             and event.get("completion_reason") == "merged_status_repair"
         ]
         completions = [
@@ -5034,7 +5256,8 @@ class DatabasePortalExecutionBridge:
             for index, event in indexed
             if event.get("type") == "task_completed"
             and event.get("task_id") == task_alias
-            and event.get("canonical_task_cid") == task_cid
+            and event.get("canonical_task_cid") == portal_task_cid
+            and event.get("canonical_task_key") == portal_task_key
         ]
         if not all(
             len(items) == 1
@@ -5082,7 +5305,8 @@ class DatabasePortalExecutionBridge:
                 reconciliation,
                 source_event,
                 alias=task_alias,
-                task_cid=task_cid,
+                task_cid=portal_task_cid,
+                task_key=portal_task_key,
             )
         ):
             return None
@@ -5104,8 +5328,8 @@ class DatabasePortalExecutionBridge:
             or provenance_body.get("merge_candidate_enqueued_event_id")
             != enqueue.get("event_id")
             or enqueue.get("task_id") != task_alias
-            or enqueue.get("canonical_task_cid") != task_cid
-            or enqueue.get("canonical_task_key") != task_key
+            or enqueue.get("canonical_task_cid") != portal_task_cid
+            or enqueue.get("canonical_task_key") != portal_task_key
             or enqueue.get("attempt") != source_event.get("attempt")
             or enqueue.get("baseline_ref") != baseline
             or enqueue.get("implementation_commit") != candidate
@@ -5113,11 +5337,12 @@ class DatabasePortalExecutionBridge:
             or enqueue.get("queued") is not True
             or enqueue.get("merged") is not False
             or enqueue.get("reason") != "merge_queued"
-            or enqueue.get("completion_task_cids") != {task_alias: task_cid}
+            or enqueue.get("completion_task_cids")
+            != {task_alias: portal_task_cid}
             or not isinstance(source_merge, Mapping)
             or terminal.get("task_id") != task_alias
-            or terminal.get("canonical_task_cid") != task_cid
-            or terminal.get("canonical_task_key") != task_key
+            or terminal.get("canonical_task_cid") != portal_task_cid
+            or terminal.get("canonical_task_key") != portal_task_key
             or terminal.get("attempt") != source_event.get("attempt")
             or terminal.get("attempt_consumed") is not True
             or terminal.get("provider_dispatched") is not True
@@ -5144,9 +5369,10 @@ class DatabasePortalExecutionBridge:
             or terminal_merge.get("request_id") != request_id
             or terminal_merge.get("branch") != source_merge.get("branch")
             or terminal_merge.get("implementation_commit") != candidate
-            or terminal_merge.get("canonical_task_cid") != task_cid
-            or terminal_merge.get("canonical_task_key") != task_key
-            or terminal_merge.get("completion_task_cids") != {task_alias: task_cid}
+            or terminal_merge.get("canonical_task_cid") != portal_task_cid
+            or terminal_merge.get("canonical_task_key") != portal_task_key
+            or terminal_merge.get("completion_task_cids")
+            != {task_alias: portal_task_cid}
             or terminal_merge.get("target_repository_id")
             != source_merge.get("target_repository_id")
             or terminal_merge.get("target_branch") != self.merge_target_branch
@@ -5160,8 +5386,11 @@ class DatabasePortalExecutionBridge:
             or not isinstance(expected_member_receipts, list)
             or len(expected_member_receipts) != 1
             or status_event.get("completion_receipts") != expected_member_receipts
+            or status_event.get("canonical_task_cid") != portal_task_cid
+            or status_event.get("canonical_task_key") != portal_task_key
             or completion.get("reason") != "task_became_completed"
             or completion.get("completion_receipt_repair") is not False
+            or completion.get("canonical_task_key") != portal_task_key
         ):
             return None
 
@@ -5301,7 +5530,7 @@ class DatabasePortalExecutionBridge:
         settled_source["source_id"] = content_identity(settled_source)
         return {
             "task_ids": [task_alias],
-            "task_cid": task_cid,
+            "task_cid": database_task_cid,
             "request_id": request_id,
             "candidate_commit": candidate,
             "baseline_commit": baseline,
@@ -5332,20 +5561,26 @@ class DatabasePortalExecutionBridge:
     ) -> dict[str, Any] | None:
         """Verify one exact callback integration that missed database settlement.
 
-        This is intentionally closed over two historical schema-v3 shapes: a
+        This is intentionally closed over three schema-v3 shapes: a
         bare completion that missed reconciliation, or a zero-provider callback
         confirmation whose terminal event omitted only the redundant target
-        commit.  A completed row with a successful receipt is not enough: the
-        queue row, full train receipt, exact Portal lineage, Git ancestry, and
-        every declared output blob must all agree.
+        commit, or an exact provider callback whose integration and
+        reconciliation both completed.  A completed row with a successful
+        receipt is not enough: the queue row, full train receipt, exact Portal
+        lineage, Git ancestry, and every declared output blob must all agree.
         """
 
         if self.repository_root is None or self.merge_queue is None:
             return None
         metadata = getattr(request, "metadata", None)
         task_alias = str(getattr(request, "task_id", "") or "")
-        task_cid = str(getattr(request, "canonical_task_id", "") or "")
-        task_key = str(getattr(request, "canonical_task_key", "") or "")
+        portal_task_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        )
+        portal_task_key = str(
+            getattr(request, "canonical_task_key", "") or ""
+        )
+        database_task_cid = str(projection.binding.get("task_cid") or "")
         request_id = str(getattr(request, "request_id", "") or "")
         candidate = str(getattr(request, "commit_sha", "") or "")
         canonical = str(getattr(request, "canonical_identity", "") or "")
@@ -5372,19 +5607,20 @@ class DatabasePortalExecutionBridge:
             or "completion" in metadata
             or not request_id
             or not task_alias
-            or not task_cid
-            or not task_key
-            or canonical != task_key
+            or not portal_task_cid
+            or not portal_task_key
+            or not database_task_cid
+            or canonical != portal_task_key
             or re.fullmatch(r"[0-9a-f]{40}", candidate) is None
             or re.fullmatch(r"[0-9a-f]{40}", baseline) is None
             or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", candidate_tree)
             is None
             or metadata.get("implementation_commit") != candidate
-            or completion_task_cids != {task_alias: task_cid}
+            or completion_task_cids != {task_alias: portal_task_cid}
             or not isinstance(task_payload, Mapping)
             or task_payload.get("task_id") != task_alias
-            or task_payload.get("canonical_task_cid") != task_cid
-            or task_payload.get("canonical_task_key") != task_key
+            or not str(task_payload.get("canonical_task_cid") or "")
+            or not str(task_payload.get("canonical_task_key") or "")
             or not isinstance(outputs, list)
             or not outputs
             or len(outputs) > 4096
@@ -5614,8 +5850,8 @@ class DatabasePortalExecutionBridge:
             != "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
             or member.get("status") != "succeeded"
             or member.get("task_id") != task_alias
-            or member.get("canonical_task_cid") != task_cid
-            or member.get("canonical_task_key") != task_key
+            or member.get("canonical_task_cid") != portal_task_cid
+            or member.get("canonical_task_key") != portal_task_key
         ):
             return None
 
@@ -5653,7 +5889,8 @@ class DatabasePortalExecutionBridge:
             for event in events
             if event.get("type") == "task_completed"
             and event.get("task_id") == task_alias
-            and event.get("canonical_task_cid") == task_cid
+            and event.get("canonical_task_cid") == portal_task_cid
+            and event.get("canonical_task_key") == portal_task_key
         ]
         reconciliations = [
             event
@@ -5664,7 +5901,7 @@ class DatabasePortalExecutionBridge:
                 or event.get("completion_source_event_id") == source_event_id
                 or (
                     event.get("task_id") == task_alias
-                    and event.get("canonical_task_cid") == task_cid
+                    and event.get("canonical_task_cid") == portal_task_cid
                     and event.get("implementation_commit") == candidate
                 )
             )
@@ -5672,8 +5909,8 @@ class DatabasePortalExecutionBridge:
         completion_sequence = completions[0].get("sequence") if len(completions) == 1 else None
         common_source_valid = bool(
             source_event.get("task_id") == task_alias
-            and source_event.get("canonical_task_cid") == task_cid
-            and source_event.get("canonical_task_key") == task_key
+            and source_event.get("canonical_task_cid") == portal_task_cid
+            and source_event.get("canonical_task_key") == portal_task_key
             and type(source_attempt) is int
             and source_attempt >= 1
             and source_event.get("returncode") == 0
@@ -5690,7 +5927,7 @@ class DatabasePortalExecutionBridge:
             and event_merge.get("request_id") == request_id
             and event_merge.get("implementation_commit") == candidate
             and event_merge.get("completion_task_cids")
-            == {task_alias: task_cid}
+            == {task_alias: portal_task_cid}
             and isinstance(event_board, Mapping)
             and len(completions) == 1
             and completions[0].get("reason") == "task_became_completed"
@@ -5717,7 +5954,8 @@ class DatabasePortalExecutionBridge:
             exact_completion = self._completion_event_evidence(
                 projection.paths,
                 alias=task_alias,
-                task_cid=task_cid,
+                task_cid=portal_task_cid,
+                completion_task_key=portal_task_key,
             )
         except DatabasePortalBridgeError:
             exact_completion = None
@@ -5762,7 +6000,47 @@ class DatabasePortalExecutionBridge:
             and reconciliation.get("merge_commit") == integration
             and reconciliation.get("target_commit") == integration
         )
-        if not legacy_bare_completion and not historical_zero_provider_confirmation:
+        fully_integrated_provider_callback = bool(
+            common_source_valid
+            and isinstance(exact_completion, Mapping)
+            and exact_completion.get("completion_source_event_type")
+            == "implementation_finished"
+            and exact_completion.get("completion_source_event_id")
+            == source_event_id
+            and exact_completion.get("completion_event_id")
+            == completions[0].get("event_id")
+            and exact_completion.get("completion_source_portal_attempt")
+            == source_attempt
+            and exact_completion.get("baseline_commit") == baseline
+            and exact_completion.get("implementation_commit") == candidate
+            and source_event.get("attempt_consumed") is True
+            and source_event.get("provider_dispatched") is True
+            and event_merge.get("attempted") is True
+            and event_merge.get("queued") is False
+            and event_merge.get("merged") is True
+            and event_merge.get("reason") == "merged"
+            and event_merge.get("merge_commit") == integration
+            and event_merge.get("target_commit") == integration
+            and event_merge.get("target_repository_id")
+            == str(getattr(self.merge_queue, "target_repository_id", "") or "")
+            and event_merge.get("target_branch") == self.merge_target_branch
+            and event_board
+            == {
+                "complete": True,
+                "pending_merge": False,
+                "reason": "merged_into_target",
+            }
+            and len(reconciliations) == 1
+            and reconciliation.get("request_id") == request_id
+            and reconciliation.get("implementation_commit") == candidate
+            and reconciliation.get("merge_commit") == integration
+            and reconciliation.get("target_commit") == integration
+        )
+        if not (
+            legacy_bare_completion
+            or historical_zero_provider_confirmation
+            or fully_integrated_provider_callback
+        ):
             return None
 
         def git(*arguments: str) -> subprocess.CompletedProcess[Any]:
@@ -5840,7 +6118,7 @@ class DatabasePortalExecutionBridge:
             return None
         return {
             "task_ids": [task_alias],
-            "task_cid": task_cid,
+            "task_cid": database_task_cid,
             "request_id": request_id,
             "candidate_commit": candidate,
             "baseline_commit": baseline,
@@ -6313,14 +6591,40 @@ class DatabasePortalExecutionBridge:
         if self.repository_root is None or self.merge_queue is None:
             return None
         task_alias = str(getattr(request, "task_id", "") or "")
-        task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        portal_task_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        )
+        portal_task_key = str(
+            getattr(request, "canonical_task_key", "") or ""
+        )
+        database_task_cid = str(projection.binding.get("task_cid") or "")
         current_head = str(source.get("current_target_commit") or "")
         current_tree = str(source.get("current_target_tree") or "")
         settled_source = isinstance(source.get("settled_integration_source"), Mapping)
         hygiene_eligible = (
             settled_source and task_alias == _VRIF_TERMINAL_TASK_ALIAS
         )
-        if source.get("task_ids") != [task_alias] or source.get("task_cid") != task_cid:
+        try:
+            projection_text = self._verify_projection(
+                projection.paths,
+                projection.binding,
+            )
+            observed_portal_key, observed_portal_cid = (
+                self._portal_completion_event_identity(
+                    paths=projection.paths,
+                    projection_text=projection_text,
+                    binding=projection.binding,
+                    allowed_root=projection.paths.root.parent,
+                )
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if (
+            source.get("task_ids") != [task_alias]
+            or source.get("task_cid") != database_task_cid
+            or observed_portal_cid != portal_task_cid
+            or observed_portal_key != portal_task_key
+        ):
             return None
         path = self._post_merge_callback_integration_receipt_path(
             projection,
@@ -6360,10 +6664,16 @@ class DatabasePortalExecutionBridge:
                     "Portal recovery daemon lacks callback requalification authority"
                 )
             tasks = list(load_tasks())
+            loaded_task_metadata = (
+                getattr(tasks[0], "metadata", None) if len(tasks) == 1 else None
+            )
             if (
                 len(tasks) != 1
+                or tasks != [projection.projected_task]
                 or str(getattr(tasks[0], "task_id", "") or "") != task_alias
-                or str(getattr(tasks[0], "canonical_task_cid", "") or "") != task_cid
+                or not isinstance(loaded_task_metadata, Mapping)
+                or str(loaded_task_metadata.get("database task cid") or "")
+                != database_task_cid
                 or not tuple(getattr(tasks[0], "validation", ()) or ())
             ):
                 return None
@@ -6817,7 +7127,7 @@ class DatabasePortalExecutionBridge:
         evidence: dict[str, Any] = {
             "schema": _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA,
             "request_id": str(getattr(request, "request_id", "") or ""),
-            "task_cid": str(getattr(request, "canonical_task_id", "") or ""),
+            "task_cid": str(binding.get("task_cid") or ""),
             "task_alias": str(getattr(request, "task_id", "") or ""),
             "candidate_commit": str(getattr(request, "commit_sha", "") or ""),
             "source_attempt_id": str(binding.get("attempt_id") or ""),
@@ -7528,6 +7838,7 @@ class DatabasePortalExecutionBridge:
         paths: DatabasePortalAttemptPaths,
         projection_text: str,
         binding: Mapping[str, Any],
+        allowed_root: Path | None = None,
     ) -> tuple[str, str]:
         """Derive the exact non-authoritative identity Portal records.
 
@@ -7561,7 +7872,9 @@ class DatabasePortalExecutionBridge:
             paths.task_projection,
             expected_task_alias=alias,
             expected_task_cid=task_cid,
-            allowed_root=self.attempt_root,
+            allowed_root=(
+                self.attempt_root if allowed_root is None else allowed_root
+            ),
         )
         if (
             verified_projection.get("binding_id") != binding.get("binding_id")
@@ -7657,6 +7970,7 @@ class DatabasePortalExecutionBridge:
         *,
         alias: str,
         task_cid: str,
+        task_key: str,
     ) -> bool:
         """Verify the complete callback handoff, not merely its landed SHA."""
 
@@ -7744,6 +8058,8 @@ class DatabasePortalExecutionBridge:
             not source_fields
             or not common_source_required_fields <= set(source)
             or not set(source) <= source_fields
+            or str(source.get("task_id") or "") != alias
+            or str(source.get("canonical_task_cid") or "") != task_cid
             or not request_id
             or re.fullmatch(r"[0-9a-f]{40}", baseline) is None
             or re.fullmatch(r"[0-9a-f]{40}", implementation) is None
@@ -7758,12 +8074,13 @@ class DatabasePortalExecutionBridge:
             or source_merge.get("branch") != source_branch
             or source_merge.get("implementation_commit") != implementation
             or source_merge.get("canonical_task_cid") != task_cid
+            or source.get("canonical_task_key") != task_key
             or source_merge.get("canonical_task_key")
-            != str(source.get("canonical_task_key") or "")
+            != task_key
             or not str(source_merge.get("target_repository_id") or "")
             or not str(source_merge.get("target_branch") or "")
             or not isinstance(completion_task_cids, Mapping)
-            or str(completion_task_cids.get(alias) or "") != task_cid
+            or dict(completion_task_cids) != {alias: task_cid}
             or source.get("returncode") != 0
             or source_validation.get("attempted") is not True
             or source_validation.get("passed") is not True
@@ -8010,6 +8327,7 @@ class DatabasePortalExecutionBridge:
             "baseline_ref",
             "branch",
             "canonical_task_cid",
+            "canonical_task_key",
             "completion_receipt_evidence",
             "completion_source_event_id",
             "completion_task_cids",
@@ -8028,7 +8346,6 @@ class DatabasePortalExecutionBridge:
         }
         reconciliation_optional_fields = {
             "board_namespace",
-            "canonical_task_key",
             "database_portal_merge_continuation_source",
             "task_source_identity",
         }
@@ -8046,13 +8363,9 @@ class DatabasePortalExecutionBridge:
             != "merge_queue_callback_completed"
             or str(reconciliation.get("task_id") or "") != alias
             or str(reconciliation.get("canonical_task_cid") or "") != task_cid
+            or str(reconciliation.get("canonical_task_key") or "") != task_key
             or reconciliation.get("attempt") != source_attempt
             or branch != source_branch
-            or (
-                "canonical_task_key" in reconciliation
-                and reconciliation.get("canonical_task_key")
-                != source.get("canonical_task_key")
-            )
             or ("board_namespace" in reconciliation)
             != ("board_namespace" in source)
             or (
@@ -8201,8 +8514,30 @@ class DatabasePortalExecutionBridge:
             or receipt_id != content_identity(receipt_body)
         ):
             return False
+        source_task_key = source.get("canonical_task_key")
+        source_board_namespace = source.get("board_namespace")
         receipt_cids: dict[str, str] = {}
         for receipt in receipts:
+            receipt_task_id = (
+                receipt.get("task_id")
+                if isinstance(receipt, Mapping)
+                else None
+            )
+            receipt_task_cid = (
+                receipt.get("canonical_task_cid")
+                if isinstance(receipt, Mapping)
+                else None
+            )
+            receipt_task_key = (
+                receipt.get("canonical_task_key")
+                if isinstance(receipt, Mapping)
+                else None
+            )
+            receipt_board_namespace = (
+                receipt.get("board_namespace")
+                if isinstance(receipt, Mapping)
+                else None
+            )
             if (
                 not isinstance(receipt, Mapping)
                 or set(receipt)
@@ -8220,13 +8555,29 @@ class DatabasePortalExecutionBridge:
                     "member_completion_receipt@1"
                 )
                 or receipt.get("status") != "succeeded"
-                or not str(receipt.get("board_namespace") or "")
-                or not str(receipt.get("canonical_task_key") or "")
+                or type(receipt_task_id) is not str
+                or not receipt_task_id
+                or type(receipt_task_cid) is not str
+                or not receipt_task_cid
+                or type(receipt_task_key) is not str
+                or not receipt_task_key
+                or type(receipt_board_namespace) is not str
+                or not receipt_board_namespace
+                or (
+                    receipt_task_id == alias
+                    and (
+                        receipt_task_cid != task_cid
+                        or receipt_task_key != source_task_key
+                        or (
+                            source_board_namespace is not None
+                            and receipt_board_namespace
+                            != source_board_namespace
+                        )
+                    )
+                )
             ):
                 return False
-            receipt_cids[str(receipt.get("task_id") or "")] = str(
-                receipt.get("canonical_task_cid") or ""
-            )
+            receipt_cids[receipt_task_id] = receipt_task_cid
         return (
             len(receipts) == len(expected_task_cids)
             and receipt_cids == expected_task_cids
@@ -8239,7 +8590,9 @@ class DatabasePortalExecutionBridge:
         terminal_index: int,
         terminal: Mapping[str, Any],
         alias: str,
-        task_cid: str,
+        event_task_cid: str,
+        event_task_key: str,
+        authority_task_cid: str,
         verified_claim_seed: Mapping[str, Any] | None,
     ) -> dict[str, Any] | None:
         """Admit one terminal no-change result bound to a live landed claim."""
@@ -8261,7 +8614,7 @@ class DatabasePortalExecutionBridge:
         try:
             verified_seed = verify_landed_completion_claim_seed(
                 verified_claim_seed,
-                task_cid=task_cid,
+                task_cid=authority_task_cid,
                 task_alias=alias,
             )
         except LandedCompletionRecoveryError as exc:
@@ -8310,7 +8663,10 @@ class DatabasePortalExecutionBridge:
                 event.get("type")
                 == "implementation_provider_bypassed_already_satisfied"
                 and str(event.get("task_id") or "") == alias
-                and str(event.get("canonical_task_cid") or "") == task_cid
+                and str(event.get("canonical_task_cid") or "")
+                == event_task_cid
+                and str(event.get("canonical_task_key") or "")
+                == event_task_key
                 and event.get("kind")
                 == "database_landed_completion_revalidation"
             )
@@ -8341,7 +8697,10 @@ class DatabasePortalExecutionBridge:
         terminal_event_id = str(terminal.get("event_id") or "")
         if (
             str(terminal.get("task_id") or "") != alias
-            or str(terminal.get("canonical_task_cid") or "") != task_cid
+            or str(terminal.get("canonical_task_cid") or "")
+            != event_task_cid
+            or str(terminal.get("canonical_task_key") or "")
+            != event_task_key
             or terminal.get("attempt") != portal_attempt
             or type(terminal.get("returncode")) is not int
             or terminal.get("returncode") != 0
@@ -8397,6 +8756,7 @@ class DatabasePortalExecutionBridge:
         *,
         alias: str,
         task_cid: str,
+        completion_task_key: str,
         completion_task_cid: str | None = None,
         verified_landed_completion_claim_seed: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any] | None:
@@ -8411,7 +8771,16 @@ class DatabasePortalExecutionBridge:
 
         events = cls._verified_event_chain(paths)
         completion_cid = completion_task_cid or task_cid
-        completions = [
+        if not completion_task_key:
+            raise DatabasePortalBridgeError(
+                "Portal completion event canonical task key is absent"
+            )
+        # Portal lifecycle events share the path-bound projection identity.
+        # ``task_cid`` may instead be the authoritative DuckDB identity when
+        # the caller is admitting a projected completion, so never use it to
+        # join source events once an explicit projection identity is present.
+        event_task_cid = completion_cid
+        completion_candidates = [
             (index, event)
             for index, event in enumerate(events)
             if (
@@ -8421,6 +8790,15 @@ class DatabasePortalExecutionBridge:
                 == completion_cid
             )
         ]
+        if any(
+            str(event.get("canonical_task_key") or "")
+            != completion_task_key
+            for _, event in completion_candidates
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal completion event canonical task key mismatches"
+            )
+        completions = completion_candidates
         if not completions:
             return None
         if len(completions) != 1:
@@ -8449,12 +8827,24 @@ class DatabasePortalExecutionBridge:
         callback_reconciliation_indices: dict[str, list[int]] = {}
         sources: list[dict[str, Any]] = []
         for event_index, event in enumerate(events[:completion_index]):
-            if (
-                str(event.get("task_id") or "") != alias
-                or str(event.get("canonical_task_cid") or "") != task_cid
-            ):
+            if str(event.get("task_id") or "") != alias:
                 continue
             event_type = str(event.get("type") or "")
+            if event_type not in {
+                "implementation_finished",
+                "worktree_reconciliation_candidate_queued",
+                "merge_reconciled",
+            }:
+                continue
+            if str(event.get("canonical_task_cid") or "") != event_task_cid:
+                continue
+            if (
+                str(event.get("canonical_task_key") or "")
+                != completion_task_key
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal completion source canonical task key mismatches"
+                )
             merge_result = event.get("merge_result")
             validation_result = event.get("validation_result")
             admissible = False
@@ -8464,7 +8854,9 @@ class DatabasePortalExecutionBridge:
                     terminal_index=event_index,
                     terminal=event,
                     alias=alias,
-                    task_cid=task_cid,
+                    event_task_cid=event_task_cid,
+                    event_task_key=completion_task_key,
+                    authority_task_cid=task_cid,
                     verified_claim_seed=(
                         verified_landed_completion_claim_seed
                     ),
@@ -8603,7 +8995,8 @@ class DatabasePortalExecutionBridge:
             enqueue = enqueue_matches[0]
             return bool(
                 str(enqueue.get("task_id") or "") == alias
-                and str(enqueue.get("canonical_task_cid") or "") == task_cid
+                and str(enqueue.get("canonical_task_cid") or "")
+                == event_task_cid
                 and enqueue.get("canonical_task_key")
                 == source_event.get("canonical_task_key")
                 and enqueue.get("attempt") == source_event.get("attempt")
@@ -8641,7 +9034,8 @@ class DatabasePortalExecutionBridge:
                     reconciliation,
                     reconciliation_source["_source_event"],
                     alias=alias,
-                    task_cid=task_cid,
+                    task_cid=event_task_cid,
+                    task_key=completion_task_key,
                 )
             ):
                 raise DatabasePortalBridgeError(
@@ -8878,6 +9272,7 @@ class DatabasePortalExecutionBridge:
             paths,
             alias=alias,
             task_cid=task_cid,
+            completion_task_key=canonical_task_key,
         )
         if existing is not None:
             if (
@@ -8896,6 +9291,8 @@ class DatabasePortalExecutionBridge:
             if (
                 str(event.get("task_id") or "") != alias
                 or str(event.get("canonical_task_cid") or "") != task_cid
+                or str(event.get("canonical_task_key") or "")
+                != canonical_task_key
                 or str(event.get("baseline_ref") or "") != baseline_commit
                 or str(event.get("implementation_commit") or "")
                 != implementation_commit
@@ -8966,6 +9363,7 @@ class DatabasePortalExecutionBridge:
                 {
                     "task_id": alias,
                     "canonical_task_cid": task_cid,
+                    "canonical_task_key": canonical_task_key,
                     "attempt": source_portal_attempt,
                     "attempt_consumed": False,
                     "provider_dispatched": False,
@@ -9002,6 +9400,7 @@ class DatabasePortalExecutionBridge:
             paths,
             alias=alias,
             task_cid=task_cid,
+            completion_task_key=canonical_task_key,
         )
         if (
             repaired is None
@@ -9094,8 +9493,8 @@ class DatabasePortalExecutionBridge:
             and any(str(item or "").strip() for item in providers)
         )
 
-    @staticmethod
     def _consumed_no_progress_failure(
+        self,
         paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
         implementation: Mapping[str, Any],
@@ -9144,11 +9543,25 @@ class DatabasePortalExecutionBridge:
             return None
 
         task_id = str(implementation.get("task_id") or "").strip()
-        canonical_task_cid = str(
-            implementation.get("canonical_task_cid")
-            or implementation.get("task_cid")
-            or ""
+        result_task_cid = str(implementation.get("task_cid") or "").strip()
+        result_canonical_task_cid = str(
+            implementation.get("canonical_task_cid") or ""
         ).strip()
+        result_canonical_task_key = str(
+            implementation.get("canonical_task_key") or ""
+        ).strip()
+        database_task_cid = str(binding.get("task_cid") or "").strip()
+        try:
+            projection_text = self._verify_projection(paths, binding)
+            portal_task_key, portal_task_cid = (
+                self._portal_completion_event_identity(
+                    paths=paths,
+                    projection_text=projection_text,
+                    binding=binding,
+                )
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
         portal_attempt = implementation.get("attempt")
         log_value = str(implementation.get("log_path") or "").strip()
         context_value = str(
@@ -9160,7 +9573,17 @@ class DatabasePortalExecutionBridge:
         baseline = str(implementation.get("baseline_ref") or "").strip()
         if (
             task_id != str(binding.get("task_alias") or "")
-            or canonical_task_cid != str(binding.get("task_cid") or "")
+            or not database_task_cid
+            or not (result_task_cid or result_canonical_task_cid)
+            or (
+                result_task_cid
+                and result_task_cid != portal_task_cid
+            )
+            or (
+                result_canonical_task_cid
+                and result_canonical_task_cid != portal_task_cid
+            )
+            or result_canonical_task_key != portal_task_key
             or type(portal_attempt) is not int
             or portal_attempt < 1
             or not log_value
@@ -9283,7 +9706,7 @@ class DatabasePortalExecutionBridge:
             "control_repository_tree_id": str(
                 binding.get("repository_tree_id") or ""
             ),
-            "task_cid": canonical_task_cid,
+            "task_cid": database_task_cid,
             "task_contract_digest": str(
                 binding.get("task_contract_digest") or ""
             ),
@@ -9464,6 +9887,14 @@ class DatabasePortalExecutionBridge:
             events = self._verified_event_chain(paths)
         except DatabasePortalBridgeError:
             return None
+        projection_text = self._verify_projection(paths, binding)
+        portal_task_key, portal_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
+        )
         event_matches = [
             (index, event)
             for index, event in enumerate(events)
@@ -9471,7 +9902,8 @@ class DatabasePortalExecutionBridge:
             == "implementation_post_dispatch_capacity_retry"
             and event.get("task_id")
             == str(binding.get("task_alias") or "")
-            and event.get("canonical_task_cid") == str(attempt.task_cid)
+            and event.get("canonical_task_cid") == portal_task_cid
+            and event.get("canonical_task_key") == portal_task_key
             and isinstance(event.get("post_dispatch_capacity_retry"), Mapping)
         ]
         if len(event_matches) != 1:
@@ -9621,7 +10053,7 @@ class DatabasePortalExecutionBridge:
             or proof.get("task_id")
             != str(binding.get("task_alias") or "")
             or proof.get("attempt") != portal_attempt
-            or proof.get("task_revision_cid") != str(attempt.task_cid)
+            or proof.get("task_revision_cid") != portal_task_cid
             or proof.get("provider_dispatched") is not True
             or proof.get("attempt_consumed") is not True
             or set(capacity) != capacity_fields
@@ -9872,10 +10304,11 @@ class DatabasePortalExecutionBridge:
             _POOLED_WORKTREE_CREATE_DEFERRAL_BACKOFF_SECONDS,
         )
 
-    @staticmethod
     def _same_claim_inflight_identity(
+        self,
         result: Mapping[str, Any],
         *,
+        paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
     ) -> tuple[str, int, str] | None:
         """Return the exact claim-private lifecycle identity for a live provider.
@@ -9890,18 +10323,30 @@ class DatabasePortalExecutionBridge:
         implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return None
+        try:
+            projection_text = self._verify_projection(paths, binding)
+            portal_task_key, portal_task_cid = (
+                self._portal_completion_event_identity(
+                    paths=paths,
+                    projection_text=projection_text,
+                    binding=binding,
+                )
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
         task_id = implementation.get("task_id")
+        task_cid = implementation.get("task_cid")
         canonical_task_cid = implementation.get("canonical_task_cid")
+        canonical_task_key = implementation.get("canonical_task_key")
         portal_attempt = implementation.get("attempt")
         worktree_path = implementation.get("worktree_path")
         if (
             implementation.get("skipped") is not True
             or implementation.get("reason") != "inflight_process"
             or task_id != binding.get("task_alias")
-            or (
-                canonical_task_cid not in (None, "")
-                and canonical_task_cid != binding.get("task_cid")
-            )
+            or task_cid != portal_task_cid
+            or canonical_task_cid != portal_task_cid
+            or canonical_task_key != portal_task_key
             or type(portal_attempt) is not int
             or portal_attempt < 1
             or not isinstance(worktree_path, str)
@@ -9918,7 +10363,7 @@ class DatabasePortalExecutionBridge:
         *,
         paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
-    ) -> tuple[str, str, int, str, str, str] | None:
+    ) -> tuple[str, str, str, int, str, str, str] | None:
         """Bind one queued candidate to this claim-private Portal projection.
 
         A successful provider pass can finish by handing its validated
@@ -9939,19 +10384,21 @@ class DatabasePortalExecutionBridge:
         ):
             return None
         projection_text = self._verify_projection(paths, binding)
-        _portal_task_key, portal_task_cid = self._portal_completion_event_identity(
+        portal_task_key, portal_task_cid = self._portal_completion_event_identity(
             paths=paths,
             projection_text=projection_text,
             binding=binding,
         )
         task_id = implementation.get("task_id")
         task_cid = implementation.get("task_cid")
+        canonical_task_key = implementation.get("canonical_task_key")
         canonical_task_cid = implementation.get("canonical_task_cid")
         portal_attempt = implementation.get("attempt")
         implementation_commit = str(
             implementation.get("implementation_commit") or ""
         )
         request_id = str(merge_result.get("request_id") or "")
+        merge_task_key = merge_result.get("canonical_task_key")
         merge_task_cid = merge_result.get("canonical_task_cid")
         merge_commit = str(merge_result.get("implementation_commit") or "")
         if (
@@ -9961,6 +10408,7 @@ class DatabasePortalExecutionBridge:
             or implementation.get("provider_dispatched") is not True
             or task_id != binding.get("task_alias")
             or task_cid != portal_task_cid
+            or canonical_task_key != portal_task_key
             or canonical_task_cid != portal_task_cid
             or type(portal_attempt) is not int
             or portal_attempt < 1
@@ -9972,6 +10420,7 @@ class DatabasePortalExecutionBridge:
             or merge_result.get("queued") is not True
             or merge_result.get("merged") is not False
             or merge_result.get("reason") != "merge_queued"
+            or merge_task_key != portal_task_key
             or merge_task_cid != portal_task_cid
             or merge_commit != implementation_commit
             or re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", implementation_commit)
@@ -9983,6 +10432,7 @@ class DatabasePortalExecutionBridge:
             return None
         return (
             str(task_id),
+            portal_task_key,
             portal_task_cid,
             portal_attempt,
             implementation_commit,
@@ -10011,7 +10461,7 @@ class DatabasePortalExecutionBridge:
     def _pending_merge_state_is_current(
         paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
-        pending_identity: tuple[str, str, int, str, str, str],
+        pending_identity: tuple[str, str, str, int, str, str, str],
     ) -> bool:
         """Verify Portal still owns the exact candidate awaiting integration."""
 
@@ -10019,9 +10469,15 @@ class DatabasePortalExecutionBridge:
             paths.state,
             noun="Portal pending-merge state",
         )
-        alias, portal_task_cid, portal_attempt, commit, _request_id, _path = (
-            pending_identity
-        )
+        (
+            alias,
+            portal_task_key,
+            portal_task_cid,
+            portal_attempt,
+            commit,
+            _request_id,
+            _path,
+        ) = pending_identity
         statuses = state.get("task_statuses")
         attempts = state.get("implementation_attempts")
         attempts_by_cid = state.get("implementation_attempts_by_cid")
@@ -10035,6 +10491,7 @@ class DatabasePortalExecutionBridge:
             and isinstance(attempts_by_cid, Mapping)
             and attempts_by_cid.get(portal_task_cid) == portal_attempt
             and state.get("last_implementation_task_id") == alias
+            and state.get("last_implementation_task_key") == portal_task_key
             and state.get("last_implementation_task_cid") == portal_task_cid
             and state.get("last_implementation_commit") == commit
             and type(state.get("last_implementation_returncode")) is int
@@ -10047,6 +10504,7 @@ class DatabasePortalExecutionBridge:
         *,
         attempt: Any,
         binding: Mapping[str, Any],
+        portal_task_cid: str,
     ) -> bool:
         """Keep one verified Grok-quota handoff inside the same Portal claim.
 
@@ -10094,6 +10552,8 @@ class DatabasePortalExecutionBridge:
             and implementation.get("returncode") != 0
             and implementation.get("task_id") == binding.get("task_alias")
             and implementation.get("canonical_task_cid")
+            == portal_task_cid
+            and str(binding.get("task_cid") or "")
             == str(getattr(attempt, "task_cid", "") or "")
             and type(portal_attempt) is int
             and portal_attempt > 0
@@ -10108,7 +10568,7 @@ class DatabasePortalExecutionBridge:
             and authority.get("canonical_task_cid")
             == implementation.get("canonical_task_cid")
             and authority.get("canonical_task_cid")
-            == str(getattr(attempt, "task_cid", "") or "")
+            == portal_task_cid
             and authority.get("attempt") == implementation.get("attempt")
             and authority.get("primary_returncode")
             == implementation.get("returncode")
@@ -10467,6 +10927,14 @@ class DatabasePortalExecutionBridge:
             noun="protected-path active snapshot",
         )
         alias = str(binding.get("task_alias") or "")
+        projection_text = self._verify_projection(paths, binding)
+        portal_task_key, portal_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
+        )
         if (
             incident.get("schema") != "implementation-protected-path-incident-v1"
             or incident.get("reason") != "implementation_protected_path_mutated"
@@ -10476,6 +10944,10 @@ class DatabasePortalExecutionBridge:
             or active.get("ephemeral_worktree") is not True
             or incident.get("task_id") != alias
             or active.get("task_id") != alias
+            or incident.get("canonical_task_key") != portal_task_key
+            or incident.get("canonical_task_cid") != portal_task_cid
+            or active.get("canonical_task_key") != portal_task_key
+            or active.get("canonical_task_cid") != portal_task_cid
             or incident.get("workspace_path") != active.get("workspace_path")
             or incident.get("attempt") != active.get("attempt")
         ):
@@ -10613,6 +11085,8 @@ class DatabasePortalExecutionBridge:
             for event in events
             if event.get("type") == "implementation_protected_path_mutated"
             and event.get("task_id") == alias
+            and event.get("canonical_task_key") == portal_task_key
+            and event.get("canonical_task_cid") == portal_task_cid
             and event.get("attempt") == portal_attempt
             and event.get("workspace_path") == incident.get("workspace_path")
             and event.get("mutations") == mutations
@@ -10638,6 +11112,8 @@ class DatabasePortalExecutionBridge:
             "schema": DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA,
             "task_cid": str(attempt.task_cid),
             "task_alias": alias,
+            "canonical_task_key": portal_task_key,
+            "canonical_task_cid": portal_task_cid,
             "attempt_id": str(attempt.attempt_id),
             "claim_id": str(attempt.claim_id),
             "lease_id": str(getattr(attempt, "lease_id", "") or ""),
@@ -10666,6 +11142,12 @@ class DatabasePortalExecutionBridge:
         guard = {
             "schema": DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA,
             "task_id": str(intent.get("task_alias") or ""),
+            "canonical_task_key": str(
+                intent.get("canonical_task_key") or ""
+            ),
+            "canonical_task_cid": str(
+                intent.get("canonical_task_cid") or ""
+            ),
             "attempt": int(intent.get("portal_attempt") or 0),
             "workspace_path": str(intent.get("workspace_path") or ""),
             "clearance_id": str(intent.get("clearance_id") or ""),
@@ -10687,6 +11169,7 @@ class DatabasePortalExecutionBridge:
         self,
         *,
         attempt: Any,
+        paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
         intent: Mapping[str, Any],
     ) -> dict[str, Any]:
@@ -10694,6 +11177,8 @@ class DatabasePortalExecutionBridge:
             "schema",
             "task_cid",
             "task_alias",
+            "canonical_task_key",
+            "canonical_task_cid",
             "attempt_id",
             "claim_id",
             "lease_id",
@@ -10718,6 +11203,14 @@ class DatabasePortalExecutionBridge:
         protected_paths = intent.get("protected_paths")
         mutated_paths = intent.get("mutated_paths")
         shared_digests = intent.get("shared_path_digests")
+        projection_text = self._verify_projection(paths, binding)
+        portal_task_key, portal_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
+        )
         if (
             set(intent) != expected_fields
             or intent.get("schema")
@@ -10725,6 +11218,8 @@ class DatabasePortalExecutionBridge:
             or intent_id != _sha256_bytes(_canonical_json(body))
             or intent.get("task_cid") != str(attempt.task_cid)
             or intent.get("task_alias") != str(binding.get("task_alias") or "")
+            or intent.get("canonical_task_key") != portal_task_key
+            or intent.get("canonical_task_cid") != portal_task_cid
             or intent.get("attempt_id") != str(attempt.attempt_id)
             or intent.get("claim_id") != str(attempt.claim_id)
             or intent.get("lease_id")
@@ -10805,6 +11300,7 @@ class DatabasePortalExecutionBridge:
     ) -> dict[str, Any]:
         verified_intent = self._verify_protected_path_recovery_intent(
             attempt=attempt,
+            paths=paths,
             binding=binding,
             intent=intent,
         )
@@ -11141,6 +11637,7 @@ class DatabasePortalExecutionBridge:
             self._verify_protected_path_attempt_boundary(paths)
             intent = self._verify_protected_path_recovery_intent(
                 attempt=attempt,
+                paths=paths,
                 binding=binding,
                 intent=intent,
             )
@@ -11566,22 +12063,53 @@ class DatabasePortalExecutionBridge:
             return True
         return self._git_commit_object_exists(commit)
 
+    def _verified_portal_seed_state_identity(
+        self,
+        *,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> tuple[str, str]:
+        """Return the projection-local identity owned by Portal state.
+
+        Database retry seed events and their nested receipts remain bound to
+        the authoritative DuckDB task CID.  Portal's mutable attempt counters
+        and ordinary lifecycle events instead use the exact path-bound task
+        identity derived from the verified immutable projection.
+        """
+
+        projection_text = self._verify_projection(paths, binding)
+        return self._portal_completion_event_identity(
+            paths=paths,
+            projection_text=projection_text,
+            binding=binding,
+        )
+
     def _validation_retry_seed_event(
         self,
         *,
         attempt: Any,
         paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Bind this attempt to its exact durable validation-retry seed event."""
 
-        alias = str(getattr(attempt, "task_alias", "") or "")
-        task_cid = str(attempt.task_cid)
+        alias = str(binding.get("task_alias") or "")
+        database_task_cid = str(binding.get("task_cid") or "")
+        database_task_key = str(binding.get("canonical_task_key") or "")
+        if (
+            alias != str(getattr(attempt, "task_alias", "") or "")
+            or database_task_cid != str(attempt.task_cid)
+            or not database_task_key
+        ):
+            raise DatabasePortalBridgeError(
+                "validation-retry seed-conflict recovery binding is foreign"
+            )
         matching = [
             event
             for event in self._verified_event_chain(paths)
             if event.get("type") == "database_portal_validation_retry_seeded"
             and event.get("task_id") == alias
-            and event.get("canonical_task_cid") == task_cid
+            and event.get("canonical_task_cid") == database_task_cid
             and str(event.get("target_database_attempt_id") or "")
             == str(attempt.attempt_id)
         ]
@@ -11589,25 +12117,115 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "validation-retry seed-conflict recovery has no exact seed event"
             )
-        return matching[0]
+        event = matching[0]
+        receipt = event.get("validation_retry_receipt")
+        expected_receipt_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "portal_attempt",
+            "typed_retry_generation",
+            "retry_budget_basis",
+            "legacy_database_attempts_excluded",
+            "max_task_attempts",
+            "remaining_task_attempts",
+            "attempt_consumed",
+            "provider_dispatched",
+            "backoff_seconds",
+            "implementation_commit",
+            "rescue_branch",
+            "binding_id",
+            "events_digest",
+            "event_stream_id",
+            "expected_output_event_id",
+            "proposal_event_id",
+            "preservation_event_id",
+            "implementation_event_id",
+            "proposal_id",
+            "proposal_receipt_id",
+            "proposal_policy_id",
+            "validation_receipt_id",
+            "failure_review_receipt_id",
+            "changed_paths",
+            "authoritative_validation_executed",
+            "proposal_policy_accepted",
+            "output_policy_passed",
+            "denial_findings",
+            "receipt_id",
+        }
+        receipt_body = dict(receipt) if isinstance(receipt, Mapping) else {}
+        receipt_id = receipt_body.pop("receipt_id", None)
+        seed_identity_body = {
+            key: value
+            for key, value in event.items()
+            if key not in _PORTAL_EVENT_ENVELOPE_FIELDS and key != "seed_id"
+        }
+        if (
+            set(event)
+            != _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[
+                "database_portal_validation_retry_seeded"
+            ]
+            or event.get("schema")
+            != DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA
+            or event.get("canonical_task_key") != database_task_key
+            or event.get("target_claim_id") != str(attempt.claim_id)
+            or not str(event.get("source_database_attempt_id") or "")
+            or event.get("source_database_attempt_id")
+            == str(attempt.attempt_id)
+            or event.get("completion_authoritative") is not False
+            or not isinstance(receipt, Mapping)
+            or set(receipt) != expected_receipt_fields
+            or receipt.get("schema") != DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA
+            or receipt.get("task_cid") != database_task_cid
+            or receipt.get("task_alias") != alias
+            or receipt.get("attempt_id")
+            != event.get("source_database_attempt_id")
+            or receipt.get("receipt_id")
+            != event.get("source_retry_receipt_id")
+            or receipt.get("implementation_commit")
+            != event.get("implementation_commit")
+            or receipt.get("rescue_branch") != event.get("rescue_branch")
+            or receipt.get("changed_paths") != event.get("changed_paths")
+            or receipt.get("attempt_consumed") is not True
+            or receipt.get("provider_dispatched") is not True
+            or receipt_id != _sha256_bytes(_canonical_json(receipt_body))
+            or event.get("seed_id")
+            != _sha256_bytes(_canonical_json(seed_identity_body))
+        ):
+            raise DatabasePortalBridgeError(
+                "validation-retry seed-conflict recovery seed event is not exact"
+            )
+        return event
 
     def _state_seed_from_validation_retry_seed_event(
         self,
         *,
         attempt: Any,
         seed_event: Mapping[str, Any],
+        portal_task_key: str,
+        portal_task_cid: str,
     ) -> dict[str, Any]:
         alias = str(getattr(attempt, "task_alias", "") or "")
-        task_cid = str(attempt.task_cid)
+        database_task_cid = str(attempt.task_cid)
         receipt = seed_event.get("validation_retry_receipt")
         source_portal_attempt = (
             receipt.get("portal_attempt") if isinstance(receipt, Mapping) else None
         )
         if (
             seed_event.get("task_id") != alias
-            or seed_event.get("canonical_task_cid") != task_cid
+            or seed_event.get("canonical_task_cid") != database_task_cid
             or type(seed_event.get("canonical_task_key") or "") is not str
             or not str(seed_event.get("canonical_task_key") or "")
+            or not portal_task_key
+            or not portal_task_cid
             or isinstance(source_portal_attempt, bool)
             or not isinstance(source_portal_attempt, int)
             or source_portal_attempt < 1
@@ -11617,12 +12235,12 @@ class DatabasePortalExecutionBridge:
             )
         return {
             "implementation_attempts": {alias: source_portal_attempt},
-            "implementation_attempts_by_cid": {task_cid: source_portal_attempt},
+            "implementation_attempts_by_cid": {
+                portal_task_cid: source_portal_attempt
+            },
             "last_implementation_task_id": alias,
-            "last_implementation_task_key": str(
-                seed_event.get("canonical_task_key") or ""
-            ),
-            "last_implementation_task_cid": task_cid,
+            "last_implementation_task_key": portal_task_key,
+            "last_implementation_task_cid": portal_task_cid,
             "last_implementation_returncode": 1,
             "last_implementation_branch": str(
                 seed_event.get("rescue_branch") or ""
@@ -11637,6 +12255,7 @@ class DatabasePortalExecutionBridge:
         *,
         attempt: Any,
         paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
     ) -> dict[str, Any]:
         """Prove leftover seed-conflict state is identity-bound Portal progress."""
 
@@ -11647,6 +12266,13 @@ class DatabasePortalExecutionBridge:
         seed_event = self._validation_retry_seed_event(
             attempt=attempt,
             paths=paths,
+            binding=binding,
+        )
+        portal_task_key, portal_task_cid = (
+            self._verified_portal_seed_state_identity(
+                paths=paths,
+                binding=binding,
+            )
         )
         try:
             current_state = json.loads(paths.state.read_text(encoding="utf-8"))
@@ -11657,6 +12283,8 @@ class DatabasePortalExecutionBridge:
         state_seed = self._state_seed_from_validation_retry_seed_event(
             attempt=attempt,
             seed_event=seed_event,
+            portal_task_key=portal_task_key,
+            portal_task_cid=portal_task_cid,
         )
         if not self._validation_retry_seed_state_is_compatible(
             current_state=current_state,
@@ -11768,11 +12396,14 @@ class DatabasePortalExecutionBridge:
         repository stays blocked.
         """
 
-        self._record_for_attempt(self.task_source, attempt)
-        paths = self._paths(attempt)
+        paths, binding = self._recovery_attempt_binding(
+            attempt,
+            recovery_name="validation-retry seed-conflict recovery",
+        )
         observation = self._observe_validation_retry_seed_conflict_state(
             attempt=attempt,
             paths=paths,
+            binding=binding,
         )
         final_path = paths.root / _VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_FILENAME
         if final_path.is_file():
@@ -11804,6 +12435,7 @@ class DatabasePortalExecutionBridge:
         *,
         attempt: Any,
         paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
     ) -> dict[str, Any]:
         """Prove the leftover terminal block was a pre-dispatch worktree add."""
 
@@ -11811,48 +12443,26 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "pooled-worktree create recovery artifacts are incomplete"
             )
-        alias = str(getattr(attempt, "task_alias", "") or "")
-        task_cid = str(attempt.task_cid)
-        candidates = [
+        alias = str(binding.get("task_alias") or "")
+        projection_text = self._verify_projection(paths, binding)
+        portal_task_key, portal_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
+        )
+        finished = [
             event
             for event in self._verified_event_chain(paths)
             if event.get("type") == "implementation_finished"
             and str(event.get("task_id") or "") == alias
+            and str(event.get("task_cid") or "") == portal_task_cid
+            and str(event.get("canonical_task_cid") or "")
+            == portal_task_cid
+            and str(event.get("canonical_task_key") or "")
+            == portal_task_key
         ]
-
-        def event_cid_matches(event: Mapping[str, Any], expected: str) -> bool:
-            observed = {
-                str(event.get(field) or "")
-                for field in ("canonical_task_cid", "task_cid")
-                if str(event.get(field) or "")
-            }
-            return not observed or observed == {expected}
-
-        finished = [
-            event for event in candidates if event_cid_matches(event, task_cid)
-        ]
-        if not finished and candidates:
-            # Portal intentionally derives a projection-private semantic CID
-            # for lifecycle events.  Resolve that CID only through the exact
-            # immutable database-attempt binding; it is never a replacement
-            # for the authoritative DuckDB task CID.
-            bound_paths, binding = self._recovery_attempt_binding(
-                attempt,
-                recovery_name="pooled-worktree create recovery",
-            )
-            projection_text = self._verify_projection(bound_paths, binding)
-            _portal_task_key, portal_task_cid = (
-                self._portal_completion_event_identity(
-                    paths=bound_paths,
-                    projection_text=projection_text,
-                    binding=binding,
-                )
-            )
-            finished = [
-                event
-                for event in candidates
-                if event_cid_matches(event, portal_task_cid)
-            ]
         if not finished:
             raise DatabasePortalBridgeError(
                 "pooled-worktree create recovery has no implementation_finished event"
@@ -11971,11 +12581,14 @@ class DatabasePortalExecutionBridge:
         closed proof that the crash-window leftover cleared.
         """
 
-        self._record_for_attempt(self.task_source, attempt)
-        paths = self._paths(attempt)
+        paths, binding = self._recovery_attempt_binding(
+            attempt,
+            recovery_name="pooled-worktree create recovery",
+        )
         observation = self._observe_pooled_worktree_create_failure(
             attempt=attempt,
             paths=paths,
+            binding=binding,
         )
         final_path = paths.root / _POOLED_WORKTREE_CREATE_RECOVERY_FILENAME
         if final_path.is_file():
@@ -12144,14 +12757,59 @@ class DatabasePortalExecutionBridge:
 
         events = self._verified_event_chain(paths)
         alias = str(binding.get("task_alias") or "")
-        task_cid = str(attempt.task_cid)
+        database_task_cid = str(attempt.task_cid)
+        projection_text = self._verify_projection(paths, binding)
+        portal_task_key, portal_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
+        )
+        # The validation scheduler derives its objective authority from the
+        # parsed PortalTask: explicit goal ID, then explicit objective ID,
+        # then parsed identity P.  Lifecycle events bind the same verified
+        # projection after adding its exact path authority (L).  Reproduce
+        # that precedence from the immutable projection instead of equating
+        # objective authority with database identity D or lifecycle identity
+        # L.
+        from .implementation_daemon import parse_task_text
+
+        try:
+            projected_tasks = parse_task_text(
+                projection_text,
+                path=paths.task_projection,
+                task_header_prefix=f"## {alias}",
+            )
+        except (TypeError, ValueError):
+            return None
+        if len(projected_tasks) != 1:
+            return None
+        projected_task = projected_tasks[0]
+        parsed_task_key = str(projected_task.canonical_task_key or "")
+        parsed_task_cid = str(projected_task.canonical_task_cid or "")
+        validation_objective_id = str(
+            projected_task.metadata.get("goal id")
+            or projected_task.metadata.get("objective id")
+            or parsed_task_cid
+        ).strip()
+        if (
+            projected_task.task_id != alias
+            or not parsed_task_key
+            or not parsed_task_cid
+            or not validation_objective_id
+        ):
+            return None
         matching_finished = [
             (index, event)
             for index, event in enumerate(events)
             if event.get("type") == "implementation_finished"
             and str(event.get("task_id") or "") == alias
-            and str(event.get("canonical_task_cid") or event.get("task_cid") or "")
-            == task_cid
+            and str(event.get("canonical_task_cid") or "")
+            == portal_task_cid
+            and str(event.get("task_cid") or "") == portal_task_cid
+            and str(event.get("canonical_task_key") or "")
+            == portal_task_key
         ]
         if not matching_finished:
             return None
@@ -12173,6 +12831,9 @@ class DatabasePortalExecutionBridge:
             return None
         if implementation is not None:
             for field in (
+                "task_id",
+                "task_cid",
+                "canonical_task_cid",
                 "attempt",
                 "returncode",
                 "attempt_consumed",
@@ -12285,7 +12946,7 @@ class DatabasePortalExecutionBridge:
             or not changed_paths
             or len(set(changed_paths)) != len(changed_paths)
             or dag.get("proposal_receipt_id") != proposal_receipt_id
-            or dag.get("objective_id") != task_cid
+            or dag.get("objective_id") != validation_objective_id
             or tuple(dag.get("changed_paths") or ()) != changed_paths
             or preservation.get("preserved") is not True
             or preservation.get("implementation_commit") != commit
@@ -12304,7 +12965,10 @@ class DatabasePortalExecutionBridge:
             for index, event in enumerate(events[:finished_index])
             if event.get("type") == "failed_validation_worktree_preserved"
             and str(event.get("task_id") or "") == alias
-            and str(event.get("canonical_task_cid") or "") == task_cid
+            and str(event.get("canonical_task_cid") or "")
+            == portal_task_cid
+            and str(event.get("canonical_task_key") or "")
+            == portal_task_key
             and event.get("attempt") == finished.get("attempt")
             and event.get("preserved") is True
             and event.get("implementation_commit") == commit
@@ -12319,7 +12983,10 @@ class DatabasePortalExecutionBridge:
             for index, event in enumerate(events[:preservation_index])
             if event.get("type") == "implementation_proposal_validated"
             and str(event.get("task_id") or "") == alias
-            and str(event.get("canonical_task_cid") or "") == task_cid
+            and str(event.get("canonical_task_cid") or "")
+            == portal_task_cid
+            and str(event.get("canonical_task_key") or "")
+            == portal_task_key
             and event.get("attempted") is True
             and event.get("accepted") is True
             and event.get("reason_codes") in ([], ())
@@ -12336,7 +13003,10 @@ class DatabasePortalExecutionBridge:
             for index, event in enumerate(events[:proposal_index])
             if event.get("type") == "implementation_expected_outputs_checked"
             and str(event.get("task_id") or "") == alias
-            and str(event.get("canonical_task_cid") or "") == task_cid
+            and str(event.get("canonical_task_cid") or "")
+            == portal_task_cid
+            and str(event.get("canonical_task_key") or "")
+            == portal_task_key
             and event.get("proposal_id") == proposal_id
             and event.get("passed") is True
             and event.get("issues") in ([], ())
@@ -12352,7 +13022,7 @@ class DatabasePortalExecutionBridge:
             "schema": DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
             "disposition": "retry",
             "reason": "declared_validation_failed",
-            "task_cid": task_cid,
+            "task_cid": database_task_cid,
             "task_alias": alias,
             "attempt_id": str(attempt.attempt_id),
             "claim_id": str(attempt.claim_id),
@@ -12416,7 +13086,15 @@ class DatabasePortalExecutionBridge:
 
         events = self._verified_event_chain(paths)
         alias = str(binding.get("task_alias") or "")
-        task_cid = str(attempt.task_cid)
+        database_task_cid = str(attempt.task_cid)
+        projection_text = self._verify_projection(paths, binding)
+        portal_task_key, portal_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
+        )
         preservation_type = "protected_path_interrupted_worktree_preserved"
         protected_reason = "implementation_protected_path_mutated"
         marker_present = any(
@@ -12484,6 +13162,17 @@ class DatabasePortalExecutionBridge:
         seed_receipt: Mapping[str, Any] | None = None
         if seed_event is not None:
             seed_type = str(seed_event.get("type") or "")
+            if seed_type == "database_portal_validation_retry_seeded":
+                verified_validation_seed = self._validation_retry_seed_event(
+                    attempt=attempt,
+                    paths=paths,
+                    binding=binding,
+                )
+                if dict(verified_validation_seed) != dict(seed_event):
+                    raise DatabasePortalBridgeError(
+                        "protected-path preservation validation-retry seed "
+                        "differs from sealed authority"
+                    )
             seed_receipt_field = {
                 "database_portal_validation_retry_seeded": (
                     "validation_retry_receipt"
@@ -12529,7 +13218,8 @@ class DatabasePortalExecutionBridge:
                 != _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[seed_type]
                 or seed_event.get("schema") != seed_schema
                 or seed_event.get("task_id") != alias
-                or seed_event.get("canonical_task_cid") != task_cid
+                or seed_event.get("canonical_task_cid")
+                != database_task_cid
                 or seed_event.get("target_database_attempt_id")
                 != str(attempt.attempt_id)
                 or seed_event.get("target_claim_id") != str(attempt.claim_id)
@@ -12545,7 +13235,8 @@ class DatabasePortalExecutionBridge:
                 != seed_event.get("source_retry_receipt_id")
                 or candidate_seed_receipt.get("attempt_id")
                 != seed_event.get("source_database_attempt_id")
-                or candidate_seed_receipt.get("task_cid") != task_cid
+                or candidate_seed_receipt.get("task_cid")
+                != database_task_cid
                 or candidate_seed_receipt.get("task_alias") != alias
                 or candidate_seed_receipt.get("attempt_consumed") is not True
                 or candidate_seed_receipt.get("provider_dispatched") is not True
@@ -12661,17 +13352,21 @@ class DatabasePortalExecutionBridge:
         )
         if (
             selected_event.get("task_id") != alias
-            or selected_event.get("canonical_task_cid") != task_cid
+            or selected_event.get("canonical_task_cid") != portal_task_cid
+            or selected_event.get("canonical_task_key") != portal_task_key
             or snapshot_event.get("task_id") != alias
-            or snapshot_event.get("canonical_task_cid") != task_cid
+            or snapshot_event.get("canonical_task_cid") != portal_task_cid
+            or snapshot_event.get("canonical_task_key") != portal_task_key
             or snapshot_event.get("attempt") != portal_attempt
             or snapshot_event.get("workspace_path") != workspace_path
             or started_event.get("task_id") != alias
-            or started_event.get("canonical_task_cid") != task_cid
+            or started_event.get("canonical_task_cid") != portal_task_cid
+            or started_event.get("canonical_task_key") != portal_task_key
             or started_event.get("attempt") != portal_attempt
             or started_event.get("provider_dispatched") is not False
             or kernel_event.get("task_id") != alias
-            or kernel_event.get("canonical_task_cid") != task_cid
+            or kernel_event.get("canonical_task_cid") != portal_task_cid
+            or kernel_event.get("canonical_task_key") != portal_task_key
             or kernel_event.get("attempt") != portal_attempt
             or not branch.startswith("implementation/")
             or not workspace_path
@@ -12700,7 +13395,8 @@ class DatabasePortalExecutionBridge:
                 )
             )
             or mutation_event.get("task_id") != alias
-            or mutation_event.get("canonical_task_cid") != task_cid
+            or mutation_event.get("canonical_task_cid") != portal_task_cid
+            or mutation_event.get("canonical_task_key") != portal_task_key
             or mutation_event.get("attempt") != portal_attempt
             or mutation_event.get("reason") != protected_reason
             or mutation_event.get("workspace_path") != workspace_path
@@ -12711,7 +13407,8 @@ class DatabasePortalExecutionBridge:
                 for key, value in preservation_event_body.items()
             )
             or preserved_event.get("task_id") != alias
-            or preserved_event.get("canonical_task_cid") != task_cid
+            or preserved_event.get("canonical_task_cid") != portal_task_cid
+            or preserved_event.get("canonical_task_key") != portal_task_key
             or preserved_event.get("attempt") != portal_attempt
             or preserved_event.get("branch") != branch
             or preserved_event.get("worktree_path") != workspace_path
@@ -12721,8 +13418,9 @@ class DatabasePortalExecutionBridge:
             or commit_result.get("commit") != preserved_commit
             or implementation_commit != preserved_commit
             or finished_event.get("task_id") != alias
-            or finished_event.get("task_cid") != task_cid
-            or finished_event.get("canonical_task_cid") != task_cid
+            or finished_event.get("task_cid") != portal_task_cid
+            or finished_event.get("canonical_task_cid") != portal_task_cid
+            or finished_event.get("canonical_task_key") != portal_task_key
             or finished_event.get("attempt") != portal_attempt
             or finished_event.get("branch") != branch
             or finished_event.get("baseline_ref") != baseline_commit
@@ -12802,7 +13500,7 @@ class DatabasePortalExecutionBridge:
             "schema": DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
             "disposition": "protected_candidate_preserved",
             "reason": protected_reason,
-            "task_cid": task_cid,
+            "task_cid": database_task_cid,
             "task_alias": alias,
             "attempt_id": str(attempt.attempt_id),
             "claim_id": str(attempt.claim_id),
@@ -12881,12 +13579,32 @@ class DatabasePortalExecutionBridge:
             return None
 
         events = self._verified_event_chain(paths)
+        database_task_cid = str(attempt.task_cid)
+        projection_text = self._verify_projection(paths, binding)
+        portal_task_key, portal_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
+        )
         seed_event: Mapping[str, Any] | None = None
         terminal_events = events
         first_type = str(events[0].get("type") or "") if events else ""
         if first_type in _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS:
             seed_event = events[0]
             terminal_events = events[1:]
+            if first_type == "database_portal_validation_retry_seeded":
+                try:
+                    verified_validation_seed = self._validation_retry_seed_event(
+                        attempt=attempt,
+                        paths=paths,
+                        binding=binding,
+                    )
+                except DatabasePortalBridgeError:
+                    return None
+                if dict(verified_validation_seed) != dict(seed_event):
+                    return None
             seed_receipt_field = {
                 "database_portal_validation_retry_seeded": (
                     "validation_retry_receipt"
@@ -12934,7 +13652,7 @@ class DatabasePortalExecutionBridge:
                 or seed_event.get("task_id")
                 != str(binding.get("task_alias") or "")
                 or seed_event.get("canonical_task_cid")
-                != str(attempt.task_cid)
+                != database_task_cid
                 or seed_event.get("target_database_attempt_id")
                 != str(attempt.attempt_id)
                 or seed_event.get("target_claim_id") != str(attempt.claim_id)
@@ -12948,7 +13666,7 @@ class DatabasePortalExecutionBridge:
                 != seed_event.get("source_retry_receipt_id")
                 or seed_receipt.get("attempt_id")
                 != seed_event.get("source_database_attempt_id")
-                or seed_receipt.get("task_cid") != str(attempt.task_cid)
+                or seed_receipt.get("task_cid") != database_task_cid
                 or seed_receipt.get("task_alias")
                 != str(binding.get("task_alias") or "")
                 or seed_receipt.get("attempt_consumed") is not True
@@ -12985,7 +13703,6 @@ class DatabasePortalExecutionBridge:
             daemon_pass,
         ) = terminal_events
         alias = str(binding.get("task_alias") or "")
-        task_cid = str(attempt.task_cid)
         portal_attempt = finished.get("attempt")
         returncode = finished.get("returncode")
         baseline_commit = str(started.get("baseline_ref") or "")
@@ -13007,14 +13724,14 @@ class DatabasePortalExecutionBridge:
         }
         if (
             selected.get("task_id") != alias
-            or selected.get("canonical_task_cid") != task_cid
+            or selected.get("canonical_task_cid") != portal_task_cid
             or selected.get("track") != "implementation"
             or not str(selected.get("title") or "")
-            or not canonical_task_key
+            or canonical_task_key != portal_task_key
             or not board_namespace
             or any(
                 event.get("task_id") != alias
-                or event.get("canonical_task_cid") != task_cid
+                or event.get("canonical_task_cid") != portal_task_cid
                 or event.get("canonical_task_key") != canonical_task_key
                 or event.get("board_namespace") != board_namespace
                 for event in (
@@ -13040,7 +13757,7 @@ class DatabasePortalExecutionBridge:
             )
             or protected_snapshot.get("workspace_path") != workspace_path
             or started.get("task_id") != alias
-            or started.get("canonical_task_cid") != task_cid
+            or started.get("canonical_task_cid") != portal_task_cid
             or started.get("attempt") != portal_attempt
             or started.get("provider_dispatched") is not False
             or not branch
@@ -13068,8 +13785,8 @@ class DatabasePortalExecutionBridge:
             or pool_release.get("base_commit") != baseline_commit
             or pool_release.get("worktree_path") != workspace_path
             or finished.get("task_id") != alias
-            or finished.get("task_cid") != task_cid
-            or finished.get("canonical_task_cid") != task_cid
+            or finished.get("task_cid") != portal_task_cid
+            or finished.get("canonical_task_cid") != portal_task_cid
             or finished.get("branch") != branch
             or finished.get("baseline_ref") != baseline_commit
             or isinstance(portal_attempt, bool)
@@ -13134,7 +13851,7 @@ class DatabasePortalExecutionBridge:
             "failure_class": "unclassified_post_dispatch_failure",
             "provider_capacity_classification": "unproven",
             "capacity_retry_proven": False,
-            "task_cid": task_cid,
+            "task_cid": database_task_cid,
             "task_alias": alias,
             "attempt_id": str(attempt.attempt_id),
             "claim_id": str(attempt.claim_id),
@@ -13342,6 +14059,14 @@ class DatabasePortalExecutionBridge:
         paths, binding = self._recovery_attempt_binding(
             attempt,
             recovery_name="protected reconciliation self-lock recovery",
+        )
+        projection_text = self._verify_projection(paths, binding)
+        portal_task_key, portal_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
         )
         try:
             seed = DatabasePortalProtectedPathPreserved(
@@ -13660,7 +14385,9 @@ class DatabasePortalExecutionBridge:
             != timeout_violation
             or finished.get("task_id")
             != str(getattr(attempt, "task_alias", "") or "")
-            or finished.get("task_cid") != str(attempt.task_cid)
+            or finished.get("task_cid") != portal_task_cid
+            or finished.get("canonical_task_cid") != portal_task_cid
+            or finished.get("canonical_task_key") != portal_task_key
             or finished.get("attempt") != 1
             or finished.get("returncode") != 1
             or finished.get("attempt_consumed") is not False
@@ -13674,7 +14401,9 @@ class DatabasePortalExecutionBridge:
             or finished.get("merge_result")
             != {"merged": False, "reason": "not_attempted"}
             or started.get("task_id") != finished.get("task_id")
-            or started.get("task_cid") != finished.get("task_cid")
+            or started.get("task_cid") != portal_task_cid
+            or started.get("canonical_task_cid") != portal_task_cid
+            or started.get("canonical_task_key") != portal_task_key
             or started.get("attempt") != 1
             or started.get("attempt_consumed") is not False
             or started.get("provider_dispatched") is not False
@@ -14076,7 +14805,7 @@ class DatabasePortalExecutionBridge:
                 "protected preservation reconciliation authority is unavailable"
             )
         alias = str(binding.get("task_alias") or "")
-        task_cid = str(attempt.task_cid)
+        database_task_cid = str(attempt.task_cid)
         baseline_commit = str(seed.get("baseline_commit") or "")
         preserved_commit = str(seed.get("preserved_commit") or "")
         rescue_branch = str(seed.get("rescue_branch") or "")
@@ -14123,7 +14852,7 @@ class DatabasePortalExecutionBridge:
         claim_metadata: Mapping[str, Any] | None = None
         try:
             from ..merge.checkout_lock import checkout_repository_id
-            from .implementation_daemon import utc_now
+            from .implementation_daemon import parse_task_text, utc_now
 
             daemon_queue = getattr(daemon, "merge_queue", None)
             daemon_repo_root = getattr(daemon, "repo_root", None)
@@ -14226,9 +14955,21 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "Portal protected-preservation task projection is unreadable"
                 ) from exc
+            projection_text = self._verify_projection(paths, binding)
+            projected_tasks = parse_task_text(
+                projection_text,
+                path=paths.task_projection,
+                task_header_prefix=f"## {alias}",
+            )
+            portal_task_key, portal_task_cid = (
+                self._portal_completion_event_identity(
+                    paths=paths,
+                    projection_text=projection_text,
+                    binding=binding,
+                )
+            )
             projection_already_terminal = bool(
-                _projection_status(self._verify_projection(paths, binding))
-                in _TERMINAL_STATUSES
+                _projection_status(projection_text) in _TERMINAL_STATUSES
             )
             task_status = (
                 str(getattr(tasks[0], "status", "") or "").strip().lower()
@@ -14237,11 +14978,15 @@ class DatabasePortalExecutionBridge:
             )
             if (
                 len(tasks) != 1
+                or tasks != projected_tasks
                 or str(getattr(tasks[0], "task_id", "") or "") != alias
-                or str(
-                    getattr(tasks[0], "canonical_task_cid", "") or ""
-                )
-                != task_cid
+                or not isinstance(getattr(tasks[0], "metadata", None), Mapping)
+                or tasks[0].metadata.get("database task cid")
+                != database_task_cid
+                or tasks[0].metadata.get("canonical task cid")
+                != database_task_cid
+                or tasks[0].metadata.get("canonical task key")
+                != str(binding.get("canonical_task_key") or "")
                 or (
                     task_status != "todo"
                     and not (
@@ -14257,9 +15002,21 @@ class DatabasePortalExecutionBridge:
             task = tasks[0]
             claim_path = claim_path_for(
                 alias,
-                canonical_task_cid=task_cid,
+                canonical_task_cid=portal_task_cid,
             )
             claim_metadata = build_claim(task, 1, utc_now())
+            if (
+                not isinstance(claim_metadata, Mapping)
+                or str(claim_metadata.get("task_id") or "") != alias
+                or str(claim_metadata.get("canonical_task_cid") or "")
+                != portal_task_cid
+                or str(claim_metadata.get("canonical_task_key") or "")
+                != portal_task_key
+            ):
+                raise DatabasePortalBridgeError(
+                    "protected preservation reconciliation task claim "
+                    "failed exact portal identity verification"
+                )
             acquired, claim_reason, _existing_claim = acquire_claim(
                 claim_path,
                 claim_metadata,
@@ -14403,7 +15160,11 @@ class DatabasePortalExecutionBridge:
                     and str(
                         getattr(request, "canonical_task_id", "") or ""
                     )
-                    == task_cid
+                    == portal_task_cid
+                    and str(
+                        getattr(request, "canonical_task_key", "") or ""
+                    )
+                    == portal_task_key
                     and str(getattr(request, "commit_sha", "") or "")
                     == preserved_commit
                     and isinstance(metadata, Mapping)
@@ -14575,7 +15336,9 @@ class DatabasePortalExecutionBridge:
                         != "worktree_reconciliation_candidate_queued"
                         or str(event.get("task_id") or "") != alias
                         or str(event.get("canonical_task_cid") or "")
-                        != task_cid
+                        != portal_task_cid
+                        or str(event.get("canonical_task_key") or "")
+                        != portal_task_key
                         or str(event.get("baseline_ref") or "")
                         != baseline_commit
                         or str(event.get("implementation_commit") or "")
@@ -14642,7 +15405,11 @@ class DatabasePortalExecutionBridge:
                     and str(
                         getattr(request, "canonical_task_id", "") or ""
                     )
-                    == task_cid
+                    == portal_task_cid
+                    and str(
+                        getattr(request, "canonical_task_key", "") or ""
+                    )
+                    == portal_task_key
                     and str(getattr(request, "commit_sha", "") or "")
                     == preserved_commit
                     and isinstance(metadata, Mapping)
@@ -14669,10 +15436,8 @@ class DatabasePortalExecutionBridge:
                 completion = self._ensure_protected_recovery_completion_event(
                     paths,
                     alias=alias,
-                    task_cid=task_cid,
-                    canonical_task_key=str(
-                        binding.get("canonical_task_key") or ""
-                    ),
+                    task_cid=portal_task_cid,
+                    canonical_task_key=portal_task_key,
                     baseline_commit=baseline_commit,
                     implementation_commit=preserved_commit,
                     queue_reconciliation_proven=True,
@@ -14709,10 +15474,8 @@ class DatabasePortalExecutionBridge:
                     self._ensure_protected_recovery_completion_event(
                         paths,
                         alias=alias,
-                        task_cid=task_cid,
-                        canonical_task_key=str(
-                            binding.get("canonical_task_key") or ""
-                        ),
+                        task_cid=portal_task_cid,
+                        canonical_task_key=portal_task_key,
                         baseline_commit=baseline_commit,
                         implementation_commit=preserved_commit,
                     )
@@ -14746,7 +15509,7 @@ class DatabasePortalExecutionBridge:
                                 "protected_preservation_terminal_replayed"
                             ),
                             "task_id": alias,
-                            "task_cid": task_cid,
+                            "task_cid": portal_task_cid,
                             "returncode": 0,
                             "reason": "terminal_projection_replayed",
                             "implementation_commit": preserved_commit,
@@ -14818,7 +15581,7 @@ class DatabasePortalExecutionBridge:
                     merge_result = result.get("merge_result")
                     exact_result = bool(
                         result.get("task_id") == alias
-                        and result.get("task_cid") == task_cid
+                        and result.get("task_cid") == portal_task_cid
                         and result.get("attempt_consumed") is False
                         and result.get("provider_dispatched") is False
                         and result.get("branch") == recovery_branch
@@ -15124,10 +15887,8 @@ class DatabasePortalExecutionBridge:
                 self._ensure_protected_recovery_completion_event(
                     paths,
                     alias=alias,
-                    task_cid=task_cid,
-                    canonical_task_key=str(
-                        binding.get("canonical_task_key") or ""
-                    ),
+                    task_cid=portal_task_cid,
+                    canonical_task_key=portal_task_key,
                     baseline_commit=baseline_commit,
                     implementation_commit=preserved_commit,
                 )
@@ -15136,8 +15897,8 @@ class DatabasePortalExecutionBridge:
                 or not self._has_completion_event(
                     paths,
                     alias,
-                    str(binding.get("canonical_task_key") or ""),
-                    task_cid,
+                    portal_task_key,
+                    portal_task_cid,
                 )
             ):
                 raise DatabasePortalBridgeError(
@@ -15147,7 +15908,7 @@ class DatabasePortalExecutionBridge:
             summary = {
                 "event": "protected_preservation_reconciled",
                 "task_id": alias,
-                "task_cid": task_cid,
+                "task_cid": portal_task_cid,
                 "returncode": 0,
                 "reason": str(merge_result.get("reason") or "merged"),
                 "implementation_commit": preserved_commit,
@@ -15189,15 +15950,26 @@ class DatabasePortalExecutionBridge:
         if seed is None:
             return None
         alias = str(binding.get("task_alias") or "")
-        task_cid = str(attempt.task_cid)
-        _canonical_task_key, canonical_task_cid = _canonical_projection_identity(
+        database_task_cid = str(attempt.task_cid)
+        database_task_key = str(binding.get("canonical_task_key") or "")
+        projected_database_key, canonical_task_cid = _projection_task_identity(
             record,
             dict(getattr(record, "body", {}) or {}),
         )
-        if canonical_task_cid != task_cid:
+        if (
+            canonical_task_cid != database_task_cid
+            or not database_task_key
+            or projected_database_key != database_task_key
+        ):
             raise DatabasePortalBridgeError(
                 "validation retry seed task identity changed"
             )
+        portal_task_key, portal_task_cid = (
+            self._verified_portal_seed_state_identity(
+                paths=paths,
+                binding=binding,
+            )
+        )
         source_portal_attempt = seed.get("portal_attempt")
         if (
             isinstance(source_portal_attempt, bool)
@@ -15210,8 +15982,8 @@ class DatabasePortalExecutionBridge:
         seed_body = {
             "schema": DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA,
             "task_id": alias,
-            "canonical_task_key": _canonical_task_key,
-            "canonical_task_cid": task_cid,
+            "canonical_task_key": database_task_key,
+            "canonical_task_cid": database_task_cid,
             "source_database_attempt_id": str(seed.get("attempt_id") or ""),
             "target_database_attempt_id": str(attempt.attempt_id),
             "target_claim_id": str(attempt.claim_id),
@@ -15274,11 +16046,11 @@ class DatabasePortalExecutionBridge:
         state_seed = {
             "implementation_attempts": {alias: source_portal_attempt},
             "implementation_attempts_by_cid": {
-                task_cid: source_portal_attempt,
+                portal_task_cid: source_portal_attempt,
             },
             "last_implementation_task_id": alias,
-            "last_implementation_task_key": _canonical_task_key,
-            "last_implementation_task_cid": task_cid,
+            "last_implementation_task_key": portal_task_key,
+            "last_implementation_task_cid": portal_task_cid,
             "last_implementation_returncode": 1,
             "last_implementation_branch": str(seed.get("rescue_branch") or ""),
             "last_implementation_commit": str(
@@ -15322,23 +16094,25 @@ class DatabasePortalExecutionBridge:
                 and isinstance(started, Mapping)
                 and started.get("type") == "implementation_started"
                 and started.get("task_id") == alias
-                and started.get("canonical_task_cid") == task_cid
+                and started.get("canonical_task_cid") == portal_task_cid
+                and started.get("canonical_task_key") == portal_task_key
                 and started.get("attempt") == target_portal_attempt
                 and started.get("provider_dispatched") is False
                 and current_state.get("implementation_attempts")
                 == {alias: target_portal_attempt}
                 and current_state.get("implementation_attempts_by_cid")
-                == {task_cid: target_portal_attempt}
+                == {portal_task_cid: target_portal_attempt}
                 and current_state.get("active_task_id") == alias
-                and current_state.get("active_task_cid") == task_cid
+                and current_state.get("active_task_key") == portal_task_key
+                and current_state.get("active_task_cid") == portal_task_cid
                 and current_state.get("active_attempt")
                 == target_portal_attempt
                 and current_state.get("implementation_in_progress") is True
                 and current_state.get("last_implementation_task_id") == alias
                 and current_state.get("last_implementation_task_key")
-                == _canonical_task_key
+                == portal_task_key
                 and current_state.get("last_implementation_task_cid")
-                == task_cid
+                == portal_task_cid
                 and current_state.get("last_implementation_returncode") is None
                 and current_state.get("last_implementation_finished_at") == ""
             )
@@ -15476,7 +16250,16 @@ class DatabasePortalExecutionBridge:
             or capacity.get("fallback_model_id") != "gpt-5.6-terra"
             or capacity.get("attempt_consumed") is not True
             or capacity.get("provider_dispatched") is not True
-            or proof.get("task_revision_cid") != str(attempt.task_cid)
+            # The nested proof was emitted by the source Portal lane and is
+            # therefore bound to that lane's path-local task identity, not
+            # the successor claim's authoritative DuckDB task CID.  Its
+            # content-addressed proof/receipt chain preserves the exact value
+            # after the source projection is no longer locally available.
+            or re.fullmatch(
+                r"b[a-z2-7]{20,}",
+                str(proof.get("task_revision_cid") or ""),
+            )
+            is None
             or proof.get("task_id")
             != str(getattr(attempt, "task_alias", "") or "")
             or proof.get("attempt") != source_portal_attempt
@@ -15535,12 +16318,18 @@ class DatabasePortalExecutionBridge:
         if seed is None:
             return None
         alias = str(binding.get("task_alias") or "")
-        task_cid = str(attempt.task_cid)
+        database_task_cid = str(attempt.task_cid)
+        portal_task_key, portal_task_cid = (
+            self._verified_portal_seed_state_identity(
+                paths=paths,
+                binding=binding,
+            )
+        )
         source_portal_attempt = int(seed["portal_attempt"])
         seed_body = {
             "schema": DATABASE_PORTAL_CAPACITY_RETRY_SEED_SCHEMA,
             "task_id": alias,
-            "canonical_task_cid": task_cid,
+            "canonical_task_cid": database_task_cid,
             "source_database_attempt_id": str(seed.get("attempt_id") or ""),
             "target_database_attempt_id": str(attempt.attempt_id),
             "target_claim_id": str(attempt.claim_id),
@@ -15594,10 +16383,11 @@ class DatabasePortalExecutionBridge:
         state_seed = {
             "implementation_attempts": {alias: source_portal_attempt},
             "implementation_attempts_by_cid": {
-                task_cid: source_portal_attempt,
+                portal_task_cid: source_portal_attempt,
             },
             "last_implementation_task_id": alias,
-            "last_implementation_task_cid": task_cid,
+            "last_implementation_task_key": portal_task_key,
+            "last_implementation_task_cid": portal_task_cid,
             "last_implementation_returncode": 1,
         }
         if paths.state.exists():
@@ -15620,7 +16410,8 @@ class DatabasePortalExecutionBridge:
                 for event in existing_events[seed_event_index + 1 :]
                 if event.get("type") == "implementation_started"
                 and event.get("task_id") == alias
-                and event.get("canonical_task_cid") == task_cid
+                and event.get("canonical_task_cid") == portal_task_cid
+                and event.get("canonical_task_key") == portal_task_key
                 and event.get("attempt") == target_portal_attempt
             ]
             progressed_adoptable_state = bool(
@@ -15629,15 +16420,18 @@ class DatabasePortalExecutionBridge:
                 and current_state.get("implementation_attempts")
                 == {alias: target_portal_attempt}
                 and current_state.get("implementation_attempts_by_cid")
-                == {task_cid: target_portal_attempt}
+                == {portal_task_cid: target_portal_attempt}
                 and current_state.get("active_task_id") == alias
-                and current_state.get("active_task_cid") == task_cid
+                and current_state.get("active_task_key") == portal_task_key
+                and current_state.get("active_task_cid") == portal_task_cid
                 and current_state.get("active_attempt")
                 == target_portal_attempt
                 and current_state.get("implementation_in_progress") is True
                 and current_state.get("last_implementation_task_id") == alias
+                and current_state.get("last_implementation_task_key")
+                == portal_task_key
                 and current_state.get("last_implementation_task_cid")
-                == task_cid
+                == portal_task_cid
                 and current_state.get("last_implementation_returncode") is None
                 and not current_state.get("last_implementation_finished_at")
             )
@@ -15819,12 +16613,18 @@ class DatabasePortalExecutionBridge:
         if seed is None:
             return None
         alias = str(binding.get("task_alias") or "")
-        task_cid = str(attempt.task_cid)
+        database_task_cid = str(attempt.task_cid)
+        portal_task_key, portal_task_cid = (
+            self._verified_portal_seed_state_identity(
+                paths=paths,
+                binding=binding,
+            )
+        )
         source_portal_attempt = int(seed["portal_attempt"])
         seed_body = {
             "schema": DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA,
             "task_id": alias,
-            "canonical_task_cid": task_cid,
+            "canonical_task_cid": database_task_cid,
             "source_database_attempt_id": str(seed.get("attempt_id") or ""),
             "target_database_attempt_id": str(attempt.attempt_id),
             "target_claim_id": str(attempt.claim_id),
@@ -15879,10 +16679,11 @@ class DatabasePortalExecutionBridge:
         state_seed = {
             "implementation_attempts": {alias: source_portal_attempt},
             "implementation_attempts_by_cid": {
-                task_cid: source_portal_attempt,
+                portal_task_cid: source_portal_attempt,
             },
             "last_implementation_task_id": alias,
-            "last_implementation_task_cid": task_cid,
+            "last_implementation_task_key": portal_task_key,
+            "last_implementation_task_cid": portal_task_cid,
             "last_implementation_returncode": int(
                 seed["implementation_returncode"]
             ),
@@ -15907,7 +16708,8 @@ class DatabasePortalExecutionBridge:
                 for event in existing_events[seed_event_index + 1 :]
                 if event.get("type") == "implementation_started"
                 and event.get("task_id") == alias
-                and event.get("canonical_task_cid") == task_cid
+                and event.get("canonical_task_cid") == portal_task_cid
+                and event.get("canonical_task_key") == portal_task_key
                 and event.get("attempt") == target_portal_attempt
             ]
             progressed_adoptable_state = bool(
@@ -15916,15 +16718,18 @@ class DatabasePortalExecutionBridge:
                 and current_state.get("implementation_attempts")
                 == {alias: target_portal_attempt}
                 and current_state.get("implementation_attempts_by_cid")
-                == {task_cid: target_portal_attempt}
+                == {portal_task_cid: target_portal_attempt}
                 and current_state.get("active_task_id") == alias
-                and current_state.get("active_task_cid") == task_cid
+                and current_state.get("active_task_key") == portal_task_key
+                and current_state.get("active_task_cid") == portal_task_cid
                 and current_state.get("active_attempt")
                 == target_portal_attempt
                 and current_state.get("implementation_in_progress") is True
                 and current_state.get("last_implementation_task_id") == alias
+                and current_state.get("last_implementation_task_key")
+                == portal_task_key
                 and current_state.get("last_implementation_task_cid")
-                == task_cid
+                == portal_task_cid
                 and current_state.get("last_implementation_returncode") is None
                 and not current_state.get("last_implementation_finished_at")
             )
@@ -16274,6 +17079,7 @@ class DatabasePortalExecutionBridge:
             paths,
             alias=alias,
             task_cid=str(attempt.task_cid),
+            completion_task_key=completion_task_key,
             completion_task_cid=completion_task_cid,
             verified_landed_completion_claim_seed=(
                 verified_landed_completion_claim_seed
@@ -16580,8 +17386,7 @@ class DatabasePortalExecutionBridge:
             )
         binding = projection.binding
         if (
-            str(getattr(request, "canonical_task_id", "") or "")
-            != value["task_cid"]
+            str(binding.get("task_cid") or "") != value["task_cid"]
             or str(getattr(request, "task_id", "") or "")
             != value["task_alias"]
             or str(getattr(request, "commit_sha", "") or "")
@@ -16754,7 +17559,7 @@ class DatabasePortalExecutionBridge:
         *,
         alias: str,
         task_cid: str,
-        canonical_task_key: str = "",
+        canonical_task_key: str,
         request_id: str,
         baseline_commit: str,
         implementation_commit: str,
@@ -16763,10 +17568,16 @@ class DatabasePortalExecutionBridge:
     ) -> Mapping[str, Any]:
         """Append one crash-idempotent zero-provider evaluated lineage."""
 
+        if not canonical_task_key:
+            raise DatabasePortalBridgeError(
+                "post-merge completion recovery canonical task key is absent"
+            )
+
         reason = "post_merge_completion_recovery_seed"
         source_payload: dict[str, Any] = {
             "task_id": alias,
             "canonical_task_cid": task_cid,
+            "canonical_task_key": canonical_task_key,
             "attempt": 1,
             "attempt_consumed": False,
             "provider_dispatched": False,
@@ -16793,6 +17604,7 @@ class DatabasePortalExecutionBridge:
         merge_payload: dict[str, Any] = {
             "task_id": alias,
             "canonical_task_cid": task_cid,
+            "canonical_task_key": canonical_task_key,
             "attempt": 1,
             "attempt_consumed": False,
             "provider_dispatched": False,
@@ -16812,15 +17624,13 @@ class DatabasePortalExecutionBridge:
         completion_payload: dict[str, Any] = {
             "task_id": alias,
             "canonical_task_cid": task_cid,
+            "canonical_task_key": canonical_task_key,
             "implementation_commit": implementation_commit,
             "baseline_commit": baseline_commit,
             "attempt": 1,
             "reason": reason,
             "post_merge_completion_recovery_seed_id": seed_id,
         }
-        if canonical_task_key:
-            completion_payload["canonical_task_key"] = canonical_task_key
-
         def exact_events(event_type: str, payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
             return [
                 event
@@ -16927,6 +17737,7 @@ class DatabasePortalExecutionBridge:
             paths,
             alias=alias,
             task_cid=task_cid,
+            completion_task_key=canonical_task_key,
         )
         if (
             completion is None
@@ -16950,13 +17761,19 @@ class DatabasePortalExecutionBridge:
         """Close a fresh successor projection without provider dispatch."""
 
         alias = str(binding.get("task_alias") or "")
+        projection_text = self._verify_projection(paths, binding)
+        event_task_key, event_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection_text,
+                binding=binding,
+            )
+        )
         source = self._ensure_post_merge_completion_recovery_events(
             paths,
             alias=alias,
-            task_cid=str(attempt.task_cid),
-            canonical_task_key=str(
-                binding.get("canonical_task_key") or ""
-            ),
+            task_cid=event_task_cid,
+            canonical_task_key=event_task_key,
             request_id=str(seed["request_id"]),
             baseline_commit=str(seed["baseline_commit"]),
             implementation_commit=str(seed["candidate_commit"]),
@@ -17050,6 +17867,13 @@ class DatabasePortalExecutionBridge:
                 seed=post_merge_completion_seed,
             )
         projection = self._verify_projection(paths, binding)
+        completion_task_key, completion_task_cid = (
+            self._portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection,
+                binding=binding,
+            )
+        )
         if protected_seed is not None:
             return self._reconcile_protected_preservation_seed(
                 attempt=attempt,
@@ -17063,13 +17887,13 @@ class DatabasePortalExecutionBridge:
                 self._has_completion_event(
                     paths,
                     str(binding.get("task_alias") or ""),
-                    str(binding.get("canonical_task_key") or ""),
-                    str(binding.get("task_cid") or ""),
+                    completion_task_key,
+                    completion_task_cid,
                 )
                 or self._has_completion_event_candidate(
                     paths,
                     str(binding.get("task_alias") or ""),
-                    str(binding.get("task_cid") or ""),
+                    completion_task_cid,
                 )
             )
         ):
@@ -17179,7 +18003,9 @@ class DatabasePortalExecutionBridge:
             quota_fallback_continued = False
             ordinary_passes = 0
             inflight_identity: tuple[str, int, str] | None = None
-            pending_merge_identity: tuple[str, str, int, str, str, str] | None = None
+            pending_merge_identity: (
+                tuple[str, str, str, int, str, str, str] | None
+            ) = None
             while ordinary_passes < self.max_passes:
                 projection = self._verify_projection(paths, binding)
                 if _projection_status(projection) in _TERMINAL_STATUSES:
@@ -17201,7 +18027,7 @@ class DatabasePortalExecutionBridge:
                         or self._has_completion_event_candidate(
                             paths,
                             alias,
-                            str(binding.get("task_cid") or ""),
+                            completion_task_cid,
                         )
                     ):
                         return self._acceptance_receipt(
@@ -17276,6 +18102,7 @@ class DatabasePortalExecutionBridge:
                         )
                 current_inflight_identity = self._same_claim_inflight_identity(
                     raw_result,
+                    paths=paths,
                     binding=binding,
                 )
                 if current_inflight_identity is not None:
@@ -17334,6 +18161,7 @@ class DatabasePortalExecutionBridge:
                         raw_result,
                         attempt=attempt,
                         binding=binding,
+                        portal_task_cid=completion_task_cid,
                     )
                 ):
                     quota_fallback_continued = True
