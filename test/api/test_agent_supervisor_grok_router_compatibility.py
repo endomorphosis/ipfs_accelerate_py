@@ -48,7 +48,7 @@ def test_transient_preflight_retry_export_has_reviewed_signature() -> None:
 
 
 def test_transient_preflight_retry_uses_current_validated_receipt() -> None:
-    """The compatibility export admits only the exact Grok 4.6 artifact."""
+    """The legacy export stays 4.5 while current 4.6 receipts stay exact."""
 
     nonce = "a" * 64
     evidence = "Error: max turns reached\n"
@@ -61,15 +61,22 @@ def test_transient_preflight_retry_uses_current_validated_receipt() -> None:
     )
 
     assert llm_router.AGENT_IMPLEMENTATION_PRIMARY_MODEL_ID == "grok-4.6"
-    assert GROK_QUOTA_PROBE_CONTRACT["model"] == "grok-4.6"
+    assert GROK_QUOTA_PROBE_CONTRACT["model"] == "grok-4.5"
     assert (
         llm_router._LEGACY_AGENT_IMPLEMENTATION_ROUTE.primary_model_id
-        == "grok-4.6"
+        == "grok-4.5"
     )
     assert "grok45" in llm_router._LEGACY_AGENT_IMPLEMENTATION_ROUTE.route_id
     assert (
         llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE.primary_model_id
+        == "grok-4.5"
+    )
+    assert (
+        llm_router._GROK46_QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE.primary_model_id
         == "grok-4.6"
+    )
+    assert receipt["probe_contract_id"] == (
+        llm_router._AGENT_IMPLEMENTATION_PROBE_CONTRACT_IDS["grok-4.6"]
     )
     assert valid_grok_failure_receipt(
         receipt,

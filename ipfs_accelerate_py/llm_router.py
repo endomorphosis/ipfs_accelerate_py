@@ -6506,6 +6506,7 @@ def find_grok_cli() -> Optional[str]:
     configured = _coalesce_env(
         "ipfs_accelerate_py_GROK_CLI_CMD",
         "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_DATASETS_PY_GROK_CLI_CMD",
         "IPFS_ACCELERATE_AGENT_GROK_BIN",
         "GROK_CLI_CMD",
         "GROK_BIN",
