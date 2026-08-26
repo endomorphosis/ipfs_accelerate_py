@@ -1,0 +1,27 @@
+{
+  "artifact_cid": "baguqeeraiaqe4bmdd4fp3hqlcgawufghbusgyhqodamrkzjqxwercqw5xlnq",
+  "clean_package_install_invoked": false,
+  "evidence_mode": "contract_fail_closed",
+  "in_process_run_status": "approved",
+  "live_containers": false,
+  "live_eight_container_qualification": false,
+  "live_runtime_invoked": false,
+  "producer_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/release/test_external_agent_handoff_smoke.py"
+  ],
+  "producer_source_cid": "sha256:16d6c2086567cd9408d70deb13779642afe7468938ddeaee70c055b4e856733b",
+  "production_qualification_claimed": false,
+  "qualification_scope": "synthetic_release_smoke_only",
+  "qualification_status": "not_live_qualified",
+  "repository_id": "repo:sha256-exported",
+  "run_id": "baguqeerawgt3k5r5xh65idq72onuwvimm7ksv4azrakf7ylo67g6exq4e5aa",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1",
+  "session_id": "session:exported-client",
+  "synthetic_fixed_point_result": "completed",
+  "task_completion_claimed": false,
+  "task_id": "EAAEF-172"
+}

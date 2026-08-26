@@ -7,6 +7,7 @@ sockets and host supervisors are not used.  Reattach requires the exact
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -18,6 +19,9 @@ from ipfs_accelerate_py.agent_supervisor.api.external_handoff import (
     ExternalHandoffAuthorityError,
 )
 from ipfs_accelerate_py.agent_supervisor.api.external_run_handle import ExternalRunHandle
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 
 
 RECEIPT = (
@@ -34,6 +38,37 @@ WORKER = "principal:worker"
 REVIEWER = "principal:reviewer"
 SESSION = "session:disconnect"
 REPO = "repo:disconnect"
+ARTIFACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1"
+)
+PRODUCER_ARGV = (
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_client_disconnect.py",
+)
+RECEIPT_FIELDS = {
+    "artifact_cid",
+    "authority_id",
+    "client_socket",
+    "evidence_mode",
+    "in_process_run_status",
+    "live_eight_container_qualification",
+    "live_runtime_invoked",
+    "producer_argv",
+    "producer_source_cid",
+    "production_qualification_claimed",
+    "qualification_scope",
+    "qualification_status",
+    "reattach_requires",
+    "registry",
+    "run_continued_while_detached",
+    "run_id",
+    "schema",
+    "task_completion_claimed",
+    "task_id",
+}
 
 
 def _start_request(**changes: object) -> dict[str, object]:
@@ -61,7 +96,36 @@ def _bound(started, **changes: object) -> dict[str, object]:
     return values
 
 
+def _producer_source_cid() -> str:
+    return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def _validate_receipt(payload: dict[str, object]) -> None:
+    assert set(payload) == RECEIPT_FIELDS
+    assert payload["schema"] == ARTIFACT_SCHEMA
+    assert payload["task_id"] == "EAAEF-142"
+    assert payload["evidence_mode"] == "contract_fail_closed"
+    assert payload["qualification_scope"] == "in_process_disconnect_contract_only"
+    assert payload["qualification_status"] == "not_live_qualified"
+    assert payload["task_completion_claimed"] is False
+    assert payload["production_qualification_claimed"] is False
+    assert payload["live_runtime_invoked"] is False
+    assert payload["live_eight_container_qualification"] is False
+    assert payload["producer_argv"] == list(PRODUCER_ARGV)
+    assert payload["producer_source_cid"] == _producer_source_cid()
+    unsealed = dict(payload)
+    artifact_cid = unsealed.pop("artifact_cid")
+    assert artifact_cid == content_identity(unsealed)
+
+
 def _write_receipt(payload: dict[str, object]) -> dict[str, object]:
+    payload = {
+        **payload,
+        "producer_argv": list(PRODUCER_ARGV),
+        "producer_source_cid": _producer_source_cid(),
+    }
+    payload["artifact_cid"] = content_identity(payload)
+    _validate_receipt(payload)
     RECEIPT.parent.mkdir(parents=True, exist_ok=True)
     RECEIPT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload
@@ -122,9 +186,13 @@ def test_disconnect_pause_run_continues_reattach_requires_run_and_authority() ->
 
     payload = _write_receipt(
         {
-            "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
+            "schema": ARTIFACT_SCHEMA,
             "task_id": "EAAEF-142",
             "evidence_mode": "contract_fail_closed",
+            "qualification_scope": "in_process_disconnect_contract_only",
+            "qualification_status": "not_live_qualified",
+            "task_completion_claimed": False,
+            "production_qualification_claimed": False,
             "live_runtime_invoked": False,
             "live_eight_container_qualification": False,
             "client_socket": False,
@@ -133,9 +201,10 @@ def test_disconnect_pause_run_continues_reattach_requires_run_and_authority() ->
             "authority_id": started.authority_id,
             "reattach_requires": ["run_id", "authority_id"],
             "run_continued_while_detached": True,
-            "terminal_status": terminal.run_status,
+            "in_process_run_status": terminal.run_status,
         }
     )
+    _validate_receipt(payload)
     saved = json.loads(RECEIPT.read_text(encoding="utf-8"))
     assert saved["evidence_mode"] == "contract_fail_closed"
     assert saved["live_runtime_invoked"] is False

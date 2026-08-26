@@ -1,0 +1,30 @@
+{
+  "artifact_cid": "baguqeera3ee37pixk6omuezm73onlxooasrm5wwh5oejc3doxjktf6muzqcq",
+  "authority_id": "baguqeera4i2ich2s44ei3vzfgblk6csc3j57savydfvpbmkvgumruos3okla",
+  "client_socket": false,
+  "evidence_mode": "contract_fail_closed",
+  "in_process_run_status": "approved",
+  "live_eight_container_qualification": false,
+  "live_runtime_invoked": false,
+  "producer_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_client_disconnect.py"
+  ],
+  "producer_source_cid": "sha256:8d23d514ccc2673cd17286a89bbb5037787100518f84116a1e359ca5152d97c6",
+  "production_qualification_claimed": false,
+  "qualification_scope": "in_process_disconnect_contract_only",
+  "qualification_status": "not_live_qualified",
+  "reattach_requires": [
+    "run_id",
+    "authority_id"
+  ],
+  "registry": "in_process",
+  "run_continued_while_detached": true,
+  "run_id": "baguqeeraasm3kyw34uvecsvg5ktsy6njl6qss4kmq4ezzwa6baf73vdomuha",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1",
+  "task_completion_claimed": false,
+  "task_id": "EAAEF-142"
+}

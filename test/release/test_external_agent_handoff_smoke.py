@@ -6,11 +6,15 @@ Submit exported session + repository identity, disconnect, execute in-process
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.api.external_handoff import ExternalHandoffAPI
 from ipfs_accelerate_py.agent_supervisor.api.external_run_handle import ExternalRunHandle
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.external_fixed_point import terminate
 
 
@@ -25,9 +29,71 @@ RECEIPT = (
 
 SOURCE_ROOT = "sha256:" + "e" * 64
 SEMANTIC_ROOT = "sha256:" + "f" * 64
+ARTIFACT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1"
+)
+PRODUCER_ARGV = (
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/release/test_external_agent_handoff_smoke.py",
+)
+RECEIPT_FIELDS = {
+    "artifact_cid",
+    "clean_package_install_invoked",
+    "evidence_mode",
+    "in_process_run_status",
+    "live_containers",
+    "live_eight_container_qualification",
+    "live_runtime_invoked",
+    "producer_argv",
+    "producer_source_cid",
+    "production_qualification_claimed",
+    "qualification_scope",
+    "qualification_status",
+    "repository_id",
+    "run_id",
+    "schema",
+    "session_id",
+    "synthetic_fixed_point_result",
+    "task_completion_claimed",
+    "task_id",
+}
+
+
+def _producer_source_cid() -> str:
+    return "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def _validate_receipt(payload: dict[str, object]) -> None:
+    assert set(payload) == RECEIPT_FIELDS
+    assert payload["schema"] == ARTIFACT_SCHEMA
+    assert payload["task_id"] == "EAAEF-172"
+    assert payload["evidence_mode"] == "contract_fail_closed"
+    assert payload["qualification_scope"] == "synthetic_release_smoke_only"
+    assert payload["qualification_status"] == "not_live_qualified"
+    assert payload["task_completion_claimed"] is False
+    assert payload["production_qualification_claimed"] is False
+    assert payload["live_runtime_invoked"] is False
+    assert payload["live_eight_container_qualification"] is False
+    assert payload["live_containers"] is False
+    assert payload["clean_package_install_invoked"] is False
+    assert payload["producer_argv"] == list(PRODUCER_ARGV)
+    assert payload["producer_source_cid"] == _producer_source_cid()
+    unsealed = dict(payload)
+    artifact_cid = unsealed.pop("artifact_cid")
+    assert artifact_cid == content_identity(unsealed)
 
 
 def _write_receipt(payload: dict[str, object]) -> dict[str, object]:
+    payload = {
+        **payload,
+        "producer_argv": list(PRODUCER_ARGV),
+        "producer_source_cid": _producer_source_cid(),
+    }
+    payload["artifact_cid"] = content_identity(payload)
+    _validate_receipt(payload)
     RECEIPT.parent.mkdir(parents=True, exist_ok=True)
     RECEIPT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return payload
@@ -124,22 +190,28 @@ def test_in_process_handoff_disconnect_execute_reattach_terminal() -> None:
 
     payload = _write_receipt(
         {
-            "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-overlay-receipt@1",
+            "schema": ARTIFACT_SCHEMA,
             "task_id": "EAAEF-172",
             "evidence_mode": "contract_fail_closed",
+            "qualification_scope": "synthetic_release_smoke_only",
+            "qualification_status": "not_live_qualified",
+            "task_completion_claimed": False,
+            "production_qualification_claimed": False,
             "live_runtime_invoked": False,
             "live_eight_container_qualification": False,
             "live_containers": False,
+            "clean_package_install_invoked": False,
             "session_id": started.session_id,
             "repository_id": started.repository_id,
             "run_id": started.run_id,
-            "terminal": terminal["terminal"],
-            "run_status": approved.run_status,
+            "synthetic_fixed_point_result": terminal["terminal"],
+            "in_process_run_status": approved.run_status,
         }
     )
+    _validate_receipt(payload)
     saved = json.loads(RECEIPT.read_text(encoding="utf-8"))
     assert saved["evidence_mode"] == "contract_fail_closed"
     assert saved["live_containers"] is False
     assert saved["live_runtime_invoked"] is False
     assert saved["live_eight_container_qualification"] is False
-    assert payload["terminal"] == "completed"
+    assert payload["synthetic_fixed_point_result"] == "completed"
