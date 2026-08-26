@@ -7303,11 +7303,12 @@ def _append_validated_no_change_completion_chain(
     paths: object,
     *,
     tamper: str = "",
+    uncommitted_projection: bool = False,
 ) -> dict[str, object]:
     alias = "LGSWF-004"
     task_cid = "task:cid:004"
     task_key = "task/v1/current-authority-inventory"
-    board_namespace = "task-projection.md"
+    board_namespace = "agent-supervisor-causal-event-federation-v1"
     baseline = "b" * 40
     tree = "c" * 40
     branch = "implementation/lgswf-004-no-change"
@@ -7531,15 +7532,25 @@ def _append_validated_no_change_completion_chain(
     }
     projection_path = "private/attempt/task-projection.md"
     projection_repo = "/tmp/disposable-no-change-repository"
-    todo_result = {
-        "already_completed_task_ids": [],
-        "commit_result": {
+    projection_commit_result = (
+        {
+            "committed": False,
+            "path": projection_path,
+            "reason": "no_changes",
+            "repo": projection_repo,
+        }
+        if uncommitted_projection
+        else {
             "commit": "d" * 40,
             "committed": True,
             "path": projection_path,
             "repo": projection_repo,
             "status": f"?? {projection_path}",
-        },
+        }
+    )
+    todo_result = {
+        "already_completed_task_ids": [],
+        "commit_result": projection_commit_result,
         "completion_reason": "single_task",
         "completion_receipts": [
             {
@@ -7748,6 +7759,36 @@ def test_bridge_accepts_exact_validated_no_change_commit_lineage(
     assert evidence["completion_source_portal_attempt"] == 1
 
 
+def test_bridge_accepts_exact_validated_no_change_ignored_projection_lineage(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "validated no-change lineage reached provider dispatch"
+        ),
+    )
+    record = bridge._record_for_attempt(bridge.task_source, _attempt())
+    paths, _binding = bridge._ensure_attempt_projection(_attempt(), record)
+    authority = _append_validated_no_change_completion_chain(
+        paths,
+        uncommitted_projection=True,
+    )
+
+    evidence = bridge._completion_event_evidence(
+        paths,
+        alias="LGSWF-004",
+        task_cid="task:cid:004",
+        validated_no_change_authority=authority,
+    )
+
+    assert evidence is not None
+    assert evidence["implementation_commit"] == "b" * 40
+    assert evidence["_source_projection_commit"] == ""
+    assert evidence["_source_projection_uncommitted"] is True
+
+
 def test_bridge_rejects_validated_no_change_without_current_task_authority(
     tmp_path: Path,
 ) -> None:
@@ -7800,6 +7841,49 @@ def test_bridge_reads_one_exact_current_no_change_authority(
     assert (
         DatabasePortalExecutionBridge._record_allows_validated_no_change(record)
         is expected
+    )
+
+
+def test_bridge_binds_no_change_authority_to_sealed_board_namespace(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    record.outputs = (
+        {"path": "inventory/z-last.json"},
+        {"path": "inventory/result.json"},
+        {"path": "inventory/a-first.json"},
+    )
+    record.body.update(
+        {
+            "board_namespace": (
+                "agent-supervisor-causal-event-federation-v1"
+            ),
+            "no_change_completion": "allowed",
+        }
+    )
+    source = _TaskSource(record)
+    source.snapshot = lambda: SimpleNamespace(repository_tree_id="c" * 40)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=source,
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    paths, binding = bridge._ensure_attempt_projection(_attempt(), record)
+
+    authority = bridge._validated_no_change_task_authority(
+        record=record,
+        binding=binding,
+        paths=paths,
+    )
+
+    assert authority["board_namespace"] == (
+        "agent-supervisor-causal-event-federation-v1"
+    )
+    assert authority["board_namespace"] != paths.task_projection.name
+    assert authority["declared_outputs"] == (
+        "inventory/a-first.json",
+        "inventory/result.json",
+        "inventory/z-last.json",
     )
 
 
@@ -7942,6 +8026,7 @@ def test_bridge_requires_exact_validated_no_change_projection_target(
         "_source_validated_no_change": True,
         "_source_effect_tree": tree,
         "_source_projection_commit": projection_commit,
+        "_source_projection_uncommitted": False,
         "_source_projection_path": projection_path,
         "_source_projection_repo": str(repo),
         "_source_projection_absolute_path": str(projection),
@@ -7977,6 +8062,180 @@ def test_bridge_requires_exact_validated_no_change_projection_target(
     with pytest.raises(
         DatabasePortalBridgeError,
         match="exact projection commit",
+    ):
+        bridge._require_validated_no_change_target(
+            paths=SimpleNamespace(task_projection=projection),
+            binding={"repository_tree_id": tree},
+            authority=authority,
+            completion=completion,
+            projection_text=projection_text,
+        )
+
+
+def test_bridge_requires_exact_ignored_no_change_projection_target(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    output = repo / "inventory" / "result.json"
+    output.parent.mkdir()
+    output.write_text('{"passed":true}\n', encoding="utf-8")
+    unrelated = repo / "unrelated.txt"
+    unrelated.write_text("baseline\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("runtime/\n", encoding="utf-8")
+    subprocess.run(
+        [
+            "git",
+            "add",
+            ".gitignore",
+            "inventory/result.json",
+            "unrelated.txt",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=No Change Test",
+            "-c",
+            "user.email=no-change@example.invalid",
+            "commit",
+            "-qm",
+            "baseline",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    baseline = subprocess.run(
+        ["git", "rev-parse", "HEAD^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    projection = repo / "runtime" / "attempt" / "task-projection.md"
+    projection.parent.mkdir(parents=True)
+    projection_text = "## LGSWF-004\n- Status: completed\n"
+    projection.write_text(projection_text, encoding="utf-8")
+    projection_path = projection.relative_to(repo).as_posix()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=repo / "runtime",
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repo,
+        merge_target_branch="main",
+    )
+    authority = {
+        "declared_outputs": ("inventory/result.json",),
+        "repository_tree_id": tree,
+    }
+    completion = {
+        "baseline_commit": baseline,
+        "implementation_commit": baseline,
+        "_source_validated_no_change": True,
+        "_source_effect_tree": tree,
+        "_source_projection_commit": "",
+        "_source_projection_uncommitted": True,
+        "_source_projection_path": projection_path,
+        "_source_projection_repo": str(repo),
+        "_source_projection_absolute_path": str(projection),
+    }
+
+    observed_tree = bridge._require_validated_no_change_target(
+        paths=SimpleNamespace(task_projection=projection),
+        binding={"repository_tree_id": tree},
+        authority=authority,
+        completion=completion,
+        projection_text=projection_text,
+    )
+
+    assert observed_tree == tree
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == baseline
+    )
+
+    # The proof is deliberately path-local. Unrelated dirty tracked content
+    # must not contend with a private projection that is itself exact.
+    unrelated.write_text("unrelated dirty content\n", encoding="utf-8")
+    assert (
+        bridge._require_validated_no_change_target(
+            paths=SimpleNamespace(task_projection=projection),
+            binding={"repository_tree_id": tree},
+            authority=authority,
+            completion=completion,
+            projection_text=projection_text,
+        )
+        == tree
+    )
+    unrelated.write_text("baseline\n", encoding="utf-8")
+
+    projection.write_text(
+        projection_text.replace("completed", "todo"),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="private projection is not exact",
+    ):
+        bridge._require_validated_no_change_target(
+            paths=SimpleNamespace(task_projection=projection),
+            binding={"repository_tree_id": tree},
+            authority=authority,
+            completion=completion,
+            projection_text=projection_text,
+        )
+
+    projection.write_text(projection_text, encoding="utf-8")
+    (repo / ".gitignore").write_text("other-runtime/\n", encoding="utf-8")
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="private projection is not exact",
+    ):
+        bridge._require_validated_no_change_target(
+            paths=SimpleNamespace(task_projection=projection),
+            binding={"repository_tree_id": tree},
+            authority=authority,
+            completion=completion,
+            projection_text=projection_text,
+        )
+
+    (repo / ".gitignore").write_text("runtime/\n", encoding="utf-8")
+    unrelated.write_text("target advanced\n", encoding="utf-8")
+    subprocess.run(["git", "add", "unrelated.txt"], cwd=repo, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=No Change Test",
+            "-c",
+            "user.email=no-change@example.invalid",
+            "commit",
+            "-qm",
+            "advance target",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="private projection is not exact",
     ):
         bridge._require_validated_no_change_target(
             paths=SimpleNamespace(task_projection=projection),

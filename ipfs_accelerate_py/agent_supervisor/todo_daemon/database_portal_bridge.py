@@ -6927,9 +6927,11 @@ class DatabasePortalExecutionBridge:
             )
         repository_scope = self._validation_repository_scope(body)
         outputs = tuple(
-            self._scope_outputs(
-                _output_values(record, body),
-                repository_scope,
+            sorted(
+                self._scope_outputs(
+                    _output_values(record, body),
+                    repository_scope,
+                )
             )
         )
         validation_commands = tuple(
@@ -6944,6 +6946,36 @@ class DatabasePortalExecutionBridge:
         canonical_task_key = str(
             binding.get("canonical_task_key") or ""
         )
+        body_board_namespaces = [
+            value
+            for key, value in body.items()
+            if str(key).strip().lower().replace("_", " ")
+            == "board namespace"
+        ]
+        if body_board_namespaces:
+            if (
+                len(body_board_namespaces) != 1
+                or type(body_board_namespaces[0]) is not str
+                or not body_board_namespaces[0].strip()
+                or body_board_namespaces[0] != body_board_namespaces[0].strip()
+                or len(body_board_namespaces[0].encode("utf-8"))
+                > _MAX_TASK_IDENTITY_BYTES
+                or any(
+                    character in body_board_namespaces[0]
+                    for character in "\r\n"
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "validated no-change board namespace is malformed"
+                )
+            board_namespace = body_board_namespaces[0]
+        else:
+            # Legacy database tasks did not carry a board namespace in their
+            # immutable body. Portal then derives the namespace from the
+            # private projection filename, so retain that exact fail-closed
+            # compatibility spelling. Current CASF tasks bind the real
+            # namespace in the task body and must never collapse to this name.
+            board_namespace = paths.task_projection.name
         if (
             not outputs
             or not validation_commands
@@ -6965,7 +6997,7 @@ class DatabasePortalExecutionBridge:
                 "validated no-change task authority is incomplete"
             )
         return {
-            "board_namespace": paths.task_projection.name,
+            "board_namespace": board_namespace,
             "canonical_task_key": canonical_task_key,
             "declared_outputs": outputs,
             "projection_immutable_digest": str(
@@ -7005,6 +7037,9 @@ class DatabasePortalExecutionBridge:
         projection_commit = str(
             completion.get("_source_projection_commit") or ""
         )
+        uncommitted_projection = completion.get(
+            "_source_projection_uncommitted"
+        )
         projection_path = str(
             completion.get("_source_projection_path") or ""
         )
@@ -7016,8 +7051,16 @@ class DatabasePortalExecutionBridge:
         )
         outputs = authority.get("declared_outputs")
         try:
-            relative_projection = paths.task_projection.relative_to(
-                self.repository_root
+            repository_root = self.repository_root.resolve(strict=True)
+            resolved_projection = paths.task_projection.resolve(strict=True)
+            resolved_projection_repo = Path(projection_repo).resolve(
+                strict=False
+            )
+            resolved_projection_absolute_path = Path(
+                projection_absolute_path
+            ).resolve(strict=False)
+            relative_projection = resolved_projection.relative_to(
+                repository_root
             ).as_posix()
             expected_projection_path = _safe_repository_path(
                 relative_projection
@@ -7026,9 +7069,13 @@ class DatabasePortalExecutionBridge:
             safe_outputs = tuple(
                 _safe_output_path(output) for output in outputs or ()
             )
-        except (DatabasePortalBridgeError, ValueError) as exc:
+        except (DatabasePortalBridgeError, RuntimeError, ValueError) as exc:
             raise DatabasePortalBridgeError(
                 "validated no-change projection is outside its repository"
+            ) from exc
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "validated no-change projection cannot be resolved safely"
             ) from exc
         if (
             re.fullmatch(r"[0-9a-f]{40}", baseline_commit) is None
@@ -7040,11 +7087,20 @@ class DatabasePortalExecutionBridge:
             is None
             or effect_tree != str(authority.get("repository_tree_id") or "")
             or effect_tree != str(binding.get("repository_tree_id") or "")
-            or re.fullmatch(r"[0-9a-f]{40}", projection_commit) is None
+            or type(uncommitted_projection) is not bool
+            or (
+                uncommitted_projection is True
+                and projection_commit != ""
+            )
+            or (
+                uncommitted_projection is False
+                and re.fullmatch(r"[0-9a-f]{40}", projection_commit) is None
+            )
             or safe_projection_path != expected_projection_path
-            or Path(projection_repo).absolute() != self.repository_root
+            or resolved_projection_repo != repository_root
             or Path(projection_absolute_path).absolute()
             != paths.task_projection.absolute()
+            or resolved_projection_absolute_path != resolved_projection
             or not safe_outputs
             or safe_outputs != tuple(outputs or ())
         ):
@@ -7075,32 +7131,16 @@ class DatabasePortalExecutionBridge:
                 baseline_commit=baseline_commit,
                 implementation_commit=baseline_commit,
             )
-            parents = git(
-                "rev-list",
-                "--parents",
-                "-n",
-                "1",
-                projection_commit,
-            )
-            changed = git(
-                "diff-tree",
-                "--no-commit-id",
-                "--name-only",
-                "-r",
-                "-z",
-                projection_commit,
-                text=False,
-            )
-            projection_blob = git(
-                "cat-file",
-                "blob",
-                f"{projection_commit}:{safe_projection_path}",
-                text=False,
-            )
             target = git(
                 "rev-parse",
                 "--verify",
                 f"{target_ref}^{{commit}}",
+            )
+            top_level = git("rev-parse", "--show-toplevel")
+            resolved_top_level = (
+                Path(top_level.stdout.strip()).resolve(strict=True)
+                if top_level.returncode == 0 and top_level.stdout.strip()
+                else None
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise DatabasePortalBridgeError(
@@ -7109,23 +7149,209 @@ class DatabasePortalExecutionBridge:
         expected_projection = projection_text.encode("utf-8")
         if (
             baseline_tree != effect_tree
-            or parents.returncode != 0
-            or parents.stdout.strip().split()
-            != [projection_commit, baseline_commit]
-            or changed.returncode != 0
-            or bytes(changed.stdout or b"")
-            != safe_projection_path.encode("utf-8") + b"\0"
-            or projection_blob.returncode != 0
-            or len(bytes(projection_blob.stdout or b""))
-            > _MAX_DATABASE_PORTAL_PROJECTION_BYTES
-            or bytes(projection_blob.stdout or b"") != expected_projection
             or target.returncode != 0
-            or target.stdout.strip() != projection_commit
+            or resolved_top_level != repository_root
         ):
             raise DatabasePortalBridgeError(
-                "validated no-change target is not the exact projection commit"
+                "validated no-change target tree is invalid"
             )
-        for commit in (baseline_commit, projection_commit):
+        if uncommitted_projection is True:
+            descriptor = -1
+            try:
+                path_metadata = os.lstat(paths.task_projection)
+                descriptor = os.open(
+                    paths.task_projection,
+                    os.O_RDONLY
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NONBLOCK", 0),
+                )
+                projection_metadata = os.fstat(descriptor)
+                chunks: list[bytes] = []
+                projection_size = 0
+                while projection_size <= _MAX_DATABASE_PORTAL_PROJECTION_BYTES:
+                    chunk = os.read(
+                        descriptor,
+                        min(
+                            65_536,
+                            _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+                            + 1
+                            - projection_size,
+                        ),
+                    )
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    projection_size += len(chunk)
+                final_projection_metadata = os.fstat(descriptor)
+                current_projection = b"".join(chunks)
+                tracked = git(
+                    "ls-files",
+                    "--error-unmatch",
+                    "--",
+                    safe_projection_path,
+                )
+                ignored = git(
+                    "check-ignore",
+                    "--quiet",
+                    "--no-index",
+                    "--",
+                    safe_projection_path,
+                )
+                ignored_projection = git(
+                    "ls-files",
+                    "--others",
+                    "--ignored",
+                    "--exclude-standard",
+                    "-z",
+                    "--",
+                    safe_projection_path,
+                    text=False,
+                )
+                current_head = git(
+                    "rev-parse",
+                    "--verify",
+                    "HEAD^{commit}",
+                )
+                current_branch = git("branch", "--show-current")
+                final_path_metadata = os.lstat(paths.task_projection)
+                final_resolved_projection = paths.task_projection.resolve(
+                    strict=True
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise DatabasePortalBridgeError(
+                    "validated no-change private projection proof is unavailable"
+                ) from exc
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+            if (
+                stat.S_ISLNK(path_metadata.st_mode)
+                or not stat.S_ISREG(projection_metadata.st_mode)
+                or stat.S_ISLNK(projection_metadata.st_mode)
+                or projection_metadata.st_nlink != 1
+                or (
+                    path_metadata.st_dev,
+                    path_metadata.st_ino,
+                    path_metadata.st_mode,
+                    path_metadata.st_nlink,
+                    path_metadata.st_size,
+                    path_metadata.st_mtime_ns,
+                    path_metadata.st_ctime_ns,
+                )
+                != (
+                    projection_metadata.st_dev,
+                    projection_metadata.st_ino,
+                    projection_metadata.st_mode,
+                    projection_metadata.st_nlink,
+                    projection_metadata.st_size,
+                    projection_metadata.st_mtime_ns,
+                    projection_metadata.st_ctime_ns,
+                )
+                or (
+                    final_projection_metadata.st_dev,
+                    final_projection_metadata.st_ino,
+                    final_projection_metadata.st_mode,
+                    final_projection_metadata.st_nlink,
+                    final_projection_metadata.st_size,
+                    final_projection_metadata.st_mtime_ns,
+                    final_projection_metadata.st_ctime_ns,
+                )
+                != (
+                    projection_metadata.st_dev,
+                    projection_metadata.st_ino,
+                    projection_metadata.st_mode,
+                    projection_metadata.st_nlink,
+                    projection_metadata.st_size,
+                    projection_metadata.st_mtime_ns,
+                    projection_metadata.st_ctime_ns,
+                )
+                or (
+                    final_path_metadata.st_dev,
+                    final_path_metadata.st_ino,
+                    final_path_metadata.st_mode,
+                    final_path_metadata.st_nlink,
+                    final_path_metadata.st_size,
+                    final_path_metadata.st_mtime_ns,
+                    final_path_metadata.st_ctime_ns,
+                )
+                != (
+                    projection_metadata.st_dev,
+                    projection_metadata.st_ino,
+                    projection_metadata.st_mode,
+                    projection_metadata.st_nlink,
+                    projection_metadata.st_size,
+                    projection_metadata.st_mtime_ns,
+                    projection_metadata.st_ctime_ns,
+                )
+                or len(current_projection) > _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+                or current_projection != expected_projection
+                or final_resolved_projection != resolved_projection
+                or tracked.returncode != 1
+                or ignored.returncode != 0
+                or ignored_projection.returncode != 0
+                or bytes(ignored_projection.stdout or b"")
+                != safe_projection_path.encode("utf-8") + b"\0"
+                or target.stdout.strip() != baseline_commit
+                or current_head.returncode != 0
+                or current_head.stdout.strip() != baseline_commit
+                or current_branch.returncode != 0
+                or (
+                    bool(self.merge_target_branch)
+                    and current_branch.stdout.strip()
+                    != self.merge_target_branch
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "validated no-change private projection is not exact"
+                )
+            output_commits = (baseline_commit,)
+        else:
+            try:
+                parents = git(
+                    "rev-list",
+                    "--parents",
+                    "-n",
+                    "1",
+                    projection_commit,
+                )
+                changed = git(
+                    "diff-tree",
+                    "--no-commit-id",
+                    "--name-only",
+                    "-r",
+                    "-z",
+                    projection_commit,
+                    text=False,
+                )
+                projection_blob = git(
+                    "cat-file",
+                    "blob",
+                    f"{projection_commit}:{safe_projection_path}",
+                    text=False,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise DatabasePortalBridgeError(
+                    "validated no-change projection commit proof is unavailable"
+                ) from exc
+            if (
+                parents.returncode != 0
+                or parents.stdout.strip().split()
+                != [projection_commit, baseline_commit]
+                or changed.returncode != 0
+                or bytes(changed.stdout or b"")
+                != safe_projection_path.encode("utf-8") + b"\0"
+                or projection_blob.returncode != 0
+                or len(bytes(projection_blob.stdout or b""))
+                > _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+                or bytes(projection_blob.stdout or b"") != expected_projection
+                or target.stdout.strip() != projection_commit
+            ):
+                raise DatabasePortalBridgeError(
+                    "validated no-change target is not the exact projection commit"
+                )
+            output_commits = (baseline_commit, projection_commit)
+        for commit in output_commits:
             for output in safe_outputs:
                 try:
                     present = git("cat-file", "-e", f"{commit}:{output}")
@@ -9050,7 +9276,7 @@ class DatabasePortalExecutionBridge:
             or type(terminal.get("returncode")) is not int
             or terminal.get("returncode") != 0
             or terminal.get("attempt_consumed") is not True
-            or type(terminal.get("provider_dispatched")) is not bool
+            or terminal.get("provider_dispatched") is not False
             or type(portal_attempt) is not int
             or portal_attempt < 1
             or _SHA256_ID.fullmatch(terminal_event_id) is None
@@ -9296,6 +9522,29 @@ class DatabasePortalExecutionBridge:
             "updated_checkbox_task_ids",
             "updated_task_ids",
         }
+        committed_projection = bool(
+            isinstance(projection_commit_result, Mapping)
+            and set(projection_commit_result)
+            == {"commit", "committed", "path", "repo", "status"}
+            and projection_commit_result.get("committed") is True
+            and re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(projection_commit_result.get("commit") or ""),
+            )
+            is not None
+            and bool(str(projection_commit_result.get("path") or ""))
+            and bool(str(projection_commit_result.get("repo") or ""))
+            and bool(str(projection_commit_result.get("status") or ""))
+        )
+        private_uncommitted_projection = bool(
+            isinstance(projection_commit_result, Mapping)
+            and set(projection_commit_result)
+            == {"committed", "path", "reason", "repo"}
+            and projection_commit_result.get("committed") is False
+            and projection_commit_result.get("reason") == "no_changes"
+            and bool(str(projection_commit_result.get("path") or ""))
+            and bool(str(projection_commit_result.get("repo") or ""))
+        )
         if (
             not isinstance(todo_result, Mapping)
             or set(todo_result) != todo_fields
@@ -9310,18 +9559,7 @@ class DatabasePortalExecutionBridge:
             or todo_result.get("updated_checkbox_task_ids") != []
             or not str(todo_result.get("path") or "")
             or receipts != [expected_member_receipt]
-            or not isinstance(projection_commit_result, Mapping)
-            or set(projection_commit_result)
-            != {"commit", "committed", "path", "repo", "status"}
-            or projection_commit_result.get("committed") is not True
-            or re.fullmatch(
-                r"[0-9a-f]{40}",
-                str(projection_commit_result.get("commit") or ""),
-            )
-            is None
-            or not str(projection_commit_result.get("path") or "")
-            or not str(projection_commit_result.get("repo") or "")
-            or not str(projection_commit_result.get("status") or "")
+            or committed_projection == private_uncommitted_projection
         ):
             raise DatabasePortalBridgeError(
                 "validated no-change completion projection commit is invalid"
@@ -9340,7 +9578,10 @@ class DatabasePortalExecutionBridge:
             "_source_validated_no_change": True,
             "_source_effect_tree": expected_tree,
             "_source_projection_commit": str(
-                projection_commit_result["commit"]
+                projection_commit_result.get("commit") or ""
+            ),
+            "_source_projection_uncommitted": (
+                private_uncommitted_projection
             ),
             "_source_projection_path": str(
                 projection_commit_result["path"]

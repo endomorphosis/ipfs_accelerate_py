@@ -4455,7 +4455,10 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         text=True,
     ).stdout.strip()
     database = tmp_path / "managed-control.duckdb"
-    managed_store_id = "data/casf-managed-e2e-runtime/control.duckdb"
+    managed_store_id = (
+        "data/agent_supervisor/causal_event_federation/"
+        "managed-e2e-runtime/control.duckdb"
+    )
     source = DatabaseTaskSource(database)
     source.materialize(
         {
@@ -4478,8 +4481,16 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
                     "description": "Revalidate an output already present on target",
                     # Database population normalizes Markdown metadata keys.
                     # Exercise the exact representation used by live CASF.
+                    "board_namespace": (
+                        "agent-supervisor-causal-event-federation-v1"
+                    ),
                     "no_change_completion": "allowed",
-                    "outputs": [{"path": "pyproject.toml", "effect": {}}],
+                    # Deliberately differ from Portal's canonical path order.
+                    "outputs": [
+                        {"path": "setup.py", "effect": {}},
+                        {"path": "README.md", "effect": {}},
+                        {"path": "pyproject.toml", "effect": {}},
+                    ],
                     "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
                 },
                 {
@@ -4903,6 +4914,40 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         _contains_provider_disposition(item, True)
         for item in evidence.get("CASF-MANAGED-MODEL", [])
     ), diagnostic_text
+    target_head = subprocess.run(
+        ["git", "rev-parse", f"refs/heads/{temporary_branch}"],
+        cwd=isolated_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_first_parent_count = subprocess.run(
+        [
+            "git",
+            "rev-list",
+            "--first-parent",
+            "--count",
+            f"{protected_head}..{target_head}",
+        ],
+        cwd=isolated_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_changed_paths = subprocess.run(
+        ["git", "diff", "--name-only", protected_head, target_head],
+        cwd=isolated_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    # The model candidate and its merge are both reachable, but only the
+    # model merge may advance the target's first-parent history. A private
+    # no-change projection commit would make this count two.
+    assert target_first_parent_count == "1", diagnostic_text
+    assert target_changed_paths == ["data/casf-model-provider-output.txt"], (
+        diagnostic_text
+    )
     assert not fallback_marker.exists(), diagnostic_text
 
 
