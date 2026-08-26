@@ -533,7 +533,9 @@ def vrif030_completion_evidence(task: Any) -> dict[str, str | int]:
 
 
 def main() -> int:
-    discovered = Path(str(git(Path.cwd(), "rev-parse", "--show-toplevel"))).resolve()
+    discovered = Path(
+        str(git(Path.cwd(), "rev-parse", "--show-toplevel")).strip()
+    ).resolve()
     root = discovered
     require(root == EXPECTED_ROOT.resolve(), "refusing to operate on another repository")
     os.chdir(root)
