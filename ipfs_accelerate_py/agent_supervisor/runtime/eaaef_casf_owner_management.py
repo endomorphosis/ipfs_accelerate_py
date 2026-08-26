@@ -138,6 +138,7 @@ _STATUS_FIELDS: Final = frozenset(
         "owner_start_receipt_cid",
         "final_record_cid",
         "commit_receipt_cid",
+        "stop_challenge",
         "status_cid",
     }
 )
@@ -153,6 +154,7 @@ _STOP_INTENT_FIELDS: Final = frozenset(
         "owner_start_receipt_cid",
         "final_record_cid",
         "commit_receipt_cid",
+        "stop_challenge",
         "stop_request_id",
         "stop_request_cid",
         "intent_cid",
@@ -171,6 +173,7 @@ _STOP_RESULT_FIELDS: Final = frozenset(
         "owner_start_receipt_cid",
         "final_record_cid",
         "commit_receipt_cid",
+        "stop_challenge",
         "stop_request_id",
         "stop_request_cid",
         "stop_intent_cid",
@@ -190,6 +193,7 @@ _ARGUMENT_FIELDS: Final = {
             "owner_start_receipt_cid",
             "final_record_cid",
             "commit_receipt_cid",
+            "stop_challenge",
         }
     ),
 }
@@ -690,6 +694,8 @@ def _validate_request(
                     "commit_receipt_cid",
                 )
             )
+            or type(arguments.get("stop_challenge")) is not str
+            or not _HEX_64_RE.fullmatch(str(arguments["stop_challenge"]))
         ):
             raise EAAEFCASFOwnerManagementError(
                 "owner management stop request identity differs"
@@ -778,6 +784,7 @@ def _status_snapshot(
     owner_start_receipt_cid: str,
     final_record_cid: str,
     commit_receipt_cid: str,
+    stop_challenge: str,
 ) -> dict[str, Any]:
     value: dict[str, Any] = {
         "schema": EAAEF_CASF_OWNER_MANAGEMENT_STATUS_SCHEMA,
@@ -792,6 +799,7 @@ def _status_snapshot(
         "owner_start_receipt_cid": owner_start_receipt_cid,
         "final_record_cid": final_record_cid,
         "commit_receipt_cid": commit_receipt_cid,
+        "stop_challenge": stop_challenge,
     }
     value["status_cid"] = _cid(value)
     return value
@@ -813,6 +821,7 @@ def _validate_status(raw: Mapping[str, Any], *, generation_id: str) -> dict[str,
         value.get("final_record_cid"),
         value.get("commit_receipt_cid"),
     )
+    stop_challenge = value.get("stop_challenge")
     if (
         value.get("schema") != EAAEF_CASF_OWNER_MANAGEMENT_STATUS_SCHEMA
         or value.get("interface") != EAAEF_CASF_OWNER_MANAGEMENT_INTERFACE
@@ -823,9 +832,17 @@ def _validate_status(raw: Mapping[str, Any], *, generation_id: str) -> dict[str,
         or value.get("provider_process_started") is not False
         or value.get("task_state_mutated") is not False
         or (phase == "provisional" and any(cid_fields))
+        or (phase == "provisional" and stop_challenge != "")
         or (
             phase != "provisional"
             and any(type(item) is not str or not _SHA256_RE.fullmatch(item) for item in cid_fields)
+        )
+        or (
+            phase != "provisional"
+            and (
+                type(stop_challenge) is not str
+                or not _HEX_64_RE.fullmatch(stop_challenge)
+            )
         )
         or value["owner_committed"] is not (phase != "provisional")
         or value["owner_process_alive"] is not (phase != "stopped")
@@ -861,6 +878,7 @@ def _stop_intent(
         "owner_start_receipt_cid": owner_start_receipt_cid,
         "final_record_cid": final_record_cid,
         "commit_receipt_cid": commit_receipt_cid,
+        "stop_challenge": request["arguments"]["stop_challenge"],
         "stop_request_id": request["arguments"]["stop_request_id"],
         "stop_request_cid": request["request_cid"],
     }
@@ -906,6 +924,8 @@ def _validate_stop_intent(
                 "commit_receipt_cid",
             )
         )
+        or type(value.get("stop_challenge")) is not str
+        or not _HEX_64_RE.fullmatch(str(value["stop_challenge"]))
         or type(value.get("stop_request_id")) is not str
         or not _HEX_64_RE.fullmatch(str(value["stop_request_id"]))
         or type(value.get("stop_request_cid")) is not str
@@ -935,6 +955,7 @@ def _stop_result(
         "owner_start_receipt_cid": intent["owner_start_receipt_cid"],
         "final_record_cid": intent["final_record_cid"],
         "commit_receipt_cid": intent["commit_receipt_cid"],
+        "stop_challenge": intent["stop_challenge"],
         "stop_request_id": intent["stop_request_id"],
         "stop_request_cid": intent["stop_request_cid"],
         "stop_intent_cid": intent["intent_cid"],
@@ -994,6 +1015,8 @@ def _validate_stop_result(
                 "stop_intent_cid",
             )
         )
+        or type(value.get("stop_challenge")) is not str
+        or not _HEX_64_RE.fullmatch(str(value["stop_challenge"]))
         or type(value.get("stop_request_id")) is not str
         or not _HEX_64_RE.fullmatch(str(value["stop_request_id"]))
         or type(value.get("stop_request_cid")) is not str
@@ -1073,6 +1096,7 @@ class CASFOwnerManagementServer:
         self._owner_start_receipt_cid = ""
         self._final_record_cid = ""
         self._commit_receipt_cid = ""
+        self._stop_challenge = ""
         self._intent: dict[str, Any] | None = None
         self._result: dict[str, Any] | None = None
         self._status_request_nonces: OrderedDict[str, None] = OrderedDict()
@@ -1160,9 +1184,13 @@ class CASFOwnerManagementServer:
                 raise EAAEFCASFOwnerManagementError(
                     "owner management commit phase differs"
                 )
+            # This value does not exist until the exact commit transition and
+            # is disclosed only inside an authenticated committed status.
+            stop_challenge = secrets.token_hex(32)
             self._owner_start_receipt_cid = owner_start_receipt_cid
             self._final_record_cid = final_record_cid
             self._commit_receipt_cid = commit_receipt_cid
+            self._stop_challenge = stop_challenge
             self._phase = "committed"
 
     def _snapshot(self) -> dict[str, Any]:
@@ -1174,6 +1202,7 @@ class CASFOwnerManagementServer:
                 owner_start_receipt_cid=self._owner_start_receipt_cid,
                 final_record_cid=self._final_record_cid,
                 commit_receipt_cid=self._commit_receipt_cid,
+                stop_challenge=self._stop_challenge,
             )
 
     def _peer_pid(self, connection: socket.socket) -> int:
@@ -1198,41 +1227,75 @@ class CASFOwnerManagementServer:
             )
         return peer_pid
 
+    def _begin_stop_locked(self, request: Mapping[str, Any]) -> None:
+        """Atomically admit and durably begin one exact committed stop."""
+
+        request_nonce = str(request["request_nonce"])
+        if self._phase == "provisional":
+            self._remember_status_window_nonce_locked(request_nonce)
+            raise EAAEFCASFOwnerManagementError("owner is not committed")
+        if self._phase != "committed":
+            if self._stop_request_nonce == request_nonce:
+                raise EAAEFCASFOwnerManagementError(
+                    "owner management request nonce was replayed"
+                )
+            raise EAAEFCASFOwnerManagementError(
+                "owner management stop request diverged"
+            )
+        arguments = request["arguments"]
+        if (
+            arguments["owner_start_receipt_cid"]
+            != self._owner_start_receipt_cid
+            or arguments["final_record_cid"] != self._final_record_cid
+            or arguments["commit_receipt_cid"] != self._commit_receipt_cid
+            or arguments["stop_challenge"] != self._stop_challenge
+        ):
+            raise EAAEFCASFOwnerManagementError(
+                "owner management stop commit binding diverged"
+            )
+        if request_nonce in self._status_request_nonces:
+            raise EAAEFCASFOwnerManagementError(
+                "owner management request nonce was replayed"
+            )
+        if self._stop_request_nonce is not None:
+            if self._stop_request_nonce == request_nonce:
+                raise EAAEFCASFOwnerManagementError(
+                    "owner management request nonce was replayed"
+                )
+            raise EAAEFCASFOwnerManagementError(
+                "owner management stop request diverged"
+            )
+        requested = _stop_intent(
+            generation_id=self.generation_id,
+            binding_cid=self.binding_cid,
+            snapshot_bindings_cid=self.snapshot_bindings_cid,
+            capsule_cid=str(self.capsule["capsule_cid"]),
+            owner_process_birth=self.owner_process_birth,
+            owner_start_receipt_cid=self._owner_start_receipt_cid,
+            final_record_cid=self._final_record_cid,
+            commit_receipt_cid=self._commit_receipt_cid,
+            key=self.key,
+            request=request,
+        )
+        _write_once(
+            self.state_dir,
+            MANAGEMENT_STOP_INTENT_NAME,
+            _canonical_bytes(requested, noun="owner stop intent"),
+        )
+        self._stop_request_nonce = request_nonce
+        self._intent = requested
+        self._phase = "stopping"
+        self.stop_requested.set()
+        try:
+            self.request_stop()
+        except BaseException as exc:
+            raise EAAEFCASFOwnerManagementError(
+                "owner stop callback failed"
+            ) from exc
+
     def _handle_stop(self, request: Mapping[str, Any]) -> dict[str, Any]:
         with self._gate:
-            if self._phase == "provisional":
-                raise EAAEFCASFOwnerManagementError("owner is not committed")
-            requested = _stop_intent(
-                generation_id=self.generation_id,
-                binding_cid=self.binding_cid,
-                snapshot_bindings_cid=self.snapshot_bindings_cid,
-                capsule_cid=str(self.capsule["capsule_cid"]),
-                owner_process_birth=self.owner_process_birth,
-                owner_start_receipt_cid=self._owner_start_receipt_cid,
-                final_record_cid=self._final_record_cid,
-                commit_receipt_cid=self._commit_receipt_cid,
-                key=self.key,
-                request=request,
-            )
-            if self._intent is None:
-                _write_once(
-                    self.state_dir,
-                    MANAGEMENT_STOP_INTENT_NAME,
-                    _canonical_bytes(requested, noun="owner stop intent"),
-                )
-                self._intent = requested
-                self._phase = "stopping"
-                self.stop_requested.set()
-                try:
-                    self.request_stop()
-                except BaseException as exc:
-                    raise EAAEFCASFOwnerManagementError(
-                        "owner stop callback failed"
-                    ) from exc
-            elif self._intent != requested:
-                raise EAAEFCASFOwnerManagementError(
-                    "owner stop request diverged"
-                )
+            self._begin_stop_locked(request)
         stop_deadline = time.monotonic() + self.stop_timeout_seconds
         while not self.stopped.is_set():
             remaining = stop_deadline - time.monotonic()
@@ -1248,43 +1311,28 @@ class CASFOwnerManagementServer:
                 )
             return dict(self._result)
 
-    def _admit_request_nonce(self, request: Mapping[str, Any]) -> None:
+    def _remember_status_window_nonce_locked(self, request_nonce: str) -> None:
+        if request_nonce in self._status_request_nonces:
+            raise EAAEFCASFOwnerManagementError(
+                "owner management request nonce was replayed"
+            )
+        if len(self._status_request_nonces) >= _MAX_STATUS_REQUEST_NONCES:
+            self._status_request_nonces.popitem(last=False)
+        self._status_request_nonces[request_nonce] = None
+
+    def _handle_status(self, request: Mapping[str, Any]) -> dict[str, Any]:
         request_nonce = str(request["request_nonce"])
-        operation = str(request["operation"])
         with self._gate:
-            if operation == "stop" and self._phase != "provisional":
-                arguments = request["arguments"]
-                if (
-                    arguments["owner_start_receipt_cid"]
-                    != self._owner_start_receipt_cid
-                    or arguments["final_record_cid"] != self._final_record_cid
-                    or arguments["commit_receipt_cid"]
-                    != self._commit_receipt_cid
-                ):
-                    raise EAAEFCASFOwnerManagementError(
-                        "owner management stop commit binding diverged"
-                    )
-                if request_nonce in self._status_request_nonces:
-                    raise EAAEFCASFOwnerManagementError(
-                        "owner management request nonce was replayed"
-                    )
-                if self._stop_request_nonce is None:
-                    self._stop_request_nonce = request_nonce
-                    return
-                if self._stop_request_nonce == request_nonce:
-                    raise EAAEFCASFOwnerManagementError(
-                        "owner management request nonce was replayed"
-                    )
-                raise EAAEFCASFOwnerManagementError(
-                    "owner management stop request diverged"
-                )
-            if request_nonce in self._status_request_nonces:
-                raise EAAEFCASFOwnerManagementError(
-                    "owner management request nonce was replayed"
-                )
-            if len(self._status_request_nonces) >= _MAX_STATUS_REQUEST_NONCES:
-                self._status_request_nonces.popitem(last=False)
-            self._status_request_nonces[request_nonce] = None
+            self._remember_status_window_nonce_locked(request_nonce)
+            return _status_snapshot(
+                generation_id=self.generation_id,
+                owner_process_birth=self.owner_process_birth,
+                phase=self._phase,
+                owner_start_receipt_cid=self._owner_start_receipt_cid,
+                final_record_cid=self._final_record_cid,
+                commit_receipt_cid=self._commit_receipt_cid,
+                stop_challenge=self._stop_challenge,
+            )
 
     def _serve_connection(self, connection: socket.socket) -> None:
         peer_pid = self._peer_pid(connection)
@@ -1315,9 +1363,8 @@ class CASFOwnerManagementServer:
         error_code = ""
         result: dict[str, Any] = {}
         try:
-            self._admit_request_nonce(request)
             if operation == "status.snapshot":
-                result = self._snapshot()
+                result = self._handle_status(request)
             else:
                 result = self._handle_stop(request)
         except EAAEFCASFOwnerManagementError as exc:
@@ -1534,6 +1581,7 @@ def _validated_stop_artifacts(
         "owner_start_receipt_cid",
         "final_record_cid",
         "commit_receipt_cid",
+        "stop_challenge",
         "stop_request_id",
         "stop_request_cid",
     )
@@ -1741,6 +1789,7 @@ class CASFOwnerManagementClient:
                             "owner_start_receipt_cid",
                             "final_record_cid",
                             "commit_receipt_cid",
+                            "stop_challenge",
                         )
                     )
                 ):
@@ -1773,6 +1822,7 @@ class CASFOwnerManagementClient:
                 ],
                 "final_record_cid": committed_status["final_record_cid"],
                 "commit_receipt_cid": committed_status["commit_receipt_cid"],
+                "stop_challenge": committed_status["stop_challenge"],
             },
         )
         try:
@@ -1819,6 +1869,7 @@ class CASFOwnerManagementClient:
                     "owner_start_receipt_cid",
                     "final_record_cid",
                     "commit_receipt_cid",
+                    "stop_challenge",
                 )
             )
         ):

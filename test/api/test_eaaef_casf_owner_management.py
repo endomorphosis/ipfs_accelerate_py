@@ -98,6 +98,7 @@ def test_management_status_and_stop_are_exact_private_operations(
         status = client.status_snapshot()
         assert status == server._snapshot()
         assert status["phase"] == "committed"
+        assert management._HEX_64_RE.fullmatch(status["stop_challenge"])
         assert status["owner_process_birth"] == _owner_birth()
         assert status["provider_process_started"] is False
         assert status["task_state_mutated"] is False
@@ -114,10 +115,12 @@ def test_management_status_and_stop_are_exact_private_operations(
         capsule_raw = (client.state_dir / management.MANAGEMENT_CAPSULE_NAME).read_bytes()
         assert client.key not in capsule_raw
         assert client.key.hex().encode("ascii") not in capsule_raw
+        assert status["stop_challenge"].encode("ascii") not in capsule_raw
 
         result = client.stop()
         assert result["committed_owner_stopped"] is True
         assert result["exclusive_owner_lease_released"] is True
+        assert result["stop_challenge"] == status["stop_challenge"]
         intent = management._validate_stop_intent(
             management._read_private(
                 client.state_dir, management.MANAGEMENT_STOP_INTENT_NAME
@@ -140,6 +143,8 @@ def test_management_status_and_stop_are_exact_private_operations(
         )
         assert intent["stop_request_cid"] == retained["stop_request_cid"]
         assert intent["stop_request_id"] == retained["stop_request_id"]
+        assert intent["stop_challenge"] == retained["stop_challenge"]
+        assert intent["stop_challenge"] == status["stop_challenge"]
         assert intent["capsule_cid"] == client.capsule["capsule_cid"]
         assert retained["stop_intent_cid"] == intent["intent_cid"]
         tampered = dict(retained)
@@ -259,7 +264,9 @@ def test_management_stop_is_unavailable_before_owner_commit(tmp_path: Path) -> N
         timeout_seconds=1,
     )
     try:
-        assert client.status_snapshot()["phase"] == "provisional"
+        provisional = client.status_snapshot()
+        assert provisional["phase"] == "provisional"
+        assert provisional["stop_challenge"] == ""
         with pytest.raises(
             management.EAAEFCASFOwnerManagementError,
             match="owner_not_committed",
@@ -310,9 +317,10 @@ def test_rejected_provisional_stop_nonce_cannot_be_replayed_after_commit(
         operation="stop",
         arguments={
             "stop_request_id": "1" * 64,
-            "owner_start_receipt_cid": "sha256:" + "7" * 64,
-            "final_record_cid": "sha256:" + "8" * 64,
-            "commit_receipt_cid": "sha256:" + "9" * 64,
+            "owner_start_receipt_cid": _CID_A,
+            "final_record_cid": _CID_B,
+            "commit_receipt_cid": _CID_C,
+            "stop_challenge": "0" * 64,
         },
     )
     rejected_raw = management._canonical_bytes(
@@ -323,13 +331,23 @@ def test_rejected_provisional_stop_nonce_cannot_be_replayed_after_commit(
         first = client._round_trip(rejected)
         assert first["ok"] is False
         assert first["error_code"] == "owner_not_committed"
+        assert rejected["request_nonce"] in server._status_request_nonces
         assert client.status_snapshot()["phase"] == "provisional"
         assert rejected["request_nonce"] not in server._status_request_nonces
-        server.mark_committed(
-            owner_start_receipt_cid=_CID_A,
-            final_record_cid=_CID_B,
-            commit_receipt_cid=_CID_C,
-        )
+        with monkeypatch.context() as commit_secret:
+            commit_secret.setattr(
+                management.secrets,
+                "token_hex",
+                lambda size: "f" * (size * 2),
+            )
+            server.mark_committed(
+                owner_start_receipt_cid=_CID_A,
+                final_record_cid=_CID_B,
+                commit_receipt_cid=_CID_C,
+            )
+        committed = client.status_snapshot()
+        assert committed["stop_challenge"] == "f" * 64
+        assert management._HEX_64_RE.fullmatch(committed["stop_challenge"])
         assert (
             management._canonical_bytes(rejected, noun="committed stop replay")
             == rejected_raw
@@ -341,6 +359,141 @@ def test_rejected_provisional_stop_nonce_cannot_be_replayed_after_commit(
         assert not (state_dir / management.MANAGEMENT_STOP_INTENT_NAME).exists()
         assert client.stop()["committed_owner_stopped"] is True
     finally:
+        server.close()
+
+
+def test_provisional_stop_cannot_cross_atomic_commit_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _private_state(tmp_path)
+    holder: dict[str, management.CASFOwnerManagementServer] = {}
+
+    def _request_stop() -> None:
+        threading.Thread(
+            target=holder["server"].mark_stopped,
+            daemon=True,
+        ).start()
+
+    server = management.CASFOwnerManagementServer(
+        generation_id=_GENERATION_ID,
+        binding_cid=_BINDING_CID,
+        snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
+        state_dir=state_dir,
+        owner_process_birth=_owner_birth(),
+        request_stop=_request_stop,
+        stop_timeout_seconds=1,
+    )
+    holder["server"] = server
+    server.start()
+    client = management.CASFOwnerManagementClient(
+        generation_id=_GENERATION_ID,
+        binding_cid=_BINDING_CID,
+        snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
+        state_dir=state_dir,
+        timeout_seconds=1,
+    )
+    provisional_request = management._build_request(
+        generation_id=_GENERATION_ID,
+        capsule_cid=client.capsule["capsule_cid"],
+        key=client.key,
+        operation="stop",
+        arguments={
+            "stop_request_id": "2" * 64,
+            "owner_start_receipt_cid": _CID_A,
+            "final_record_cid": _CID_B,
+            "commit_receipt_cid": _CID_C,
+            # The future challenge is fixed below so this request would pass
+            # every post-commit identity check if it crossed the boundary.
+            "stop_challenge": "3" * 64,
+        },
+    )
+    entered_atomic_stop = threading.Event()
+    release_atomic_stop = threading.Event()
+    commit_started = threading.Event()
+    commit_gate_attempted = threading.Event()
+    commit_completed = threading.Event()
+    original_begin_stop = server._begin_stop_locked
+
+    class _ObservedGate:
+        def __init__(self, gate: Any) -> None:
+            self._gate = gate
+
+        def __enter__(self) -> _ObservedGate:
+            if threading.current_thread().name == "commit-boundary":
+                commit_gate_attempted.set()
+            self._gate.acquire()
+            return self
+
+        def __exit__(self, *_error: object) -> None:
+            self._gate.release()
+
+    server._gate = _ObservedGate(server._gate)
+
+    def _pause_inside_atomic_stop(request: dict[str, Any]) -> None:
+        entered_atomic_stop.set()
+        assert release_atomic_stop.wait(2)
+        original_begin_stop(request)
+
+    monkeypatch.setattr(server, "_begin_stop_locked", _pause_inside_atomic_stop)
+    exchange: dict[str, Any] = {}
+    failures: list[BaseException] = []
+
+    def _exchange_provisional_stop() -> None:
+        try:
+            exchange["response"] = client._round_trip(provisional_request)
+        except BaseException as exc:
+            failures.append(exc)
+
+    def _commit() -> None:
+        commit_started.set()
+        try:
+            server.mark_committed(
+                owner_start_receipt_cid=_CID_A,
+                final_record_cid=_CID_B,
+                commit_receipt_cid=_CID_C,
+            )
+            commit_completed.set()
+        except BaseException as exc:
+            failures.append(exc)
+
+    stop_thread = threading.Thread(target=_exchange_provisional_stop, daemon=True)
+    commit_thread = threading.Thread(
+        target=_commit,
+        name="commit-boundary",
+        daemon=True,
+    )
+    try:
+        stop_thread.start()
+        assert entered_atomic_stop.wait(2)
+        with monkeypatch.context() as commit_secret:
+            commit_secret.setattr(
+                management.secrets,
+                "token_hex",
+                lambda size: "3" * (size * 2),
+            )
+            commit_thread.start()
+            assert commit_started.wait(2)
+            assert commit_gate_attempted.wait(2)
+            assert not commit_completed.is_set()
+            release_atomic_stop.set()
+            stop_thread.join(timeout=2)
+            commit_thread.join(timeout=2)
+        assert not stop_thread.is_alive()
+        assert not commit_thread.is_alive()
+        assert not failures
+        assert commit_completed.is_set()
+        assert server._stop_challenge == "3" * 64
+        assert exchange["response"]["ok"] is False
+        assert exchange["response"]["error_code"] == "owner_not_committed"
+        assert not server.stop_requested.is_set()
+        assert not (state_dir / management.MANAGEMENT_STOP_INTENT_NAME).exists()
+
+        assert client.stop()["committed_owner_stopped"] is True
+    finally:
+        release_atomic_stop.set()
+        stop_thread.join(timeout=2)
+        commit_thread.join(timeout=2)
         server.close()
 
 
