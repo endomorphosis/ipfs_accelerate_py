@@ -328,7 +328,11 @@ CASES: dict[str, Callable[..., None]] = {
 def test_qualification_receipt_is_contract_fail_closed() -> None:
     receipt = _load_receipt()
     assert receipt["schema"] == "qualification-receipt@1"
+    assert receipt["task_id"] == "EAAEF-125"
     assert receipt["evidence_mode"] == "contract_fail_closed"
+    assert receipt["qualification_scope"] == "offline_adversarial_contract_only"
+    assert receipt["task_completion_claimed"] is False
+    assert receipt["production_qualification_claimed"] is False
     assert receipt["live_runtime_invoked"] is False
     assert receipt["live_engine_invoked"] is False
     assert receipt["accepted_mutation"] is False

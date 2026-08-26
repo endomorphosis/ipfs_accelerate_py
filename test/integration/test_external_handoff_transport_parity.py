@@ -78,6 +78,9 @@ def test_receipt_contract_is_fail_closed_and_not_live() -> None:
     assert receipt["schema"].endswith("external-handoff-transport-parity@1")
     assert receipt["task_id"] == "EAAEF-115"
     assert receipt["evidence_mode"] == "contract_fail_closed"
+    assert receipt["qualification_scope"] == "offline_transport_contract_only"
+    assert receipt["task_completion_claimed"] is False
+    assert receipt["production_qualification_claimed"] is False
     assert receipt["live_runtime_invoked"] is False
     assert receipt["live_quack"] is False
     assert receipt["live_docker"] is False
