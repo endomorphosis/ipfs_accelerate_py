@@ -245,9 +245,8 @@ def _get_cmdclass():
         class build_py(_build_py):  # type: ignore
             """Copy the Profile A interface schema into the wheel build tree.
 
-            PEP 621 ``[tool.setuptools.package-data]`` only admits ``*.txt`` /
-            ``*.md`` here; editing ``pyproject.toml`` is blocked as validation
-            configuration. Explicitly copying the closed JSON schema keeps
+            The closed JSON schema predates the direct package-data declaration
+            used by the supervisor SQL resources.  Explicitly copying it keeps
             ``importlib.resources`` loadable from installed wheels.
             """
 
@@ -405,6 +404,9 @@ setup(
     package_data={
         "ipfs_accelerate_py.agent_supervisor.semantic_state": [
             "schemas/*.json",
+        ],
+        "ipfs_accelerate_py.agent_supervisor.task_sources": [
+            "sql/*.sql",
         ],
     },
 )

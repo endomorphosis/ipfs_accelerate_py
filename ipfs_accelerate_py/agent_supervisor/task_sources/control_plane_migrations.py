@@ -7,9 +7,10 @@ receipt (version, checksum, application/tool versions, start/end/outcome,
 schema fingerprint) and refuses drift, gaps, downgrades, partial application,
 and runtime ad-hoc DDL outside an explicit compatibility path.
 
-Schema-domain SQL files land under ``task_sources/sql/`` in later tasks; this
-module only installs the migration bookkeeping tables and applies whatever the
-catalog supplies.
+Bundled schema-domain SQL is read directly from the installed package resource
+loader, including a sealed zip capsule, without extraction or a source-tree
+fallback.  An explicitly supplied directory remains the only filesystem
+override.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from importlib import resources
 from pathlib import Path
 from typing import Any, Callable, Final
 
@@ -46,6 +48,11 @@ MIGRATION_RUN_REPORT_SCHEMA: Final = (
 SQL_DIRECTORY_NAME: Final = "sql"
 SQL_FILENAME_RE: Final = re.compile(
     r"^(?P<version>\d{4})_(?P<slug>[a-z0-9]+(?:_[a-z0-9]+)*)\.sql$"
+)
+REQUIRED_PACKAGE_SQL_FILENAMES: Final[tuple[str, ...]] = (
+    "0001_control_plane.sql",
+    "0002_causal_event_federation_core.sql",
+    "0003_state_server_restart_identity.sql",
 )
 
 # Outcomes recorded on MigrationReceipt.
@@ -219,7 +226,46 @@ def checksum_sql(sql_text: str) -> str:
 
 
 def _package_sql_directory() -> Path:
+    """Return the legacy filesystem view for explicit-path compatibility."""
+
     return Path(__file__).resolve().parent / SQL_DIRECTORY_NAME
+
+
+def _package_sql_resources() -> Any:
+    """Return the bundled SQL traversable from this module's package loader."""
+
+    try:
+        root = resources.files(__package__).joinpath(SQL_DIRECTORY_NAME)
+        if not root.is_dir():
+            raise MigrationCatalogError("bundled control-plane SQL is missing")
+        return root
+    except MigrationCatalogError:
+        raise
+    except (AttributeError, FileNotFoundError, ModuleNotFoundError, OSError, TypeError) as exc:
+        raise MigrationCatalogError(
+            "bundled control-plane SQL is unavailable"
+        ) from exc
+
+
+def read_bundled_sql_text(filename: str) -> str:
+    """Read one canonical SQL resource without extraction or ambient fallback."""
+
+    name = str(filename)
+    if Path(name).name != name or SQL_FILENAME_RE.fullmatch(name) is None:
+        raise MigrationCatalogError("bundled control-plane SQL filename is invalid")
+    resource = _package_sql_resources().joinpath(name)
+    try:
+        if not resource.is_file():
+            raise MigrationCatalogError(
+                f"bundled control-plane SQL is missing: {name}"
+            )
+        return resource.read_text(encoding="utf-8")
+    except MigrationCatalogError:
+        raise
+    except (OSError, UnicodeError) as exc:
+        raise MigrationCatalogError(
+            f"bundled control-plane SQL is unreadable: {name}"
+        ) from exc
 
 
 def default_application_version() -> str:
@@ -575,35 +621,78 @@ class MigrationCatalog:
         *,
         extra_migrations: Sequence[ControlPlaneMigration] = (),
     ) -> MigrationCatalog:
-        """Load ``NNNN_slug.sql`` files from the package sql directory."""
+        """Load ``NNNN_slug.sql`` from bundled resources or an explicit path."""
 
-        root = Path(directory) if directory is not None else _package_sql_directory()
         loaded: list[ControlPlaneMigration] = []
-        if root.is_dir():
-            for path in sorted(root.iterdir()):
-                if not path.is_file() or path.suffix.lower() != ".sql":
-                    continue
-                if path.name.upper() == "README.SQL":
-                    continue
-                match = SQL_FILENAME_RE.match(path.name)
-                if match is None:
-                    raise MigrationCatalogError(
-                        f"migration filename must match "
-                        f"NNNN_slug.sql; got {path.name!r}"
-                    )
-                version = int(match.group("version"))
-                slug = match.group("slug")
-                sql_text = path.read_text(encoding="utf-8")
-                loaded.append(
-                    ControlPlaneMigration.from_sql(
-                        version=version,
-                        migration_id=f"{version:04d}_{slug}",
-                        sql_text=sql_text,
-                        description=slug.replace("_", " "),
-                        depends_on=tuple(range(1, version)),
+
+        def append_migration(
+            *,
+            filename: str,
+            sql_text: str,
+            source_path: str,
+        ) -> None:
+            match = SQL_FILENAME_RE.match(filename)
+            if match is None:
+                raise MigrationCatalogError(
+                    "migration filename must match "
+                    f"NNNN_slug.sql; got {filename!r}"
+                )
+            version = int(match.group("version"))
+            slug = match.group("slug")
+            loaded.append(
+                ControlPlaneMigration.from_sql(
+                    version=version,
+                    migration_id=f"{version:04d}_{slug}",
+                    sql_text=sql_text,
+                    description=slug.replace("_", " "),
+                    depends_on=tuple(range(1, version)),
+                    source_path=source_path,
+                )
+            )
+
+        if directory is None:
+            root = _package_sql_resources()
+            try:
+                package_entries = tuple(
+                    sorted(root.iterdir(), key=lambda item: item.name)
+                )
+                sql_entries = tuple(
+                    entry
+                    for entry in package_entries
+                    if entry.is_file() and entry.name.endswith(".sql")
+                )
+            except (OSError, TypeError) as exc:
+                raise MigrationCatalogError(
+                    "bundled control-plane SQL cannot be enumerated"
+                ) from exc
+            names = {entry.name for entry in sql_entries}
+            missing = sorted(set(REQUIRED_PACKAGE_SQL_FILENAMES) - names)
+            if missing:
+                raise MigrationCatalogError(
+                    "bundled control-plane SQL is missing required migrations: "
+                    + ", ".join(missing)
+                )
+            for entry in sql_entries:
+                append_migration(
+                    filename=entry.name,
+                    sql_text=read_bundled_sql_text(entry.name),
+                    source_path=(
+                        f"package:{__package__}/{SQL_DIRECTORY_NAME}/{entry.name}"
+                    ),
+                )
+        else:
+            root = Path(directory)
+            if root.is_dir():
+                for path in sorted(root.iterdir()):
+                    if not path.is_file() or path.suffix.lower() != ".sql":
+                        continue
+                    if path.name.upper() == "README.SQL":
+                        continue
+                    append_migration(
+                        filename=path.name,
+                        sql_text=path.read_text(encoding="utf-8"),
                         source_path=str(path),
                     )
-                )
         if extra_migrations:
             loaded.extend(extra_migrations)
         return cls.from_migrations(loaded)
@@ -1558,7 +1647,7 @@ class ControlPlaneMigrationRunner:
 def load_default_catalog(
     sql_directory: Path | str | None = None,
 ) -> MigrationCatalog:
-    """Load the package SQL catalog (may be empty before domain SQL lands)."""
+    """Load canonical package SQL or the caller's explicit directory."""
 
     return MigrationCatalog.from_sql_directory(sql_directory)
 
@@ -1589,6 +1678,7 @@ __all__ = [
     "OUTCOME_FAILED",
     "OUTCOME_REPLAYED",
     "OUTCOME_REFUSED",
+    "REQUIRED_PACKAGE_SQL_FILENAMES",
     "SQL_DIRECTORY_NAME",
     "checksum_sql",
     "compute_schema_fingerprint",
@@ -1596,4 +1686,5 @@ __all__ = [
     "default_tool_version",
     "duckdb_available",
     "load_default_catalog",
+    "read_bundled_sql_text",
 ]

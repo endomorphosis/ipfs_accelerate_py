@@ -460,7 +460,96 @@ def test_reviewed_capsule_manifest_closes_identity_dependencies() -> None:
     assert {
         "ipfs_accelerate_py/utils/cid_utils.py",
         "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
+        "0002_causal_event_federation_core.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
+        "0003_state_server_restart_identity.sql",
     }.issubset(dependencies)
+
+
+def test_bundled_schema_resource_failures_keep_typed_install_surface(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import control_plane_schema
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
+        MigrationCatalogError,
+    )
+
+    def missing_resource(_filename: str) -> str:
+        raise MigrationCatalogError("missing sealed SQL resource")
+
+    monkeypatch.setattr(
+        control_plane_schema,
+        "read_bundled_sql_text",
+        missing_resource,
+    )
+    with pytest.raises(
+        control_plane_schema.ControlPlaneSchemaInstallError,
+        match="bundled resources",
+    ) as base_error:
+        control_plane_schema.default_control_plane_schema().sql_text()
+    assert isinstance(base_error.value.__cause__, MigrationCatalogError)
+
+    with pytest.raises(
+        control_plane_schema.ControlPlaneSchemaInstallError,
+        match="bundled resources",
+    ) as extension_error:
+        control_plane_schema.default_causal_event_federation_schema_extension().sql_text()
+    assert isinstance(extension_error.value.__cause__, MigrationCatalogError)
+
+
+def test_default_catalog_resource_failure_keeps_typed_install_surface(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import control_plane_schema
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
+        MigrationCatalogError,
+    )
+
+    def missing_catalog(_directory: object = None) -> object:
+        raise MigrationCatalogError("missing sealed catalog")
+
+    monkeypatch.setattr(
+        control_plane_schema,
+        "load_default_catalog",
+        missing_catalog,
+    )
+    with pytest.raises(
+        control_plane_schema.ControlPlaneSchemaInstallError,
+        match="catalog is unavailable",
+    ) as error:
+        control_plane_schema.load_control_plane_catalog()
+    assert isinstance(error.value.__cause__, MigrationCatalogError)
+
+
+def test_explicit_sql_directory_never_reads_bundled_resources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        control_plane_migrations,
+    )
+
+    sql_directory = tmp_path / "sql"
+    sql_directory.mkdir()
+    sql_directory.joinpath("0001_explicit.sql").write_text(
+        "SELECT 1;\n",
+        encoding="utf-8",
+    )
+
+    def deny_package_lookup() -> object:
+        raise AssertionError("bundled resources must not be consulted")
+
+    monkeypatch.setattr(
+        control_plane_migrations,
+        "_package_sql_resources",
+        deny_package_lookup,
+    )
+    catalog = control_plane_migrations.MigrationCatalog.from_sql_directory(
+        sql_directory
+    )
+    assert [item.migration_id for item in catalog.migrations] == ["0001_explicit"]
 
 
 @pytest.mark.parametrize(
@@ -468,6 +557,11 @@ def test_reviewed_capsule_manifest_closes_identity_dependencies() -> None:
     [
         "ipfs_accelerate_py/utils/cid_utils.py",
         "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
+        "0002_causal_event_federation_core.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
+        "0003_state_server_restart_identity.sql",
     ],
 )
 def test_capsule_missing_identity_dependency_is_denied(
@@ -485,6 +579,11 @@ def test_capsule_missing_identity_dependency_is_denied(
     [
         "ipfs_accelerate_py/utils/cid_utils.py",
         "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
+        "0002_causal_event_federation_core.sql",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
+        "0003_state_server_restart_identity.sql",
     ],
 )
 def test_capsule_substituted_identity_dependency_is_denied(
@@ -558,6 +657,64 @@ print(json.dumps({"raw": raw, "dag": dag, "targets": targets}, sort_keys=True))
 """
 
 
+_HERMETIC_SQL_RESOURCE_BOOTSTRAP = r"""
+import importlib
+import importlib.machinery
+import json
+import sys
+import types
+
+archive = sys.argv[1]
+sys.path.insert(0, archive)
+import ipfs_accelerate_py
+
+name = "ipfs_accelerate_py.agent_supervisor"
+for cached in tuple(sys.modules):
+    if cached == name or cached.startswith(name + "."):
+        del sys.modules[cached]
+package = types.ModuleType(name)
+package.__file__ = archive + "/ipfs_accelerate_py/agent_supervisor/__init__.py"
+package.__package__ = name
+package.__path__ = [archive + "/ipfs_accelerate_py/agent_supervisor"]
+package.__spec__ = importlib.machinery.ModuleSpec(name, loader=None, is_package=True)
+sys.modules[name] = package
+ipfs_accelerate_py.agent_supervisor = package
+
+schema = importlib.import_module(name + ".task_sources.control_plane_schema")
+migrations = importlib.import_module(name + ".task_sources.control_plane_migrations")
+catalog = schema.load_control_plane_catalog()
+migration_ids = [item.migration_id for item in catalog.migrations]
+assert migration_ids == [
+    "0001_control_plane",
+    "0002_causal_event_federation_core",
+    "0003_state_server_restart_identity",
+]
+assert catalog.fingerprint() == sys.argv[2]
+assert schema.default_control_plane_schema().sql_text() == catalog.get(1).sql_text
+assert (
+    schema.default_causal_event_federation_schema_extension().sql_text()
+    == catalog.get(2).sql_text
+)
+assert (
+    migrations.read_bundled_sql_text("0003_state_server_restart_identity.sql")
+    == catalog.get(3).sql_text
+)
+loaded = [
+    module for module_name, module in sys.modules.items()
+    if module_name == "ipfs_accelerate_py"
+    or module_name.startswith("ipfs_accelerate_py.")
+]
+for module in loaded:
+    origin = getattr(module, "__file__", None)
+    if origin is not None:
+        assert origin.startswith(archive + "/"), origin
+print(json.dumps({
+    "migration_ids": migration_ids,
+    "catalog_fingerprint": catalog.fingerprint(),
+}, sort_keys=True))
+"""
+
+
 def test_real_isolated_sealed_capsule_imports_control_plane_and_mints_cids(
     tmp_path: Path,
 ) -> None:
@@ -619,6 +776,79 @@ def test_real_isolated_sealed_capsule_imports_control_plane_and_mints_cids(
         )
 
 
+def test_real_isolated_sealed_capsule_loads_exact_bundled_sql_resources(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        load_control_plane_catalog,
+    )
+
+    expected_catalog = load_control_plane_catalog()
+    expected_ids = [
+        "0001_control_plane",
+        "0002_causal_event_federation_core",
+        "0003_state_server_restart_identity",
+    ]
+    source = _clean_control_plane_source(tmp_path / "source")
+    pin = _real_materialized_pin(source, tmp_path / "capsules")
+    manifest = json.loads(
+        (
+            Path(pin.capsule_root)
+            / llm_router._AGENT_CONTROL_PLANE_MANIFEST_FILENAME
+        ).read_text(encoding="utf-8")
+    )
+    assert {
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
+        + migration_id
+        + ".sql"
+        for migration_id in expected_ids
+    }.issubset(manifest["files"])
+
+    sealed = llm_router.seal_agent_implementation_control_plane_capsule(pin)
+    hostile = tmp_path / "hostile"
+    hostile_package = hostile / "ipfs_accelerate_py"
+    hostile_package.mkdir(parents=True)
+    marker = tmp_path / "hostile-imported"
+    hostile_package.joinpath("__init__.py").write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('package')\n"
+    )
+    hostile.joinpath("sitecustomize.py").write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('site')\n"
+    )
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "PYTHONPATH": str(hostile),
+            "PYTHONUSERBASE": str(hostile),
+        }
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            _HERMETIC_SQL_RESOURCE_BOOTSTRAP,
+            sealed.executable_path,
+            expected_catalog.fingerprint(),
+        ],
+        cwd=hostile,
+        env=environment,
+        pass_fds=(sealed.descriptor,),
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    try:
+        assert completed.returncode == 0, completed.stderr
+        result = json.loads(completed.stdout)
+        assert result["migration_ids"] == expected_ids
+        assert result["catalog_fingerprint"] == expected_catalog.fingerprint()
+        assert not marker.exists()
+    finally:
+        os.close(sealed.descriptor)
+
+
 def test_real_sealed_capsule_starts_the_provider_runner(tmp_path: Path) -> None:
     source = _clean_control_plane_source(tmp_path / "source")
     pin = _real_materialized_pin(source, tmp_path / "capsules")
@@ -659,3 +889,118 @@ def test_real_materializer_denies_a_selected_symlink(tmp_path: Path) -> None:
     completed = _run_real_materialize(source, tmp_path / "capsules")
     assert completed.returncode != 0
     assert "Git dependency is invalid" in completed.stderr
+
+
+def test_real_materializer_hashes_a_new_tracked_sql_migration(
+    tmp_path: Path,
+) -> None:
+    source = _clean_control_plane_source(tmp_path / "source")
+    relative = (
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
+        "0004_future_capsule_contract.sql"
+    )
+    migration = source / relative
+    migration.write_text("SELECT 4;\n", encoding="utf-8")
+    migration.chmod(0o644)
+    _git(source, "add", "--", relative)
+    _git(source, "commit", "-qm", "add tracked SQL migration")
+
+    pin = _real_materialized_pin(source, tmp_path / "capsules")
+    manifest = json.loads(
+        (
+            Path(pin.capsule_root)
+            / llm_router._AGENT_CONTROL_PLANE_MANIFEST_FILENAME
+        ).read_text(encoding="utf-8")
+    )
+    assert manifest["files"][relative] == (
+        "sha256:" + hashlib.sha256(b"SELECT 4;\n").hexdigest()
+    )
+
+
+def test_real_materializer_seals_git_blobs_for_group_writable_sql_resources(
+    tmp_path: Path,
+) -> None:
+    source = _clean_control_plane_source(tmp_path / "source")
+    for relative in llm_router._AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES:
+        (source / relative).chmod(0o664)
+    assert not _git(
+        source,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    )
+
+    pin = _real_materialized_pin(source, tmp_path / "capsules")
+    manifest = json.loads(
+        (
+            Path(pin.capsule_root)
+            / llm_router._AGENT_CONTROL_PLANE_MANIFEST_FILENAME
+        ).read_text(encoding="utf-8")
+    )
+    for relative in llm_router._AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES:
+        git_payload = subprocess.run(
+            ["git", "show", f"HEAD:{relative}"],
+            cwd=source,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=60,
+            check=True,
+        ).stdout
+        assert manifest["files"][relative] == (
+            "sha256:" + hashlib.sha256(git_payload).hexdigest()
+        )
+        capsule_resource = Path(pin.capsule_root) / relative
+        assert capsule_resource.read_bytes() == git_payload
+        assert capsule_resource.stat().st_mode & 0o777 == 0o400
+
+
+def test_group_writable_sql_resources_do_not_relax_loaded_python_mode_gate(
+    tmp_path: Path,
+) -> None:
+    source = _clean_control_plane_source(tmp_path / "source")
+    loaded_python = source / "ipfs_accelerate_py/agent_implementation_route.py"
+    loaded_python.chmod(0o664)
+    assert not _git(
+        source,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    )
+
+    completed = _run_real_materialize(source, tmp_path / "capsules")
+    assert completed.returncode != 0
+    assert (
+        "accepted control-plane file is not immutable enough"
+        in completed.stderr
+    )
+
+
+def test_group_writable_sql_resources_still_require_clean_git_content(
+    tmp_path: Path,
+) -> None:
+    source = _clean_control_plane_source(tmp_path / "source")
+    relative = llm_router._AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES[0]
+    resource = source / relative
+    resource.chmod(0o664)
+    resource.write_bytes(resource.read_bytes() + b"-- dirty loose SQL\n")
+
+    completed = _run_real_materialize(source, tmp_path / "capsules")
+    assert completed.returncode != 0
+    assert "exact clean Git generation" in completed.stderr
+
+
+def test_real_materializer_denies_a_missing_required_sql_migration(
+    tmp_path: Path,
+) -> None:
+    source = _clean_control_plane_source(tmp_path / "source")
+    relative = (
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/"
+        "0003_state_server_restart_identity.sql"
+    )
+    (source / relative).unlink()
+    _git(source, "add", "--", relative)
+    _git(source, "commit", "-qm", "remove required SQL migration")
+
+    completed = _run_real_materialize(source, tmp_path / "capsules")
+    assert completed.returncode != 0
+    assert "missing a dependency" in completed.stderr

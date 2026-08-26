@@ -22,10 +22,12 @@ from .control_plane_migrations import (
     ControlPlaneMigration,
     ControlPlaneMigrationRunner,
     MigrationCatalog,
+    MigrationCatalogError,
     MigrationRunReport,
     compute_schema_fingerprint,
     duckdb_available,
     load_default_catalog,
+    read_bundled_sql_text,
 )
 from .duckdb_state import open_duckdb_connection
 
@@ -1018,10 +1020,13 @@ class ControlPlaneSchema:
         return Path(__file__).resolve().parent / "sql" / CONTROL_PLANE_SQL_FILENAME
 
     def sql_text(self) -> str:
-        path = self.sql_path()
-        if not path.is_file():
-            raise ControlPlaneSchemaInstallError(f"control-plane schema SQL is missing: {path}")
-        return path.read_text(encoding="utf-8")
+        try:
+            return read_bundled_sql_text(CONTROL_PLANE_SQL_FILENAME)
+        except MigrationCatalogError as exc:
+            raise ControlPlaneSchemaInstallError(
+                "control-plane schema SQL is unavailable from bundled resources: "
+                f"{CONTROL_PLANE_SQL_FILENAME}"
+            ) from exc
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1082,12 +1087,13 @@ class CausalEventFederationSchemaExtension:
         return Path(__file__).resolve().parent / "sql" / CAUSAL_EVENT_FEDERATION_SQL_FILENAME
 
     def sql_text(self) -> str:
-        path = self.sql_path()
-        if not path.is_file():
+        try:
+            return read_bundled_sql_text(CAUSAL_EVENT_FEDERATION_SQL_FILENAME)
+        except MigrationCatalogError as exc:
             raise ControlPlaneSchemaInstallError(
-                f"causal-event federation migration SQL is missing: {path}"
-            )
-        return path.read_text(encoding="utf-8")
+                "causal-event federation migration SQL is unavailable from "
+                f"bundled resources: {CAUSAL_EVENT_FEDERATION_SQL_FILENAME}"
+            ) from exc
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1127,6 +1133,8 @@ def default_dependency_profile() -> DuckDBQuackDependencyProfile:
 
 
 def package_sql_directory() -> Path:
+    """Return the source/install filesystem view for explicit overrides."""
+
     return Path(__file__).resolve().parent / "sql"
 
 
@@ -1135,7 +1143,14 @@ def load_control_plane_catalog(
 ) -> MigrationCatalog:
     """Load the contiguous package control-plane migration catalog."""
 
-    return load_default_catalog(sql_directory or package_sql_directory())
+    try:
+        return load_default_catalog(sql_directory)
+    except MigrationCatalogError as exc:
+        if sql_directory is not None:
+            raise
+        raise ControlPlaneSchemaInstallError(
+            "bundled control-plane migration catalog is unavailable"
+        ) from exc
 
 
 _PROFILE_SECTION_MARKERS: Final[Mapping[str, str]] = MappingProxyType(

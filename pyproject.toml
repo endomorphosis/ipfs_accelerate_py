@@ -54,6 +54,7 @@ package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.md"]
+"ipfs_accelerate_py.agent_supervisor.task_sources" = ["sql/*.sql"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}

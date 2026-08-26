@@ -158,9 +158,20 @@ _AGENT_CONTROL_PLANE_TRUSTED_GIT = Path("/usr/bin/git")
 _AGENT_CONTROL_PLANE_TRUSTED_GIT_IDENTITY: tuple[int, ...] | None = None
 # Non-supervisor roots plus the security-critical supervisor modules called out
 # explicitly for auditability.  Capsule construction additionally walks and
-# hashes the complete ``agent_supervisor`` Python source tree on every build and
+# hashes the complete ``agent_supervisor`` Python source tree plus every
+# canonical ``task_sources/sql/*.sql`` migration on every build and
 # verification, so a newly added or indirect daemon/runner dependency cannot
 # fall outside the pin.  Candidate worktrees are never roots.
+_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY = (
+    "ipfs_accelerate_py/agent_supervisor/task_sources/sql"
+)
+_AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES = (
+    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/0001_control_plane.sql",
+    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/"
+    "0002_causal_event_federation_core.sql",
+    f"{_AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY}/"
+    "0003_state_server_restart_identity.sql",
+)
 _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/__init__.py",
     "ipfs_accelerate_py/llm_router.py",
@@ -190,6 +201,7 @@ _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/validation/__init__.py",
     "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+    *_AGENT_CONTROL_PLANE_REQUIRED_SQL_FILES,
     "scripts/ops/agent_supervisor/configured_board_scheduler.py",
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
     "scripts/run_agent_supervisor_efficiency_state_hardening.py",
@@ -7162,8 +7174,9 @@ def _agent_control_plane_source_files(
 
     The daemon has a deliberately broad import graph.  Maintaining a hand-made
     transitive list would silently lose coverage when that graph grows, so the
-    accepted capsule binds the entire supervisor Python tree and then verifies
-    the origins of every already-imported supervisor module against that tree.
+    accepted capsule binds the entire supervisor Python tree, every canonical
+    tracked SQL migration, and then verifies the origins of every
+    already-imported supervisor module against that tree.
     """
 
     supervisor_root = root / "ipfs_accelerate_py" / "agent_supervisor"
@@ -7178,8 +7191,12 @@ def _agent_control_plane_source_files(
         raise ValueError(
             "accepted control-plane package tree is unavailable"
         ) from exc
+    sql_root = supervisor_root / "task_sources" / "sql"
     tree_files = tuple(
-        entry for entry in entries if entry.suffix == ".py"
+        entry
+        for entry in entries
+        if entry.suffix == ".py"
+        or (entry.parent == sql_root and entry.suffix == ".sql")
     )
     required_files = tuple(
         root / relative for relative in _AGENT_CONTROL_PLANE_RELATIVE_FILES
@@ -7541,6 +7558,11 @@ def _agent_control_plane_head_payloads(
                 relative.startswith("ipfs_accelerate_py/agent_supervisor/")
                 and relative.endswith(".py")
             )
+            or (
+                Path(relative).parent.as_posix()
+                == _AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY
+                and Path(relative).suffix == ".sql"
+            )
         )
         if object_type != "blob" or mode not in {"100644", "100755"}:
             if selected:
@@ -7611,6 +7633,17 @@ def materialize_agent_implementation_control_plane_capsule(
         raise ValueError("accepted control-plane package differs from HEAD")
     for path in files:
         relative = str(path.relative_to(root))
+        if (
+            Path(relative).parent.as_posix()
+            == _AGENT_CONTROL_PLANE_SQL_RELATIVE_DIRECTORY
+            and Path(relative).suffix == ".sql"
+        ):
+            # SQL is package data, not already-loaded executable source.  Its
+            # only admitted bytes come from the exact HEAD blobs above and are
+            # written 0400 into the private capsule.  Treating loose-checkout
+            # permission bits as resource authority would reject clean clones
+            # created under a collaborative umask without improving the seal.
+            continue
         if _agent_read_stable_file(path) != payloads[relative]:
             raise ValueError("loaded control-plane module differs from HEAD")
     _agent_control_plane_git_state(
