@@ -2957,57 +2957,9 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _overlay_projection_path(config: Mapping[str, Any]) -> Path:
+    """Locate the host status projection retained as diagnostic evidence only."""
+
     return _paths(config)["control"].parent / "live/state/task-status-projection.json"
-
-
-def _restore_overlay_on_control(
-    control_path: Path, overlay: Mapping[str, str]
-) -> int:
-    """Replay completed alias statuses onto a freshly materialized catalog."""
-
-    if not overlay or not control_path.is_file():
-        return 0
-    from datetime import UTC, datetime
-
-    import duckdb
-    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-        connect_duckdb_with_policy,
-    )
-    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
-        CAS_TASK_STATUS_SQL,
-        restore_overlay_cas_parameters,
-    )
-
-    connection = connect_duckdb_with_policy(
-        duckdb,
-        control_path,
-        read_only=False,
-        configuration={"threads": 1, "memory_limit": "256MB"},
-    )
-    try:
-        rows = [
-            {
-                "task_cid": str(row[0]),
-                "task_alias": str(row[1]),
-                "status": str(row[2]),
-                "revision": int(row[3] or 0),
-            }
-            for row in connection.execute(
-                "SELECT task_cid, task_alias, status, revision FROM tasks"
-            ).fetchall()
-        ]
-        updated_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        restored = 0
-        for parameters in restore_overlay_cas_parameters(
-            live_rows=rows,
-            overlay_statuses=overlay,
-            updated_at=updated_at,
-        ):
-            connection.execute(CAS_TASK_STATUS_SQL, list(parameters))
-            restored += 1
-        return restored
-    finally:
-        connection.close()
 
 
 def materialize_with_recovery(
@@ -3016,17 +2968,18 @@ def materialize_with_recovery(
     materialize_fn: Callable[..., dict[str, Any]] | None = None,
     max_recoveries: int = MAX_GENERATION_RECOVERIES,
 ) -> dict[str, Any]:
-    """Materialize, advancing a failed or stale namespace without overwriting it."""
+    """Materialize a fresh todo population in a new immutable generation.
 
-    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
-        snapshot_overlay_alias_status,
-    )
+    Host status projections are diagnostic exports, not signed task authority.
+    Recovery therefore never replays them into the new control database; only
+    the qualified CASF owner may apply later fenced task transitions.
+    """
 
     actor = materialize_fn or materialize
     recoveries: list[dict[str, Any]] = []
     working = _active_config(config)
     configured = _configured_generation(config)
-    overlay = snapshot_overlay_alias_status(_overlay_projection_path(working))
+    historical_projection_present = _overlay_projection_path(working).is_file()
     prior_cursor = _read_generation_cursor()
     for attempt in range(max_recoveries + 1):
         state = _namespace_state(working)
@@ -3034,6 +2987,11 @@ def materialize_with_recovery(
             receipt = dict(_load_object(_receipt_path(working)))
             if recoveries:
                 receipt["generation_recoveries"] = recoveries
+            receipt["historical_status_projection_retained_as_evidence"] = (
+                historical_projection_present
+            )
+            receipt["historical_status_projection_replayed"] = False
+            receipt["historical_statuses_replayed"] = 0
             return receipt
         if state in {"failed_partial", "stale_materialized"}:
             if attempt >= max_recoveries:
@@ -3063,11 +3021,6 @@ def materialize_with_recovery(
             continue
         try:
             receipt = dict(actor(working))
-            if overlay:
-                receipt["overlay_restored"] = _restore_overlay_on_control(
-                    _paths(working)["control"], overlay
-                )
-                receipt["overlay_preserved"] = True
         except MaterializationError as exc:
             if (
                 "advance to a new explicit store generation" not in str(exc)
@@ -3102,6 +3055,11 @@ def materialize_with_recovery(
             continue
         if recoveries:
             receipt["generation_recoveries"] = recoveries
+        receipt["historical_status_projection_retained_as_evidence"] = (
+            historical_projection_present
+        )
+        receipt["historical_status_projection_replayed"] = False
+        receipt["historical_statuses_replayed"] = 0
         return receipt
     raise MaterializationError("store generation recovery budget exhausted")
 
