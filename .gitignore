@@ -14,6 +14,8 @@ state/*
 *.json
 !config/external_agent_autonomous_execution_fabric_bootstrap.json
 !docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json
+!docs/architecture/external_agent_autonomous_execution_fabric/proposals/stack_compatibility_manifest.r2.json
+!docs/architecture/external_agent_autonomous_execution_fabric/receipts/stack_compatibility_verification.json
 !docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/
 !docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission/*.json
 !test/fixtures/agent_supervisor_prompt_entrypoints/manifest.json
