@@ -18766,8 +18766,11 @@ class PortalImplementationSupervisor:
         )
         remaining_pid = self._find_matching_managed_daemon_pid()
         try:
-            if pid_path.is_file():
-                pid_path.unlink()
+            if remaining_pid is None:
+                if pid_path.is_file():
+                    pid_path.unlink()
+            else:
+                write_text_atomic(pid_path, f"{int(remaining_pid)}\n")
         except OSError:
             pass
         return {

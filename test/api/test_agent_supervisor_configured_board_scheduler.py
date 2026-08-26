@@ -1417,6 +1417,11 @@ def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
         return SimpleNamespace(pid=os.getpid())
 
     monkeypatch.setattr(multi_runner_module.subprocess, "Popen", capture_popen)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_capture_owned_popen_birth",
+        lambda _process, _profile: object(),
+    )
     inherited_read, inherited_write = os.pipe()
     try:
         process = multi_runner_module.start_track(

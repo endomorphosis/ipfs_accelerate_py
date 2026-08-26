@@ -4872,6 +4872,98 @@ def _persist_plan_bound_process_birth(
     return process_birth_cid
 
 
+def _capture_owned_popen_birth(
+    process: subprocess.Popen[bytes],
+    profile: LifecycleProfile,
+    *,
+    adapter: LinuxProcessAdapter | None = None,
+) -> ProcessIdentity:
+    """Bind a just-spawned direct child without reading its protected environ.
+
+    Credential-bearing wrappers become non-dumpable as their first Python
+    action. The parent nevertheless owns the exact still-unreaped Popen child
+    and the complete profile/environment used to create it. Two stable Linux
+    stat observations, direct parentage, and the dedicated session created by
+    start_new_session=True therefore provide PID-reuse-resistant birth
+    authority without weakening the child's procfs credential boundary.
+    """
+
+    if process.poll() is not None:
+        raise ProcessLookupError(int(process.pid))
+    process_adapter = adapter or LinuxProcessAdapter()
+    first = process_adapter._stat(int(process.pid))  # noqa: SLF001
+    parent_pid, process_group_id, session_id, start_time_ticks = first
+    if (
+        parent_pid != os.getpid()
+        or process_group_id != int(process.pid)
+        or session_id != int(process.pid)
+        or start_time_ticks <= 0
+    ):
+        raise ProcessIdentityMismatch(
+            "spawned supervisor is not the exact direct dedicated-session child"
+        )
+    boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+        encoding="ascii"
+    ).strip()
+    if not boot_id:
+        raise ProcessIdentityMismatch("spawned supervisor boot identity is absent")
+    second = process_adapter._stat(int(process.pid))  # noqa: SLF001
+    if second != first or process.poll() is not None:
+        raise ProcessIdentityMismatch(
+            "spawned supervisor birth changed during capture"
+        )
+    identity = ProcessIdentity(
+        pid=int(process.pid),
+        start_time_ticks=start_time_ticks,
+        parent_pid=parent_pid,
+        process_group_id=process_group_id,
+        session_id=session_id,
+        boot_id=boot_id,
+        argv=profile.argv,
+        cwd=profile.cwd,
+        executable=str(profile.argv[0]),
+        run_id=profile.run_id,
+        profile_id=profile.profile_id,
+        target_id=profile.target_id,
+        repository_root=profile.repository_root,
+        state_root=profile.state_root,
+        run_root=profile.run_root,
+        fencing_epoch=0,
+        configuration_root=profile.configuration_root,
+    )
+    if not process_adapter.identity_alive(identity) or process.poll() is not None:
+        raise ProcessIdentityMismatch(
+            "spawned supervisor birth was not live after capture"
+        )
+    return identity
+
+
+def _reap_uncaptured_owned_popen(
+    process: subprocess.Popen[bytes],
+    *,
+    timeout_seconds: float = 2.0,
+) -> bool:
+    """Fence a direct child that failed birth admission before publication."""
+
+    if process.poll() is None:
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            pass
+    try:
+        process.wait(timeout=max(0.1, float(timeout_seconds)))
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=max(0.1, float(timeout_seconds)))
+        except subprocess.TimeoutExpired:
+            return False
+    return process.poll() is not None
+
+
 def start_track(
     track: SupervisorTrack,
     *,
@@ -5383,8 +5475,9 @@ def start_track(
                 os.close(gate_write_fd)
     else:
         try:
-            process_identity = LinuxProcessAdapter()._identity(  # noqa: SLF001
-                int(process.pid), profile
+            process_identity = _capture_owned_popen_birth(
+                process,
+                profile,
             )
         except (
             OSError,
@@ -5392,9 +5485,12 @@ def start_track(
             ValueError,
             ProcessLookupError,
             ProcessIdentityMismatch,
-        ):
-            # Legacy tracks retain their previous best-effort observability.
-            process_identity = None
+        ) as exc:
+            fenced = _reap_uncaptured_owned_popen(process)
+            raise ProcessIdentityMismatch(
+                "legacy supervisor process birth capture failed "
+                f"(direct_child_fenced={str(fenced).lower()})"
+            ) from exc
         setattr(
             process,
             "_agent_supervisor_process_identity",
@@ -6569,6 +6665,55 @@ def stop_tracks(
         # monkeypatched implementation still cannot retire a live PID marker.
         if process is not None and process.poll() is None:
             fenced = False
+        resolved = track.resolve(repo_root) if process is not None else None
+        daemon_pid: int | None = None
+        daemon_marker_present = False
+        if fenced and resolved is not None:
+            try:
+                os.lstat(resolved.daemon_pid_path)
+                daemon_marker_present = True
+            except FileNotFoundError:
+                pass
+            except OSError:
+                daemon_marker_present = True
+            daemon_pid = read_pid_file(resolved.daemon_pid_path)
+            if daemon_marker_present and (
+                daemon_pid is None or pid_alive(daemon_pid)
+            ):
+                fenced = False
+                _emit(
+                    output,
+                    "could not verify managed daemon shutdown for "
+                    f"{track.name} daemon_pid={daemon_pid or 'unknown'}",
+                )
+        if fenced and process is not None:
+            assert resolved is not None
+            if _remove_stale_pid_marker_if_unchanged(
+                resolved.supervisor_pid_path,
+                process.pid,
+            ):
+                removed_runtime_markers.append(str(resolved.supervisor_pid_path))
+            if daemon_pid and _remove_stale_pid_marker_if_unchanged(
+                resolved.daemon_pid_path,
+                daemon_pid,
+            ):
+                removed_runtime_markers.append(str(resolved.daemon_pid_path))
+            for marker in (
+                resolved.supervisor_pid_path,
+                resolved.daemon_pid_path,
+            ):
+                try:
+                    os.lstat(marker)
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    pass
+                fenced = False
+                _emit(
+                    output,
+                    f"could not retire shutdown marker for {track.name}: {marker}",
+                )
+                break
         if fenced:
             stopped.extend(member_pids)
         elif process is not None:
@@ -6577,19 +6722,6 @@ def stop_tracks(
                 output,
                 f"could not verify complete shutdown for {track.name} pid={process.pid}",
             )
-        if fenced and process is not None:
-            resolved = track.resolve(repo_root)
-            if _remove_stale_pid_marker_if_unchanged(
-                resolved.supervisor_pid_path,
-                process.pid,
-            ):
-                removed_runtime_markers.append(str(resolved.supervisor_pid_path))
-            daemon_pid = read_pid_file(resolved.daemon_pid_path)
-            if daemon_pid and _remove_stale_pid_marker_if_unchanged(
-                resolved.daemon_pid_path,
-                daemon_pid,
-            ):
-                removed_runtime_markers.append(str(resolved.daemon_pid_path))
     return {
         "stopped_pids": sorted(set(stopped)),
         "stopped_count": len(set(stopped)),

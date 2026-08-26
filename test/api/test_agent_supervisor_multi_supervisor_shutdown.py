@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -25,6 +26,32 @@ class _StillLiveProcess:
 
     def poll(self) -> None:
         return None
+
+
+class _ReapableProcess:
+    pid = 424242
+
+    def __init__(self) -> None:
+        self.live = True
+        self.terminated = False
+        self.killed = False
+
+    def poll(self) -> int | None:
+        return None if self.live else 0
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.live = False
+
+    def kill(self) -> None:
+        self.killed = True
+        self.live = False
+
+    def wait(self, *, timeout: float) -> int:
+        del timeout
+        if self.live:
+            raise subprocess.TimeoutExpired(cmd=("wrapper",), timeout=0.1)
+        return 0
 
 
 class _ManagedProcess:
@@ -93,6 +120,32 @@ class _RecordingAdapter:
             self.process.live = False
 
 
+class _DirectChildStatAdapter:
+    def __init__(
+        self,
+        observations: tuple[tuple[int, int, int, int], ...],
+    ) -> None:
+        self.observations = list(observations)
+        self.last: tuple[int, int, int, int] | None = None
+
+    def _stat(self, _pid: int) -> tuple[int, int, int, int]:
+        if self.observations:
+            self.last = self.observations.pop(0)
+        assert self.last is not None
+        return self.last
+
+    def _identity(
+        self,
+        _pid: int,
+        _profile: runner.LifecycleProfile,
+    ) -> runner.ProcessIdentity:
+        raise PermissionError("credential-bearing child is non-dumpable")
+
+    def identity_alive(self, identity: runner.ProcessIdentity) -> bool:
+        assert self.last is not None
+        return identity.start_time_ticks == self.last[3]
+
+
 def _profile(tmp_path: Path) -> runner.LifecycleProfile:
     repository_root = tmp_path.resolve()
     state_root = repository_root / "state"
@@ -134,6 +187,155 @@ def _identity(
         fencing_epoch=0,
         configuration_root=profile.configuration_root,
     )
+
+
+def test_capture_owned_popen_birth_uses_stable_direct_child_stat(
+    tmp_path: Path,
+) -> None:
+    profile = _profile(tmp_path)
+    process = _ManagedProcess(profile, None)
+    observation = (os.getpid(), process.pid, process.pid, 12345)
+    adapter = _DirectChildStatAdapter((observation, observation))
+
+    identity = runner._capture_owned_popen_birth(
+        process,
+        profile,
+        adapter=adapter,
+    )
+
+    assert identity.pid == process.pid
+    assert identity.parent_pid == os.getpid()
+    assert identity.process_group_id == process.pid
+    assert identity.session_id == process.pid
+    assert identity.start_time_ticks == 12345
+    assert identity.argv == profile.argv
+    assert identity.cwd == profile.cwd
+    assert identity.profile_id == profile.profile_id
+    assert identity.run_id == profile.run_id
+
+
+def test_legacy_start_track_attaches_birth_when_environ_is_unreadable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wrapper = tmp_path / "wrapper.py"
+    wrapper.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    track = runner.SupervisorTrack(
+        name="lane-0",
+        script_path=wrapper,
+        log_path=tmp_path / "lane-0.log",
+        supervisor_pid_path=tmp_path / "lane-0.pid",
+        daemon_pid_path=tmp_path / "lane-0-daemon.pid",
+    )
+    process = _StillLiveProcess()
+    observation = (os.getpid(), process.pid, process.pid, 12345)
+    adapter = _DirectChildStatAdapter((observation, observation))
+    monkeypatch.setattr(runner, "LinuxProcessAdapter", lambda: adapter)
+    monkeypatch.setattr(
+        runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+
+    launched = runner.start_track(
+        track,
+        repo_root=tmp_path.resolve(),
+        common_args=(),
+        output=lambda _message: None,
+    )
+
+    identity = getattr(launched, "_agent_supervisor_process_identity")
+    assert isinstance(identity, runner.ProcessIdentity)
+    assert identity.pid == process.pid
+    assert identity.start_time_ticks == 12345
+    assert track.supervisor_pid_path.read_text(encoding="utf-8") == "424242\n"
+
+
+def test_legacy_start_track_reaps_unadmitted_birth_before_pid_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wrapper = tmp_path / "wrapper.py"
+    wrapper.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    track = runner.SupervisorTrack(
+        name="lane-0",
+        script_path=wrapper,
+        log_path=tmp_path / "lane-0.log",
+        supervisor_pid_path=tmp_path / "lane-0.pid",
+        daemon_pid_path=tmp_path / "lane-0-daemon.pid",
+    )
+    process = _ReapableProcess()
+    foreign = (1, process.pid, process.pid, 12345)
+    adapter = _DirectChildStatAdapter((foreign, foreign))
+    monkeypatch.setattr(runner, "LinuxProcessAdapter", lambda: adapter)
+    monkeypatch.setattr(
+        runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+
+    with pytest.raises(
+        runner.ProcessIdentityMismatch,
+        match="direct_child_fenced=true",
+    ):
+        runner.start_track(
+            track,
+            repo_root=tmp_path.resolve(),
+            common_args=(),
+            output=lambda _message: None,
+        )
+
+    assert process.terminated is True
+    assert process.killed is False
+    assert not track.supervisor_pid_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "message"),
+    (
+        (
+            (1, 424242, 424242, 12345),
+            (1, 424242, 424242, 12345),
+            "exact direct dedicated-session child",
+        ),
+        (
+            (0, 424241, 424242, 12345),
+            (0, 424241, 424242, 12345),
+            "exact direct dedicated-session child",
+        ),
+        (
+            (0, 424242, 424242, 12345),
+            (0, 424242, 424242, 12346),
+            "changed during capture",
+        ),
+    ),
+)
+def test_capture_owned_popen_birth_rejects_unstable_or_foreign_child(
+    tmp_path: Path,
+    first: tuple[int, int, int, int],
+    second: tuple[int, int, int, int],
+    message: str,
+) -> None:
+    profile = _profile(tmp_path)
+    process = _ManagedProcess(profile, None)
+    normalized_first = (
+        os.getpid() if first[0] == 0 else first[0],
+        *first[1:],
+    )
+    normalized_second = (
+        os.getpid() if second[0] == 0 else second[0],
+        *second[1:],
+    )
+    adapter = _DirectChildStatAdapter(
+        (normalized_first, normalized_second)
+    )
+
+    with pytest.raises(runner.ProcessIdentityMismatch, match=message):
+        runner._capture_owned_popen_birth(
+            process,
+            profile,
+            adapter=adapter,
+        )
 
 
 @pytest.mark.parametrize("marker_child_visible", (False, True))
@@ -283,6 +485,57 @@ def test_stop_tracks_does_not_retire_a_still_live_wrapper_marker(
     assert process.wait_timeouts == []
     assert removed == []
     assert any("could not verify complete shutdown" in item for item in messages)
+
+
+def test_stop_tracks_retains_markers_for_a_still_live_managed_daemon(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = _profile(tmp_path)
+    wrapper_pid = 424242
+    daemon_pid = 424243
+    track = runner.SupervisorTrack(
+        name="lane-0",
+        script_path=Path("wrapper.py"),
+        log_path=Path("lane-0.log"),
+        supervisor_pid_path=Path("state/lane-0.pid"),
+        daemon_pid_path=Path("state/lane-0-daemon.pid"),
+    )
+    resolved = track.resolve(tmp_path)
+    resolved.supervisor_pid_path.parent.mkdir(parents=True)
+    resolved.supervisor_pid_path.write_text(f"{wrapper_pid}\n", encoding="utf-8")
+    resolved.daemon_pid_path.write_text(f"{daemon_pid}\n", encoding="utf-8")
+    process = _ManagedProcess(profile, None, pid=wrapper_pid)
+    process.live = False
+    removals: list[Path] = []
+    messages: list[str] = []
+    monkeypatch.setattr(
+        runner,
+        "_terminate_managed_process",
+        lambda *_args, **_kwargs: (True, (wrapper_pid, daemon_pid)),
+    )
+    monkeypatch.setattr(runner, "pid_alive", lambda pid: pid == daemon_pid)
+    monkeypatch.setattr(
+        runner,
+        "_remove_stale_pid_marker_if_unchanged",
+        lambda path, _pid: removals.append(path) or True,
+    )
+
+    result = runner.stop_tracks(
+        (track,),
+        {track.name: process},
+        repo_root=tmp_path,
+        grace_seconds=0.01,
+        output=messages.append,
+    )
+
+    assert result["all_trees_fenced"] is False
+    assert result["stopped_count"] == 0
+    assert result["removed_runtime_markers"] == []
+    assert removals == []
+    assert resolved.supervisor_pid_path.exists()
+    assert resolved.daemon_pid_path.exists()
+    assert any("managed daemon shutdown" in item for item in messages)
 
 
 def _run_vrif_terminal_hook(
