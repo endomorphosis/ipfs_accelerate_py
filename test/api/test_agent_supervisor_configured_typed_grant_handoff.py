@@ -821,7 +821,7 @@ def test_state_authority_parent_loss_policy_is_explicit_at_all_launchers() -> No
             configured_scheduler._launch_foreground_plan_bound_coordinator
         ),
         inspect.getsource(multi_runner.start_track),
-        inspect.getsource(aseh_operator._run_supervisor_owner),
+        inspect.getsource(aseh_operator._run_supervisor_owner_impl),
         inspect.getsource(supervisor_runtime_module.launch_supervised_child),
     )
     detached_sources = (
@@ -13634,6 +13634,9 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
         "    assert kwargs['retained_interpreter']['descriptor'] >= 3\n"
         "    assert kwargs['native_dependency_launch']['accepted'] is True\n"
         "    assert kwargs['system_dependency_directories_json'] == '[]'\n"
+        "    assert kwargs['sealed_owner_terminal_descriptor'] >= 3\n"
+        "    assert len(kwargs['sealed_owner_terminal_nonce']) == 64\n"
+        "    assert len(kwargs['sealed_owner_terminal_pipe_identity']) == 9\n"
         f"    assert kwargs['sealed_owner_environment']['HOME'] == {str(qualification_home)!r}\n"
         "    return 73\n"
     ).encode("utf-8")
@@ -13720,6 +13723,7 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
     monkeypatch.setitem(sys.modules, "_duckdb", native_alias)
     monkeypatch.setitem(sys.modules, "duckdb", native_alias)
     parent_fences: list[dict[str, object]] = []
+    terminal_descriptors: list[int] = []
     monkeypatch.setattr(
         process_security_module,
         "arm_state_authority_parent_death_signal",
@@ -13727,6 +13731,10 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
     )
 
     def owner_argv(target_config: Path) -> list[str]:
+        terminal_read, terminal_write = os.pipe2(
+            getattr(os, "O_CLOEXEC", 0)
+        )
+        terminal_descriptors.extend((terminal_read, terminal_write))
         return [
             configured_scheduler.ASEH_SEALED_OWNER_MARKER,
             "sealed-pin",
@@ -13748,19 +13756,74 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
             "123",
             "456",
             "fixture-boot",
+            str(terminal_write),
+            "7" * 64,
+            aseh_operator._canonical_json(
+                aseh_operator._validation_pipe_record(terminal_write)
+            ),
         ]
 
     operator_module_name = "_aseh_sealed_owner_operator"
     try:
+        invalid_boolean_identity = owner_argv(config)
+        boolean_identity = json.loads(invalid_boolean_identity[-1])
+        boolean_identity[0] = True
+        invalid_boolean_identity[-1] = aseh_operator._canonical_json(
+            boolean_identity
+        )
+        with pytest.raises(
+            configured_scheduler.ConfiguredBoardError,
+            match="launch binding is invalid",
+        ):
+            configured_scheduler._run_aseh_sealed_owner(
+                invalid_boolean_identity
+            )
+
+        noncanonical_identity = owner_argv(config)
+        noncanonical_identity[-1] = json.dumps(
+            json.loads(noncanonical_identity[-1])
+        )
+        with pytest.raises(
+            configured_scheduler.ConfiguredBoardError,
+            match="launch binding is invalid",
+        ):
+            configured_scheduler._run_aseh_sealed_owner(
+                noncanonical_identity
+            )
+
+        oversized_identity = owner_argv(config)
+        oversized_identity[-1] = "[" + ("0," * 300) + "0]"
+        with pytest.raises(
+            configured_scheduler.ConfiguredBoardError,
+            match="launch binding is invalid",
+        ):
+            configured_scheduler._run_aseh_sealed_owner(
+                oversized_identity
+            )
+
+        noncanonical_descriptor = owner_argv(config)
+        noncanonical_descriptor[18] = "0" + noncanonical_descriptor[18]
+        with pytest.raises(
+            configured_scheduler.ConfiguredBoardError,
+            match="launch binding is invalid",
+        ):
+            configured_scheduler._run_aseh_sealed_owner(
+                noncanonical_descriptor
+            )
+
         result = configured_scheduler._run_aseh_sealed_owner(
             owner_argv(config)
         )
         assert result == 73
+        with pytest.raises(OSError):
+            os.fstat(terminal_descriptors[-1])
         assert operator_module_name not in sys.modules
         with pytest.raises(RuntimeError, match="injected sealed owner failure"):
             configured_scheduler._run_aseh_sealed_owner(
                 owner_argv(failing_config)
             )
+        with pytest.raises(OSError):
+            os.fstat(terminal_descriptors[-1])
         assert operator_module_name not in sys.modules
         with pytest.raises(
             configured_scheduler.ConfiguredBoardError,
@@ -13769,6 +13832,8 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
             configured_scheduler._run_aseh_sealed_owner(
                 owner_argv(replacing_config)
             )
+        with pytest.raises(OSError):
+            os.fstat(terminal_descriptors[-1])
         assert operator_module_name not in sys.modules
         sys.modules[operator_module_name] = object()
         try:
@@ -13779,9 +13844,16 @@ def test_aseh_sealed_owner_loads_operator_only_from_verified_archive(
                 configured_scheduler._run_aseh_sealed_owner(
                     owner_argv(config)
                 )
+            with pytest.raises(OSError):
+                os.fstat(terminal_descriptors[-1])
         finally:
             sys.modules.pop(operator_module_name, None)
     finally:
+        for descriptor in terminal_descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
         os.close(interpreter.descriptor)
         os.close(capsule_descriptor)
     assert (
@@ -14156,22 +14228,55 @@ def test_aseh_sealed_owner_rechecks_candidate_before_owner_start(
         ),
     )
 
-    with pytest.raises(aseh_operator.OperatorError, match="moved before owner"):
-        aseh_operator._run_supervisor_owner(
-            config,
-            implement=True,
-            duration=1.0,
-            sealed_control_plane_pin={"pin": "sealed"},
-            sealed_control_plane_descriptor=90,
-            retained_interpreter={
-                "descriptor": 91,
-                "argv0": interpreter.argv0,
-                "sha256": interpreter.sha256,
-            },
-            native_dependency_launch={"native": "sealed"},
-            system_dependency_directories_json="[]",
-            sealed_owner_environment=sealed_environment,
-        )
+    terminal_read, terminal_write = os.pipe2(getattr(os, "O_CLOEXEC", 0))
+    terminal_identity = aseh_operator._validation_pipe_record(terminal_write)
+    terminal_pin = {
+        "source_head": candidate_head,
+        "source_tree": candidate_tree,
+        "capsule_id": "sha256:" + ("9" * 64),
+        "archive_sha256": "sha256:" + ("a" * 64),
+    }
+    try:
+        with pytest.raises(
+            aseh_operator.OperatorError, match="moved before owner"
+        ):
+            aseh_operator._run_supervisor_owner(
+                config,
+                implement=True,
+                duration=1.0,
+                sealed_control_plane_pin=terminal_pin,
+                sealed_control_plane_descriptor=90,
+                retained_interpreter={
+                    "descriptor": 91,
+                    "argv0": interpreter.argv0,
+                    "sha256": interpreter.sha256,
+                },
+                native_dependency_launch={"native": "sealed"},
+                system_dependency_directories_json="[]",
+                sealed_owner_environment=sealed_environment,
+                sealed_owner_terminal_descriptor=terminal_write,
+                sealed_owner_terminal_nonce="b" * 64,
+                sealed_owner_terminal_pipe_identity=terminal_identity,
+            )
+        os.close(terminal_write)
+        terminal_write = -1
+        terminal_raw = bytearray()
+        while True:
+            block = os.read(terminal_read, 65536)
+            if not block:
+                break
+            terminal_raw.extend(block)
+    finally:
+        os.close(terminal_read)
+        if terminal_write >= 0:
+            os.close(terminal_write)
+    terminal_record = json.loads(terminal_raw)
+    assert terminal_record["stage"] == "candidate_revalidation"
+    assert terminal_record["error_type"] == "OperatorError"
+    assert terminal_record["owner_start_attempted"] is False
+    assert terminal_record["owner_identity_observed"] is False
+    assert terminal_record["scheduler_birth_observed"] is False
+    assert terminal_record["retry_authorized"] is False
     assert ordering == [
         "executor_enter",
         "preflight",
@@ -15642,6 +15747,9 @@ def test_aseh_r20_pre_duckdb_exact_candidate_without_receipt_fails_before_databa
     monkeypatch.setattr(
         aseh_operator, "_r21_population_requires_policy", lambda _value: False
     )
+    monkeypatch.setattr(
+        aseh_operator, "_r22_population_requires_policy", lambda _value: False
+    )
     for name in (
         "_read_continuity_state",
         "_projection_matches_events_on_disposable_copy",
@@ -15710,6 +15818,9 @@ def test_aseh_r20_pre_duckdb_qualification_precedes_continuity_state_read(
         aseh_operator, "_r21_population_requires_policy", lambda _value: False
     )
     monkeypatch.setattr(
+        aseh_operator, "_r22_population_requires_policy", lambda _value: False
+    )
+    monkeypatch.setattr(
         aseh_operator,
         "_validate_repair_transition",
         lambda *_args, **_kwargs: {"repair_head": "9" * 40},
@@ -15769,6 +15880,9 @@ def test_aseh_r20_pre_duckdb_qualifies_once_before_receipt_reread(
     )
     monkeypatch.setattr(
         aseh_operator, "_r21_population_requires_policy", lambda _value: False
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_r22_population_requires_policy", lambda _value: False
     )
     monkeypatch.setattr(
         aseh_operator, "_load_exact_r19_receipt_chain", lambda _paths: prior_chain
@@ -16059,6 +16173,9 @@ def _configure_aseh_r20_materialized_launch(
     )
     monkeypatch.setattr(
         aseh_operator, "_r21_population_requires_policy", lambda _value: False
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_r22_population_requires_policy", lambda _value: False
     )
     monkeypatch.setattr(
         aseh_operator,
@@ -16885,6 +17002,9 @@ def _configure_aseh_r21_start_retry(
         events.append(f"decision:{kwargs['decision']}")
         return receipt
 
+    def publish_baseline(**kwargs: object) -> dict[str, object]:
+        return publish(**kwargs, decision="non_retried")
+
     def record(
         _paths: object,
         _failure: object,
@@ -16904,6 +17024,11 @@ def _configure_aseh_r21_start_retry(
         aseh_operator,
         "_r21_publish_owner_start_recovery_decision",
         publish,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r22_publish_owner_start_baseline_decision",
+        publish_baseline,
     )
     monkeypatch.setattr(aseh_operator, "_record_control_failure", record)
     return {
@@ -16931,6 +17056,443 @@ def _run_aseh_r21_start_retry(
         authorization_witness={"sealed": "witness"},
         failure={},
         failure_event=threading.Event(),
+    )
+
+
+def test_aseh_sealed_owner_terminal_record_is_secret_free_and_create_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(aseh_operator.time, "time_ns", lambda: 987654321)
+    terminal_read, terminal_write = os.pipe2(getattr(os, "O_CLOEXEC", 0))
+    pin = {
+        "source_head": "a" * 40,
+        "source_tree": "b" * 40,
+        "capsule_id": "sha256:" + ("c" * 64),
+        "archive_sha256": "sha256:" + ("d" * 64),
+    }
+    phase = aseh_operator._new_sealed_owner_terminal_phase()
+    aseh_operator._set_sealed_owner_terminal_phase(
+        phase,
+        "pre_start_quiescence",
+    )
+    error = RuntimeError("terminal-secret-must-not-appear")
+    error.__cause__ = ValueError("cause-secret-must-not-appear")
+    try:
+        aseh_operator._emit_sealed_owner_terminal_record(
+            terminal_write,
+            nonce="e" * 64,
+            control_plane_pin=pin,
+            phase=phase,
+            error_type=aseh_operator._sealed_owner_terminal_error_type(error),
+            direct_cause_type=aseh_operator._sealed_owner_terminal_error_type(
+                error.__cause__
+            ),
+        )
+        os.close(terminal_write)
+        terminal_write = -1
+        raw = bytearray()
+        while True:
+            block = os.read(terminal_read, 65536)
+            if not block:
+                break
+            raw.extend(block)
+    finally:
+        os.close(terminal_read)
+        if terminal_write >= 0:
+            os.close(terminal_write)
+    raw_bytes = bytes(raw)
+    assert len(raw_bytes) < aseh_operator.ASEH_SEALED_OWNER_TERMINAL_MAX_BYTES
+    assert b"terminal-secret" not in raw_bytes
+    assert b"cause-secret" not in raw_bytes
+
+    parent_pid, start_time_ticks, boot_id = (
+        process_security_module.state_authority_process_birth()
+    )
+    admitted = aseh_operator._admit_sealed_owner_terminal_record(
+        raw_bytes,
+        nonce="e" * 64,
+        candidate_head=pin["source_head"],
+        candidate_tree=pin["source_tree"],
+        control_plane_pin=pin,
+        child_pid=os.getpid(),
+        child_start_time_ticks=start_time_ticks,
+        child_parent_pid=parent_pid,
+        child_boot_id=boot_id,
+    )
+    assert admitted["stage"] == "pre_start_quiescence"
+    assert admitted["owner_start_attempted"] is False
+    assert admitted["retry_authorized"] is False
+
+    for field, invalid_value in (
+        ("error_type", True),
+        ("direct_cause_type", True),
+    ):
+        malformed = json.loads(raw_bytes)
+        malformed[field] = invalid_value
+        unsigned = dict(malformed)
+        unsigned.pop("record_cid")
+        malformed["record_cid"] = aseh_operator._identity(unsigned)
+        with pytest.raises(
+            aseh_operator.OperatorError,
+            match="terminal record binding differs",
+        ):
+            aseh_operator._admit_sealed_owner_terminal_record(
+                (aseh_operator._canonical_json(malformed) + "\n").encode(
+                    "ascii"
+                ),
+                nonce="e" * 64,
+                candidate_head=pin["source_head"],
+                candidate_tree=pin["source_tree"],
+                control_plane_pin=pin,
+                child_pid=os.getpid(),
+                child_start_time_ticks=start_time_ticks,
+                child_parent_pid=parent_pid,
+                child_boot_id=boot_id,
+            )
+
+    for field, invalid_value in (
+        ("pid", float(os.getpid())),
+        ("parent_pid", float(parent_pid)),
+        ("start_time_ticks", float(start_time_ticks)),
+        ("boot_id", True),
+    ):
+        malformed = json.loads(raw_bytes)
+        malformed["child_process"][field] = invalid_value
+        unsigned = dict(malformed)
+        unsigned.pop("record_cid")
+        malformed["record_cid"] = aseh_operator._identity(unsigned)
+        with pytest.raises(
+            aseh_operator.OperatorError,
+            match="terminal record binding differs",
+        ):
+            aseh_operator._admit_sealed_owner_terminal_record(
+                (aseh_operator._canonical_json(malformed) + "\n").encode(
+                    "ascii"
+                ),
+                nonce="e" * 64,
+                candidate_head=pin["source_head"],
+                candidate_tree=pin["source_tree"],
+                control_plane_pin=pin,
+                child_pid=os.getpid(),
+                child_start_time_ticks=start_time_ticks,
+                child_parent_pid=parent_pid,
+                child_boot_id=boot_id,
+            )
+
+    malformed_shapes = (
+        b'{"schema":"duplicate",' + raw_bytes[1:],
+        raw_bytes + b" ",
+        raw_bytes + raw_bytes,
+        b" " * (aseh_operator.ASEH_SEALED_OWNER_TERMINAL_MAX_BYTES + 1),
+    )
+    for malformed_raw in malformed_shapes:
+        with pytest.raises(aseh_operator.OperatorError):
+            aseh_operator._admit_sealed_owner_terminal_record(
+                malformed_raw,
+                nonce="e" * 64,
+                candidate_head=pin["source_head"],
+                candidate_tree=pin["source_tree"],
+                control_plane_pin=pin,
+                child_pid=os.getpid(),
+                child_start_time_ticks=start_time_ticks,
+                child_parent_pid=parent_pid,
+                child_boot_id=boot_id,
+            )
+
+    paths = {"sealed_owner_terminal_observations": tmp_path / "terminal"}
+    arguments = {
+        "paths": paths,
+        "raw": raw_bytes,
+        "read_failed": False,
+        "nonce": "e" * 64,
+        "candidate_head": pin["source_head"],
+        "candidate_tree": pin["source_tree"],
+        "control_plane_pin": pin,
+        "child_pid": os.getpid(),
+        "child_start_time_ticks": start_time_ticks,
+        "child_parent_pid": parent_pid,
+        "child_boot_id": boot_id,
+        "child_returncode": 78,
+    }
+    observation = aseh_operator._publish_sealed_owner_terminal_observation(
+        **arguments
+    )
+    assert observation["authority"] == "non_authoritative_observability"
+    assert observation["terminal_record_availability"] == "observed"
+    assert observation["retry_authorized"] is False
+    receipt_path = (
+        paths["sealed_owner_terminal_observations"]
+        / f"{observation['receipt_cid'][7:]}.json"
+    )
+    original = receipt_path.read_bytes()
+    with pytest.raises(aseh_operator.OperatorError, match="already exists"):
+        aseh_operator._publish_sealed_owner_terminal_observation(**arguments)
+    assert receipt_path.read_bytes() == original
+
+
+def test_aseh_sealed_owner_terminal_emission_cannot_mask_baseexception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal_read, terminal_write = os.pipe2(getattr(os, "O_CLOEXEC", 0))
+    pin = {
+        "source_head": "a" * 40,
+        "source_tree": "b" * 40,
+        "capsule_id": "sha256:" + ("c" * 64),
+        "archive_sha256": "sha256:" + ("d" * 64),
+    }
+
+    def interrupt() -> int:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(aseh_operator.time, "time_ns", interrupt)
+    try:
+        aseh_operator._emit_sealed_owner_terminal_record(
+            terminal_write,
+            nonce="e" * 64,
+            control_plane_pin=pin,
+            phase=aseh_operator._new_sealed_owner_terminal_phase(),
+            error_type="RuntimeError",
+            direct_cause_type=None,
+        )
+        os.close(terminal_write)
+        terminal_write = -1
+        assert os.read(terminal_read, 1) == b""
+    finally:
+        os.close(terminal_read)
+        if terminal_write >= 0:
+            os.close(terminal_write)
+
+
+def test_aseh_sealed_owner_terminal_parent_diagnostics_cannot_mask_child_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal_read, terminal_write = os.pipe2(getattr(os, "O_CLOEXEC", 0))
+    os.close(terminal_write)
+
+    def interrupt(*_args: object, **_kwargs: object) -> bytes:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(aseh_operator, "_read_bounded_pipe", interrupt)
+    raw, read_failed = aseh_operator._collect_sealed_owner_terminal_record(
+        terminal_read
+    )
+    assert raw is None
+    assert read_failed is True
+    with pytest.raises(OSError):
+        os.fstat(terminal_read)
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_publish_sealed_owner_terminal_observation",
+        interrupt,
+    )
+    aseh_operator._best_effort_publish_sealed_owner_terminal_observation(
+        child_returncode=78
+    )
+
+
+def test_aseh_sealed_owner_malformed_terminal_record_remains_unavailable(
+    tmp_path: Path,
+) -> None:
+    pin = {
+        "source_head": "a" * 40,
+        "source_tree": "b" * 40,
+        "capsule_id": "sha256:" + ("c" * 64),
+        "archive_sha256": "sha256:" + ("d" * 64),
+    }
+    raw = b'{"message":"terminal-secret-must-not-be-retained"}\n'
+    observation = aseh_operator._publish_sealed_owner_terminal_observation(
+        paths={
+            "sealed_owner_terminal_observations": tmp_path / "terminal"
+        },
+        raw=raw,
+        read_failed=False,
+        nonce="e" * 64,
+        candidate_head=pin["source_head"],
+        candidate_tree=pin["source_tree"],
+        control_plane_pin=pin,
+        child_pid=123,
+        child_start_time_ticks=456,
+        child_parent_pid=122,
+        child_boot_id="fixture-boot",
+        child_returncode=78,
+    )
+    assert observation["terminal_record_availability"] == "unavailable"
+    assert observation["terminal_record"] is None
+    assert observation["unavailability_reason"] == "malformed_or_unbound"
+    assert observation["retry_authorized"] is False
+    receipt_path = (
+        tmp_path
+        / "terminal"
+        / f"{observation['receipt_cid'][7:]}.json"
+    )
+    assert b"terminal-secret" not in receipt_path.read_bytes()
+
+
+def test_aseh_r21_owner_start_baseline_failure_is_nonretried_without_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    initial = _AsehR21FakeServer(
+        "initial",
+        _aseh_r21_fake_identity("unused"),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(monkeypatch, initial=initial)
+    baseline_error = aseh_operator.OperatorError(
+        "injected pre-start contention"
+    )
+
+    def fail_baseline(**_kwargs: object) -> dict[str, object]:
+        raise baseline_error
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_owner_start_contention_observation",
+        fail_baseline,
+    )
+    phase = aseh_operator._new_sealed_owner_terminal_phase()
+    aseh_operator._set_sealed_owner_terminal_phase(
+        phase,
+        "pre_start_quiescence",
+    )
+    with pytest.raises(aseh_operator.OperatorError) as caught:
+        aseh_operator._r21_start_server_with_one_safe_retry(
+            board=context["board"],
+            paths=context["paths"],
+            server=initial,
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={"sealed": "witness"},
+            failure={},
+            failure_event=threading.Event(),
+            terminal_phase=phase,
+        )
+
+    assert caught.value is baseline_error
+    assert initial.start_calls == 0
+    assert context["builds"] == []
+    assert [item["decision"] for item in context["decisions"]] == [
+        "non_retried"
+    ]
+    decision = context["decisions"][0]
+    assert decision["failure_evidence"]["schema"] == (
+        aseh_operator.ASEH_R22_OWNER_START_BASELINE_FAILURE_EVIDENCE_SCHEMA
+    )
+    assert "attempt" not in decision["failure_evidence"]
+    assert decision["failure_evidence"]["owner_start_attempted"] is False
+    assert decision["failure_evidence"]["observation_attempted"] is True
+    assert decision["failure_evidence"]["observation_available"] is False
+    assert decision["failure_evidence"]["owner_identity_observed"] is False
+    assert decision["failure_evidence"]["authoritative_state_outcome"] == (
+        "unavailable"
+    )
+    assert context["control_failures"][-1]["reason_code"] == (
+        "state_owner_start_baseline_unavailable"
+    )
+    assert "start_failure_evidence" not in context["control_failures"][-1]
+    assert phase["stage"] == "pre_start_quiescence"
+    assert phase["owner_start_attempted"] is False
+
+
+@pytest.mark.parametrize("attempt", [1, 2])
+def test_aseh_r21_owner_start_failure_evidence_grammar_is_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+    attempt: int,
+) -> None:
+    monkeypatch.setattr(aseh_operator.time, "time_ns", lambda: 123456789)
+    error = RuntimeError("message must not be retained")
+    error.__cause__ = TimeoutError("cause message must not be retained")
+
+    evidence = aseh_operator._r21_owner_start_failure_evidence(
+        error,
+        attempt=attempt,
+    )
+
+    assert set(evidence) == {
+        "schema",
+        "attempt",
+        "max_attempts",
+        "error_type",
+        "direct_cause_type",
+        "exact_migration_lock_timeout",
+        "observed_at_ns",
+        "evidence_cid",
+    }
+    assert evidence["schema"] == (
+        aseh_operator.ASEH_R21_OWNER_START_FAILURE_EVIDENCE_SCHEMA
+    )
+    assert evidence["attempt"] == attempt
+    assert evidence["max_attempts"] == 2
+    assert evidence["error_type"] == "RuntimeError"
+    assert evidence["direct_cause_type"] == "TimeoutError"
+    assert evidence["exact_migration_lock_timeout"] is False
+    unsigned = dict(evidence)
+    evidence_cid = unsigned.pop("evidence_cid")
+    assert evidence_cid == aseh_operator._identity(unsigned)
+
+
+def test_aseh_r21_owner_start_r22_baseline_receipt_is_disjoint_from_r21(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(aseh_operator.time, "time_ns", lambda: 123456789)
+    evidence = aseh_operator._r22_owner_start_baseline_failure_evidence(
+        RuntimeError("message must not be retained")
+    )
+
+    receipt = aseh_operator._r22_publish_owner_start_baseline_decision(
+        paths={"owner_start_recovery_decisions": tmp_path / "decisions"},
+        candidate_head="a" * 40,
+        candidate_tree="b" * 40,
+        authorization_witness={"sealed": "witness"},
+        store_id="store:r22",
+        failure_evidence=evidence,
+    )
+
+    assert receipt["schema"] == (
+        aseh_operator.ASEH_R22_OWNER_START_BASELINE_DECISION_SCHEMA
+    )
+    assert receipt["failure_evidence"]["schema"] == (
+        aseh_operator.ASEH_R22_OWNER_START_BASELINE_FAILURE_EVIDENCE_SCHEMA
+    )
+    assert receipt["decision"] == "non_retried"
+    assert receipt["owner_start_attempted"] is False
+    assert receipt["retry_authorized"] is False
+    assert "baseline_observation" not in receipt
+    assert "post_cleanup_observation" not in receipt
+    assert "attempt" not in receipt["failure_evidence"]
+
+
+def test_aseh_r21_owner_start_r22_diagnostics_cannot_mask_baseexception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def interrupt(**_kwargs: object) -> dict[str, object]:
+        raise KeyboardInterrupt
+
+    def terminate(*_args: object, **_kwargs: object) -> None:
+        raise SystemExit(78)
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r22_publish_owner_start_baseline_decision",
+        interrupt,
+    )
+    monkeypatch.setattr(aseh_operator, "_record_control_failure", terminate)
+
+    aseh_operator._r22_best_effort_owner_start_baseline_diagnostics(
+        paths={},
+        candidate_head="a" * 40,
+        candidate_tree="b" * 40,
+        authorization_witness={"sealed": "witness"},
+        store_id="store:r22",
+        failure_evidence={"schema": "fixture"},
+        failure={},
+        failure_event=threading.Event(),
+        error_type="RuntimeError",
     )
 
 
@@ -17276,8 +17838,11 @@ def test_aseh_r21_owner_start_terminal_diagnostic_failures_preserve_retry_error(
 
     def fail_terminal_publication(**kwargs: object) -> dict[str, object]:
         if kwargs["decision"] == "retry_failed":
-            raise OSError("injected terminal receipt failure")
+            raise KeyboardInterrupt
         return publish(**kwargs)
+
+    def fail_terminal_control(*_args: object, **_kwargs: object) -> None:
+        raise SystemExit(78)
 
     monkeypatch.setattr(
         aseh_operator,
@@ -17287,9 +17852,7 @@ def test_aseh_r21_owner_start_terminal_diagnostic_failures_preserve_retry_error(
     monkeypatch.setattr(
         aseh_operator,
         "_record_control_failure",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            OSError("injected terminal control failure")
-        ),
+        fail_terminal_control,
     )
 
     with pytest.raises(RuntimeError) as caught:
@@ -17301,6 +17864,51 @@ def test_aseh_r21_owner_start_terminal_diagnostic_failures_preserve_retry_error(
     assert [item["decision"] for item in context["decisions"]] == [
         "retry_admitted"
     ]
+
+
+def test_aseh_r21_owner_start_retry_admission_diagnostic_cannot_mask_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first = _AsehR21FakeServer(
+        "first",
+        _aseh_r21_migration_failure(TimeoutError("first timeout")),
+        events,
+        live,
+    )
+    context = _configure_aseh_r21_start_retry(monkeypatch, initial=first)
+    publication_error = RuntimeError("retry admission publication failed")
+
+    def fail_retry_admission(**kwargs: object) -> dict[str, object]:
+        if kwargs["decision"] == "retry_admitted":
+            raise publication_error
+        pytest.fail("unexpected R21 decision publication")
+
+    def interrupt_control(*_args: object, **_kwargs: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_publish_owner_start_recovery_decision",
+        fail_retry_admission,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_record_control_failure",
+        interrupt_control,
+    )
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="retry admission could not be published",
+    ) as caught:
+        _run_aseh_r21_start_retry(context, first)
+
+    assert caught.value.__cause__ is publication_error
+    assert first.start_calls == 1
+    assert context["builds"] == []
+    assert live == {"count": 0, "maximum": 1}
 
 
 @pytest.mark.parametrize(
@@ -17942,6 +18550,389 @@ def test_aseh_r20_delegates_r21_before_suffix_admission(
             previous_receipt=r19_chain[-1],
             previous_transition=r19_chain[-1],
             prior_receipt_chain=r19_chain,
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
+
+
+def _aseh_r22_structural_chain() -> list[dict[str, object]]:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R22_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        receipt_cid = (
+            aseh_operator.ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS[index]
+            if index < 21
+            else "sha256:" + ("f" * 64)
+        )
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": receipt_cid,
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+    return chain
+
+
+def _aseh_r22_witness(head: str, tree: str) -> dict[str, str]:
+    return {
+        "head": head,
+        "tree": tree,
+        "branch_ref": "refs/heads/agent/aseh-r22-test",
+        "index_entries_digest": "sha256:" + ("1" * 64),
+        "index_flags_digest": "sha256:" + ("2" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("3" * 64),
+        "branch_reflog_digest": "sha256:" + ("4" * 64),
+    }
+
+
+def test_aseh_r22_terminal_observability_requires_exact_r1_r22_chain() -> None:
+    chain = _aseh_r22_structural_chain()
+    assert aseh_operator._admit_exact_r22_transition_chain(chain) == chain
+
+    with pytest.raises(aseh_operator.OperatorError, match="R22"):
+        aseh_operator._admit_exact_r22_transition_chain(chain[:-1])
+    reordered = [dict(item) for item in chain]
+    reordered[-2], reordered[-1] = reordered[-1], reordered[-2]
+    with pytest.raises(aseh_operator.OperatorError, match="R22"):
+        aseh_operator._admit_exact_r22_transition_chain(reordered)
+    rewritten = [dict(item) for item in chain]
+    rewritten[13]["receipt_cid"] = "sha256:" + ("e" * 64)
+    rewritten[14]["previous_receipt_cid"] = rewritten[13]["receipt_cid"]
+    with pytest.raises(aseh_operator.OperatorError, match="vector"):
+        aseh_operator._admit_exact_r22_transition_chain(rewritten)
+    unlinked = [dict(item) for item in chain]
+    unlinked[-1]["previous_receipt_cid"] = "sha256:" + ("d" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R22"):
+        aseh_operator._admit_exact_r22_transition_chain(unlinked)
+
+
+def test_aseh_r22_terminal_observability_policy_binds_exact_r21_vector() -> None:
+    bootstrap_id = "sha256:" + ("a" * 64)
+    prior_chain = _aseh_r22_structural_chain()[:-1]
+    for item in prior_chain:
+        item["bootstrap_receipt_id"] = bootstrap_id
+    prior_chain[-1]["repair_head"] = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+    )
+    head = "b" * 40
+    tree = "c" * 40
+    witness = _aseh_r22_witness(head, tree)
+    contract = aseh_operator._r19_sealed_receipt_validation_executor_contract()
+
+    policy = aseh_operator._r22_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_id,
+        prior_chain=prior_chain,
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        executor_contract=contract,
+    )
+
+    assert policy["policy_revision"] == 22
+    assert policy["prior_receipt_count"] == 21
+    assert policy["prior_receipt_cids"] == list(
+        aseh_operator.ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS
+    )
+    assert policy["previous_receipt_cid"] == (
+        aseh_operator.ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS[-1]
+    )
+    assert policy["candidate_authorization_witness_cid"] == (
+        aseh_operator._identity(witness)
+    )
+
+    broadened = dict(policy)
+    broadened["policy_revision"] = 23
+    unsigned = dict(broadened)
+    unsigned.pop("policy_admission_cid")
+    broadened["policy_admission_cid"] = aseh_operator._identity(unsigned)
+    with pytest.raises(aseh_operator.OperatorError, match="R22"):
+        aseh_operator._validate_r22_historical_live_policy_admission_record(
+            broadened
+        )
+
+
+def test_aseh_r22_terminal_observability_receipt_and_launch_are_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap_id = "sha256:" + ("a" * 64)
+    chain = _aseh_r22_structural_chain()
+    prior_chain = chain[:-1]
+    for item in prior_chain:
+        item["bootstrap_receipt_id"] = bootstrap_id
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+    )
+    prior_chain[-1]["repair_head"] = base
+    head = "b" * 40
+    tree = "c" * 40
+    witness = _aseh_r22_witness(head, tree)
+    policy = aseh_operator._r22_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_id,
+        prior_chain=prior_chain,
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        executor_contract=(
+            aseh_operator._r19_sealed_receipt_validation_executor_contract()
+        ),
+    )
+    evidence = {
+        "active_policy_cid": policy["policy_admission_cid"],
+        "authorizing_receipt_cid": None,
+        "returncode": 0,
+        "terminal_class": "verified_success",
+    }
+    evidence["evidence_cid"] = aseh_operator._identity(evidence)
+    receipt = {
+        field: None
+        for field in (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_RECEIPT_FIELDS
+        )
+    }
+    receipt.update(
+        {
+            "schema": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SCHEMA
+            ),
+            "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+            "stable_identity": (
+                f"{aseh_operator.PROGRAM}/"
+                f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R22"
+            ),
+            "program_id": aseh_operator.PROGRAM,
+            "transition_revision": 22,
+            "bootstrap_receipt_id": bootstrap_id,
+            "previous_receipt_cid": prior_chain[-1]["receipt_cid"],
+            "base_head": base,
+            "repair_head": head,
+            "repair_tree": tree,
+            "candidate_authorization_witness": witness,
+            "sealed_validation_executor_contract": (
+                aseh_operator._r22_sealed_receipt_validation_executor_contract()
+            ),
+            "historical_live_policy_admission": policy,
+            "historical_live_execution_evidence": evidence,
+            "terminal_success_criteria": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SUCCESS
+            ),
+            "terminal_non_success_criteria": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_NON_SUCCESS
+            ),
+            "semantic_corpus_changed": False,
+            "database_mutated": False,
+        }
+    )
+    unsigned_receipt = dict(receipt)
+    unsigned_receipt.pop("receipt_cid")
+    receipt["receipt_cid"] = aseh_operator._identity(unsigned_receipt)
+    assert (
+        aseh_operator
+        ._repair_sealed_owner_terminal_observability_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    active = chain[-1]
+    active.update(
+        {
+            "repair_head": head,
+            "repair_tree": tree,
+            "receipt_cid": receipt["receipt_cid"],
+            "previous_receipt_cid": prior_chain[-1]["receipt_cid"],
+        }
+    )
+    admitted_chain = [*prior_chain, active]
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base if args == ("show", "-s", "--format=%P", head) else ""
+        ),
+    )
+    admission = {
+        "runtime_source_head": head,
+        "runtime_repository_tree_id": tree,
+        "repair_transition": active,
+        "repair_transition_chain": admitted_chain,
+    }
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=head,
+        candidate_tree=tree,
+    )
+
+    replaced = dict(admission)
+    replaced["repair_transition"] = {
+        **active,
+        "receipt_cid": "sha256:" + ("8" * 64),
+    }
+    with pytest.raises(aseh_operator.OperatorError, match="R22"):
+        aseh_operator._assert_exact_run_launch_admission(
+            replaced,
+            candidate_head=head,
+            candidate_tree=tree,
+        )
+
+
+def test_aseh_r22_terminal_observability_matrix_is_globally_registered() -> None:
+    matrix = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS
+    )
+    registered = {
+        tuple(tuple(command) for command in candidate)
+        for candidate in aseh_operator._receipt_validation_matrices()
+    }
+
+    assert tuple(tuple(command) for command in matrix) in registered
+    for command in matrix:
+        parsed = aseh_operator._parse_receipt_validation_python_command(
+            command,
+            require_known=True,
+        )
+        if aseh_operator.ASEH_RECEIPT_VALIDATION_PYTHON in command:
+            assert parsed is not None
+
+
+def test_aseh_r22_terminal_observability_policy_uses_unchanged_executor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    command = aseh_operator._r11_historical_live_docker_command()
+    contract = {"contract": "historical-live"}
+    policy = {
+        "schema": aseh_operator.ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "policy_admission_cid": "sha256:" + ("1" * 64),
+    }
+    lock = {"lock_identity_cid": "sha256:" + ("2" * 64)}
+    active = {
+        "consumed": False,
+        "executor_contract": contract,
+        "policy_admission": policy,
+        "lifecycle_lock_identity": lock,
+        "authorizing_receipt_cid": None,
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        object(),
+    )
+    monkeypatch.setattr(aseh_operator, "_ASEH_ACTIVE_R19_POLICY", active)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r19_historical_live_executor_contract",
+        lambda *_args, **_kwargs: contract,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r22_historical_live_policy_admission_record",
+        lambda value: value,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r21_historical_live_policy_admission_record",
+        lambda _value: pytest.fail("R22 policy was sent to the R21 validator"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_lock_identity",
+        lambda _value, **_kwargs: lock,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r16_parent_is_child_subreaper",
+        lambda: True,
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="under a subreaper"):
+        aseh_operator._run_r19_historical_live_validation(
+            command,
+            timeout=900.0,
+            env=None,
+            cwd=None,
+            executor_contract=contract,
+        )
+
+    assert active["consumed"] is True
+
+
+def test_aseh_r21_delegates_r22_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r21_path = tmp_path / "repair-r21.json"
+    r21_path.touch()
+    full_prior = _aseh_r22_structural_chain()[:-1]
+    r20_chain = full_prior[:-1]
+    r20_chain[-1]["repair_head"] = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_BASE_HEAD
+    )
+    r21_receipt = dict(full_prior[-1])
+    r21_transition = {
+        **r21_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+        ),
+    }
+    sentinel = {"delegated": "r22"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r21_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_startup_contention_recovery_transition",
+        lambda *_args, **_kwargs: r21_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_owner_terminal_observability_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS)
+            else pytest.fail("R21 did not delegate the exact R1-R21 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R21 materialized suffix ran before R22 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_sealed_owner_startup_contention_recovery_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_startup_contention_recovery_transition_receipt": (
+                    r21_path
+                )
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="9" * 40,
+            previous_receipt=r20_chain[-1],
+            previous_transition=r20_chain[-1],
+            prior_receipt_chain=r20_chain,
             authorization_directory_fd=90,
         )
     )

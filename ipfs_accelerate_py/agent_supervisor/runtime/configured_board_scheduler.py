@@ -7167,7 +7167,7 @@ def _run_aseh_sealed_owner(argv: Sequence[str]) -> int:
     """Enter the ASEH owner only from exact bytes in the inherited capsule."""
 
     values = list(argv)
-    if len(values) != 18 or values[0] != ASEH_SEALED_OWNER_MARKER:
+    if len(values) != 21 or values[0] != ASEH_SEALED_OWNER_MARKER:
         raise ConfiguredBoardError("sealed ASEH owner launch grammar is invalid")
     forbidden_environment = (
         "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
@@ -7223,6 +7223,77 @@ def _run_aseh_sealed_owner(argv: Sequence[str]) -> int:
         expected_parent_pid = int(values[15])
         expected_parent_start = int(values[16])
         expected_parent_boot = values[17]
+        raw_terminal_descriptor = values[18]
+        if (
+            len(raw_terminal_descriptor) > 20
+            or re.fullmatch(r"[0-9]+", raw_terminal_descriptor) is None
+        ):
+            raise ValueError("sealed ASEH owner terminal descriptor is invalid")
+        terminal_descriptor = int(raw_terminal_descriptor)
+        if str(terminal_descriptor) != raw_terminal_descriptor:
+            raise ValueError(
+                "sealed ASEH owner terminal descriptor is not canonical"
+            )
+        terminal_nonce = values[19]
+        raw_terminal_pipe_identity = values[20]
+        if len(raw_terminal_pipe_identity.encode("utf-8")) > 512:
+            raise ValueError("sealed ASEH owner terminal pipe identity is oversized")
+        terminal_pipe_identity = json.loads(raw_terminal_pipe_identity)
+        if (
+            not isinstance(terminal_pipe_identity, list)
+            or len(terminal_pipe_identity) != 9
+            or any(type(value) is not int for value in terminal_pipe_identity)
+            or json.dumps(
+                terminal_pipe_identity,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+            != raw_terminal_pipe_identity
+        ):
+            raise ValueError(
+                "sealed ASEH owner terminal pipe identity is not canonical"
+            )
+        terminal_stat = os.fstat(terminal_descriptor)
+        observed_terminal_identity = [
+            int(getattr(terminal_stat, field))
+            for field in (
+                "st_dev",
+                "st_ino",
+                "st_mode",
+                "st_uid",
+                "st_gid",
+                "st_nlink",
+                "st_size",
+                "st_mtime_ns",
+                "st_ctime_ns",
+            )
+        ]
+        if (
+            terminal_descriptor < 3
+            or terminal_descriptor
+            in {
+                capsule_descriptor,
+                interpreter_descriptor,
+                native_descriptor,
+            }
+            or re.fullmatch(r"[0-9a-f]{64}", terminal_nonce) is None
+            or terminal_pipe_identity != observed_terminal_identity
+            or not stat.S_ISFIFO(terminal_stat.st_mode)
+            or terminal_stat.st_uid != os.geteuid()
+            or fcntl.fcntl(terminal_descriptor, fcntl.F_GETFL)
+            & os.O_ACCMODE
+            != os.O_WRONLY
+        ):
+            raise ValueError("sealed ASEH owner terminal pipe differs")
+        os.set_inheritable(terminal_descriptor, False)
+        if (
+            fcntl.fcntl(terminal_descriptor, fcntl.F_GETFD)
+            & fcntl.FD_CLOEXEC
+            == 0
+        ):
+            raise ValueError("sealed ASEH owner terminal pipe is inheritable")
         from .process_security import arm_state_authority_parent_death_signal
 
         arm_state_authority_parent_death_signal(
@@ -7338,6 +7409,10 @@ def _run_aseh_sealed_owner(argv: Sequence[str]) -> int:
         ) from exc
     operator_module_name = "_aseh_sealed_owner_operator"
     if operator_module_name in sys.modules:
+        try:
+            os.close(terminal_descriptor)
+        except OSError:
+            pass
         raise ConfiguredBoardError(
             "sealed ASEH owner operator module name is already occupied"
         )
@@ -7352,6 +7427,9 @@ def _run_aseh_sealed_owner(argv: Sequence[str]) -> int:
         entry = operator_module.__dict__.get("_run_supervisor_owner")
         if not callable(entry):
             raise ConfiguredBoardError("sealed ASEH owner entry is absent")
+        # The operator borrows this descriptor.  This scheduler capsule is
+        # its sole closer so that a reused descriptor number cannot be closed
+        # accidentally by two independently unwinding frames.
         return int(
             entry(
                 config_path,
@@ -7369,10 +7447,17 @@ def _run_aseh_sealed_owner(argv: Sequence[str]) -> int:
                     system_dependency_directories_json
                 ),
                 sealed_owner_environment=exact_environment,
+                sealed_owner_terminal_descriptor=terminal_descriptor,
+                sealed_owner_terminal_nonce=terminal_nonce,
+                sealed_owner_terminal_pipe_identity=terminal_pipe_identity,
             )
         )
     finally:
         removed_module = sys.modules.pop(operator_module_name, None)
+        try:
+            os.close(terminal_descriptor)
+        except OSError:
+            pass
         if removed_module is not operator_module:
             raise ConfiguredBoardError(
                 "sealed ASEH owner operator module registration drifted"

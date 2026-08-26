@@ -107,11 +107,18 @@ ASEH_R21_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r21-historical-live-policy-admission@1"
 )
+ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r22-historical-live-policy-admission@1"
+)
 ASEH_R19_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
     "sha256:48e0aded2d74a8ff1f9ed8d5b9e0af8ad73072fd9d9f5152e9c1af0544828c82"
 )
 ASEH_R20_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
     "sha256:a499587f13a5643bb52228e4f42677a5f3b64947847cc21e2d2e82cbfe1985ca"
+)
+ASEH_R21_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:20ad7d1854db122fc87449ba686d9ecf0f282e31f3843e2fcb6ed39417022de6"
 )
 ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -125,9 +132,44 @@ ASEH_R21_OWNER_START_FAILURE_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r21-owner-start-failure-evidence@1"
 )
+ASEH_R22_OWNER_START_BASELINE_FAILURE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r22-owner-start-baseline-failure-evidence@1"
+)
+ASEH_R22_OWNER_START_BASELINE_DECISION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r22-owner-start-baseline-decision@1"
+)
 ASEH_R21_OWNER_START_RECOVERY_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r21-owner-start-recovery-decision@1"
+)
+ASEH_SEALED_OWNER_TERMINAL_RECORD_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r22-sealed-owner-terminal-record@1"
+)
+ASEH_SEALED_OWNER_TERMINAL_OBSERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r22-sealed-owner-terminal-observation@1"
+)
+ASEH_SEALED_OWNER_TERMINAL_MAX_BYTES: Final = 64 * 1024
+ASEH_SEALED_OWNER_TERMINAL_STAGES: Final = frozenset(
+    {
+        "operator_entry",
+        "launch_preflight",
+        "materialized_launch_admission",
+        "candidate_revalidation",
+        "pre_start_quiescence",
+        "owner_start_attempt_1",
+        "owner_start_retry_admission",
+        "owner_start_attempt_2",
+        "owner_identity_admission",
+        "grant_broker_start",
+        "scheduler_birth",
+        "scheduler_handoff",
+        "initial_health",
+        "running",
+    }
 )
 ASEH_R19_HISTORICAL_LIVE_READY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -2319,6 +2361,76 @@ REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_NON_SUCCESS: Final = 
     "listener, socket, lock contention, second retry, reduced validation, "
     "database mutation, or self-authorized promotion is rejected."
 )
+REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-sealed-owner-terminal-observability-transition@1"
+)
+REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD: Final = (
+    "57d0cc2b3f50a449ed828839536ac2a649cc1309"
+)
+REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        (
+            "aseh_r21_owner_start or aseh_sealed_owner_terminal or "
+            "aseh_r22_terminal_observability or "
+            "repair_sealed_owner_terminal_observability_transition or "
+            "delegates_r22_before_suffix_admission"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue repairing the existing canonical supervisor so sealed owner "
+    "failures become typed, bounded, secret-free terminal observations while "
+    "unknown or unavailable evidence remains non-retryable"
+)
+REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SUCCESS: Final = (
+    "The exact published R21 child retains the immutable R1-R21 receipt vector, "
+    "reuses the unchanged historical-live executor before DuckDB access, "
+    "records baseline-observation failure without claiming an owner attempt or "
+    "state equality, and exposes one bounded non-authoritative sealed-child "
+    "terminal observation without granting any new retry authority."
+)
+REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R21 parent, changed sibling, rewritten receipt, non-adjacent "
+    "chain, unbound or secret-bearing terminal record, inferred missing "
+    "observation, masked execution failure, automatic sealed-child retry, "
+    "reduced validation, database mutation, or self-authorized promotion is "
+    "rejected."
+)
 ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS: Final = (
     "sha256:498dae56cef1484c43a318a88dd02155ecf56a4de9b611085ca0098fbc3cf9d8",
     "sha256:e08514ca997ab6aaf6dffe566124fe6fb7b6c4824b4cd6b0dfc90274141a24ca",
@@ -2343,6 +2455,10 @@ ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS: Final = (
 ASEH_R21_EXACT_R1_R20_RECEIPT_CIDS: Final = (
     *ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS,
     "sha256:400d708773aaa89549f0265d5d7b27468ad7e52982133d5c4b8db53b079cc74d",
+)
+ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS: Final = (
+    *ASEH_R21_EXACT_R1_R20_RECEIPT_CIDS,
+    "sha256:744e90925e5c1598f00fc60470cb53a35f7b2c61d4d968e6decfde4f3e5b8312",
 )
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
@@ -2395,6 +2511,10 @@ ASEH_R20_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R21_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R20_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_SCHEMA,
+)
+ASEH_R22_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R21_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -2510,6 +2630,9 @@ REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_RECEIPT_FIELDS: Final = (
 )
 REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_RECEIPT_FIELDS
+)
+REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -3835,6 +3958,67 @@ def _repair_sealed_owner_startup_contention_recovery_transition_receipt_id(
     return receipt_id
 
 
+def _repair_sealed_owner_terminal_observability_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-22 terminal-observability receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    policy_value = payload.get("historical_live_policy_admission")
+    evidence_value = payload.get("historical_live_execution_evidence")
+    policy = (
+        _validate_r22_historical_live_policy_admission_record(policy_value)
+        if isinstance(policy_value, Mapping)
+        else None
+    )
+    evidence = dict(evidence_value) if isinstance(evidence_value, Mapping) else {}
+    unsigned_evidence = dict(evidence)
+    evidence_cid = str(unsigned_evidence.pop("evidence_cid", "") or "")
+    if (
+        payload.get("schema")
+        != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 22
+        or payload.get("terminal_success_criteria")
+        != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r22_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+        or not isinstance(policy, Mapping)
+        or policy.get("bootstrap_receipt_id")
+        != payload.get("bootstrap_receipt_id")
+        or policy.get("previous_receipt_cid")
+        != payload.get("previous_receipt_cid")
+        or policy.get("candidate_head") != payload.get("repair_head")
+        or policy.get("candidate_tree") != payload.get("repair_tree")
+        or policy.get("candidate_authorization_witness_cid")
+        != _identity(dict(witness))
+        or evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or evidence.get("authorizing_receipt_cid") is not None
+        or evidence.get("returncode") != 0
+        or evidence.get("terminal_class") != "verified_success"
+        or evidence_cid != _identity(unsigned_evidence)
+    ):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-terminal-observability schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair sealed-owner-terminal-observability CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -4050,6 +4234,9 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r21 = globals().get(
         "REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_VALIDATIONS"
     )
+    r22 = globals().get(
+        "REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
@@ -4059,6 +4246,7 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         *((r19,) if isinstance(r19, Sequence) else ()),
         *((r20,) if isinstance(r20, Sequence) else ()),
         *((r21,) if isinstance(r21, Sequence) else ()),
+        *((r22,) if isinstance(r22, Sequence) else ()),
     )
 
 
@@ -4803,6 +4991,64 @@ def _r21_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+def _r22_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend immutable R21 without adding an executor or live route."""
+
+    parent = _r21_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if parent_cid != ASEH_R21_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID:
+        raise OperatorError("historical R21 validation contract drifted")
+    matrix = REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r22_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r22-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 22,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": _r19_historical_live_executor_contract(),
+            "scope": (
+                "r22_authorization_pre_duckdb_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
 def _validate_r19_historical_live_policy_admission_record(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -5447,6 +5693,222 @@ def _admit_r21_historical_live_policy_admission(
     return supplied
 
 
+def _validate_r22_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed R22 policy bound to immutable R1-R21 receipts."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R22 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "policy_revision",
+        "authorization_basis",
+        "bootstrap_receipt_id",
+        "prior_receipt_count",
+        "prior_receipt_cids",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_base_head",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    unsigned = dict(supplied)
+    policy_admission_cid = str(
+        unsigned.pop("policy_admission_cid", "") or ""
+    )
+    digest_fields = (
+        "bootstrap_receipt_id",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+    )
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 22
+        or supplied.get("authorization_basis")
+        != "validated_r1_r21_chain_plus_observed_r22_candidate_witness"
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R21_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or supplied.get("prior_receipt_cids")
+        != list(ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS)
+        or supplied.get("prior_receipt_chain_cid")
+        != _identity(list(ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS))
+        or supplied.get("previous_receipt_cid")
+        != ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS[-1]
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(supplied.get(field) or ""),
+            )
+            is None
+            for field in digest_fields
+        )
+        or supplied.get("candidate_base_head")
+        != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or supplied.get("executor_contract_cid")
+        != _identity(_r19_sealed_receipt_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_admission_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R22 historical live policy admission differs")
+    return supplied
+
+
+def _r22_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build R22 live authority from the exact immutable R1-R21 vector."""
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None:
+        raise OperatorError("R22 historical live bootstrap identity is invalid")
+    admitted_chain = _admit_exact_r21_transition_chain(list(prior_chain))
+    receipt_cids = tuple(str(item["receipt_cid"]) for item in admitted_chain)
+    if (
+        receipt_cids != ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS
+        or any(
+            item.get("bootstrap_receipt_id") != bootstrap_receipt_id
+            for item in admitted_chain
+        )
+        or admitted_chain[-1].get("repair_head")
+        != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError("R22 historical live prior receipt vector differs")
+    witness = dict(candidate_authorization_witness)
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+        or re.fullmatch(
+            r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*",
+            str(witness.get("branch_ref") or ""),
+        )
+        is None
+        or ".." in str(witness.get("branch_ref") or "")
+        or "//" in str(witness.get("branch_ref") or "")
+        or str(witness.get("branch_ref") or "").endswith(("/", ".lock"))
+        or witness.get("status_digest") != _identity(b"")
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", witness[field]) is None
+            for field in (
+                "index_entries_digest",
+                "index_flags_digest",
+                "status_digest",
+                "head_reflog_digest",
+                "branch_reflog_digest",
+            )
+        )
+    ):
+        raise OperatorError(
+            "R22 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    admission: dict[str, Any] = {
+        "schema": ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 22,
+        "authorization_basis": (
+            "validated_r1_r21_chain_plus_observed_r22_candidate_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_cids": list(receipt_cids),
+        "prior_receipt_chain_cid": _identity(list(receipt_cids)),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r22_historical_live_policy_admission_record(admission)
+
+
+def _admit_r22_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit only R22's deterministic record for the supplied exact inputs."""
+
+    supplied = _validate_r22_historical_live_policy_admission_record(value)
+    expected = _r22_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+    )
+    if supplied != expected:
+        raise OperatorError("R22 historical live policy admission is unknown")
+    return supplied
+
+
 def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
     """Return the only admitted historical-live policy revision."""
 
@@ -5457,6 +5919,8 @@ def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
         return 20
     if schema == ASEH_R21_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
         return 21
+    if schema == ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 22
     raise OperatorError("historical live policy schema is unknown")
 
 
@@ -5673,15 +6137,21 @@ def _r19_active_policy_scope(
         declared=_r11_historical_live_docker_command(),
     )
     policy = (
-        _validate_r21_historical_live_policy_admission_record(policy_admission)
-        if revision == 21
+        _validate_r22_historical_live_policy_admission_record(policy_admission)
+        if revision == 22
         else (
-            _validate_r20_historical_live_policy_admission_record(
+            _validate_r21_historical_live_policy_admission_record(
                 policy_admission
             )
-            if revision == 20
-            else _validate_r19_historical_live_policy_admission_record(
-                policy_admission
+            if revision == 21
+            else (
+                _validate_r20_historical_live_policy_admission_record(
+                    policy_admission
+                )
+                if revision == 20
+                else _validate_r19_historical_live_policy_admission_record(
+                    policy_admission
+                )
             )
         )
     )
@@ -5870,6 +6340,27 @@ def _r21_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r22_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R22 suffix argv without broadening prior matrices."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R22 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -5910,25 +6401,30 @@ def _admit_sealed_receipt_validation_executor_contract(
     r19 = _r19_sealed_receipt_validation_executor_contract()
     r20 = _r20_sealed_receipt_validation_executor_contract()
     r21 = _r21_sealed_receipt_validation_executor_contract()
-    if supplied not in (r16, r17, r18, r19, r20, r21):
+    r22 = _r22_sealed_receipt_validation_executor_contract()
+    if supplied not in (r16, r17, r18, r19, r20, r21, r22):
         raise OperatorError("sealed validation executor contract is unknown")
     if (
         (
-            _r21_validation_executor_class(command)
-            if supplied == r21
+            _r22_validation_executor_class(command)
+            if supplied == r22
             else (
-                _r20_validation_executor_class(command)
-                if supplied == r20
+                _r21_validation_executor_class(command)
+                if supplied == r21
                 else (
-                    _r19_validation_executor_class(command)
-                    if supplied == r19
+                    _r20_validation_executor_class(command)
+                    if supplied == r20
                     else (
-                        _r18_validation_executor_class(command)
-                        if supplied == r18
+                        _r19_validation_executor_class(command)
+                        if supplied == r19
                         else (
-                            _r17_validation_executor_class(command)
-                            if supplied == r17
-                            else _r16_validation_executor_class(command)
+                            _r18_validation_executor_class(command)
+                            if supplied == r18
+                            else (
+                                _r17_validation_executor_class(command)
+                                if supplied == r17
+                                else _r16_validation_executor_class(command)
+                            )
                         )
                     )
                 )
@@ -11208,7 +11704,7 @@ def _validate_r19_historical_live_execution_evidence(
 
     revision = _historical_live_policy_revision(policy_admission)
     policy = (
-        _admit_r21_historical_live_policy_admission(
+        _admit_r22_historical_live_policy_admission(
             policy_admission,
             bootstrap_receipt_id=bootstrap_receipt_id,
             prior_chain=prior_chain,
@@ -11217,9 +11713,9 @@ def _validate_r19_historical_live_execution_evidence(
             candidate_authorization_witness=candidate_authorization_witness,
             executor_contract=executor_contract,
         )
-        if revision == 21
+        if revision == 22
         else (
-            _admit_r20_historical_live_policy_admission(
+            _admit_r21_historical_live_policy_admission(
                 policy_admission,
                 bootstrap_receipt_id=bootstrap_receipt_id,
                 prior_chain=prior_chain,
@@ -11228,15 +11724,27 @@ def _validate_r19_historical_live_execution_evidence(
                 candidate_authorization_witness=candidate_authorization_witness,
                 executor_contract=executor_contract,
             )
-            if revision == 20
-            else _admit_r19_historical_live_policy_admission(
-                policy_admission,
-                bootstrap_receipt_id=bootstrap_receipt_id,
-                prior_chain=prior_chain,
-                candidate_head=candidate_head,
-                candidate_tree=candidate_tree,
-                candidate_authorization_witness=candidate_authorization_witness,
-                executor_contract=executor_contract,
+            if revision == 21
+            else (
+                _admit_r20_historical_live_policy_admission(
+                    policy_admission,
+                    bootstrap_receipt_id=bootstrap_receipt_id,
+                    prior_chain=prior_chain,
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                    candidate_authorization_witness=candidate_authorization_witness,
+                    executor_contract=executor_contract,
+                )
+                if revision == 20
+                else _admit_r19_historical_live_policy_admission(
+                    policy_admission,
+                    bootstrap_receipt_id=bootstrap_receipt_id,
+                    prior_chain=prior_chain,
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                    candidate_authorization_witness=candidate_authorization_witness,
+                    executor_contract=executor_contract,
+                )
             )
         )
     )
@@ -11624,27 +12132,37 @@ def _run_r19_historical_live_validation(
     active_policy_value = active_policy["policy_admission"]
     active_schema = active_policy_value.get("schema")
     revision = (
-        21
-        if active_schema == ASEH_R21_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        22
+        if active_schema == ASEH_R22_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
         else (
-            20
-            if active_schema
-            == ASEH_R20_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
-            else 19
+            21
+            if active_schema == ASEH_R21_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+            else (
+                20
+                if active_schema
+                == ASEH_R20_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+                else 19
+            )
         )
     )
     policy_admission = (
-        _validate_r21_historical_live_policy_admission_record(
+        _validate_r22_historical_live_policy_admission_record(
             active_policy["policy_admission"]
         )
-        if revision == 21
+        if revision == 22
         else (
-            _validate_r20_historical_live_policy_admission_record(
+            _validate_r21_historical_live_policy_admission_record(
                 active_policy["policy_admission"]
             )
-            if revision == 20
-            else _validate_r19_historical_live_policy_admission_record(
-                active_policy["policy_admission"]
+            if revision == 21
+            else (
+                _validate_r20_historical_live_policy_admission_record(
+                    active_policy["policy_admission"]
+                )
+                if revision == 20
+                else _validate_r19_historical_live_policy_admission_record(
+                    active_policy["policy_admission"]
+                )
             )
         )
     )
@@ -12036,25 +12554,33 @@ def _qualify_r19_historical_live_policy(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run and admit the exact historical live route under one typed fence."""
 
-    if _revision not in {19, 20, 21}:
+    if _revision not in {19, 20, 21, 22}:
         raise OperatorError("historical live policy revision is invalid")
     executor_contract = _r19_sealed_receipt_validation_executor_contract()
     policy_builder = (
-        _r21_historical_live_policy_admission
-        if _revision == 21
+        _r22_historical_live_policy_admission
+        if _revision == 22
         else (
-            _r20_historical_live_policy_admission
-            if _revision == 20
-            else _r19_historical_live_policy_admission
+            _r21_historical_live_policy_admission
+            if _revision == 21
+            else (
+                _r20_historical_live_policy_admission
+                if _revision == 20
+                else _r19_historical_live_policy_admission
+            )
         )
     )
     policy_admitter = (
-        _admit_r21_historical_live_policy_admission
-        if _revision == 21
+        _admit_r22_historical_live_policy_admission
+        if _revision == 22
         else (
-            _admit_r20_historical_live_policy_admission
-            if _revision == 20
-            else _admit_r19_historical_live_policy_admission
+            _admit_r21_historical_live_policy_admission
+            if _revision == 21
+            else (
+                _admit_r20_historical_live_policy_admission
+                if _revision == 20
+                else _admit_r19_historical_live_policy_admission
+            )
         )
     )
     computed_policy = policy_builder(
@@ -12202,6 +12728,32 @@ def _qualify_r21_pre_duckdb_historical_live_policy(
         policy_admission=policy_admission,
         authorizing_receipt_cid=authorizing_receipt_cid,
         _revision=21,
+    )
+
+
+def _qualify_r22_pre_duckdb_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Qualify R22 through R21's unchanged pre-DuckDB live route."""
+
+    return _qualify_r19_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        policy_admission=policy_admission,
+        authorizing_receipt_cid=authorizing_receipt_cid,
+        _revision=22,
     )
 
 
@@ -12827,6 +13379,43 @@ def _admit_exact_r21_transition_chain(
     return chain
 
 
+def _admit_exact_r22_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit immutable R1-R21 plus one exact adjacent R22 receipt."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R22_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R22 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R22_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R22 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R22 repair transition chain differs")
+        chain.append(item)
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in chain[:-1]
+    ) != ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS:
+        raise OperatorError("R22 historical receipt vector differs")
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -13135,6 +13724,35 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R21 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [
+        REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r22_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r21_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r21_admitted.get("repair_head")
+            != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r21_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r21_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current R22 candidate lacks its exact admitted validation seal"
+            )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -13331,6 +13949,19 @@ def _r21_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_VALIDATIONS[
+            -2
+        ]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r22_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R22 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS[
             -2
         ]
     ):
@@ -14468,16 +15099,23 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     authorization_witness: Mapping[str, str],
     _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16-R21 repair matrix against committed bytes."""
+    """Run the bounded R16-R22 repair matrix against committed bytes."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21}:
+    if _revision not in {16, 17, 18, 19, 20, 21, 22}:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 21:
+    if _revision == 22:
+        matrix = REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r22_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r22_validation_working_tree_scope
+        executor_class_for = _r22_validation_executor_class
+    elif _revision == 21:
         matrix = (
             REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_VALIDATIONS
         )
@@ -14840,6 +15478,22 @@ def _run_repair_sealed_owner_startup_contention_recovery_transition_validations(
     )
 
 
+def _run_repair_sealed_owner_terminal_observability_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R22 suffix through the existing typed executors."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=22,
+    )
+
+
 def _observe_repair_provider_cleanup_fence_known_baseline(
 ) -> dict[str, Any]:
     """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
@@ -15131,8 +15785,16 @@ def _paths(board: Any) -> dict[str, Path]:
         / "bootstrap"
         / "bootstrap-repair-sealed-owner-startup-contention-recovery-transition.json"
     )
+    result["repair_sealed_owner_terminal_observability_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-sealed-owner-terminal-observability-transition.json"
+    )
     result["owner_start_recovery_decisions"] = (
         result["evidence"] / "control-plane" / "owner-start-recovery"
+    )
+    result["sealed_owner_terminal_observations"] = (
+        result["evidence"] / "control-plane" / "sealed-owner-terminal"
     )
     result["r19_historical_live_lifecycle_lock"] = (
         result["evidence"]
@@ -17142,6 +17804,24 @@ def _validate_repair_sealed_owner_startup_contention_recovery_transition(
         previous_receipt=previous_receipt,
         rerun_validations=rerun_validations,
         _revision=21,
+    )
+
+
+def _validate_repair_sealed_owner_terminal_observability_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 22 chained to the immutable R21 receipt."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=22,
     )
 
 
@@ -19825,12 +20505,43 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     rerun_validations: bool,
     _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit one immutable transition in the exact R16-R21 suffix."""
+    """Admit one immutable transition in the exact R16-R22 suffix."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21}:
+    if _revision not in {16, 17, 18, 19, 20, 21, 22}:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 21:
+    if _revision == 22:
+        receipt_id = (
+            _repair_sealed_owner_terminal_observability_transition_receipt_id(
+                receipt
+            )
+        )
+        previous_receipt_id = (
+            _repair_sealed_owner_startup_contention_recovery_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+        )
+        changed_paths_value = (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_AUTHORITY
+        )
+        commands = (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r22_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SCHEMA
+        )
+        executor_class_for = _r22_validation_executor_class
+        scope_for = _r22_validation_working_tree_scope
+    elif _revision == 21:
         receipt_id = (
             _repair_sealed_owner_startup_contention_recovery_transition_receipt_id(
                 receipt
@@ -20445,6 +21156,32 @@ def _load_exact_r20_receipt_chain(
     return admitted
 
 
+def _load_exact_r21_receipt_chain(
+    paths: Mapping[str, Path],
+) -> list[Mapping[str, Any]]:
+    """Load, self-CID-admit, and vector-bind raw R1-R21 receipts."""
+
+    chain = list(_load_exact_r20_receipt_chain(paths))
+    r21_path = paths.get(
+        "repair_sealed_owner_startup_contention_recovery_transition_receipt"
+    )
+    if not isinstance(r21_path, Path) or not r21_path.is_file():
+        raise OperatorError("R22 historical live prior R21 receipt is absent")
+    r21_receipt = _secure_runtime_json(
+        r21_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    _repair_sealed_owner_startup_contention_recovery_transition_receipt_id(
+        r21_receipt
+    )
+    admitted = _admit_exact_r21_transition_chain([*chain, r21_receipt])
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in admitted
+    ) != ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS:
+        raise OperatorError("R22 historical live prior receipt vector differs")
+    return admitted
+
+
 def _admit_active_r19_policy_identity(
     *,
     paths: Mapping[str, Path],
@@ -20613,6 +21350,30 @@ def _r21_population_requires_policy(
     )
 
 
+def _r22_population_requires_policy(
+    population: Mapping[str, Any],
+) -> bool:
+    """Recognize the exact committed R22 child before its receipt exists."""
+
+    head = str(population.get("source_head") or "")
+    tree = str(population.get("repository_tree_id") or "")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    return (
+        _git("show", "-s", "--format=%P", head).split()
+        == [REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD]
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD,
+            head,
+        )
+        == REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_CHANGED_PATHS
+    )
+
+
 def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     receipt: Mapping[str, Any],
     *,
@@ -20631,6 +21392,9 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     )
     r21_path = paths.get(
         "repair_sealed_owner_startup_contention_recovery_transition_receipt"
+    )
+    r22_path = paths.get(
+        "repair_sealed_owner_terminal_observability_transition_receipt"
     )
     if (
         isinstance(r19_path, Path) and r19_path.is_file()
@@ -20653,6 +21417,15 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     if (
         isinstance(r21_path, Path) and r21_path.is_file()
     ) or _r21_population_requires_policy(population):
+        return _validate_repair_provider_cleanup_fence_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=False,
+        )
+    if (
+        isinstance(r22_path, Path) and r22_path.is_file()
+    ) or _r22_population_requires_policy(population):
         return _validate_repair_provider_cleanup_fence_transition(
             receipt,
             bootstrap=bootstrap,
@@ -20938,6 +21711,151 @@ def _prequalify_r21_historical_live_launch(
             "R21 historical live receipt changed during prequalification"
         )
     exact_chain = _admit_exact_r21_transition_chain(
+        [*prior_chain, first_receipt]
+    )
+    return {
+        "receipt": first_receipt,
+        "receipt_cid": receipt_cid,
+        "prior_chain": prior_chain,
+        "exact_chain": exact_chain,
+        "transition": transition,
+        "policy_admission": policy,
+        "stored_evidence": stored_evidence,
+        "fresh_evidence": fresh_evidence,
+        "candidate_authorization_witness_cid": _identity(dict(witness)),
+    }
+
+
+def _prequalify_r22_historical_live_launch(
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Qualify R22 through R21's route before canonical DuckDB access."""
+
+    if not _r22_population_requires_policy(population):
+        return None
+    r22_path = paths.get(
+        "repair_sealed_owner_terminal_observability_transition_receipt"
+    )
+    if not isinstance(r22_path, Path) or not r22_path.is_file():
+        raise OperatorError(
+            "active R22 pre-DuckDB historical-live policy receipt is absent"
+        )
+    prior_chain = _load_exact_r21_receipt_chain(paths)
+    r21_receipt = prior_chain[-1]
+    first_receipt = _secure_runtime_json(
+        r22_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    receipt_cid = (
+        _repair_sealed_owner_terminal_observability_transition_receipt_id(
+            first_receipt
+        )
+    )
+    transition = (
+        _validate_repair_sealed_owner_terminal_observability_transition(
+            first_receipt,
+            bootstrap=bootstrap,
+            previous_receipt=r21_receipt,
+            rerun_validations=False,
+        )
+    )
+    current_head = str(population.get("source_head") or "")
+    current_tree = str(population.get("repository_tree_id") or "")
+    witness = transition.get("candidate_authorization_witness")
+    if (
+        current_head != transition.get("repair_head")
+        or current_tree != transition.get("repair_tree")
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "active R22 historical-live policy does not bind the current tree"
+        )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="before R22 pre-DuckDB historical live qualification",
+    )
+    bootstrap_receipt_id = _bootstrap_receipt_id(bootstrap)
+    executor_contract = _r19_sealed_receipt_validation_executor_contract()
+    policy_value = first_receipt.get("historical_live_policy_admission")
+    policy = _admit_r22_historical_live_policy_admission(
+        policy_value if isinstance(policy_value, Mapping) else {},
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+    )
+    stored_evidence_value = first_receipt.get(
+        "historical_live_execution_evidence"
+    )
+    if not isinstance(stored_evidence_value, Mapping):
+        raise OperatorError(
+            "active R22 historical-live stored execution evidence is absent"
+        )
+    stored_evidence = _validate_r19_historical_live_execution_evidence(
+        stored_evidence_value,
+        policy_admission=policy,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+        environment_identity=_r11_command_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            _r11_historical_live_docker_command(),
+            checkout=Path("/sealed-checkout"),
+        ),
+        returncode=int(stored_evidence_value.get("returncode", 78)),
+        stdout_digest=str(stored_evidence_value.get("stdout_digest") or ""),
+        stderr_digest=str(stored_evidence_value.get("stderr_digest") or ""),
+        authorizing_receipt_cid=None,
+    )
+    admitted_policy, fresh_evidence = (
+        _qualify_r22_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_receipt_id,
+            prior_chain=prior_chain,
+            candidate_head=current_head,
+            candidate_tree=current_tree,
+            candidate_authorization_witness=witness,
+            policy_admission=policy,
+            authorizing_receipt_cid=receipt_cid,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="after R22 pre-DuckDB historical live qualification",
+    )
+    second_receipt = _secure_runtime_json(
+        r22_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    second_receipt_cid = (
+        _repair_sealed_owner_terminal_observability_transition_receipt_id(
+            second_receipt
+        )
+    )
+    if (
+        second_receipt != first_receipt
+        or second_receipt_cid != receipt_cid
+        or admitted_policy != policy
+        or fresh_evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or fresh_evidence.get("authorizing_receipt_cid") != receipt_cid
+    ):
+        raise OperatorError(
+            "R22 historical live receipt changed during prequalification"
+        )
+    exact_chain = _admit_exact_r22_transition_chain(
         [*prior_chain, first_receipt]
     )
     return {
@@ -23343,13 +24261,29 @@ def _authorize_repair_sealed_owner_startup_contention_recovery_transition_if_app
             str(transition["repair_head"]),
             head,
         )
+        expected_chain = [*prior_chain, receipt]
+        r22_result = (
+            _authorize_repair_sealed_owner_terminal_observability_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r22_result is not None:
+            return r22_result
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = _admit_exact_r21_transition_chain(
             current_admission.get("repair_transition_chain")
         )
         admitted_continuity = current_admission.get("canonical_continuity")
-        expected_chain = [*prior_chain, receipt]
         if (
             not isinstance(admitted_repair, Mapping)
             or admitted_repair.get("schema")
@@ -23501,6 +24435,251 @@ def _authorize_repair_sealed_owner_startup_contention_recovery_transition_if_app
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R21 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_sealed_owner_terminal_observability_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one exact R22 child through R21's sealed live route."""
+
+    r22_path = paths.get(
+        "repair_sealed_owner_terminal_observability_transition_receipt"
+    )
+    if not isinstance(r22_path, Path):
+        return None
+    prior_chain = _admit_exact_r21_transition_chain(
+        list(prior_receipt_chain)
+    )
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in prior_chain
+    ) != ASEH_R22_EXACT_R1_R21_RECEIPT_CIDS:
+        raise OperatorError(
+            "bootstrap repair terminal-observability prior vector differs"
+        )
+    prior_receipt = prior_chain[-1]
+    transition_binding_fields = (
+        "schema",
+        "task_id",
+        "transition_revision",
+        "base_head",
+        "base_tree",
+        "repair_head",
+        "repair_tree",
+        "changed_paths",
+        "patch_digest",
+        "previous_receipt_cid",
+        "candidate_authorization_witness",
+        "sealed_validation_executor_contract",
+        "receipt_cid",
+    )
+    if (
+        prior_receipt != previous_receipt
+        or any(
+            previous_transition.get(field) != prior_receipt.get(field)
+            for field in transition_binding_fields
+        )
+        or previous_transition.get("repair_head")
+        != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError(
+            "bootstrap repair terminal-observability prior chain differs"
+        )
+    if r22_path.is_file():
+        receipt = _secure_runtime_json(
+            r22_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = (
+            _validate_repair_sealed_owner_terminal_observability_transition(
+                receipt,
+                bootstrap=bootstrap,
+                previous_receipt=previous_receipt,
+                rerun_validations=receipt.get("repair_head") == head,
+            )
+        )
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition["repair_head"]),
+            head,
+        )
+        expected_chain = [*prior_chain, receipt]
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = _admit_exact_r22_transition_chain(
+            current_admission.get("repair_transition_chain")
+        )
+        admitted_continuity = current_admission.get("canonical_continuity")
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head")
+            != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in admitted_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or (
+                "sealed_owner_startup_contention_recovery_to_"
+                "sealed_owner_terminal_observability"
+            )
+            not in admitted_continuity
+            or current_admission.get(
+                "historical_live_authorizing_receipt_cid"
+            )
+            != receipt.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current admission does not retain the R22 terminal "
+                "observability repair"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission[
+                "runtime_source_head"
+            ],
+        }
+    base_head = REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_BASE_HEAD
+    if _git("show", "-s", "--format=%P", head).split() != [base_head]:
+        return None
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair terminal-observability changed paths differ"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    validation_results = (
+        _run_repair_sealed_owner_terminal_observability_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R22 validation before live qualification",
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r22_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R22 live qualification before receipt publication",
+    )
+    receipt = {
+        "schema": (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SCHEMA
+        ),
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R22"
+        ),
+        "program_id": PROGRAM,
+        "transition_revision": 22,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": _git("rev-parse", f"{base_head}^{{tree}}"),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R21"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r22_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": historical_policy,
+        "historical_live_execution_evidence": historical_evidence,
+        "terminal_success_criteria": (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_SEALED_OWNER_TERMINAL_OBSERVABILITY_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_sealed_owner_terminal_observability_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R22 receipt publication",
+    )
+    _atomic_json_create(
+        r22_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R22 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -25808,14 +26987,23 @@ def _admit_materialized_launch(
         paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
     )
     receipt_id = _bootstrap_receipt_id(bootstrap)
-    r21_prequalification = _prequalify_r21_historical_live_launch(
+    r22_prequalification = _prequalify_r22_historical_live_launch(
         paths=paths,
         population=population,
         bootstrap=bootstrap,
     )
+    r21_prequalification = (
+        None
+        if r22_prequalification is not None
+        else _prequalify_r21_historical_live_launch(
+            paths=paths,
+            population=population,
+            bootstrap=bootstrap,
+        )
+    )
     r20_prequalification = (
         None
-        if r21_prequalification is not None
+        if r22_prequalification is not None or r21_prequalification is not None
         else _prequalify_r20_historical_live_launch(
             paths=paths,
             population=population,
@@ -25959,6 +27147,9 @@ def _admit_materialized_launch(
             sealed_owner_startup_contention_recovery_transition: (
                 dict[str, Any] | None
             ) = None
+            sealed_owner_terminal_observability_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -25971,6 +27162,7 @@ def _admit_materialized_launch(
             r19_receipt: dict[str, Any] | None = None
             r20_receipt: dict[str, Any] | None = None
             r21_receipt: dict[str, Any] | None = None
+            r22_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -26761,6 +27953,75 @@ def _admit_materialized_launch(
                 active_transition = (
                     sealed_owner_startup_contention_recovery_transition
                 )
+            if r22_prequalification is not None:
+                raw_r22_transition = r22_prequalification.get("transition")
+                raw_r22_receipt = r22_prequalification.get("receipt")
+                raw_r22_prior_chain = r22_prequalification.get("prior_chain")
+                if (
+                    historical_lifecycle_route_transition is None
+                    or r19_receipt is None
+                    or not isinstance(raw_r22_transition, Mapping)
+                    or not isinstance(raw_r22_receipt, Mapping)
+                    or not isinstance(raw_r22_prior_chain, list)
+                    or len(raw_r22_prior_chain)
+                    != len(ASEH_R21_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+                    or raw_r22_prior_chain[-3] != r19_receipt
+                ):
+                    raise OperatorError(
+                        "R22 pre-DuckDB transition prior chain differs"
+                    )
+                raw_r20_receipt = raw_r22_prior_chain[-2]
+                raw_r21_receipt = raw_r22_prior_chain[-1]
+                if not isinstance(raw_r20_receipt, Mapping) or not isinstance(
+                    raw_r21_receipt, Mapping
+                ):
+                    raise OperatorError("R22 prior R20/R21 receipt is invalid")
+                admitted_r20_transition = (
+                    _validate_repair_pre_duckdb_historical_live_transition(
+                        raw_r20_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=r19_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                admitted_r21_transition = (
+                    _validate_repair_sealed_owner_startup_contention_recovery_transition(
+                        raw_r21_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=raw_r20_receipt,
+                        rerun_validations=False,
+                    )
+                )
+                if (
+                    admitted_r20_transition.get("base_head")
+                    != historical_lifecycle_route_transition.get("repair_head")
+                    or admitted_r20_transition.get("previous_receipt_cid")
+                    != historical_lifecycle_route_transition.get("receipt_cid")
+                    or admitted_r21_transition.get("base_head")
+                    != admitted_r20_transition.get("repair_head")
+                    or admitted_r21_transition.get("previous_receipt_cid")
+                    != admitted_r20_transition.get("receipt_cid")
+                    or raw_r22_transition.get("base_head")
+                    != admitted_r21_transition.get("repair_head")
+                    or raw_r22_transition.get("previous_receipt_cid")
+                    != admitted_r21_transition.get("receipt_cid")
+                ):
+                    raise OperatorError(
+                        "R22 terminal observability does not extend admitted R21"
+                    )
+                pre_duckdb_historical_live_transition = dict(
+                    admitted_r20_transition
+                )
+                r20_receipt = dict(raw_r20_receipt)
+                sealed_owner_startup_contention_recovery_transition = dict(
+                    admitted_r21_transition
+                )
+                r21_receipt = dict(raw_r21_receipt)
+                sealed_owner_terminal_observability_transition = dict(
+                    raw_r22_transition
+                )
+                r22_receipt = dict(raw_r22_receipt)
+                active_transition = sealed_owner_terminal_observability_transition
             if (
                 historical_lifecycle_route_transition is None
                 and _r19_population_requires_policy(population)
@@ -26781,6 +28042,13 @@ def _admit_materialized_launch(
             ):
                 raise OperatorError(
                     "active R21 owner-start recovery policy receipt is absent"
+                )
+            if (
+                sealed_owner_terminal_observability_transition is None
+                and _r22_population_requires_policy(population)
+            ):
+                raise OperatorError(
+                    "active R22 terminal-observability policy receipt is absent"
                 )
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -26886,7 +28154,10 @@ def _admit_materialized_launch(
                         sealed_owner_startup_contention_recovery_transition
                         is not None
                     ):
-                        if r21_prequalification is None or r21_receipt is None:
+                        if (
+                            r21_prequalification is None
+                            and r22_prequalification is None
+                        ) or r21_receipt is None:
                             raise OperatorError(
                                 "R21 pre-DuckDB qualification bundle is absent"
                             )
@@ -26909,6 +28180,36 @@ def _admit_materialized_launch(
                             _validate_repair_sealed_owner_startup_contention_recovery_transition
                         )
                         launch_previous_receipt = r20_receipt
+                        if (
+                            sealed_owner_terminal_observability_transition
+                            is not None
+                        ):
+                            if (
+                                r22_prequalification is None
+                                or r22_receipt is None
+                            ):
+                                raise OperatorError(
+                                    "R22 pre-DuckDB qualification bundle is absent"
+                                )
+                            repair_transition_chain.append(
+                                sealed_owner_terminal_observability_transition
+                            )
+                            launch_chain = _admit_exact_r22_transition_chain(
+                                repair_transition_chain
+                            )
+                            launch_bundle = r22_prequalification
+                            launch_receipt = r22_receipt
+                            launch_transition = (
+                                sealed_owner_terminal_observability_transition
+                            )
+                            launch_path = paths.get(
+                                "repair_sealed_owner_terminal_observability_"
+                                "transition_receipt"
+                            )
+                            launch_validator = (
+                                _validate_repair_sealed_owner_terminal_observability_transition
+                            )
+                            launch_previous_receipt = r21_receipt
                     if not isinstance(launch_bundle, Mapping):
                         raise OperatorError(
                             "pre-DuckDB qualification bundle is absent"
@@ -27109,6 +28410,11 @@ def _admit_materialized_launch(
                     "pre_duckdb_historical_live_to_sealed_owner_startup_"
                     "contention_recovery"
                 ] = sealed_owner_startup_contention_recovery_transition
+            if sealed_owner_terminal_observability_transition is not None:
+                continuity[
+                    "sealed_owner_startup_contention_recovery_to_"
+                    "sealed_owner_terminal_observability"
+                ] = sealed_owner_terminal_observability_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -27607,6 +28913,8 @@ def _r21_owner_start_failure_evidence(
 ) -> dict[str, Any]:
     """Project one start failure without retaining messages or secret values."""
 
+    if attempt not in {1, 2}:
+        raise OperatorError("R21 owner-start attempt identity is invalid")
     direct_cause = exc.__cause__
     evidence: dict[str, Any] = {
         "schema": ASEH_R21_OWNER_START_FAILURE_EVIDENCE_SCHEMA,
@@ -27617,6 +28925,29 @@ def _r21_owner_start_failure_evidence(
             None if direct_cause is None else type(direct_cause).__name__
         ),
         "exact_migration_lock_timeout": False,
+        "observed_at_ns": time.time_ns(),
+    }
+    evidence["evidence_cid"] = _identity(evidence)
+    return evidence
+
+
+def _r22_owner_start_baseline_failure_evidence(
+    exc: Exception,
+) -> dict[str, Any]:
+    """Project an unavailable pre-start observation without reminting R21."""
+
+    direct_cause = exc.__cause__
+    evidence: dict[str, Any] = {
+        "schema": ASEH_R22_OWNER_START_BASELINE_FAILURE_EVIDENCE_SCHEMA,
+        "observation_attempted": True,
+        "observation_available": False,
+        "owner_start_attempted": False,
+        "owner_identity_observed": False,
+        "authoritative_state_outcome": "unavailable",
+        "error_type": type(exc).__name__,
+        "direct_cause_type": (
+            None if direct_cause is None else type(direct_cause).__name__
+        ),
         "observed_at_ns": time.time_ns(),
     }
     evidence["evidence_cid"] = _identity(evidence)
@@ -27723,7 +29054,7 @@ def _r21_best_effort_owner_start_terminal_diagnostics(
             previous_decision_cid=previous_decision_cid,
             safety_error_type=safety_error_type,
         )
-    except Exception:
+    except BaseException:
         pass
     try:
         _record_control_failure(
@@ -27734,7 +29065,109 @@ def _r21_best_effort_owner_start_terminal_diagnostics(
             error_type=error_type,
             start_failure_evidence=failure_evidence,
         )
-    except Exception:
+    except BaseException:
+        pass
+
+
+def _r22_publish_owner_start_baseline_decision(
+    *,
+    paths: Mapping[str, Path],
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+    store_id: str,
+    failure_evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Create one R22-only non-retry receipt for unavailable baseline proof."""
+
+    evidence = dict(failure_evidence)
+    unsigned_evidence = dict(evidence)
+    evidence_cid = unsigned_evidence.pop("evidence_cid", "")
+    expected_fields = {
+        "schema",
+        "observation_attempted",
+        "observation_available",
+        "owner_start_attempted",
+        "owner_identity_observed",
+        "authoritative_state_outcome",
+        "error_type",
+        "direct_cause_type",
+        "observed_at_ns",
+        "evidence_cid",
+    }
+    if (
+        set(evidence) != expected_fields
+        or evidence.get("schema")
+        != ASEH_R22_OWNER_START_BASELINE_FAILURE_EVIDENCE_SCHEMA
+        or evidence.get("observation_attempted") is not True
+        or evidence.get("observation_available") is not False
+        or evidence.get("owner_start_attempted") is not False
+        or evidence.get("owner_identity_observed") is not False
+        or evidence.get("authoritative_state_outcome") != "unavailable"
+        or evidence_cid != _identity(unsigned_evidence)
+    ):
+        raise OperatorError("R22 owner-start baseline evidence is invalid")
+    receipt: dict[str, Any] = {
+        "schema": ASEH_R22_OWNER_START_BASELINE_DECISION_SCHEMA,
+        "program_id": PROGRAM,
+        "authority": "non_authoritative_observability",
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(
+            dict(authorization_witness)
+        ),
+        "store_id": store_id,
+        "failure_evidence": evidence,
+        "decision": "non_retried",
+        "authoritative_state_outcome": "unavailable",
+        "owner_start_attempted": False,
+        "retry_authorized": False,
+        "observed_at_ns": time.time_ns(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    directory = paths.get("owner_start_recovery_decisions")
+    if not isinstance(directory, Path):
+        raise OperatorError("R22 owner-start baseline receipt path is absent")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    receipt_path = directory / f"{receipt['receipt_cid'][7:]}.json"
+    _atomic_json_create(receipt_path, receipt)
+    return receipt
+
+
+def _r22_best_effort_owner_start_baseline_diagnostics(
+    *,
+    paths: Mapping[str, Path],
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+    store_id: str,
+    failure_evidence: Mapping[str, Any],
+    failure: dict[str, Any],
+    failure_event: threading.Event,
+    error_type: str,
+) -> None:
+    """Record unavailable baseline evidence without entering R21 grammar."""
+
+    try:
+        _r22_publish_owner_start_baseline_decision(
+            paths=paths,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+            store_id=store_id,
+            failure_evidence=failure_evidence,
+        )
+    except BaseException:
+        pass
+    try:
+        _record_control_failure(
+            paths,
+            failure,
+            failure_event,
+            reason_code="state_owner_start_baseline_unavailable",
+            error_type=error_type,
+        )
+    except BaseException:
         pass
 
 
@@ -27748,6 +29181,7 @@ def _r21_start_server_with_one_safe_retry(
     authorization_witness: Mapping[str, str],
     failure: dict[str, Any],
     failure_event: threading.Event,
+    terminal_phase: dict[str, Any] | None = None,
 ) -> tuple[Any, Any, dict[str, Any] | None]:
     """Start a fresh owner, admitting at most one exact quiescent retry."""
 
@@ -27756,13 +29190,35 @@ def _r21_start_server_with_one_safe_retry(
     )
 
     configured_store = board.resolved_database_program().store_id
-    baseline = _r21_owner_start_contention_observation(
-        paths=paths,
-        server=server,
-        expected_lifecycle="created",
+    try:
+        baseline = _r21_owner_start_contention_observation(
+            paths=paths,
+            server=server,
+            expected_lifecycle="created",
+        )
+    except Exception as baseline_exc:
+        baseline_evidence = _r22_owner_start_baseline_failure_evidence(
+            baseline_exc
+        )
+        _r22_best_effort_owner_start_baseline_diagnostics(
+            paths=paths,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+            store_id=configured_store,
+            failure_evidence=baseline_evidence,
+            failure=failure,
+            failure_event=failure_event,
+            error_type=type(baseline_exc).__name__,
+        )
+        raise
+    _set_sealed_owner_terminal_phase(
+        terminal_phase,
+        "owner_start_attempt_1",
+        owner_start_attempted=True,
     )
     try:
-        return server, server.start(), None
+        identity = server.start()
     except Exception as first_exc:
         first_evidence = _r21_owner_start_failure_evidence(first_exc, attempt=1)
         exact_timeout = bool(
@@ -27823,6 +29279,10 @@ def _r21_start_server_with_one_safe_retry(
             )
             raise first_exc
         try:
+            _set_sealed_owner_terminal_phase(
+                terminal_phase,
+                "owner_start_retry_admission",
+            )
             retry_admission = _r21_publish_owner_start_recovery_decision(
                 paths=paths,
                 candidate_head=candidate_head,
@@ -27844,11 +29304,18 @@ def _r21_start_server_with_one_safe_retry(
                     error_type=type(admission_exc).__name__,
                     start_failure_evidence=first_evidence,
                 )
-            except Exception:
+            except BaseException:
                 pass
             raise OperatorError(
                 "R21 owner-start retry admission could not be published"
             ) from admission_exc
+    else:
+        _set_sealed_owner_terminal_phase(
+            terminal_phase,
+            "owner_identity_admission",
+            owner_identity_observed=True,
+        )
+        return server, identity, None
     try:
         fresh_server = _build_server(board, paths)
     except Exception as build_exc:
@@ -27871,6 +29338,11 @@ def _r21_start_server_with_one_safe_retry(
         )
         raise
     try:
+        _set_sealed_owner_terminal_phase(
+            terminal_phase,
+            "owner_start_attempt_2",
+            owner_start_attempted=True,
+        )
         identity = fresh_server.start()
     except Exception as retry_exc:
         retry_evidence = _r21_owner_start_failure_evidence(retry_exc, attempt=2)
@@ -27891,6 +29363,11 @@ def _r21_start_server_with_one_safe_retry(
             error_type=type(retry_exc).__name__,
         )
         raise
+    _set_sealed_owner_terminal_phase(
+        terminal_phase,
+        "owner_identity_admission",
+        owner_identity_observed=True,
+    )
     try:
         recovered = _r21_publish_owner_start_recovery_decision(
             paths=paths,
@@ -27916,11 +29393,11 @@ def _r21_start_server_with_one_safe_retry(
             )
 
             reset_quack_transport_cache()
-        except Exception:
+        except BaseException:
             pass
         try:
             fresh_server.stop()
-        except Exception:
+        except BaseException:
             pass
         try:
             _record_control_failure(
@@ -27931,7 +29408,7 @@ def _r21_start_server_with_one_safe_retry(
                 error_type=type(publication_exc).__name__,
                 start_failure_evidence=first_evidence,
             )
-        except Exception:
+        except BaseException:
             pass
         raise
     return fresh_server, identity, recovered
@@ -28605,6 +30082,356 @@ def _sealed_owner_delegation_environment_identity(
     )
 
 
+def _new_sealed_owner_terminal_phase() -> dict[str, Any]:
+    """Return the process-local, non-authoritative terminal phase tracker."""
+
+    return {
+        "stage": "operator_entry",
+        "owner_start_attempted": False,
+        "owner_identity_observed": False,
+        "scheduler_birth_observed": False,
+    }
+
+
+def _set_sealed_owner_terminal_phase(
+    phase: dict[str, Any] | None,
+    stage: str,
+    **observations: bool,
+) -> None:
+    """Advance only the fixed secret-free terminal diagnostic projection."""
+
+    if phase is None:
+        return
+    if stage not in ASEH_SEALED_OWNER_TERMINAL_STAGES:
+        raise OperatorError("sealed owner terminal stage is invalid")
+    allowed = {
+        "owner_start_attempted",
+        "owner_identity_observed",
+        "scheduler_birth_observed",
+    }
+    if set(observations) - allowed or any(
+        type(value) is not bool for value in observations.values()
+    ):
+        raise OperatorError("sealed owner terminal observation is invalid")
+    phase["stage"] = stage
+    phase.update(observations)
+
+
+def _sealed_owner_terminal_error_type(value: object) -> str:
+    """Project an exception type without retaining messages or module data."""
+
+    candidate = type(value).__name__ if isinstance(value, BaseException) else str(value)
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", candidate) is None:
+        return "UnknownErrorType"
+    return candidate
+
+
+def _validate_sealed_owner_terminal_pipe(
+    descriptor: int,
+    expected_identity: Sequence[int],
+) -> None:
+    """Bind the inherited write descriptor to one exact CLOEXEC pipe inode."""
+
+    if descriptor < 3 or len(expected_identity) != 9 or any(
+        type(value) is not int for value in expected_identity
+    ):
+        raise OperatorError("sealed owner terminal pipe binding is invalid")
+    opened = os.fstat(descriptor)
+    if (
+        _validation_stat_identity(opened) != list(expected_identity)
+        or not stat.S_ISFIFO(opened.st_mode)
+        or opened.st_uid != os.geteuid()
+        or fcntl.fcntl(descriptor, fcntl.F_GETFL) & os.O_ACCMODE
+        != os.O_WRONLY
+    ):
+        raise OperatorError("sealed owner terminal pipe identity differs")
+    os.set_inheritable(descriptor, False)
+    if fcntl.fcntl(descriptor, fcntl.F_GETFD) & fcntl.FD_CLOEXEC == 0:
+        raise OperatorError("sealed owner terminal pipe is inheritable")
+
+
+def _emit_sealed_owner_terminal_record(
+    descriptor: int,
+    *,
+    nonce: str,
+    control_plane_pin: Mapping[str, Any],
+    phase: Mapping[str, Any],
+    error_type: str,
+    direct_cause_type: str | None,
+) -> None:
+    """Best-effort one terminal write; this channel never grants retry."""
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+            state_authority_process_birth,
+        )
+
+        parent_pid, start_time_ticks, boot_id = (
+            state_authority_process_birth()
+        )
+        record: dict[str, Any] = {
+            "schema": ASEH_SEALED_OWNER_TERMINAL_RECORD_SCHEMA,
+            "nonce": nonce,
+            "candidate_head": str(control_plane_pin.get("source_head") or ""),
+            "candidate_tree": str(control_plane_pin.get("source_tree") or ""),
+            "capsule_id": str(control_plane_pin.get("capsule_id") or ""),
+            "capsule_archive_sha256": str(
+                control_plane_pin.get("archive_sha256") or ""
+            ),
+            "child_process": {
+                "pid": os.getpid(),
+                "parent_pid": parent_pid,
+                "start_time_ticks": start_time_ticks,
+                "boot_id": boot_id,
+            },
+            "stage": str(phase.get("stage") or ""),
+            "outcome": "failed",
+            "error_type": error_type,
+            "direct_cause_type": direct_cause_type,
+            "owner_start_attempted": phase.get("owner_start_attempted"),
+            "owner_identity_observed": phase.get("owner_identity_observed"),
+            "scheduler_birth_observed": phase.get("scheduler_birth_observed"),
+            "retry_authorized": False,
+            "observed_at_ns": time.time_ns(),
+        }
+        record["record_cid"] = _identity(record)
+        encoded = (_canonical_json(record) + "\n").encode("ascii")
+        if len(encoded) > ASEH_SEALED_OWNER_TERMINAL_MAX_BYTES:
+            raise OperatorError("sealed owner terminal record is oversized")
+        view = memoryview(encoded)
+        while view:
+            try:
+                written = os.write(descriptor, view)
+            except InterruptedError:
+                continue
+            if written <= 0:
+                raise OperatorError("sealed owner terminal write made no progress")
+            view = view[written:]
+    except BaseException:
+        # The diagnostic path must never replace the exact execution failure.
+        pass
+
+
+def _admit_sealed_owner_terminal_record(
+    raw: bytes,
+    *,
+    nonce: str,
+    candidate_head: str,
+    candidate_tree: str,
+    control_plane_pin: Mapping[str, Any],
+    child_pid: int,
+    child_start_time_ticks: int,
+    child_parent_pid: int,
+    child_boot_id: str,
+) -> dict[str, Any]:
+    """Admit only one exact bounded canonical terminal record."""
+
+    if not raw or len(raw) > ASEH_SEALED_OWNER_TERMINAL_MAX_BYTES:
+        raise OperatorError("sealed owner terminal record is unavailable")
+
+    def reject_duplicate_keys(
+        pairs: Sequence[tuple[str, Any]],
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate sealed owner terminal key")
+            result[key] = value
+        return result
+
+    try:
+        record = json.loads(
+            raw.decode("ascii"), object_pairs_hook=reject_duplicate_keys
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise OperatorError("sealed owner terminal record is malformed") from exc
+    fields = {
+        "schema",
+        "nonce",
+        "candidate_head",
+        "candidate_tree",
+        "capsule_id",
+        "capsule_archive_sha256",
+        "child_process",
+        "stage",
+        "outcome",
+        "error_type",
+        "direct_cause_type",
+        "owner_start_attempted",
+        "owner_identity_observed",
+        "scheduler_birth_observed",
+        "retry_authorized",
+        "observed_at_ns",
+        "record_cid",
+    }
+    child = record.get("child_process") if isinstance(record, Mapping) else None
+    direct_cause = record.get("direct_cause_type") if isinstance(record, Mapping) else None
+    if (
+        not isinstance(record, dict)
+        or set(record) != fields
+        or record.get("schema") != ASEH_SEALED_OWNER_TERMINAL_RECORD_SCHEMA
+        or record.get("nonce") != nonce
+        or record.get("candidate_head") != candidate_head
+        or record.get("candidate_tree") != candidate_tree
+        or record.get("capsule_id") != control_plane_pin.get("capsule_id")
+        or record.get("capsule_archive_sha256")
+        != control_plane_pin.get("archive_sha256")
+        or record.get("stage") not in ASEH_SEALED_OWNER_TERMINAL_STAGES
+        or record.get("outcome") != "failed"
+        or type(record.get("error_type")) is not str
+        or re.fullmatch(
+            r"[A-Za-z_][A-Za-z0-9_]{0,127}",
+            record["error_type"],
+        ) is None
+        or (
+            direct_cause is not None
+            and (
+                type(direct_cause) is not str
+                or re.fullmatch(
+                    r"[A-Za-z_][A-Za-z0-9_]{0,127}", direct_cause
+                ) is None
+            )
+        )
+        or any(
+            type(record.get(name)) is not bool
+            for name in (
+                "owner_start_attempted",
+                "owner_identity_observed",
+                "scheduler_birth_observed",
+                "retry_authorized",
+            )
+        )
+        or record.get("retry_authorized") is not False
+        or type(record.get("observed_at_ns")) is not int
+        or int(record["observed_at_ns"]) <= 0
+        or not isinstance(child, Mapping)
+        or set(child) != {"pid", "parent_pid", "start_time_ticks", "boot_id"}
+        or any(
+            type(child.get(name)) is not int
+            for name in ("pid", "parent_pid", "start_time_ticks")
+        )
+        or type(child.get("boot_id")) is not str
+        or child.get("pid") != child_pid
+        or child.get("parent_pid") != child_parent_pid
+        or child.get("start_time_ticks") != child_start_time_ticks
+        or child.get("boot_id") != child_boot_id
+    ):
+        raise OperatorError("sealed owner terminal record binding differs")
+    unsigned = dict(record)
+    record_cid = unsigned.pop("record_cid", "")
+    if record_cid != _identity(unsigned):
+        raise OperatorError("sealed owner terminal record CID differs")
+    if raw != (_canonical_json(record) + "\n").encode("ascii"):
+        raise OperatorError("sealed owner terminal record is not canonical")
+    return record
+
+
+def _publish_sealed_owner_terminal_observation(
+    *,
+    paths: Mapping[str, Path],
+    raw: bytes | None,
+    read_failed: bool,
+    nonce: str,
+    candidate_head: str,
+    candidate_tree: str,
+    control_plane_pin: Mapping[str, Any],
+    child_pid: int,
+    child_start_time_ticks: int,
+    child_parent_pid: int,
+    child_boot_id: str,
+    child_returncode: int,
+) -> dict[str, Any]:
+    """Publish parent-observed, create-only evidence with no retry authority."""
+
+    terminal: dict[str, Any] | None = None
+    reason: str | None = None
+    if read_failed:
+        reason = "read_failed_or_oversized"
+    elif not raw:
+        reason = "missing"
+    else:
+        try:
+            terminal = _admit_sealed_owner_terminal_record(
+                raw,
+                nonce=nonce,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+                control_plane_pin=control_plane_pin,
+                child_pid=child_pid,
+                child_start_time_ticks=child_start_time_ticks,
+                child_parent_pid=child_parent_pid,
+                child_boot_id=child_boot_id,
+            )
+        except Exception:
+            reason = "malformed_or_unbound"
+    observation: dict[str, Any] = {
+        "schema": ASEH_SEALED_OWNER_TERMINAL_OBSERVATION_SCHEMA,
+        "program_id": PROGRAM,
+        "authority": "non_authoritative_observability",
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "capsule_id": str(control_plane_pin.get("capsule_id") or ""),
+        "capsule_archive_sha256": str(
+            control_plane_pin.get("archive_sha256") or ""
+        ),
+        "child_process": {
+            "pid": child_pid,
+            "parent_pid": child_parent_pid,
+            "start_time_ticks": child_start_time_ticks,
+            "boot_id": child_boot_id,
+        },
+        "child_returncode": child_returncode,
+        "terminal_record_availability": (
+            "observed" if terminal is not None else "unavailable"
+        ),
+        "unavailability_reason": reason,
+        "terminal_record": terminal,
+        "retry_authorized": False,
+        "observed_at_ns": time.time_ns(),
+    }
+    observation["receipt_cid"] = _identity(observation)
+    directory = paths.get("sealed_owner_terminal_observations")
+    if not isinstance(directory, Path):
+        raise OperatorError("sealed owner terminal observation path is absent")
+    receipt_path = directory / f"{observation['receipt_cid'][7:]}.json"
+    _atomic_json_create(receipt_path, observation)
+    return observation
+
+
+def _collect_sealed_owner_terminal_record(
+    descriptor: int,
+) -> tuple[bytes | None, bool]:
+    """Bound and close the parent read end without masking child status."""
+
+    raw: bytes | None = None
+    read_failed = False
+    try:
+        raw = _read_bounded_pipe(
+            descriptor,
+            deadline=time.monotonic() + 1.0,
+            maximum=ASEH_SEALED_OWNER_TERMINAL_MAX_BYTES,
+        )
+    except BaseException:
+        read_failed = True
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+    return raw, read_failed
+
+
+def _best_effort_publish_sealed_owner_terminal_observation(
+    **arguments: Any,
+) -> None:
+    """Keep non-authoritative publication from replacing child status."""
+
+    try:
+        _publish_sealed_owner_terminal_observation(**arguments)
+    except BaseException:
+        pass
+
+
 def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> int:
     """Delegate owner authority to exact code in one retained sealed capsule."""
 
@@ -28672,6 +30499,10 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
     native_dependency = None
     child: subprocess.Popen[Any] | None = None
     child_start_time_ticks: int | None = None
+    terminal_read = -1
+    terminal_write = -1
+    terminal_nonce = ""
+    delegate_boot = ""
     try:
         interpreter = retain_control_plane_interpreter(
             ASEH_RECEIPT_VALIDATION_PYTHON
@@ -28752,6 +30583,11 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             expected_tree=candidate_tree,
             boundary="immediately before sealed owner delegation",
         )
+        terminal_read, terminal_write = os.pipe2(
+            getattr(os, "O_CLOEXEC", 0)
+        )
+        terminal_nonce = os.urandom(32).hex()
+        terminal_pipe_identity = _validation_pipe_record(terminal_write)
         owner_arguments = [
             ASEH_SEALED_OWNER_MARKER,
             accepted_control_plane_pin_json(pin),
@@ -28773,6 +30609,9 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             str(os.getpid()),
             str(delegate_start),
             delegate_boot,
+            str(terminal_write),
+            terminal_nonce,
+            _canonical_json(terminal_pipe_identity),
         ]
         command = build_sealed_control_plane_module_command(
             python_executable=interpreter.argv0,
@@ -28801,8 +30640,11 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
                 sealed.descriptor,
                 interpreter.descriptor,
                 native_dependency.descriptor.descriptor,
+                terminal_write,
             ),
         )
+        os.close(terminal_write)
+        terminal_write = -1
         child_start_time_ticks = _dedicated_process_group_birth(child)
         shutdown_requested = threading.Event()
         received_signal: dict[str, int] = {}
@@ -28834,7 +30676,27 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
                     child.wait(timeout=0.2)
                 except subprocess.TimeoutExpired:
                     continue
-        return int(child.returncode or 0)
+        child_returncode = int(child.returncode or 0)
+        if child_returncode != 0:
+            terminal_raw, terminal_read_failed = (
+                _collect_sealed_owner_terminal_record(terminal_read)
+            )
+            terminal_read = -1
+            _best_effort_publish_sealed_owner_terminal_observation(
+                paths=paths,
+                raw=terminal_raw,
+                read_failed=terminal_read_failed,
+                nonce=terminal_nonce,
+                candidate_head=candidate_head,
+                candidate_tree=candidate_tree,
+                control_plane_pin=pin.as_dict(),
+                child_pid=child.pid,
+                child_start_time_ticks=child_start_time_ticks,
+                child_parent_pid=os.getpid(),
+                child_boot_id=delegate_boot,
+                child_returncode=child_returncode,
+            )
+        return child_returncode
     finally:
         if child is not None:
             _terminate_dedicated_process_group(
@@ -28857,6 +30719,12 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
                 os.close(native_dependency.descriptor.descriptor)
             except OSError:
                 pass
+        for descriptor in (terminal_read, terminal_write):
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
         if pin is not None:
             _cleanup_plan_bound_control_plane(pin, capsule_parent)
         if capsule_parent.exists():
@@ -28890,6 +30758,89 @@ def _run_supervisor_owner(
     native_dependency_launch: Mapping[str, Any],
     system_dependency_directories_json: str,
     sealed_owner_environment: Mapping[str, str],
+    sealed_owner_terminal_descriptor: int | None = None,
+    sealed_owner_terminal_nonce: str | None = None,
+    sealed_owner_terminal_pipe_identity: Sequence[int] | None = None,
+) -> int:
+    """Run one owner with a bounded, non-authoritative terminal channel."""
+
+    diagnostic_values = (
+        sealed_owner_terminal_descriptor,
+        sealed_owner_terminal_nonce,
+        sealed_owner_terminal_pipe_identity,
+    )
+    diagnostic_enabled = any(value is not None for value in diagnostic_values)
+    if diagnostic_enabled and not all(value is not None for value in diagnostic_values):
+        raise OperatorError("sealed owner terminal binding is incomplete")
+    phase = _new_sealed_owner_terminal_phase()
+    terminal_descriptor: int | None = None
+    if diagnostic_enabled:
+        terminal_descriptor = int(sealed_owner_terminal_descriptor)
+        nonce = str(sealed_owner_terminal_nonce)
+        pipe_identity = list(sealed_owner_terminal_pipe_identity or ())
+        if re.fullmatch(r"[0-9a-f]{64}", nonce) is None:
+            raise OperatorError("sealed owner terminal nonce is invalid")
+        _validate_sealed_owner_terminal_pipe(
+            terminal_descriptor,
+            pipe_identity,
+        )
+    else:
+        nonce = ""
+    try:
+        result = _run_supervisor_owner_impl(
+            config_path,
+            implement=implement,
+            duration=duration,
+            sealed_control_plane_pin=sealed_control_plane_pin,
+            sealed_control_plane_descriptor=sealed_control_plane_descriptor,
+            retained_interpreter=retained_interpreter,
+            native_dependency_launch=native_dependency_launch,
+            system_dependency_directories_json=system_dependency_directories_json,
+            sealed_owner_environment=sealed_owner_environment,
+            terminal_phase=phase,
+        )
+    except BaseException as exc:
+        if terminal_descriptor is not None:
+            cause = exc.__cause__
+            _emit_sealed_owner_terminal_record(
+                terminal_descriptor,
+                nonce=nonce,
+                control_plane_pin=sealed_control_plane_pin,
+                phase=phase,
+                error_type=_sealed_owner_terminal_error_type(exc),
+                direct_cause_type=(
+                    None
+                    if cause is None
+                    else _sealed_owner_terminal_error_type(cause)
+                ),
+            )
+            terminal_descriptor = None
+        raise
+    if result != 0 and terminal_descriptor is not None:
+        _emit_sealed_owner_terminal_record(
+            terminal_descriptor,
+            nonce=nonce,
+            control_plane_pin=sealed_control_plane_pin,
+            phase=phase,
+            error_type="ASEHSealedOwnerNonzeroExit",
+            direct_cause_type=None,
+        )
+        terminal_descriptor = None
+    return result
+
+
+def _run_supervisor_owner_impl(
+    config_path: Path,
+    *,
+    implement: bool,
+    duration: float,
+    sealed_control_plane_pin: Mapping[str, Any],
+    sealed_control_plane_descriptor: int,
+    retained_interpreter: Mapping[str, Any],
+    native_dependency_launch: Mapping[str, Any],
+    system_dependency_directories_json: str,
+    sealed_owner_environment: Mapping[str, str],
+    terminal_phase: dict[str, Any] | None,
 ) -> int:
     """Run the owner only after entry through the sealed scheduler capsule."""
 
@@ -28974,6 +30925,7 @@ def _run_supervisor_owner(
     paths = _paths(board)
     if not paths["bootstrap_receipt"].is_file() or not paths["database"].is_file():
         raise OperatorError("materialize the sealed board before starting the owner")
+    _set_sealed_owner_terminal_phase(terminal_phase, "launch_preflight")
     with _sealed_receipt_validation_executor_scope(
         interpreter=interpreter,
         native_dependency=native_dependency,
@@ -28991,6 +30943,10 @@ def _run_supervisor_owner(
                 "configured-board preflight failed: "
                 + json.dumps(preflight.get("errors") or [])
             )
+        _set_sealed_owner_terminal_phase(
+            terminal_phase,
+            "materialized_launch_admission",
+        )
         launch_admission = _admit_materialized_launch(board, _config, paths)
         _assert_exact_run_launch_admission(
             launch_admission,
@@ -29016,11 +30972,19 @@ def _run_supervisor_owner(
             # sealed broker secret.  Children never inherit that descriptor;
             # they redeem it one-shot only after their final exec hardens.
             make_state_authority_process_nondumpable()
+            _set_sealed_owner_terminal_phase(
+                terminal_phase,
+                "candidate_revalidation",
+            )
             _assert_candidate_authorization_witness(
                 authorization_witness,
                 expected_head=candidate_head,
                 expected_tree=candidate_tree,
                 boundary="after launch admission immediately before owner start",
+            )
+            _set_sealed_owner_terminal_phase(
+                terminal_phase,
+                "pre_start_quiescence",
             )
             server, identity, owner_start_recovery = (
                 _r21_start_server_with_one_safe_retry(
@@ -29032,9 +30996,15 @@ def _run_supervisor_owner(
                     authorization_witness=authorization_witness,
                     failure=failure,
                     failure_event=failure_event,
+                    terminal_phase=terminal_phase,
                 )
             )
             owner_started = True
+            _set_sealed_owner_terminal_phase(
+                terminal_phase,
+                "owner_identity_admission",
+                owner_identity_observed=True,
+            )
             launched_at = time.time()
             configured_program = board.resolved_database_program()
             if (
@@ -29070,6 +31040,10 @@ def _run_supervisor_owner(
                 raise OperatorError("scheduler and owner mutation inboxes differ")
             program_environment["IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"] = str(
                 server.typed_command_socket_path()
+            )
+            _set_sealed_owner_terminal_phase(
+                terminal_phase,
+                "grant_broker_start",
             )
             broker_environment = dict(server.start_supervisor_grant_broker())
             launch_environment = {**program_environment, **broker_environment}
@@ -29136,6 +31110,10 @@ def _run_supervisor_owner(
                     expected_tree=candidate_tree,
                     boundary="immediately before sealed scheduler Popen",
                 )
+                _set_sealed_owner_terminal_phase(
+                    terminal_phase,
+                    "scheduler_birth",
+                )
                 scheduler = subprocess.Popen(
                     argv,
                     executable=interpreter.executable_path,
@@ -29156,6 +31134,11 @@ def _run_supervisor_owner(
                 scheduler_start_time_ticks = _dedicated_process_group_birth(
                     scheduler
                 )
+                _set_sealed_owner_terminal_phase(
+                    terminal_phase,
+                    "scheduler_handoff",
+                    scheduler_birth_observed=True,
+                )
                 scheduler_handoff.deliver(
                     scheduler,
                     expected_executable_descriptor=interpreter.descriptor,
@@ -29169,6 +31152,10 @@ def _run_supervisor_owner(
                         scheduler_start_time_ticks,
                     )
                 raise
+            _set_sealed_owner_terminal_phase(
+                terminal_phase,
+                "initial_health",
+            )
             initial_health, last_progress_at = _await_initial_health(
                 board, paths, server, scheduler, launched_at=launched_at,
                 failure=failure, failure_event=failure_event,
@@ -29217,6 +31204,7 @@ def _run_supervisor_owner(
                 paths["evidence"] / "control-plane" / "owner-launch.json",
                 launch_record,
             )
+            _set_sealed_owner_terminal_phase(terminal_phase, "running")
             while scheduler.poll() is None:
                 if shutdown_requested.is_set():
                     raise OperatorStopRequested(
