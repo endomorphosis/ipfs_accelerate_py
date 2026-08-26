@@ -61,6 +61,9 @@ ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS: Final = "sealed_subreaper"
 ASEH_R16_PRODUCTION_LIFECYCLE_LIVE_EXECUTOR_CLASS: Final = (
     "production_lifecycle_live"
 )
+ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS: Final = (
+    "production_lifecycle_historical_live"
+)
 ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS: Final = "deterministic_direct"
 ASEH_R16_PRODUCTION_LIFECYCLE_READY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -83,6 +86,35 @@ ASEH_R16_PRODUCTION_LIFECYCLE_FIXTURE_COMMAND: Final = (
 )
 ASEH_R16_PROVIDER_START_LAUNCHER_COMMAND: Final = (
     "internal-r16-provider-start-launcher"
+)
+ASEH_R19_HISTORICAL_LIVE_LAUNCHER_COMMAND: Final = (
+    "internal-r19-historical-live-launcher"
+)
+ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r19-historical-live-execution@1"
+)
+ASEH_R19_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r19-historical-live-policy-admission@1"
+)
+ASEH_R19_HISTORICAL_LIVE_READY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r19-historical-live-ready@1"
+)
+ASEH_R19_DOCKER_SCOPE_SNAPSHOT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r19-docker-scope-snapshot@1"
+)
+ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r19-detached-effect-snapshot@1"
+)
+ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD: Final = (
+    "5c98688d13612b6e237df8cf532f7b698585adc2"
+)
+ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE: Final = (
+    "d5955a797c1f3d911b82abae74ac043829fa07b2"
 )
 ASEH_R16_PRODUCTION_LIFECYCLE_READY_NAME: Final = "r16-live-ready.json"
 ASEH_R16_PROVIDER_START_ISSUER_SCHEMA: Final = (
@@ -1162,6 +1194,7 @@ class _SealedReceiptValidationExecutor:
 _ASEH_RECEIPT_VALIDATION_EXECUTOR: (
     _SealedReceiptValidationExecutor | None
 ) = None
+_ASEH_ACTIVE_R19_POLICY: dict[str, Any] | None = None
 REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_CHANGED_PATHS: Final = (
     "ipfs_accelerate_py/agent_implementation_route.py",
     "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
@@ -2052,6 +2085,75 @@ REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_NON_SUCCESS: Final = (
     "database mutation, contention, or validation failure is rejected before "
     "owner acquisition."
 )
+REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-historical-lifecycle-route-transition@1"
+)
+REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD: Final = (
+    "8897b7c14fd2dae54feafc692ab77fc4ac75afbe"
+)
+REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_CHANGED_PATHS: Final = (
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        (
+            "aseh_r19_historical_live or "
+            "aseh_r19_active_policy or "
+            "aseh_r19_historical_lifecycle_route or "
+            "repair_historical_lifecycle_route_transition or "
+            "delegates_r19_before_suffix_admission"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue fixing the existing canonical supervisor so its exact "
+    "historical R11 live validation runs through one policy-bound lifecycle "
+    "route without weakening validation or creating another state writer"
+)
+REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SUCCESS: Final = (
+    "The exact R18 child preserves the immutable R1-R18 chain, binds one R19 "
+    "executor policy to the frozen R11 argv and historical tree, runs that "
+    "argv outside child-subreaper topology only after active-policy admission, "
+    "and proves exact execution, cleanup, and uncontended terminal scope "
+    "without database mutation."
+)
+REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R18 parent, changed sibling, rewritten R18 receipt, "
+    "broadened argv or historical-tree grammar, unadmitted policy, subreaper "
+    "execution, unknown process or Docker observation, leaked effect, reduced "
+    "validation, database mutation, contention, or validation failure is "
+    "rejected before owner acquisition."
+)
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
     REPAIR_FOLLOWUP_TRANSITION_SCHEMA,
@@ -2091,6 +2193,10 @@ ASEH_R17_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R18_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R17_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA,
+)
+ASEH_R19_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R18_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -2192,6 +2298,15 @@ REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_RECEIPT_FIELDS: Final = (
 REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_RECEIPT_FIELDS
 )
+REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_RECEIPT_FIELDS
+    | frozenset(
+        {
+            "historical_live_policy_admission",
+            "historical_live_execution_evidence",
+        }
+    )
+)
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
         "schema", "base_head", "base_tree", "target_head", "target_tree",
@@ -2230,6 +2345,7 @@ STATUS_SAMPLE_INTERVAL_SECONDS: Final = 0.5
 STATUS_REPLICA_STABILITY_ATTEMPTS: Final = 8
 STATUS_REPLICA_RETRY_DELAY_SECONDS: Final = 0.05
 AUTHORIZATION_TRANSITION_LOCK_TIMEOUT_SECONDS: Final = 5.0
+R19_HISTORICAL_LIFECYCLE_LOCK_TIMEOUT_SECONDS: Final = 5.0
 STATUS_RECEIPT_MAX_BYTES: Final = 1_048_576
 LIVE_REPLAY_MAX_BYTES: Final = 1_073_741_824
 LIVE_REPLAY_IO_TIMEOUT_SECONDS: Final = 60.0
@@ -2614,6 +2730,100 @@ def _repair_transition_authorization_guard(
             verify_authority()
             try:
                 yield anchored_directory
+            finally:
+                verify_authority()
+        finally:
+            handle.close()
+
+
+@contextmanager
+def _r19_historical_live_lifecycle_guard(
+    paths: Mapping[str, Path],
+) -> Any:
+    """Boundedly exclude concurrent R19 historical-live lifecycles.
+
+    The stable lock is independent of the process-local active-policy scope.
+    It can therefore fence separate operator processes before either one
+    observes or launches the effectful historical validation.  The lock path,
+    parent-directory chain, and opened inode remain identity-bound for the
+    complete scope.
+    """
+
+    lock_path = paths.get("r19_historical_live_lifecycle_lock")
+    if not isinstance(lock_path, Path):
+        raise OperatorError("R19 historical-live lifecycle lock is absent")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        acquire_exclusive_owner_lock,
+    )
+
+    deadline = (
+        time.monotonic()
+        + R19_HISTORICAL_LIFECYCLE_LOCK_TIMEOUT_SECONDS
+    )
+    handle: Any | None = None
+    with _anchored_directory_descriptor(lock_path.parent) as anchored_directory:
+        while handle is None:
+            try:
+                handle = acquire_exclusive_owner_lock(lock_path)
+            except BlockingIOError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise OperatorError(
+                        "r19_historical_live_lifecycle_contended"
+                    ) from None
+                time.sleep(min(0.05, remaining))
+
+        def verify_authority() -> None:
+            assert handle is not None
+            handle.assert_canonical_parent()
+            opened_directory = os.fstat(handle.directory_fileno())
+            if not _same_namespace_identity(
+                opened_directory,
+                os.fstat(anchored_directory),
+            ):
+                raise OperatorError(
+                    "R19 historical-live lifecycle directory changed"
+                )
+            try:
+                named_lock = os.stat(
+                    lock_path.name,
+                    dir_fd=handle.directory_fileno(),
+                    follow_symlinks=False,
+                )
+            except OSError as exc:
+                raise OperatorError(
+                    "R19 historical-live lifecycle lock name changed"
+                ) from exc
+            if not _same_namespace_identity(
+                named_lock,
+                os.fstat(handle.fileno()),
+            ):
+                raise OperatorError(
+                    "R19 historical-live lifecycle lock name changed"
+                )
+
+        acquired_at_ns = time.time_ns()
+        opened_lock = os.fstat(handle.fileno())
+        lock_identity: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r19-historical-live-lifecycle-lock@1"
+            ),
+            "path": str(lock_path.relative_to(ROOT)),
+            "device": opened_lock.st_dev,
+            "inode": opened_lock.st_ino,
+            "mode": opened_lock.st_mode,
+            "uid": opened_lock.st_uid,
+            "nlink": opened_lock.st_nlink,
+            "owner_process_birth": _r16_exact_process_birth(os.getpid()),
+            "acquired_at_ns": acquired_at_ns,
+        }
+        lock_identity["lock_identity_cid"] = _identity(lock_identity)
+        try:
+            verify_authority()
+            try:
+                yield lock_identity
             finally:
                 verify_authority()
         finally:
@@ -3238,6 +3448,67 @@ def _repair_process_census_disappearance_transition_receipt_id(
     return receipt_id
 
 
+def _repair_historical_lifecycle_route_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-19 historical lifecycle receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    policy_value = payload.get("historical_live_policy_admission")
+    evidence_value = payload.get("historical_live_execution_evidence")
+    policy = (
+        _validate_r19_historical_live_policy_admission_record(policy_value)
+        if isinstance(policy_value, Mapping)
+        else None
+    )
+    evidence = dict(evidence_value) if isinstance(evidence_value, Mapping) else {}
+    unsigned_evidence = dict(evidence)
+    evidence_cid = str(unsigned_evidence.pop("evidence_cid", "") or "")
+    if (
+        payload.get("schema")
+        != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 19
+        or payload.get("terminal_success_criteria")
+        != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r19_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+        or not isinstance(policy, Mapping)
+        or policy.get("bootstrap_receipt_id")
+        != payload.get("bootstrap_receipt_id")
+        or policy.get("previous_receipt_cid")
+        != payload.get("previous_receipt_cid")
+        or policy.get("candidate_head") != payload.get("repair_head")
+        or policy.get("candidate_tree") != payload.get("repair_tree")
+        or policy.get("candidate_authorization_witness_cid")
+        != _identity(dict(witness))
+        or evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or evidence.get("authorizing_receipt_cid") is not None
+        or evidence.get("returncode") != 0
+        or evidence.get("terminal_class") != "verified_success"
+        or evidence_cid != _identity(unsigned_evidence)
+    ):
+        raise OperatorError(
+            "bootstrap repair historical-lifecycle-route schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair historical-lifecycle-route CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -3444,12 +3715,16 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r18 = globals().get(
         "REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS"
     )
+    r19 = globals().get(
+        "REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
         *((r16,) if isinstance(r16, Sequence) else ()),
         *((r17,) if isinstance(r17, Sequence) else ()),
         *((r18,) if isinstance(r18, Sequence) else ()),
+        *((r19,) if isinstance(r19, Sequence) else ()),
     )
 
 
@@ -3896,6 +4171,11 @@ def _r18_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+ASEH_R18_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:c96a37a0cbe5cbaf54d225df21772cc95aa07d63dc0d01541599b561c247a364"
+)
+
+
 def _r16_production_lifecycle_live_command() -> tuple[str, ...]:
     """Return the one R16 argv requiring the production lifecycle owner."""
 
@@ -3926,6 +4206,616 @@ def _r16_production_lifecycle_live_command() -> tuple[str, ...]:
     if matches[0] != expected:
         raise OperatorError("R16 live lifecycle argv drifted")
     return matches[0]
+
+
+def _r11_historical_live_docker_command() -> tuple[str, ...]:
+    """Return the sole historical R11 argv that requires PID-1 reparenting."""
+
+    expected = (
+        "/usr/bin/env",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_DOCKER_CLEANUP_VALIDATION=1",
+        "IPFS_ACCELERATE_AGENT_REQUIRE_LIVE_NATIVE_DEPENDENCY_VALIDATION=1",
+        (
+            "IPFS_ACCELERATE_AGENT_LIVE_NATIVE_DEPENDENCY_SOURCE="
+            "/home/barberb/.local/lib/python3.12/site-packages/"
+            "_duckdb.cpython-312-aarch64-linux-gnu.so"
+        ),
+        "IPFS_ACCELERATE_AGENT_TEST_PRELOAD_GROK_NATIVE=1",
+        "IPFS_ACCELERATE_AGENT_TEST_CODEX_EXECUTABLE=/usr/local/bin/codex",
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+    )
+    matches = tuple(
+        tuple(command)
+        for command in REPAIR_PROVIDER_CLEANUP_FENCE_TRANSITION_VALIDATIONS
+        if tuple(command) == expected
+    )
+    if matches != (expected,):
+        raise OperatorError("historical R11 live Docker argv drifted")
+    return expected
+
+
+def _r19_historical_live_executor_contract() -> dict[str, Any]:
+    """Return the private command-specific record embedded by R19 policy."""
+
+    command = _r11_historical_live_docker_command()
+    return {
+        "logical_argv_sha256": _identity(list(command)),
+        "executor_class": ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS,
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+        "declared_command_executed": True,
+        "retained_interpreter_sha256": (
+            ASEH_R11_NATIVE_DEPENDENCY_PIN["python_executable_sha256"]
+        ),
+        "native_authorization_id": (
+            ASEH_R11_NATIVE_DEPENDENCY_AUTHORIZATION_ID
+        ),
+        "owner_preconditions": [
+            "not_child_subreaper",
+            "main_thread_only",
+            "single_native_task",
+        ],
+        "launch_policy": (
+            "dedicated_session_parent_loss_armed_exact_env_exec"
+        ),
+        "descendant_cleanup_policy": (
+            "exact_group_fence_plus_owned_docker_and_detached_effect_absence"
+        ),
+        "result_authority": (
+            "exact_process_exit_and_typed_terminal_cleanup_evidence"
+        ),
+    }
+
+
+def _r19_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend immutable R18 with one exact historical-live route and matrix."""
+
+    parent = _r18_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if (
+        parent_cid
+        != ASEH_R18_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    ):
+        raise OperatorError("historical R18 validation contract drifted")
+    matrix = REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r19_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r19-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 19,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": (
+                _r19_historical_live_executor_contract()
+            ),
+            "scope": (
+                "r19_authorization_preflight_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _admit_r19_historical_live_executor_contract(
+    executor_contract: Mapping[str, Any],
+    *,
+    declared: Sequence[str],
+) -> dict[str, Any]:
+    """Admit no command except the frozen R11 live suite."""
+
+    supplied = dict(executor_contract)
+    expected = _r19_sealed_receipt_validation_executor_contract()
+    if supplied != expected:
+        raise OperatorError("R19 historical live executor contract is unknown")
+    route = supplied.get("historical_live_route")
+    if route != _r19_historical_live_executor_contract():
+        raise OperatorError("R19 historical live route contract differs")
+    if tuple(declared) != _r11_historical_live_docker_command():
+        raise OperatorError(
+            "command is not admitted by the R19 historical live executor"
+        )
+    return supplied
+
+
+def _validate_r19_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed, pre-publication R19 live-route policy record."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R19 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "policy_revision",
+        "authorization_basis",
+        "bootstrap_receipt_id",
+        "prior_receipt_count",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_base_head",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    digest_fields = (
+        "bootstrap_receipt_id",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+    )
+    unsigned = dict(supplied)
+    policy_admission_cid = str(
+        unsigned.pop("policy_admission_cid", "") or ""
+    )
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R19_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 19
+        or supplied.get("authorization_basis")
+        != "validated_r1_r18_chain_plus_observed_r19_candidate_witness"
+        or type(supplied.get("prior_receipt_count")) is not int
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R18_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(supplied.get(field) or ""),
+            )
+            is None
+            for field in digest_fields
+        )
+        or supplied.get("candidate_base_head")
+        != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or supplied.get("executor_contract_cid")
+        != _identity(_r19_sealed_receipt_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_admission_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R19 historical live policy admission differs")
+    return supplied
+
+
+def _r19_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build policy authority without circularly requiring an R19 receipt."""
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None:
+        raise OperatorError("R19 historical live bootstrap identity is invalid")
+    admitted_chain = _admit_exact_r18_transition_chain(list(prior_chain))
+    if (
+        not admitted_chain
+        or any(
+            item.get("bootstrap_receipt_id") != bootstrap_receipt_id
+            for item in admitted_chain
+        )
+        or admitted_chain[-1].get("repair_head")
+        != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError("R19 historical live prior receipt chain differs")
+    receipt_cids = [str(item["receipt_cid"]) for item in admitted_chain]
+    witness = dict(candidate_authorization_witness)
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    witness_digest_fields = (
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    )
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+        or re.fullmatch(
+            r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*",
+            str(witness.get("branch_ref") or ""),
+        )
+        is None
+        or ".." in str(witness.get("branch_ref") or "")
+        or "//" in str(witness.get("branch_ref") or "")
+        or str(witness.get("branch_ref") or "").endswith(("/", ".lock"))
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", witness[field]) is None
+            for field in witness_digest_fields
+        )
+        or witness.get("status_digest") != _identity(b"")
+    ):
+        raise OperatorError(
+            "R19 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    admission: dict[str, Any] = {
+        "schema": ASEH_R19_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 19,
+        "authorization_basis": (
+            "validated_r1_r18_chain_plus_observed_r19_candidate_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_chain_cid": _identity(receipt_cids),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": (
+            REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r19_historical_live_policy_admission_record(admission)
+
+
+def _admit_r19_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit only the deterministic policy record for exact supplied inputs."""
+
+    supplied = _validate_r19_historical_live_policy_admission_record(value)
+    expected = _r19_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+    )
+    if supplied != expected:
+        raise OperatorError("R19 historical live policy admission is unknown")
+    return supplied
+
+
+def _validate_r19_historical_live_lock_identity(
+    value: Mapping[str, Any],
+    *,
+    require_current_owner: bool = False,
+) -> dict[str, Any]:
+    """Admit the retained cross-process fence bound into live evidence."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R19 historical live lifecycle lock is invalid")
+    result = dict(value)
+    unsigned = dict(result)
+    identity = str(unsigned.pop("lock_identity_cid", "") or "")
+    birth = result.get("owner_process_birth")
+    if (
+        set(result)
+        != {
+            "schema",
+            "path",
+            "device",
+            "inode",
+            "mode",
+            "uid",
+            "nlink",
+            "owner_process_birth",
+            "acquired_at_ns",
+            "lock_identity_cid",
+        }
+        or result.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-r19-historical-live-lifecycle-lock@1"
+        )
+        or result.get("path")
+        != "data/aseh/evidence/bootstrap/"
+        ".r19-historical-live-lifecycle.lock"
+        or any(
+            type(result.get(field)) is not int
+            for field in (
+                "device",
+                "inode",
+                "mode",
+                "uid",
+                "nlink",
+                "acquired_at_ns",
+            )
+        )
+        or int(result["inode"]) <= 0
+        or not stat.S_ISREG(int(result["mode"]))
+        or stat.S_IMODE(int(result["mode"])) != 0o600
+        or int(result["uid"]) != os.geteuid()
+        or int(result["nlink"]) != 1
+        or int(result["acquired_at_ns"]) <= 0
+        or not isinstance(birth, Mapping)
+        or set(birth)
+        != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+        or type(birth.get("pid")) is not int
+        or int(birth["pid"]) <= 1
+        or (
+            require_current_owner
+            and dict(birth) != _r16_exact_process_birth(os.getpid())
+        )
+        or type(birth.get("start_time_ticks")) is not int
+        or int(birth["start_time_ticks"]) <= 0
+        or re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+            r"[0-9a-f]{4}-[0-9a-f]{12}",
+            str(birth.get("boot_id") or ""),
+        )
+        is None
+        or type(birth.get("parent_pid")) is not int
+        or identity != _identity(unsigned)
+    ):
+        raise OperatorError("R19 historical live lifecycle lock differs")
+    return result
+
+
+def _admit_r19_lifecycle_evidence_binding(
+    *,
+    lifecycle_lock: Mapping[str, Any],
+    ready: Mapping[str, Any],
+    before_docker: Mapping[str, Any],
+    before_detached: Mapping[str, Any],
+) -> None:
+    """Bind the retained owner fence to readiness and first observations."""
+
+    owner_birth = lifecycle_lock.get("owner_process_birth")
+    acquired_at_ns = lifecycle_lock.get("acquired_at_ns")
+    if (
+        not isinstance(owner_birth, Mapping)
+        or ready.get("parent_pid") != owner_birth.get("pid")
+        or ready.get("parent_start_time_ticks")
+        != owner_birth.get("start_time_ticks")
+        or ready.get("boot_id") != owner_birth.get("boot_id")
+        or type(acquired_at_ns) is not int
+        or type(before_docker.get("observed_at_ns")) is not int
+        or type(before_detached.get("observed_at_ns")) is not int
+        or int(acquired_at_ns) > int(before_docker["observed_at_ns"])
+        or int(acquired_at_ns) > int(before_detached["observed_at_ns"])
+    ):
+        raise OperatorError(
+            "R19 historical live lifecycle evidence is not lock-bound"
+        )
+
+
+def _admit_r19_exact_execution_record(
+    value: Mapping[str, Any],
+    *,
+    interpreter_identity: Mapping[str, Any],
+    environment_identity: str,
+) -> dict[str, Any]:
+    """Admit the exact observed interpreter, argv, and closed environment."""
+
+    supplied = dict(value)
+    exact_environment = supplied.get("environment")
+    observed_argv = supplied.get("argv")
+    trusted_interpreter_argv0 = _trusted_receipt_validation_python()
+    trusted_interpreter = _r16_admit_unprivileged_executable_path(
+        Path(trusted_interpreter_argv0).resolve(strict=True)
+    )
+    if (
+        dict(interpreter_identity) != trusted_interpreter
+        or set(supplied)
+        != {
+            "executable_identity",
+            "argv",
+            "argv_sha256",
+            "environment",
+            "environment_identity",
+            "observed_at_ns",
+        }
+        or supplied.get("executable_identity") != trusted_interpreter
+        or not isinstance(exact_environment, Mapping)
+        or not isinstance(observed_argv, list)
+        or any(type(item) is not str or not item for item in observed_argv)
+        or supplied.get("argv_sha256") != _identity(observed_argv)
+        or any(
+            type(key) is not str
+            or not key
+            or "=" in key
+            or type(item) is not str
+            for key, item in exact_environment.items()
+        )
+        or dict(exact_environment)
+        != dict(sorted(exact_environment.items()))
+        or supplied.get("environment_identity")
+        != _identity(dict(exact_environment))
+        or type(supplied.get("observed_at_ns")) is not int
+        or int(supplied["observed_at_ns"]) <= 0
+    ):
+        raise OperatorError(
+            "R19 historical live exact execution evidence differs"
+        )
+    checkout_value = exact_environment.get("PYTHONPATH")
+    if (
+        type(checkout_value) is not str
+        or not checkout_value
+        or not Path(checkout_value).is_absolute()
+    ):
+        raise OperatorError(
+            "R19 historical live exact execution checkout differs"
+        )
+    checkout = Path(checkout_value)
+    command = _r11_historical_live_docker_command()
+    parsed = _parse_receipt_validation_python_command(
+        command,
+        require_known=True,
+    )
+    if parsed is None:
+        raise OperatorError("R19 historical live command is not Python")
+    base_environment = _r11_validation_environment(checkout)
+    expected_environment = dict(base_environment)
+    expected_environment.update(parsed[1])
+    # ``/proc/<pid>/cmdline`` preserves the admitted invocation spelling while
+    # ``/proc/<pid>/exe`` resolves it to the executable inode.  Bind both:
+    # executable_identity above proves the exact root-owned binary and argv
+    # below proves the exact configured command, including its argv[0] alias.
+    expected_argv = [trusted_interpreter_argv0, *parsed[2]]
+    if (
+        observed_argv != expected_argv
+        or dict(exact_environment) != dict(sorted(expected_environment.items()))
+        or _r11_command_environment_identity(
+            base_environment,
+            command,
+            checkout=checkout,
+        )
+        != environment_identity
+    ):
+        raise OperatorError(
+            "R19 historical live exact execution authority differs"
+        )
+    return supplied
+
+
+@contextmanager
+def _r19_active_policy_scope(
+    *,
+    policy_admission: Mapping[str, Any],
+    executor_contract: Mapping[str, Any],
+    authorizing_receipt_cid: str | None,
+    lifecycle_lock_identity: Mapping[str, Any],
+) -> Any:
+    """Expose one typed, fenced R19 policy for one exact live call."""
+
+    global _ASEH_ACTIVE_R19_POLICY
+    executor = _ASEH_RECEIPT_VALIDATION_EXECUTOR
+    if executor is None:
+        raise OperatorError("R19 historical live executor is unavailable")
+    contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    policy = _validate_r19_historical_live_policy_admission_record(
+        policy_admission
+    )
+    witness = json.loads(executor.authorization_witness_json)
+    lifecycle_lock = _validate_r19_historical_live_lock_identity(
+        lifecycle_lock_identity,
+        require_current_owner=True,
+    )
+    if (
+        policy.get("candidate_head") != executor.candidate_head
+        or policy.get("candidate_tree") != executor.candidate_tree
+        or policy.get("candidate_authorization_witness_cid")
+        != _identity(witness)
+        or policy.get("executor_contract_cid") != _identity(contract)
+        or (
+            authorizing_receipt_cid is not None
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}", authorizing_receipt_cid
+            )
+            is None
+        )
+    ):
+        raise OperatorError("R19 historical live active policy differs")
+    if _ASEH_ACTIVE_R19_POLICY is not None:
+        raise OperatorError("R19 historical live policy is contended")
+    active: dict[str, Any] = {
+        "policy_admission": policy,
+        "executor_contract": contract,
+        "authorizing_receipt_cid": authorizing_receipt_cid,
+        "lifecycle_lock_identity": lifecycle_lock,
+        "consumed": False,
+    }
+    _ASEH_ACTIVE_R19_POLICY = active
+    try:
+        yield active
+    finally:
+        observed = _ASEH_ACTIVE_R19_POLICY
+        _ASEH_ACTIVE_R19_POLICY = None
+        if observed is not active or active.get("consumed") is not True:
+            raise OperatorError("R19 historical live policy was not consumed")
 
 
 def _r16_validation_executor_class(command: Sequence[str]) -> str:
@@ -3997,6 +4887,27 @@ def _r18_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r19_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R19 suffix argv without broadening prior matrices."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R19 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -4034,16 +4945,21 @@ def _admit_sealed_receipt_validation_executor_contract(
     r16 = _r16_sealed_receipt_validation_executor_contract()
     r17 = _r17_sealed_receipt_validation_executor_contract()
     r18 = _r18_sealed_receipt_validation_executor_contract()
-    if supplied not in (r16, r17, r18):
+    r19 = _r19_sealed_receipt_validation_executor_contract()
+    if supplied not in (r16, r17, r18, r19):
         raise OperatorError("sealed validation executor contract is unknown")
     if (
         (
-            _r18_validation_executor_class(command)
-            if supplied == r18
+            _r19_validation_executor_class(command)
+            if supplied == r19
             else (
-                _r17_validation_executor_class(command)
-                if supplied == r17
-                else _r16_validation_executor_class(command)
+                _r18_validation_executor_class(command)
+                if supplied == r18
+                else (
+                    _r17_validation_executor_class(command)
+                    if supplied == r17
+                    else _r16_validation_executor_class(command)
+                )
             )
         )
         != ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
@@ -4572,6 +5488,85 @@ def _r16_arm_sigkill_parent_loss_fence(
         raise OperatorError(
             "R16 parent changed while SIGKILL loss fence was armed"
         )
+
+
+def _r19_historical_live_launcher(
+    *,
+    ready_fd: int,
+    release_fd: int,
+    logical_argv_sha256: str,
+    candidate_head: str,
+    candidate_tree: str,
+    expected_parent_pid: int,
+    expected_parent_start_time_ticks: int,
+    expected_parent_boot_id: str,
+) -> int:
+    """Arm parent loss, publish exact birth, then exec R11's live argv."""
+
+    command = _r11_historical_live_docker_command()
+    if (
+        ready_fd < 3
+        or release_fd < 3
+        or ready_fd == release_fd
+        or logical_argv_sha256 != _identity(list(command))
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+    ):
+        raise OperatorError("R19 historical live launcher grammar differs")
+    checkout = Path.cwd().resolve(strict=True)
+    if (
+        _git("rev-parse", "HEAD", cwd=checkout) != candidate_head
+        or _git("rev-parse", "HEAD^{tree}", cwd=checkout) != candidate_tree
+    ):
+        raise OperatorError("R19 historical live launcher checkout differs")
+    _r16_arm_sigkill_parent_loss_fence(
+        expected_parent_pid=expected_parent_pid,
+        expected_parent_start_time_ticks=expected_parent_start_time_ticks,
+        expected_boot_id=expected_parent_boot_id,
+    )
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(4, 0, 0, 0, 0) != 0:
+        raise OperatorError("R19 historical live dump fence failed")
+    if libc.prctl(38, 1, 0, 0, 0) != 0:
+        raise OperatorError("R19 historical live privilege fence failed")
+    if _r16_parent_is_child_subreaper():
+        raise OperatorError("R19 historical live launcher became a subreaper")
+    birth = _r16_exact_process_birth(os.getpid())
+    ready = {
+        "schema": ASEH_R19_HISTORICAL_LIVE_READY_SCHEMA,
+        "logical_argv_sha256": logical_argv_sha256,
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "pid": os.getpid(),
+        "start_time_ticks": birth["start_time_ticks"],
+        "boot_id": birth["boot_id"],
+        "parent_pid": birth["parent_pid"],
+        "parent_start_time_ticks": expected_parent_start_time_ticks,
+        "parent_loss_signal": "SIGKILL",
+        "child_subreaper": False,
+    }
+    ready["ready_cid"] = _identity(ready)
+    payload = (_canonical_json(ready) + "\n").encode("ascii")
+    view = memoryview(payload)
+    while view:
+        written = os.write(ready_fd, view)
+        if written <= 0:
+            raise OperatorError("R19 historical live readiness is partial")
+        view = view[written:]
+    os.close(ready_fd)
+    release = os.read(release_fd, 2)
+    os.close(release_fd)
+    if release != b"1":
+        raise OperatorError("R19 historical live release differs")
+    if (
+        os.getppid() != expected_parent_pid
+        or _r16_process_start_time_ticks(expected_parent_pid)
+        != expected_parent_start_time_ticks
+        or _r16_boot_id() != expected_parent_boot_id
+    ):
+        raise OperatorError("R19 historical live parent changed before exec")
+    os.execve("/usr/bin/env", list(command), dict(os.environ))
+    return 78
 
 
 def _r16_provider_start_launcher(
@@ -8345,6 +9340,1719 @@ def _validate_r16_production_lifecycle_execution_evidence(
     return dict(evidence)
 
 
+def _r19_docker_scope_snapshot() -> dict[str, Any]:
+    """Observe every supervisor-owned Codex container without mutating it."""
+
+    docker_bin = "/usr/bin/docker"
+    _r16_admit_unprivileged_executable_path(Path(docker_bin))
+    command = [
+        docker_bin,
+        "--host=unix:///var/run/docker.sock",
+        "ps",
+        "--all",
+        "--no-trunc",
+        "--filter",
+        "label=ipfs_accelerate.codex_fallback_isolation=true",
+        "--format",
+        "{{.ID}} {{.Names}}",
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            env=ASEH_R16_PROVIDER_START_ENVIRONMENT,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise OperatorError("R19 Docker scope observation is unavailable") from exc
+    if (
+        completed.returncode != 0
+        or len(completed.stdout) > 2 * 1024 * 1024
+        or len(completed.stderr) > 64 * 1024
+    ):
+        raise OperatorError("R19 Docker scope observation is unknown")
+    listed: list[tuple[str, str, int]] = []
+    for raw in completed.stdout.splitlines():
+        try:
+            container_id, name = raw.decode("ascii", errors="strict").split()
+        except (UnicodeError, ValueError) as exc:
+            raise OperatorError("R19 Docker scope output is invalid") from exc
+        match = re.fullmatch(
+            r"ipfs-accelerate-codex-([1-9][0-9]*)-[0-9a-f]{32}",
+            name,
+        )
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+            or match is None
+        ):
+            raise OperatorError("R19 Docker scope identity is invalid")
+        listed.append((container_id, name, int(match.group(1))))
+    listed.sort()
+    if len({item[0] for item in listed}) != len(listed):
+        raise OperatorError("R19 Docker scope contains a duplicate identity")
+    inspect_command = [
+        docker_bin,
+        "--host=unix:///var/run/docker.sock",
+        "inspect",
+        *(item[0] for item in listed),
+    ]
+    if inspect_command[-1] == "inspect":
+        inspect_stdout = b"[]\n"
+        inspect_stderr = b""
+        inspected: object = []
+    else:
+        try:
+            inspection = subprocess.run(
+                inspect_command,
+                env=ASEH_R16_PROVIDER_START_ENVIRONMENT,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=10.0,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise OperatorError(
+                "R19 Docker scope inspection is unavailable"
+            ) from exc
+        inspect_stdout = inspection.stdout
+        inspect_stderr = inspection.stderr
+        if (
+            inspection.returncode != 0
+            or len(inspect_stdout) > 16 * 1024 * 1024
+            or len(inspect_stderr) > 64 * 1024
+        ):
+            raise OperatorError("R19 Docker scope inspection is unknown")
+        try:
+            inspected = json.loads(inspect_stdout)
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise OperatorError(
+                "R19 Docker scope inspection is invalid"
+            ) from exc
+    if not isinstance(inspected, list) or len(inspected) != len(listed):
+        raise OperatorError("R19 Docker scope inspection differs")
+    inspected_by_id: dict[str, Mapping[str, Any]] = {}
+    for value in inspected:
+        if not isinstance(value, Mapping):
+            raise OperatorError("R19 Docker scope inspection is invalid")
+        container_id = str(value.get("Id") or "")
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+            or container_id in inspected_by_id
+        ):
+            raise OperatorError("R19 Docker scope inspection is invalid")
+        inspected_by_id[container_id] = value
+    entries: list[dict[str, Any]] = []
+    for container_id, name, runner_pid in listed:
+        value = inspected_by_id.get(container_id)
+        state = value.get("State") if isinstance(value, Mapping) else None
+        config = value.get("Config") if isinstance(value, Mapping) else None
+        labels = config.get("Labels") if isinstance(config, Mapping) else None
+        if (
+            not isinstance(state, Mapping)
+            or not isinstance(labels, Mapping)
+            or labels.get("ipfs_accelerate.codex_fallback_isolation")
+            != "true"
+            or str(value.get("Name") or "") != f"/{name}"
+        ):
+            raise OperatorError("R19 Docker scope inspection differs")
+        selected_labels = {
+            str(key): str(label)
+            for key, label in labels.items()
+            if isinstance(key, str) and isinstance(label, str)
+        }
+        state_fields = {
+            "status": state.get("Status"),
+            "running": state.get("Running"),
+            "paused": state.get("Paused"),
+            "restarting": state.get("Restarting"),
+            "oom_killed": state.get("OOMKilled"),
+            "dead": state.get("Dead"),
+            "init_pid": state.get("Pid"),
+            "exit_code": state.get("ExitCode"),
+            "state_error": state.get("Error"),
+            "started_at": state.get("StartedAt"),
+            "finished_at": state.get("FinishedAt"),
+            "restart_count": value.get("RestartCount"),
+        }
+        if (
+            not isinstance(state_fields["status"], str)
+            or any(
+                type(state_fields[field]) is not bool
+                for field in (
+                    "running",
+                    "paused",
+                    "restarting",
+                    "oom_killed",
+                    "dead",
+                )
+            )
+            or any(
+                type(state_fields[field]) is not int
+                for field in ("init_pid", "exit_code", "restart_count")
+            )
+            or any(
+                not isinstance(state_fields[field], str)
+                for field in ("state_error", "started_at", "finished_at")
+            )
+            or len(selected_labels) != len(labels)
+        ):
+            raise OperatorError("R19 Docker scope state is invalid")
+        entries.append(
+            {
+                "container_id": container_id,
+                "container_name": name,
+                "runner_pid": runner_pid,
+                **state_fields,
+                "labels": selected_labels,
+            }
+        )
+    entries.sort(key=lambda item: (item["container_id"], item["container_name"]))
+    return {
+        "schema": ASEH_R19_DOCKER_SCOPE_SNAPSHOT_SCHEMA,
+        "command": command,
+        "command_sha256": _identity(command),
+        "stdout_digest": _identity(completed.stdout),
+        "stderr_digest": _identity(completed.stderr),
+        "inspect_command": inspect_command,
+        "inspect_command_sha256": _identity(inspect_command),
+        "inspect_stdout_digest": _identity(inspect_stdout),
+        "inspect_stderr_digest": _identity(inspect_stderr),
+        "entries": entries,
+        "observed_at_ns": time.time_ns(),
+    }
+
+
+def _r19_detached_effect_snapshot() -> dict[str, Any]:
+    """Observe exact watchdog/removal issuers that escaped a managed group."""
+
+    markers = {
+        "--internal-docker-cleanup-watchdog",
+        "--internal-docker-cleanup-watchdog-launcher",
+        "--internal-docker-removal-issuer",
+        "--internal-docker-removal-issuer-launcher",
+    }
+    entries: list[dict[str, Any]] = []
+    try:
+        process_entries = tuple(Path("/proc").iterdir())
+    except OSError as exc:
+        raise OperatorError("R19 detached-effect census is unavailable") from exc
+    boot_id = _r16_boot_id()
+    for process_entry in process_entries:
+        if not process_entry.name.isdigit():
+            continue
+        try:
+            stat_payload = (process_entry / "stat").read_text(encoding="ascii")
+            closing = stat_payload.rfind(")")
+            fields = stat_payload[closing + 2 :].split()
+            state = fields[0]
+            parent_pid = int(fields[1])
+            start_time_ticks = int(fields[19])
+            command_payload = (process_entry / "cmdline").read_bytes()
+        except OSError as exc:
+            if exc.errno in {errno.ENOENT, errno.ESRCH}:
+                continue
+            raise OperatorError(
+                "R19 detached-effect census is unavailable"
+            ) from exc
+        except (IndexError, UnicodeError, ValueError) as exc:
+            raise OperatorError("R19 detached-effect census is invalid") from exc
+        if state == "Z" or not command_payload:
+            continue
+        try:
+            argv = [
+                item.decode("utf-8", errors="strict")
+                for item in command_payload.rstrip(b"\0").split(b"\0")
+                if item
+            ]
+        except UnicodeError as exc:
+            raise OperatorError("R19 detached-effect argv is invalid") from exc
+        marker_locations = sorted(
+            (argv.index(item), item) for item in markers if item in argv
+        )
+        if not marker_locations:
+            continue
+        marker_index, marker = marker_locations[0]
+        if closing < 0 or start_time_ticks <= 0 or parent_pid < 0:
+            raise OperatorError("R19 detached-effect birth is invalid")
+        prefix = argv[:marker_index]
+        raw_script = prefix[-1] if len(prefix) >= 2 else ""
+        try:
+            if raw_script.startswith("/proc/self/fd/"):
+                descriptor_name = raw_script.removeprefix("/proc/self/fd/")
+                if not descriptor_name.isdigit():
+                    raise OSError(errno.EINVAL, "invalid sealed script path")
+                script_path = str(
+                    (process_entry / "fd" / descriptor_name).resolve(
+                        strict=True
+                    )
+                )
+            else:
+                lexical_script = Path(raw_script)
+                if not lexical_script.is_absolute():
+                    raise OSError(errno.EINVAL, "invalid detached-effect script")
+                script_path = str(lexical_script)
+            try:
+                script_metadata = Path(script_path).stat()
+                if (
+                    not stat.S_ISREG(script_metadata.st_mode)
+                    or script_metadata.st_size > 4 * 1024 * 1024
+                ):
+                    raise OSError(
+                        errno.EINVAL, "invalid detached-effect script"
+                    )
+                script_identity = {
+                    "availability": "observed",
+                    "device": script_metadata.st_dev,
+                    "inode": script_metadata.st_ino,
+                    "size": script_metadata.st_size,
+                    "mtime_ns": script_metadata.st_mtime_ns,
+                    "uid": script_metadata.st_uid,
+                    "mode": stat.S_IMODE(script_metadata.st_mode),
+                    "sha256": _identity(Path(script_path).read_bytes()),
+                }
+            except FileNotFoundError:
+                # Old, unrelated watchdogs can outlive a removed worktree.
+                # Preserve that fact explicitly; admission below accepts it
+                # only inside another named worktree and never as observed
+                # script bytes.
+                script_identity = {"availability": "unavailable_deleted"}
+            executable_path = str((process_entry / "exe").resolve(strict=True))
+            process_cwd = str((process_entry / "cwd").resolve(strict=True))
+            container_positions = [
+                index for index, item in enumerate(argv) if item == "--container-name"
+            ]
+            lease_positions = [
+                index for index, item in enumerate(argv) if item == "--lease-root"
+            ]
+            if (
+                len(container_positions) != 1
+                or len(lease_positions) != 1
+                or container_positions[0] + 1 >= len(argv)
+                or lease_positions[0] + 1 >= len(argv)
+            ):
+                raise OSError(errno.EINVAL, "missing detached-effect target")
+            target_container_name = argv[container_positions[0] + 1]
+            lease_root = str(
+                Path(argv[lease_positions[0] + 1]).resolve(strict=True)
+            )
+        except OSError as exc:
+            raise OperatorError(
+                "R19 detached-effect ownership is invalid"
+            ) from exc
+        if (
+            re.fullmatch(
+                r"ipfs-accelerate-codex-[1-9][0-9]*-[0-9a-f]{32}",
+                target_container_name,
+            )
+            is None
+            or not Path(script_path).is_absolute()
+            or not Path(process_cwd).is_absolute()
+            or not Path(lease_root).is_absolute()
+        ):
+            raise OperatorError("R19 detached-effect ownership is invalid")
+        entries.append(
+            {
+                "pid": int(process_entry.name),
+                "start_time_ticks": start_time_ticks,
+                "boot_id": boot_id,
+                "parent_pid": parent_pid,
+                "state": state,
+                "marker": marker,
+                "argv_sha256": _identity(argv),
+                "executable_path": executable_path,
+                "script_path": script_path,
+                "script_identity": script_identity,
+                "cwd": process_cwd,
+                "target_container_name": target_container_name,
+                "lease_root": lease_root,
+            }
+        )
+    entries.sort(key=lambda item: (item["pid"], item["start_time_ticks"]))
+    return {
+        "schema": ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA,
+        "entries": entries,
+        "observed_at_ns": time.time_ns(),
+    }
+
+
+def _r19_descendant_births(root_pid: int) -> tuple[dict[str, Any], ...]:
+    """Take one bounded transitive descendant census while the root is live."""
+
+    observed: dict[int, tuple[int, int, str]] = {}
+    try:
+        entries = tuple(Path("/proc").iterdir())
+    except OSError as exc:
+        raise OperatorError("R19 descendant census is unavailable") from exc
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "stat").read_text(encoding="ascii")
+            closing = raw.rfind(")")
+            fields = raw[closing + 2 :].split()
+            if fields[0] == "Z":
+                continue
+            observed[int(entry.name)] = (
+                int(fields[1]),
+                int(fields[19]),
+                fields[0],
+            )
+        except OSError as exc:
+            if exc.errno in {errno.ENOENT, errno.ESRCH}:
+                continue
+            raise OperatorError("R19 descendant census is unavailable") from exc
+        except (IndexError, UnicodeError, ValueError) as exc:
+            raise OperatorError("R19 descendant census is invalid") from exc
+        if closing < 0:
+            raise OperatorError("R19 descendant census is invalid")
+    selected = {root_pid} if root_pid in observed else set()
+    changed = True
+    while changed:
+        changed = False
+        for pid, (parent_pid, _start, _state) in observed.items():
+            if pid not in selected and parent_pid in selected:
+                selected.add(pid)
+                changed = True
+    boot_id = _r16_boot_id()
+    return tuple(
+        {
+            "pid": pid,
+            "parent_pid": observed[pid][0],
+            "start_time_ticks": observed[pid][1],
+            "boot_id": boot_id,
+        }
+        for pid in sorted(selected)
+    )
+
+
+def _r19_snapshot_stable_value(snapshot: Mapping[str, Any]) -> Any:
+    """Drop observation time while retaining every authoritative identity."""
+
+    schema = snapshot.get("schema")
+    if schema == ASEH_R19_DOCKER_SCOPE_SNAPSHOT_SCHEMA:
+        return {
+            "schema": schema,
+            "command": snapshot.get("command"),
+            "command_sha256": snapshot.get("command_sha256"),
+            "inspect_command": snapshot.get("inspect_command"),
+            "inspect_command_sha256": snapshot.get(
+                "inspect_command_sha256"
+            ),
+            "entries": snapshot.get("entries"),
+        }
+    if schema == ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA:
+        return {"schema": schema, "entries": snapshot.get("entries")}
+    raise OperatorError("R19 terminal snapshot schema is unknown")
+
+
+def _r19_path_is_within(path: Path, root: Path) -> bool:
+    """Return whether one already-resolved path is below an exact root."""
+
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _r19_admit_stable_unrelated_baseline(
+    *,
+    first_docker: Mapping[str, Any],
+    confirmed_docker: Mapping[str, Any],
+    first_detached: Mapping[str, Any],
+    confirmed_detached: Mapping[str, Any],
+    working_directory: Path,
+) -> None:
+    """Admit only stable inert containers and exact other-tree watchdogs."""
+
+    if (
+        _r19_snapshot_stable_value(first_docker)
+        != _r19_snapshot_stable_value(confirmed_docker)
+        or _r19_snapshot_stable_value(first_detached)
+        != _r19_snapshot_stable_value(confirmed_detached)
+    ):
+        raise OperatorError("R19 historical live baseline is contended")
+    docker_entries = first_docker.get("entries")
+    detached_entries = first_detached.get("entries")
+    if not isinstance(docker_entries, list) or not isinstance(
+        detached_entries, list
+    ):
+        raise OperatorError("R19 historical live baseline is invalid")
+    docker_by_name: dict[str, Mapping[str, Any]] = {}
+    for item in docker_entries:
+        if not isinstance(item, Mapping):
+            raise OperatorError("R19 historical live baseline is invalid")
+        name = str(item.get("container_name") or "")
+        if name in docker_by_name:
+            raise OperatorError("R19 historical live baseline is invalid")
+        # A stable Docker object that never started (created) or has already
+        # exited is inert. Every active, dead, removing, or unknown state is
+        # contention and is never grandfathered by a retry.
+        if (
+            item.get("status") not in {"created", "exited"}
+            or item.get("running") is not False
+            or item.get("paused") is not False
+            or item.get("restarting") is not False
+            or item.get("dead") is not False
+            or item.get("init_pid") != 0
+        ):
+            raise OperatorError(
+                "R19 historical live Docker baseline is active"
+            )
+        docker_by_name[name] = item
+    resolved_working_directory = working_directory.resolve(strict=False)
+    resolved_operator_root = ROOT.resolve(strict=True)
+    named_worktree_root = resolved_operator_root.parent
+    for item in detached_entries:
+        if not isinstance(item, Mapping):
+            raise OperatorError("R19 historical live baseline is invalid")
+        script_path = Path(str(item.get("script_path") or ""))
+        process_cwd = Path(str(item.get("cwd") or ""))
+        script_identity = item.get("script_identity")
+        target = docker_by_name.get(
+            str(item.get("target_container_name") or "")
+        )
+        script_observation_admitted = (
+            isinstance(script_identity, Mapping)
+            and (
+                script_identity.get("availability") == "observed"
+                or (
+                    script_identity
+                    == {"availability": "unavailable_deleted"}
+                    and _r19_path_is_within(
+                        script_path, named_worktree_root
+                    )
+                )
+            )
+        )
+        if (
+            item.get("marker") != "--internal-docker-cleanup-watchdog"
+            or item.get("parent_pid") != 1
+            or item.get("state") == "Z"
+            or script_path.name != "grok_cli_runner.py"
+            or not script_observation_admitted
+            or target is None
+            or target.get("status") not in {"created", "exited"}
+            or _r19_path_is_within(
+                script_path, resolved_working_directory
+            )
+            or _r19_path_is_within(script_path, resolved_operator_root)
+            or _r19_path_is_within(
+                process_cwd, resolved_working_directory
+            )
+            or _r19_path_is_within(process_cwd, resolved_operator_root)
+        ):
+            raise OperatorError(
+                "R19 historical live detached baseline is not unrelated"
+            )
+
+
+def _validate_r19_historical_live_execution_evidence(
+    evidence: Mapping[str, Any],
+    *,
+    policy_admission: Mapping[str, Any],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+    environment_identity: str,
+    returncode: int,
+    stdout_digest: str,
+    stderr_digest: str,
+    authorizing_receipt_cid: str | None,
+) -> dict[str, Any]:
+    """Purely validate the complete typed evidence emitted by the R19 route."""
+
+    def is_digest(value: Any) -> bool:
+        return (
+            type(value) is str
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
+        )
+
+    def validate_birth(value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise OperatorError("R19 historical live process birth is invalid")
+        result = dict(value)
+        if (
+            set(result)
+            != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
+            or type(result.get("pid")) is not int
+            or int(result["pid"]) <= 1
+            or type(result.get("start_time_ticks")) is not int
+            or int(result["start_time_ticks"]) <= 0
+            or re.fullmatch(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+                r"[0-9a-f]{4}-[0-9a-f]{12}",
+                str(result.get("boot_id") or ""),
+            )
+            is None
+            or type(result.get("parent_pid")) is not int
+            or int(result["parent_pid"]) < 0
+        ):
+            raise OperatorError("R19 historical live process birth is invalid")
+        return result
+
+    def validate_docker_entry(value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise OperatorError("R19 historical live Docker entry is invalid")
+        result = dict(value)
+        fields = {
+            "container_id",
+            "container_name",
+            "runner_pid",
+            "status",
+            "running",
+            "paused",
+            "restarting",
+            "oom_killed",
+            "dead",
+            "init_pid",
+            "exit_code",
+            "state_error",
+            "started_at",
+            "finished_at",
+            "restart_count",
+            "labels",
+        }
+        name_match = re.fullmatch(
+            r"ipfs-accelerate-codex-([1-9][0-9]*)-[0-9a-f]{32}",
+            str(result.get("container_name") or ""),
+        )
+        labels = result.get("labels")
+        if (
+            set(result) != fields
+            or re.fullmatch(
+                r"[0-9a-f]{64}", str(result.get("container_id") or "")
+            )
+            is None
+            or name_match is None
+            or type(result.get("runner_pid")) is not int
+            or int(result["runner_pid"]) != int(name_match.group(1))
+            or not isinstance(result.get("status"), str)
+            or not result["status"]
+            or any(
+                type(result.get(field)) is not bool
+                for field in (
+                    "running",
+                    "paused",
+                    "restarting",
+                    "oom_killed",
+                    "dead",
+                )
+            )
+            or any(
+                type(result.get(field)) is not int
+                for field in ("init_pid", "exit_code", "restart_count")
+            )
+            or int(result["init_pid"]) < 0
+            or int(result["restart_count"]) < 0
+            or any(
+                not isinstance(result.get(field), str)
+                for field in ("state_error", "started_at", "finished_at")
+            )
+            or not isinstance(labels, Mapping)
+            or labels.get("ipfs_accelerate.codex_fallback_isolation")
+            != "true"
+            or any(
+                type(key) is not str or type(item) is not str
+                for key, item in labels.items()
+            )
+        ):
+            raise OperatorError("R19 historical live Docker entry is invalid")
+        return result
+
+    def validate_docker_snapshot(value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise OperatorError(
+                "R19 historical live Docker snapshot is invalid"
+            )
+        result = dict(value)
+        fields = {
+            "schema",
+            "command",
+            "command_sha256",
+            "stdout_digest",
+            "stderr_digest",
+            "inspect_command",
+            "inspect_command_sha256",
+            "inspect_stdout_digest",
+            "inspect_stderr_digest",
+            "entries",
+            "observed_at_ns",
+        }
+        command = [
+            "/usr/bin/docker",
+            "--host=unix:///var/run/docker.sock",
+            "ps",
+            "--all",
+            "--no-trunc",
+            "--filter",
+            "label=ipfs_accelerate.codex_fallback_isolation=true",
+            "--format",
+            "{{.ID}} {{.Names}}",
+        ]
+        raw_entries = result.get("entries")
+        if not isinstance(raw_entries, list):
+            raise OperatorError(
+                "R19 historical live Docker snapshot is invalid"
+            )
+        entries = [validate_docker_entry(item) for item in raw_entries]
+        expected_entries = sorted(
+            entries,
+            key=lambda item: (item["container_id"], item["container_name"]),
+        )
+        inspect_command = [
+            "/usr/bin/docker",
+            "--host=unix:///var/run/docker.sock",
+            "inspect",
+            *(item["container_id"] for item in entries),
+        ]
+        if (
+            set(result) != fields
+            or result.get("schema") != ASEH_R19_DOCKER_SCOPE_SNAPSHOT_SCHEMA
+            or result.get("command") != command
+            or result.get("command_sha256") != _identity(command)
+            or result.get("inspect_command") != inspect_command
+            or result.get("inspect_command_sha256")
+            != _identity(inspect_command)
+            or any(
+                not is_digest(result.get(field))
+                for field in (
+                    "stdout_digest",
+                    "stderr_digest",
+                    "inspect_stdout_digest",
+                    "inspect_stderr_digest",
+                )
+            )
+            or entries != expected_entries
+            or len({item["container_id"] for item in entries})
+            != len(entries)
+            or type(result.get("observed_at_ns")) is not int
+            or int(result["observed_at_ns"]) <= 0
+        ):
+            raise OperatorError(
+                "R19 historical live Docker snapshot differs"
+            )
+        return result
+
+    def validate_detached_entry(value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise OperatorError(
+                "R19 historical live detached-effect entry is invalid"
+            )
+        result = dict(value)
+        fields = {
+            "pid",
+            "start_time_ticks",
+            "boot_id",
+            "parent_pid",
+            "state",
+            "marker",
+            "argv_sha256",
+            "executable_path",
+            "script_path",
+            "script_identity",
+            "cwd",
+            "target_container_name",
+            "lease_root",
+        }
+        script_identity = result.get("script_identity")
+        observed_script_fields = {
+            "availability",
+            "device",
+            "inode",
+            "size",
+            "mtime_ns",
+            "uid",
+            "mode",
+            "sha256",
+        }
+        if (
+            set(result) != fields
+            or type(result.get("pid")) is not int
+            or int(result["pid"]) <= 1
+            or type(result.get("start_time_ticks")) is not int
+            or int(result["start_time_ticks"]) <= 0
+            or re.fullmatch(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+                r"[0-9a-f]{4}-[0-9a-f]{12}",
+                str(result.get("boot_id") or ""),
+            )
+            is None
+            or type(result.get("parent_pid")) is not int
+            or int(result["parent_pid"]) < 0
+            or not isinstance(result.get("state"), str)
+            or len(result["state"]) != 1
+            or result.get("marker")
+            not in {
+                "--internal-docker-cleanup-watchdog",
+                "--internal-docker-cleanup-watchdog-launcher",
+                "--internal-docker-removal-issuer",
+                "--internal-docker-removal-issuer-launcher",
+            }
+            or not is_digest(result.get("argv_sha256"))
+            or any(
+                type(result.get(field)) is not str
+                or not Path(result[field]).is_absolute()
+                for field in (
+                    "executable_path",
+                    "script_path",
+                    "cwd",
+                    "lease_root",
+                )
+            )
+            or re.fullmatch(
+                r"ipfs-accelerate-codex-[1-9][0-9]*-[0-9a-f]{32}",
+                str(result.get("target_container_name") or ""),
+            )
+            is None
+            or not isinstance(script_identity, Mapping)
+            or not (
+                script_identity == {"availability": "unavailable_deleted"}
+                or (
+                    set(script_identity) == observed_script_fields
+                    and script_identity.get("availability") == "observed"
+                    and all(
+                        type(script_identity.get(field)) is int
+                        for field in (
+                            "device",
+                            "inode",
+                            "size",
+                            "mtime_ns",
+                            "uid",
+                            "mode",
+                        )
+                    )
+                    and int(script_identity["size"]) >= 0
+                    and 0 <= int(script_identity["mode"]) <= 0o7777
+                    and is_digest(script_identity.get("sha256"))
+                )
+            )
+        ):
+            raise OperatorError(
+                "R19 historical live detached-effect entry is invalid"
+            )
+        return result
+
+    def validate_detached_snapshot(value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise OperatorError(
+                "R19 historical live detached-effect snapshot is invalid"
+            )
+        result = dict(value)
+        raw_entries = result.get("entries")
+        if not isinstance(raw_entries, list):
+            raise OperatorError(
+                "R19 historical live detached-effect snapshot is invalid"
+            )
+        entries = [validate_detached_entry(item) for item in raw_entries]
+        if (
+            set(result) != {"schema", "entries", "observed_at_ns"}
+            or result.get("schema")
+            != ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA
+            or entries
+            != sorted(
+                entries,
+                key=lambda item: (item["pid"], item["start_time_ticks"]),
+            )
+            or len(
+                {
+                    (item["pid"], item["start_time_ticks"], item["boot_id"])
+                    for item in entries
+                }
+            )
+            != len(entries)
+            or type(result.get("observed_at_ns")) is not int
+            or int(result["observed_at_ns"]) <= 0
+        ):
+            raise OperatorError(
+                "R19 historical live detached-effect snapshot differs"
+            )
+        return result
+
+    policy = _admit_r19_historical_live_policy_admission(
+        policy_admission,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+    )
+    if not isinstance(evidence, Mapping):
+        raise OperatorError("R19 historical live execution evidence is invalid")
+    supplied = dict(evidence)
+    fields = {
+        "schema",
+        "executor_class",
+        "executor_contract_cid",
+        "active_policy_cid",
+        "authorizing_receipt_cid",
+        "lifecycle_lock_identity",
+        "logical_argv",
+        "logical_argv_sha256",
+        "declared_command_executed",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_candidate_head",
+        "policy_candidate_tree",
+        "policy_candidate_authorization_witness_cid",
+        "environment_identity",
+        "interpreter_identity",
+        "ready",
+        "exact_execution",
+        "observed_descendant_births",
+        "observed_owned_containers",
+        "terminal_live_observed_descendants",
+        "before_docker",
+        "confirmed_before_docker",
+        "before_detached_effects",
+        "confirmed_before_detached_effects",
+        "terminal_docker",
+        "terminal_detached_effects",
+        "dedicated_group_fenced",
+        "returncode",
+        "stdout_digest",
+        "stderr_digest",
+        "terminal_class",
+        "evidence_cid",
+    }
+    if (
+        set(supplied) != fields
+        or supplied.get("schema") != ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
+        or supplied.get("executor_class")
+        != ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS
+        or supplied.get("executor_contract_cid")
+        != policy.get("executor_contract_cid")
+        or supplied.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or supplied.get("authorizing_receipt_cid")
+        != authorizing_receipt_cid
+        or (
+            authorizing_receipt_cid is not None
+            and not is_digest(authorizing_receipt_cid)
+        )
+        or supplied.get("logical_argv")
+        != list(_r11_historical_live_docker_command())
+        or supplied.get("logical_argv_sha256")
+        != policy.get("logical_argv_sha256")
+        or supplied.get("declared_command_executed") is not True
+        or supplied.get("validation_subject_head")
+        != policy.get("validation_subject_head")
+        or supplied.get("validation_subject_tree")
+        != policy.get("validation_subject_tree")
+        or supplied.get("policy_candidate_head")
+        != policy.get("candidate_head")
+        or supplied.get("policy_candidate_tree")
+        != policy.get("candidate_tree")
+        or supplied.get("policy_candidate_authorization_witness_cid")
+        != policy.get("candidate_authorization_witness_cid")
+        or not is_digest(environment_identity)
+        or supplied.get("environment_identity") != environment_identity
+        or type(returncode) is not int
+        or supplied.get("returncode") != returncode
+        or not is_digest(stdout_digest)
+        or not is_digest(stderr_digest)
+        or supplied.get("stdout_digest") != stdout_digest
+        or supplied.get("stderr_digest") != stderr_digest
+        or supplied.get("terminal_class")
+        != ("verified_success" if returncode == 0 else "verified_failure")
+        or supplied.get("dedicated_group_fenced") is not True
+        or supplied.get("terminal_live_observed_descendants") != []
+    ):
+        raise OperatorError("R19 historical live execution evidence differs")
+    lifecycle_lock = _validate_r19_historical_live_lock_identity(
+        supplied.get("lifecycle_lock_identity")
+    )
+
+    interpreter = supplied.get("interpreter_identity")
+    interpreter_fields = {
+        "path",
+        "device",
+        "inode",
+        "mode",
+        "uid",
+        "gid",
+        "nlink",
+        "size",
+        "mtime_ns",
+        "ctime_ns",
+        "security_capability",
+    }
+    if (
+        not isinstance(interpreter, Mapping)
+        or set(interpreter) != interpreter_fields
+        or type(interpreter.get("path")) is not str
+        or not Path(interpreter["path"]).is_absolute()
+        or any(
+            type(interpreter.get(field)) is not int
+            for field in (
+                "device",
+                "inode",
+                "mode",
+                "uid",
+                "gid",
+                "nlink",
+                "size",
+                "mtime_ns",
+                "ctime_ns",
+            )
+        )
+        or not stat.S_ISREG(int(interpreter["mode"]))
+        or int(interpreter["uid"]) != 0
+        or int(interpreter["nlink"]) != 1
+        or int(interpreter["size"]) <= 0
+        or not int(interpreter["mode"]) & 0o111
+        or int(interpreter["mode"]) & 0o022
+        or int(interpreter["mode"]) & (stat.S_ISUID | stat.S_ISGID)
+        or interpreter.get("security_capability") is not None
+    ):
+        raise OperatorError(
+            "R19 historical live interpreter evidence is invalid"
+        )
+    if interpreter != _r16_admit_unprivileged_executable_path(
+        Path(_trusted_receipt_validation_python()).resolve(strict=True)
+    ):
+        raise OperatorError(
+            "R19 historical live interpreter authority differs"
+        )
+
+    ready = supplied.get("ready")
+    if not isinstance(ready, Mapping):
+        raise OperatorError("R19 historical live readiness is invalid")
+    ready_value = dict(ready)
+    unsigned_ready = dict(ready_value)
+    ready_cid = str(unsigned_ready.pop("ready_cid", "") or "")
+    if (
+        set(ready_value)
+        != {
+            "schema",
+            "logical_argv_sha256",
+            "candidate_head",
+            "candidate_tree",
+            "pid",
+            "start_time_ticks",
+            "boot_id",
+            "parent_pid",
+            "parent_start_time_ticks",
+            "parent_loss_signal",
+            "child_subreaper",
+            "ready_cid",
+        }
+        or ready_value.get("schema") != ASEH_R19_HISTORICAL_LIVE_READY_SCHEMA
+        or ready_value.get("logical_argv_sha256")
+        != policy.get("logical_argv_sha256")
+        or ready_value.get("candidate_head")
+        != policy.get("validation_subject_head")
+        or ready_value.get("candidate_tree")
+        != policy.get("validation_subject_tree")
+        or ready_value.get("parent_loss_signal") != "SIGKILL"
+        or ready_value.get("child_subreaper") is not False
+        or type(ready_value.get("parent_start_time_ticks")) is not int
+        or int(ready_value["parent_start_time_ticks"]) <= 0
+        or ready_cid != _identity(unsigned_ready)
+    ):
+        raise OperatorError("R19 historical live readiness differs")
+    ready_birth = validate_birth(
+        {
+            "pid": ready_value.get("pid"),
+            "start_time_ticks": ready_value.get("start_time_ticks"),
+            "boot_id": ready_value.get("boot_id"),
+            "parent_pid": ready_value.get("parent_pid"),
+        }
+    )
+
+    exact_execution = supplied.get("exact_execution")
+    if not isinstance(exact_execution, Mapping):
+        raise OperatorError(
+            "R19 historical live exact execution evidence is invalid"
+        )
+    exact_value = _admit_r19_exact_execution_record(
+        exact_execution,
+        interpreter_identity=interpreter,
+        environment_identity=environment_identity,
+    )
+
+    raw_births = supplied.get("observed_descendant_births")
+    if not isinstance(raw_births, list):
+        raise OperatorError(
+            "R19 historical live descendant evidence is invalid"
+        )
+    births = [validate_birth(item) for item in raw_births]
+    if (
+        births
+        != sorted(births, key=lambda item: (item["pid"], item["start_time_ticks"]))
+        or len(
+            {
+                (item["pid"], item["start_time_ticks"], item["boot_id"])
+                for item in births
+            }
+        )
+        != len(births)
+        or ready_birth not in births
+    ):
+        raise OperatorError(
+            "R19 historical live descendant evidence differs"
+        )
+
+    raw_owned = supplied.get("observed_owned_containers")
+    if not isinstance(raw_owned, list):
+        raise OperatorError(
+            "R19 historical live owned-container evidence is invalid"
+        )
+    owned = [validate_docker_entry(item) for item in raw_owned]
+    if (
+        owned != sorted(owned, key=lambda item: item["container_id"])
+        or len({item["container_id"] for item in owned}) != len(owned)
+        or any(
+            item["runner_pid"] not in {birth["pid"] for birth in births}
+            for item in owned
+        )
+    ):
+        raise OperatorError(
+            "R19 historical live owned-container evidence differs"
+        )
+
+    before_docker = validate_docker_snapshot(supplied.get("before_docker"))
+    confirmed_docker = validate_docker_snapshot(
+        supplied.get("confirmed_before_docker")
+    )
+    before_detached = validate_detached_snapshot(
+        supplied.get("before_detached_effects")
+    )
+    confirmed_detached = validate_detached_snapshot(
+        supplied.get("confirmed_before_detached_effects")
+    )
+    terminal_docker_value = supplied.get("terminal_docker")
+    terminal_detached_value = supplied.get("terminal_detached_effects")
+    if (
+        not isinstance(terminal_docker_value, list)
+        or len(terminal_docker_value) != 2
+        or not isinstance(terminal_detached_value, list)
+        or len(terminal_detached_value) != 2
+    ):
+        raise OperatorError("R19 historical live terminal evidence is invalid")
+    terminal_docker = [
+        validate_docker_snapshot(item) for item in terminal_docker_value
+    ]
+    terminal_detached = [
+        validate_detached_snapshot(item) for item in terminal_detached_value
+    ]
+    _admit_r19_lifecycle_evidence_binding(
+        lifecycle_lock=lifecycle_lock,
+        ready=ready_value,
+        before_docker=before_docker,
+        before_detached=before_detached,
+    )
+    _r19_admit_stable_unrelated_baseline(
+        first_docker=before_docker,
+        confirmed_docker=confirmed_docker,
+        first_detached=before_detached,
+        confirmed_detached=confirmed_detached,
+        working_directory=Path("/sealed-checkout"),
+    )
+    baseline_ids = {
+        item["container_id"] for item in before_docker["entries"]
+    }
+    observation_times = [
+        int(before_docker["observed_at_ns"]),
+        int(before_detached["observed_at_ns"]),
+        int(confirmed_docker["observed_at_ns"]),
+        int(confirmed_detached["observed_at_ns"]),
+        int(exact_value["observed_at_ns"]),
+        int(terminal_docker[0]["observed_at_ns"]),
+        int(terminal_detached[0]["observed_at_ns"]),
+        int(terminal_docker[1]["observed_at_ns"]),
+        int(terminal_detached[1]["observed_at_ns"]),
+    ]
+    if (
+        _r19_snapshot_stable_value(before_docker)
+        != _r19_snapshot_stable_value(confirmed_docker)
+        or _r19_snapshot_stable_value(before_detached)
+        != _r19_snapshot_stable_value(confirmed_detached)
+        or any(
+            _r19_snapshot_stable_value(item)
+            != _r19_snapshot_stable_value(before_docker)
+            for item in terminal_docker
+        )
+        or any(
+            _r19_snapshot_stable_value(item)
+            != _r19_snapshot_stable_value(before_detached)
+            for item in terminal_detached
+        )
+        or any(item["container_id"] in baseline_ids for item in owned)
+        or observation_times != sorted(observation_times)
+    ):
+        raise OperatorError(
+            "R19 historical live baseline or terminal evidence differs"
+        )
+
+    unsigned = dict(supplied)
+    evidence_cid = str(unsigned.pop("evidence_cid", "") or "")
+    if evidence_cid != _identity(unsigned):
+        raise OperatorError("R19 historical live execution evidence CID differs")
+    return supplied
+
+
+@contextmanager
+def _r19_terminal_scope_guard(
+    *,
+    before_docker: Mapping[str, Any],
+    before_detached: Mapping[str, Any],
+) -> Any:
+    """Verify exact terminal scope on both success and exceptional exits."""
+
+    observations: dict[str, list[dict[str, Any]]] = {
+        "docker": [],
+        "detached": [],
+    }
+    try:
+        yield observations
+    finally:
+        for _sample in range(2):
+            observations["docker"].append(_r19_docker_scope_snapshot())
+            observations["detached"].append(
+                _r19_detached_effect_snapshot()
+            )
+            time.sleep(0.05)
+        if any(
+            _r19_snapshot_stable_value(item)
+            != _r19_snapshot_stable_value(before_docker)
+            for item in observations["docker"]
+        ) or any(
+            _r19_snapshot_stable_value(item)
+            != _r19_snapshot_stable_value(before_detached)
+            for item in observations["detached"]
+        ):
+            raise OperatorError(
+                "R19 historical live terminal scope differs from its "
+                "admitted baseline"
+            )
+
+
+def _run_r19_historical_live_validation(
+    declared: tuple[str, ...],
+    *,
+    timeout: float,
+    env: Mapping[str, str] | None,
+    cwd: Path | None,
+    executor_contract: Mapping[str, Any],
+) -> subprocess.CompletedProcess[str]:
+    """Replay R11 live without making its PID-1 watchdogs subreaper children."""
+
+    executor = _ASEH_RECEIPT_VALIDATION_EXECUTOR
+    if executor is None:
+        raise OperatorError("R19 historical live executor is unavailable")
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=declared,
+    )
+    active_policy = _ASEH_ACTIVE_R19_POLICY
+    if (
+        not isinstance(active_policy, dict)
+        or active_policy.get("consumed") is not False
+        or active_policy.get("executor_contract") != admitted_contract
+        or not isinstance(active_policy.get("policy_admission"), Mapping)
+        or not isinstance(
+            active_policy.get("lifecycle_lock_identity"), Mapping
+        )
+    ):
+        raise OperatorError(
+            "R19 historical live policy was not actively admitted"
+        )
+    policy_admission = _validate_r19_historical_live_policy_admission_record(
+        active_policy["policy_admission"]
+    )
+    lifecycle_lock_identity = _validate_r19_historical_live_lock_identity(
+        active_policy["lifecycle_lock_identity"]
+    )
+    authorizing_receipt_cid = active_policy.get("authorizing_receipt_cid")
+    active_policy_cid = str(policy_admission["policy_admission_cid"])
+    active_policy["consumed"] = True
+    if (
+        _r16_parent_is_child_subreaper()
+        or threading.current_thread() is not threading.main_thread()
+        or threading.active_count() != 1
+        or _r16_kernel_task_ids() != (os.getpid(),)
+        or timeout < 30.0
+    ):
+        raise OperatorError(
+            "R19 historical live validation cannot run under a subreaper, "
+            "concurrent thread set, or reduced timeout"
+        )
+    working_directory = (ROOT if cwd is None else cwd).resolve(strict=True)
+    logical_environment = (
+        json.loads(executor.base_environment_json)
+        if env is None
+        else dict(env)
+    )
+    if logical_environment != _r11_validation_environment(working_directory):
+        raise OperatorError("R19 historical live environment is not closed")
+    validation_subject_head = _git(
+        "rev-parse", "HEAD", cwd=working_directory
+    )
+    validation_subject_tree = _git(
+        "rev-parse", "HEAD^{tree}", cwd=working_directory
+    )
+    if (
+        working_directory != Path(logical_environment["PYTHONPATH"])
+        or validation_subject_head != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or validation_subject_tree != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+    ):
+        raise OperatorError("R19 historical live validation subject differs")
+    parsed = _parse_receipt_validation_python_command(
+        declared,
+        require_known=True,
+    )
+    if parsed is None:
+        raise OperatorError("R19 historical live command is not Python")
+    _validate_sealed_receipt_executor_capability(
+        executor,
+        boundary="before R19 historical live birth",
+        full=True,
+    )
+    _r16_admit_unprivileged_executable_path(Path("/usr/bin/env"))
+    interpreter_path = _trusted_receipt_validation_python()
+    interpreter_identity = _r16_admit_unprivileged_executable_fd(
+        executor.interpreter.descriptor,
+        expected_path=Path(interpreter_path).resolve(strict=True),
+    )
+    effective_environment = dict(logical_environment)
+    effective_environment.update(parsed[1])
+    environment_identity = _r11_command_environment_identity(
+        logical_environment,
+        declared,
+        checkout=working_directory,
+    )
+    authorization_witness = json.loads(executor.authorization_witness_json)
+    before_docker = _r19_docker_scope_snapshot()
+    before_detached = _r19_detached_effect_snapshot()
+    time.sleep(0.05)
+    confirmed_docker = _r19_docker_scope_snapshot()
+    confirmed_detached = _r19_detached_effect_snapshot()
+    _r19_admit_stable_unrelated_baseline(
+        first_docker=before_docker,
+        confirmed_docker=confirmed_docker,
+        first_detached=before_detached,
+        confirmed_detached=confirmed_detached,
+        working_directory=working_directory,
+    )
+    baseline_docker_entries = before_docker["entries"]
+    ready_read = ready_write = release_read = release_write = -1
+    process: subprocess.Popen[bytes] | None = None
+    process_start: int | None = None
+    observed_births: dict[tuple[int, int, str], dict[str, Any]] = {}
+    observed_owned_containers: dict[str, dict[str, Any]] = {}
+    ready: dict[str, Any] = {}
+    exact_execution: dict[str, Any] = {}
+    stdout = stderr = b""
+    returncode = 78
+    with _r19_terminal_scope_guard(
+        before_docker=before_docker,
+        before_detached=before_detached,
+    ) as terminal_scope, tempfile.TemporaryDirectory(
+        prefix="aseh-r19-historical-live-"
+    ) as raw:
+        temporary_root = Path(raw)
+        stdout_path = temporary_root / "stdout.log"
+        stderr_path = temporary_root / "stderr.log"
+        try:
+            ready_read, ready_write = os.pipe2(getattr(os, "O_CLOEXEC", 0))
+            release_read, release_write = os.pipe2(
+                getattr(os, "O_CLOEXEC", 0)
+            )
+            parent_start = _r16_process_start_time_ticks(os.getpid())
+            parent_boot = _r16_boot_id()
+            physical_argv = (
+                interpreter_path,
+                str(
+                    ROOT
+                    / "scripts/run_agent_supervisor_efficiency_state_hardening.py"
+                ),
+                ASEH_R19_HISTORICAL_LIVE_LAUNCHER_COMMAND,
+                "--ready-fd",
+                str(ready_write),
+                "--release-fd",
+                str(release_read),
+                "--logical-argv-sha256",
+                _identity(list(declared)),
+                "--candidate-head",
+                validation_subject_head,
+                "--candidate-tree",
+                validation_subject_tree,
+                "--expected-parent-pid",
+                str(os.getpid()),
+                "--expected-parent-start-time-ticks",
+                str(parent_start),
+                "--expected-parent-boot-id",
+                parent_boot,
+            )
+            with stdout_path.open("xb") as stdout_stream, stderr_path.open(
+                "xb"
+            ) as stderr_stream:
+                process = subprocess.Popen(
+                    physical_argv,
+                    executable=interpreter_path,
+                    cwd=working_directory,
+                    env=logical_environment,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stdout_stream,
+                    stderr=stderr_stream,
+                    start_new_session=True,
+                    pass_fds=(ready_write, release_read),
+                )
+                process_start = _dedicated_process_group_birth(process)
+                os.close(ready_write)
+                ready_write = -1
+                os.close(release_read)
+                release_read = -1
+                deadline = time.monotonic() + timeout
+                ready_payload = _read_bounded_pipe(
+                    ready_read,
+                    deadline=min(deadline, time.monotonic() + 30.0),
+                    maximum=65536,
+                    stop_at_newline=True,
+                )
+                os.close(ready_read)
+                ready_read = -1
+                try:
+                    ready = json.loads(ready_payload)
+                except (UnicodeError, json.JSONDecodeError) as exc:
+                    raise OperatorError(
+                        "R19 historical live readiness is invalid"
+                    ) from exc
+                unsigned_ready = dict(ready)
+                ready_cid = str(unsigned_ready.pop("ready_cid", "") or "")
+                if (
+                    ready_cid != _identity(unsigned_ready)
+                    or ready.get("schema")
+                    != ASEH_R19_HISTORICAL_LIVE_READY_SCHEMA
+                    or ready.get("logical_argv_sha256")
+                    != _identity(list(declared))
+                    or ready.get("candidate_head") != validation_subject_head
+                    or ready.get("candidate_tree") != validation_subject_tree
+                    or ready.get("pid") != process.pid
+                    or ready.get("start_time_ticks") != process_start
+                    or ready.get("boot_id") != parent_boot
+                    or ready.get("parent_pid") != os.getpid()
+                    or ready.get("parent_start_time_ticks") != parent_start
+                    or ready.get("parent_loss_signal") != "SIGKILL"
+                    or ready.get("child_subreaper") is not False
+                    or process.poll() is not None
+                ):
+                    raise OperatorError(
+                        "R19 historical live readiness differs"
+                    )
+                os.write(release_write, b"1")
+                os.close(release_write)
+                release_write = -1
+                execution_deadline = min(deadline, time.monotonic() + 10.0)
+                expected_argv = [interpreter_path, *parsed[2]]
+                while time.monotonic() < execution_deadline:
+                    if process.poll() is not None:
+                        break
+                    try:
+                        observed_execution = (
+                            _r16_exact_process_execution_identity(
+                                process.pid,
+                                expected_birth={
+                                    "pid": process.pid,
+                                    "start_time_ticks": process_start,
+                                    "boot_id": parent_boot,
+                                    "parent_pid": os.getpid(),
+                                },
+                                expected_executable_fd=(
+                                    executor.interpreter.descriptor
+                                ),
+                                expected_executable_path=Path(
+                                    interpreter_path
+                                ).resolve(strict=True),
+                                expected_argv=expected_argv,
+                                expected_environment=effective_environment,
+                            )
+                        )
+                        exact_execution = {
+                            **observed_execution,
+                            "argv": expected_argv,
+                            "argv_sha256": _identity(expected_argv),
+                        }
+                    except OperatorError:
+                        time.sleep(0.01)
+                        continue
+                    break
+                if not exact_execution:
+                    raise OperatorError(
+                        "R19 historical live exact execution was not observed"
+                    )
+                next_docker_observation = 0.0
+                while process.poll() is None:
+                    if time.monotonic() >= deadline:
+                        raise subprocess.TimeoutExpired(physical_argv, timeout)
+                    for birth in _r19_descendant_births(process.pid):
+                        observed_births[
+                            (
+                                int(birth["pid"]),
+                                int(birth["start_time_ticks"]),
+                                str(birth["boot_id"]),
+                            )
+                        ] = birth
+                    now = time.monotonic()
+                    if now >= next_docker_observation:
+                        docker_snapshot = _r19_docker_scope_snapshot()
+                        live_pids = {
+                            int(item["pid"])
+                            for item in observed_births.values()
+                        }
+                        for item in docker_snapshot["entries"]:
+                            if (
+                                item not in baseline_docker_entries
+                                and int(item["runner_pid"]) in live_pids
+                            ):
+                                observed_owned_containers[
+                                    str(item["container_id"])
+                                ] = dict(item)
+                        next_docker_observation = now + 0.5
+                    time.sleep(0.05)
+                returncode = int(process.wait(timeout=10.0))
+        except subprocess.TimeoutExpired as exc:
+            raise OperatorError("R19 historical live validation timed out") from exc
+        finally:
+            try:
+                if process is not None:
+                    _terminate_dedicated_process_group(
+                        process,
+                        start_time_ticks=process_start,
+                        grace_seconds=0.0,
+                        graceful=False,
+                    )
+            finally:
+                for descriptor in (
+                    ready_read,
+                    ready_write,
+                    release_read,
+                    release_write,
+                ):
+                    if descriptor >= 0:
+                        try:
+                            os.close(descriptor)
+                        except OSError:
+                            pass
+        for path in (stdout_path, stderr_path):
+            if path.stat().st_size > 64 * 1024 * 1024:
+                raise OperatorError("R19 historical live output is oversized")
+        stdout = stdout_path.read_bytes()
+        stderr = stderr_path.read_bytes()
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        read_process_birth,
+    )
+
+    live_observed_descendants: list[dict[str, Any]] = []
+    for birth in observed_births.values():
+        observed = read_process_birth(int(birth["pid"]))
+        if (
+            observed is not None
+            and observed.pid == int(birth["pid"])
+            and observed.start_time_ticks == int(birth["start_time_ticks"])
+            and observed.boot_id == str(birth["boot_id"])
+        ):
+            live_observed_descendants.append(observed.to_dict())
+    if live_observed_descendants:
+        raise OperatorError(
+            "R19 historical live observed descendant survived its fence"
+        )
+    terminal_docker = terminal_scope["docker"]
+    terminal_detached = terminal_scope["detached"]
+    _validate_sealed_receipt_executor_capability(
+        executor,
+        boundary="after R19 historical live terminal cleanup",
+        full=True,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=executor.candidate_head,
+        expected_tree=executor.candidate_tree,
+        boundary="after R19 historical live terminal cleanup",
+    )
+    stdout_digest = _identity(stdout)
+    stderr_digest = _identity(stderr)
+    try:
+        stdout_text = stdout.decode("utf-8", errors="strict")
+        stderr_text = stderr.decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise OperatorError("R19 historical live output is not UTF-8") from exc
+    evidence: dict[str, Any] = {
+        "schema": ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA,
+        "executor_class": ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS,
+        "executor_contract_cid": _identity(admitted_contract),
+        "active_policy_cid": active_policy_cid,
+        "authorizing_receipt_cid": authorizing_receipt_cid,
+        "lifecycle_lock_identity": lifecycle_lock_identity,
+        "logical_argv": list(declared),
+        "logical_argv_sha256": _identity(list(declared)),
+        "declared_command_executed": True,
+        "validation_subject_head": validation_subject_head,
+        "validation_subject_tree": validation_subject_tree,
+        "policy_candidate_head": executor.candidate_head,
+        "policy_candidate_tree": executor.candidate_tree,
+        "policy_candidate_authorization_witness_cid": _identity(
+            authorization_witness
+        ),
+        "environment_identity": environment_identity,
+        "interpreter_identity": interpreter_identity,
+        "ready": ready,
+        "exact_execution": exact_execution,
+        "observed_descendant_births": sorted(
+            observed_births.values(),
+            key=lambda item: (item["pid"], item["start_time_ticks"]),
+        ),
+        "observed_owned_containers": sorted(
+            observed_owned_containers.values(),
+            key=lambda item: item["container_id"],
+        ),
+        "terminal_live_observed_descendants": [],
+        "before_docker": before_docker,
+        "confirmed_before_docker": confirmed_docker,
+        "before_detached_effects": before_detached,
+        "confirmed_before_detached_effects": confirmed_detached,
+        "terminal_docker": terminal_docker,
+        "terminal_detached_effects": terminal_detached,
+        "dedicated_group_fenced": True,
+        "returncode": returncode,
+        "stdout_digest": stdout_digest,
+        "stderr_digest": stderr_digest,
+        "terminal_class": (
+            "verified_success" if returncode == 0 else "verified_failure"
+        ),
+    }
+    evidence["evidence_cid"] = _identity(evidence)
+    completed = subprocess.CompletedProcess(
+        declared,
+        returncode,
+        stdout_text,
+        stderr_text,
+    )
+    completed.aseh_historical_live_evidence = evidence
+    completed.aseh_historical_live_stdout_digest = stdout_digest
+    completed.aseh_historical_live_stderr_digest = stderr_digest
+    return completed
+
+
+def _qualify_r19_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Run and admit the exact historical live route under one typed fence."""
+
+    executor_contract = _r19_sealed_receipt_validation_executor_contract()
+    computed_policy = _r19_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+    )
+    policy = (
+        computed_policy
+        if policy_admission is None
+        else _admit_r19_historical_live_policy_admission(
+            policy_admission,
+            bootstrap_receipt_id=bootstrap_receipt_id,
+            prior_chain=prior_chain,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=(
+                candidate_authorization_witness
+            ),
+            executor_contract=executor_contract,
+        )
+    )
+    command = _r11_historical_live_docker_command()
+    with _offline_database_guard(paths), _exact_candidate_validation_checkout(
+        candidate_head=ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        candidate_tree=ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    ) as (checkout, validation_environment):
+        environment_identity = _r11_command_environment_identity(
+            validation_environment,
+            command,
+            checkout=checkout,
+        )
+        with _r19_historical_live_lifecycle_guard(paths) as lifecycle_lock:
+            with _r19_active_policy_scope(
+                policy_admission=policy,
+                executor_contract=executor_contract,
+                authorizing_receipt_cid=authorizing_receipt_cid,
+                lifecycle_lock_identity=lifecycle_lock,
+            ):
+                completed = _run(
+                    command,
+                    timeout=900.0,
+                    env=validation_environment,
+                    cwd=checkout,
+                    executor_contract=executor_contract,
+                )
+            evidence = getattr(
+                completed,
+                "aseh_historical_live_evidence",
+                None,
+            )
+            stdout_digest = getattr(
+                completed,
+                "aseh_historical_live_stdout_digest",
+                None,
+            )
+            stderr_digest = getattr(
+                completed,
+                "aseh_historical_live_stderr_digest",
+                None,
+            )
+            if (
+                not isinstance(evidence, Mapping)
+                or not isinstance(stdout_digest, str)
+                or not isinstance(stderr_digest, str)
+            ):
+                raise OperatorError(
+                    "R19 historical live typed evidence is absent"
+                )
+            admitted_evidence = (
+                _validate_r19_historical_live_execution_evidence(
+                    evidence,
+                    policy_admission=policy,
+                    bootstrap_receipt_id=bootstrap_receipt_id,
+                    prior_chain=prior_chain,
+                    candidate_head=candidate_head,
+                    candidate_tree=candidate_tree,
+                    candidate_authorization_witness=(
+                        candidate_authorization_witness
+                    ),
+                    executor_contract=executor_contract,
+                    environment_identity=environment_identity,
+                    returncode=int(completed.returncode),
+                    stdout_digest=stdout_digest,
+                    stderr_digest=stderr_digest,
+                    authorizing_receipt_cid=authorizing_receipt_cid,
+                )
+            )
+            if completed.returncode != 0:
+                raise OperatorError(
+                    "R19 historical live qualification failed"
+                )
+    return policy, admitted_evidence
+
+
 def _run(
     argv: Sequence[str],
     *,
@@ -8357,6 +11065,22 @@ def _run(
         argv,
         require_known=_ASEH_RECEIPT_VALIDATION_EXECUTOR is not None,
     )
+    if (
+        _ASEH_RECEIPT_VALIDATION_EXECUTOR is not None
+        and _ASEH_ACTIVE_R19_POLICY is not None
+        and tuple(argv) == _r11_historical_live_docker_command()
+    ):
+        return _run_r19_historical_live_validation(
+            tuple(argv),
+            timeout=timeout,
+            env=env,
+            cwd=cwd,
+            executor_contract=(
+                _ASEH_ACTIVE_R19_POLICY["executor_contract"]
+                if executor_contract is None
+                else executor_contract
+            ),
+        )
     if (
         executor_contract is not None
         and tuple(argv) == _r16_production_lifecycle_live_command()
@@ -8844,6 +11568,39 @@ def _admit_exact_r18_transition_chain(
     return chain
 
 
+def _admit_exact_r19_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit the complete ordered and adjacent-linked R1-R19 chain."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R19_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R19 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R19_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R19 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R19 repair transition chain differs")
+        chain.append(item)
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -9065,6 +11822,35 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R18 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [
+        REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r19_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r18_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r18_admitted.get("repair_head")
+            != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r18_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r18_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current R19 candidate lacks its exact admitted validation seal"
+            )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -9228,6 +12014,17 @@ def _r18_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS[-2]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r19_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R19 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS[-2]
     ):
         return "candidate_authorization_worktree"
     return "immutable_candidate_checkout"
@@ -10363,16 +13160,23 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     authorization_witness: Mapping[str, str],
     _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16-R18 repair matrix against committed bytes."""
+    """Run the bounded R16-R19 repair matrix against committed bytes."""
 
-    if _revision not in {16, 17, 18}:
+    if _revision not in {16, 17, 18, 19}:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 18:
+    if _revision == 19:
+        matrix = REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r19_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r19_validation_working_tree_scope
+        executor_class_for = _r19_validation_executor_class
+    elif _revision == 18:
         matrix = REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS
         executor_contract_value = (
             _r18_sealed_receipt_validation_executor_contract()
@@ -10664,6 +13468,22 @@ def _run_repair_process_census_disappearance_transition_validations(
     )
 
 
+def _run_repair_historical_lifecycle_route_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R19 suffix through the existing typed executors."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=19,
+    )
+
+
 def _observe_repair_provider_cleanup_fence_known_baseline(
 ) -> dict[str, Any]:
     """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
@@ -10939,6 +13759,16 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-process-census-disappearance-transition.json"
+    )
+    result["repair_historical_lifecycle_route_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-historical-lifecycle-route-transition.json"
+    )
+    result["r19_historical_live_lifecycle_lock"] = (
+        result["evidence"]
+        / "bootstrap"
+        / ".r19-historical-live-lifecycle.lock"
     )
     result["repair_transition_authorization_lock"] = (
         result["evidence"]
@@ -12889,6 +15719,24 @@ def _validate_repair_process_census_disappearance_transition(
         previous_receipt=previous_receipt,
         rerun_validations=rerun_validations,
         _revision=18,
+    )
+
+
+def _validate_repair_historical_lifecycle_route_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 19 chained to the immutable R18 receipt."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=19,
     )
 
 
@@ -15572,12 +18420,37 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     rerun_validations: bool,
     _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit one immutable transition in the exact R16-R18 suffix."""
+    """Admit one immutable transition in the exact R16-R19 suffix."""
 
-    if _revision not in {16, 17, 18}:
+    if _revision not in {16, 17, 18, 19}:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 18:
+    if _revision == 19:
+        receipt_id = _repair_historical_lifecycle_route_transition_receipt_id(
+            receipt
+        )
+        previous_receipt_id = (
+            _repair_process_census_disappearance_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = (
+            REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD
+        )
+        changed_paths_value = (
+            REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_AUTHORITY
+        )
+        commands = REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r19_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SCHEMA
+        executor_class_for = _r19_validation_executor_class
+        scope_for = _r19_validation_working_tree_scope
+    elif _revision == 18:
         receipt_id = (
             _repair_process_census_disappearance_transition_receipt_id(
                 receipt
@@ -15971,6 +18844,247 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         ),
         "receipt_cid": receipt_id,
     }
+
+
+def _load_exact_r18_receipt_chain(
+    paths: Mapping[str, Path],
+) -> list[Mapping[str, Any]]:
+    """Load and self-CID-admit the exact raw R1-R18 receipt chain."""
+
+    specifications = (
+        ("repair_transition_receipt", _repair_transition_receipt_id),
+        (
+            "repair_followup_transition_receipt",
+            _repair_followup_transition_receipt_id,
+        ),
+        (
+            "repair_clean_launch_transition_receipt",
+            _repair_clean_launch_transition_receipt_id,
+        ),
+        (
+            "repair_runtime_hardening_transition_receipt",
+            _repair_runtime_hardening_transition_receipt_id,
+        ),
+        (
+            "repair_quack_recovery_transition_receipt",
+            _repair_quack_recovery_transition_receipt_id,
+        ),
+        (
+            "repair_parallel_blocked_startup_transition_receipt",
+            _repair_parallel_blocked_startup_transition_receipt_id,
+        ),
+        (
+            "repair_quack_publication_contention_transition_receipt",
+            _repair_quack_publication_contention_transition_receipt_id,
+        ),
+        (
+            "repair_quack_recovery_replay_transition_receipt",
+            _repair_quack_recovery_replay_transition_receipt_id,
+        ),
+        (
+            "repair_control_receipt_lifecycle_transition_receipt",
+            _repair_control_receipt_lifecycle_transition_receipt_id,
+        ),
+        (
+            "repair_provider_lease_ownership_transition_receipt",
+            _repair_provider_lease_ownership_transition_receipt_id,
+        ),
+        (
+            "repair_provider_cleanup_fence_transition_receipt",
+            _repair_provider_cleanup_fence_transition_receipt_id,
+        ),
+        (
+            "repair_sealed_owner_identity_transition_receipt",
+            _repair_sealed_owner_identity_transition_receipt_id,
+        ),
+        (
+            "repair_validation_executor_identity_transition_receipt",
+            _repair_validation_executor_identity_transition_receipt_id,
+        ),
+        (
+            "repair_sealed_receipt_validation_transition_receipt",
+            _repair_sealed_receipt_validation_transition_receipt_id,
+        ),
+        (
+            "repair_sealed_owner_module_registration_transition_receipt",
+            _repair_sealed_owner_module_registration_transition_receipt_id,
+        ),
+        (
+            "repair_docker_create_readiness_vendor_resolver_transition_receipt",
+            _repair_docker_create_readiness_vendor_resolver_transition_receipt_id,
+        ),
+        (
+            "repair_provider_execution_identity_transition_receipt",
+            _repair_provider_execution_identity_transition_receipt_id,
+        ),
+        (
+            "repair_process_census_disappearance_transition_receipt",
+            _repair_process_census_disappearance_transition_receipt_id,
+        ),
+    )
+    chain: list[Mapping[str, Any]] = []
+    for key, admit_receipt_id in specifications:
+        path = paths.get(key)
+        if not isinstance(path, Path) or not path.is_file():
+            raise OperatorError("R19 historical live prior chain is absent")
+        receipt = _secure_runtime_json(
+            path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        admit_receipt_id(receipt)
+        chain.append(receipt)
+    return _admit_exact_r18_transition_chain(chain)
+
+
+def _admit_active_r19_policy_identity(
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit the immutable R19 receipt before its live route can execute."""
+
+    r18_path = paths.get(
+        "repair_process_census_disappearance_transition_receipt"
+    )
+    r19_path = paths.get(
+        "repair_historical_lifecycle_route_transition_receipt"
+    )
+    if (
+        not isinstance(r18_path, Path)
+        or not r18_path.is_file()
+        or not isinstance(r19_path, Path)
+        or not r19_path.is_file()
+    ):
+        raise OperatorError("active R19 historical-live policy is absent")
+    prior_chain = _load_exact_r18_receipt_chain(paths)
+    r18_receipt = prior_chain[-1]
+    r19_receipt = _secure_runtime_json(
+        r19_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    transition = _validate_repair_historical_lifecycle_route_transition(
+        r19_receipt,
+        bootstrap=bootstrap,
+        previous_receipt=r18_receipt,
+        rerun_validations=False,
+    )
+    current_head = str(population.get("source_head") or "")
+    current_tree = str(population.get("repository_tree_id") or "")
+    if (
+        current_head != transition.get("repair_head")
+        or current_tree != transition.get("repair_tree")
+    ):
+        raise OperatorError(
+            "active R19 historical-live policy does not bind the current tree"
+        )
+    contract = transition.get("sealed_validation_executor_contract")
+    expected = _r19_sealed_receipt_validation_executor_contract()
+    policy_value = r19_receipt.get("historical_live_policy_admission")
+    witness = transition.get("candidate_authorization_witness")
+    if not isinstance(witness, Mapping):
+        raise OperatorError("active R19 historical-live witness is absent")
+    policy = _admit_r19_historical_live_policy_admission(
+        policy_value if isinstance(policy_value, Mapping) else {},
+        bootstrap_receipt_id=_bootstrap_receipt_id(bootstrap),
+        prior_chain=prior_chain,
+        candidate_head=str(transition["repair_head"]),
+        candidate_tree=str(transition["repair_tree"]),
+        candidate_authorization_witness=witness,
+        executor_contract=expected,
+    )
+    stored_evidence = r19_receipt.get(
+        "historical_live_execution_evidence"
+    )
+    if not isinstance(stored_evidence, Mapping):
+        raise OperatorError(
+            "active R19 historical-live execution evidence is absent"
+        )
+    _validate_r19_historical_live_execution_evidence(
+        stored_evidence,
+        policy_admission=policy,
+        bootstrap_receipt_id=_bootstrap_receipt_id(bootstrap),
+        prior_chain=prior_chain,
+        candidate_head=str(transition["repair_head"]),
+        candidate_tree=str(transition["repair_tree"]),
+        candidate_authorization_witness=witness,
+        executor_contract=expected,
+        environment_identity=_r11_command_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            _r11_historical_live_docker_command(),
+            checkout=Path("/sealed-checkout"),
+        ),
+        returncode=int(stored_evidence.get("returncode", 78)),
+        stdout_digest=str(stored_evidence.get("stdout_digest") or ""),
+        stderr_digest=str(stored_evidence.get("stderr_digest") or ""),
+        authorizing_receipt_cid=None,
+    )
+    receipt_cid = _repair_historical_lifecycle_route_transition_receipt_id(
+        r19_receipt
+    )
+    if contract != expected:
+        raise OperatorError("active R19 historical-live policy differs")
+    result = dict(transition)
+    result["active_policy_cid"] = policy["policy_admission_cid"]
+    result["historical_live_policy_admission"] = policy
+    result["authorizing_receipt_cid"] = receipt_cid
+    result["prior_receipt_chain"] = prior_chain
+    return result
+
+
+def _r19_population_requires_policy(
+    population: Mapping[str, Any],
+) -> bool:
+    """Recognize the exact committed R19 child before its receipt exists."""
+
+    head = str(population.get("source_head") or "")
+    tree = str(population.get("repository_tree_id") or "")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    return (
+        _git("show", "-s", "--format=%P", head).split()
+        == [REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD]
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(
+            REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD,
+            head,
+        )
+        == REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_CHANGED_PATHS
+    )
+
+
+def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
+    receipt: Mapping[str, Any],
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Defer the live rerun until the complete R1-R19 chain is admitted."""
+
+    r19_path = paths.get(
+        "repair_historical_lifecycle_route_transition_receipt"
+    )
+    if (
+        not isinstance(r19_path, Path)
+        or not r19_path.is_file()
+    ) and not _r19_population_requires_policy(population):
+        return _validate_repair_provider_cleanup_fence_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=True,
+        )
+    return _validate_repair_provider_cleanup_fence_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
 
 
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
@@ -17631,11 +20745,27 @@ def _authorize_repair_process_census_disappearance_transition_if_applicable(
             str(transition["repair_head"]),
             head,
         )
+        expected_chain = [*prior_chain, receipt]
+        r19_authorization = (
+            _authorize_repair_historical_lifecycle_route_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r19_authorization is not None:
+            return r19_authorization
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = current_admission.get("repair_transition_chain")
         admitted_continuity = current_admission.get("canonical_continuity")
-        expected_chain = [*prior_chain, receipt]
         exact_chain = _admit_exact_r18_transition_chain(admitted_chain)
         if (
             not isinstance(admitted_repair, Mapping)
@@ -17760,6 +20890,235 @@ def _authorize_repair_process_census_disappearance_transition_if_applicable(
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R18 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_historical_lifecycle_route_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one bounded R19 child after the admitted R18 chain."""
+
+    r19_path = paths.get(
+        "repair_historical_lifecycle_route_transition_receipt"
+    )
+    if not isinstance(r19_path, Path):
+        return None
+    prior_chain = _admit_exact_r18_transition_chain(
+        list(prior_receipt_chain)
+    )
+    prior_receipt = prior_chain[-1]
+    transition_binding_fields = (
+        "schema",
+        "task_id",
+        "transition_revision",
+        "base_head",
+        "base_tree",
+        "repair_head",
+        "repair_tree",
+        "changed_paths",
+        "patch_digest",
+        "previous_receipt_cid",
+        "candidate_authorization_witness",
+        "sealed_validation_executor_contract",
+        "receipt_cid",
+    )
+    if (
+        prior_receipt != previous_receipt
+        or any(
+            previous_transition.get(field) != prior_receipt.get(field)
+            for field in transition_binding_fields
+        )
+        or previous_transition.get("repair_head")
+        != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError(
+            "bootstrap repair historical-lifecycle-route prior chain differs"
+        )
+    if r19_path.is_file():
+        receipt = _secure_runtime_json(
+            r19_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = _validate_repair_historical_lifecycle_route_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=receipt.get("repair_head") == head,
+        )
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition["repair_head"]),
+            head,
+        )
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = current_admission.get("repair_transition_chain")
+        admitted_continuity = current_admission.get("canonical_continuity")
+        expected_chain = [*prior_chain, receipt]
+        exact_chain = _admit_exact_r19_transition_chain(admitted_chain)
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head")
+            != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in exact_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or "process_census_disappearance_to_historical_lifecycle_route"
+            not in admitted_continuity
+        ):
+            raise OperatorError(
+                "current admission does not retain the historical-lifecycle-"
+                "route repair transition"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission[
+                "runtime_source_head"
+            ],
+        }
+    parents = _git("show", "-s", "--format=%P", head).split()
+    base_head = REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD
+    if parents != [base_head]:
+        return None
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair historical-lifecycle-route changed-path set "
+            "differs"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    validation_results = (
+        _run_repair_historical_lifecycle_route_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R19 validation before receipt publication",
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r19_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R19 live qualification before receipt publication",
+    )
+    receipt = {
+        "schema": REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R19"
+        ),
+        "program_id": PROGRAM,
+        "transition_revision": 19,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": _git("rev-parse", f"{base_head}^{{tree}}"),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R18"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r19_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": historical_policy,
+        "historical_live_execution_evidence": historical_evidence,
+        "terminal_success_criteria": (
+            REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_historical_lifecycle_route_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R19 receipt publication",
+    )
+    _atomic_json_create(
+        r19_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R19 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -20080,6 +23439,7 @@ def _admit_materialized_launch(
     continuity: dict[str, Any] = {}
     repair_transition: dict[str, Any] = {}
     repair_transition_chain: list[dict[str, Any]] = []
+    historical_live_launch_evidence: dict[str, Any] | None = None
     if exact_bootstrap:
         with _offline_database_guard(paths):
             projection_matches = _projection_matches_events_on_disposable_copy(
@@ -20194,6 +23554,9 @@ def _admit_materialized_launch(
             process_census_disappearance_transition: (
                 dict[str, Any] | None
             ) = None
+            historical_lifecycle_route_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -20203,6 +23566,7 @@ def _admit_materialized_launch(
             r16_receipt: dict[str, Any] | None = None
             r17_receipt: dict[str, Any] | None = None
             r18_receipt: dict[str, Any] | None = None
+            r19_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -20487,13 +23851,14 @@ def _admit_materialized_launch(
                                                     )
                                                 )
                                                 provider_cleanup_fence_transition = (
-                                                    _validate_repair_provider_cleanup_fence_transition(
+                                                    _validate_repair_provider_cleanup_fence_with_active_r19_policy(
                                                         cleanup_fence_receipt,
+                                                        paths=paths,
+                                                        population=population,
                                                         bootstrap=bootstrap,
                                                         previous_receipt=(
                                                             provider_lease_receipt
                                                         ),
-                                                        rerun_validations=True,
                                                     )
                                                 )
                                                 if (
@@ -20866,6 +24231,62 @@ def _admit_materialized_launch(
                                                                             active_transition = (
                                                                                 process_census_disappearance_transition
                                                                             )
+                                                                            r19_path = paths.get(
+                                                                                "repair_historical_lifecycle_route_transition_receipt"
+                                                                            )
+                                                                            if (
+                                                                                isinstance(
+                                                                                    r19_path,
+                                                                                    Path,
+                                                                                )
+                                                                                and r19_path.is_file()
+                                                                            ):
+                                                                                r19_receipt = (
+                                                                                    _secure_runtime_json(
+                                                                                        r19_path,
+                                                                                        max_bytes=(
+                                                                                            STATUS_RECEIPT_MAX_BYTES
+                                                                                        ),
+                                                                                    )
+                                                                                )
+                                                                                historical_lifecycle_route_transition = (
+                                                                                    _validate_repair_historical_lifecycle_route_transition(
+                                                                                        r19_receipt,
+                                                                                        bootstrap=bootstrap,
+                                                                                        previous_receipt=(
+                                                                                            r18_receipt
+                                                                                        ),
+                                                                                        rerun_validations=(
+                                                                                            r19_receipt.get(
+                                                                                                "repair_head"
+                                                                                            )
+                                                                                            == population[
+                                                                                                "source_head"
+                                                                                            ]
+                                                                                        ),
+                                                                                    )
+                                                                                )
+                                                                                if (
+                                                                                    historical_lifecycle_route_transition[
+                                                                                        "base_head"
+                                                                                    ]
+                                                                                    != process_census_disappearance_transition[
+                                                                                        "repair_head"
+                                                                                    ]
+                                                                                ):
+                                                                                    raise OperatorError(
+                                                                                        "historical-lifecycle-route repair does not extend revision 18"
+                                                                                    )
+                                                                                active_transition = (
+                                                                                    historical_lifecycle_route_transition
+                                                                                )
+            if (
+                historical_lifecycle_route_transition is None
+                and _r19_population_requires_policy(population)
+            ):
+                raise OperatorError(
+                    "active R19 historical-live policy receipt is absent"
+                )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -20937,6 +24358,69 @@ def _admit_materialized_launch(
                 repair_transition_chain.append(
                     process_census_disappearance_transition
                 )
+            if historical_lifecycle_route_transition is not None:
+                repair_transition_chain.append(
+                    historical_lifecycle_route_transition
+                )
+                exact_r19_chain = _admit_exact_r19_transition_chain(
+                    repair_transition_chain
+                )
+                active_policy = _admit_active_r19_policy_identity(
+                    paths=paths,
+                    population=population,
+                    bootstrap=bootstrap,
+                )
+                raw_prior_chain = active_policy.get("prior_receipt_chain")
+                policy_admission = active_policy.get(
+                    "historical_live_policy_admission"
+                )
+                authorizing_receipt_cid = active_policy.get(
+                    "authorizing_receipt_cid"
+                )
+                if (
+                    not isinstance(raw_prior_chain, list)
+                    or not isinstance(policy_admission, Mapping)
+                    or not isinstance(authorizing_receipt_cid, str)
+                    or r19_receipt is None
+                    or authorizing_receipt_cid
+                    != r19_receipt.get("receipt_cid")
+                    or [item.get("receipt_cid") for item in exact_r19_chain]
+                    != [
+                        *(item.get("receipt_cid") for item in raw_prior_chain),
+                        r19_receipt.get("receipt_cid"),
+                    ]
+                ):
+                    raise OperatorError(
+                        "R19 historical live full-chain policy differs"
+                    )
+                admitted_policy, historical_live_launch_evidence = (
+                    _qualify_r19_historical_live_policy(
+                        paths=paths,
+                        bootstrap_receipt_id=receipt_id,
+                        prior_chain=raw_prior_chain,
+                        candidate_head=str(
+                            historical_lifecycle_route_transition[
+                                "repair_head"
+                            ]
+                        ),
+                        candidate_tree=str(
+                            historical_lifecycle_route_transition[
+                                "repair_tree"
+                            ]
+                        ),
+                        candidate_authorization_witness=(
+                            historical_lifecycle_route_transition[
+                                "candidate_authorization_witness"
+                            ]
+                        ),
+                        policy_admission=policy_admission,
+                        authorizing_receipt_cid=authorizing_receipt_cid,
+                    )
+                )
+                if admitted_policy != policy_admission:
+                    raise OperatorError(
+                        "R19 historical live admitted policy changed"
+                    )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -21006,6 +24490,10 @@ def _admit_materialized_launch(
                 continuity[
                     "provider_execution_identity_to_process_census_disappearance"
                 ] = process_census_disappearance_transition
+            if historical_lifecycle_route_transition is not None:
+                continuity[
+                    "process_census_disappearance_to_historical_lifecycle_route"
+                ] = historical_lifecycle_route_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -21038,6 +24526,16 @@ def _admit_materialized_launch(
         "task_statuses": dict(integrity["task_statuses"]),
         "task_revisions": dict(integrity["task_revisions"]),
     }
+    if historical_live_launch_evidence is not None:
+        admission["historical_live_launch_evidence_cid"] = (
+            historical_live_launch_evidence["evidence_cid"]
+        )
+        admission["historical_live_authorizing_receipt_cid"] = (
+            historical_live_launch_evidence["authorizing_receipt_cid"]
+        )
+        admission["historical_live_policy_admission_cid"] = (
+            historical_live_launch_evidence["active_policy_cid"]
+        )
     admission["admission_cid"] = _identity(admission)
     return admission
 
@@ -24775,6 +28273,32 @@ def main(argv: list[str] | None = None) -> int:
     provider_start_launcher.add_argument(
         "--expected-parent-boot-id", required=True
     )
+    historical_live_launcher = commands.add_parser(
+        ASEH_R19_HISTORICAL_LIVE_LAUNCHER_COMMAND,
+        help=argparse.SUPPRESS,
+    )
+    historical_live_launcher.add_argument(
+        "--ready-fd", required=True, type=int
+    )
+    historical_live_launcher.add_argument(
+        "--release-fd", required=True, type=int
+    )
+    historical_live_launcher.add_argument(
+        "--logical-argv-sha256", required=True
+    )
+    historical_live_launcher.add_argument("--candidate-head", required=True)
+    historical_live_launcher.add_argument("--candidate-tree", required=True)
+    historical_live_launcher.add_argument(
+        "--expected-parent-pid", required=True, type=int
+    )
+    historical_live_launcher.add_argument(
+        "--expected-parent-start-time-ticks",
+        required=True,
+        type=int,
+    )
+    historical_live_launcher.add_argument(
+        "--expected-parent-boot-id", required=True
+    )
     run = commands.add_parser("run")
     run.add_argument("--implement", action=argparse.BooleanOptionalAction, default=True)
     run.add_argument("--duration-seconds", type=float, default=float("inf"))
@@ -24805,6 +28329,19 @@ def main(argv: list[str] | None = None) -> int:
                 docker_bin=args.docker_bin,
                 docker_config=args.docker_config,
                 container_name=args.container_name,
+                expected_parent_pid=args.expected_parent_pid,
+                expected_parent_start_time_ticks=(
+                    args.expected_parent_start_time_ticks
+                ),
+                expected_parent_boot_id=args.expected_parent_boot_id,
+            )
+        elif args.command == ASEH_R19_HISTORICAL_LIVE_LAUNCHER_COMMAND:
+            return _r19_historical_live_launcher(
+                ready_fd=args.ready_fd,
+                release_fd=args.release_fd,
+                logical_argv_sha256=args.logical_argv_sha256,
+                candidate_head=args.candidate_head,
+                candidate_tree=args.candidate_tree,
                 expected_parent_pid=args.expected_parent_pid,
                 expected_parent_start_time_ticks=(
                     args.expected_parent_start_time_ticks
