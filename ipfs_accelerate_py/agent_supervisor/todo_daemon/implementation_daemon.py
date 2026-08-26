@@ -85180,10 +85180,22 @@ class DatabaseImplementationDaemon:
             persisted_coordination = coordination
         else:
             require_expired_coordination = True
-        if not self._terminal_coordination_reproduces_read_only(
+        coordination_reproduced = self._terminal_coordination_reproduces_read_only(
             latest,
             persisted=persisted_coordination,
             require_expired=require_expired_coordination,
+        )
+        if (
+            not coordination_reproduced
+            and (
+                persisted_coordination is None
+                or self._ordinary_post_merge_completion_portable_coordination(
+                    latest,
+                    task,
+                    terminal_receipt,
+                )
+                is None
+            )
         ):
             raise DatabaseImplementationConflictError(
                 "post-merge recovery preauthorization could not reproduce "
@@ -103737,11 +103749,15 @@ class DatabaseImplementationDaemon:
             "observed_at_ms",
             "expired_now",
         }
-        historical_fields = {
+        legacy_historical_fields = {
             *base_fields,
             "historical_expired",
             "superseded_by_newer_fence",
             "successor",
+        }
+        historical_fields = {
+            *legacy_historical_fields,
+            "claim_absent",
         }
         integer_fields = {
             "claim_revision",
@@ -103751,7 +103767,8 @@ class DatabaseImplementationDaemon:
         }
         raw_fields = set(raw)
         if (
-            raw_fields not in (base_fields, historical_fields)
+            raw_fields
+            not in (base_fields, legacy_historical_fields, historical_fields)
             or raw.get("claim_id") != attempt.claim_id
             or raw.get("attempt_id") != attempt.attempt_id
             or raw.get("attempt_number") != int(attempt.attempt_number)
@@ -103784,11 +103801,15 @@ class DatabaseImplementationDaemon:
         ):
             return "expired"
         if (
-            raw_fields == historical_fields
+            raw_fields in (legacy_historical_fields, historical_fields)
             and raw.get("claim_state") == "expired"
             and raw.get("lease_state") == "expired"
             and raw.get("coordination_attempt_status") == "expired"
             and raw.get("expired_now") is False
+            and (
+                raw_fields == legacy_historical_fields
+                or raw.get("claim_absent") is False
+            )
             and raw.get("historical_expired") is True
             and raw.get("superseded_by_newer_fence") is False
             and raw.get("successor") == {}
@@ -103812,9 +103833,9 @@ class DatabaseImplementationDaemon:
         certainly expired, the shared receipt and its revision CAS are portable
         only when the replacement sidecar contains no authority for this task.
 
-        This helper is deliberately private to that crash classifier.  Generic
-        retries continue to require a reproducible local claim/attempt/lease
-        triple.
+        This helper is deliberately private to exact post-merge completion
+        recovery paths.  Generic retries continue to require a reproducible
+        local claim/attempt/lease triple.
         """
 
         persisted_state = self._terminal_coordination_projection_state(
@@ -103894,6 +103915,116 @@ class DatabaseImplementationDaemon:
             if any(item.get("task_cid") == task_cid for item in rows):
                 return False
         return True
+
+    def _ordinary_post_merge_completion_portable_coordination(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return portable evidence for one exact ordinary terminal receipt.
+
+        Unlike the dedicated lost-completion crash classifier, the ordinary
+        one-implementation-commit terminal has no multi-revision recovery
+        proof.  Its portable authority is therefore limited to the exact
+        current blocked receipt, the producer's complete historical-expiry
+        shape, and a replacement coordination store with no current same-task
+        authority.  Other recoverable terminal reasons, empty or legacy
+        receipts, and binding-changed resume artifacts deliberately remain
+        dependent on a reproducible lane-local claim/attempt/lease triple.
+        """
+
+        current = self.task_source.get(attempt.task_cid)
+        current_body = getattr(current, "body", None)
+        current_receipt = (
+            current_body.get("completion_receipt")
+            if isinstance(current_body, Mapping)
+            else None
+        )
+        task_revision = getattr(current, "revision", None)
+        coordination = receipt.get("coordination")
+        producer_historical_fields = {
+            "claim_id",
+            "attempt_id",
+            "attempt_number",
+            "lease_state",
+            "claim_state",
+            "claim_revision",
+            "coordination_attempt_status",
+            "coordination_attempt_revision",
+            "expires_at_ms",
+            "observed_at_ms",
+            "expired_now",
+            "claim_absent",
+            "historical_expired",
+            "superseded_by_newer_fence",
+            "successor",
+        }
+        if (
+            current is None
+            or str(getattr(current, "task_cid", "") or "")
+            != attempt.task_cid
+            or str(getattr(current, "task_alias", "") or "")
+            != attempt.task_alias
+            or str(getattr(current, "status", "") or "").strip().lower()
+            != "blocked"
+            or self._automatic_claim_forbidden(current)
+            or (
+                current is not task
+                and (
+                    getattr(current, "revision", None)
+                    != getattr(task, "revision", None)
+                    or current_receipt
+                    != (
+                        getattr(task, "body", {}).get("completion_receipt")
+                        if isinstance(getattr(task, "body", None), Mapping)
+                        else None
+                    )
+                )
+            )
+            or not isinstance(current_receipt, Mapping)
+            or current_receipt != receipt
+            or not self._receipt_has_exact_optional_execution_route_lineage(
+                receipt,
+                base_fields=_DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS,
+                task=current,
+            )
+            or receipt.get("operation")
+            != "database_portal_terminal_failure"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or self._canonical_portal_failure_reason(receipt.get("reason"))
+            != DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
+            or not isinstance(coordination, Mapping)
+            or set(coordination) != producer_historical_fields
+            or coordination.get("claim_absent") is not False
+            or self._terminal_coordination_projection_state(
+                attempt,
+                coordination,
+            )
+            != "expired"
+            or receipt.get("retryable") is not False
+            or receipt.get("control_expected_status") != "in_progress"
+            or isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+            or receipt.get("control_expected_revision") != task_revision - 1
+        ):
+            return None
+        if not self._post_merge_completion_portable_coordination_authority(
+            attempt,
+            persisted=coordination,
+        ):
+            return None
+        return dict(coordination)
 
     def _terminal_coordination_reproduces_read_only(
         self,
@@ -105445,15 +105576,30 @@ class DatabaseImplementationDaemon:
             else None
         )
 
-        portable_coordination_authority = bool(
+        crash_portable_coordination_authority = bool(
             crash_source_admitted
             and crash_context is not None
             and crash_context.get("portable_coordination_authority") is True
         )
+        ordinary_portable_coordination = (
+            self._ordinary_post_merge_completion_portable_coordination(
+                latest,
+                task,
+                control_receipt,
+            )
+            if not crash_source_admitted
+            else None
+        )
+        portable_coordination_authority = bool(
+            crash_portable_coordination_authority
+            or ordinary_portable_coordination is not None
+        )
         coordination = (
             dict(crash_context["current_receipt"]["coordination"])
-            if portable_coordination_authority
+            if crash_portable_coordination_authority
             and crash_context is not None
+            else dict(ordinary_portable_coordination)
+            if ordinary_portable_coordination is not None
             else self._reconcile_failed_attempt_coordination(latest)
         )
         transition_source_coordination = (
