@@ -6860,6 +6860,533 @@ def test_callback_integration_source_requires_exact_receipt_event_and_blobs(
     )
 
 
+def test_callback_integration_source_accepts_only_exact_settled_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = "a" * 40
+    baseline = "b" * 40
+    integration = "c" * 40
+    current = "d" * 40
+    candidate_tree = "e" * 40
+    current_tree = "f" * 40
+    blob = "1" * 40
+    task_alias = "LGSWF-004"
+    task_cid = "task:cid:004"
+    task_key = "task/v1/settled-callback-source"
+    request_id = "request-settled-callback"
+    dedupe_key = "2" * 64
+    output = "inventory/result.json"
+    events_path = tmp_path / "portal-events.jsonl"
+    events_path.write_text("", encoding="utf-8")
+    receipt_dir = tmp_path / "receipts"
+    receipt_dir.mkdir()
+    validation_proof = {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "target_commit": candidate,
+    }
+    check = {
+        "exists": True,
+        "path": output,
+        "reason": "declared_output_tracked",
+        "repository": ".",
+        "repository_ref": integration,
+        "task_id": task_alias,
+        "tracked": True,
+        "tracked_path": output,
+    }
+    invariant = {
+        "checks": [check],
+        "missing_outputs": [],
+        "mode": "repository_tree",
+        "passed": True,
+        "reason": "declared_outputs_tracked",
+        "repository_ref": integration,
+        "task_ids": [task_alias],
+        "unsafe_outputs": [],
+        "untracked_outputs": [],
+    }
+    proof = {
+        "implementation_commit": candidate,
+        "integration_commit": integration,
+        "integration_ref": integration,
+        "passed": True,
+        "reasons": [],
+        "target_branch": "main",
+    }
+    member = {
+        "board_namespace": "task-projection.md",
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor." "member_completion_receipt@1"
+        ),
+        "status": "succeeded",
+        "task_id": task_alias,
+    }
+    event_ids = [f"sha256:{digit * 64}" for digit in "345678"]
+    enqueue = {
+        "type": "merge_candidate_enqueued",
+        "sequence": 1,
+        "event_id": event_ids[0],
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "attempt": 1,
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "attempted": False,
+        "queued": True,
+        "merged": False,
+        "reason": "merge_queued",
+        "request_id": request_id,
+        "completion_task_cids": {task_alias: task_cid},
+    }
+    provenance = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor." "merge-queue-synchronous-source@1"
+        ),
+        "request_id": request_id,
+        "task_id": task_alias,
+        "task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "merge_candidate_enqueued_event_id": enqueue["event_id"],
+        "portal_attempt": 1,
+        "branch": "implementation/candidate",
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "validation_target_commit": candidate,
+        "validation_target_tree": candidate_tree,
+        "validation_repository_tree_id": f"git-tree:{candidate_tree}",
+    }
+    provenance["source_projection_id"] = content_identity(provenance)
+    queued_merge = {
+        "attempted": False,
+        "queued": True,
+        "merged": False,
+        "reason": "merge_queued",
+        "request_id": request_id,
+        "branch": "implementation/candidate",
+        "implementation_commit": candidate,
+        "canonical_task_key": task_key,
+        "canonical_task_cid": task_cid,
+        "completion_task_cids": {task_alias: task_cid},
+        "target_repository_id": "repository:settled-callback",
+        "target_branch": "main",
+    }
+    projected = {
+        "type": "worktree_reconciliation_candidate_queued",
+        "sequence": 2,
+        "event_id": event_ids[1],
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "attempt": 1,
+        "attempt_consumed": False,
+        "provider_dispatched": False,
+        "returncode": 0,
+        "branch": "implementation/candidate",
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "validation_result": {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+        },
+        "merge_result": queued_merge,
+        "board_completion": {
+            "complete": False,
+            "pending_merge": True,
+            "reason": "merge_queued_awaiting_integration",
+        },
+        "reason": "merge_queue_synchronous_source_projected",
+        "merge_queue_synchronous_source": provenance,
+    }
+    receipt_evidence = {
+        "completion_receipts": [member],
+    }
+    reconciliation = {
+        "type": "merge_reconciled",
+        "sequence": 3,
+        "event_id": event_ids[2],
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "request_id": request_id,
+        "completion_source_event_id": projected["event_id"],
+        "integration_commit_proof": proof,
+        "post_merge_declared_output_invariant": invariant,
+        "completion_receipt_evidence": receipt_evidence,
+    }
+    completion_error = {
+        "reason": "completion_receipt_binding_mismatch",
+        "expected_task_cids": {task_alias: task_cid},
+        "receipt_task_cids": {},
+    }
+    expected_lock_path = checkout_mutation_lock_path(tmp_path)
+    todo_failure = {
+        "completion_reason": "single_task",
+        "lock_owner_branch": "",
+        "lock_owner_lease_id": "lease:settled-callback-owner",
+        "lock_owner_pid": 12345,
+        "lock_owner_task_id": "",
+        "lock_path": str(expected_lock_path),
+        "reason": "checkout_mutation_lock_exists",
+        "task_id": task_alias,
+        "updated": False,
+    }
+    quarantine_merge = {
+        "already_merged": False,
+        "attempted": True,
+        "branch": "implementation/candidate",
+        "cleanup_result": {},
+        "command": ["git", "merge"],
+        "completion_receipt_error": completion_error,
+        "deterministic_conflict_repair": {},
+        "finished_at": 1.9,
+        "generated_submodule_reconciliation": {},
+        "identical_untracked_paths": [],
+        "integration_commit_proof": proof,
+        "integration_occurred": True,
+        "main_worktree_path": str(tmp_path),
+        "merge_commit": integration,
+        "merge_reconciliation_receipt": {
+            "recorded": True,
+            "replayed": False,
+            "event_id": reconciliation["event_id"],
+        },
+        "merged": False,
+        "merged_gitlink_recording": {},
+        "post_merge_declared_output_invariant": invariant,
+        "reason": "merge_completion_receipt_invalid",
+        "resolved_generated_conflicts": [],
+        "restored_generated_dirty_overlap": [],
+        "returncode": 2,
+        "shared_worktree_path_scrub": {},
+        "started_at": 1.3,
+        "stderr": "",
+        "stdout": "",
+        "submodule_failure_rollback": {},
+        "submodule_merge_results": [],
+        "target_branch": "main",
+        "target_commit": integration,
+        "todo_update_result": todo_failure,
+        "used_ephemeral_main_worktree": True,
+    }
+    quarantine = {
+        "acceptance_pending": False,
+        "accepted": False,
+        "canonical_task_id": task_key,
+        "commit_sha": candidate,
+        "failure_count": 1,
+        "finished_at": 2.0,
+        "integrated": False,
+        "max_attempts": 3,
+        "merge_result": quarantine_merge,
+        "merged": False,
+        "reason": "merge_completion_receipt_invalid",
+        "request_id": request_id,
+        "retryable": False,
+        "started_at": 1.25,
+        "status": "quarantined",
+        "target_branch": "main",
+        "task_id": task_alias,
+    }
+    terminal_merge = {
+        **queued_merge,
+        "train_result": json.loads(json.dumps(quarantine)),
+    }
+    terminal = {
+        "type": "implementation_finished",
+        "sequence": 4,
+        "event_id": event_ids[3],
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "attempt": 1,
+        "attempt_consumed": True,
+        "provider_dispatched": True,
+        "returncode": 0,
+        "branch": "implementation/candidate",
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "validation_result": {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+        },
+        "merge_result": terminal_merge,
+        "board_completion": {
+            "complete": False,
+            "pending_merge": True,
+            "reason": "merge_queued_awaiting_integration",
+        },
+    }
+    status_event = {
+        "type": "todo_status_updated",
+        "sequence": 5,
+        "event_id": event_ids[4],
+        "task_id": task_alias,
+        "completion_reason": "merged_status_repair",
+        "updated": True,
+        "updated_task_ids": [task_alias],
+        "missing_task_ids": [],
+        "missing_status_task_ids": [],
+        "completion_receipts": [member],
+    }
+    completion = {
+        "type": "task_completed",
+        "sequence": 6,
+        "event_id": event_ids[5],
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "reason": "task_became_completed",
+        "completion_receipt_repair": False,
+    }
+    events = [
+        enqueue,
+        projected,
+        reconciliation,
+        terminal,
+        status_event,
+        completion,
+    ]
+    revival = {
+        "at": 3.0,
+        "previous_enqueued_at": 1.0,
+        "previous_failure_count": 1,
+        "previous_failure_reason": "merge_completion_receipt_invalid",
+        "reason": (
+            "merge train proved quarantined candidate already integrated "
+            "into exact target"
+        ),
+    }
+    settlement = {
+        "already_merged": True,
+        "canonical_task_id": task_key,
+        "commit_sha": candidate,
+        "distributed_publication_admission": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/" "distributed-lane-admission@1"
+            ),
+            "admitted": True,
+            "distributed": False,
+            "request_id": request_id,
+            "status": "local",
+        },
+        "finished_at": 4.5,
+        "integrated": True,
+        "merge_commit": integration,
+        "merged": False,
+        "mutation_short_circuited": True,
+        "reason": "declared_outputs_already_on_target",
+        "request_id": request_id,
+        "started_at": 4.0,
+        "status": "already_merged",
+        "target_branch": "main",
+        "target_commit": integration,
+        "task_id": task_alias,
+    }
+    metadata = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+        "baseline_ref": baseline,
+        "candidate_tree": candidate_tree,
+        "implementation_commit": candidate,
+        "events_path": str(events_path),
+        "completion_task_cids": {task_alias: task_cid},
+        "validation_proof": validation_proof,
+        "task": {
+            "task_id": task_alias,
+            "canonical_task_cid": task_cid,
+            "canonical_task_key": task_key,
+            "outputs": [output],
+        },
+        "quarantine": quarantine,
+        "revivals": [revival],
+    }
+    request = SimpleNamespace(
+        request_id=request_id,
+        task_id=task_alias,
+        canonical_task_id=task_cid,
+        canonical_task_key=task_key,
+        canonical_identity=task_key,
+        commit_sha=candidate,
+        dedupe_key=dedupe_key,
+        status="completed",
+        attempt=1,
+        failure_count=0,
+        failure_reason="",
+        enqueued_at=revival["at"],
+        metadata=metadata,
+    )
+
+    def receipt_path(key: str) -> Path:
+        return receipt_dir / f"{key}.json"
+
+    receipt_path(dedupe_key).write_text(json.dumps(settlement), encoding="utf-8")
+    receipt_path(f"quarantine-{request_id}").write_text(
+        json.dumps(quarantine),
+        encoding="utf-8",
+    )
+    train = SimpleNamespace(
+        receipt_dir=receipt_dir,
+        _dedupe_key=lambda _canonical, _candidate: dedupe_key,
+        _read_receipt=lambda key: json.loads(
+            receipt_path(key).read_text(encoding="utf-8")
+        ),
+        _receipt_path=receipt_path,
+    )
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.repository_root = tmp_path
+    bridge.merge_queue = SimpleNamespace(
+        target_repository_id="repository:settled-callback"
+    )
+    bridge.merge_target_branch = "main"
+    bridge._verified_event_chain = lambda _paths: events
+    reconciliation_calls: list[tuple[object, object]] = []
+
+    def exact_reconciliation(
+        observed_reconciliation: object,
+        observed_source: object,
+        **_kwargs: object,
+    ) -> bool:
+        reconciliation_calls.append((observed_reconciliation, observed_source))
+        return True
+
+    bridge._exact_callback_reconciliation_for_completion_source = exact_reconciliation
+    projection = SimpleNamespace(
+        paths=SimpleNamespace(events=events_path),
+        binding={},
+        task_status="blocked",
+    )
+
+    def fake_git(
+        argv: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[bytes]:
+        arguments = argv[1:]
+        if arguments == ["rev-parse", "--git-common-dir"]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"{tmp_path / '.git'}\n",
+                "",
+            )
+        if arguments[:2] == ["rev-parse", "--verify"]:
+            ref = arguments[2]
+            observed = (
+                current
+                if ref.startswith("refs/heads/main")
+                else current_tree if ref == f"{current}^{{tree}}" else candidate_tree
+            )
+            return subprocess.CompletedProcess(argv, 0, observed.encode() + b"\n", b"")
+        if arguments[:3] == ["rev-list", "--parents", "-n"]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"{candidate} {baseline}\n".encode(),
+                b"",
+            )
+        if arguments[0] == "merge-base":
+            return subprocess.CompletedProcess(argv, 0, b"", b"")
+        if arguments[0] == "ls-tree":
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"100644 blob {blob}\t{output}\0".encode(),
+                b"",
+            )
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(subprocess, "run", fake_git)
+
+    source = bridge._callback_integration_source_evidence(
+        request,
+        projection,
+        train=train,
+    )
+
+    assert source is not None
+    assert source["integration_commit"] == integration
+    assert source["current_target_commit"] == current
+    assert source["settled_integration_source"]["source_shape"] == (
+        "settled_integrated_quarantine"
+    )
+    assert reconciliation_calls == [(reconciliation, projected)]
+
+    qualification = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "post-merge-callback-integration-requalification@2"
+        ),
+        **source,
+        "validation": [
+            {
+                "task_id": task_alias,
+                "passed": True,
+                "returncode": 0,
+                "validation_result_digests": ["7" * 64],
+                "command_count": 1,
+                "log_sha256": "8" * 64,
+            }
+        ],
+    }
+    qualification["receipt_id"] = content_identity(qualification)
+    assert (
+        bridge._verified_post_merge_callback_integration_receipt(
+            qualification,
+            source=source,
+        )
+        == qualification
+    )
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    authority_calls: list[tuple[object, object]] = []
+    daemon._verified_post_merge_callback_integration_source_authority = (
+        lambda observed, evidence: authority_calls.append(
+            (observed, evidence)
+        )
+    )
+    verified = daemon._verified_post_merge_callback_integration_receipt(
+        qualification,
+        recovery_evidence={"source": "test"},
+    )
+    assert verified == qualification
+    assert authority_calls == [(qualification, {"source": "test"})]
+
+    tampered_qualification = json.loads(json.dumps(qualification))
+    tampered_qualification["settled_integration_source"][
+        "completion_event_digest"
+    ] = "sha256:" + "9" * 64
+    with pytest.raises(DatabaseImplementationAuthorityError):
+        daemon._verified_post_merge_callback_integration_receipt(
+            tampered_qualification,
+            recovery_evidence={"source": "test"},
+        )
+
+    terminal_merge["train_result"]["merge_result"]["integration_commit_proof"][
+        "passed"
+    ] = False
+    assert (
+        bridge._callback_integration_source_evidence(
+            request,
+            projection,
+            train=train,
+        )
+        is None
+    )
+    terminal_merge["train_result"] = json.loads(json.dumps(quarantine))
+    status_event["completion_receipts"] = []
+    assert (
+        bridge._callback_integration_source_evidence(
+            request,
+            projection,
+            train=train,
+        )
+        is None
+    )
+
+
 def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

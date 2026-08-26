@@ -3057,6 +3057,38 @@ POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "post-merge-callback-integration-requalification@1"
 )
+POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-integration-requalification@2"
+)
+POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-settled-callback-integration-source@2"
+)
+_POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS = frozenset(
+    {
+        "schema",
+        "source_shape",
+        "settlement_receipt_id",
+        "quarantine_receipt_id",
+        "quarantine_receipt",
+        "revival_id",
+        "revival",
+        "enqueue_event_id",
+        "enqueue_event_digest",
+        "projected_source_event_id",
+        "projected_source_event_digest",
+        "reconciliation_event_id",
+        "reconciliation_event_digest",
+        "terminal_event_id",
+        "terminal_event_digest",
+        "status_event_id",
+        "status_event_digest",
+        "completion_event_id",
+        "completion_event_digest",
+        "source_id",
+    }
+)
 POST_MERGE_DECLARED_OUTPUT_REPAIR_TERMINAL_REASONS = frozenset(
     {
         "repair_declared_output_paths_invalid",
@@ -87105,7 +87137,7 @@ class DatabaseImplementationDaemon:
             )
         value = dict(raw)
         receipt_id = value.pop("receipt_id", None)
-        expected_fields = {
+        base_expected_fields = {
             "schema",
             "task_ids",
             "task_cid",
@@ -87125,6 +87157,18 @@ class DatabaseImplementationDaemon:
             "entries",
             "validation",
         }
+        settled_source = value.get("settled_integration_source")
+        is_v2 = isinstance(settled_source, Mapping)
+        expected_fields = (
+            base_expected_fields | {"settled_integration_source"}
+            if is_v2
+            else base_expected_fields
+        )
+        expected_schema = (
+            POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
+            if is_v2
+            else POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+        )
         task_ids = value.get("task_ids")
         entries = value.get("entries")
         validations = value.get("validation")
@@ -87179,11 +87223,224 @@ class DatabaseImplementationDaemon:
             if train_receipt is not None
             else ""
         )
+        one_task_id = bool(
+            isinstance(task_ids, list)
+            and len(task_ids) == 1
+            and isinstance(task_ids[0], str)
+            and task_ids[0]
+        )
+        v1_train_receipt_valid = bool(
+            one_task_id
+            and isinstance(train_receipt, Mapping)
+            and train_receipt.get("status") == "merged"
+            and train_receipt.get("accepted") is True
+            and train_receipt.get("integrated") is True
+            and train_receipt.get("merged") is True
+            and train_receipt.get("callback_owned_integration") is True
+            and train_receipt.get("acceptance_pending") is False
+            and train_receipt.get("request_id") == value.get("request_id")
+            and train_receipt.get("task_id") == task_ids[0]
+        )
+        if v1_train_receipt_valid:
+            v1_train_receipt_valid = bool(
+                train_receipt.get("commit_sha")
+                == value.get("candidate_commit")
+                and train_receipt.get("target_commit")
+                == value.get("integration_commit")
+                and train_receipt.get("merge_commit")
+                == value.get("integration_commit")
+                and isinstance(merge_result, Mapping)
+                and merge_result.get("returncode") == 0
+                and merge_result.get("merged") is True
+                and merge_result.get("merge_commit")
+                == value.get("integration_commit")
+                and isinstance(member, Mapping)
+                and member.get("task_id") == task_ids[0]
+                and member.get("canonical_task_cid")
+                == value.get("task_cid")
+            )
+
+        settlement_fields = {
+            "already_merged",
+            "canonical_task_id",
+            "commit_sha",
+            "distributed_publication_admission",
+            "finished_at",
+            "integrated",
+            "merge_commit",
+            "merged",
+            "mutation_short_circuited",
+            "reason",
+            "request_id",
+            "started_at",
+            "status",
+            "target_branch",
+            "target_commit",
+            "task_id",
+        }
+        admission = (
+            train_receipt.get("distributed_publication_admission")
+            if isinstance(train_receipt, Mapping)
+            else None
+        )
+        settlement_started = (
+            train_receipt.get("started_at")
+            if isinstance(train_receipt, Mapping)
+            else None
+        )
+        settlement_finished = (
+            train_receipt.get("finished_at")
+            if isinstance(train_receipt, Mapping)
+            else None
+        )
+        v2_train_receipt_valid = bool(
+            isinstance(train_receipt, Mapping)
+            and set(train_receipt) == settlement_fields
+            and train_receipt.get("status") == "already_merged"
+            and train_receipt.get("reason")
+            == "declared_outputs_already_on_target"
+            and train_receipt.get("already_merged") is True
+            and train_receipt.get("integrated") is True
+            and train_receipt.get("merged") is False
+            and train_receipt.get("mutation_short_circuited") is True
+            and train_receipt.get("request_id") == value.get("request_id")
+            and one_task_id
+            and train_receipt.get("task_id") == task_ids[0]
+            and train_receipt.get("commit_sha")
+            == value.get("candidate_commit")
+            and train_receipt.get("target_commit")
+            == value.get("integration_commit")
+            and train_receipt.get("merge_commit")
+            == value.get("integration_commit")
+            and isinstance(settlement_started, (int, float))
+            and not isinstance(settlement_started, bool)
+            and isinstance(settlement_finished, (int, float))
+            and not isinstance(settlement_finished, bool)
+            and math.isfinite(float(settlement_started))
+            and math.isfinite(float(settlement_finished))
+            and float(settlement_started) <= float(settlement_finished)
+            and isinstance(admission, Mapping)
+            and set(admission)
+            == {"schema", "admitted", "distributed", "request_id", "status"}
+            and admission.get("schema")
+            == (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "distributed-lane-admission@1"
+            )
+            and admission.get("admitted") is True
+            and admission.get("distributed") is False
+            and admission.get("request_id") == value.get("request_id")
+            and admission.get("status") == "local"
+        )
+
+        settled_source_valid = False
+        if is_v2 and isinstance(settled_source, Mapping):
+            settled_value = dict(settled_source)
+            source_id = str(settled_value.pop("source_id", "") or "")
+            canonical_embedded: dict[str, Mapping[str, Any]] = {}
+            embedded_valid = True
+            for json_field, identity_field in (
+                ("quarantine_receipt", "quarantine_receipt_id"),
+                ("revival", "revival_id"),
+            ):
+                serialized = settled_value.get(json_field)
+                if (
+                    not isinstance(serialized, str)
+                    or len(
+                        serialized.encode(
+                            "utf-8",
+                            errors="surrogatepass",
+                        )
+                    )
+                    > 1024 * 1024
+                ):
+                    embedded_valid = False
+                    break
+                try:
+                    parsed = json.loads(serialized)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    embedded_valid = False
+                    break
+                canonical = (
+                    json.dumps(
+                        parsed,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                        default=str,
+                    )
+                    if isinstance(parsed, Mapping)
+                    else ""
+                )
+                identity = (
+                    "sha256:"
+                    + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+                )
+                if (
+                    not isinstance(parsed, Mapping)
+                    or canonical != serialized
+                    or identity != settled_value.get(identity_field)
+                ):
+                    embedded_valid = False
+                    break
+                canonical_embedded[json_field] = dict(parsed)
+            quarantine = canonical_embedded.get("quarantine_receipt")
+            revival = canonical_embedded.get("revival")
+            settled_source_valid = bool(
+                one_task_id
+                and embedded_valid
+                and set(settled_source)
+                == _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS
+                and settled_value.get("schema")
+                == POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA
+                and settled_value.get("source_shape")
+                == "settled_integrated_quarantine"
+                and settled_value.get("settlement_receipt_id")
+                == train_identity
+                and settled_value.get("projected_source_event_id")
+                == value.get("source_event_id")
+                and source_id == content_identity(settled_value)
+                and all(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(settled_value.get(field) or ""),
+                    )
+                    is not None
+                    for field in (
+                        "settlement_receipt_id",
+                        "quarantine_receipt_id",
+                        "revival_id",
+                        "enqueue_event_id",
+                        "enqueue_event_digest",
+                        "projected_source_event_id",
+                        "projected_source_event_digest",
+                        "reconciliation_event_id",
+                        "reconciliation_event_digest",
+                        "terminal_event_id",
+                        "terminal_event_digest",
+                        "status_event_id",
+                        "status_event_digest",
+                        "completion_event_id",
+                        "completion_event_digest",
+                    )
+                )
+                and isinstance(quarantine, Mapping)
+                and quarantine.get("status") == "quarantined"
+                and quarantine.get("reason")
+                == "merge_completion_receipt_invalid"
+                and quarantine.get("request_id") == value.get("request_id")
+                and quarantine.get("task_id") == task_ids[0]
+                and quarantine.get("commit_sha")
+                == value.get("candidate_commit")
+                and isinstance(revival, Mapping)
+                and revival.get("previous_failure_count") == 1
+                and revival.get("previous_failure_reason")
+                == "merge_completion_receipt_invalid"
+            )
         git_id = r"[0-9a-f]{40}(?:[0-9a-f]{24})?"
         if (
             set(value) != expected_fields
-            or value.get("schema")
-            != POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+            or value.get("schema") != expected_schema
             or not isinstance(task_ids, list)
             or len(task_ids) != 1
             or not isinstance(task_ids[0], str)
@@ -87217,27 +87474,10 @@ class DatabaseImplementationDaemon:
             is None
             or value.get("train_receipt_id") != train_identity
             or train_receipt is None
-            or train_receipt.get("status") != "merged"
-            or train_receipt.get("accepted") is not True
-            or train_receipt.get("integrated") is not True
-            or train_receipt.get("merged") is not True
-            or train_receipt.get("callback_owned_integration") is not True
-            or train_receipt.get("acceptance_pending") is not False
-            or train_receipt.get("request_id") != value.get("request_id")
-            or train_receipt.get("task_id") != task_ids[0]
-            or train_receipt.get("commit_sha") != value.get("candidate_commit")
-            or train_receipt.get("target_commit")
-            != value.get("integration_commit")
-            or train_receipt.get("merge_commit")
-            != value.get("integration_commit")
-            or not isinstance(merge_result, Mapping)
-            or merge_result.get("returncode") != 0
-            or merge_result.get("merged") is not True
-            or merge_result.get("merge_commit")
-            != value.get("integration_commit")
-            or not isinstance(member, Mapping)
-            or member.get("task_id") != task_ids[0]
-            or member.get("canonical_task_cid") != value.get("task_cid")
+            or not (
+                (is_v2 and v2_train_receipt_valid and settled_source_valid)
+                or (not is_v2 and v1_train_receipt_valid)
+            )
             or not isinstance(entries, list)
             or not entries
             or not isinstance(validations, list)
@@ -88166,7 +88406,10 @@ class DatabaseImplementationDaemon:
             qualification_kind = "callback_integration"
             receipt_matches_evidence = (
                 qualification_receipt.get("schema")
-                == POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+                in {
+                    POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA,
+                    POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA,
+                }
                 and qualification_receipt.get("task_cid")
                 == raw.get("task_cid")
                 and qualification_receipt.get("request_id")
