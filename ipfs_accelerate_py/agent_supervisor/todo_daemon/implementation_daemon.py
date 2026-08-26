@@ -96869,28 +96869,45 @@ class DatabaseImplementationDaemon:
             quack_attach_error_is_contention,
         )
 
-        if isinstance(exc, (QuackTransportContentionError, DuckDBConnectionPolicyError)):
-            return True
-        if quack_attach_error_is_contention(exc):
-            return True
-        detail = str(exc)
-        name = type(exc).__name__
-        lowered = detail.lower()
-        return (
-            "authorization failed" in lowered
-            or "attach.lock" in lowered
-            or "timed out acquiring duckdb process lock" in lowered
-            or "timed out acquiring duckdb thread lock" in lowered
-            or (
-                name in {"TimeoutError", "InvalidInputException"}
-                and (
-                    "timed out" in lowered
-                    or "timeout" in lowered
-                    or "authentication failed" in lowered
-                    or "authorization failed" in lowered
+        current: BaseException | None = exc
+        seen: set[int] = set()
+        for _depth in range(8):
+            if current is None or id(current) in seen:
+                break
+            seen.add(id(current))
+            if isinstance(
+                current,
+                (QuackTransportContentionError, DuckDBConnectionPolicyError),
+            ):
+                return True
+            if quack_attach_error_is_contention(current):
+                return True
+            detail = str(current)
+            name = type(current).__name__
+            lowered = detail.lower()
+            if (
+                "authorization failed" in lowered
+                or "attach.lock" in lowered
+                or "timed out acquiring duckdb process lock" in lowered
+                or "timed out acquiring duckdb thread lock" in lowered
+                or (
+                    name in {"TimeoutError", "InvalidInputException"}
+                    and (
+                        "timed out" in lowered
+                        or "timeout" in lowered
+                        or "authentication failed" in lowered
+                        or "authorization failed" in lowered
+                    )
                 )
-            )
-        )
+            ):
+                return True
+            if current.__cause__ is not None:
+                current = current.__cause__
+            elif not current.__suppress_context__:
+                current = current.__context__
+            else:
+                current = None
+        return False
 
     def _run_reconciliation_step(
         self,
@@ -117025,11 +117042,11 @@ class DatabaseImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
-        self._require_typed_quack_authority_binding()
-        if self._embedded_writer_lock_handles:
-            self._inspect_embedded_sidecars(require_exists=True)
         self._idle_recovery_prefix = None
         try:
+            self._require_typed_quack_authority_binding()
+            if self._embedded_writer_lock_handles:
+                self._inspect_embedded_sidecars(require_exists=True)
             return self._run_once_impl()
         except Exception as exc:
             if self._is_quack_attach_contention(exc):

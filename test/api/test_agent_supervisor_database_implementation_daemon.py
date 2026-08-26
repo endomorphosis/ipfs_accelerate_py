@@ -10987,6 +10987,75 @@ def test_quack_attach_contention_defers_instead_of_crashing(
         daemon.close()
 
 
+def test_wrapped_quack_authority_revalidation_contention_defers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-authority-revalidation-defer",
+        max_task_attempts=3,
+    )
+
+    def boom() -> None:
+        try:
+            raise DuckDBConnectionPolicyError(
+                "DuckDB connection is unusable after an uncertain transaction"
+            )
+        except DuckDBConnectionPolicyError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack authority binding is no longer live"
+            ) from exc
+
+    try:
+        monkeypatch.setattr(
+            daemon,
+            "_require_typed_quack_authority_binding",
+            boom,
+        )
+        result = daemon.run_once()
+        assert result.get("deferred") is True
+        assert result.get("selection_idle_reason") == "quack_attach_failed"
+        assert result.get("portal_retryable_failure") is True
+        assert result.get("attempt_consumed") is False
+        assert result.get("provider_dispatched") is False
+    finally:
+        daemon.close()
+
+
+def test_wrapped_quack_authority_mismatch_remains_fatal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-authority-mismatch-fatal",
+        max_task_attempts=3,
+    )
+
+    def boom() -> None:
+        try:
+            raise ValueError("typed owner identity mismatch")
+        except ValueError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack authority changed after daemon admission"
+            ) from exc
+
+    try:
+        monkeypatch.setattr(
+            daemon,
+            "_require_typed_quack_authority_binding",
+            boom,
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="authority changed",
+        ):
+            daemon.run_once()
+    finally:
+        daemon.close()
+
+
 def test_quack_attach_contention_requests_owner_board_unstall(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
