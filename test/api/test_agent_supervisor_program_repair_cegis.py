@@ -27,6 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.planning.repair_operator_registry impor
     RepairOperatorKind,
     build_default_repair_operator_registry,
     cegis_restricted_operator_kinds,
+    cegis_tag_mentions_operator,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.counterexample_guided_tactician import (
     CandidateKind,
@@ -140,6 +141,12 @@ def test_registry_declares_cegis_restricted_kinds() -> None:
     catalog = build_default_repair_operator_registry()
     assert catalog.cegis_restricted_kinds() == restricted
     assert "extra_imports" in CEGIS_FORBIDDEN_PARAMETER_KEYS
+    assert "undeclared_behavior" in CEGIS_FORBIDDEN_PARAMETER_KEYS
+    assert cegis_tag_mentions_operator("core:add_argument", RepairOperatorKind.ADD_ARGUMENT)
+    assert not cegis_tag_mentions_operator(
+        "core:add_argumentation",
+        RepairOperatorKind.ADD_ARGUMENT,
+    )
 
 
 def test_cegis_refines_from_unsat_cores() -> None:
@@ -378,6 +385,172 @@ def test_undeclared_effect_is_rejected() -> None:
         ("network",),
         ProgramRepairReason.UNDECLARED_EFFECT.value,
     )
+
+
+def test_security_refs_restrict_sensitive_operators() -> None:
+    receipt = synthesize_program_repair(
+        ProgramRepairRequest(
+            roots=roots(),
+            obligation_refs=("obligation:one",),
+            target_paths=("pkg/mod.py",),
+            operator_kinds=(RepairOperatorKind.ADD_EXPORT.value,),
+            mode=ProgramRepairMode.CEGIS,
+            counterexample=counterexample(),
+            cegis_verify=closing_verify,
+            counterevidence=ProgramRepairCounterevidence(
+                failed_assumption_refs=("assumption:add_export",),
+                security_refs=("security:exfil",),
+            ),
+        )
+    )
+    assert not receipt.admitted
+    assert (
+        ProgramRepairReason.COUNTEREVIDENCE_RESTRICTED.value in receipt.reason_codes
+    )
+    assert ProgramRepairReason.NO_ADMISSIBLE_OPERATOR.value in receipt.reason_codes
+    _assert_zero_model(receipt)
+
+
+def test_substring_core_does_not_select_unrelated_operator() -> None:
+    receipt = synthesize_program_repair(
+        ProgramRepairRequest(
+            roots=roots(),
+            obligation_refs=("obligation:one",),
+            target_paths=("pkg/mod.py",),
+            operator_kinds=(
+                RepairOperatorKind.ADD_ARGUMENT.value,
+                RepairOperatorKind.ADD_IMPORT.value,
+            ),
+            mode=ProgramRepairMode.CEGIS,
+            counterexample=counterexample(),
+            cegis_verify=closing_verify,
+            counterevidence=ProgramRepairCounterevidence(
+                unsat_core_refs=("core:add_argumentation",),
+            ),
+        )
+    )
+    assert not receipt.admitted
+    assert receipt.disposition is ProgramRepairDisposition.ABSTAIN
+    assert ProgramRepairReason.NO_ADMISSIBLE_OPERATOR.value in receipt.reason_codes
+    _assert_zero_model(receipt)
+
+
+def test_unvalidated_interpolants_are_omitted_from_evidence_tags() -> None:
+    evidence = ProgramRepairCounterevidence(
+        unsat_core_refs=("core:add_argument",),
+        interpolant_refs=("interpolant:add_argument",),
+        interpolants_independently_validated=False,
+    )
+    assert "interpolant:add_argument" not in evidence.evidence_tags()
+    validated = ProgramRepairCounterevidence(
+        interpolant_refs=("interpolant:add_argument",),
+        interpolants_independently_validated=True,
+    )
+    assert "interpolant:add_argument" in validated.evidence_tags()
+
+
+def test_nested_undeclared_import_is_rejected() -> None:
+    def refine(witness, context):
+        del witness
+        return (
+            RefinementCandidate(
+                candidate_id="candidate:nested-import",
+                kind=CandidateKind.REPAIR,
+                goal_id="obligation:one",
+                repaired_tree_id="tree:fixture",
+                repaired_plan_id="plan:nested",
+                statement="nested undeclared import",
+                addresses_witness=True,
+                parameters={
+                    "operator_kind": RepairOperatorKind.ADD_ARGUMENT.value,
+                    "payload": {"extra_imports": ("undeclared.mod",)},
+                    "obligation_refs": list(context.get("obligation_refs") or ()),
+                },
+            ),
+        )
+
+    verify_calls = {"n": 0}
+
+    def verify(binding: dict[str, Any]) -> dict[str, Any]:
+        verify_calls["n"] += 1
+        return closing_verify(binding)
+
+    receipt = synthesize_program_repair(
+        ProgramRepairRequest(
+            roots=roots(),
+            obligation_refs=("obligation:one",),
+            target_paths=("pkg/mod.py",),
+            operator_kinds=(RepairOperatorKind.ADD_ARGUMENT.value,),
+            mode=ProgramRepairMode.CEGIS,
+            counterexample=counterexample(),
+            cegis_refine=refine,
+            cegis_verify=verify,
+            counterevidence=ProgramRepairCounterevidence(
+                unsat_core_refs=("core:add_argument",),
+            ),
+        )
+    )
+    assert not receipt.admitted
+    assert receipt.cegis_result is not None
+    assert not receipt.cegis_result.closed
+    assert receipt.cegis_result.iterations
+    assert (
+        receipt.cegis_result.iterations[0].binding.reason_code
+        == ProgramRepairReason.EXTRA_IMPORT.value
+    )
+    assert verify_calls["n"] == 0
+    _assert_zero_model(receipt)
+
+
+def test_undeclared_behavior_is_rejected() -> None:
+    _assert_parameter_rejected(
+        "undeclared_behavior",
+        ("new_runtime_hook",),
+        ProgramRepairReason.UNDECLARED_BEHAVIOR.value,
+    )
+
+
+def test_smt_unsat_core_witness_refines_operator_search() -> None:
+    witness = normalize_counterexample(
+        {
+            "kind": CounterexampleKind.SMT_UNSAT_CORE.value,
+            "unsat_core": ("core:add_argument",),
+        },
+        kind=CounterexampleKind.SMT_UNSAT_CORE,
+        violated_property="obligation:one",
+        bindings={
+            "plan_id": "plan:base",
+            "task_id": "LGCVF-081",
+            "ast_scope_id": "symbol:target",
+            "tree_id": "tree:fixture",
+            "assumption_id": "assumption:dep",
+            "provider_id": "tool:z3",
+            "policy_id": "policy:fixture",
+            "obligation_id": "obligation:one",
+        },
+        finite_bounds={"portfolio_width": 1, "deadline": 20},
+        repair_classes=(RepairClass.ADD_DEPENDENCY,),
+    )
+    receipt = synthesize_program_repair(
+        ProgramRepairRequest(
+            roots=roots(),
+            obligation_refs=("obligation:one",),
+            target_paths=("pkg/mod.py",),
+            operator_kinds=(
+                RepairOperatorKind.ADD_IMPORT.value,
+                RepairOperatorKind.ADD_ARGUMENT.value,
+            ),
+            mode=ProgramRepairMode.CEGIS,
+            counterexample=witness,
+            cegis_verify=closing_verify,
+        )
+    )
+    assert receipt.admitted
+    assert receipt.selected_candidate is not None
+    assert receipt.selected_candidate.operator_kind == (
+        RepairOperatorKind.ADD_ARGUMENT.value
+    )
+    _assert_zero_model(receipt)
 
 
 def test_cegis_path_has_zero_model_imports() -> None:

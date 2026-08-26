@@ -188,13 +188,53 @@ CEGIS_FORBIDDEN_PARAMETER_KEYS: Final[frozenset[str]] = frozenset(
         "extra_paths",
         "extra_files",
         "extra_dependencies",
+        "extra_behavior",
         "write_authority",
         "network",
         "undeclared_effects",
+        "undeclared_behavior",
+        "undeclared_imports",
+        "undeclared_files",
+        "undeclared_dependencies",
         "authority",
         "files_added",
+        "new_imports",
+        "new_files",
+        "new_dependencies",
+        "grants_write_authority",
+        "semantic_authority",
     }
 )
+_CEGIS_TAG_SEPARATORS: Final[tuple[str, ...]] = (":", "/", " ", "\t")
+
+
+def cegis_tag_mentions_operator(tag: Any, kind: Any) -> bool:
+    """True when *kind* appears as a complete token in a counterevidence tag.
+
+    Token matching is fail-closed against substring collisions such as
+    ``add_argument`` inside ``core:add_argumentation``.
+    """
+
+    kind_n = str(getattr(kind, "value", kind) or "").strip().lower().replace("-", "_")
+    text = str(tag or "").strip().lower().replace("-", "_")
+    if not kind_n or not text:
+        return False
+    if text == kind_n:
+        return True
+    normalized = text
+    for separator in _CEGIS_TAG_SEPARATORS:
+        normalized = normalized.replace(separator, "\n")
+    return kind_n in {part for part in normalized.split("\n") if part}
+
+
+def cegis_tags_mention_operator(tags: Any, kind: Any) -> bool:
+    """True when any counterevidence tag names the reviewed operator kind."""
+
+    if tags is None:
+        return False
+    if isinstance(tags, (str, bytes, bytearray)) or not isinstance(tags, Sequence):
+        return cegis_tag_mentions_operator(tags, kind)
+    return any(cegis_tag_mentions_operator(tag, kind) for tag in tags)
 
 
 class RepairBehaviorClass(str, Enum):
@@ -1574,6 +1614,8 @@ __all__ = (
     "UnknownRepairOperatorError",
     "build_default_repair_operator_registry",
     "cegis_restricted_operator_kinds",
+    "cegis_tag_mentions_operator",
+    "cegis_tags_mention_operator",
     "default_repair_operator_registry_id",
     "normalize_repair_operator_kind",
     "CEGIS_FORBIDDEN_PARAMETER_KEYS",
