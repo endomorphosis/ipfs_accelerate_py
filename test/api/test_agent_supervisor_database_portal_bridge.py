@@ -11978,6 +11978,9 @@ def _run_vrif_callback_hygiene_requalification(
     cleanup_authoritative: bool = True,
     task_alias: str = "VRIF-032",
     loaded_validation: tuple[str, ...] | None = None,
+    transaction_calls: list[dict[str, object]] | None = None,
+    advance_target_before_validation: bool = False,
+    revalidate_authority: object | None = None,
 ) -> tuple[dict[str, object] | None, Path, list[bytes], list[dict[str, str]]]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -12095,9 +12098,26 @@ def _run_vrif_callback_hygiene_requalification(
         def _run_checkout_mutation_transaction(
             *,
             callback: object,
-            **_kwargs: object,
+            **kwargs: object,
         ) -> dict[str, object]:
             assert callable(callback)
+            if transaction_calls is not None:
+                transaction_calls.append(dict(kwargs))
+            if advance_target_before_validation:
+                (repo / "advanced-during-checkout-wait.txt").write_text(
+                    "advanced\n",
+                    encoding="utf-8",
+                )
+                subprocess.run(
+                    ["git", "add", "advanced-during-checkout-wait.txt"],
+                    cwd=repo,
+                    check=True,
+                )
+                subprocess.run(
+                    ["git", "commit", "-qm", "advance during checkout wait"],
+                    cwd=repo,
+                    check=True,
+                )
             return callback()
 
         @staticmethod
@@ -12170,12 +12190,147 @@ def _run_vrif_callback_hygiene_requalification(
             canonical_task_key=task_key,
         ),
         projection=projection,
+        revalidate_authority=(
+            revalidate_authority
+            if callable(revalidate_authority)
+            else None
+        ),
     )
-    assert git_text("rev-parse", "HEAD") == head
-    assert git_text("rev-parse", "HEAD^{tree}") == tree
+    if advance_target_before_validation:
+        assert git_text("rev-parse", "HEAD") != head
+        assert git_text("rev-parse", "HEAD^{tree}") != tree
+    else:
+        assert git_text("rev-parse", "HEAD") == head
+        assert git_text("rev-parse", "HEAD^{tree}") == tree
     for path, payload in originals.items():
         assert (repo / path).read_bytes() == payload
     return receipt, repo, cleanup_statuses, entries
+
+
+def test_callback_requalification_requests_one_bounded_checkout_wait(
+    tmp_path: Path,
+) -> None:
+    transaction_calls: list[dict[str, object]] = []
+    authority_calls: list[str] = []
+
+    receipt, _repo, _cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: None,
+            transaction_calls=transaction_calls,
+            revalidate_authority=lambda: (
+                authority_calls.append("revalidated") or True
+            ),
+        )
+    )
+
+    assert receipt is not None
+    assert authority_calls == ["revalidated", "revalidated"]
+    assert len(transaction_calls) == 1
+    [transaction] = transaction_calls
+    assert transaction["operation"] == (
+        "requalify_post_merge_callback_integration"
+    )
+    timeout_seconds = transaction["timeout_seconds"]
+    assert isinstance(timeout_seconds, float)
+    assert 0.0 < timeout_seconds <= 5.0
+
+
+def test_callback_requalification_rechecks_target_after_checkout_wait(
+    tmp_path: Path,
+) -> None:
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: pytest.fail(
+                "stale target reached callback requalification validation"
+            ),
+            advance_target_before_validation=True,
+        )
+    )
+
+    assert receipt is None
+    assert cleanup_statuses == []
+
+
+def test_callback_requalification_rechecks_authority_first_after_wait(
+    tmp_path: Path,
+) -> None:
+    authority_calls: list[str] = []
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: pytest.fail(
+                "revoked authority reached callback validation"
+            ),
+            revalidate_authority=lambda: (
+                authority_calls.append("revalidated") or False
+            ),
+        )
+    )
+
+    assert receipt is None
+    assert authority_calls == ["revalidated"]
+    assert cleanup_statuses == []
+    assert not (
+        tmp_path
+        / "state"
+        / "post-merge-callback-integration-requalification"
+    ).exists()
+
+
+def test_callback_requalification_does_not_cache_authority_revoked_during_validation(
+    tmp_path: Path,
+) -> None:
+    authority_results = iter((True, False))
+    authority_calls: list[str] = []
+    validation_calls: list[str] = []
+
+    def revalidate() -> bool:
+        authority_calls.append("revalidated")
+        return next(authority_results)
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: validation_calls.append("validated"),
+            revalidate_authority=revalidate,
+        )
+    )
+
+    assert receipt is None
+    assert authority_calls == ["revalidated", "revalidated"]
+    assert validation_calls == ["validated"]
+    assert cleanup_statuses == [b""]
+    assert not list(
+        (
+            tmp_path
+            / "state"
+            / "post-merge-callback-integration-requalification"
+        ).glob("*.json")
+    )
+
+
+def test_callback_requalification_propagates_malformed_authority(
+    tmp_path: Path,
+) -> None:
+    def malformed_authority() -> bool:
+        raise DatabasePortalBridgeError(
+            "malformed callback requalification authority"
+        )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="malformed callback requalification authority",
+    ):
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: pytest.fail(
+                "malformed authority reached callback validation"
+            ),
+            revalidate_authority=malformed_authority,
+        )
 
 
 def test_callback_requalification_rejects_loaded_task_body_substitution(
