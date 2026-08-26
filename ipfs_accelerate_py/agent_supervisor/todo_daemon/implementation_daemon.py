@@ -101,6 +101,9 @@ from ..runtime.provider_failure_policy import (
     valid_grok_hard_quota_receipt,
     valid_grok_route_outcome,
 )
+from ..runtime.provider_command_environment import (
+    PROVIDER_COMMAND_ENV_WRAPPER_ENV,
+)
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
@@ -182,6 +185,7 @@ from ..merge.merge_conflict_repair import (
 )
 from ..core.submodule_degradation import DegradationState
 from ..task_sources.board_control_plane import (
+    VALIDATION_PYTHON_MODULES_ENV,
     ensure_board_implementation_branch,
     infer_board_namespace,
     resolve_board_implementation_branch,
@@ -74125,12 +74129,85 @@ class PortalImplementationDaemon:
 
     @staticmethod
     def _authoritative_validation_environment_guidance() -> str:
-        """Render the exact final validation PATH and private-home contract.
+        """Render the configured final-validation environment contract.
 
-        This is prompt guidance only. It delegates PATH/Python calculation to
-        the same fail-closed builder used by :class:`ValidationScheduler` and
-        does not add executable directories or relax writable-path checks.
+        This is prompt guidance only. Host validation delegates PATH/Python
+        calculation to the same fail-closed builder used by
+        :class:`ValidationScheduler`. Container validation instead describes
+        the scheduler-bound immutable image without probing or exposing its
+        runtime to the provider process.
         """
+
+        try:
+            backend = PortalImplementationDaemon._configured_validation_backend()
+        except ValidationRuntimeError as exc:
+            return (
+                "## Authoritative validation environment (fail-closed)\n"
+                "- The configured validation backend is currently invalid: "
+                f"{type(exc).__name__}: {exc}\n"
+                "- Authoritative validation will reject this configuration. "
+                "Do not weaken product assertions or tests to hide it."
+            )
+
+        wrapper_guidance = (
+            "- Grok shell tools may seal their own `PATH`. When "
+            f"`${PROVIDER_COMMAND_ENV_WRAPPER_ENV}` is present, use "
+            f"`\"${PROVIDER_COMMAND_ENV_WRAPPER_ENV}\" --preflight "
+            "<bare-command>` and "
+            f"`\"${PROVIDER_COMMAND_ENV_WRAPPER_ENV}\" -- <command> ...` "
+            "only for provider-side host discovery or evidence generation. "
+            "The digest-bound wrapper restores only the declared non-secret "
+            "provider command environment; it does not bypass or replace "
+            "authoritative validation."
+        )
+
+        if backend == AUTHORITY_VALIDATION_CONTAINER_BACKEND:
+            image = str(
+                os.environ.get(AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV) or ""
+            ).strip()
+            raw_modules = str(
+                os.environ.get(VALIDATION_PYTHON_MODULES_ENV) or ""
+            )
+            modules = tuple(raw_modules.split(",")) if raw_modules else ()
+            modules_valid = bool(modules) and all(
+                item
+                and item.strip() == item
+                and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", item)
+                is not None
+                for item in modules
+            ) and len(modules) == len(set(modules))
+            if image not in AUTHORITY_VALIDATION_CONTAINER_IDS or not modules_valid:
+                return (
+                    "## Authoritative validation environment (fail-closed)\n"
+                    "- The scheduler-bound authority container environment "
+                    "is currently invalid; its immutable image and required "
+                    "module inventory must match the admitted runtime "
+                    "contract.\n"
+                    "- Authoritative validation will reject this "
+                    "configuration. Do not infer dependency gaps from the "
+                    "provider shell or weaken product assertions or tests to "
+                    "hide it."
+                )
+            image_text = json.dumps(image, ensure_ascii=True)
+            modules_text = json.dumps(list(modules), ensure_ascii=True)
+            return (
+                "## Authoritative validation environment (fail-closed)\n"
+                "- Final validation uses the scheduler-bound "
+                f"`{AUTHORITY_VALIDATION_CONTAINER_BACKEND}` image exactly "
+                f"{image_text}. That immutable container is authoritative; "
+                "the provider shell is not.\n"
+                "- The scheduler-declared required Python module inventory "
+                f"is exactly {modules_text}. Availability is decided only by "
+                "final validation in that image.\n"
+                "- The provider shell is intentionally separate. A "
+                "provider-side `python: command not found`, missing Python "
+                "module, or missing prover is not evidence of an authority-"
+                "container dependency gap. Continue from repository evidence "
+                "and leave the final availability decision to authoritative "
+                "validation; never weaken mandatory tests.\n"
+                f"{wrapper_guidance} The wrapper does not emulate the "
+                "authority container."
+            )
 
         try:
             contract = canonical_validation_environment_contract()
@@ -74150,6 +74227,10 @@ class PortalImplementationDaemon:
             str(contract["path_override_environment_variable"]),
             ensure_ascii=True,
         )
+        formal_toolchain_identity = json.dumps(
+            str(contract["formal_toolchain_contract_sha256"]),
+            ensure_ascii=True,
+        )
         return (
             "## Authoritative validation environment (fail-closed)\n"
             f"- `PATH` is exactly {path}. The provider/implementer process's "
@@ -74167,11 +74248,18 @@ class PortalImplementationDaemon:
             f"through {override} before supervisor dispatch. Every entry and "
             "ancestor must pass the existing non-writable toolchain check; "
             "user-writable tool directories are rejected.\n"
+            "- The provider preflight and authoritative validation formal-"
+            "toolchain deployment identity must both equal "
+            f"{formal_toolchain_identity}. A mismatch, missing required "
+            "executable, or writable managed root blocks before evidence "
+            "generation; stage reviewed toolchains under a root-owned/read-"
+            "only root rather than using a profile-home installation.\n"
             "- Judge external-tool availability and write semantic assertions "
             "against this exact environment, not a successful provider-side "
             "probe. If a required prover is absent, report a dependency/"
             "capability gap or add an approved digest-bound deployment; never "
-            "claim usability or weaken mandatory tests."
+            "claim usability or weaken mandatory tests.\n"
+            f"{wrapper_guidance}"
         )
 
     def _implementation_prompt_policy_appendix(self, task: PortalTask) -> str:
