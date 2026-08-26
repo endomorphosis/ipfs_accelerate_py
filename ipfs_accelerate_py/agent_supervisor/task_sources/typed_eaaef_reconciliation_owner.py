@@ -5,10 +5,12 @@ the missing final-CASF bindings deterministically.  The default facade does
 not open a database, read a credential, inspect or signal a process, start a
 provider, or sign authority.  Every effect method fails closed.
 
-The separately exported CASF bootstrap adapter implements only the guarded
-owner-absent/offline-commit/owner-start prefix.  It remains incompatible with
-the production qualification until the independently signed Plan-R2 channel,
-status, exact-birth stop, and supervisor launch are bound.
+The separately exported CASF bootstrap adapter implements only the distinct
+``EAAEFBootstrapReconciliationOwner@1`` guarded
+owner-absent/offline-commit/owner-start prefix.  This module intentionally has
+no bootstrap opener: a long-lived host must explicitly bind its snapshot and
+state roots.  The bootstrap adapter is never accepted as the production owner
+needed for independently signed Plan R2, status, exact-birth stop, or launch.
 """
 
 from __future__ import annotations
@@ -153,6 +155,8 @@ def open_eaaef_typed_reconciliation_owner(
 
 
 from .eaaef_casf_bootstrap_owner import (  # noqa: E402
+    EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA,
+    EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
     EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS,
     EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE,
     EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
@@ -180,6 +184,8 @@ __all__ = [
     "EAAEFCASFBootstrapOwnerLifecycle",
     "EAAEFCASFBootstrapRegistry",
     "EAAEFTypedReconciliationOwnerUnavailable",
+    "EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA",
+    "EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE",
     "EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS",
     "EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE",
     "EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE",
