@@ -20,7 +20,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
@@ -615,49 +614,12 @@ def _submit_owner_mutation(
     parameters: Sequence[Any],
     timeout_seconds: float = _OWNER_MUTATION_TIMEOUT_SECONDS,
 ) -> int:
-    """Ask the exclusive owner to apply one allowlisted DML statement."""
+    """Reject the historical bare-SQL owner inbox until signed fabric exists."""
 
-    if " ".join(str(sql).split()) != _CAS_TASK_STATUS_SQL:
-        raise QuackDaemonGatewayError("owner mutation SQL is not the closed CAS template")
-    try:
-        metadata = os.lstat(mutation_dir)
-    except OSError as exc:
-        raise QuackDaemonGatewayError("Quack owner mutation inbox is absent") from exc
-    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-        raise QuackDaemonGatewayError("Quack owner mutation inbox is not a directory")
-    request_id = uuid.uuid4().hex
-    request_path = mutation_dir / f"{request_id}.request.json"
-    done_path = mutation_dir / f"{request_id}.done.json"
-    request_path.write_text(
-        json.dumps({"parameters": list(parameters), "sql": sql}, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
+    del mutation_dir, sql, parameters, timeout_seconds
+    raise QuackDaemonGatewayError(
+        "bare owner mutation CAS is disabled; the signed command fabric is required"
     )
-    deadline = time.monotonic() + float(timeout_seconds)
-    while time.monotonic() < deadline:
-        if done_path.is_file():
-            try:
-                payload = json.loads(done_path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise QuackDaemonGatewayError(
-                    "owner mutation receipt is unreadable"
-                ) from exc
-            try:
-                request_path.unlink(missing_ok=True)
-                done_path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            if payload.get("ok") is not True:
-                raise QuackDaemonGatewayError(
-                    "owner mutation failed: " + str(payload.get("error") or "unknown")
-                )
-            return int(payload.get("rowcount") or 0)
-        time.sleep(0.05)
-    try:
-        request_path.unlink(missing_ok=True)
-    except OSError:
-        pass
-    raise QuackDaemonGatewayError("timed out waiting for the Quack owner to apply CAS")
 
 
 def _resolve_owner_token(handle: str, *, vault_dir: Path) -> str:

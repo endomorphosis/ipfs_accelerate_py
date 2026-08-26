@@ -33,9 +33,9 @@ def test_generated_board_passes_fail_closed_validator() -> None:
         "goal_count": 20,
         "task_count": 116,
         "initial_population_count": 22,
-        "owned_path_count": 384,
-        "owned_path_overlap_count": 29,
-        "overlap_merge_contract_count": 31,
+        "owned_path_count": 397,
+        "owned_path_overlap_count": 31,
+        "overlap_merge_contract_count": 33,
         "dependency_edge_count": 270,
     }
 
@@ -53,6 +53,10 @@ def test_bootstrap_is_the_only_initial_ready_task() -> None:
     assert ready == ["EAAEF-180", "EAAEF-181", "EAAEF-182", "EAAEF-183"]
     assert tasks["EAAEF-000"]["completion_mode"] == "manual"
     assert "EAAEF-191" in tasks["EAAEF-000"]["dependencies"]
+    assert "EAAEF-000" not in tasks["EAAEF-191"]["dependencies"]
+    assert set(tasks["EAAEF-000"]["owned_files"]).isdisjoint(
+        tasks["EAAEF-191"]["owned_files"]
+    )
     for number in range(1, 6):
         assert "EAAEF-000" in tasks[f"EAAEF-{number:03d}"]["dependencies"]
 
@@ -108,15 +112,23 @@ def test_bootstrap_owns_and_validates_new_fail_closed_contracts() -> None:
         "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py",
         "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
         "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py",
         "ipfs_accelerate_py/agent_supervisor/proof/mcp_contract_proof_cache.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/eaaef_bootstrap_gateway.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/eaaef_offline_population.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/eaaef_reconciliation_lifecycle.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/plan_r2_remote_owner.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_casf_bootstrap_owner.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_plan_r2_owner_service.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_typed_owner_service.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/persistent_task_queue.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/worker_container_execution_profile.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_bootstrap_daemon_gateway.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_borrowed_transaction.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/eaaef_operational_schema.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/typed_eaaef_reconciliation_owner.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
         "ipfs_accelerate_py/agent_supervisor/validation/agent_native_dependency_admission.py",
         "ipfs_accelerate_py/agent_supervisor/validation/eaaef_bootstrap_gateway_launch.py",
@@ -127,6 +139,7 @@ def test_bootstrap_owns_and_validates_new_fail_closed_contracts() -> None:
         "ipfs_accelerate_py/testing/proof_reuse/default_identity_services.py",
         "ipfs_accelerate_py/testing/proof_reuse/item_identity.py",
         "scripts/extract_typescript_ast.mjs",
+        "scripts/run_eaaef_reconciliation.py",
         "test/api/test_agent_supervisor_contract_mismatch_analyzer.py",
         "test/api/test_agent_supervisor_contract_vulnerability_rules.py",
         "test/api/test_agent_supervisor_database_implementation_daemon.py",
@@ -156,8 +169,13 @@ def test_bootstrap_owns_and_validates_new_fail_closed_contracts() -> None:
         "test/api/test_eaaef_borrowed_transaction.py",
         "test/api/test_eaaef_lane_gateway_runtime.py",
         "test/api/test_eaaef_operational_schema.py",
+        "test/api/test_eaaef_offline_population.py",
+        "test/api/test_eaaef_plan_r2_owner_service.py",
         "test/api/test_eaaef_quack_command_fabric.py",
+        "test/api/test_eaaef_reconciliation_lifecycle.py",
         "test/api/test_eaaef_supervisor_daemon_birth_wiring.py",
+        "test/api/test_eaaef_typed_owner_service.py",
+        "test/api/test_external_agent_plan_r2.py",
         "test/api/test_external_agent_state_repository.py",
         "test/api/test_external_agent_worker_authority_propagation.py",
         "test/api/test_llm_router_agent_implementation_route.py",
@@ -166,6 +184,7 @@ def test_bootstrap_owns_and_validates_new_fail_closed_contracts() -> None:
         "test/api/test_proof_reuse_default_identity_services.py",
         "test/api/test_pytest_proof_reuse_item_identity.py",
         "test/api/test_plan_r2_remote_owner.py",
+        "test/api/test_plan_r2_typed_owner_wire_channel.py",
     }
     assert required_paths <= set(task["owned_files"])
     argv = task["execution_validation"][0]["argv"]
@@ -175,14 +194,20 @@ def test_bootstrap_owns_and_validates_new_fail_closed_contracts() -> None:
     assert "test/api/test_eaaef_borrowed_transaction.py" in argv
     assert "test/api/test_eaaef_lane_gateway_runtime.py" in argv
     assert "test/api/test_eaaef_operational_schema.py" in argv
+    assert "test/api/test_eaaef_offline_population.py" in argv
+    assert "test/api/test_eaaef_plan_r2_owner_service.py" in argv
     assert "test/api/test_eaaef_quack_command_fabric.py" in argv
+    assert "test/api/test_eaaef_reconciliation_lifecycle.py" in argv
     assert "test/api/test_eaaef_supervisor_daemon_birth_wiring.py" in argv
+    assert "test/api/test_eaaef_typed_owner_service.py" in argv
     assert "test/api/test_agent_supervisor_database_implementation_daemon.py" in argv
     assert "test/api/test_agent_supervisor_incremental_runtime.py" in argv
     assert "test/api/test_agent_supervisor_native_dependency_admission.py" in argv
     assert "test/api/test_agent_supervisor_validation_scheduler.py" in argv
     assert "test/api/test_external_agent_state_repository.py" in argv
+    assert "test/api/test_external_agent_plan_r2.py" in argv
     assert "test/api/test_plan_r2_remote_owner.py" in argv
+    assert "test/api/test_plan_r2_typed_owner_wire_channel.py" in argv
     assert "test/api/test_external_agent_worker_authority_propagation.py" in argv
 
     plan_r2 = next(
@@ -201,8 +226,10 @@ def test_bootstrap_owns_and_validates_new_fail_closed_contracts() -> None:
     } == {
         "ipfs_accelerate_py/agent_supervisor/task_sources/external_agent_state_repository.py",
         "test/api/test_external_agent_state_repository.py",
+        "ipfs_accelerate_py/agent_supervisor/planning/external_agent_plan_r2.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/plan_r2_remote_owner.py",
         "ipfs_accelerate_py/agent_supervisor/validation/plan_r2_remote_owner_admission.py",
+        "test/api/test_external_agent_plan_r2.py",
         "test/api/test_plan_r2_remote_owner.py",
     }
 
@@ -210,6 +237,9 @@ def test_bootstrap_owns_and_validates_new_fail_closed_contracts() -> None:
 def test_control_artifacts_are_generator_or_source_owned_not_worker_outputs() -> None:
     board = _board()
     expected = {
+        "config/external_agent_autonomous_execution_fabric_casf_import.json": (
+            "reviewed_source_owned_board_input"
+        ),
         "docs/architecture/external_agent_autonomous_execution_fabric/OBJECTIVES.md": (
             "generator_owned_projection"
         ),
@@ -534,7 +564,7 @@ def test_repeated_owned_paths_form_exact_serialized_predecessor_chains() -> None
                 contract_count += 1
             last_owner[key] = task["stable_task_id"]
         assert set(contracts) == expected_contract_paths
-    assert contract_count == 31
+    assert contract_count == 33
 
 
 @pytest.mark.parametrize(

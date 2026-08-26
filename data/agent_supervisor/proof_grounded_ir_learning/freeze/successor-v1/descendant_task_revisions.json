@@ -1,0 +1,83 @@
+{
+  "campaign_input_root_cid": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+  "candidate_graph_cid": "baguqeeramn3kinfzy5aaxdturzuokmbvvgsyhxlu6rffgahez4ityj77e42q",
+  "descendant_task_count": 2,
+  "identity_source": {
+    "board_blob": "fd110a44a8b530ba762bf2a702a77023514c2cb2",
+    "board_revision": "20ef9e48d59b505b04e6236a9a31aaba287c36fd",
+    "task_identity_blob": "5199029eae43a471591dadc62f59a94336ebc866",
+    "task_identity_revision": "20ef9e48d59b505b04e6236a9a31aaba287c36fd"
+  },
+  "lease_eligible_count": 0,
+  "revision_patch": {
+    "application_policy": "supervisor_compare_and_swap_after_superseding_admission",
+    "metadata_field": "Semantic key",
+    "metadata_value": "pgir-campaign-input-root@2:baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+    "protected_board_mutated": false
+  },
+  "revision_set_cid": "baguqeeraukisqjimylkyns2gr7af5imn4pmkv45gnja52c5vug4shc7lj7sq",
+  "revision_set_sha256": "sha256:a29128250cc2d586cb468fc05ea18de3d8aaf3a66a41dd0bb5a1b9238beb4fe5",
+  "revisions": [
+    {
+      "block_reason_codes": [
+        "no_rights_admitted_training_rows",
+        "corpus_not_materialized",
+        "required_holdouts_insufficient",
+        "tokenizer_not_admitted",
+        "historical_semantic_baseline_not_currently_qualified",
+        "integrated_evidence_does_not_authorize_execution",
+        "portability_no_go"
+      ],
+      "current_task_cid": "baguqeerafze3wxxiomo4rhuxaguuk35d4tj4lrp2jtuj6jcinxnokczuctca",
+      "current_task_key": "task/v1/2e49bb5ee8731dc89e9701a9456fa3e4d3c5c5fa4ce89f24486ddae50b3414c4",
+      "depends_on": [
+        "PGIR-205"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@2:baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeera57xb6lh6ra2f3x26wzi44pcymf42iqwhxsigg6pw6lnwzrtjwmoq",
+      "revised_task_key": "task/v1/efee1f2cfe88345ddf5eb651ce3c586179a442c7bc906379f6f2db6cc669b31d",
+      "semantic_fingerprint": "efee1f2cfe88345ddf5eb651ce3c586179a442c7bc906379f6f2db6cc669b31d",
+      "task_id": "PGIR-206",
+      "title": "Re-run R1-R6 on the superseding freeze"
+    },
+    {
+      "block_reason_codes": [
+        "no_rights_admitted_training_rows",
+        "corpus_not_materialized",
+        "required_holdouts_insufficient",
+        "tokenizer_not_admitted",
+        "historical_semantic_baseline_not_currently_qualified",
+        "integrated_evidence_does_not_authorize_execution",
+        "portability_no_go"
+      ],
+      "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+      "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+      "depends_on": [
+        "PGIR-072",
+        "PGIR-090",
+        "PGIR-100",
+        "PGIR-206"
+      ],
+      "input_binding": {
+        "campaign_input_root_cid": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+        "decision": "no_go",
+        "semantic_key": "pgir-campaign-input-root@2:baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q"
+      },
+      "lease_eligible": false,
+      "revised_task_cid": "baguqeerapkc7pmpc7ffqhg7u3moxq7aym62mlzzyiaiakyt3ejsniqd77dua",
+      "revised_task_key": "task/v1/7a85f7b1e2f94b039bf4db1d787c1867b4c5e738401005627b2264d4407ff8e8",
+      "semantic_fingerprint": "7a85f7b1e2f94b039bf4db1d787c1867b4c5e738401005627b2264d4407ff8e8",
+      "task_id": "PGIR-207",
+      "title": "Re-qualify, publish or reject, and issue the following board"
+    }
+  ],
+  "schema": "PGIRDescendantTaskRevisionSet@1",
+  "source_plan_task_cid": "baguqeeraryux6dv5yim2by7j7zeffinnw5kfbl7prfiuew2yk6a2uknhnuiq",
+  "source_plan_task_key": "task/v1/8e297f0ebdc219a0e3e9fe4852a1adb75450afef8951425b585781aa29a76d11",
+  "task_id": "PGIR-205"
+}

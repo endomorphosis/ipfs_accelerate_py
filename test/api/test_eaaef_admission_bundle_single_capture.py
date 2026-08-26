@@ -501,6 +501,223 @@ def test_publish_refuses_to_consume_final_authority_for_a_no_go(
     assert not (tmp_path / "final").exists()
 
 
+def _diagnostic_full_observation(
+    *,
+    source_head: str,
+    source_tree: str,
+    board_namespace: str,
+    board_cid: str,
+    observation_cid: str,
+) -> dict[str, object]:
+    task_ids = list(eaaef_host_admission.HOST_ADMISSION_OBSERVATION_TASK_IDS)
+    decisions = {
+        task_id: (
+            "inventory"
+            if task_id == "EAAEF-180"
+            else "bound_unadmitted"
+            if task_id == "EAAEF-181"
+            else "admitted"
+            if task_id in {"EAAEF-182", "EAAEF-183"}
+            else "no_go"
+            if task_id == "EAAEF-191"
+            else "typed_missing"
+        )
+        for task_id in task_ids
+    }
+    child_cids = {
+        task_id: "sha256:" + format(index + 1, "064x")
+        for index, task_id in enumerate(task_ids)
+    }
+    early_cid = "sha256:" + "b" * 64
+    return {
+        "schema": eaaef_host_admission.HOST_ADMISSION_OBSERVATION_SCHEMA,
+        "scope": eaaef_host_admission.HOST_ADMISSION_OBSERVATION_SCOPE,
+        "observation_kind": "typed_no_go",
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "board_namespace": board_namespace,
+        "board_cid": board_cid,
+        "observation_cid": observation_cid,
+        "early_frontier_observation_cid": early_cid,
+        "early_frontier_observation_logical_path": (
+            "data/agent_supervisor/external_agent_autonomous_execution_fabric/"
+            "authority/host-admission/observations/early-frontier.json"
+        ),
+        "task_ids": task_ids,
+        "child_decisions": decisions,
+        "child_receipt_cids": child_cids,
+        "typed_missing_task_ids": [
+            task_id for task_id in task_ids if decisions[task_id] == "typed_missing"
+        ],
+        "no_go_task_ids": ["EAAEF-191"],
+        "decision": "no_go",
+        "observation_only": True,
+        "admission_authority": False,
+        "live_admission_allowed": False,
+        "live_launch_allowed": False,
+        "eaaef_191_authority": False,
+        "direct_task_completion_allowed": False,
+        "direct_completion_eligible_task_ids": [],
+        "casf_owner_transaction_eligible_task_ids": list(
+            eaaef_host_admission.EARLY_FRONTIER_TASK_IDS
+        ),
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": "CASF owner transaction required",
+        "process_started": False,
+        "supervisor_process_started": False,
+        "configured_board_launch": False,
+        "provider_invoked": False,
+        "control_database_opened": False,
+        "database_state_observed": False,
+        "staging_receipts_written": False,
+    }
+
+
+def test_prepare_observation_is_pure_deterministic_and_not_publishable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_issuer()
+    source_head = "1" * 40
+    source_tree = "2" * 40
+    board_namespace = "external-agent-autonomous-execution-fabric-v1"
+    board_cid = "sha256:" + "3" * 64
+    observation_cid = "sha256:" + "4" * 64
+    identity = {
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "board_namespace": board_namespace,
+        "board_cid": board_cid,
+    }
+    observation = _diagnostic_full_observation(
+        **identity,
+        observation_cid=observation_cid,
+    )
+    calls: list[dict[str, object]] = []
+
+    def load_observation(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return {
+            "valid": True,
+            "logical_path": "authority/host-admission/observations/full.json",
+            "observation": dict(observation),
+        }
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("diagnostic observation preparation attempted an effect")
+
+    monkeypatch.setattr(issuer, "_source_identity", lambda: dict(identity))
+    monkeypatch.setattr(
+        issuer, "load_current_host_admission_observation", load_observation
+    )
+    monkeypatch.setattr(issuer, "materialize_host_evidence", forbidden)
+    monkeypatch.setattr(issuer, "collect_host_admission_receipts", forbidden)
+    monkeypatch.setattr(issuer, "write_host_admission_receipts", forbidden)
+    monkeypatch.setattr(issuer, "RECEIPT_DIR", tmp_path)
+    authority_root = tmp_path / "authority"
+    monkeypatch.setattr(issuer, "AUTHORITY_ROOT_OVERRIDE", authority_root)
+
+    first = issuer.prepare_observation(full_observation_cid=observation_cid)
+    second = issuer.prepare_observation(full_observation_cid=observation_cid)
+
+    assert first == second
+    assert first["schema"] == issuer.OBSERVATION_PREPARED_REVIEW_SCHEMA
+    assert first["decision"] == "no_go"
+    assert first["purpose"] == "external_diagnostic_review_only"
+    assert first["observation_only"] is True
+    assert first["admission_authority"] is False
+    assert first["live_admission_allowed"] is False
+    assert first["live_launch_allowed"] is False
+    assert first["eaaef_191_authority"] is False
+    assert first["publishable"] is False
+    assert first["direct_task_completion_allowed"] is False
+    assert first["direct_completion_eligible_task_ids"] == []
+    assert first["casf_owner_transaction_eligible_task_ids"] == list(
+        eaaef_host_admission.EARLY_FRONTIER_TASK_IDS
+    )
+    assert first["direct_database_binding_allowed"] is False
+    assert first["process_started"] is False
+    assert first["provider_invoked"] is False
+    assert first["control_database_opened"] is False
+    assert first["staging_receipts_written"] is False
+    assert first["prepared_cid"] == eaaef_host_admission.cid(
+        {key: value for key, value in first.items() if key != "prepared_cid"}
+    )
+    assert calls == [
+        {
+            "source_head": source_head,
+            "observation_cid": observation_cid,
+            "authority_root": authority_root,
+        },
+        {
+            "source_head": source_head,
+            "observation_cid": observation_cid,
+            "authority_root": authority_root,
+        },
+    ]
+    assert list(tmp_path.iterdir()) == []
+    with pytest.raises(RuntimeError, match="prepared EAAEF-191 review identity"):
+        issuer._validate_prepared_review(first)
+    monkeypatch.setattr(issuer, "_require_clean_source_checkout", lambda: None)
+    with pytest.raises(RuntimeError, match="prepared EAAEF-191 review identity"):
+        issuer.publish(prepared_review=first, signatures={})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("decision", "admitted"),
+        ("observation_only", False),
+        ("admission_authority", True),
+        ("live_admission_allowed", True),
+        ("live_launch_allowed", True),
+        ("eaaef_191_authority", True),
+        ("direct_task_completion_allowed", True),
+        ("direct_completion_eligible_task_ids", ["EAAEF-180"]),
+        ("casf_owner_transaction_eligible_task_ids", ["EAAEF-180"]),
+        ("direct_database_binding_allowed", True),
+        ("casf_owner_binding_required", False),
+        ("process_started", True),
+        ("provider_invoked", True),
+        ("control_database_opened", True),
+        ("database_state_observed", True),
+        ("staging_receipts_written", True),
+    ],
+)
+def test_prepare_observation_rejects_authority_or_effect_claims(
+    field: str,
+    value: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issuer = _load_issuer()
+    identity = {
+        "source_head": "1" * 40,
+        "source_tree": "2" * 40,
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "board_cid": "sha256:" + "3" * 64,
+    }
+    observation_cid = "sha256:" + "4" * 64
+    observation = _diagnostic_full_observation(
+        **identity,
+        observation_cid=observation_cid,
+    )
+    observation[field] = value
+    monkeypatch.setattr(issuer, "_source_identity", lambda: dict(identity))
+    monkeypatch.setattr(
+        issuer,
+        "load_current_host_admission_observation",
+        lambda **_kwargs: {
+            "valid": True,
+            "logical_path": "authority/host-admission/observations/full.json",
+            "observation": observation,
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="current observation-only no-go"):
+        issuer.prepare_observation(full_observation_cid=observation_cid)
+
+
 def test_source_cleanliness_rejects_non_receipt_drift(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

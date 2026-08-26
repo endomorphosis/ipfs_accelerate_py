@@ -18,6 +18,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
     install_eaaef_operational_schema,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    TodoImplementationDaemon,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 MATERIALIZER_PATH = (
@@ -866,6 +869,153 @@ def test_materialize_with_recovery_advances_bare_generation_directory(
     assert cursor is not None
     assert cursor["active_generation"] == "eaaef-test-run-v2"
     assert cursor["superseded_generation"] == "eaaef-test-run-v1"
+
+
+def test_materialize_with_recovery_does_not_replay_unsigned_status_projection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    config = _config("state/run-v1")
+    monkeypatch.setattr(materializer, "ROOT", tmp_path)
+    stale_generation = materializer._paths(config)["control"].parent
+    stale_projection = (
+        stale_generation / "live/state/task-status-projection.json"
+    )
+    stale_projection.parent.mkdir(parents=True)
+    stale_projection.write_text(
+        json.dumps(
+            {
+                "schema": "unsigned-historical-projection@1",
+                "statuses": {"EAAEF-000": "completed"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    materialized_controls: list[Path] = []
+
+    def fake_materialize(working):
+        control = materializer._paths(working)["control"]
+        control.parent.mkdir(parents=True)
+        connection = duckdb.connect(str(control))
+        try:
+            connection.execute(
+                "CREATE TABLE tasks ("
+                "task_cid VARCHAR PRIMARY KEY, task_alias VARCHAR, "
+                "status VARCHAR, revision BIGINT, updated_at VARCHAR)"
+            )
+            connection.execute(
+                "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+                ["cid-eaaef-000", "EAAEF-000", "todo", 1, "created"],
+            )
+        finally:
+            connection.close()
+        materialized_controls.append(control)
+        return {
+            "receipt_cid": "sha256:" + "a" * 64,
+            "process_started": False,
+            "source_head": "1" * 40,
+        }
+
+    receipt = materializer.materialize_with_recovery(
+        config,
+        materialize_fn=fake_materialize,
+    )
+
+    assert len(materialized_controls) == 1
+    connection = duckdb.connect(str(materialized_controls[0]), read_only=True)
+    try:
+        task = connection.execute(
+            "SELECT status, revision, updated_at FROM tasks WHERE task_alias = ?",
+            ["EAAEF-000"],
+        ).fetchone()
+    finally:
+        connection.close()
+    assert task == ("todo", 1, "created")
+    assert "overlay_restored" not in receipt
+    assert "overlay_preserved" not in receipt
+    assert receipt["historical_status_projection_retained_as_evidence"] is True
+    assert receipt["historical_status_projection_replayed"] is False
+    assert receipt["historical_statuses_replayed"] == 0
+    assert receipt["generation_recoveries"] == [
+        {
+            "from_generation": "eaaef-test-run-v1",
+            "to_generation": "eaaef-test-run-v2",
+            "namespace_state": "failed_partial",
+        }
+    ]
+    assert json.loads(stale_projection.read_text(encoding="utf-8"))[
+        "statuses"
+    ] == {"EAAEF-000": "completed"}
+
+
+def test_daemon_host_bootstrap_recovery_uses_diagnostic_projection_locator(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    config_dir = repo / "config"
+    scripts.mkdir(parents=True)
+    config_dir.mkdir()
+    copied_materializer = scripts / MATERIALIZER_PATH.name
+    copied_materializer.write_bytes(MATERIALIZER_PATH.read_bytes())
+    config = _config("state/run-v1")
+    (config_dir / materializer.CONFIG_PATH.name).write_text(
+        json.dumps(config, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "EAAEF Test"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "eaaef@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "test fixture"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    source_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    receipt_path = repo / "state/run-v1/registry/bootstrap-materialization.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_text(
+        json.dumps({"source_head": source_head}) + "\n",
+        encoding="utf-8",
+    )
+    projection_path = repo / "state/run-v1/live/state/task-status-projection.json"
+    projection_path.parent.mkdir(parents=True)
+    projection_path.write_text(
+        json.dumps({"statuses": {"EAAEF-000": "completed"}}) + "\n",
+        encoding="utf-8",
+    )
+    original_projection = projection_path.read_bytes()
+    daemon = object.__new__(TodoImplementationDaemon)
+    daemon.repo_root = repo
+
+    result = daemon._run_host_bootstrap_generation_recovery()
+
+    assert result["attempted"] is False
+    assert result["reason"] == "source_matches_materialization"
+    assert result["historical_status_projection_retained_as_evidence"] is True
+    assert result["historical_status_projection_completed_count"] == 1
+    assert result["historical_status_projection_replayed"] is False
+    assert result["historical_statuses_replayed"] == 0
+    assert "error" not in result
+    assert projection_path.read_bytes() == original_projection
 
 
 def test_launch_plan_attaches_unsigned_no_go_admission_statement(

@@ -984,36 +984,6 @@ def _tracked_head_snapshot(
     return payload, revision
 
 
-def _eaaef_task_status_projection_path(board: "ConfiguredBoard") -> Path:
-    return board.path(board.runtime_paths["state"]) / "task-status-projection.json"
-
-
-def _eaaef_write_task_status_projection(
-    board: "ConfiguredBoard",
-    overlay: Mapping[str, str],
-) -> None:
-    path = _eaaef_task_status_projection_path(board)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                {
-                    "schema": (
-                        "ipfs_accelerate_py/agent-supervisor/"
-                        "eaaef-task-status-projection@1"
-                    ),
-                    "statuses": dict(sorted(overlay.items())),
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-    except OSError:
-        return
-
-
 def _eaaef_normalize_status_overlay(
     rows: Sequence[Any],
     *,
@@ -1114,70 +1084,16 @@ def _eaaef_live_quack_status_overlay(board: "ConfiguredBoard") -> dict[str, str]
 
 
 def _eaaef_task_status_overlay(board: "ConfiguredBoard") -> dict[str, str]:
-    """Return DuckDB/Quack (or cached projection) status keyed by task alias.
+    """Keep every runtime status projection diagnostic-only.
 
-    Markdown remains the tracked task specification.  Operational readiness
-    for EAAEF comes from the live Quack control plane so completed and
-    admitted work is not re-planned from the frozen markdown board.
+    Neither an unsigned file nor raw rows from a live Quack process bind the
+    current source forest, population, owner birth/generation/fence, and
+    terminal receipts. Until the typed CASF-owner snapshot API supplies that
+    complete proof, no runtime status may override the tracked task records.
     """
 
-    if not _eaaef_plan_bound_profile(board):
-        return {}
-    allowed = {
-        "todo",
-        "blocked",
-        "completed",
-        "cancelled",
-        "failed",
-        "quarantined",
-        "in_progress",
-    }
-    overlay = _eaaef_live_quack_status_overlay(board)
-    if overlay:
-        _eaaef_write_task_status_projection(board, overlay)
-        return overlay
-    raw_bootstrap = board.payload.get("bootstrap_database_program")
-    store_id = (
-        str(raw_bootstrap.get("store_id") or "")
-        if isinstance(raw_bootstrap, Mapping)
-        else ""
-    )
-    overlay = {}
-    if store_id.endswith((".duckdb", ".ddb")):
-        db_path = board.path(store_id)
-        if db_path.is_file():
-            try:
-                import duckdb
-
-                connection = duckdb.connect(str(db_path), read_only=True)
-                try:
-                    rows = connection.execute(
-                        "SELECT task_alias, status FROM tasks"
-                    ).fetchall()
-                finally:
-                    connection.close()
-            except Exception:
-                rows = ()
-            overlay = _eaaef_normalize_status_overlay(rows, allowed=allowed)
-    if overlay:
-        _eaaef_write_task_status_projection(board, overlay)
-        return overlay
-    projection_path = _eaaef_task_status_projection_path(board)
-    if not projection_path.is_file():
-        return {}
-    try:
-        payload = json.loads(projection_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return {}
-    statuses = payload.get("statuses") if isinstance(payload, dict) else None
-    if not isinstance(statuses, Mapping):
-        return {}
-    for alias, status in statuses.items():
-        task_id = str(alias or "").strip()
-        normalized = str(status or "").strip().lower()
-        if task_id and normalized in allowed:
-            overlay[task_id] = normalized
-    return overlay
+    del board
+    return {}
 
 
 def _configured_board_task_records(

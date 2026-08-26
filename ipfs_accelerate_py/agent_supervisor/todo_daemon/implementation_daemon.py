@@ -309,6 +309,7 @@ from ..validation.validation_runtime import (
     sealed_validation_python_runner,
     validation_environment_for_runner,
     validation_python_launcher_environment,
+    validation_python_profile,
     validation_readonly_state_command,
     validation_shell_command,
 )
@@ -4863,6 +4864,14 @@ def _docker_external_validation_command(
 ]:
     """Build one fail-closed isolated candidate-validation invocation."""
 
+    if validation_python_profile(environment) == "raw-no-site":
+        # The pinned validation image owns a different Python/package forest
+        # from the host runner.  Until that forest has its own reviewed
+        # no-site profile, an external-isolation receipt cannot stand in for
+        # the host profile's exact ``-S`` launcher and approved roots.
+        raise ValidationRuntimeError(
+            "raw-no-site validation is unavailable in external isolation"
+        )
     config = validate_external_provider_isolation_config(isolation_value)
     workspace = workspace_path.resolve(strict=True)
     if not workspace.is_dir() or workspace == Path("/"):
@@ -54968,9 +54977,8 @@ class PortalImplementationDaemon:
                     module._load_object(receipt_path).get("source_head") or ""
                 )
             source_head = module._git("rev-parse", "HEAD")
-            overlay = snapshot_overlay_alias_status(
-                module._overlay_projection_path(config)
-            )
+            overlay_path = module._overlay_projection_path(config)
+            overlay = snapshot_overlay_alias_status(overlay_path)
             plan = plan_control_plane_identity_recovery(
                 source_head=source_head,
                 materialization_source_head=materialization_head,
@@ -54982,6 +54990,14 @@ class PortalImplementationDaemon:
                     "process_started": False,
                     "reason": plan.reason,
                     "action": plan.action.value,
+                    "historical_status_projection_retained_as_evidence": (
+                        overlay_path.is_file()
+                    ),
+                    "historical_status_projection_completed_count": (
+                        plan.overlay_completed
+                    ),
+                    "historical_status_projection_replayed": False,
+                    "historical_statuses_replayed": 0,
                     "ducklake_current_authority": False,
                 }
             mutation_dir = Path(
@@ -55083,8 +55099,12 @@ class PortalImplementationDaemon:
             "receipt_cid": str(receipt.get("receipt_cid") or ""),
             "source_head": str(receipt.get("source_head") or ""),
             "generation_recoveries": list(receipt.get("generation_recoveries") or ()),
-            "overlay_preserved": receipt.get("overlay_preserved") is True,
-            "overlay_restored": int(receipt.get("overlay_restored") or 0),
+            "historical_status_projection_retained_as_evidence": (
+                overlay_path.is_file()
+            ),
+            "historical_status_projection_completed_count": plan.overlay_completed,
+            "historical_status_projection_replayed": False,
+            "historical_statuses_replayed": 0,
             "ducklake_current_authority": False,
         }
 
@@ -58409,6 +58429,7 @@ class PortalImplementationDaemon:
                 pass
 
     @staticmethod
+    @sealed_validation_python_runner
     def _authority_validation_command_runner(
         *,
         spec: Any,
@@ -58428,6 +58449,7 @@ class PortalImplementationDaemon:
             "started_at": started_at,
             "authority_validation_isolation": contract,
         }
+        raw_no_site = validation_python_profile(environment) == "raw-no-site"
         if not __class__._unix_stream_socket_permitted():
             try:
                 local_environment = validation_environment_for_runner(
@@ -58482,6 +58504,19 @@ class PortalImplementationDaemon:
                 )
             )
             return local_result
+        if raw_no_site:
+            return {
+                **base,
+                "finished_at": utc_now(),
+                "returncode": 75,
+                "output": "",
+                "error": "authority_validation_isolation_unavailable",
+                "reason": (
+                    "raw_no_site_authority_validation_requires_host_"
+                    "sealed_runner"
+                ),
+                "infrastructure_failure": True,
+            }
         if contract.get("available") is not True:
             return {
                 **base,
@@ -59263,6 +59298,11 @@ class PortalImplementationDaemon:
     ) -> tuple[str, str]:
         """Bind Python validation to configured package roots in the worktree."""
 
+        if validation_python_profile(os.environ) == "raw-no-site":
+            return (
+                command,
+                "preserved raw no-site validation PYTHONPATH",
+            )
         if "PYTHONPATH=" in command or not re.search(
             r"(?:^|[\s;&|])(?:[^\s;&|]*/)?(?:python(?:3(?:\.\d+)*)?|pytest)"
             r"(?=$|[\s;&|])",
@@ -71737,7 +71777,11 @@ class PortalImplementationDaemon:
             key = (task_id, attempt)
             if event_type == "implementation_started":
                 inflight[key] = event
-            elif event_type in {"implementation_finished", "implementation_provider_exhausted"}:
+            elif event_type in {
+                "implementation_finished",
+                "implementation_provider_exhausted",
+                "implementation_state_recovered",
+            }:
                 inflight.pop(key, None)
 
         return list(inflight.values())

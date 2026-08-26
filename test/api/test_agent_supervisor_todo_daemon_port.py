@@ -19488,6 +19488,38 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
     assert any(event["type"] == "implementation_state_recovered" for event in events)
 
 
+def test_implementation_state_recovery_closes_the_durable_inflight_event(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": "ACCEL-999",
+            "attempt": 1,
+            "worktree_path": str(repo / "worktrees" / "accel-999-attempt-1"),
+        },
+    )
+    daemon._record_event(
+        "implementation_state_recovered",
+        {
+            "task_id": "ACCEL-999",
+            "attempt": 1,
+            "reason": "inflight_process_missing",
+        },
+    )
+
+    assert daemon._inflight_implementation_events() == []
+    assert daemon._find_live_inflight_implementation() is None
+
+
 def test_implementation_daemon_ignores_task_local_service_processes_as_inflight(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()

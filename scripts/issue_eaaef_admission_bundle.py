@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Prepare and publish the separately reviewed EAAEF-191 admission bundle.
 
-Preparation captures the host evidence once and emits the exact review object.
-It never reads a reviewer key. Publication accepts externally produced
-operator and security-reviewer signatures, revalidates every captured child,
-and creates the two final artifacts without replacing either one.
+Admission preparation captures the host evidence once and emits the exact
+review object. Diagnostic observation preparation instead reloads one explicit
+immutable no-go capture and cannot enter publication. Neither path reads a
+reviewer key. Publication accepts externally produced operator and
+security-reviewer signatures, revalidates every captured child, and creates
+the two final artifacts without replacing either one.
 """
 
 from __future__ import annotations
@@ -30,6 +32,10 @@ from ipfs_accelerate_py.agent_supervisor.validation.eaaef_authority_registry imp
 )
 from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
     BUNDLE_SCHEMA,
+    EARLY_FRONTIER_TASK_IDS,
+    HOST_ADMISSION_OBSERVATION_SCHEMA,
+    HOST_ADMISSION_OBSERVATION_SCOPE,
+    HOST_ADMISSION_OBSERVATION_TASK_IDS,
     RECEIPT_DIR,
     RECEIPT_FILES,
     RECEIPT_SCHEMA,
@@ -38,6 +44,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import 
     admission_bundle_target_decision,
     cid,
     collect_host_admission_receipts,
+    load_current_host_admission_observation,
     materialize_host_evidence,
     source_addressed_admission_bundle_logical_paths,
     source_addressed_child_receipt_logical_path,
@@ -52,6 +59,10 @@ from ipfs_accelerate_py.agent_supervisor.validation.external_agent_bootstrap_adm
 
 PREPARED_REVIEW_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-admission-bundle-prepared-review@1"
+)
+OBSERVATION_PREPARED_REVIEW_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "eaaef-admission-bundle-observation-review@1"
 )
 _PREPARED_REVIEW_FIELDS = frozenset(
     {"schema", "review", "bundle_template", "prepared_cid"}
@@ -382,6 +393,137 @@ def prepare() -> dict[str, Any]:
     }
 
 
+def prepare_observation(*, full_observation_cid: str) -> dict[str, Any]:
+    """Prepare one immutable no-go observation for diagnostic review only.
+
+    This path deliberately does not materialize host evidence, read signing
+    keys, write staging receipts, open the control database, invoke a
+    provider, or publish authority.  Its output uses a schema that the final
+    admission publisher does not accept.
+    """
+
+    identity = _source_identity()
+    loaded = load_current_host_admission_observation(
+        source_head=identity["source_head"],
+        observation_cid=full_observation_cid,
+        authority_root=AUTHORITY_ROOT_OVERRIDE,
+    )
+    observation = loaded.get("observation")
+    if not isinstance(observation, Mapping):
+        raise RuntimeError("EAAEF-191 full observation is unavailable")
+    expected_identity = {
+        field: str(identity.get(field) or "")
+        for field in ("source_head", "source_tree", "board_namespace", "board_cid")
+    }
+    observed_identity = {
+        field: str(observation.get(field) or "") for field in expected_identity
+    }
+    task_ids = list(observation.get("task_ids") or ())
+    child_decisions = observation.get("child_decisions")
+    child_receipt_cids = observation.get("child_receipt_cids")
+    typed_missing_task_ids = list(observation.get("typed_missing_task_ids") or ())
+    no_go_task_ids = list(observation.get("no_go_task_ids") or ())
+    direct_completion_eligible_task_ids = list(
+        observation.get("direct_completion_eligible_task_ids") or ()
+    )
+    owner_transaction_eligible_task_ids = list(
+        observation.get("casf_owner_transaction_eligible_task_ids") or ()
+    )
+    if (
+        loaded.get("valid") is not True
+        or observation.get("schema") != HOST_ADMISSION_OBSERVATION_SCHEMA
+        or observation.get("scope") != HOST_ADMISSION_OBSERVATION_SCOPE
+        or observation.get("observation_kind") != "typed_no_go"
+        or observation.get("observation_cid") != full_observation_cid
+        or observed_identity != expected_identity
+        or task_ids != list(HOST_ADMISSION_OBSERVATION_TASK_IDS)
+        or not isinstance(child_decisions, Mapping)
+        or set(child_decisions) != set(HOST_ADMISSION_OBSERVATION_TASK_IDS)
+        or not isinstance(child_receipt_cids, Mapping)
+        or set(child_receipt_cids) != set(HOST_ADMISSION_OBSERVATION_TASK_IDS)
+        or typed_missing_task_ids != [
+            task_id
+            for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+            if task_id not in {*EARLY_FRONTIER_TASK_IDS, "EAAEF-191"}
+        ]
+        or no_go_task_ids != ["EAAEF-191"]
+        or direct_completion_eligible_task_ids
+        or owner_transaction_eligible_task_ids != list(EARLY_FRONTIER_TASK_IDS)
+        or observation.get("decision") != "no_go"
+        or observation.get("observation_only") is not True
+        or observation.get("admission_authority") is not False
+        or observation.get("live_admission_allowed") is not False
+        or observation.get("live_launch_allowed") is not False
+        or observation.get("eaaef_191_authority") is not False
+        or observation.get("direct_task_completion_allowed") is not False
+        or observation.get("direct_database_binding_allowed") is not False
+        or observation.get("casf_owner_binding_required") is not True
+        or observation.get("process_started") is not False
+        or observation.get("supervisor_process_started") is not False
+        or observation.get("configured_board_launch") is not False
+        or observation.get("provider_invoked") is not False
+        or observation.get("control_database_opened") is not False
+        or observation.get("database_state_observed") is not False
+        or observation.get("staging_receipts_written") is not False
+    ):
+        raise RuntimeError(
+            "EAAEF-191 full observation is not a current observation-only no-go"
+        )
+    prepared: dict[str, Any] = {
+        "schema": OBSERVATION_PREPARED_REVIEW_SCHEMA,
+        "purpose": "external_diagnostic_review_only",
+        "source_head": expected_identity["source_head"],
+        "source_tree": expected_identity["source_tree"],
+        "board_namespace": expected_identity["board_namespace"],
+        "board_cid": expected_identity["board_cid"],
+        "full_observation_cid": full_observation_cid,
+        "full_observation_logical_path": str(loaded.get("logical_path") or ""),
+        "early_frontier_observation_cid": str(
+            observation.get("early_frontier_observation_cid") or ""
+        ),
+        "early_frontier_observation_logical_path": str(
+            observation.get("early_frontier_observation_logical_path") or ""
+        ),
+        "task_ids": task_ids,
+        "child_decisions": {
+            task_id: str(child_decisions[task_id]) for task_id in task_ids
+        },
+        "child_receipt_cids": {
+            task_id: str(child_receipt_cids[task_id]) for task_id in task_ids
+        },
+        "typed_missing_task_ids": typed_missing_task_ids,
+        "no_go_task_ids": no_go_task_ids,
+        "decision": "no_go",
+        "observation_only": True,
+        "admission_authority": False,
+        "live_admission_allowed": False,
+        "live_launch_allowed": False,
+        "eaaef_191_authority": False,
+        "publishable": False,
+        "independent_signature_present": False,
+        "direct_task_completion_allowed": False,
+        "direct_completion_eligible_task_ids": direct_completion_eligible_task_ids,
+        "casf_owner_transaction_eligible_task_ids": (
+            owner_transaction_eligible_task_ids
+        ),
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": str(
+            observation.get("database_binding_blocker") or ""
+        ),
+        "process_started": False,
+        "supervisor_process_started": False,
+        "configured_board_launch": False,
+        "provider_invoked": False,
+        "control_database_opened": False,
+        "database_state_observed": False,
+        "staging_receipts_written": False,
+        "published": False,
+    }
+    prepared["prepared_cid"] = cid(prepared)
+    return prepared
+
+
 def _validate_prepared_review(prepared: object) -> dict[str, Any]:
     if not isinstance(prepared, Mapping):
         raise RuntimeError("prepared EAAEF-191 review is not an object")
@@ -579,12 +721,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("prepare")
+    observation_parser = subparsers.add_parser("prepare-observation")
+    observation_parser.add_argument(
+        "--full-observation-cid",
+        required=True,
+        help="exact current immutable full-host-admission observation CID",
+    )
     publish_parser = subparsers.add_parser("publish")
     publish_parser.add_argument("--prepared", type=Path, required=True)
     publish_parser.add_argument("--signatures", type=Path, required=True)
     arguments = parser.parse_args()
     if arguments.command == "prepare":
         result = prepare()
+    elif arguments.command == "prepare-observation":
+        result = prepare_observation(
+            full_observation_cid=arguments.full_observation_cid
+        )
     else:
         result = publish(
             prepared_review=_load_ceremony_artifact(

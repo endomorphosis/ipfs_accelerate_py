@@ -1,0 +1,11 @@
+{
+  "schema": "proof-grounded-ir-learning/successor-source-chain-verification-receipt/v2",
+  "task_id": "PGIR-210",
+  "focused_test_count": 34,
+  "focused_test_command": "python -m pytest -q ipfs_datasets_py/tests/unit/logic/intent_ir/graphrag/test_skillcenter_hf_release.py ipfs_datasets_py/tests/unit/logic/ir_learning/source/test_corpus_build.py ipfs_datasets_py/tests/unit/logic/ir_learning/source/test_successor_rights.py ipfs_datasets_py/tests/unit/optimizers/logic_theorem_optimizer/test_legal_ir_eval_splits.py",
+  "post_merge_verification": true,
+  "post_merge_command": "python scripts/verify_proof_grounded_ir_learning_successor_source_chain_v2.py --network",
+  "recorded_at": "2026-08-25T18:53:49Z",
+  "result": "34 passed in 7.00s; post-merge source-chain v2 network replay verified 21 of 21 exact-revision response hashes",
+  "pgir_205_execution_authorized": false
+}

@@ -622,6 +622,50 @@ def test_external_validation_has_no_host_fallback_when_isolation_unavailable(
     assert "Docker unavailable" in result["reason"]
 
 
+def test_external_validation_rejects_unbound_raw_no_site_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = _credential(tmp_path)
+    repository, workspace = _linked_workspace(tmp_path)
+    database_environment, _control_root = _database_program_environment(
+        repository
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "validate_external_provider_isolation_config",
+        _fake_host_validation,
+    )
+    monkeypatch.setenv(
+        multi_runner_module.REPOSITORY_ROOT_ENV,
+        str(repository),
+    )
+    monkeypatch.setenv(
+        multi_runner_module.DATABASE_PROGRAM_JSON_ENV,
+        database_environment[multi_runner_module.DATABASE_PROGRAM_JSON_ENV],
+    )
+
+    with pytest.raises(
+        daemon_module.ValidationRuntimeError,
+        match="raw-no-site validation is unavailable in external isolation",
+    ):
+        daemon_module._docker_external_validation_command(
+            spec=SimpleNamespace(
+                command="python -m pytest -q test_example.py",
+                raw_command="python -m pytest -q test_example.py",
+            ),
+            workspace_path=workspace,
+            timeout_seconds=120.0,
+            environment={
+                "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_PROFILE": (
+                    "raw-no-site"
+                )
+            },
+            isolation_value=_isolation_payload(credential),
+            container_name="pcpc-validation-no-site-test",
+        )
+
+
 @pytest.mark.parametrize("main_checkout", [False, True])
 def test_live_external_validation_denies_host_authority_and_runs_pytest(
     tmp_path: Path,
