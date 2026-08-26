@@ -2361,6 +2361,242 @@ def _detached_runner_args(tmp_path: Path, pid_path: Path) -> SimpleNamespace:
     )
 
 
+def _run_test_lgcvf_foreground_master(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    pid_path: Path,
+    on_start: Any,
+) -> dict[str, object]:
+    context = SimpleNamespace(
+        admission=SimpleNamespace(admission_id="sha256:" + "a" * 64),
+        capsule_pin=SimpleNamespace(capsule_id="sha256:" + "b" * 64),
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_configured_board_live_seal_required",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "verify_lgcvf_configured_board_live_context",
+        lambda **_kwargs: context,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_verify_lgcvf_configured_board_live_profile",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_track_supervisor_status_startup_grace_seconds",
+        lambda *_args, **_kwargs: 0.0,
+    )
+
+    class Process:
+        pid = 424242
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+    def start(*_args: object, **_kwargs: object) -> Process:
+        on_start()
+        return Process()
+
+    monkeypatch.setattr(multi_runner_module, "start_track", start)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "stop_tracks",
+        lambda *_args, **_kwargs: {
+            "stopped_count": 1,
+            "all_trees_fenced": True,
+            "removed_runtime_markers": [],
+        },
+    )
+    track = multi_runner_module.SupervisorTrack(
+        name="lgcvf-quack-lane-0",
+        script_path=Path("unused.py"),
+        log_path=Path("runtime/lane-0.log"),
+        supervisor_pid_path=Path("runtime/lane-0.pid"),
+        daemon_pid_path=Path("runtime/lane-0-daemon.pid"),
+    )
+    return multi_runner_module.run_supervisor_tracks(
+        (track,),
+        repo_root=tmp_path,
+        common_args=(
+            "--board-namespace",
+            multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,
+        ),
+        duration_seconds=0,
+        master_pid_path=pid_path,
+        require_lgcvf_configured_board_live_seal=(
+            multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH
+        ),
+        configured_board_live_capsule_pin_json="{}",
+        configured_board_live_capsule_fd=10,
+        configured_board_live_admission_json="{}",
+        configured_board_live_native_launch_json="{}",
+        configured_board_live_native_fd=11,
+        output=lambda _message: None,
+    )
+
+
+def test_lgcvf_foreground_quarantines_dead_legacy_master_before_birth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    stale_pid = 3594290
+    pid_path.write_text(f"{stale_pid}\n", encoding="ascii")
+    stale_inode = os.lstat(pid_path).st_ino
+    probes: list[tuple[int, int]] = []
+
+    def absent_probe(pid: int, signal_number: int) -> None:
+        probes.append((pid, signal_number))
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    def admitted_start() -> None:
+        assert pid_path.read_text(encoding="ascii") == f"{os.getpid()}\n"
+        assert stat.S_IMODE(os.lstat(pid_path).st_mode) == 0o600
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    result = _run_test_lgcvf_foreground_master(
+        tmp_path,
+        monkeypatch,
+        pid_path=pid_path,
+        on_start=admitted_start,
+    )
+
+    assert result["completed"] is True
+    assert probes == [(stale_pid, 0)]
+    assert not pid_path.exists()
+    quarantines = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.quarantine")
+    )
+    receipts = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.receipt.json")
+    )
+    assert len(quarantines) == len(receipts) == 1
+    assert quarantines[0].read_text(encoding="ascii") == f"{stale_pid}\n"
+    assert os.lstat(quarantines[0]).st_ino == stale_inode
+    receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+    assert receipt["legacy_pid"] == stale_pid
+    assert receipt["outcome"] == "quarantined"
+    assert receipt["liveness_evidence"]["errno"] == "ESRCH"
+
+
+@pytest.mark.parametrize("liveness", ("live", "unknown"))
+def test_lgcvf_foreground_refuses_live_or_unknown_legacy_master(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    liveness: str,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3594290\n", encoding="ascii")
+    started = False
+
+    def probe(_pid: int, signal_number: int) -> None:
+        assert signal_number == 0
+        if liveness == "unknown":
+            raise PermissionError(errno.EPERM, "not permitted")
+
+    def forbidden_start() -> None:
+        nonlocal started
+        started = True
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", probe)
+    with pytest.raises(ValueError, match=liveness):
+        _run_test_lgcvf_foreground_master(
+            tmp_path,
+            monkeypatch,
+            pid_path=pid_path,
+            on_start=forbidden_start,
+        )
+    assert started is False
+    assert pid_path.read_bytes() == b"3594290\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+@pytest.mark.parametrize("unsafe_kind", ("malformed", "symlink", "hardlink"))
+def test_lgcvf_foreground_refuses_unsafe_legacy_master_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_kind: str,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    outside = tmp_path / "outside-master.pid"
+    outside.write_text("3594290\n", encoding="ascii")
+    if unsafe_kind == "malformed":
+        pid_path.write_text("3594290", encoding="ascii")
+    elif unsafe_kind == "symlink":
+        pid_path.symlink_to(outside)
+    else:
+        os.link(outside, pid_path)
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unsafe master PID reached liveness or process birth")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", unexpected)
+    with pytest.raises(ValueError):
+        _run_test_lgcvf_foreground_master(
+            tmp_path,
+            monkeypatch,
+            pid_path=pid_path,
+            on_start=unexpected,
+        )
+    assert outside.read_bytes() == b"3594290\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+def test_lgcvf_foreground_refuses_master_substitution_after_esrch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("3594290\n", encoding="ascii")
+    original_read = multi_runner_module._read_stable_regular_bytes
+    reads = 0
+    started = False
+
+    def substitute_on_confirmation(*args: object, **kwargs: object):
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            pid_path.unlink()
+            pid_path.write_text("3594290\n", encoding="ascii")
+        return original_read(*args, **kwargs)
+
+    def absent_probe(_pid: int, _signal_number: int) -> None:
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    def forbidden_start() -> None:
+        nonlocal started
+        started = True
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_read_stable_regular_bytes",
+        substitute_on_confirmation,
+    )
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    with pytest.raises(ValueError, match="changed after liveness proof"):
+        _run_test_lgcvf_foreground_master(
+            tmp_path,
+            monkeypatch,
+            pid_path=pid_path,
+            on_start=forbidden_start,
+        )
+    assert reads == 2
+    assert started is False
+    assert pid_path.read_bytes() == b"3594290\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
 def test_non_plan_detach_quarantines_dead_legacy_pid_before_spawn(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

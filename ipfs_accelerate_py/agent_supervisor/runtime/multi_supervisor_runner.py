@@ -13238,7 +13238,45 @@ def run_supervisor_tracks(
     if master_pid_path is not None:
         resolved_master_pid = _resolve_path(resolved_repo_root, master_pid_path)
         resolved_master_pid.parent.mkdir(parents=True, exist_ok=True)
-        if plan_bound_children or configured_board_live_context is not None:
+        if configured_board_live_context is not None:
+            # The configured-board operator launches this admitted LGCVF
+            # runner in the foreground, so it cannot rely on launch_detached's
+            # stale legacy-marker recovery.  Keep inspection, exact ESRCH
+            # quarantine, and O_EXCL reservation in one pathname update lock;
+            # live, unknown, malformed, linked, or substituted projections
+            # continue to fail closed in the shared quarantine verifier.
+            with serialized_lock_update(resolved_master_pid):
+                try:
+                    os.lstat(resolved_master_pid)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    raise ValueError(
+                        "cannot inspect configured-board master PID projection"
+                    ) from exc
+                else:
+                    _quarantine_stale_detached_master_pid_locked(
+                        resolved_master_pid
+                    )
+                master_descriptor, master_identity = (
+                    _reserve_owned_pid_projection_locked(resolved_master_pid)
+                )
+                try:
+                    _publish_reserved_pid_projection(
+                        resolved_master_pid,
+                        master_descriptor,
+                        master_identity,
+                        os.getpid(),
+                    )
+                except BaseException:
+                    _discard_reserved_pid_projection_locked(
+                        resolved_master_pid,
+                        master_identity,
+                    )
+                    raise
+                finally:
+                    os.close(master_descriptor)
+        elif plan_bound_children:
             master_descriptor, master_identity = (
                 _reserve_owned_pid_projection(resolved_master_pid)
             )
