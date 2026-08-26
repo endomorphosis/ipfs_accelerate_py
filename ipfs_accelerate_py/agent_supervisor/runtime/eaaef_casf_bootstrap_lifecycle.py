@@ -1965,6 +1965,74 @@ class QuackEAAEFCASFBootstrapOwnerLifecycle:
                 self._management_bindings.pop(generation_id, None)
         return result
 
+    def adopt_completed_owner_stop(
+        self,
+        binding: EAAEFCASFBootstrapBinding,
+    ) -> Mapping[str, Any]:
+        """Verify a dead owner's terminal proof without reviving its generation.
+
+        Successful adoption proves that the capsule-bound owner durably wrote
+        its exact stop intent and result and released the exclusive lease.  The
+        stopped generation remains quarantined; subsequent work requires a
+        fresh generation and cannot reuse this capsule or its authority.
+        """
+
+        if type(binding) is not EAAEFCASFBootstrapBinding:
+            raise EAAEFCASFBootstrapBrokerError(
+                "CASF bootstrap binding is not exact"
+            )
+        _binding_from_mapping(_binding_to_mapping(binding))
+        result = CASFOwnerManagementClient.adopt_completed_stop(
+            generation_id=binding.generation_id,
+            binding_cid=_cid(_binding_to_mapping(binding)),
+            snapshot_bindings_cid=self.snapshot_bindings.to_dict()[
+                "bindings_cid"
+            ],
+            state_dir=binding.owner_state_dir,
+        )
+        record = _read_registry_record(binding)
+        if (
+            result.get("generation_id") != binding.generation_id
+            or record.get("phase") != "owner_started"
+            or record.get("source_forest_root") != binding.source_forest_root
+            or record.get("population_cid") != binding.population_cid
+            or record.get("owner_lifecycle_interface")
+            != EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE
+            or record.get("owner_start_receipt_cid")
+            != result.get("owner_start_receipt_cid")
+            or record.get("record_cid") != result.get("final_record_cid")
+            or record.get("owner_process_birth")
+            != result.get("owner_process_birth")
+        ):
+            raise EAAEFCASFBootstrapBrokerError(
+                "completed CASF owner stop binding differs"
+            )
+        _assert_owner_lease_released(binding)
+        with self._gate:
+            broker = self._brokers.get(binding.generation_id)
+            client = self._management_clients.get(binding.generation_id)
+            retained_binding = self._management_bindings.get(
+                binding.generation_id
+            )
+            if retained_binding is not None and retained_binding != binding:
+                raise EAAEFCASFBootstrapBrokerError(
+                    "completed CASF owner stop binding changed"
+                )
+            if client is not None and client.is_alive():
+                raise EAAEFCASFBootstrapBrokerError(
+                    "completed CASF owner stop remains live"
+                )
+            self._management_clients.pop(binding.generation_id, None)
+            self._management_bindings.pop(binding.generation_id, None)
+        if broker is not None:
+            broker.close_descriptors()
+            if not broker.wait_dead(self.shutdown_timeout_seconds):
+                raise EAAEFCASFBootstrapBrokerError(
+                    "completed CASF bootstrap broker remains live"
+                )
+            self._forget_broker(binding.generation_id, broker)
+        return result
+
     def committed_generation_ids(self) -> tuple[str, ...]:
         """Return local identities only; no database authority crosses."""
 
