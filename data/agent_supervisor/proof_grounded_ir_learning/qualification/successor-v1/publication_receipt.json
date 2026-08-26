@@ -1,0 +1,32 @@
+{
+  "append_only": true,
+  "decision": "denied",
+  "decision_cid": "baguqeeraxlp6azus5brolzyypub6hraj44fcfgm6zzq34rda7y2lo37hf6eq",
+  "human_approval": false,
+  "interface": "proof-grounded-ir-learning/qualification-publication/v2",
+  "lease_key": "hf-publication:Publicus/proof-grounded-ir-learning",
+  "local_package_qualified": false,
+  "network_accessed": false,
+  "publication_authorized": false,
+  "publication_cid": "baguqeera6koc4d5ir5gd45c2gudna4ik4i37s3qd7eeakxv4x7emaig3xd4a",
+  "publication_sha256": "sha256:f29c2e0fa88f4c3e745a3506d0710ae237f96e03f908055ebcbfc8c020dbb8f8",
+  "reason_codes": [
+    "qualification_gates_failed",
+    "publication_not_authorized",
+    "manual_external_authority_absent"
+  ],
+  "remote_revision": null,
+  "schema": "PGIRQualificationPublicationReceipt@2",
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  },
+  "trust_remote_code": false,
+  "upload_attempted": false,
+  "upload_authorized": false
+}

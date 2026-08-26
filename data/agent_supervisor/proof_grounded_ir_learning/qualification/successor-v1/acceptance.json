@@ -1,0 +1,218 @@
+{
+  "acceptance_cid": "baguqeerapltdxyv6hybhm6zvksll7ycq456wldia7kn7cuinkpzxwmadsdgq",
+  "acceptance_sha256": "sha256:7ae63be2be3e02767b355496bfe050e77d658d00fa9bf1510d53f37b300390cd",
+  "criteria": [
+    {
+      "criterion_id": "F01",
+      "evidence": "The complete successor result graph is closed through verified PGIR-206 typed-not-run evidence.",
+      "evidence_cids": [
+        "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq",
+        "baguqeeram562re6snweb5nuinwprb4ehccvkin7kpylihktizlirsss7pllq"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "current_input_child_evidence",
+      "status": "resolved_with_evidence",
+      "text": "All PGIR-G010 through PGIR-G110 children have fresh current-input evidence."
+    },
+    {
+      "criterion_id": "F02",
+      "evidence": "The successor leakage audit passed and hidden labels stayed sealed.",
+      "evidence_cids": [
+        "baguqeera456gtyfkktybzrjbujmp2mqy6i2bins372xgdsgvaahdcvpxy7aq",
+        "baguqeeradclawgay34f4o4n4vgqlhtmwg7kbvxbqkuxmkoc2hbwj4ix63haq"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "no_source_lineage_leakage",
+      "status": "satisfied",
+      "text": "No source-lineage leakage across related derivatives."
+    },
+    {
+      "criterion_id": "F03",
+      "evidence": "One deterministic compiler/decompiler bridge is bound; its residual limits remain explicit.",
+      "evidence_cids": [
+        "baguqeerarxul7wfpbcka6lzwbe6afembjteohwfdps6mjh7pntg7xlz7ywta",
+        "baguqeeracirjnyp5plk7uobfwoj2bol3hgqhnr6a4k7geipnex3drntqrnxq"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "one_canonical_bridge",
+      "status": "satisfied_with_limitations",
+      "text": "One canonical typed bridge is bound and used."
+    },
+    {
+      "criterion_id": "F04",
+      "evidence": "The historical semantic baseline is retired and no current-input measured baseline was admitted.",
+      "evidence_cids": [
+        "baguqeeraw4nh2c7xxamku4juzt5257krzlzuaxe64vl5cuz4h4c4iwm6xdjq"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "deterministic_baseline_measured",
+      "status": "no_go",
+      "text": "A current-input deterministic baseline is measured and qualified."
+    },
+    {
+      "criterion_id": "F05",
+      "evidence": "Proof-aware arm, metric, and receipt contracts are sealed even though execution was denied.",
+      "evidence_cids": [
+        "baguqeerans75uz2gaygl5355txt4o3npzztm7bhlr5v2qep6dqhuthqphpga",
+        "baguqeera4caljyd6lrh4wpzg24uieyzplikodbkgathqciinfg3vtkkf4qza"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "proof_aware_contracts",
+      "status": "satisfied",
+      "text": "Proof-aware pair, loss, and evaluation contracts are sealed."
+    },
+    {
+      "criterion_id": "F06",
+      "evidence": "The campaign is resumable in contract only; the freeze and admission receipt denied every lease.",
+      "evidence_cids": [
+        "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+        "baguqeeraqyqjwwkt3jmr2b2hnwpwafhwndre4fkd7gcck5rvwzcyfh22shia"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "resumable_resource_aware_campaign",
+      "status": "satisfied_execution_denied",
+      "text": "A resumable resource-aware campaign exists and may execute only from sealed inputs."
+    },
+    {
+      "criterion_id": "F07",
+      "evidence": "The deterministic reducer recorded no winner and no compare-and-swap attempt.",
+      "evidence_cids": [
+        "baguqeera7zbp7lotn5aqdby5tvz6ledcgiektkywugvzypakcj6lrmotncpq",
+        "baguqeera5x32cyuywisqviyfi7nbzfwnjdmtf5k4zzbbdkdywzikzswswrna"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "deterministic_promotion_or_nogo",
+      "status": "satisfied",
+      "text": "Promotion is deterministic policy admission or a documented no-go."
+    },
+    {
+      "criterion_id": "F08",
+      "evidence": "Append-only publication policy was honored: no upload was attempted without independent authority.",
+      "evidence_cids": [
+        "bafkreigwdei25h3eg2k2l6gp6ak5tbkbcfabi6vsoqzrzv6k6mpm73lhge"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "authorized_append_only_publication",
+      "status": "satisfied",
+      "text": "Append-only qualified publication occurs only when independently authorized."
+    },
+    {
+      "criterion_id": "F09",
+      "evidence": "Token metrics contain explicit not-run cells with zero denominators and unavailable uncertainty.",
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "token_metrics_with_uncertainty",
+      "status": "no_go",
+      "text": "Actual token metrics are reported with paired uncertainty."
+    },
+    {
+      "criterion_id": "F10",
+      "evidence": "Latent and retrieval metrics contain explicit not-run cells with unavailable uncertainty.",
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "latent_retrieval_metrics_with_uncertainty",
+      "status": "no_go",
+      "text": "Actual latent and retrieval metrics are reported with paired uncertainty."
+    },
+    {
+      "criterion_id": "F11",
+      "evidence": "Structural metrics contain explicit not-run cells with unavailable uncertainty.",
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "structural_metrics_with_uncertainty",
+      "status": "no_go",
+      "text": "Actual structural metrics are reported with paired uncertainty."
+    },
+    {
+      "criterion_id": "F12",
+      "evidence": "Semantic metrics contain explicit not-run cells; historical scores were not substituted.",
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "semantic_metrics_with_uncertainty",
+      "status": "no_go",
+      "text": "Actual semantic metrics are reported with paired uncertainty."
+    },
+    {
+      "criterion_id": "F13",
+      "evidence": "Proof metrics were not run and no proof authority was granted.",
+      "evidence_cids": [
+        "baguqeeraa55wxtbh2s63j22qgytbnsfjpatnstg4vun4nqg5qlvu3fgcx36a"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "proof_metrics_with_uncertainty",
+      "status": "no_go",
+      "text": "Actual proof metrics are reported with paired uncertainty."
+    },
+    {
+      "criterion_id": "F14",
+      "evidence": "Calibration and OOD metrics contain explicit not-run cells with unavailable uncertainty.",
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "calibration_ood_metrics_with_uncertainty",
+      "status": "no_go",
+      "text": "Actual calibration and OOD metrics are reported with paired uncertainty."
+    },
+    {
+      "criterion_id": "F15",
+      "evidence": "Latency and resource metrics were not measured because no resource lease was requested.",
+      "evidence_cids": [
+        "baguqeerani6ro4d7naxn4mrb5rgzuiw77zq3hckyttbhgihqvtcj6oquziiq"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "latency_resource_metrics_with_uncertainty",
+      "status": "no_go",
+      "text": "Actual latency and resource results are reported with paired uncertainty."
+    },
+    {
+      "criterion_id": "F16",
+      "evidence": "Hidden tests stayed sealed, no candidate was published, and blocked PGIR-212 is the only following task.",
+      "evidence_cids": [
+        "baguqeeradclawgay34f4o4n4vgqlhtmwg7kbvxbqkuxmkoc2hbwj4ix63haq",
+        "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq"
+      ],
+      "gate_resolved": true,
+      "promotion_gate_pass": false,
+      "slug": "no_hidden_test_tune_admitted_publish_next_board",
+      "status": "satisfied",
+      "text": "Hidden tests are never used for tuning; only an admitted candidate may be published; the next content-addressed board is produced."
+    }
+  ],
+  "criterion_count": 16,
+  "interface": "proof-grounded-ir-learning/final-acceptance/v2",
+  "promotion_gate_pass_count": 0,
+  "schema": "PGIRFinalAcceptanceCatalog@2",
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  }
+}

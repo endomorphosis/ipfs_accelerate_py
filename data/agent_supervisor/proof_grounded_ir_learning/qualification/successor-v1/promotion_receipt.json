@@ -1,0 +1,60 @@
+{
+  "admitted_gates": [],
+  "candidate_checkpoint": null,
+  "cas_attempted": false,
+  "decision": "no_go",
+  "decision_cid": "baguqeeraxlp6azus5brolzyypub6hraj44fcfgm6zzq34rda7y2lo37hf6eq",
+  "human_approval": false,
+  "interface": "proof-grounded-ir-learning/qualification-promotion/v2",
+  "lease_key": "promotion-pointer",
+  "m2_gates": [
+    "lineage",
+    "syntax",
+    "type",
+    "semantic",
+    "proof",
+    "calibration",
+    "family",
+    "jurisdiction",
+    "source_span",
+    "latency",
+    "resource"
+  ],
+  "observed_pointer_after": null,
+  "observed_pointer_before": null,
+  "pointer_mutated": false,
+  "pointer_unchanged": true,
+  "promotion_authorized": false,
+  "promotion_cid": "baguqeeraec36m23c3dblgwyf2xciafjg6eeo26iadlh4nyvqflmnnkg24kka",
+  "promotion_sha256": "sha256:20b7e66b62d8c2b35b05d5c4801526f108ed79001acfc6e2b02ad8d6a8dae294",
+  "reason_codes": [
+    "no_candidate_checkpoint",
+    "qualification_gates_failed",
+    "publication_not_authorized"
+  ],
+  "required_gates": [
+    "lineage",
+    "syntax",
+    "type",
+    "semantic",
+    "proof",
+    "calibration",
+    "family",
+    "jurisdiction",
+    "source_span",
+    "latency",
+    "resource"
+  ],
+  "schema": "PGIRQualificationPromotionReceipt@2",
+  "self_promotion": false,
+  "source_reducer_cas_receipt_cid": "baguqeera5x32cyuywisqviyfi7nbzfwnjdmtf5k4zzbbdkdywzikzswswrna",
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  }
+}

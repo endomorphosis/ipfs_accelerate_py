@@ -1,0 +1,665 @@
+{
+  "interface": "proof-grounded-ir-learning/final-report-sections/v2",
+  "schema": "PGIRFinalReportSectionCatalog@2",
+  "section_count": 32,
+  "sections": [
+    {
+      "bindings": {
+        "pgir_206_forest": [
+          {
+            "commit": "0373c2968b9b46b43ee9f564051182df137c08e4",
+            "parents": [
+              "c03180fbbd64b225a121fcc7be046bd0beab8918"
+            ],
+            "role": "implementation",
+            "subject": "PGIR-206: Re-run R1-R6 on the superseding freeze",
+            "tree": "387f92d22fe7804a11436d2382b7592308233234"
+          },
+          {
+            "commit": "efd5bc4107a595ba7b56632faa7d2f6c82f249d8",
+            "parents": [
+              "c03180fbbd64b225a121fcc7be046bd0beab8918",
+              "0373c2968b9b46b43ee9f564051182df137c08e4"
+            ],
+            "role": "merge",
+            "subject": "Merge commit '0373c2968b9b46b43ee9f564051182df137c08e4' into agent/pgir-successor-current-supervisor-20260825",
+            "tree": "387f92d22fe7804a11436d2382b7592308233234"
+          },
+          {
+            "commit": "ef4a74b362386578858d368a8e7420238e4c897d",
+            "parents": [
+              "efd5bc4107a595ba7b56632faa7d2f6c82f249d8"
+            ],
+            "role": "completion",
+            "subject": "PGIR-206: mark todo completed",
+            "tree": "556e95765e90f00025eecefb8048a655956d70a3"
+          }
+        ],
+        "recursive_repository": {
+          "nested_commit": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+          "nested_tree": "7169c2a67929044a02350bc26d0a51c853a4981b",
+          "outer_commit": "ef4a74b362386578858d368a8e7420238e4c897d",
+          "outer_tree": "556e95765e90f00025eecefb8048a655956d70a3"
+        }
+      },
+      "evidence_cids": [
+        "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq"
+      ],
+      "number": 1,
+      "slug": "exact_source_revisions",
+      "status": "resolved",
+      "summary": "The completed PGIR-206 recursive forest and unchanged nested source revision are pinned exactly.",
+      "title": "Exact source revisions"
+    },
+    {
+      "bindings": {
+        "pinset_id": "JDAO-PINSET-1",
+        "training_admitted_rows": 0,
+        "training_repositories_admitted": 0
+      },
+      "evidence_cids": [
+        "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q"
+      ],
+      "number": 2,
+      "slug": "justicedao_revisions",
+      "status": "resolved",
+      "summary": "JDAO-PINSET-1 remains immutable; no JusticeDAO repository is admitted for learned training.",
+      "title": "Exact JusticeDAO repository revisions and configurations"
+    },
+    {
+      "bindings": {
+        "freeze_manifest_cid": "baguqeeraw4k4u62ddeg2cvpn6qjqn3nwd2mdzrczc373zgtt67hbkgkrlbaq",
+        "pgir_206_manifest_cid": "baguqeerao2izb4i6bv7ffg3flharhjlph35gpwl4rbekzrrwm3n25mibqxsq",
+        "pgir_206_result_cid": "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq"
+      },
+      "evidence_cids": [
+        "baguqeerao2izb4i6bv7ffg3flharhjlph35gpwl4rbekzrrwm3n25mibqxsq",
+        "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq"
+      ],
+      "number": 3,
+      "slug": "current_state_inventory",
+      "status": "resolved",
+      "summary": "Freeze, experiment, receipt, result, and dependency inventories are content addressed and complete.",
+      "title": "Current-state inventory"
+    },
+    {
+      "bindings": {
+        "derived_count": 38690,
+        "materialized_source_rows": 0,
+        "source_count": 7173,
+        "training_admitted_rows": 0
+      },
+      "evidence_cids": [
+        "baguqeerav4mx4d6smnpejeqs3i3mayqmlimpdwaeqmz7prpdpgphp2i5srwq",
+        "baguqeera5mphxryqluiqps6ciehcjs6twc6hrltfwdtpy47wtkkg7ifqwvwa"
+      ],
+      "number": 4,
+      "slug": "source_versus_derived",
+      "status": "resolved",
+      "summary": "The 7,173 source rows remain quarantined; zero materialized or training-admitted rows were read.",
+      "title": "Source versus derived record counts"
+    },
+    {
+      "bindings": {
+        "hidden_test_commitment": "sha256:6a801b51b980e666b4010da9a679ad8e11a233078f988165565481b98d4b9ded",
+        "insufficient_holdouts": [
+          "compiler",
+          "cross_reference",
+          "domain",
+          "exception",
+          "length",
+          "lineage",
+          "notation",
+          "premise",
+          "proof_library",
+          "publication",
+          "rare_operator",
+          "time",
+          "type"
+        ],
+        "split_binding_cid": "baguqeera456gtyfkktybzrjbujmp2mqy6i2bins372xgdsgvaahdcvpxy7aq"
+      },
+      "evidence_cids": [
+        "baguqeeradclawgay34f4o4n4vgqlhtmwg7kbvxbqkuxmkoc2hbwj4ix63haq"
+      ],
+      "number": 5,
+      "slug": "lineage_and_split",
+      "status": "resolved_with_no_go",
+      "summary": "Lineage-safe split policy remains sealed while thirteen required holdouts are permanently insufficient.",
+      "title": "Lineage and split design"
+    },
+    {
+      "bindings": {
+        "hidden_labels_opened": false,
+        "leakage_passed": true,
+        "violations": 0
+      },
+      "evidence_cids": [
+        "baguqeeradclawgay34f4o4n4vgqlhtmwg7kbvxbqkuxmkoc2hbwj4ix63haq"
+      ],
+      "number": 6,
+      "slug": "leakage_audit",
+      "status": "satisfied",
+      "summary": "The successor leakage audit passed and hidden labels stayed unopened.",
+      "title": "Leakage-audit results"
+    },
+    {
+      "bindings": {
+        "compiler_binding_cid": "baguqeerarxul7wfpbcka6lzwbe6afembjteohwfdps6mjh7pntg7xlz7ywta",
+        "decompiler_binding_cid": "baguqeeracirjnyp5plk7uobfwoj2bol3hgqhnr6a4k7geipnex3drntqrnxq"
+      },
+      "evidence_cids": [
+        "baguqeerarxul7wfpbcka6lzwbe6afembjteohwfdps6mjh7pntg7xlz7ywta"
+      ],
+      "number": 7,
+      "slug": "canonical_bridge",
+      "status": "satisfied_with_limitations",
+      "summary": "The one canonical compiler/decompiler bridge remains bound with explicit limitations.",
+      "title": "Canonical bridge-IR design"
+    },
+    {
+      "bindings": {
+        "entrypoint": "ipfs_datasets_py.logic.legal_ir.canonical_compiler.TypedDeonticCanonicalCompiler",
+        "learned_stages": [],
+        "symbolic_alias": "COMPILER-CURRENT-1"
+      },
+      "evidence_cids": [
+        "baguqeerarxul7wfpbcka6lzwbe6afembjteohwfdps6mjh7pntg7xlz7ywta"
+      ],
+      "number": 8,
+      "slug": "compiler_architecture",
+      "status": "resolved",
+      "summary": "The deterministic typed compiler remains the only admitted compiler architecture.",
+      "title": "Compiler architecture"
+    },
+    {
+      "bindings": {
+        "entrypoint": "ipfs_datasets_py.logic.legal_ir.canonical_decompiler.SourceWithheldCanonicalDecompiler",
+        "symbolic_alias": "DECOMPILER-CURRENT-1",
+        "uses_model": false
+      },
+      "evidence_cids": [
+        "baguqeeracirjnyp5plk7uobfwoj2bol3hgqhnr6a4k7geipnex3drntqrnxq"
+      ],
+      "number": 9,
+      "slug": "decompiler_architecture",
+      "status": "resolved",
+      "summary": "The source-withheld deterministic decompiler remains the only admitted decompiler architecture.",
+      "title": "Decompiler architecture"
+    },
+    {
+      "bindings": {
+        "qualification": "retired_not_currently_qualified",
+        "retirement_cid": "baguqeeraw4nh2c7xxamku4juzt5257krzlzuaxe64vl5cuz4h4c4iwm6xdjq"
+      },
+      "evidence_cids": [
+        "baguqeeraw4nh2c7xxamku4juzt5257krzlzuaxe64vl5cuz4h4c4iwm6xdjq"
+      ],
+      "number": 10,
+      "slug": "deterministic_baseline",
+      "status": "no_go",
+      "summary": "The historical deterministic baseline was retired and is not currently qualified for this campaign.",
+      "title": "Deterministic baseline"
+    },
+    {
+      "bindings": {
+        "architectures_instantiated": [],
+        "checkpoint_count": 0,
+        "weights_created": false
+      },
+      "evidence_cids": [
+        "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq"
+      ],
+      "number": 11,
+      "slug": "learned_model_architecture",
+      "status": "not_run",
+      "summary": "R2-R6 declarations exist, but no learned architecture was instantiated and no weights were created.",
+      "title": "Learned-model architecture"
+    },
+    {
+      "bindings": {
+        "policy_cid": "baguqeeraluqwxtejicycax65cicqfibtyy5kxkxxyng5nzbxmuooqedw2vka",
+        "status": "permanently_deterministic_only",
+        "training_authorized": false
+      },
+      "evidence_cids": [
+        "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq"
+      ],
+      "number": 12,
+      "slug": "tokenizer_and_vocabulary",
+      "status": "no_go",
+      "summary": "The tokenizer policy is permanently deterministic-only and authorizes no learned vocabulary.",
+      "title": "Tokenizer and vocabulary"
+    },
+    {
+      "bindings": {
+        "identity": "IRLossConfiguration@1",
+        "optimizer_steps": 0,
+        "proof_in_gradient_path": false
+      },
+      "evidence_cids": [
+        "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq"
+      ],
+      "number": 13,
+      "slug": "loss_configuration",
+      "status": "resolved_unused",
+      "summary": "The closed loss configuration remained declared but was consumed by zero optimizer steps.",
+      "title": "Loss configuration"
+    },
+    {
+      "bindings": {
+        "arm_count": 6,
+        "campaign_cid": "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+        "execution_status": "not_run",
+        "experiment_key_count": 16
+      },
+      "evidence_cids": [
+        "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq"
+      ],
+      "number": 14,
+      "slug": "training_curriculum",
+      "status": "not_run",
+      "summary": "All six arms and sixteen experiment keys were sealed; admission closed before any run.",
+      "title": "Training curriculum"
+    },
+    {
+      "bindings": {
+        "attempts": 0,
+        "closed_authority_vocabulary": true,
+        "proof_invoked": false
+      },
+      "evidence_cids": [
+        "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq"
+      ],
+      "number": 15,
+      "slug": "hard_negative_generation",
+      "status": "resolved_unused",
+      "summary": "Hard-negative contracts remain sealed and unused; unknown or timeout outcomes cannot become labels.",
+      "title": "Hard-negative generation"
+    },
+    {
+      "bindings": {
+        "attempts_admitted_to_curriculum": 0,
+        "provider_invoked": false,
+        "role": "proposal_only"
+      },
+      "evidence_cids": [
+        "baguqeeraa55wxtbh2s63j22qgytbnsfjpatnstg4vun4nqg5qlvu3fgcx36a"
+      ],
+      "number": 16,
+      "slug": "lean_capable_results",
+      "status": "not_run",
+      "summary": "No Lean-capable proposal was invoked or admitted to a curriculum.",
+      "title": "Lean-capable model results"
+    },
+    {
+      "bindings": {
+        "attempts_admitted_to_curriculum": 0,
+        "provider_invoked": false,
+        "role": "proposal_only"
+      },
+      "evidence_cids": [
+        "baguqeeraa55wxtbh2s63j22qgytbnsfjpatnstg4vun4nqg5qlvu3fgcx36a"
+      ],
+      "number": 17,
+      "slug": "tactician_results",
+      "status": "not_run",
+      "summary": "No tactician proposal was invoked or admitted to a curriculum.",
+      "title": "Tactician results"
+    },
+    {
+      "bindings": {
+        "attempts_admitted_to_curriculum": 0,
+        "provider_invoked": false,
+        "role": "proposal_only"
+      },
+      "evidence_cids": [
+        "baguqeeraa55wxtbh2s63j22qgytbnsfjpatnstg4vun4nqg5qlvu3fgcx36a"
+      ],
+      "number": 18,
+      "slug": "hammer_results",
+      "status": "not_run",
+      "summary": "No Hammer, ATP, or SMT proposal was invoked or admitted to a curriculum.",
+      "title": "Hammer results"
+    },
+    {
+      "bindings": {
+        "authority_granted": false,
+        "checked_proof_count": 0,
+        "source_proof_receipt_cid": "baguqeeraa55wxtbh2s63j22qgytbnsfjpatnstg4vun4nqg5qlvu3fgcx36a"
+      },
+      "evidence_cids": [
+        "baguqeeraa55wxtbh2s63j22qgytbnsfjpatnstg4vun4nqg5qlvu3fgcx36a"
+      ],
+      "number": 19,
+      "slug": "kernel_verification",
+      "status": "not_run",
+      "summary": "Independent proof authority remains required; PGIR-206 invoked no prover or kernel checker.",
+      "title": "Kernel-verification results"
+    },
+    {
+      "bindings": {
+        "confidence_interval": null,
+        "denominator": 0,
+        "family": "token",
+        "hidden_test_used": false,
+        "measured_cell_count": 0,
+        "missing_as_zero": false,
+        "paired_uncertainty": null,
+        "reason_code": "admission_closed",
+        "source_evaluation_receipt_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+        "status": "not_run",
+        "value": null
+      },
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "number": 20,
+      "slug": "cross_entropy_metrics",
+      "status": "not_run",
+      "summary": "Cross-entropy has zero measured cells and unavailable paired uncertainty.",
+      "title": "Cross-entropy metrics"
+    },
+    {
+      "bindings": {
+        "confidence_interval": null,
+        "denominator": 0,
+        "family": "latent_retrieval",
+        "hidden_test_used": false,
+        "measured_cell_count": 0,
+        "missing_as_zero": false,
+        "paired_uncertainty": null,
+        "reason_code": "admission_closed",
+        "source_evaluation_receipt_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+        "status": "not_run",
+        "value": null
+      },
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "number": 21,
+      "slug": "cosine_contrastive_metrics",
+      "status": "not_run",
+      "summary": "Cosine and contrastive metrics have zero measured cells and unavailable paired uncertainty.",
+      "title": "Cosine and contrastive metrics"
+    },
+    {
+      "bindings": {
+        "confidence_interval": null,
+        "denominator": 0,
+        "family": "latent_retrieval",
+        "hidden_test_used": false,
+        "measured_cell_count": 0,
+        "missing_as_zero": false,
+        "paired_uncertainty": null,
+        "reason_code": "admission_closed",
+        "source_evaluation_receipt_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+        "status": "not_run",
+        "value": null
+      },
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "number": 22,
+      "slug": "retrieval_metrics",
+      "status": "not_run",
+      "summary": "Retrieval metrics have zero measured cells and unavailable paired uncertainty.",
+      "title": "Retrieval metrics"
+    },
+    {
+      "bindings": {
+        "confidence_interval": null,
+        "denominator": 0,
+        "family": "structural",
+        "hidden_test_used": false,
+        "measured_cell_count": 0,
+        "missing_as_zero": false,
+        "paired_uncertainty": null,
+        "reason_code": "admission_closed",
+        "source_evaluation_receipt_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+        "status": "not_run",
+        "value": null
+      },
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "number": 23,
+      "slug": "structural_metrics",
+      "status": "not_run",
+      "summary": "Structural metrics have zero measured cells and unavailable paired uncertainty.",
+      "title": "Structural metrics"
+    },
+    {
+      "bindings": {
+        "confidence_interval": null,
+        "denominator": 0,
+        "family": "semantic",
+        "hidden_test_used": false,
+        "measured_cell_count": 0,
+        "missing_as_zero": false,
+        "paired_uncertainty": null,
+        "reason_code": "admission_closed",
+        "source_evaluation_receipt_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+        "status": "not_run",
+        "value": null
+      },
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "number": 24,
+      "slug": "semantic_metrics",
+      "status": "not_run",
+      "summary": "Semantic metrics have zero measured cells; historical fixture scores are not substituted.",
+      "title": "Semantic metrics"
+    },
+    {
+      "bindings": {
+        "confidence_interval": null,
+        "denominator": 0,
+        "family": "proof",
+        "hidden_test_used": false,
+        "measured_cell_count": 0,
+        "missing_as_zero": false,
+        "paired_uncertainty": null,
+        "reason_code": "admission_closed",
+        "source_evaluation_receipt_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+        "status": "not_run",
+        "value": null
+      },
+      "evidence_cids": [
+        "baguqeeraa55wxtbh2s63j22qgytbnsfjpatnstg4vun4nqg5qlvu3fgcx36a"
+      ],
+      "number": 25,
+      "slug": "proof_metrics",
+      "status": "not_run",
+      "summary": "Proof metrics have zero measured cells and no checked campaign proofs.",
+      "title": "Proof metrics"
+    },
+    {
+      "bindings": {
+        "confidence_interval": null,
+        "denominator": 0,
+        "family": "calibration_ood",
+        "hidden_test_used": false,
+        "measured_cell_count": 0,
+        "missing_as_zero": false,
+        "paired_uncertainty": null,
+        "reason_code": "admission_closed",
+        "source_evaluation_receipt_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+        "status": "not_run",
+        "value": null
+      },
+      "evidence_cids": [
+        "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda"
+      ],
+      "number": 26,
+      "slug": "calibration_ood_metrics",
+      "status": "not_run",
+      "summary": "Calibration and OOD metrics have zero measured cells and unavailable uncertainty.",
+      "title": "Calibration and OOD metrics"
+    },
+    {
+      "bindings": {
+        "confidence_interval": null,
+        "denominator": 0,
+        "family": "latency_resource",
+        "hidden_test_used": false,
+        "measured_cell_count": 0,
+        "missing_as_zero": false,
+        "paired_uncertainty": null,
+        "reason_code": "admission_closed",
+        "source_evaluation_receipt_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+        "status": "not_run",
+        "value": null
+      },
+      "evidence_cids": [
+        "baguqeerani6ro4d7naxn4mrb5rgzuiw77zq3hckyttbhgihqvtcj6oquziiq"
+      ],
+      "number": 27,
+      "slug": "resource_utilization",
+      "status": "not_run",
+      "summary": "No resource lease was requested or acquired; measured cost is unavailable, not zero.",
+      "title": "Resource utilization"
+    },
+    {
+      "bindings": {
+        "execution_authorized": false,
+        "pgir_206_forest": [
+          {
+            "commit": "0373c2968b9b46b43ee9f564051182df137c08e4",
+            "parents": [
+              "c03180fbbd64b225a121fcc7be046bd0beab8918"
+            ],
+            "role": "implementation",
+            "subject": "PGIR-206: Re-run R1-R6 on the superseding freeze",
+            "tree": "387f92d22fe7804a11436d2382b7592308233234"
+          },
+          {
+            "commit": "efd5bc4107a595ba7b56632faa7d2f6c82f249d8",
+            "parents": [
+              "c03180fbbd64b225a121fcc7be046bd0beab8918",
+              "0373c2968b9b46b43ee9f564051182df137c08e4"
+            ],
+            "role": "merge",
+            "subject": "Merge commit '0373c2968b9b46b43ee9f564051182df137c08e4' into agent/pgir-successor-current-supervisor-20260825",
+            "tree": "387f92d22fe7804a11436d2382b7592308233234"
+          },
+          {
+            "commit": "ef4a74b362386578858d368a8e7420238e4c897d",
+            "parents": [
+              "efd5bc4107a595ba7b56632faa7d2f6c82f249d8"
+            ],
+            "role": "completion",
+            "subject": "PGIR-206: mark todo completed",
+            "tree": "556e95765e90f00025eecefb8048a655956d70a3"
+          }
+        ],
+        "resource_lease_acquired": false
+      },
+      "evidence_cids": [
+        "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq"
+      ],
+      "number": 28,
+      "slug": "multi_supervisor_scheduling",
+      "status": "resolved",
+      "summary": "The current supervisor completed the typed not-run lifecycle without granting a training lease.",
+      "title": "Multi-supervisor scheduling results"
+    },
+    {
+      "bindings": {
+        "candidate_checkpoint": null,
+        "decision": "no_go",
+        "m2_gates": [
+          "lineage",
+          "syntax",
+          "type",
+          "semantic",
+          "proof",
+          "calibration",
+          "family",
+          "jurisdiction",
+          "source_span",
+          "latency",
+          "resource"
+        ],
+        "pointer_mutated": false
+      },
+      "evidence_cids": [
+        "baguqeera5x32cyuywisqviyfi7nbzfwnjdmtf5k4zzbbdkdywzikzswswrna"
+      ],
+      "number": 29,
+      "slug": "promotion_or_rejection",
+      "status": "no_go",
+      "summary": "No checkpoint exists, every non-compensable gate remains binding, and the pointer is unchanged.",
+      "title": "Checkpoint promotion or rejection decision"
+    },
+    {
+      "bindings": {
+        "remote_revision": null,
+        "upload_attempted": false,
+        "upload_authorized": false
+      },
+      "evidence_cids": [
+        "bafkreigwdei25h3eg2k2l6gp6ak5tbkbcfabi6vsoqzrzv6k6mpm73lhge"
+      ],
+      "number": 30,
+      "slug": "published_artifacts",
+      "status": "denied",
+      "summary": "No upload was attempted and no remote revision exists because qualification and authority are absent.",
+      "title": "Published artifacts"
+    },
+    {
+      "bindings": {
+        "reason_codes": [
+          "no_rights_admitted_training_rows",
+          "corpus_not_materialized",
+          "required_holdouts_insufficient",
+          "tokenizer_not_admitted",
+          "historical_semantic_baseline_not_currently_qualified",
+          "integrated_evidence_does_not_authorize_execution",
+          "portability_no_go",
+          "pgir_206_execution_not_authorized",
+          "pgir_206_typed_not_run",
+          "no_candidate_checkpoint",
+          "publication_not_authorized"
+        ]
+      },
+      "evidence_cids": [
+        "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq"
+      ],
+      "number": 31,
+      "slug": "known_limitations",
+      "status": "resolved",
+      "summary": "The no-go reason set is complete and no missing evidence is suppressed or counted as success.",
+      "title": "Known limitations"
+    },
+    {
+      "bindings": {
+        "descendant_task_ids": [],
+        "next_board_path": "docs/architecture/proof_grounded_ir_learning/successor-v1/next.todo.md",
+        "next_task_ids": [
+          "PGIR-212"
+        ]
+      },
+      "evidence_cids": [
+        "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq"
+      ],
+      "number": 32,
+      "slug": "next_board_recommendation",
+      "status": "resolved",
+      "summary": "The following board contains only blocked PGIR-212 and requires manual external evidence.",
+      "title": "Exact recommendation for the next training and data-improvement board"
+    }
+  ],
+  "sections_cid": "baguqeerax6zzh4e4lmvs74yefb4r3s2p67vldwvz3zehcn2pfk5i3mjjjjoa",
+  "sections_sha256": "sha256:bfb393f09c5b2b2ff30428791dcb4ff7eab1dab9de4871374f2aba8db1294a5c",
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  }
+}
