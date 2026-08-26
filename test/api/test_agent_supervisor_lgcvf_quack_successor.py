@@ -3386,7 +3386,17 @@ def _abandoned_owner_fixture(
     marker_path = paths["successor_database"].with_name(
         ".control.duckdb.state-owner.json"
     )
-    operator._atomic_json(marker_path, marker.to_dict(), replace=False)
+    marker_path.write_text(
+        json.dumps(
+            marker.to_dict(),
+            sort_keys=True,
+            indent=2,
+            separators=(",", ": "),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    marker_path.chmod(0o600)
     owner_lock = paths["successor_database"].with_name(
         ".control.duckdb.state-owner.lock"
     )

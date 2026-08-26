@@ -13136,6 +13136,49 @@ def _private_regular_stat_pin(path: Path, *, noun: str) -> dict[str, Any]:
     }
 
 
+def _strict_owner_marker_json(path: Path) -> dict[str, Any]:
+    """Read the exact pretty-JSON encoding used by ExclusiveOwnerLease."""
+
+    raw = _read_bounded_regular_file(
+        path,
+        max_bytes=MAX_JSON_BYTES,
+        noun="abandoned state-owner marker",
+        require_private_owner=True,
+    )
+
+    def reject_duplicates(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate owner marker key")
+            value[key] = item
+        return value
+
+    try:
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+        )
+        encoded = (
+            json.dumps(
+                payload,
+                sort_keys=True,
+                indent=2,
+                separators=(",", ": "),
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (UnicodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise SuccessorOperatorError(
+            "abandoned state-owner marker is malformed"
+        ) from exc
+    if not isinstance(payload, dict) or raw != encoded:
+        raise SuccessorOperatorError(
+            "abandoned state-owner marker encoding differs"
+        )
+    return payload
+
+
 def _require_abandoned_owner_lock_free(database: Path) -> dict[str, Any]:
     """Prove the stale owner's flock is free without creating or replacing it."""
 
@@ -13371,11 +13414,7 @@ def _abandoned_owner_recovery_preflight_locked(
             "abandoned owner ready projection is not exactly dead"
         )
 
-    marker_payload = _strict_json(
-        expected_marker_path,
-        require_private_owner=True,
-        verify_content_identity=False,
-    )
+    marker_payload = _strict_owner_marker_json(expected_marker_path)
     try:
         marker = OwnerMarker.from_dict(marker_payload)
     except (KeyError, TypeError, ValueError) as exc:
