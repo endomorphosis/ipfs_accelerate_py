@@ -30,6 +30,12 @@ GROK_FAILURE_RECEIPT_PREFIX = "IPFS_ACCELERATE_GROK_FAILURE_RECEIPT="
 GROK_ROUTE_OUTCOME_SCHEMA = "ipfs_accelerate_py.agent_supervisor.grok-route-outcome@1"
 GROK_ROUTE_OUTCOME_PREFIX = "IPFS_ACCELERATE_GROK_ROUTE_OUTCOME="
 MAX_GROK_FAILURE_EVIDENCE_BYTES = 128 * 1024
+# Protected route outcomes may carry a complete bounded adoption and
+# quarantine-terminalization lineage and are independently capped at 512 KiB.
+# Keep combined log record extraction bounded, but do not reuse the smaller
+# model-evidence cap or a valid leading failure receipt can be discarded before
+# its terminal outcome is audited.
+_MAX_GROK_CONTROL_RECORD_TEXT_BYTES = 1024 * 1024
 GROK_QUOTA_PROBE_SOURCE = _AGENT_IMPLEMENTATION_FAILURE_SOURCE
 GROK_QUOTA_PROBE_PROMPT = _AGENT_IMPLEMENTATION_PROBE_PROMPT
 GROK_QUOTA_PROBE_TIMEOUT_SECONDS = 60
@@ -63,7 +69,7 @@ def _bounded_record_text(value: str) -> str:
     """
 
     encoded = str(value or "").encode("utf-8", errors="replace")
-    start = max(0, len(encoded) - MAX_GROK_FAILURE_EVIDENCE_BYTES)
+    start = max(0, len(encoded) - _MAX_GROK_CONTROL_RECORD_TEXT_BYTES)
     if start and encoded[start - 1 : start] != b"\n":
         next_lf = encoded.find(b"\n", start)
         if next_lf < 0:

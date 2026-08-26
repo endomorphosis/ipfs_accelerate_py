@@ -13,7 +13,6 @@ import hashlib
 import hmac
 import json
 import os
-import random
 import re
 import sqlite3
 import stat
@@ -1522,16 +1521,26 @@ QUACK_OWNER_COMMAND_RESPONSE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/quack-owner-command-response@1"
 )
 QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS = "compare_and_set_status"
+QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS = "compare_and_set_goal_status"
 QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK = "rearm_blocked_task"
+QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET = (
+    "recover_typed_deferral_budget"
+)
 QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF = "record_queue_backoff"
+QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS = (
+    "record_queue_backoff_and_cas_status"
+)
 QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY = "record_queue_retry"
 QUACK_OWNER_COMMAND_RECORD_EVIDENCE = "record_evidence"
 QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT = "record_validation_result"
 QUACK_OWNER_COMMANDS = frozenset(
     {
         QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+        QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
         QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+        QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
         QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
         QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
@@ -1545,15 +1554,48 @@ _QUACK_OWNER_WRITER_RE = re.compile(r"^supervisor-process:[1-9][0-9]{0,19}$")
 _QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS: (
         frozenset({"task_cid_or_alias", "expected_revision", "status"}),
-        frozenset({"receipt", "evidence_digests"}),
+        frozenset(
+            {
+                "receipt",
+                "expected_control_receipt",
+                "evidence_digests",
+            }
+        ),
+    ),
+    QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS: (
+        frozenset({"goal_cid_or_alias", "expected_revision", "status"}),
+        frozenset({"receipt"}),
     ),
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK: (
         frozenset({"task_cid_or_alias"}),
         frozenset({"receipt"}),
     ),
+    QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET: (
+        frozenset({"task_cid_or_alias", "repair_head", "repair_tree"}),
+        frozenset(),
+    ),
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF: (
         frozenset({"task_cid", "delay_ms"}),
         frozenset({"reason", "selection_penalty"}),
+    ),
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS: (
+        frozenset(
+            {
+                "task_cid",
+                "expected_revision",
+                "expected_control_receipt",
+                "status",
+                "receipt",
+                "delay_ms",
+                "reason",
+            }
+        ),
+        frozenset(
+            {
+                "selection_penalty",
+                "exact_retry_not_before_ms",
+            }
+        ),
     ),
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY: (
         frozenset({"task_cid"}),
@@ -1614,6 +1656,7 @@ def validate_quack_owner_command(
     copied = dict(payload)
     text_fields = {
         "task_cid_or_alias",
+        "goal_cid_or_alias",
         "task_cid",
         "status",
         "reason",
@@ -1621,6 +1664,8 @@ def validate_quack_owner_command(
         "digest",
         "outcome",
         "evidence_digest",
+        "repair_head",
+        "repair_tree",
     }
     for field in text_fields & fields:
         _owner_command_text(copied[field], field=field)
@@ -1630,13 +1675,18 @@ def validate_quack_owner_command(
             raise DuckDBConnectionPolicyError(
                 "quack owner command field 'attempt_id' must be a string"
             )
-    for field in {"expected_revision", "delay_ms", "selection_penalty"} & fields:
+    for field in {
+        "expected_revision",
+        "delay_ms",
+        "selection_penalty",
+        "exact_retry_not_before_ms",
+    } & fields:
         value = copied[field]
         if type(value) is not int or value < 0:
             raise DuckDBConnectionPolicyError(
                 f"quack owner command field {field!r} must be a non-negative integer"
             )
-    for field in {"receipt", "body"} & fields:
+    for field in {"receipt", "expected_control_receipt", "body"} & fields:
         value = copied[field]
         if value is not None and not isinstance(value, Mapping):
             raise DuckDBConnectionPolicyError(
@@ -1966,12 +2016,19 @@ def submit_quack_owner_command(
 
     command_name = str(command or "")
     command_payload = validate_quack_owner_command(command_name, payload)
+    maximum_timeout = (
+        660.0
+        if command_name == QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET
+        else 60.0
+    )
     if (
         not isinstance(timeout_seconds, (int, float))
         or isinstance(timeout_seconds, bool)
-        or not 0 < float(timeout_seconds) <= 60
+        or not 0 < float(timeout_seconds) <= maximum_timeout
     ):
-        raise DuckDBConnectionPolicyError("quack owner command timeout must be in (0, 60] seconds")
+        raise DuckDBConnectionPolicyError(
+            "quack owner command timeout exceeds its closed command bound"
+        )
     target = quack_owner_command_dir()
     if target is None:
         raise DuckDBConnectionPolicyError(
@@ -3259,11 +3316,6 @@ def _execute_quack_owner_mutation(
         )
     finally:
         os.close(inbox_fd)
-
-
-# The directory environment variable remains stable for deployed supervisors;
-# only the contents changed from SQL mutation requests to typed commands.
-quack_owner_mutation_dir = quack_owner_command_dir
 
 
 def _consume_duckdb_result(connection: Any) -> None:

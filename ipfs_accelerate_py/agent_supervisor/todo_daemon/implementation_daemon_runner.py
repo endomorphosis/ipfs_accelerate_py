@@ -743,6 +743,35 @@ def bounded_daemon_wait_timeout(
     return timeout
 
 
+def materialize_database_task_state_compatibility_projection(
+    daemon: object,
+    *,
+    state_path: Path,
+    result: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Refresh a database daemon's non-authoritative supervisor projection.
+
+    Database authority does not require JSON state.  The multi-supervisor's
+    terminal-quiescence compatibility probe does, however, consume the
+    conventional ``*_task_state.json`` path.  Capability detection keeps
+    legacy Portal daemons on their existing projection path.
+    """
+
+    materialize = getattr(
+        daemon,
+        "materialize_task_state_compatibility_projection",
+        None,
+    )
+    if not callable(materialize):
+        return None
+    projection = materialize(state_path=state_path, pass_result=result)
+    if not isinstance(projection, Mapping) or projection.get("written") is not True:
+        raise RuntimeError(
+            "database task-state compatibility projection was not persisted"
+        )
+    return projection
+
+
 class DaemonHookTimeoutError(TimeoutError):
     """Raised when a daemon before/after hook exceeds its bounded runtime."""
 
@@ -2011,6 +2040,7 @@ def bind_database_portal_execution_from_args(
             merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
             merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
             merge_queue=recovery_queue,
+            isolate_merge_queue_to_task_projection=True,
             worktree_submodule_paths=worktree_submodule_paths,
             implementation_protected_paths=implementation_protected_paths,
             manual_completion_authority_task_ids=getattr(
@@ -2082,6 +2112,56 @@ def bind_database_portal_execution_from_args(
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
         implementation_timeout=float(parsed.implementation_timeout),
     )
+    consumed_recovery_binder = getattr(
+        daemon,
+        "bind_superseded_consumed_attempt_recovery",
+        None,
+    )
+    if not callable(consumed_recovery_binder):
+        raise RuntimeError(
+            "production database daemon does not expose consumed-attempt "
+            "recovery binding"
+        )
+    protected_recovery_binder = getattr(
+        daemon,
+        "bind_protected_preservation_recovery",
+        None,
+    )
+    if not callable(protected_recovery_binder):
+        raise RuntimeError(
+            "production database daemon does not expose protected-preservation "
+            "recovery binding"
+        )
+    protected_recovery = getattr(
+        bridge,
+        "recover_protected_path_preservation",
+        None,
+    )
+    if not callable(protected_recovery):
+        raise RuntimeError(
+            "database Portal bridge does not expose protected-preservation "
+            "recovery"
+        )
+    protected_self_lock_binder = getattr(
+        daemon,
+        "bind_protected_reconciliation_self_lock_recovery",
+        None,
+    )
+    if not callable(protected_self_lock_binder):
+        raise RuntimeError(
+            "production database daemon does not expose protected "
+            "reconciliation self-lock recovery binding"
+        )
+    protected_self_lock_recovery = getattr(
+        bridge,
+        "recover_protected_reconciliation_self_lock",
+        None,
+    )
+    if not callable(protected_self_lock_recovery):
+        raise RuntimeError(
+            "database Portal bridge does not expose protected reconciliation "
+            "self-lock recovery"
+        )
     binder(
         provider_fn=bridge.run_provider,
         effect_fn=bridge.apply_effect,
@@ -2100,6 +2180,9 @@ def bind_database_portal_execution_from_args(
             bridge.verify_validation_retry_successor_recovery
         ),
     )
+    consumed_recovery_binder(bridge.recover_consumed_attempt_retry)
+    protected_recovery_binder(protected_recovery)
+    protected_self_lock_binder(protected_self_lock_recovery)
     if recovery_queue is not None:
         merge_train_binder = getattr(daemon, "bind_merge_train_recovery", None)
         if not callable(merge_train_binder):
@@ -2111,6 +2194,7 @@ def bind_database_portal_execution_from_args(
             merge_queue=recovery_queue,
             repo_root=repo_root,
             merge_target_branch=configured_merge_target_branch,
+            portal_attempt_root=bridge.attempt_root,
         )
         recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
         if callable(recovery_binder) and callable(
@@ -2500,6 +2584,11 @@ def run_portal_implementation_daemon_loop(
                 phase="after",
                 context=pass_context,
                 logger=logger,
+            )
+            materialize_database_task_state_compatibility_projection(
+                daemon,
+                state_path=pass_context.state_path,
+                result=result,
             )
             now = time.monotonic()
             emit_idle_info = (

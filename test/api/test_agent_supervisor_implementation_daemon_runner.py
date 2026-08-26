@@ -950,111 +950,6 @@ def test_build_portal_implementation_daemon_from_args_applies_defaults(tmp_path:
     assert context.events_path == tmp_path / "state" / "example_events.jsonl"
 
 
-def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target(
-    tmp_path: Path,
-) -> None:
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
-        bind_database_portal_execution_from_args,
-    )
-
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "runner-recovery@example.invalid"],
-        cwd=repo,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Runner Recovery Test"],
-        cwd=repo,
-        check=True,
-    )
-    (repo / "base.txt").write_text("base\n", encoding="utf-8")
-    subprocess.run(["git", "add", "base.txt"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
-
-    callbacks: dict[str, object] = {}
-
-    class BindingDaemon:
-        task_source = object()
-
-        @staticmethod
-        def bind_execution_callbacks(**values: object) -> None:
-            callbacks.update(values)
-
-        @staticmethod
-        def bind_post_merge_recovery(callback: object) -> None:
-            callbacks["post_merge_recovery"] = callback
-
-        @staticmethod
-        def bind_merge_train_recovery(**values: object) -> None:
-            callbacks["merge_train_recovery"] = values
-
-        @staticmethod
-        def _database_portal_evidence_digest(_value: object) -> str:
-            return "sha256:" + ("0" * 64)
-
-        @staticmethod
-        def recover_blocked_post_merge_declared_outputs(
-            _evidence: object,
-        ) -> dict[str, object]:
-            pytest.fail("empty recovery queue invoked database recovery")
-
-    class CapturingPortal:
-        def __init__(self, **kwargs: object) -> None:
-            self.kwargs = kwargs
-
-    parsed = parse_args(
-        [
-            "--task-source-kind",
-            "duckdb",
-            "--authority-mode",
-            "embedded_exclusive",
-            "--database-path",
-            str(tmp_path / "control.duckdb"),
-            "--todo-path",
-            str(tmp_path / "board.md"),
-            "--state-dir",
-            str(tmp_path / "state"),
-            "--state-prefix",
-            "lane-0",
-            "--merge-queue-dir",
-            str(tmp_path / "merge-queue"),
-            "--merge-target-branch",
-            "main",
-            "--implement",
-            "--once",
-        ]
-    )
-
-    daemon = BindingDaemon()
-    bridge = bind_database_portal_execution_from_args(
-        daemon,
-        parsed,
-        repo_root=repo,
-        portal_daemon_class=CapturingPortal,
-    )
-
-    assert bridge is not None
-    assert bridge.merge_queue is not None
-    assert bridge.merge_queue.require_target_binding is True
-    assert bridge.merge_queue.target_branch == "main"
-    assert callable(callbacks["post_merge_recovery"])
-    assert callbacks["merge_train_recovery"]["merge_target_branch"] == "main"
-    assert callbacks["merge_train_recovery"]["repo_root"] == repo
-    portal = bridge.portal_factory(
-        argparse.Namespace(
-            task_projection=tmp_path / "attempt" / "task-projection.md",
-            state=tmp_path / "attempt" / "portal-task-state.json",
-            strategy=tmp_path / "attempt" / "portal-strategy.json",
-            events=tmp_path / "attempt" / "portal-events.jsonl",
-            implementation_logs=tmp_path / "attempt" / "implementation-logs",
-        ),
-        "VRIF-010",
-    )
-    assert portal.kwargs["merge_queue"] is bridge.merge_queue
-    assert portal.kwargs["merge_target_branch"] == "main"
 
 
 def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
@@ -1065,6 +960,15 @@ def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
         def run_once(self) -> dict[str, int]:
             self.count += 1
             return {"count": self.count}
+
+        def materialize_task_state_compatibility_projection(
+            self,
+            *,
+            state_path: Path,
+            pass_result: dict[str, int],
+        ) -> dict[str, object]:
+            calls.append(f"projection:{state_path}:{pass_result['count']}")
+            return {"written": True}
 
     parsed = argparse.Namespace(once=True, interval=999)
     context = ImplementationDaemonRunContext(
@@ -1096,9 +1000,46 @@ def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
             pass_complete_message="fake pass complete: %s",
         )
 
-    assert calls == ["before:0", "after:0"]
+    assert calls == [
+        "before:0",
+        "after:0",
+        "projection:state.json:1",
+    ]
     assert "before hook: ['before-result']" in caplog.text
     assert "after hook: ['after-result']" in caplog.text
+
+
+def test_database_projection_persistence_failure_aborts_loop() -> None:
+    class FakeDaemon:
+        def run_once(self) -> dict[str, int]:
+            return {"count": 1}
+
+        def materialize_task_state_compatibility_projection(
+            self,
+            *,
+            state_path: Path,
+            pass_result: dict[str, int],
+        ) -> dict[str, object]:
+            del state_path, pass_result
+            return {"written": False}
+
+    context = ImplementationDaemonRunContext(
+        parsed=argparse.Namespace(once=True, interval=999),
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("events.jsonl"),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="compatibility projection was not persisted",
+    ):
+        run_portal_implementation_daemon_loop(
+            FakeDaemon(),
+            context,
+            logger=logging.getLogger("test-daemon-runner-projection-failure"),
+            pass_complete_message="fake pass complete: %s",
+        )
 
 
 def test_run_portal_implementation_daemon_loop_suppresses_hooks_for_revalidation_only():
@@ -1170,6 +1111,28 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             callbacks["post_merge_recovery"] = callback
 
         @staticmethod
+        def bind_superseded_consumed_attempt_recovery(
+            callback: object,
+        ) -> None:
+            callbacks["consumed_attempt_recovery"] = callback
+
+        @staticmethod
+        def bind_protected_preservation_recovery(
+            callback: object,
+        ) -> None:
+            callbacks["protected_preservation_recovery"] = callback
+
+        @staticmethod
+        def bind_protected_reconciliation_self_lock_recovery(
+            callback: object,
+        ) -> None:
+            callbacks["protected_reconciliation_self_lock_recovery"] = callback
+
+        @staticmethod
+        def bind_merge_train_recovery(**values: object) -> None:
+            callbacks["merge_train_recovery"] = values
+
+        @staticmethod
         def _database_portal_evidence_digest(_value: object) -> str:
             return "sha256:" + ("0" * 64)
 
@@ -1178,6 +1141,12 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             _evidence: object,
         ) -> dict[str, object]:
             pytest.fail("empty recovery queue invoked database recovery")
+
+        @staticmethod
+        def preauthorize_post_merge_declared_output_recovery(
+            _evidence: object,
+        ) -> dict[str, object]:
+            pytest.fail("empty recovery queue invoked database preauthorization")
 
     class CapturingPortal:
         def __init__(self, **kwargs: object) -> None:
@@ -1196,7 +1165,7 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             "--state-dir",
             str(tmp_path / "state"),
             "--state-prefix",
-            "lane-0",
+            "example",
             "--merge-queue-dir",
             str(tmp_path / "merge-queue"),
             "--merge-target-branch",
@@ -1220,6 +1189,20 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     assert bridge.merge_queue.target_branch == "main"
     assert callable(callbacks["post_merge_recovery"])
     assert callbacks["post_merge_recovery"]() is None
+    assert callable(callbacks["consumed_attempt_recovery"])
+    assert callable(callbacks["protected_preservation_recovery"])
+    assert callbacks["protected_preservation_recovery"] == (
+        bridge.recover_protected_path_preservation
+    )
+    assert callbacks["protected_reconciliation_self_lock_recovery"] == (
+        bridge.recover_protected_reconciliation_self_lock
+    )
+    assert callbacks["merge_train_recovery"] == {
+        "merge_queue": bridge.merge_queue,
+        "repo_root": repo,
+        "merge_target_branch": "main",
+        "portal_attempt_root": bridge.attempt_root,
+    }
     portal = bridge.portal_factory(
         argparse.Namespace(
             task_projection=tmp_path / "attempt" / "task-projection.md",
@@ -1232,6 +1215,127 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     )
     assert portal.kwargs["merge_queue"] is bridge.merge_queue
     assert portal.kwargs["merge_target_branch"] == "main"
+    assert portal.kwargs["isolate_merge_queue_to_task_projection"] is True
+
+
+def test_database_runner_requires_protected_preservation_daemon_binding(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    class MissingProtectedBinderDaemon:
+        task_source = object()
+
+        @staticmethod
+        def bind_execution_callbacks(**_values: object) -> None:
+            calls.append("execution")
+
+        @staticmethod
+        def bind_superseded_consumed_attempt_recovery(
+            _callback: object,
+        ) -> None:
+            calls.append("consumed")
+
+    parsed = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "lane-0",
+            "--implement",
+            "--once",
+        ]
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="does not expose protected-preservation recovery binding",
+    ):
+        bind_database_portal_execution_from_args(
+            MissingProtectedBinderDaemon(),
+            parsed,
+            repo_root=tmp_path,
+            portal_daemon_class=object,
+        )
+
+    # Validate every required recovery API before installing a partial set of
+    # production execution callbacks.
+    assert calls == []
+
+
+def test_database_runner_requires_protected_preservation_bridge_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        database_portal_bridge as bridge_module,
+    )
+
+    calls: list[str] = []
+
+    class BindingDaemon:
+        task_source = object()
+
+        @staticmethod
+        def bind_execution_callbacks(**_values: object) -> None:
+            calls.append("execution")
+
+        @staticmethod
+        def bind_superseded_consumed_attempt_recovery(
+            _callback: object,
+        ) -> None:
+            calls.append("consumed")
+
+        @staticmethod
+        def bind_protected_preservation_recovery(
+            _callback: object,
+        ) -> None:
+            calls.append("protected")
+
+    monkeypatch.setattr(
+        bridge_module.DatabasePortalExecutionBridge,
+        "recover_protected_path_preservation",
+        None,
+    )
+    parsed = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "lane-0",
+            "--implement",
+            "--once",
+        ]
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="bridge does not expose protected-preservation recovery",
+    ):
+        bind_database_portal_execution_from_args(
+            BindingDaemon(),
+            parsed,
+            repo_root=tmp_path,
+            portal_daemon_class=object,
+        )
+
+    assert calls == []
 
 
 def test_idle_daemon_pass_logging_is_compact_and_throttled(caplog):

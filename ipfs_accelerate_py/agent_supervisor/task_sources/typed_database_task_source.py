@@ -28,6 +28,7 @@ from .control_plane_contracts import (
 )
 from .database_task_source import (
     DATABASE_TASK_SOURCE_SCHEMA,
+    TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
     TaskPage,
     TaskRecord,
     TaskSourceBoundsError,
@@ -83,6 +84,20 @@ _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
         "failed",
         "quarantined",
         "rejected",
+    }
+)
+_PROTECTED_REOPENED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "proposed",
+        "admitted",
+        "pending",
+        "ready",
+        "todo",
+        "queued",
+        "retrying",
+        "claimed",
+        "in_progress",
+        "running",
     }
 )
 _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
@@ -1072,6 +1087,17 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "task status is outside the closed typed vocabulary"
             )
+        prior_receipt = prior.body.get("completion_receipt")
+        if (
+            prior.status == "blocked"
+            and requested_status in _PROTECTED_REOPENED_TASK_STATUSES
+            and isinstance(prior_receipt, Mapping)
+            and prior_receipt.get("operation")
+            == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+        ):
+            raise TaskSourceConflictError(
+                "protected typed-deferral task cannot be reopened by generic CAS"
+            )
         merged_body = dict(prior.body)
         if receipt is not None:
             merged_body["completion_receipt"] = dict(receipt)
@@ -1262,6 +1288,11 @@ class TypedDatabaseTaskSource:
     ) -> IntentReceipt:
         """Persist and reproduce one owner-mediated typed retry cooldown."""
 
+        if str(expected_task_status or "").strip().lower() == "blocked":
+            raise TaskSourceConflictError(
+                "typed blocked recovery requires coordination-coupled owner "
+                "authority"
+            )
         selected_now = self._clock_ms() if now_ms is None else now_ms
         if (
             isinstance(selected_now, bool)

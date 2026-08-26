@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from ipfs_accelerate_py.agent_supervisor.residual_intelligence.cascade import (
     CASCADE_ORDER,
@@ -41,6 +43,8 @@ from ipfs_accelerate_py.agent_supervisor.residual_intelligence.router import (
 from ipfs_accelerate_py.agent_supervisor.residual_intelligence.task_families import (
     family_spec_for,
 )
+
+from .helpers import admission
 
 LOCAL_HARDWARE = (
     "cpu-small-hermetic",
@@ -610,3 +614,168 @@ def test_family_mismatch_is_recorded_as_reject_input() -> None:
     assert decision.selected_stage is CascadeStage.HUMAN_REVIEW
     assert "family_out_of_bound" in decision.reason_codes
     assert rejection_for(decision, CascadeStage.EXACT_CACHE).constraint in {"family", "input"}
+
+
+def test_local_general_precedes_remote_when_specialists_are_unavailable() -> None:
+    decision = decide(
+        local_general_available=True,
+        remote_standard_available=True,
+        remote_strong_available=True,
+        provider_authorized=True,
+        provider_healthy=True,
+        inference_policy_permits_remote=True,
+        hardware_available=REMOTE_HARDWARE,
+        expected_decision_value_microunits=1_000_000,
+        task_input=task_input(token_budget=4096),
+    )
+    assert decision.selected_stage is CascadeStage.LOCAL_GENERAL_MODEL
+    assert decision.disposition is ExpertDisposition.ACCEPT
+    assert candidate_for(decision, CascadeStage.REMOTE_STANDARD_MODEL)
+    assert candidate_for(decision, CascadeStage.REMOTE_STRONG_MODEL)
+
+
+def test_remote_strong_is_selected_when_standard_is_unavailable() -> None:
+    decision = decide(
+        remote_strong_available=True,
+        provider_authorized=True,
+        provider_healthy=True,
+        inference_policy_permits_remote=True,
+        hardware_available=REMOTE_HARDWARE,
+        expected_decision_value_microunits=1_000_000,
+        task_input=task_input(token_budget=4096),
+    )
+    assert decision.selected_stage is CascadeStage.REMOTE_STRONG_MODEL
+    assert "stage_unavailable" in rejection_for(
+        decision, CascadeStage.REMOTE_STANDARD_MODEL
+    ).reason_codes
+    assert stage_is_remote(decision.selected_stage)
+
+
+def test_inference_policy_denies_remote_even_when_provider_is_healthy() -> None:
+    decision = decide(
+        remote_standard_available=True,
+        remote_strong_available=True,
+        provider_authorized=True,
+        provider_healthy=True,
+        inference_policy_permits_remote=False,
+        hardware_available=REMOTE_HARDWARE,
+        expected_decision_value_microunits=1_000_000,
+        task_input=task_input(token_budget=4096),
+    )
+    for stage in REMOTE_STAGES:
+        reasons = rejection_for(decision, stage).reason_codes
+        assert "inference_policy_denies_remote" in reasons
+    assert decision.selected_stage is CascadeStage.HUMAN_REVIEW
+
+
+def test_admission_privacy_blocks_remote_even_when_request_privacy_is_looser() -> None:
+    record, _examples = admission()
+    private = replace(
+        record,
+        privacy_classification=PrivacyClass.TENANT_PRIVATE,
+        tenant_scope="tenant:acme",
+    )
+    decision = decide(
+        privacy_class=PrivacyClass.INTERNAL,
+        admission=private,
+        remote_standard_available=True,
+        remote_strong_available=True,
+        provider_authorized=True,
+        provider_healthy=True,
+        inference_policy_permits_remote=True,
+        hardware_available=REMOTE_HARDWARE,
+        expected_decision_value_microunits=1_000_000,
+        task_input=task_input(token_budget=4096),
+    )
+    assert decision.privacy_class is PrivacyClass.TENANT_PRIVATE
+    for stage in REMOTE_STAGES:
+        assert REASON_PRIVACY in rejection_for(decision, stage).reason_codes
+    assert decision.selected_stage is CascadeStage.HUMAN_REVIEW
+
+
+def test_declared_capabilities_must_cover_family_requirements() -> None:
+    decision = decide(
+        local_linear_available=True,
+        available_capabilities=("cpu-small-hermetic",),
+        expected_decision_value_microunits=1_000_000,
+        hardware_available=LOCAL_HARDWARE,
+    )
+    rejected = rejection_for(decision, CascadeStage.LOCAL_LINEAR_EXPERT)
+    assert "capability_unavailable" in rejected.reason_codes
+    assert rejected.constraint == "capability"
+    assert decision.selected_stage is CascadeStage.HUMAN_REVIEW
+
+
+def test_expected_decision_value_does_not_block_deterministic_stages() -> None:
+    decision = decide(
+        cache_hit=True,
+        cache_identity="cache:failure:1",
+        procedure_available=True,
+        procedure_preconditions_satisfied=True,
+        procedure_root="procedure:failure-attribution@1",
+        deterministic_rule_available=True,
+        rule_identity="rule:missing-edge",
+        expected_decision_value_microunits=0,
+        cost_budget_microunits=0,
+    )
+    assert decision.selected_stage is CascadeStage.EXACT_CACHE
+    assert decision.disposition is ExpertDisposition.ACCEPT
+
+
+def test_remote_hardware_unavailable_is_recorded() -> None:
+    decision = decide(
+        remote_standard_available=True,
+        provider_authorized=True,
+        provider_healthy=True,
+        inference_policy_permits_remote=True,
+        hardware_available=LOCAL_HARDWARE,
+        expected_decision_value_microunits=1_000_000,
+        task_input=task_input(token_budget=4096),
+    )
+    rejected = rejection_for(decision, CascadeStage.REMOTE_STANDARD_MODEL)
+    assert "hardware_unavailable" in rejected.reason_codes
+    assert rejected.constraint == "hardware"
+    assert decision.selected_stage is CascadeStage.HUMAN_REVIEW
+
+
+def test_selected_stage_must_remain_the_earliest_candidate() -> None:
+    decision = decide(cache_hit=True, cache_identity="cache:failure:1")
+    payload = decision.to_dict()
+    payload["selected_stage"] = CascadeStage.HUMAN_REVIEW.value
+    with pytest.raises(ResidualIntelligenceError, match="earliest surviving"):
+        ResidualRouteDecision.from_dict(payload)
+    walk_payload = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/residual-cascade-walk@1",
+        "policy_version": decision.cascade_policy_version,
+        "family": decision.family.value,
+        "risk_class": decision.risk_class.value,
+        "candidates": [item.to_dict() for item in decision.candidates],
+        "hard_rejections": [item.to_dict() for item in decision.hard_rejections],
+        "selected_stage": CascadeStage.HUMAN_REVIEW.value,
+        "fallback_stage": "human_review",
+        "candidate_only": True,
+    }
+    with pytest.raises(ResidualIntelligenceError, match="earliest surviving"):
+        ResidualCascadeWalk.from_dict(walk_payload)
+
+
+def test_unknown_stage_cost_keys_are_rejected() -> None:
+    with pytest.raises(ResidualIntelligenceError, match="unknown cascade stage"):
+        route_request(stage_cost_microunits={"not-a-stage": 1})
+
+
+def test_walk_rejects_reordered_candidates() -> None:
+    decision = decide(cache_hit=True, cache_identity="cache:failure:1")
+    payload = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/residual-cascade-walk@1",
+        "policy_version": decision.cascade_policy_version,
+        "family": decision.family.value,
+        "risk_class": decision.risk_class.value,
+        "candidates": list(reversed([item.to_dict() for item in decision.candidates])),
+        "hard_rejections": [item.to_dict() for item in decision.hard_rejections],
+        "selected_stage": decision.selected_stage.value,
+        "fallback_stage": "human_review",
+        "candidate_only": True,
+    }
+    with pytest.raises(ResidualIntelligenceError, match="admitted production order"):
+        ResidualCascadeWalk.from_dict(payload)

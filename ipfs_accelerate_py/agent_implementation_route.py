@@ -25,8 +25,10 @@ import uuid
 import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 _AGENT_IMPLEMENTATION_PROVIDER_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
@@ -134,7 +136,10 @@ _AGENT_CONTROL_PLANE_MANIFEST_SCHEMA = (
 _AGENT_CONTROL_PLANE_MANIFEST_FILENAME = (
     ".agent-control-plane-manifest.json"
 )
-_AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 4 * 1024 * 1024
+# Keep each sealed source leaf bounded while allowing the integrated supervisor
+# daemon to carry both scheduler and recovery authority surfaces.  The capsule
+# as a whole remains independently bounded by the 64 MiB archive limit.
+_AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 8 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 # The capsule contains the complete supervisor Python closure.  Keep a bounded
 # allowance above its current size so reviewed feature additions do not make
@@ -1908,11 +1913,301 @@ AGENT_IMPLEMENTATION_ROUTE_OUTCOME_SCHEMA = (
 AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX = (
     "AGENT_IMPLEMENTATION_PROTECTED_ROUTE_OUTCOME_JSON:"
 )
+AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "codex-terminal-capacity-receipt@1"
+)
+AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX = (
+    "AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_JSON:"
+)
+AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.codex-capacity-log-start@1"
+)
+AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER = (
+    "import json,os,sys;"
+    "print(json.dumps({'schema':sys.argv[1],'type':'runner.capacity.start',"
+    "'log_nonce':sys.argv[2]},sort_keys=True,separators=(',',':')),flush=True);"
+    "os.execv(sys.argv[3],sys.argv[3:])"
+)
 # The bounded eight-generation adoption lineage is intentionally complete,
 # not merely a latest-receipt pointer.  Its canonical JSON is roughly 225KiB
 # at the cap, so retain a fixed ceiling that covers the exact terminal chain
 # while still rejecting unbounded/attacker-grown log records.
 _AGENT_IMPLEMENTATION_ROUTE_OUTCOME_MAX_BYTES = 512 * 1024
+_AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_MAX_BYTES = 16 * 1024
+_AGENT_IMPLEMENTATION_CODEX_CAPACITY_EVIDENCE_MAX_BYTES = 64 * 1024
+_AGENT_IMPLEMENTATION_CODEX_USAGE_LIMIT_PATTERN = re.compile(
+    r"\A\s*(?:error:\s*)?you(?:'|\u2019)?ve\s+hit\s+your\s+usage\s+limit"
+    r"(?:[.!]|\s|$)",
+    re.IGNORECASE,
+)
+_AGENT_IMPLEMENTATION_CODEX_RESET_PATTERN = re.compile(
+    r"\btry\s+again\s+at\s+"
+    r"([A-Z][a-z]{2})\s+(\d{1,2})(?:st|nd|rd|th)?,\s+"
+    r"(\d{4})\s+(\d{1,2}):(\d{2})\s+(AM|PM)\b",
+    re.IGNORECASE,
+)
+_AGENT_IMPLEMENTATION_CODEX_RESET_MAX_FUTURE_MS = 31 * 24 * 60 * 60 * 1000
+
+
+def _agent_implementation_codex_retry_not_before_ms(
+    message: str,
+    *,
+    observed_at_ms: int,
+) -> int:
+    match = _AGENT_IMPLEMENTATION_CODEX_RESET_PATTERN.search(message)
+    if match is None:
+        return 0
+    try:
+        parsed = datetime.strptime(
+            " ".join(match.groups()),
+            "%b %d %Y %I %M %p",
+        ).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return 0
+    value = int(parsed.timestamp() * 1000)
+    if not (
+        observed_at_ms < value
+        <= observed_at_ms + _AGENT_IMPLEMENTATION_CODEX_RESET_MAX_FUTURE_MS
+    ):
+        return 0
+    return value
+
+
+def _agent_implementation_codex_usage_limit_record(
+    raw: str,
+) -> tuple[str, int] | None:
+    """Return the canonical exact Codex JSONL terminal error, if any.
+
+    Assistant/tool output is represented by other Codex JSONL record types.
+    Accepting only a top-level ``error`` record prevents model text containing
+    quota prose from manufacturing retry authority.
+    """
+
+    encoded = str(raw).encode("utf-8")
+    if (
+        not encoded
+        or len(encoded) > _AGENT_IMPLEMENTATION_CODEX_CAPACITY_EVIDENCE_MAX_BYTES
+        or "\r" in raw
+        or "\x00" in raw
+        or "\ufffd" in raw
+    ):
+        return None
+
+    def unique(pairs: Sequence[tuple[str, object]]) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate Codex terminal error key")
+            value[key] = item
+        return value
+
+    try:
+        record = json.loads(raw, object_pairs_hook=unique)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(record, dict) or record.get("type") != "error":
+        return None
+    message = record.get("message")
+    if message is None and isinstance(record.get("error"), Mapping):
+        nested = record["error"]
+        if set(nested) != {"message"}:
+            return None
+        message = nested.get("message")
+        expected_fields = {"type", "error"}
+    else:
+        expected_fields = {"type", "message"}
+    if (
+        set(record) != expected_fields
+        or not isinstance(message, str)
+        or _AGENT_IMPLEMENTATION_CODEX_USAGE_LIMIT_PATTERN.search(message)
+        is None
+    ):
+        return None
+    canonical = json.dumps(
+        record,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+    return canonical, len(encoded)
+
+
+def build_agent_implementation_codex_capacity_receipt(
+    *,
+    receipt: Mapping[str, object],
+    route: AgentImplementationRoutePlan,
+    fallback_returncode: int,
+    decision_id: str,
+    terminal_error_record: str,
+    observed_at_ms: int,
+) -> dict[str, object]:
+    """Build a body-free post-dispatch Codex usage-window receipt."""
+
+    invocation = route.invocation_binding
+    evidence = _agent_implementation_codex_usage_limit_record(
+        terminal_error_record
+    )
+    if (
+        invocation is None
+        or evidence is None
+        or isinstance(fallback_returncode, bool)
+        or not isinstance(fallback_returncode, int)
+        or fallback_returncode == 0
+        or isinstance(observed_at_ms, bool)
+        or not isinstance(observed_at_ms, int)
+        or observed_at_ms <= 0
+        or receipt.get("receipt_id") is None
+        or receipt.get("nonce") is None
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", str(decision_id or ""))
+        is None
+    ):
+        raise ValueError(
+            "Codex capacity receipt requires an exact protected terminal error"
+        )
+    canonical_error, evidence_bytes = evidence
+    decoded_error = json.loads(canonical_error)
+    raw_message = decoded_error.get("message")
+    if raw_message is None:
+        raw_message = decoded_error["error"]["message"]
+    retry_not_before_ms = _agent_implementation_codex_retry_not_before_ms(
+        str(raw_message),
+        observed_at_ms=observed_at_ms,
+    )
+    value: dict[str, object] = {
+        "schema": AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_SCHEMA,
+        "source": "grok_cli_runner",
+        "failure_class": "usage_limit",
+        "reason_code": "codex_usage_limit_reached",
+        "primary_receipt_id": str(receipt.get("receipt_id") or ""),
+        "nonce": str(receipt.get("nonce") or ""),
+        "route_id": route.route_id,
+        "invocation_binding_id": invocation.content_id,
+        "logical_attempt_id": invocation.logical_attempt_id,
+        "fallback_provider_id": route.fallback_provider_id,
+        "fallback_model_id": route.fallback_model_id,
+        "fallback_reasoning_effort": route.fallback_reasoning_effort,
+        "fallback_returncode": fallback_returncode,
+        "outcome_decision": "fallback_failed",
+        "decision_id": decision_id,
+        "provider_dispatched": True,
+        "candidate_activity_observed": False,
+        "attempt_consumed": True,
+        "completion_authority": False,
+        "observed_at_ms": observed_at_ms,
+        "retry_not_before_ms": retry_not_before_ms,
+        "evidence_kind": "codex_jsonl_terminal_error",
+        "evidence_sha256": "sha256:"
+        + hashlib.sha256(canonical_error.encode("utf-8")).hexdigest(),
+        "evidence_bytes": evidence_bytes,
+        "evidence_overflow": False,
+    }
+    value["receipt_id"] = _content_addressed_mapping(
+        value,
+        identity_field="receipt_id",
+    )
+    return value
+
+
+def valid_agent_implementation_codex_capacity_receipt(
+    value: Mapping[str, object],
+    *,
+    receipt: Mapping[str, object],
+    route: AgentImplementationRoutePlan,
+    fallback_returncode: int,
+    decision_id: str,
+) -> bool:
+    """Validate the closed route binding of one runner-owned receipt."""
+
+    expected = {
+        "schema",
+        "source",
+        "failure_class",
+        "reason_code",
+        "primary_receipt_id",
+        "nonce",
+        "route_id",
+        "invocation_binding_id",
+        "logical_attempt_id",
+        "fallback_provider_id",
+        "fallback_model_id",
+        "fallback_reasoning_effort",
+        "fallback_returncode",
+        "outcome_decision",
+        "decision_id",
+        "provider_dispatched",
+        "candidate_activity_observed",
+        "attempt_consumed",
+        "completion_authority",
+        "observed_at_ms",
+        "retry_not_before_ms",
+        "evidence_kind",
+        "evidence_sha256",
+        "evidence_bytes",
+        "evidence_overflow",
+        "receipt_id",
+    }
+    invocation = route.invocation_binding
+    evidence_bytes = value.get("evidence_bytes")
+    observed_at_ms = value.get("observed_at_ms")
+    retry_not_before_ms = value.get("retry_not_before_ms")
+    return bool(
+        invocation is not None
+        and set(value) == expected
+        and value.get("schema")
+        == AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_SCHEMA
+        and value.get("source") == "grok_cli_runner"
+        and value.get("failure_class") == "usage_limit"
+        and value.get("reason_code") == "codex_usage_limit_reached"
+        and value.get("primary_receipt_id") == receipt.get("receipt_id")
+        and value.get("nonce") == receipt.get("nonce")
+        and value.get("route_id") == route.route_id
+        and value.get("invocation_binding_id") == invocation.content_id
+        and value.get("logical_attempt_id") == invocation.logical_attempt_id
+        and value.get("fallback_provider_id") == route.fallback_provider_id
+        and value.get("fallback_provider_id") == "codex"
+        and value.get("fallback_model_id") == route.fallback_model_id
+        and value.get("fallback_reasoning_effort")
+        == route.fallback_reasoning_effort
+        and value.get("fallback_returncode") == fallback_returncode
+        and value.get("outcome_decision") == "fallback_failed"
+        and value.get("decision_id") == decision_id
+        and re.fullmatch(
+            r"sha256:[0-9a-f]{64}", str(value.get("decision_id") or "")
+        )
+        is not None
+        and isinstance(fallback_returncode, int)
+        and not isinstance(fallback_returncode, bool)
+        and fallback_returncode != 0
+        and value.get("provider_dispatched") is True
+        and value.get("candidate_activity_observed") is False
+        and value.get("attempt_consumed") is True
+        and value.get("completion_authority") is False
+        and isinstance(observed_at_ms, int)
+        and not isinstance(observed_at_ms, bool)
+        and observed_at_ms > 0
+        and isinstance(retry_not_before_ms, int)
+        and not isinstance(retry_not_before_ms, bool)
+        and (
+            retry_not_before_ms == 0
+            or observed_at_ms < retry_not_before_ms
+            <= observed_at_ms
+            + _AGENT_IMPLEMENTATION_CODEX_RESET_MAX_FUTURE_MS
+        )
+        and value.get("evidence_kind") == "codex_jsonl_terminal_error"
+        and re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(value.get("evidence_sha256") or ""),
+        )
+        is not None
+        and isinstance(evidence_bytes, int)
+        and not isinstance(evidence_bytes, bool)
+        and 0 < evidence_bytes <= _AGENT_IMPLEMENTATION_CODEX_CAPACITY_EVIDENCE_MAX_BYTES
+        and value.get("evidence_overflow") is False
+        and value.get("receipt_id")
+        == _content_addressed_mapping(value, identity_field="receipt_id")
+    )
 
 
 def _agent_effect_detail_id(value: object) -> str:
@@ -2566,14 +2861,15 @@ def _agent_effect_launch_details_valid(
     create_argv = argv_values["create_argv"]
     start_argv = argv_values["start_argv"]
     provider_argv = argv_values["provider_argv"]
-    if len(provider_argv) != 14:
+    if len(provider_argv) != 15:
         return False
-    provider_workspace = provider_argv[8]
+    provider_workspace = provider_argv[9]
     expected_provider_tail = [
         "exec",
         "--ignore-user-config",
         "--ignore-rules",
         "--ephemeral",
+        "--json",
         "-s",
         "workspace-write",
         "-C",
@@ -2634,6 +2930,11 @@ def _agent_effect_launch_details_valid(
         user_identity,
         "--workdir",
         provider_workspace,
+        "--log-driver=json-file",
+        "--log-opt",
+        "max-size=16m",
+        "--log-opt",
+        "max-file=2",
     ]
     overrides = [
         "BASH_ENV=",
@@ -2705,15 +3006,29 @@ def _agent_effect_launch_details_valid(
         f"{name}={item}" for name, item in sorted(expected_container.items())
     ]
     inner = list(provider_argv)
-    inner[6] = "danger-full-access"
+    sandbox_index = inner.index("-s")
+    inner[sandbox_index + 1] = "danger-full-access"
+    capacity_nonce_index = cursor + 7 + len(expected_assignments)
+    capacity_nonce = (
+        create_argv[capacity_nonce_index]
+        if len(create_argv) > capacity_nonce_index
+        else ""
+    )
     expected_suffix = [
         AGENT_IMPLEMENTATION_CODEX_IMAGE_ID,
         "-i",
         *expected_assignments,
+        "/opt/ipfs-task-tools/bin/python",
+        "-I",
+        "-c",
+        AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER,
+        AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA,
+        capacity_nonce,
         *inner,
     ]
     if (
         create_argv[cursor:] != expected_suffix
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", capacity_nonce) is None
         or parsed_mounts != mounts
         or len(parsed_mounts) < 5
         or len(set(parsed_mounts)) != len(parsed_mounts)
@@ -3343,6 +3658,7 @@ def build_agent_implementation_route_outcome(
     effect_quarantine_terminalization_receipt: Mapping[
         str, object
     ] | None = None,
+    fallback_capacity_receipt: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build the sole protected v3 terminal record owned by the router."""
 
@@ -3381,6 +3697,7 @@ def build_agent_implementation_route_outcome(
         "effect_quarantine_terminalization_receipt": dict(
             effect_quarantine_terminalization_receipt or {}
         ),
+        "fallback_capacity_receipt": dict(fallback_capacity_receipt or {}),
     }
     outcome["outcome_id"] = _content_addressed_mapping(
         outcome,
@@ -3437,6 +3754,7 @@ def valid_agent_implementation_route_outcome(
         "effect_quarantine_terminalization_receipt",
         "outcome_id",
     }
+    expected_with_capacity = expected | {"fallback_capacity_receipt"}
     invocation = route.invocation_binding
     fallback_returncode = outcome.get("fallback_returncode")
     launch = outcome.get("effect_launch_receipt")
@@ -3444,6 +3762,9 @@ def valid_agent_implementation_route_outcome(
     quarantine = outcome.get("effect_quarantine_receipt")
     quarantine_terminalization = outcome.get(
         "effect_quarantine_terminalization_receipt"
+    )
+    fallback_capacity_receipt = outcome.get(
+        "fallback_capacity_receipt", {}
     )
     quota_evidence = outcome.get("quota_evidence")
     quota_required = bool(
@@ -3453,7 +3774,8 @@ def valid_agent_implementation_route_outcome(
     )
     common = bool(
         invocation is not None
-        and set(outcome) == expected
+        and frozenset(outcome)
+        in {frozenset(expected), frozenset(expected_with_capacity)}
         and outcome.get("schema") == AGENT_IMPLEMENTATION_ROUTE_OUTCOME_SCHEMA
         and outcome.get("source") == "grok_cli_runner"
         and outcome.get("preflight_receipt_id") == receipt.get("receipt_id")
@@ -3503,10 +3825,26 @@ def valid_agent_implementation_route_outcome(
         and isinstance(adoption, Mapping)
         and isinstance(quarantine, Mapping)
         and isinstance(quarantine_terminalization, Mapping)
+        and isinstance(fallback_capacity_receipt, Mapping)
         and outcome.get("outcome_id")
         == _content_addressed_mapping(outcome, identity_field="outcome_id")
     )
     if not common:
+        return False
+    if fallback_capacity_receipt:
+        if (
+            outcome.get("decision") != "fallback_failed"
+            or outcome.get("fallback_dispatched") is not True
+            or not valid_agent_implementation_codex_capacity_receipt(
+                fallback_capacity_receipt,
+                receipt=receipt,
+                route=route,
+                fallback_returncode=runner_returncode,
+                decision_id=str(outcome.get("decision_id") or ""),
+            )
+        ):
+            return False
+    elif "fallback_capacity_receipt" in outcome and fallback_capacity_receipt != {}:
         return False
     if quota_required:
         claimed_at_ms = (
@@ -3677,6 +4015,52 @@ def render_agent_implementation_route_outcome(
         ensure_ascii=True,
         allow_nan=False,
     )
+
+
+def render_agent_implementation_codex_capacity_receipt(
+    receipt: Mapping[str, object],
+) -> str:
+    """Render the runner-owned companion to a protected route outcome."""
+
+    return AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX + json.dumps(
+        dict(receipt),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+
+
+def extract_agent_implementation_codex_capacity_receipts(
+    text: str,
+) -> tuple[dict[str, object], ...]:
+    receipts: list[dict[str, object]] = []
+    for line in str(text).split("\n"):
+        if not line.startswith(
+            AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX
+        ):
+            continue
+        raw = line[len(AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX) :]
+        if "\r" in raw or len(raw.encode("utf-8")) > (
+            _AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_MAX_BYTES
+        ):
+            continue
+
+        def unique(pairs: Sequence[tuple[str, object]]) -> dict[str, object]:
+            result: dict[str, object] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate Codex capacity receipt key")
+                result[key] = value
+            return result
+
+        try:
+            value = json.loads(raw, object_pairs_hook=unique)
+        except (ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict):
+            receipts.append(value)
+    return tuple(receipts[-4:])
 
 
 def extract_agent_implementation_route_outcomes(
@@ -3914,6 +4298,94 @@ def _read_stable_agent_implementation_evidence_file(
     return raw, after_resolved
 
 
+def _agent_implementation_native_session_record(
+    *,
+    grok_home: Path,
+    expected_session_id: str,
+    verifier_workspace: Path | str | None,
+) -> tuple[Path, Path | None] | None:
+    """Select one native session record from the reviewed Grok layouts.
+
+    Grok CLI 1.0.5 keys sessions by the percent-encoded absolute workspace
+    before the UUID.  Older reviewed releases put the UUID directly below
+    ``sessions``.  Accept only the exact workspace-derived path (or that
+    legacy direct path), reject ambiguous dual materialization, and never
+    search the provider home for a matching UUID.
+    """
+
+    try:
+        home_metadata = grok_home.lstat()
+    except OSError:
+        return None
+    if (
+        grok_home.is_symlink()
+        or not stat_module.S_ISDIR(home_metadata.st_mode)
+        or home_metadata.st_uid != os.geteuid()
+    ):
+        return None
+
+    sessions = grok_home / "sessions"
+    workspace: Path | None = None
+    if verifier_workspace is not None:
+        raw_workspace = Path(verifier_workspace)
+        if (
+            not raw_workspace.is_absolute()
+            or ".." in raw_workspace.parts
+        ):
+            return None
+        try:
+            workspace = raw_workspace.resolve(strict=True)
+            workspace_metadata = workspace.stat()
+            encoded_workspace = quote(str(workspace), safe="")
+        except (OSError, UnicodeError):
+            return None
+        if not stat_module.S_ISDIR(workspace_metadata.st_mode):
+            return None
+        if (
+            not encoded_workspace
+            or "/" in encoded_workspace
+            or encoded_workspace in {".", ".."}
+        ):
+            return None
+    candidates: list[tuple[Path, Path | None]] = [
+        (sessions / expected_session_id / "updates.jsonl", workspace)
+    ]
+    if workspace is not None:
+        candidates.append(
+            (
+                sessions
+                / encoded_workspace
+                / expected_session_id
+                / "updates.jsonl",
+                workspace,
+            )
+        )
+
+    observed: list[tuple[Path, Path | None]] = []
+    for candidate, workspace in candidates:
+        try:
+            candidate.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+        observed.append((candidate, workspace))
+    if len(observed) != 1:
+        return None
+
+    candidate, workspace = observed[0]
+    try:
+        relative = candidate.relative_to(grok_home)
+        cursor = grok_home
+        for component in relative.parts:
+            cursor /= component
+            if stat_module.S_ISLNK(cursor.lstat().st_mode):
+                return None
+    except (OSError, ValueError):
+        return None
+    return candidate, workspace
+
+
 def _agent_native_failure_type(line: str) -> str:
     if (
         not line
@@ -4107,7 +4579,14 @@ def validate_agent_implementation_quota_evidence(
         uuid.UUID(expected_session_id)
     except ValueError:
         return None
-    record = home / "sessions" / expected_session_id / "updates.jsonl"
+    selected_record = _agent_implementation_native_session_record(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    )
+    if selected_record is None:
+        return None
+    record, session_workspace = selected_record
     try:
         home_resolved = home.resolve(strict=True)
         transcript_read = _read_stable_agent_implementation_evidence_file(
@@ -4251,6 +4730,10 @@ def validate_agent_implementation_quota_evidence(
         or user_message_count > 1
         or not isinstance(summary_info, dict)
         or summary_info.get("id") != recorded_session_id
+        or (
+            session_workspace is not None
+            and summary_info.get("cwd") != str(session_workspace)
+        )
         or summary.get("current_model_id") != expected_model
         or summary_home != home_resolved
         or latest_failure not in _AGENT_IMPLEMENTATION_NATIVE_QUOTA_FAILURES

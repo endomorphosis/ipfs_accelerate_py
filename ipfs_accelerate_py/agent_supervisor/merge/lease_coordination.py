@@ -96,6 +96,9 @@ DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES = 256 * 1024
 # policy may still use 0 as the unlimited sentinel, mapped to this ceiling
 # only when projecting immutable TaskSpecs.
 PROFILE_G_MAX_TASK_ATTEMPTS = 100
+# Unlimited retryable work remains unlimited. An authoritative terminal-block
+# receipt keeps this bounded safety cap until the source revision changes.
+UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP = 3
 
 _COORDINATION_COMPACTION_TABLES = (
     "artifacts",
@@ -1128,15 +1131,12 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "tool": "codex.todo_bundle",
         "dependency_task_cids": dependency_task_cids,
         "idempotency_key": canonical_identity.semantic_fingerprint[:32],
-        "canonical_task_key": canonical_identity.canonical_task_key,
-        "canonical_task_cid": canonical_identity.canonical_task_cid,
         "resource_class": str(bundle.get("resource_class") or "cpu-small"),
         "deadline_ms": int(bundle.get("deadline_ms") or now + 86_400_000),
         "expected_value_millionths": int(bundle.get("expected_value_millionths") or 500_000),
         "max_attempts": _profile_g_task_spec_attempt_limit(
             bundle.get("max_attempts"),
         ),
-        "max_attempts": int(bundle.get("max_attempts") or 3),
         "execution_mode": "idempotent",
     }
     task_spec_cid = profile_g_cid(task)
@@ -2088,8 +2088,12 @@ class LeaseCoordinator:
                 if row is None:
                     connection.commit()
                     return False
-                exhausted = int(row["attempt"] or 0) >= self._max_attempts(row)
                 release_reason = str(row["release_reason"] or "")
+                exhausted = self._attempt_budget_exhausted(
+                    row,
+                    int(row["attempt"] or 0),
+                    release_reason=release_reason,
+                )
                 blocked_receipt = release_reason.startswith("receipt:") and release_reason.endswith(
                     ":blocked"
                 )
@@ -2370,7 +2374,34 @@ class LeaseCoordinator:
     @staticmethod
     def _max_attempts(task: _DuckRow | Mapping[str, Any]) -> int:
         bundle = json.loads(task["bundle_json"])
-        return max(1, int(bundle.get("max_attempts") or 3))
+        raw_limit = (
+            bundle["max_attempts"]
+            if bundle.get("max_attempts") not in (None, "")
+            else 3
+        )
+        return profile_g_task_attempt_limit(raw_limit)
+
+    @classmethod
+    def _attempt_budget_exhausted(
+        cls,
+        task: _DuckRow | Mapping[str, Any],
+        attempt: int,
+        *,
+        release_reason: str | None = None,
+    ) -> bool:
+        """Return whether the latest outcome exhausts admission policy."""
+
+        max_attempts = cls._max_attempts(task)
+        if max_attempts > 0:
+            return int(attempt) >= max_attempts
+        terminal_block = (
+            str(release_reason or "").startswith("receipt:")
+            and str(release_reason or "").endswith(":blocked")
+        )
+        return bool(
+            terminal_block
+            and int(attempt) >= UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP
+        )
 
     @staticmethod
     def _execution_scope(task: _DuckRow) -> str:
@@ -2421,7 +2452,18 @@ class LeaseCoordinator:
             state = "accepted"
         elif lease_state == "completed":
             state = "completed"
-        elif attempt >= max_attempts or retry_not_before > now:
+        elif (
+            self._attempt_budget_exhausted(
+                task,
+                attempt,
+                release_reason=(
+                    str(lease["release_reason"])
+                    if lease is not None and lease["release_reason"]
+                    else None
+                ),
+            )
+            or retry_not_before > now
+        ):
             state = "blocked"
         else:
             state = "ready"
@@ -2738,9 +2780,21 @@ class LeaseCoordinator:
                     # A finite attempt budget prevents a permanently failing
                     # task from monopolizing newly idle lanes.
                     lease = connection.execute(
-                        "SELECT attempt FROM leases WHERE task_cid=?", (task["task_cid"],)
+                        "SELECT attempt, release_reason FROM leases WHERE task_cid=?",
+                        (task["task_cid"],),
                     ).fetchone()
-                    if lease is not None and int(lease["attempt"]) >= self._max_attempts(task):
+                    if (
+                        lease is not None
+                        and self._attempt_budget_exhausted(
+                            task,
+                            int(lease["attempt"]),
+                            release_reason=(
+                                str(lease["release_reason"])
+                                if lease["release_reason"]
+                                else None
+                            ),
+                        )
+                    ):
                         continue
                     if self._active_execution_scope_conflict(
                         connection, task, now=now
@@ -2840,7 +2894,18 @@ class LeaseCoordinator:
         ).fetchone()
         if prior is not None and prior["state"] == "completed":
             raise LeaseConflictError("task already has a successful terminal receipt")
-        if prior is not None and int(prior["attempt"] or 0) >= self._max_attempts(task):
+        if (
+            prior is not None
+            and self._attempt_budget_exhausted(
+                task,
+                int(prior["attempt"] or 0),
+                release_reason=(
+                    str(prior["release_reason"])
+                    if prior["release_reason"]
+                    else None
+                ),
+            )
+        ):
             raise LeaseConflictError("task attempt budget is exhausted")
         retry_not_before = int(prior["retry_not_before_ms"] or 0) if prior is not None else 0
         if retry_not_before > now:
@@ -6286,4 +6351,3 @@ def profile_g_taskspec_attempt_limit(value: Any, *, default: int = 3) -> int:
 
 def _duckdb_path_literal(path: Path) -> str:
     return "'" + str(path).replace("'", "''") + "'"
-

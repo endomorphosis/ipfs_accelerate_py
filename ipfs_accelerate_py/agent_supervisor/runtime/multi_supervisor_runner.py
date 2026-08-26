@@ -67,6 +67,7 @@ from ..control.lifecycle_orchestrator import (
     LinuxProcessAdapter,
     ProcessIdentity,
     ProcessIdentityMismatch,
+    ProcessTreeSnapshot,
 )
 from ..core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
@@ -843,20 +844,6 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./:@+-]{0,255}$")
 
 class DatabaseProgramConfigError(ValueError):
     """Raised when a database program selection is missing, unsafe, or incomplete."""
-
-
-class _SupportsFileno(Protocol):
-    def fileno(self) -> int: ...
-
-
-def _env_int(name: str, default: int) -> int:
-    raw_value = os.environ.get(name, "").strip()
-    if not raw_value:
-        return int(default)
-    try:
-        return int(raw_value)
-    except ValueError as exc:
-        raise ValueError(f"{name} must be an integer, got {raw_value!r}") from exc
 
 
 def _is_secret_handle(value: str) -> bool:
@@ -3684,6 +3671,28 @@ class PlanBoundProcessBirthError(RuntimeError):
         self.all_trees_fenced = bool(all_trees_fenced)
 
 
+class UnadmittedSupervisorProcessBirthError(ProcessIdentityMismatch):
+    """A legacy child remained live after process-birth admission failed."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        process: subprocess.Popen[bytes],
+        profile: LifecycleProfile,
+        track_name: str,
+        marker_path: Path,
+        marker_published: bool,
+    ) -> None:
+        super().__init__(message)
+        self.process = process
+        self.profile = profile
+        self.track_name = str(track_name)
+        self.marker_path = Path(marker_path)
+        self.marker_published = bool(marker_published)
+        self.all_trees_fenced = False
+
+
 def utc_run_stamp() -> str:
     """Return a UTC run stamp suitable for log/pid filenames."""
 
@@ -5110,6 +5119,24 @@ def terminal_task_state_fields(
     except OSError:
         modified_at = 0.0
     fresh = modified_at + 1e-6 >= float(fresh_after_epoch_seconds)
+    compatibility_schema = (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "database-task-state-compatibility-projection@1"
+    )
+    compatibility_projection_valid = bool(
+        payload.get("schema") != compatibility_schema
+        or (
+            payload.get("authority")
+            == "non_authoritative_compatibility_projection"
+            and payload.get("projection_authority") is False
+            and payload.get("authoritative_task_store") == "duckdb"
+            and payload.get("projection_complete") is True
+            and isinstance(payload.get("source_projection_cid"), str)
+            and bool(str(payload.get("source_projection_cid") or "").strip())
+            and type(payload.get("source_revision")) is int
+            and int(payload.get("source_revision") or 0) > 0
+        )
+    )
     task_count = int(payload.get("task_count") or 0)
     completed_count = int(payload.get("completed_count") or 0)
     active_task_id = str(payload.get("active_task_id") or "").strip()
@@ -5144,6 +5171,7 @@ def terminal_task_state_fields(
         }
         terminal = bool(
             fresh
+            and compatibility_projection_valid
             and len(set(slice_task_ids)) == len(slice_task_ids)
             and all(
                 statuses.get(task_id) in terminal_statuses
@@ -5155,6 +5183,7 @@ def terminal_task_state_fields(
     else:
         terminal = bool(
             fresh
+            and compatibility_projection_valid
             and task_count > 0
             and completed_count == task_count
             and not active_task_id
@@ -5168,6 +5197,7 @@ def terminal_task_state_fields(
         "task_state_status": "terminal" if terminal else "nonterminal",
         "task_state_path": str(path),
         "task_state_fresh": fresh,
+        "task_state_projection_valid": compatibility_projection_valid,
         "task_count": task_count,
         "completed_count": completed_count,
         "active_task_id": active_task_id,
@@ -5283,13 +5313,6 @@ def supervisor_status_health_fields(
         recorded_pid = None if recorded_pid is None else int(recorded_pid)
     except (TypeError, ValueError):
         recorded_pid = None
-    if live_pid is not None and recorded_pid not in {None, int(live_pid)}:
-        # A leftover projection from a prior generation must not recycle the
-        # live child before it can publish a matching heartbeat.
-        return {
-            "supervisor_status": "missing",
-            "supervisor_status_path": str(status_path),
-        }
     updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
     if updated_at is None:
         if generation_bound:
@@ -5799,6 +5822,98 @@ def _plan_bound_merge_completed_cleanup_pending(
     ):
         raise ValueError("completed cleanup claim custody is mixed")
     return True
+
+
+def _capture_owned_popen_birth(
+    process: subprocess.Popen[bytes],
+    profile: LifecycleProfile,
+    *,
+    adapter: LinuxProcessAdapter | None = None,
+) -> ProcessIdentity:
+    """Bind a just-spawned direct child without reading its protected environ.
+
+    Credential-bearing wrappers become non-dumpable as their first Python
+    action. The parent nevertheless owns the exact still-unreaped Popen child
+    and the complete profile/environment used to create it. Two stable Linux
+    stat observations, direct parentage, and the dedicated session created by
+    start_new_session=True therefore provide PID-reuse-resistant birth
+    authority without weakening the child's procfs credential boundary.
+    """
+
+    if process.poll() is not None:
+        raise ProcessLookupError(int(process.pid))
+    process_adapter = adapter or LinuxProcessAdapter()
+    first = process_adapter._stat(int(process.pid))  # noqa: SLF001
+    parent_pid, process_group_id, session_id, start_time_ticks = first
+    if (
+        parent_pid != os.getpid()
+        or process_group_id != int(process.pid)
+        or session_id != int(process.pid)
+        or start_time_ticks <= 0
+    ):
+        raise ProcessIdentityMismatch(
+            "spawned supervisor is not the exact direct dedicated-session child"
+        )
+    boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+        encoding="ascii"
+    ).strip()
+    if not boot_id:
+        raise ProcessIdentityMismatch("spawned supervisor boot identity is absent")
+    second = process_adapter._stat(int(process.pid))  # noqa: SLF001
+    if second != first or process.poll() is not None:
+        raise ProcessIdentityMismatch(
+            "spawned supervisor birth changed during capture"
+        )
+    identity = ProcessIdentity(
+        pid=int(process.pid),
+        start_time_ticks=start_time_ticks,
+        parent_pid=parent_pid,
+        process_group_id=process_group_id,
+        session_id=session_id,
+        boot_id=boot_id,
+        argv=profile.argv,
+        cwd=profile.cwd,
+        executable=str(profile.argv[0]),
+        run_id=profile.run_id,
+        profile_id=profile.profile_id,
+        target_id=profile.target_id,
+        repository_root=profile.repository_root,
+        state_root=profile.state_root,
+        run_root=profile.run_root,
+        fencing_epoch=0,
+        configuration_root=profile.configuration_root,
+    )
+    if not process_adapter.identity_alive(identity) or process.poll() is not None:
+        raise ProcessIdentityMismatch(
+            "spawned supervisor birth was not live after capture"
+        )
+    return identity
+
+
+def _reap_uncaptured_owned_popen(
+    process: subprocess.Popen[bytes],
+    *,
+    timeout_seconds: float = 2.0,
+) -> bool:
+    """Fence a direct child that failed birth admission before publication."""
+
+    if process.poll() is None:
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            pass
+    try:
+        process.wait(timeout=max(0.1, float(timeout_seconds)))
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=max(0.1, float(timeout_seconds)))
+        except subprocess.TimeoutExpired:
+            return False
+    return process.poll() is not None
 
 
 def start_track(
@@ -6415,8 +6530,9 @@ def start_track(
                 os.close(gate_write_fd)
     else:
         try:
-            process_identity = LinuxProcessAdapter()._identity(  # noqa: SLF001
-                int(process.pid), profile
+            process_identity = _capture_owned_popen_birth(
+                process,
+                profile,
             )
         except (
             OSError,
@@ -6424,10 +6540,41 @@ def start_track(
             ValueError,
             ProcessLookupError,
             ProcessIdentityMismatch,
-        ):
-            # Legacy tracks retain their previous best-effort observability.
-            process_identity = None
-        process._agent_supervisor_process_identity = process_identity
+        ) as exc:
+            fenced = _reap_uncaptured_owned_popen(process)
+            detail = (
+                "legacy supervisor process birth capture failed "
+                f"(direct_child_fenced={str(fenced).lower()})"
+            )
+            if fenced:
+                raise ProcessIdentityMismatch(detail) from exc
+            setattr(
+                process,
+                "_agent_supervisor_birth_admission_failed",
+                True,
+            )
+            marker_published = False
+            try:
+                resolved.supervisor_pid_path.write_text(
+                    f"{process.pid}\n",
+                    encoding="utf-8",
+                )
+                marker_published = True
+            except OSError:
+                pass
+            raise UnadmittedSupervisorProcessBirthError(
+                detail,
+                process=process,
+                profile=profile,
+                track_name=resolved.name,
+                marker_path=resolved.supervisor_pid_path,
+                marker_published=marker_published,
+            ) from exc
+        setattr(
+            process,
+            "_agent_supervisor_process_identity",
+            process_identity,
+        )
         resolved.supervisor_pid_path.write_text(
             f"{process.pid}\n", encoding="utf-8"
         )
@@ -7756,12 +7903,43 @@ def _validate_plan_bound_accepted_tree(
             )
 
 
+def _managed_process_birth_identity(
+    process: subprocess.Popen[bytes],
+    profile: LifecycleProfile,
+) -> ProcessIdentity | None:
+    """Return the exact captured wrapper birth, rejecting mixed authority."""
+
+    identity = getattr(process, "_agent_supervisor_process_identity", None)
+    if identity is None:
+        return None
+    if not isinstance(identity, ProcessIdentity):
+        raise ProcessIdentityMismatch(
+            "managed Popen has an untyped process-birth identity"
+        )
+    if (
+        identity.pid != process.pid
+        or identity.profile_id != profile.profile_id
+        or identity.run_id != profile.run_id
+        or identity.target_id != profile.target_id
+        or identity.repository_root != profile.repository_root
+        or identity.state_root != profile.state_root
+        or identity.run_root != profile.run_root
+        or identity.configuration_root != profile.configuration_root
+        or identity.argv != profile.argv
+        or identity.cwd != profile.cwd
+    ):
+        raise ProcessIdentityMismatch(
+            "managed Popen process birth does not match its lifecycle profile"
+        )
+    return identity
+
+
 def _terminate_managed_process(
     process: subprocess.Popen[bytes] | None,
     *,
     grace_seconds: float,
 ) -> tuple[bool, tuple[int, ...]]:
-    """Fence the exact marker-bound tree associated with ``process``."""
+    """Fence the exact owned wrapper birth and its marker-bound descendants."""
 
     if process is None:
         return True, ()
@@ -7770,14 +7948,52 @@ def _terminate_managed_process(
         # A caller-created Popen has no durable run/profile binding.  Refuse to
         # turn its PID into signal authority.
         return False, ()
+    process_identity = _managed_process_birth_identity(process, profile)
     adapter = LinuxProcessAdapter()
     tree = adapter.snapshot(profile)
-    if not tree.members:
-        return True, ()
-    root_ids = {item.pid for item in tree.roots}
     process_member = next(
         (item for item in tree.members if item.pid == process.pid), None
     )
+    process_identity_alive = (
+        process_identity is not None and adapter.identity_alive(process_identity)
+    )
+    if process_member is not None and process_identity is not None:
+        if (
+            not process_identity_alive
+            or process_member.start_time_ticks
+            != process_identity.start_time_ticks
+            or (
+                process_member.boot_id
+                and process_identity.boot_id
+                and process_member.boot_id != process_identity.boot_id
+            )
+        ):
+            raise ProcessIdentityMismatch(
+                "managed Popen PID was reused after its captured process birth"
+            )
+    if process_identity_alive:
+        # A wrapper may scrub or replace its lifecycle-visible environment
+        # after launch.  The immutable PID/start-time birth captured from the
+        # owned Popen remains exact signal authority even when a later marker
+        # scan sees only descendants (or no members at all).
+        members = tuple(
+            process_identity if item.pid == process.pid else item
+            for item in tree.members
+        )
+        if process_member is None:
+            members = (*members, process_identity)
+        tree = ProcessTreeSnapshot(
+            profile_id=tree.profile_id,
+            run_id=tree.run_id,
+            members=members,
+            captured_at_ms=tree.captured_at_ms,
+        )
+        process_member = process_identity
+    if not tree.members:
+        # An empty marker scan is proof of neither ownership nor wrapper exit.
+        # Without a live exact birth there is no safe process to signal.
+        return process.poll() is not None, ()
+    root_ids = {item.pid for item in tree.roots}
     if process_member is not None and process.pid not in root_ids:
         raise ProcessIdentityMismatch(
             "managed Popen does not identify the marker-bound tree root"
@@ -7788,10 +8004,16 @@ def _terminate_managed_process(
         grace_seconds=grace_seconds,
         deadline_ms=max(1, int(max(0.0, grace_seconds) * 1000) + 1_000),
     )
-    deadline = time.monotonic() + max(0.1, grace_seconds) + 1.0
+    # ``terminate`` owns the complete graceful wait and exact SIGKILL fence.
+    # Allow only a short reap/projection observation after it returns instead
+    # of charging the caller a second full grace period.
+    deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline:
         if not any(adapter.identity_alive(item) for item in tree.members):
-            if not adapter.snapshot(profile).members:
+            if (
+                process.poll() is not None
+                and not adapter.snapshot(profile).members
+            ):
                 return True, member_pids
         time.sleep(0.02)
     return False, member_pids
@@ -7817,6 +8039,72 @@ def stop_tracks(
             process,
             grace_seconds=grace_seconds,
         )
+        # The managed termination helper owns both the grace window and exact
+        # wrapper reap.  Keep this independent observation so a future or
+        # monkeypatched implementation still cannot retire a live PID marker.
+        if process is not None and process.poll() is None:
+            fenced = False
+        if process is not None and bool(
+            getattr(
+                process,
+                "_agent_supervisor_birth_admission_failed",
+                False,
+            )
+        ):
+            fenced = False
+            _emit(
+                output,
+                f"process birth admission remained incomplete for {track.name}",
+            )
+        resolved = track.resolve(repo_root) if process is not None else None
+        daemon_pid: int | None = None
+        daemon_marker_present = False
+        if fenced and resolved is not None:
+            try:
+                os.lstat(resolved.daemon_pid_path)
+                daemon_marker_present = True
+            except FileNotFoundError:
+                pass
+            except OSError:
+                daemon_marker_present = True
+            daemon_pid = read_pid_file(resolved.daemon_pid_path)
+            if daemon_marker_present and (
+                daemon_pid is None or pid_alive(daemon_pid)
+            ):
+                fenced = False
+                _emit(
+                    output,
+                    "could not verify managed daemon shutdown for "
+                    f"{track.name} daemon_pid={daemon_pid or 'unknown'}",
+                )
+        if fenced and process is not None:
+            assert resolved is not None
+            if _remove_stale_pid_marker_if_unchanged(
+                resolved.supervisor_pid_path,
+                process.pid,
+            ):
+                removed_runtime_markers.append(str(resolved.supervisor_pid_path))
+            if daemon_pid and _remove_stale_pid_marker_if_unchanged(
+                resolved.daemon_pid_path,
+                daemon_pid,
+            ):
+                removed_runtime_markers.append(str(resolved.daemon_pid_path))
+            for marker in (
+                resolved.supervisor_pid_path,
+                resolved.daemon_pid_path,
+            ):
+                try:
+                    os.lstat(marker)
+                except FileNotFoundError:
+                    continue
+                except OSError:
+                    pass
+                fenced = False
+                _emit(
+                    output,
+                    f"could not retire shutdown marker for {track.name}: {marker}",
+                )
+                break
         if fenced:
             stopped.extend(member_pids)
         elif process is not None:
@@ -7825,24 +8113,6 @@ def stop_tracks(
                 output,
                 f"could not verify complete shutdown for {track.name} pid={process.pid}",
             )
-        if process is not None:
-            try:
-                process.wait(timeout=max(0.1, grace_seconds))
-            except subprocess.TimeoutExpired:
-                pass
-        if fenced and process is not None:
-            resolved = track.resolve(repo_root)
-            if _remove_stale_pid_marker_if_unchanged(
-                resolved.supervisor_pid_path,
-                process.pid,
-            ):
-                removed_runtime_markers.append(str(resolved.supervisor_pid_path))
-            daemon_pid = read_pid_file(resolved.daemon_pid_path)
-            if daemon_pid and _remove_stale_pid_marker_if_unchanged(
-                resolved.daemon_pid_path,
-                daemon_pid,
-            ):
-                removed_runtime_markers.append(str(resolved.daemon_pid_path))
     return {
         "stopped_pids": sorted(set(stopped)),
         "stopped_count": len(set(stopped)),
@@ -8678,6 +8948,8 @@ def run_supervisor_tracks(
     interrupted = ""
     blocked = ""
     terminal_quiescent = False
+    terminal_sidecar_checkpoint: dict[str, Any] | None = None
+    vrif_terminal_checkpoint_attempted = False
     bounded_finished_tracks: set[str] = set()
     pending_failed_slices: list[
         tuple[PlanBoundSupervisorChild, subprocess.Popen[bytes]]
@@ -9177,9 +9449,20 @@ def run_supervisor_tracks(
             )
             _emit(output, f"blocked: {blocked}")
         if terminal_quiescent:
-            _emit(output, "completed after terminal board drain")
+            _emit(output, "terminal board drain observed; fencing supervisors")
         else:
             _emit(output, "completed requested run window")
+    except UnadmittedSupervisorProcessBirthError as exc:
+        processes[exc.track_name] = exc.process
+        blocked = str(exc)
+        _emit(
+            output,
+            (
+                f"blocked: {blocked} pid={exc.process.pid} "
+                f"marker_published={str(exc.marker_published).lower()} "
+                "all_trees_fenced=false"
+            ),
+        )
     except PlanBoundProcessBirthError as exc:
         blocked = str(exc)
         _emit(
@@ -9203,11 +9486,80 @@ def run_supervisor_tracks(
             grace_seconds=stop_grace_seconds,
             output=output,
         )
+        if terminal_quiescent and not stop_payload["all_trees_fenced"]:
+            blocked = "terminal board drain process fencing was incomplete"
+            terminal_quiescent = False
+            _emit(output, f"blocked: {blocked}")
+        if (
+            terminal_quiescent
+            and stop_payload["all_trees_fenced"]
+            and not plan_bound_children
+        ):
+            from .vrif_runtime_settlement import (
+                VRIF_PROGRAM_IDENTIFIER,
+                VRIF_SCHEDULER_CONFIG_RELATIVE_PATH,
+                checkpoint_vrif_terminal_sidecars,
+            )
+
+            if label == VRIF_PROGRAM_IDENTIFIER:
+                vrif_terminal_checkpoint_attempted = True
+                try:
+                    target_branches = _profile_option_values(
+                        common_args,
+                        "--merge-target-branch",
+                    )
+                    if len(target_branches) != 1:
+                        raise ValueError(
+                            "VRIF terminal checkpoint requires one exact target branch"
+                        )
+                    if resolved_master_pid is None:
+                        raise ValueError(
+                            "VRIF terminal checkpoint requires the master PID marker"
+                        )
+                    terminal_sidecar_checkpoint = (
+                        checkpoint_vrif_terminal_sidecars(
+                            resolved_repo_root
+                            / VRIF_SCHEDULER_CONFIG_RELATIVE_PATH,
+                            repository_root=resolved_repo_root,
+                            target_branch=target_branches[0],
+                            master_pid_path=resolved_master_pid,
+                            expected_master_pid=os.getpid(),
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001 - terminal fail-closed gate
+                    blocked = (
+                        "terminal sidecar checkpoint failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    terminal_quiescent = False
+                    terminal_sidecar_checkpoint = {
+                        "checkpointed": False,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                    _emit(output, f"blocked: {blocked}")
+                else:
+                    _emit(
+                        output,
+                        "completed terminal sidecar checkpoint after board drain",
+                    )
         master_pid_removed = bool(
             resolved_master_pid is not None
             and stop_payload["all_trees_fenced"]
             and _remove_owned_pid_projection(resolved_master_pid, os.getpid())
         )
+        if (
+            terminal_quiescent
+            and vrif_terminal_checkpoint_attempted
+            and terminal_sidecar_checkpoint is not None
+            and resolved_master_pid is not None
+            and not master_pid_removed
+        ):
+            blocked = "VRIF terminal master PID marker retirement failed"
+            terminal_quiescent = False
+            _emit(output, f"blocked: {blocked}")
+        if terminal_quiescent:
+            _emit(output, "completed after terminal board drain")
     return {
         "completed": not interrupted and not blocked,
         "interrupted": interrupted,
@@ -9221,6 +9573,7 @@ def run_supervisor_tracks(
         "removed_runtime_markers": stop_payload["removed_runtime_markers"],
         "master_pid_removed": master_pid_removed,
         "terminal_quiescent": terminal_quiescent,
+        "terminal_sidecar_checkpoint": terminal_sidecar_checkpoint,
         "replan_required": replan_required,
         "scope_drift_receipts": scope_drift_receipts,
     }
@@ -9868,6 +10221,27 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
     return _plan_bound_gate_fail("exec returned")
 
 
+def _supervisor_run_exit_code(
+    run_result: Mapping[str, Any],
+    *,
+    plan_bound_wave: bool,
+) -> int:
+    """Map a fenced runner result to its process-level completion signal."""
+
+    if (
+        plan_bound_wave
+        and run_result.get("replan_required") is True
+        and run_result.get("all_trees_fenced") is True
+    ):
+        return PLAN_BOUND_REPLAN_RETURN_CODE
+    if (
+        run_result.get("completed") is not True
+        or run_result.get("all_trees_fenced") is not True
+    ):
+        return 2
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     from .process_security import harden_state_authority_process
 
@@ -9992,18 +10366,10 @@ def main(argv: list[str] | None = None) -> int:
             ),
             output=output,
         )
-    if (
-        args.plan_bound_wave
-        and run_result.get("replan_required") is True
-        and run_result.get("all_trees_fenced") is True
-    ):
-        return PLAN_BOUND_REPLAN_RETURN_CODE
-    if args.plan_bound_wave and (
-        run_result.get("completed") is not True
-        or run_result.get("all_trees_fenced") is not True
-    ):
-        return 2
-    return 0
+    return _supervisor_run_exit_code(
+        run_result,
+        plan_bound_wave=bool(args.plan_bound_wave),
+    )
 
 
 CASF_EVENT_DRIVEN_WAKE_INTERFACE = (

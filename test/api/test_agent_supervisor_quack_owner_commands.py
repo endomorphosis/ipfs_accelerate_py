@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
     QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
     QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
     QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
@@ -129,6 +130,10 @@ def test_submit_round_trips_bound_typed_result(tmp_path: Path, monkeypatch) -> N
     inbox = tmp_path / "mutations"
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "token_value_123")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE",
+        str(tmp_path / "round-trip.quack-token"),
+    )
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "data/control.duckdb")
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "generation-1")
 
@@ -173,6 +178,10 @@ def test_submit_rejects_forged_owner_response(tmp_path: Path, monkeypatch) -> No
     inbox = tmp_path / "mutations"
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "token_value_123")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE",
+        str(tmp_path / "forged-response.quack-token"),
+    )
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "data/control.duckdb")
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "generation-1")
 
@@ -226,6 +235,10 @@ def test_submit_rejects_unsafe_owner_response_file(
     inbox = tmp_path / "mutations"
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "token_value_123")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE",
+        str(tmp_path / "unsafe-response.quack-token"),
+    )
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "data/control.duckdb")
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "generation-1")
 
@@ -328,6 +341,157 @@ def test_bound_repository_command_is_atomic_and_restart_idempotent(
         second_repo.close()
         # Repository lifecycle never closes the owner's injected connection.
         assert owner_connection.execute("SELECT 1").fetchone()[0] == 1
+    finally:
+        owner_connection.close()
+
+
+def test_owner_guarded_retry_preserves_exact_absolute_deadline(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "control.duckdb"
+    _materialize_one_task(path)
+    owner_connection = open_duckdb_connection(path)
+    try:
+        repository = IntentRepository(
+            path,
+            bound_connection=owner_connection,
+            install_schema=False,
+            owner_id="owner:typed-test",
+            session_id="session:absolute-deadline",
+        )
+        repository._clock_ms = lambda: 1_000_123  # type: ignore[method-assign]
+        task = repository.get_task("task:typed-owner-test")
+        assert task is not None
+        claim_receipt = {
+            "operation": "database_claim",
+            "attempt_id": "attempt:absolute-deadline",
+        }
+        repository.cas_task_status(
+            task_cid="task:typed-owner-test",
+            expected_revision=int(task["revision"]),
+            new_status="in_progress",
+            receipt=claim_receipt,
+        )
+        claimed = repository.get_task("task:typed-owner-test")
+        assert claimed is not None
+        reason = "database_portal_retry:attempt:absolute-deadline:capacity"
+        transition = {
+            "operation": "database_portal_capacity_retry",
+            "queue_reason": reason,
+            "queue_reused": False,
+            "queue_receipt": {},
+            "retry_not_before_ms": 0,
+        }
+        payload = {
+            "task_cid": "task:typed-owner-test",
+            "expected_revision": int(claimed["revision"]),
+            "expected_control_receipt": claim_receipt,
+            "status": "retrying",
+            "receipt": transition,
+            "delay_ms": 999_877,
+            "reason": reason,
+            "exact_retry_not_before_ms": 2_000_000,
+        }
+        assert validate_quack_owner_command(
+            QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+            payload,
+        )["exact_retry_not_before_ms"] == 2_000_000
+        result = execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+            payload,
+            request_id="d" * 32,
+            store_id="data/control.duckdb",
+            store_generation="generation-1",
+        )
+        assert result["retry_not_before_ms"] == 2_000_000
+        assert result["transition_receipt"]["retry_not_before_ms"] == 2_000_000
+        assert result["cas_result"]["task"]["body"]["completion_receipt"][
+            "retry_not_before_ms"
+        ] == 2_000_000
+        with pytest.raises(
+            DuckDBConnectionPolicyError,
+            match="non-negative integer",
+        ):
+            validate_quack_owner_command(
+                QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+                {**payload, "exact_retry_not_before_ms": -1},
+            )
+        repository.close()
+    finally:
+        owner_connection.close()
+
+
+def test_owner_generic_queue_status_rejects_leftover_wait_recovery(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "control.duckdb"
+    _materialize_one_task(path)
+    owner_connection = open_duckdb_connection(path)
+    try:
+        repository = IntentRepository(
+            path,
+            bound_connection=owner_connection,
+            install_schema=False,
+            owner_id="owner:typed-test",
+            session_id="session:reject-leftover-wait",
+        )
+        task = repository.get_task("task:typed-owner-test")
+        assert task is not None
+        claim_receipt = {"operation": "database_claim"}
+        repository.cas_task_status(
+            task_cid="task:typed-owner-test",
+            expected_revision=int(task["revision"]),
+            new_status="in_progress",
+            receipt=claim_receipt,
+        )
+        claimed = repository.get_task("task:typed-owner-test")
+        assert claimed is not None
+        blocked_receipt = {
+            "operation": "database_portal_typed_deferral_budget_exhausted"
+        }
+        repository.cas_task_status(
+            task_cid="task:typed-owner-test",
+            expected_revision=int(claimed["revision"]),
+            new_status="blocked",
+            receipt=blocked_receipt,
+        )
+        blocked = repository.get_task("task:typed-owner-test")
+        assert blocked is not None
+        payload = {
+            "task_cid": "task:typed-owner-test",
+            "expected_revision": int(blocked["revision"]),
+            "expected_control_receipt": blocked_receipt,
+            "status": "retrying",
+            "receipt": {
+                "operation": (
+                    "database_portal_leftover_wait_"
+                    "deferral_budget_retry_recovery"
+                )
+            },
+            "delay_ms": 0,
+            "reason": "leftover_wait_deferral_budget_cleared",
+        }
+
+        with pytest.raises(
+            TaskSourceConflictError,
+            match="generic remote queue/status command",
+        ):
+            execute_quack_owner_command(
+                repository,
+                QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+                payload,
+                request_id="e" * 32,
+                store_id="data/control.duckdb",
+                store_generation="generation-1",
+            )
+
+        observed = repository.get_task("task:typed-owner-test")
+        assert observed is not None
+        assert observed["status"] == "blocked"
+        assert int(observed["revision"]) == int(blocked["revision"])
+        assert repository.get_queue_entry("task:typed-owner-test") is None
+        repository.close()
     finally:
         owner_connection.close()
 
@@ -466,6 +630,41 @@ def test_owner_rearms_blocked_task_without_client_revision(tmp_path: Path) -> No
         )
         assert replay["changed"] is False
         assert replay["task"]["status"] == "retrying"
+        repository.close()
+    finally:
+        owner_connection.close()
+
+
+def test_owner_rearm_preserves_terminal_task_as_idempotent_noop(tmp_path: Path) -> None:
+    path = tmp_path / "control.duckdb"
+    _materialize_one_task(path)
+    owner_connection = open_duckdb_connection(path)
+    try:
+        owner_connection.execute(
+            "UPDATE tasks SET status = 'completed' WHERE task_cid = ?",
+            ["task:typed-owner-test"],
+        )
+        repository = IntentRepository(
+            path,
+            bound_connection=owner_connection,
+            install_schema=False,
+            owner_id="owner:typed-test",
+            session_id="session:terminal-rearm",
+        )
+        result = execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+            {
+                "task_cid_or_alias": "task:typed-owner-test",
+                "receipt": {"operation": "database_declared_outputs_on_head_rearm"},
+            },
+            request_id="e" * 32,
+            store_id="data/control.duckdb",
+            store_generation="generation-1",
+        )
+        assert result["changed"] is False
+        assert result["previous_status"] == "completed"
+        assert result["task"]["status"] == "completed"
         repository.close()
     finally:
         owner_connection.close()

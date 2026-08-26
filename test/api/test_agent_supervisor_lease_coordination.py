@@ -437,7 +437,8 @@ def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -
 
     assert first["task_spec_cid"] != second["task_spec_cid"]
     assert first["canonical_task_cid"] == second["canonical_task_cid"]
-    assert first["task"]["canonical_task_cid"] == first["canonical_task_cid"]
+    assert first["task"]["idempotency_key"] == second["task"]["idempotency_key"]
+    assert "canonical_task_cid" not in first["task"]
 
     with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
         registered_first = coordinator.register_bundle(_bundle(), created_at_ms=1_783_872_000_000)

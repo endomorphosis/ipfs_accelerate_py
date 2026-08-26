@@ -5040,6 +5040,11 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                         "no-change lifecycle handoff did not finalize"
                     )
                 request = self.merge_queue.enqueue(**enqueue_fields)
+                self._publish_plan_bound_merge_candidate_enqueued(
+                    request=request,
+                    enqueue_fields=enqueue_fields,
+                    worktree_path=workspace_path,
+                )
                 confirmed_cid, confirmed = (
                     self._confirm_plan_bound_merge_enqueue(
                         prepared_cid=prepared_cid,
@@ -5276,6 +5281,112 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                     "canonical candidate builder did not yield one enqueue"
                 )
             return captured[0]
+
+        def _publish_plan_bound_merge_candidate_enqueued(
+            self,
+            *,
+            request: Any,
+            enqueue_fields: Mapping[str, Any],
+            worktree_path: Path,
+        ) -> str:
+            """Publish or adopt one exact reconciliation source event.
+
+            Plan-bound paths persist their queue intent before crossing the
+            canonical enqueue boundary.  They cannot call the ordinary
+            candidate builder again afterward, but merge reconciliation still
+            requires the same durable ``merge_candidate_enqueued`` source.
+            Bind that projection to the stored intent and make response-loss
+            retries idempotent instead of appending a second source.
+            """
+
+            self._require_queue_request_matches_intent(request, enqueue_fields)
+            metadata = enqueue_fields.get("metadata")
+            if not isinstance(metadata, Mapping):
+                raise PlanBoundReplanRequired(
+                    "plan-bound enqueue source lacks canonical metadata"
+                )
+            completion_task_cids = metadata.get("completion_task_cids")
+            if not isinstance(completion_task_cids, Mapping):
+                raise PlanBoundReplanRequired(
+                    "plan-bound enqueue source lacks completion identities"
+                )
+            request_id = str(getattr(request, "request_id", "") or "").strip()
+            canonical_task_cid = str(
+                enqueue_fields.get("canonical_task_id")
+                or enqueue_fields.get("canonical_task_cid")
+                or ""
+            ).strip()
+            expected = {
+                "task_id": str(enqueue_fields.get("task_id") or ""),
+                "attempt": enqueue_fields.get("attempt"),
+                "branch": str(enqueue_fields.get("branch_name") or ""),
+                "baseline_ref": str(metadata.get("baseline_ref") or ""),
+                "implementation_commit": str(
+                    enqueue_fields.get("commit_sha") or ""
+                ),
+                "worktree_path": str(worktree_path),
+                "attempted": False,
+                "merged": False,
+                "queued": True,
+                "reason": "merge_queued",
+                "request_id": request_id,
+                "canonical_task_key": str(
+                    enqueue_fields.get("canonical_task_key") or ""
+                ),
+                "canonical_task_cid": canonical_task_cid,
+                "completion_task_cids": {
+                    str(task_id): str(task_cid)
+                    for task_id, task_cid in completion_task_cids.items()
+                },
+                "queue_dir": str(self.merge_queue_dir),
+                "target_repository_id": str(
+                    enqueue_fields.get("target_repository_id") or ""
+                ),
+                "target_branch": str(
+                    enqueue_fields.get("target_branch") or ""
+                ),
+            }
+            if (
+                not request_id
+                or not expected["task_id"]
+                or not canonical_task_cid
+                or isinstance(expected["attempt"], bool)
+                or not isinstance(expected["attempt"], int)
+                or expected["attempt"] < 1
+            ):
+                raise PlanBoundReplanRequired(
+                    "plan-bound enqueue source identity is incomplete"
+                )
+
+            def exact_sources() -> list[Mapping[str, Any]]:
+                return [
+                    event
+                    for event in self._iter_merge_lifecycle_events()
+                    if str(event.get("type") or "")
+                    == "merge_candidate_enqueued"
+                    and str(event.get("request_id") or "") == request_id
+                ]
+
+            sources = exact_sources()
+            if not sources:
+                self._record_event("merge_candidate_enqueued", expected)
+                sources = exact_sources()
+            if (
+                len(sources) != 1
+                or any(
+                    sources[0].get(field) != value
+                    for field, value in expected.items()
+                )
+            ):
+                raise PlanBoundReplanRequired(
+                    "plan-bound enqueue reconciliation source is absent or mixed"
+                )
+            event_id = str(sources[0].get("event_id") or "")
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", event_id) is None:
+                raise PlanBoundReplanRequired(
+                    "plan-bound enqueue reconciliation source is unsealed"
+                )
+            return event_id
 
         @staticmethod
         def _queue_intent_dedupe_key(
@@ -7448,6 +7559,11 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                         reason=f"confirmed_queue_row_differs_from_intent:{exc}",
                     )
                     raise
+            self._publish_plan_bound_merge_candidate_enqueued(
+                request=request,
+                enqueue_fields=enqueue_fields,
+                worktree_path=Path(lease.workspace_path),
+            )
             completed_request = self._drain_plan_bound_merge_request(
                 request_id=str(request.request_id),
                 execution_lease=lease,
@@ -7575,6 +7691,11 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 prepared=prepared,
                 request=request,
                 enqueue_fields=enqueue_fields,
+            )
+            self._publish_plan_bound_merge_candidate_enqueued(
+                request=request,
+                enqueue_fields=enqueue_fields,
+                worktree_path=Path(prepared.workspace_path),
             )
             completed_request = self._drain_plan_bound_merge_request(
                 request_id=str(request.request_id),
@@ -22679,8 +22800,11 @@ class PortalImplementationSupervisor:
         )
         remaining_pid = self._find_matching_managed_daemon_pid()
         try:
-            if pid_path.is_file():
-                pid_path.unlink()
+            if remaining_pid is None:
+                if pid_path.is_file():
+                    pid_path.unlink()
+            else:
+                write_text_atomic(pid_path, f"{int(remaining_pid)}\n")
         except OSError:
             pass
         return {
