@@ -1,0 +1,200 @@
+{
+  "campaign_cid": "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+  "comparison_cid": "baguqeera7zbp7lotn5aqdby5tvz6ledcgiektkywugvzypakcj6lrmotncpq",
+  "comparison_sha256": "sha256:fe42ffadd36f4101871d9d73e590623208a9ab16a1ab9c3c0a127cb8b1d3689f",
+  "metric_ids": [
+    "token_cross_entropy",
+    "latent_separation",
+    "retrieval_recall",
+    "structural_equivalence",
+    "semantic_equivalence",
+    "proof_replay_rate",
+    "readability_score",
+    "calibration_error",
+    "ood_acceptance",
+    "latency",
+    "resource_cost",
+    "target_attainment"
+  ],
+  "metrics_cid": "baguqeera4caljyd6lrh4wpzg24uieyzplikodbkgathqciinfg3vtkkf4qza",
+  "no_winner": true,
+  "pair_count": 15,
+  "pairs": [
+    {
+      "effect": null,
+      "left_arm_id": "R1",
+      "pair_id": "R1__R2",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R2",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R1",
+      "pair_id": "R1__R3",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R3",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R1",
+      "pair_id": "R1__R4",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R4",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R1",
+      "pair_id": "R1__R5",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R5",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R1",
+      "pair_id": "R1__R6",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R6",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R2",
+      "pair_id": "R2__R3",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R3",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R2",
+      "pair_id": "R2__R4",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R4",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R2",
+      "pair_id": "R2__R5",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R5",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R2",
+      "pair_id": "R2__R6",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R6",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R3",
+      "pair_id": "R3__R4",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R4",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R3",
+      "pair_id": "R3__R5",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R5",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R3",
+      "pair_id": "R3__R6",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R6",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R4",
+      "pair_id": "R4__R5",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R5",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R4",
+      "pair_id": "R4__R6",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R6",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    },
+    {
+      "effect": null,
+      "left_arm_id": "R5",
+      "pair_id": "R5__R6",
+      "paired_sample_count": 0,
+      "reason_code": "admission_closed",
+      "right_arm_id": "R6",
+      "status": "not_run",
+      "uncertainty": null,
+      "winner": null
+    }
+  ],
+  "schema": "PGIRExperimentComparison@2",
+  "status": "not_run",
+  "task_binding": {
+    "current_task_cid": "baguqeerafze3wxxiomo4rhuxaguuk35d4tj4lrp2jtuj6jcinxnokczuctca",
+    "current_task_key": "task/v1/2e49bb5ee8731dc89e9701a9456fa3e4d3c5c5fa4ce89f24486ddae50b3414c4",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "controlled-comparisons-v2",
+    "task_id": "PGIR-206",
+    "title": "Re-run R1-R6 on the superseding freeze"
+  }
+}
