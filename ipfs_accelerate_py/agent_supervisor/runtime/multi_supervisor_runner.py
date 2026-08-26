@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import errno
+import fcntl
 import hashlib
 import json
 import math
@@ -7539,6 +7540,7 @@ def start_track(
         recovery_runtime_roots: tuple[Path, ...] = ()
         recovery_owner_bound_artifacts: tuple[Path, ...] = ()
         recovery_artifacts: tuple[Mapping[str, Any], ...] = ()
+        recovery_runtime_bindings: tuple[Mapping[str, Any], ...] = ()
         if recovery_phase:
             if len(worktree_roots) != 1 or len(merge_queue_roots) != 1:
                 raise ValueError(
@@ -7590,6 +7592,8 @@ def start_track(
                 ),
                 owner_bound_artifacts=recovery_owner_bound_artifacts,
                 runtime_bindings=recovery_runtime_bindings,
+                slice_id=slice_ids[0],
+                lane_id=lane_ids[0],
                 state_dir=state_dir,
                 state_prefix=state_prefixes[0],
             )
@@ -7627,6 +7631,19 @@ def start_track(
                 recovery_owner_bound_artifacts
             ),
             recovery_artifacts=recovery_artifacts,
+            recovery_state_prefix=(
+                state_prefixes[0] if recovery_decision is not None else ""
+            ),
+            recovery_runtime_bindings=recovery_runtime_bindings,
+            recovery_slice_id=(
+                slice_ids[0] if recovery_decision is not None else ""
+            ),
+            recovery_lane_id=(
+                lane_ids[0] if recovery_decision is not None else ""
+            ),
+            recovery_state_dir=(
+                state_dir if recovery_decision is not None else None
+            ),
         )
         # The accepted-tree gate process cannot exec the requested supervisor
         # until the parent captures its exact lifecycle birth and explicitly
@@ -8451,8 +8468,24 @@ def _plan_bound_recovery_artifact_evidence(
         or bool(stat.S_IMODE(int(evidence["mode"])) & 0o111)
     ):
         raise ValueError("recovery runtime artifact custody is unsafe")
+    return _plan_bound_file_evidence_from_stable_read(
+        root,
+        artifact,
+        payload,
+        evidence,
+    )
+
+
+def _plan_bound_file_evidence_from_stable_read(
+    root: Path,
+    artifact: Path,
+    payload: bytes,
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind recovery evidence to bytes from one completed stable read."""
+
     return {
-        "path": relative,
+        "path": artifact.relative_to(root).as_posix(),
         "kind": "file",
         "sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
         "mode": stat.S_IMODE(int(evidence["mode"])),
@@ -8661,6 +8694,1744 @@ def _validate_plan_bound_store_projection(
     raise ValueError("plan store contains a noncanonical projection")
 
 
+def _validate_plan_bound_dependency_preflight_directory(
+    accepted_tree_root: Path,
+    directory: Path,
+) -> tuple[int, ...]:
+    """Reject redirected or writable custody in one bounded-store directory."""
+
+    candidate = _lexical_contained_path(accepted_tree_root, directory)
+    try:
+        observed = os.lstat(candidate)
+    except OSError as exc:
+        raise ValueError(
+            "dependency preflight store directory custody is unreadable"
+        ) from exc
+    mode = stat.S_IMODE(observed.st_mode)
+    if (
+        stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISDIR(observed.st_mode)
+        or int(observed.st_uid) != os.geteuid()
+        or mode & 0o700 != 0o700
+        or bool(mode & 0o7022)
+    ):
+        raise ValueError("dependency preflight store directory custody is unsafe")
+    return _plan_bound_dependency_preflight_stat_identity(observed)
+
+
+_PLAN_BOUND_DEPENDENCY_PREFLIGHT_MANIFEST_MAX_BYTES = 16 * 1024 * 1024
+
+
+def _read_plan_bound_dependency_preflight_blob(
+    accepted_tree_root: Path,
+    store_root: Path,
+    artifact: Path,
+) -> tuple[str, int, dict[str, Any], dict[str, Any]]:
+    """Verify one exact receipt and bind evidence from the same stable read."""
+
+    from .artifact_store import DEFAULT_ARTIFACT_BLOB_MAX_BYTES
+
+    artifact = _lexical_contained_path(
+        accepted_tree_root,
+        artifact,
+        require_regular=True,
+    )
+    relative = artifact.relative_to(store_root)
+    parts = relative.parts
+    if (
+        len(parts) != 4
+        or parts[:2] != ("blobs", "sha256")
+        or not re.fullmatch(r"[0-9a-f]{2}", parts[2])
+        or not re.fullmatch(r"[0-9a-f]{64}\.blob", parts[3])
+    ):
+        raise ValueError("dependency preflight store blob path is noncanonical")
+    digest = parts[3].removesuffix(".blob")
+    if parts[2] != digest[:2]:
+        raise ValueError("dependency preflight store blob shard is noncanonical")
+    payload, stable_evidence = _read_stable_regular_bytes(
+        artifact,
+        max_bytes=DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
+    )
+    if (
+        payload is None
+        or int(stable_evidence["uid"]) != os.geteuid()
+        or int(stable_evidence["link_count"]) != 1
+        or stat.S_IMODE(int(stable_evidence["mode"])) != 0o600
+        or hashlib.sha256(payload).hexdigest() != digest
+    ):
+        raise ValueError("dependency preflight store blob custody is unsafe")
+    try:
+        receipt = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+        from ..validation.project_dependency_preflight import (
+            canonical_project_dependency_preflight_receipt_bytes,
+        )
+
+        canonical = canonical_project_dependency_preflight_receipt_bytes(receipt)
+    except (
+        RecursionError,
+        TypeError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ValueError(
+            "dependency preflight store blob is not one canonical receipt"
+        ) from exc
+    if canonical != payload:
+        raise ValueError("dependency preflight store receipt encoding is noncanonical")
+    return (
+        digest,
+        len(payload),
+        _plan_bound_file_evidence_from_stable_read(
+            accepted_tree_root,
+            artifact,
+            payload,
+            stable_evidence,
+        ),
+        stable_evidence,
+    )
+
+
+def _read_plan_bound_dependency_preflight_manifest(
+    accepted_tree_root: Path,
+    artifact: Path,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+]:
+    """Verify one bounded-store manifest without following its references."""
+
+    from .artifact_store import (
+        BOUNDED_ARTIFACT_MANIFEST_SCHEMA,
+        BOUNDED_BLOB_REFERENCE_SCHEMA,
+        DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
+        DEFAULT_ARTIFACT_STORE_MAX_BLOBS,
+        DEFAULT_ARTIFACT_STORE_MAX_BYTES,
+        BlobReference,
+    )
+
+    artifact = _lexical_contained_path(
+        accepted_tree_root,
+        artifact,
+        require_regular=True,
+    )
+    payload_bytes, stable_evidence = _read_stable_regular_bytes(
+        artifact,
+        max_bytes=_PLAN_BOUND_DEPENDENCY_PREFLIGHT_MANIFEST_MAX_BYTES,
+    )
+    if (
+        payload_bytes is None
+        or int(stable_evidence["uid"]) != os.geteuid()
+        or int(stable_evidence["link_count"]) != 1
+        or stat.S_IMODE(int(stable_evidence["mode"])) != 0o600
+    ):
+        raise ValueError("dependency preflight store manifest custody is unsafe")
+    try:
+        manifest = json.loads(
+            payload_bytes.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+        canonical_bytes = json.dumps(
+            manifest,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (
+        RecursionError,
+        TypeError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ValueError("dependency preflight store manifest is malformed") from exc
+    if not isinstance(manifest, dict) or payload_bytes != canonical_bytes + b"\n":
+        raise ValueError("dependency preflight store manifest encoding is noncanonical")
+    if set(manifest) != {
+        "schema",
+        "generation",
+        "updated_at_ms",
+        "compaction_cursor",
+        "blobs",
+        "projections",
+        "manifest_digest",
+    }:
+        raise ValueError("dependency preflight store manifest fields are noncanonical")
+    if (
+        manifest.get("schema") != BOUNDED_ARTIFACT_MANIFEST_SCHEMA
+        or isinstance(manifest.get("generation"), bool)
+        or not isinstance(manifest.get("generation"), int)
+        or int(manifest["generation"]) < 1
+        or isinstance(manifest.get("updated_at_ms"), bool)
+        or not isinstance(manifest.get("updated_at_ms"), int)
+        or int(manifest["updated_at_ms"]) < 0
+        or isinstance(manifest.get("compaction_cursor"), bool)
+        or not isinstance(manifest.get("compaction_cursor"), int)
+        or int(manifest["compaction_cursor"]) < 0
+        or not isinstance(manifest.get("blobs"), dict)
+        or manifest.get("projections") != {}
+    ):
+        raise ValueError("dependency preflight store manifest values are noncanonical")
+    digest_body = dict(manifest)
+    claimed_manifest_digest = digest_body.pop("manifest_digest", None)
+    expected_manifest_digest = "sha256:" + hashlib.sha256(
+        json.dumps(
+            digest_body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    if claimed_manifest_digest != expected_manifest_digest:
+        raise ValueError("dependency preflight store manifest digest is invalid")
+    if len(manifest["blobs"]) > DEFAULT_ARTIFACT_STORE_MAX_BLOBS:
+        raise ValueError("dependency preflight store exceeds its blob-count quota")
+
+    metadata_fields = {
+        "schema",
+        "artifact_id",
+        "digest",
+        "size_bytes",
+        "kind",
+        "media_type",
+        "retention_class",
+        "outcome",
+        "created_at_ms",
+        "last_accessed_at_ms",
+        "expires_at_ms",
+        "references",
+    }
+    references: dict[str, Any] = {}
+    aggregate_size = 0
+    for artifact_id, metadata in manifest["blobs"].items():
+        if not isinstance(metadata, Mapping) or set(metadata) != metadata_fields:
+            raise ValueError("dependency preflight store blob metadata is malformed")
+        try:
+            reference = BlobReference.from_dict(metadata)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "dependency preflight store blob reference is malformed"
+            ) from exc
+        if (
+            artifact_id != reference.artifact_id
+            or metadata.get("schema") != BOUNDED_BLOB_REFERENCE_SCHEMA
+            or reference.kind
+            != "validation_project_dependency_preflight_receipt"
+            or reference.media_type != "application/json"
+            or metadata.get("retention_class") != "checkpoint"
+            or metadata.get("outcome") != "successful"
+            or metadata.get("expires_at_ms") is not None
+            or metadata.get("references") != []
+        ):
+            raise ValueError("dependency preflight store blob metadata is mixed")
+        for timestamp_field in ("created_at_ms", "last_accessed_at_ms"):
+            timestamp = metadata.get(timestamp_field)
+            if (
+                isinstance(timestamp, bool)
+                or not isinstance(timestamp, int)
+                or timestamp < 0
+            ):
+                raise ValueError(
+                    "dependency preflight store blob timestamps are malformed"
+                )
+        if reference.size_bytes > DEFAULT_ARTIFACT_BLOB_MAX_BYTES:
+            raise ValueError("dependency preflight store blob exceeds its size quota")
+        aggregate_size += reference.size_bytes
+        if aggregate_size > DEFAULT_ARTIFACT_STORE_MAX_BYTES:
+            raise ValueError("dependency preflight store exceeds its byte quota")
+        references[artifact_id] = reference
+    return (
+        manifest,
+        references,
+        _plan_bound_file_evidence_from_stable_read(
+            accepted_tree_root,
+            artifact,
+            payload_bytes,
+            stable_evidence,
+        ),
+        stable_evidence,
+    )
+
+
+def _plan_bound_dependency_preflight_stat_identity(
+    observed: os.stat_result,
+) -> tuple[int, ...]:
+    return (
+        int(observed.st_dev),
+        int(observed.st_ino),
+        int(observed.st_mode),
+        int(observed.st_nlink),
+        int(observed.st_uid),
+        int(observed.st_gid),
+        int(observed.st_size),
+        int(observed.st_mtime_ns),
+        int(observed.st_ctime_ns),
+    )
+
+
+def _plan_bound_dependency_preflight_evidence_identity(
+    evidence: Mapping[str, Any],
+) -> tuple[int, ...]:
+    return tuple(
+        int(evidence[name])
+        for name in (
+            "device",
+            "inode",
+            "mode",
+            "link_count",
+            "uid",
+            "gid",
+            "size",
+            "mtime_ns",
+            "ctime_ns",
+        )
+    )
+
+
+def _recheck_plan_bound_dependency_preflight_path(
+    artifact: Path,
+    evidence: Mapping[str, Any],
+) -> None:
+    try:
+        observed = os.lstat(artifact)
+    except OSError as exc:
+        raise ValueError(
+            "dependency preflight store artifact changed after validation"
+        ) from exc
+    if (
+        stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISREG(observed.st_mode)
+        or _plan_bound_dependency_preflight_stat_identity(observed)
+        != _plan_bound_dependency_preflight_evidence_identity(evidence)
+    ):
+        raise ValueError(
+            "dependency preflight store artifact changed after validation"
+        )
+
+
+def _acquire_plan_bound_dependency_preflight_lock(
+    accepted_tree_root: Path,
+    artifact: Path,
+) -> tuple[int, dict[str, Any], dict[str, Any]]:
+    """Hold the exact verified bounded-store lock across aggregate validation."""
+
+    artifact = _lexical_contained_path(
+        accepted_tree_root,
+        artifact,
+        require_regular=True,
+    )
+    try:
+        before = os.lstat(artifact)
+    except OSError as exc:
+        raise ValueError("dependency preflight store lock is unreadable") from exc
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(artifact, flags)
+    except OSError as exc:
+        raise ValueError("dependency preflight store lock is unsafe") from exc
+    locked = False
+    try:
+        opened = os.fstat(descriptor)
+        if _plan_bound_dependency_preflight_stat_identity(before) != (
+            _plan_bound_dependency_preflight_stat_identity(opened)
+        ):
+            raise ValueError("dependency preflight store lock changed before open")
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError) as exc:
+            raise ValueError("dependency preflight store lock is busy") from exc
+        locked = True
+        after_path = os.lstat(artifact)
+        if _plan_bound_dependency_preflight_stat_identity(opened) != (
+            _plan_bound_dependency_preflight_stat_identity(after_path)
+        ):
+            raise ValueError("dependency preflight store lock changed while acquired")
+    except BaseException:
+        if locked:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+        raise
+    mode = stat.S_IMODE(opened.st_mode)
+    if (
+        stat.S_ISLNK(opened.st_mode)
+        or not stat.S_ISREG(opened.st_mode)
+        or int(opened.st_size) != 0
+        or int(opened.st_uid) != os.geteuid()
+        or int(opened.st_nlink) != 1
+        or bool(mode & 0o111)
+    ):
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+        raise ValueError("dependency preflight store lock is unsafe")
+    stable_evidence = {
+        "state": "present",
+        "path": str(artifact),
+        "content_sha256": "sha256:" + hashlib.sha256(b"").hexdigest(),
+        "device": int(opened.st_dev),
+        "inode": int(opened.st_ino),
+        "mode": int(opened.st_mode),
+        "link_count": int(opened.st_nlink),
+        "uid": int(opened.st_uid),
+        "gid": int(opened.st_gid),
+        "size": int(opened.st_size),
+        "mtime_ns": int(opened.st_mtime_ns),
+        "ctime_ns": int(opened.st_ctime_ns),
+    }
+    return (
+        descriptor,
+        _plan_bound_file_evidence_from_stable_read(
+            accepted_tree_root,
+            artifact,
+            b"",
+            stable_evidence,
+        ),
+        stable_evidence,
+    )
+
+
+def _release_plan_bound_dependency_preflight_lock(
+    descriptor: int,
+    artifact: Path,
+    evidence: Mapping[str, Any],
+) -> None:
+    failure: ValueError | None = None
+    try:
+        opened = os.fstat(descriptor)
+        observed = os.lstat(artifact)
+        if (
+            _plan_bound_dependency_preflight_stat_identity(opened)
+            != _plan_bound_dependency_preflight_evidence_identity(evidence)
+            or _plan_bound_dependency_preflight_stat_identity(observed)
+            != _plan_bound_dependency_preflight_evidence_identity(evidence)
+        ):
+            failure = ValueError(
+                "dependency preflight store lock changed during validation"
+            )
+    except OSError as exc:
+        failure = ValueError(
+            "dependency preflight store lock disappeared during validation"
+        )
+        failure.__cause__ = exc
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+    if failure is not None:
+        raise failure
+
+
+def _read_plan_bound_dependency_preflight_evictions(
+    accepted_tree_root: Path,
+    artifact: Path,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Verify the bounded store's optional canonical eviction journal."""
+
+    from .artifact_store import DEFAULT_ARTIFACT_BLOB_MAX_BYTES
+
+    artifact = _lexical_contained_path(
+        accepted_tree_root,
+        artifact,
+        require_regular=True,
+    )
+    payload, stable_evidence = _read_stable_regular_bytes(
+        artifact,
+        max_bytes=DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
+    )
+    mode = stat.S_IMODE(int(stable_evidence.get("mode", 0)))
+    if (
+        payload is None
+        or int(stable_evidence.get("uid", -1)) != os.geteuid()
+        or int(stable_evidence.get("link_count", 0)) != 1
+        or bool(mode & 0o111)
+        or (payload and not payload.endswith(b"\n"))
+    ):
+        raise ValueError("dependency preflight store eviction log is unsafe")
+    fields = {
+        "type",
+        "timestamp",
+        "artifact_id",
+        "size_bytes",
+        "reason",
+        "retention_class",
+    }
+    for raw_line in payload.splitlines(keepends=True):
+        try:
+            record = json.loads(
+                raw_line[:-1].decode("utf-8"),
+                object_pairs_hook=_reject_duplicate_json_keys,
+            )
+            canonical = json.dumps(
+                record,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8") + b"\n"
+        except (
+            RecursionError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise ValueError(
+                "dependency preflight store eviction record is malformed"
+            ) from exc
+        timestamp = record.get("timestamp") if isinstance(record, Mapping) else None
+        try:
+            parsed_timestamp = datetime.fromisoformat(timestamp or "")
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "dependency preflight store eviction record is malformed"
+            ) from exc
+        size_bytes = record.get("size_bytes") if isinstance(record, Mapping) else None
+        if (
+            not isinstance(record, Mapping)
+            or set(record) != fields
+            or raw_line != canonical
+            or record.get("type") != "artifact_evicted"
+            or re.fullmatch(
+                r"blob:sha256:[0-9a-f]{64}",
+                str(record.get("artifact_id") or ""),
+            )
+            is None
+            or isinstance(size_bytes, bool)
+            or not isinstance(size_bytes, int)
+            or size_bytes < 0
+            or size_bytes > DEFAULT_ARTIFACT_BLOB_MAX_BYTES
+            or record.get("reason") not in {"expired", "quota"}
+            or record.get("retention_class") != "checkpoint"
+            or parsed_timestamp.tzinfo is None
+            or parsed_timestamp.utcoffset() is None
+            or parsed_timestamp.utcoffset().total_seconds() != 0
+        ):
+            raise ValueError(
+                "dependency preflight store eviction record is malformed"
+            )
+    return (
+        _plan_bound_file_evidence_from_stable_read(
+            accepted_tree_root,
+            artifact,
+            payload,
+            stable_evidence,
+        ),
+        stable_evidence,
+    )
+
+
+def _scan_plan_bound_dependency_preflight_store(
+    *,
+    accepted_tree_root: Path,
+    store_root: Path,
+) -> tuple[dict[str, Path], dict[Path, tuple[int, ...]]]:
+    """Scan one fixed bounded-store layout while its store lock is held."""
+
+    from .artifact_store import DEFAULT_ARTIFACT_STORE_MAX_BLOBS
+
+    directory_identities: dict[Path, tuple[int, ...]] = {}
+
+    def scan_directory(
+        directory: Path,
+        *,
+        max_entries: int,
+    ) -> tuple[tuple[str, os.stat_result], ...]:
+        before = _validate_plan_bound_dependency_preflight_directory(
+            accepted_tree_root,
+            directory,
+        )
+        entries: list[tuple[str, os.stat_result]] = []
+        try:
+            with os.scandir(directory) as scanner:
+                for entry in scanner:
+                    if len(entries) >= max_entries:
+                        raise ValueError(
+                            "dependency preflight store directory exceeds its "
+                            "entry bound"
+                        )
+                    try:
+                        observed = entry.stat(follow_symlinks=False)
+                    except OSError as exc:
+                        raise ValueError(
+                            "dependency preflight store entry custody is unreadable"
+                        ) from exc
+                    entries.append((entry.name, observed))
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise ValueError(
+                "dependency preflight store directory is unreadable"
+            ) from exc
+        after = _validate_plan_bound_dependency_preflight_directory(
+            accepted_tree_root,
+            directory,
+        )
+        if before != after:
+            raise ValueError(
+                "dependency preflight store directory changed during scan"
+            )
+        directory_identities[directory] = before
+        return tuple(entries)
+
+    store_root = _lexical_contained_path(accepted_tree_root, store_root)
+    root_entries = scan_directory(store_root, max_entries=6)
+    canonical_artifacts: dict[str, Path] = {}
+    required_directories = {"blobs", "projections"}
+    allowed_files = {
+        ".bounded-store.lock",
+        "manifest.json",
+        "manifest.previous.json",
+        "evictions.jsonl",
+    }
+    observed_directories: set[str] = set()
+    for name, observed in root_entries:
+        candidate = store_root / name
+        if name in required_directories:
+            if stat.S_ISLNK(observed.st_mode) or not stat.S_ISDIR(
+                observed.st_mode
+            ):
+                raise ValueError(
+                    "dependency preflight store contains a noncanonical projection"
+                )
+            observed_directories.add(name)
+            continue
+        if (
+            name not in allowed_files
+            or stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISREG(observed.st_mode)
+            or int(observed.st_nlink) != 1
+        ):
+            raise ValueError(
+                "dependency preflight store contains a noncanonical projection"
+            )
+        canonical_artifacts[name] = candidate
+    if observed_directories != required_directories or not {
+        ".bounded-store.lock",
+        "manifest.json",
+    }.issubset(canonical_artifacts):
+        raise ValueError("dependency preflight store is incomplete")
+
+    blobs_root = store_root / "blobs"
+    blobs_entries = scan_directory(blobs_root, max_entries=1)
+    if (
+        len(blobs_entries) != 1
+        or blobs_entries[0][0] != "sha256"
+        or stat.S_ISLNK(blobs_entries[0][1].st_mode)
+        or not stat.S_ISDIR(blobs_entries[0][1].st_mode)
+    ):
+        raise ValueError(
+            "dependency preflight store contains a noncanonical blob layout"
+        )
+
+    projections_root = store_root / "projections"
+    if scan_directory(projections_root, max_entries=1):
+        raise ValueError(
+            "dependency preflight store contains a noncanonical projection"
+        )
+
+    sha256_root = blobs_root / "sha256"
+    shard_entries = scan_directory(sha256_root, max_entries=256)
+    blob_count = 0
+    for shard_name, shard_observed in shard_entries:
+        shard_root = sha256_root / shard_name
+        if stat.S_ISLNK(shard_observed.st_mode):
+            raise ValueError(
+                "dependency preflight store path contains a symbolic link"
+            )
+        if (
+            re.fullmatch(r"[0-9a-f]{2}", shard_name) is None
+            or not stat.S_ISDIR(shard_observed.st_mode)
+        ):
+            raise ValueError(
+                "dependency preflight store blob shard is noncanonical"
+            )
+        remaining = DEFAULT_ARTIFACT_STORE_MAX_BLOBS - blob_count
+        for blob_name, blob_observed in scan_directory(
+            shard_root,
+            max_entries=remaining + 1,
+        ):
+            blob_count += 1
+            if blob_count > DEFAULT_ARTIFACT_STORE_MAX_BLOBS:
+                raise ValueError(
+                    "dependency preflight store exceeds its blob-count quota"
+                )
+            if (
+                re.fullmatch(r"[0-9a-f]{64}\.blob", blob_name) is None
+                or blob_name[:2] != shard_name
+                or stat.S_ISLNK(blob_observed.st_mode)
+                or not stat.S_ISREG(blob_observed.st_mode)
+                or int(blob_observed.st_nlink) != 1
+            ):
+                raise ValueError(
+                    "dependency preflight store blob path is noncanonical"
+                )
+            relative = (
+                PurePosixPath("blobs")
+                / "sha256"
+                / shard_name
+                / blob_name
+            ).as_posix()
+            canonical_artifacts[relative] = shard_root / blob_name
+    return canonical_artifacts, directory_identities
+
+
+def _validate_plan_bound_dependency_preflight_store(
+    *,
+    accepted_tree_root: Path,
+    store_root: Path,
+) -> tuple[dict[str, Any], ...]:
+    """Validate and bind one complete bounded dependency-preflight store."""
+
+    store_root = _lexical_contained_path(accepted_tree_root, store_root)
+    lock_path = store_root / ".bounded-store.lock"
+    descriptor, lock_evidence, lock_stable_evidence = (
+        _acquire_plan_bound_dependency_preflight_lock(
+            accepted_tree_root,
+            lock_path,
+        )
+    )
+    try:
+        canonical_artifacts, directory_identities = (
+            _scan_plan_bound_dependency_preflight_store(
+                accepted_tree_root=accepted_tree_root,
+                store_root=store_root,
+            )
+        )
+        return _validate_plan_bound_dependency_preflight_store_under_lock(
+            accepted_tree_root=accepted_tree_root,
+            store_root=store_root,
+            canonical_artifacts=canonical_artifacts,
+            directory_identities=directory_identities,
+            lock_evidence=lock_evidence,
+            lock_stable_evidence=lock_stable_evidence,
+        )
+    finally:
+        _release_plan_bound_dependency_preflight_lock(
+            descriptor,
+            lock_path,
+            lock_stable_evidence,
+        )
+
+
+def _validate_plan_bound_dependency_preflight_store_under_lock(
+    *,
+    accepted_tree_root: Path,
+    store_root: Path,
+    canonical_artifacts: Mapping[str, Path],
+    directory_identities: Mapping[Path, tuple[int, ...]],
+    lock_evidence: dict[str, Any],
+    lock_stable_evidence: dict[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    """Validate one exact store population while its shared lock is held."""
+
+    (
+        current_manifest,
+        current_references,
+        current_evidence,
+        current_stable_evidence,
+    ) = _read_plan_bound_dependency_preflight_manifest(
+        accepted_tree_root,
+        canonical_artifacts["manifest.json"],
+    )
+    expected_artifacts = {".bounded-store.lock", "manifest.json"}
+    for optional in ("manifest.previous.json", "evictions.jsonl"):
+        if optional in canonical_artifacts:
+            expected_artifacts.add(optional)
+    blob_paths: dict[str, tuple[Path, Any]] = {}
+    for artifact_id, reference in current_references.items():
+        digest = reference.digest.removeprefix("sha256:")
+        blob_path = _lexical_contained_path(
+            accepted_tree_root,
+            store_root
+            / "blobs"
+            / "sha256"
+            / digest[:2]
+            / f"{digest}.blob",
+            require_regular=True,
+        )
+        relative = blob_path.relative_to(store_root).as_posix()
+        expected_artifacts.add(relative)
+        blob_paths[artifact_id] = (blob_path, reference)
+    if set(canonical_artifacts) != expected_artifacts:
+        raise ValueError(
+            "dependency preflight store live blobs differ from its current manifest"
+        )
+
+    evidence = [current_evidence, lock_evidence]
+    stable_paths: dict[Path, Mapping[str, Any]] = {
+        canonical_artifacts["manifest.json"]: current_stable_evidence,
+        canonical_artifacts[".bounded-store.lock"]: lock_stable_evidence,
+    }
+    if "manifest.previous.json" in canonical_artifacts:
+        (
+            previous,
+            _previous_references,
+            previous_evidence,
+            previous_stable_evidence,
+        ) = (
+            _read_plan_bound_dependency_preflight_manifest(
+                accepted_tree_root,
+                canonical_artifacts["manifest.previous.json"],
+            )
+        )
+        if int(previous["generation"]) >= int(current_manifest["generation"]):
+            raise ValueError(
+                "dependency preflight store previous manifest is not prior"
+            )
+        evidence.append(previous_evidence)
+        stable_paths[
+            canonical_artifacts["manifest.previous.json"]
+        ] = previous_stable_evidence
+    if "evictions.jsonl" in canonical_artifacts:
+        eviction_evidence, eviction_stable_evidence = (
+            _read_plan_bound_dependency_preflight_evictions(
+                accepted_tree_root,
+                canonical_artifacts["evictions.jsonl"],
+            )
+        )
+        evidence.append(eviction_evidence)
+        stable_paths[
+            canonical_artifacts["evictions.jsonl"]
+        ] = eviction_stable_evidence
+    for artifact_id in sorted(blob_paths):
+        blob_path, reference = blob_paths[artifact_id]
+        digest, size_bytes, blob_evidence, blob_stable_evidence = (
+            _read_plan_bound_dependency_preflight_blob(
+                accepted_tree_root,
+                store_root,
+                blob_path,
+            )
+        )
+        if (
+            digest != reference.digest.removeprefix("sha256:")
+            or size_bytes != reference.size_bytes
+        ):
+            raise ValueError("dependency preflight store manifest binding is invalid")
+        evidence.append(blob_evidence)
+        stable_paths[blob_path] = blob_stable_evidence
+    for artifact, stable_evidence in stable_paths.items():
+        _recheck_plan_bound_dependency_preflight_path(
+            artifact,
+            stable_evidence,
+        )
+    for directory, expected_identity in directory_identities.items():
+        observed_identity = _validate_plan_bound_dependency_preflight_directory(
+            accepted_tree_root,
+            directory,
+        )
+        if observed_identity != expected_identity:
+            raise ValueError(
+                "dependency preflight store directory changed during validation"
+            )
+    return tuple(sorted(evidence, key=lambda item: item["path"]))
+
+
+def _plan_bound_runtime_lane_indexes(
+    runtime_bindings: Sequence[Mapping[str, Any]],
+) -> tuple[int, ...]:
+    """Return one bounded, unambiguous lane set from sealed plan bindings."""
+
+    lane_indexes: list[int] = []
+    for binding in runtime_bindings:
+        raw_lane_index = binding.get("lane_index")
+        if (
+            isinstance(raw_lane_index, bool)
+            or not isinstance(raw_lane_index, int)
+            or raw_lane_index < 0
+            or raw_lane_index > 4095
+        ):
+            raise ValueError("plan-bound recovery lane index is malformed")
+        lane_indexes.append(raw_lane_index)
+    if (
+        not lane_indexes
+        or len(lane_indexes) > 64
+        or len(lane_indexes) != len(set(lane_indexes))
+    ):
+        raise ValueError("plan-bound recovery lane indexes are ambiguous")
+    return tuple(sorted(lane_indexes))
+
+
+def _plan_bound_selected_runtime_binding(
+    *,
+    runtime_bindings: tuple[Mapping[str, Any], ...],
+    slice_id: str,
+    lane_id: str,
+    state_root: Path,
+    state_dir: Path,
+    state_prefix: str,
+) -> Mapping[str, Any]:
+    """Select one exact current lane from the sealed recovery wave."""
+
+    _plan_bound_runtime_lane_indexes(runtime_bindings)
+    if (
+        not isinstance(slice_id, str)
+        or not slice_id
+        or slice_id != slice_id.strip()
+        or not isinstance(lane_id, str)
+        or not lane_id
+        or lane_id != lane_id.strip()
+        or not isinstance(state_prefix, str)
+        or re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}",
+            state_prefix,
+        )
+        is None
+        or state_dir.parent != state_root
+        or state_dir.name != lane_id
+    ):
+        raise ValueError("plan-bound selected recovery lane is malformed")
+    matches = tuple(
+        binding
+        for binding in runtime_bindings
+        if binding.get("slice_id") == slice_id
+        and binding.get("lane_id") == lane_id
+    )
+    if len(matches) != 1:
+        raise ValueError("plan-bound selected recovery lane is absent or ambiguous")
+    selected = matches[0]
+    lane_index = int(selected["lane_index"])
+    original_lane = re.fullmatch(r"lane-([0-9]+)", lane_id)
+    recovery_lane = re.fullmatch(
+        r"recovery-([1-9][0-9]{0,5})-([0-9a-f]{12})",
+        lane_id,
+    )
+    if original_lane is None and recovery_lane is None:
+        raise ValueError("plan-bound selected recovery lane name is noncanonical")
+    if original_lane is not None and (
+        int(original_lane.group(1)) != lane_index
+        or re.fullmatch(
+            rf"[A-Za-z0-9][A-Za-z0-9_.-]*_lane_{lane_index}",
+            state_prefix,
+        )
+        is None
+    ):
+        raise ValueError("plan-bound selected recovery lane index is mixed")
+    if recovery_lane is not None and state_prefix != (
+        f"recovery_{recovery_lane.group(1)}_{recovery_lane.group(2)}"
+    ):
+        raise ValueError("plan-bound reassigned recovery prefix is mixed")
+    return selected
+
+
+def _plan_bound_lane_runtime_scope(
+    *,
+    state_root: Path,
+    artifact: Path,
+    state_prefix: str,
+    allowed_lane_indexes: set[int] | None,
+    state_dir: Path | None = None,
+    lane_id: str = "",
+    lane_index: int | None = None,
+) -> tuple[int, str, PurePosixPath] | None:
+    """Resolve an artifact to one exact lane and its derived prefix."""
+
+    if not artifact.is_relative_to(state_root):
+        return None
+    if state_dir is not None:
+        if (
+            state_dir.parent != state_root
+            or not lane_id
+            or state_dir.name != lane_id
+            or isinstance(lane_index, bool)
+            or not isinstance(lane_index, int)
+            or lane_index < 0
+            or (
+                allowed_lane_indexes is not None
+                and lane_index not in allowed_lane_indexes
+            )
+            or not artifact.is_relative_to(state_dir)
+        ):
+            return None
+        lane_relative = artifact.relative_to(state_dir)
+        if not lane_relative.parts:
+            return None
+        return lane_index, state_prefix, PurePosixPath(*lane_relative.parts)
+    relative = artifact.relative_to(state_root)
+    if len(relative.parts) < 2:
+        return None
+    lane_match = re.fullmatch(r"lane-([0-9]+)", relative.parts[0])
+    prefix_match = re.fullmatch(r"(.+)_lane_[0-9]+", state_prefix)
+    if lane_match is None or prefix_match is None:
+        return None
+    lane_index = int(lane_match.group(1))
+    if (
+        allowed_lane_indexes is not None
+        and lane_index not in allowed_lane_indexes
+    ):
+        return None
+    lane_prefix = f"{prefix_match.group(1)}_lane_{lane_index}"
+    return lane_index, lane_prefix, PurePosixPath(*relative.parts[1:])
+
+
+def _plan_bound_dependency_preflight_store_root(
+    *,
+    state_root: Path,
+    artifact: Path,
+    state_prefix: str,
+    allowed_lane_indexes: set[int] | None,
+    state_dir: Path | None = None,
+    lane_id: str = "",
+    lane_index: int | None = None,
+) -> Path | None:
+    """Return the exact direct or database-Portal bounded-store root."""
+
+    scope = _plan_bound_lane_runtime_scope(
+        state_root=state_root,
+        artifact=artifact,
+        state_prefix=state_prefix,
+        allowed_lane_indexes=allowed_lane_indexes,
+        state_dir=state_dir,
+        lane_id=lane_id,
+        lane_index=lane_index,
+    )
+    if scope is None:
+        return None
+    lane_index, lane_prefix, lane_relative = scope
+    direct_parts = ("dependency-preflight-artifacts",)
+    portal_parts = (
+        f"{lane_prefix}_database_portal_attempts",
+        "dependency-preflight-artifacts",
+    )
+    if lane_relative.parts[:1] == direct_parts:
+        store_parts = direct_parts
+    elif lane_relative.parts[:2] == portal_parts:
+        store_parts = portal_parts
+    else:
+        return None
+    lane_root = state_dir if state_dir is not None else state_root / f"lane-{lane_index}"
+    return lane_root / Path(*store_parts)
+
+
+def _validate_plan_bound_scan_receipt(
+    accepted_tree_root: Path,
+    artifact: Path,
+) -> dict[str, Any]:
+    """Verify one exact content-addressed supervisor scan receipt."""
+
+    from ..objectives.scan_receipts import (
+        RefillScanResult,
+        canonical_scan_receipt,
+        scan_receipt_cid,
+    )
+
+    payload, evidence = _read_stable_regular_bytes(
+        artifact,
+        max_bytes=16_777_216,
+    )
+    if (
+        payload is None
+        or int(evidence["uid"]) != os.geteuid()
+        or int(evidence["link_count"]) != 1
+        or bool(stat.S_IMODE(int(evidence["mode"])) & 0o133)
+        or not payload.endswith(b"\n")
+    ):
+        raise ValueError("plan-bound scan receipt custody is unsafe")
+    try:
+        decoded = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+        canonical = canonical_scan_receipt(decoded)
+        reconstructed = RefillScanResult.from_dict(decoded)
+        encoded = json.dumps(
+            canonical,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8") + b"\n"
+        receipt_cid = scan_receipt_cid(canonical)
+    except (
+        RecursionError,
+        TypeError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ValueError("plan-bound scan receipt is malformed") from exc
+    if (
+        not isinstance(decoded, Mapping)
+        or dict(decoded) != canonical
+        or canonical_scan_receipt(reconstructed) != canonical
+        or payload != encoded
+        or artifact.name != f"{receipt_cid}.json"
+    ):
+        raise ValueError("plan-bound scan receipt content identity is mixed")
+    return _plan_bound_file_evidence_from_stable_read(
+        accepted_tree_root,
+        artifact,
+        payload,
+        evidence,
+    )
+
+
+def _validate_plan_bound_portal_attempt_identity(
+    *,
+    accepted_tree_root: Path,
+    portal_root: Path,
+    attempt_root: Path,
+    binding: Mapping[str, Any],
+) -> tuple[str, dict[Path, dict[str, Any]]]:
+    """Anchor one Portal attempt directory to its sealed lane task slice."""
+
+    from ..todo_daemon.database_portal_bridge import (
+        DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS,
+        DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+        DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE,
+        _projection_immutable_digest,
+    )
+
+    task_ids = binding.get("task_ids")
+    task_cids = binding.get("task_cids")
+    if (
+        not isinstance(task_ids, Sequence)
+        or isinstance(task_ids, (str, bytes, bytearray, memoryview))
+        or not isinstance(task_cids, Sequence)
+        or isinstance(task_cids, (str, bytes, bytearray, memoryview))
+        or len(task_ids) != len(task_cids)
+        or not task_ids
+    ):
+        raise ValueError("plan-bound Portal task bindings are malformed")
+    expected_tasks: dict[str, str] = {}
+    for task_id, task_cid in zip(task_ids, task_cids, strict=True):
+        if (
+            not isinstance(task_id, str)
+            or not task_id
+            or not isinstance(task_cid, str)
+            or not task_cid
+            or task_id in expected_tasks
+        ):
+            raise ValueError("plan-bound Portal task bindings are ambiguous")
+        expected_tasks[task_id] = task_cid
+    binding_path = attempt_root / "database-attempt-binding.json"
+    projection_path = attempt_root / "task-projection.md"
+    binding_bytes, binding_evidence = _read_stable_regular_bytes(
+        binding_path,
+        max_bytes=1_048_576,
+    )
+    projection_bytes, projection_evidence = _read_stable_regular_bytes(
+        projection_path,
+        max_bytes=4_194_304,
+    )
+    if any(
+        payload is None
+        or int(evidence["uid"]) != os.geteuid()
+        or int(evidence["link_count"]) != 1
+        or bool(stat.S_IMODE(int(evidence["mode"])) & 0o133)
+        for payload, evidence in (
+            (binding_bytes, binding_evidence),
+            (projection_bytes, projection_evidence),
+        )
+    ):
+        raise ValueError("plan-bound Portal attempt custody is unsafe")
+    try:
+        observed = json.loads(
+            binding_bytes.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+        projection_text = projection_bytes.decode("utf-8")
+        canonical_binding = json.dumps(
+            observed,
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8") + b"\n"
+    except (
+        RecursionError,
+        TypeError,
+        UnicodeDecodeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ValueError("plan-bound Portal attempt identity is invalid") from exc
+    common_fields = {
+        "schema",
+        "interface",
+        "attempt_id",
+        "claim_id",
+        "task_cid",
+        "task_alias",
+        "goal_cid",
+        "plan_cid",
+        "task_revision",
+        "fencing_token",
+        "fence_epoch",
+        "lease_id",
+        "task_body_digest",
+        "projection_seed_digest",
+        "projection_immutable_digest",
+        "authoritative_task_store",
+        "projection_authority",
+        "binding_id",
+    }
+    identity_fields = {
+        "canonical_task_key",
+    }
+    contract_fields = {
+        "canonical_task_key",
+        "task_contract_digest",
+        "repository_tree_id",
+    }
+    lease_fields = {
+        "attempt_number",
+        "owner_session_id",
+        "landed_completion_recovery_seed_id",
+    }
+    allowed_field_profiles = {
+        frozenset(common_fields),
+        frozenset(common_fields | identity_fields),
+        frozenset(common_fields | contract_fields),
+        frozenset(common_fields | lease_fields),
+        frozenset(DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS),
+    }
+    binding_body = dict(observed) if isinstance(observed, Mapping) else {}
+    claimed_binding_id = binding_body.pop("binding_id", None)
+    expected_binding_id = "sha256:" + hashlib.sha256(
+        json.dumps(
+            binding_body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    attempt_id = str(binding_body.get("attempt_id") or "")
+    task_alias = str(binding_body.get("task_alias") or "")
+    if (
+        not isinstance(observed, Mapping)
+        or frozenset(observed) not in allowed_field_profiles
+        or binding_bytes != canonical_binding
+        or binding_body.get("schema") != DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+        or binding_body.get("interface")
+        != DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
+        or binding_body.get("authoritative_task_store") != "duckdb"
+        or binding_body.get("projection_authority") is not False
+        or claimed_binding_id != expected_binding_id
+        or any(
+            not isinstance(binding_body.get(field), str)
+            or not str(binding_body[field])
+            or len(str(binding_body[field]).encode("utf-8")) > 4096
+            for field in (
+                "attempt_id",
+                "claim_id",
+                "task_cid",
+                "task_alias",
+            )
+        )
+        or any(
+            not isinstance(binding_body.get(field), str)
+            or len(str(binding_body[field]).encode("utf-8")) > 4096
+            for field in ("goal_cid", "plan_cid", "lease_id")
+        )
+        or any(
+            isinstance(binding_body.get(field), bool)
+            or not isinstance(binding_body.get(field), int)
+            or int(binding_body[field]) < 0
+            for field in ("task_revision", "fencing_token", "fence_epoch")
+        )
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(binding_body.get(field)))
+            is None
+            for field in (
+                "task_body_digest",
+                "projection_seed_digest",
+                "projection_immutable_digest",
+            )
+        )
+        or (
+            "attempt_number" in binding_body
+            and (
+                isinstance(binding_body["attempt_number"], bool)
+                or not isinstance(binding_body["attempt_number"], int)
+                or int(binding_body["attempt_number"]) < 1
+                or not str(binding_body.get("owner_session_id") or "")
+            )
+        )
+        or hashlib.sha256(attempt_id.encode("utf-8")).hexdigest()[:24]
+        != attempt_root.name
+        or expected_tasks.get(task_alias) != binding_body.get("task_cid")
+        or _projection_immutable_digest(projection_text)
+        != binding_body.get("projection_immutable_digest")
+        or len(
+            re.findall(
+                rf"(?m)^## {re.escape(task_alias)}(?:\s|$)",
+                projection_text,
+            )
+        )
+        != 1
+        or f"- Database task CID: {binding_body.get('task_cid')}\n"
+        not in projection_text
+        or f"- Database attempt ID: {attempt_id}\n" not in projection_text
+        or f"- Database claim ID: {binding_body.get('claim_id')}\n"
+        not in projection_text
+        or "- Projection authority: false\n" not in projection_text
+        or not attempt_root.is_relative_to(portal_root)
+    ):
+        raise ValueError("plan-bound Portal attempt is outside its task slice")
+    _recheck_plan_bound_dependency_preflight_path(
+        binding_path,
+        binding_evidence,
+    )
+    _recheck_plan_bound_dependency_preflight_path(
+        projection_path,
+        projection_evidence,
+    )
+    return task_alias, {
+        binding_path: _plan_bound_file_evidence_from_stable_read(
+            accepted_tree_root,
+            binding_path,
+            binding_bytes,
+            binding_evidence,
+        ),
+        projection_path: _plan_bound_file_evidence_from_stable_read(
+            accepted_tree_root,
+            projection_path,
+            projection_bytes,
+            projection_evidence,
+        ),
+    }
+
+
+def _plan_bound_portal_log_name_for_task(
+    name: str,
+    *,
+    task_name: str,
+) -> bool:
+    if name in {
+        f"{task_name}-base-context-capsule.json",
+        f"{task_name}-base-context-receipt.json",
+        f"{task_name}-diagnostic-receipt.json",
+        f"{task_name}-diagnostic-state.json",
+    }:
+        return True
+    if (
+        re.fullmatch(
+            rf"{re.escape(task_name)}-reconciliation-validation-"
+            r"[0-9a-f]{12}-[0-9a-f]{16}\.log",
+            name,
+        )
+        is not None
+    ):
+        return True
+    return (
+        re.fullmatch(
+            rf"{re.escape(task_name)}-attempt-([1-9][0-9]{{0,5}})"
+            r"(?:\.log|-context-receipt\.json|-provider-receipt\.json|"
+            r"-task-execution-receipt\.json|-retry-capsule\.json)",
+            name,
+        )
+        is not None
+    )
+
+
+def _plan_bound_portal_task_descendant_matches(
+    relative: Path | PurePosixPath,
+    *,
+    task_name: str,
+) -> bool:
+    if relative.parts[:1] == ("implementation-logs",):
+        if len(relative.parts) == 2:
+            return _plan_bound_portal_log_name_for_task(
+                relative.parts[1], task_name=task_name
+            )
+        if (
+            len(relative.parts) == 3
+            and relative.parts[1]
+            == "post-merge-declared-output-requalification"
+        ):
+            return (
+                re.fullmatch(
+                    rf"{re.escape(task_name)}-[0-9a-f]{{16}}\.log",
+                    relative.parts[2],
+                )
+                is not None
+            )
+        return (
+            len(relative.parts) == 3
+            and relative.parts[1] == "seed_recovery"
+            and re.fullmatch(
+                rf"{re.escape(task_name)}-attempt-"
+                r"[1-9][0-9]{0,5}-seed-recovery\.md",
+                relative.parts[2],
+            )
+            is not None
+        )
+    if relative.parts[:1] == ("post-merge-declared-output-repair",):
+        return (
+            len(relative.parts) == 2
+            and re.fullmatch(
+                rf"{re.escape(task_name)}-attempt-[1-9][0-9]{{0,5}}\.log",
+                relative.parts[1],
+            )
+            is not None
+        )
+    if relative.parts[:1] == ("provider_route_receipts",):
+        return (
+            len(relative.parts) == 3
+            and re.fullmatch(
+                rf"{re.escape(task_name)}-[0-9a-f]{{12}}",
+                relative.parts[1],
+            )
+            is not None
+            and re.fullmatch(
+                r"(?:provider-route-attempt-|provider-route-|"
+                r"provider-filesystem-boundary-attempt-|"
+                r"provider-filesystem-boundary-)"
+                r"[1-9][0-9]{0,5}\.json",
+                relative.parts[2],
+            )
+            is not None
+        )
+    if relative.parts[:1] == ("merge_checkpoints",):
+        return len(relative.parts) == 2 and (
+            re.fullmatch(
+                rf"implementation-{re.escape(task_name)}-[0-9a-f]{{12}}-"
+                r"attempt-[1-9][0-9]{0,5}-[0-9]{10}\.json",
+                relative.parts[1],
+            )
+            is not None
+        )
+    return True
+
+
+def _plan_bound_portal_or_scan_runtime_kind(
+    *,
+    state_root: Path,
+    artifact: Path,
+    state_prefix: str,
+    directory_projection: bool,
+    binding: Mapping[str, Any],
+    state_dir: Path | None = None,
+) -> str:
+    """Classify exact immutable Portal and scan-receipt projections."""
+
+    lane_index = binding.get("lane_index")
+    if isinstance(lane_index, bool) or not isinstance(lane_index, int):
+        return ""
+    scope = _plan_bound_lane_runtime_scope(
+        state_root=state_root,
+        artifact=artifact,
+        state_prefix=state_prefix,
+        allowed_lane_indexes={lane_index},
+        state_dir=state_dir,
+        lane_id=str(binding.get("lane_id") or ""),
+        lane_index=lane_index,
+    )
+    if scope is None or directory_projection:
+        return ""
+    _lane_index, lane_prefix, lane_relative = scope
+    if (
+        len(lane_relative.parts) == 2
+        and lane_relative.parts[0] == f"{lane_prefix}_scan_receipts"
+        and re.fullmatch(
+            r"baguqeera[a-z2-7]{52}\.json",
+            lane_relative.parts[1],
+        )
+        is not None
+    ):
+        return "scan-receipt"
+
+    portal_root_name = f"{lane_prefix}_database_portal_attempts"
+    if (
+        len(lane_relative.parts) < 3
+        or lane_relative.parts[0] != portal_root_name
+        or re.fullmatch(r"[0-9a-f]{24}", lane_relative.parts[1]) is None
+    ):
+        return ""
+    attempt_relative = lane_relative.parts[2:]
+    if attempt_relative in {
+        ("implementation-protected-path-active.json",),
+        ("implementation-protected-path-incident.json",),
+        ("implementation.lock",),
+        ("task-projection.md",),
+        ("database-attempt-binding.json",),
+        ("database-portal-protected-path-recovery-intent.json",),
+        ("database-portal-protected-path-recovery.json",),
+        ("database-portal-external-protected-checkout-recovery.json",),
+        ("database-portal-inflight-process-recovery.json",),
+        ("database-portal-validation-retry-seed-conflict-recovery.json",),
+        ("database-portal-pooled-worktree-create-recovery.json",),
+        ("portal-events.jsonl",),
+        (".implementation.lock.update.lock",),
+        ("portal-events.jsonl.manifest.json",),
+        (".portal-events.jsonl.lock",),
+        (".portal-task-state.event-driven-checkpoint.json.lock",),
+        ("portal-strategy.json",),
+        ("portal-task-state.json",),
+        ("portal-task-state.worktree-context.json",),
+        ("portal-task-state.event-driven-checkpoint.json",),
+        ("submodule-merge-rollback-guardrail.json",),
+        ("task_queue.json",),
+        ("submodule-merge-diagnostics.json",),
+    }:
+        return "portal-file"
+    if (
+        len(attempt_relative) == 1
+        and re.fullmatch(
+            r"implementation-protected-path-auto-clearance-"
+            r"[0-9a-f]{16}\.json",
+            attempt_relative[0],
+        )
+        is not None
+    ):
+        return "portal-file"
+    if (
+        len(attempt_relative) == 2
+        and attempt_relative[0]
+        == "post-merge-declared-output-requalification"
+        and re.fullmatch(r"[0-9a-f]{64}\.json", attempt_relative[1])
+        is not None
+    ):
+        return "portal-file"
+    if (
+        len(attempt_relative) == 2
+        and attempt_relative[0]
+        == "implementation-task-claim-release-receipts"
+        and re.fullmatch(
+            r"canonical-task-[0-9a-f]{24}-a[1-9][0-9]{0,5}\.json",
+            attempt_relative[1],
+        )
+        is not None
+    ):
+        return "portal-file"
+    task_names = {
+        re.sub(r"[^a-z0-9._-]+", "-", str(task_id).lower()).strip("-")
+        for task_id in binding.get("task_ids", ())
+        if str(task_id).strip()
+    }
+    if (
+        len(attempt_relative) == 2
+        and attempt_relative[0] == "post-merge-declared-output-repair"
+        and any(
+            re.fullmatch(
+                rf"{re.escape(task_name)}-attempt-"
+                r"[1-9][0-9]{0,5}\.log",
+                attempt_relative[1],
+            )
+            is not None
+            for task_name in task_names
+        )
+    ):
+        return "portal-file"
+    if (
+        len(attempt_relative) == 3
+        and attempt_relative[0] == "provider_route_receipts"
+        and any(
+            re.fullmatch(
+                rf"{re.escape(task_name)}-[0-9a-f]{{12}}",
+                attempt_relative[1],
+            )
+            is not None
+            for task_name in task_names
+        )
+        and re.fullmatch(
+            r"(?:provider-route-attempt-|provider-route-|"
+            r"provider-filesystem-boundary-attempt-|"
+            r"provider-filesystem-boundary-)"
+            r"[1-9][0-9]{0,5}\.json",
+            attempt_relative[2],
+        )
+        is not None
+    ):
+        return "portal-file"
+    if (
+        len(attempt_relative) == 2
+        and attempt_relative[0] == "merge_checkpoints"
+        and any(
+            re.fullmatch(
+                rf"implementation-{re.escape(task_name)}-[0-9a-f]{{12}}-"
+                r"attempt-[1-9][0-9]{0,5}-[0-9]{10}\.json",
+                attempt_relative[1],
+            )
+            is not None
+            for task_name in {
+                re.sub(
+                    r"[^a-z0-9._-]+",
+                    "-",
+                    str(task_id).lower(),
+                ).strip("-")
+                for task_id in binding.get("task_ids", ())
+                if str(task_id).strip()
+            }
+        )
+    ):
+        return "portal-file"
+    if (
+        len(attempt_relative) == 3
+        and attempt_relative[:2]
+        == (
+            "implementation-logs",
+            "post-merge-declared-output-requalification",
+        )
+        and any(
+            re.fullmatch(
+                rf"{re.escape(task_name)}-[0-9a-f]{{16}}\.log",
+                attempt_relative[2],
+            )
+            is not None
+            for task_name in task_names
+        )
+    ):
+        return "portal-file"
+    if (
+        len(attempt_relative) == 3
+        and attempt_relative[:2]
+        == ("implementation-logs", "seed_recovery")
+        and any(
+            re.fullmatch(
+                rf"{re.escape(task_name)}-attempt-"
+                r"[1-9][0-9]{0,5}-seed-recovery\.md",
+                attempt_relative[2],
+            )
+            is not None
+            for task_name in {
+                re.sub(
+                    r"[^a-z0-9._-]+",
+                    "-",
+                    str(task_id).lower(),
+                ).strip("-")
+                for task_id in binding.get("task_ids", ())
+                if str(task_id).strip()
+            }
+        )
+    ):
+        return "portal-file"
+    if len(attempt_relative) != 2 or attempt_relative[0] != "implementation-logs":
+        return ""
+    log_name = attempt_relative[1]
+    for task_name in task_names:
+        if _plan_bound_portal_log_name_for_task(
+            log_name,
+            task_name=task_name,
+        ):
+            return "portal-file"
+    return ""
+
+
+def _plan_bound_external_lane_runtime_name(
+    name: str,
+    *,
+    lane_prefix: str,
+) -> bool:
+    """Recognize exact mutable lane files governed outside recovery evidence."""
+
+    exact_names = {
+        f".{lane_prefix}_database_coordination.duckdb.lock",
+        f".{lane_prefix}_database_coordination.duckdb.writer.lock",
+        f".{lane_prefix}_database_execution.duckdb.lock",
+        f".{lane_prefix}_database_execution.duckdb.writer.lock",
+        f".{lane_prefix}_supervisor.lock.update.lock",
+        f".{lane_prefix}_supervisor.pid.update.lock",
+        f"{lane_prefix}_database_coordination.duckdb",
+        f"{lane_prefix}_database_coordination.duckdb.wal",
+        f"{lane_prefix}_database_execution.duckdb",
+        f"{lane_prefix}_database_execution.duckdb.wal",
+        f"{lane_prefix}_ensure_check.json",
+        f"{lane_prefix}_ensure_status.json",
+        f"{lane_prefix}_managed_daemon.identity.json",
+        f"{lane_prefix}_managed_daemon.latest.log",
+        f"{lane_prefix}_managed_daemon.pid",
+        f"{lane_prefix}_supervisor.lock",
+        f"{lane_prefix}_supervisor.out",
+        f"{lane_prefix}_supervisor.pid",
+    }
+    if name in exact_names:
+        return True
+    escaped = re.escape(lane_prefix)
+    return (
+        re.fullmatch(
+            rf"{escaped}_(?:8h_run|implementation_daemon)_"
+            r"[0-9]{8}T[0-9]{6}Z\.log",
+            name,
+        )
+        is not None
+    )
+
+
+def _plan_bound_external_runtime_artifact(
+    *,
+    state_root: Path,
+    artifact: Path,
+    state_prefix: str,
+    directory_projection: bool,
+    allowed_lane_indexes: set[int] | None = None,
+    state_dir: Path | None = None,
+    lane_id: str = "",
+    lane_index: int | None = None,
+) -> bool:
+    """Classify exact live database/lifecycle residue without reading it."""
+
+    if directory_projection or not artifact.is_relative_to(state_root):
+        return False
+    relative = artifact.relative_to(state_root)
+    if relative.parts in {
+        (".configured-board-master.pid.update.lock",),
+        ("configured-board-master.pid",),
+    }:
+        return True
+    scope = _plan_bound_lane_runtime_scope(
+        state_root=state_root,
+        artifact=artifact,
+        state_prefix=state_prefix,
+        allowed_lane_indexes=allowed_lane_indexes,
+        state_dir=state_dir,
+        lane_id=lane_id,
+        lane_index=lane_index,
+    )
+    if scope is None:
+        return False
+    _lane_index, lane_prefix, lane_relative = scope
+    if len(lane_relative.parts) != 1:
+        return False
+    return _plan_bound_external_lane_runtime_name(
+        lane_relative.parts[0],
+        lane_prefix=lane_prefix,
+    )
+
+
+def _validate_plan_bound_external_runtime_artifact(
+    accepted_tree_root: Path,
+    artifact: Path,
+) -> None:
+    """Custody-check a mutable artifact whose content has separate authority."""
+
+    candidate = _lexical_contained_path(
+        accepted_tree_root,
+        artifact,
+        require_regular=True,
+    )
+    custody_paths = [candidate]
+    if candidate.name.endswith(".duckdb.wal"):
+        custody_paths.append(candidate.with_name(candidate.name[:-4]))
+    try:
+        parent = os.lstat(candidate.parent)
+        observations = tuple(os.lstat(path) for path in custody_paths)
+    except OSError as exc:
+        raise ValueError("external runtime artifact custody is unreadable") from exc
+    if (
+        stat.S_ISLNK(parent.st_mode)
+        or not stat.S_ISDIR(parent.st_mode)
+        or int(parent.st_uid) != os.geteuid()
+        or bool(stat.S_IMODE(parent.st_mode) & 0o022)
+        or any(
+            stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISREG(observed.st_mode)
+            or int(observed.st_uid) != os.geteuid()
+            or int(observed.st_nlink) != 1
+            or bool(stat.S_IMODE(observed.st_mode) & 0o133)
+            for observed in observations
+        )
+    ):
+        raise ValueError("external runtime artifact custody is unsafe")
+
+
 def _plan_bound_recovery_runtime_kind(
     artifact: Path,
     *,
@@ -8722,6 +10493,21 @@ def _plan_bound_recovery_runtime_kind(
             )
         ):
             return "file"
+        if (
+            not directory_projection
+            and len(relative.parts) == 2
+            and relative.parts[0] == ".pool-state"
+            and any(
+                re.fullmatch(
+                    rf"\.{re.escape(entry_id)}\.json\."
+                    r"[1-9][0-9]{0,19}\.[0-9a-f]{32}\.tmp",
+                    relative.name,
+                )
+                is not None
+                for entry_id in entry_ids
+            )
+        ):
+            return "external-authority"
         return ""
     if artifact.is_relative_to(merge_root):
         relative = artifact.relative_to(merge_root)
@@ -8740,9 +10526,22 @@ def _plan_bound_recovery_runtime_kind(
         if relative.parts in {
             (".merge_queue.duckdb.lock",),
             ("merge_queue.duckdb",),
-            ("train", "consumer.lock"),
+            ("merge_queue.duckdb.wal",),
         }:
-            return "file"
+            return "external-authority"
+        if relative.parts == ("train", "consumer.lock"):
+            return "external-authority"
+        if (
+            len(relative.parts) == 3
+            and relative.parts[:2]
+            == ("train", "post-merge-recovery-cursors")
+            and re.fullmatch(r"[0-9a-f]{64}\.json", relative.parts[2])
+            is not None
+        ):
+            # Cursor content is mutable non-authoritative scan progress shared
+            # by concurrent Portal bridges.  Keep exact path/custody authority
+            # without freezing its bytes into a child recovery decision.
+            return "external-authority"
         if (
             len(relative.parts) == 2
             and relative.parts[0] in {"pending", "processing", "completed", "failed"}
@@ -8750,6 +10549,28 @@ def _plan_bound_recovery_runtime_kind(
             and relative.suffix == ".json"
         ):
             return "file"
+        if (
+            len(relative.parts) == 2
+            and relative.parts[0]
+            in {
+                "pending",
+                "processing",
+                "completed",
+                "failed",
+                "quarantine",
+                "cancelled",
+            }
+            and any(
+                re.fullmatch(
+                    rf"\.{re.escape(request_id)}\.json\."
+                    r"[a-z0-9_]{{8}}\.tmp",
+                    relative.name,
+                )
+                is not None
+                for request_id in request_ids
+            )
+        ):
+            return "external-authority"
         if (
             len(relative.parts) == 3
             and relative.parts[:2] == ("train", "receipts")
@@ -8761,6 +10582,9 @@ def _plan_bound_recovery_runtime_kind(
     if not artifact.is_relative_to(state_root):
         return ""
     relative = artifact.relative_to(state_root)
+    allowed_lane_indexes = set(
+        _plan_bound_runtime_lane_indexes(runtime_bindings)
+    )
     if relative.parts and relative.parts[0] == "plan-revision-store":
         if directory_projection:
             return ""
@@ -8769,51 +10593,115 @@ def _plan_bound_recovery_runtime_kind(
             artifact,
         )
         return "store"
-    if directory_projection or len(relative.parts) < 2:
-        return ""
-    lane_name = relative.parts[0]
-    lane_match = re.fullmatch(r"lane-([0-9]+)", lane_name)
-    binding = None
-    if lane_match is not None:
-        lane_index = int(lane_match.group(1))
-        binding = next(
-            (
-                item
-                for item in runtime_bindings
-                if item.get("lane_index") == lane_index
-            ),
-            None,
+    if _plan_bound_external_runtime_artifact(
+        state_root=state_root,
+        artifact=artifact,
+        state_prefix=state_prefix,
+        directory_projection=directory_projection,
+        allowed_lane_indexes=allowed_lane_indexes,
+    ):
+        return "external-authority"
+    binding_candidates: list[tuple[Mapping[str, Any], Path]] = []
+    for item in runtime_bindings:
+        item_lane_id = str(item.get("lane_id") or "")
+        if (
+            not item_lane_id
+            or re.fullmatch(
+                r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}",
+                item_lane_id,
+            )
+            is None
+        ):
+            continue
+        item_state_dir = (
+            state_dir
+            if state_dir.parent == state_root and state_dir.name == item_lane_id
+            else state_root / item_lane_id
         )
-    elif state_dir.parent == state_root and artifact.is_relative_to(state_dir):
-        binding = next(
-            (
-                item
-                for item in runtime_bindings
-                if item.get("lane_id")
-                and str(item["lane_id"]) == state_dir.name
-            ),
-            None,
-        )
-    if binding is None:
+        if artifact.is_relative_to(item_state_dir):
+            binding_candidates.append((item, item_state_dir))
+    if len(binding_candidates) != 1:
         return ""
+    binding, binding_state_dir = binding_candidates[0]
     lane_index = int(binding["lane_index"])
-    prefix_match = re.fullmatch(r"(.+)_lane_[0-9]+", state_prefix)
-    lane_prefix = (
-        f"{prefix_match.group(1)}_lane_{lane_index}"
-        if prefix_match is not None
-        else (state_prefix if artifact.is_relative_to(state_dir) else "")
-    )
+    if binding_state_dir == state_dir:
+        lane_prefix = state_prefix
+    else:
+        prefix_match = re.fullmatch(r"(.+)_lane_[0-9]+", state_prefix)
+        recovery_match = re.fullmatch(
+            r"recovery-([1-9][0-9]{0,5})-([0-9a-f]{12})",
+            binding_state_dir.name,
+        )
+        if prefix_match is not None:
+            lane_prefix = f"{prefix_match.group(1)}_lane_{lane_index}"
+        elif recovery_match is not None:
+            lane_prefix = (
+                f"recovery_{recovery_match.group(1)}_{recovery_match.group(2)}"
+            )
+        else:
+            lane_prefix = ""
     if not lane_prefix:
         return ""
-    lane_relative = PurePosixPath(*relative.parts[1:])
+    dependency_store_root = _plan_bound_dependency_preflight_store_root(
+        state_root=state_root,
+        artifact=artifact,
+        state_prefix=lane_prefix,
+        allowed_lane_indexes=allowed_lane_indexes,
+        state_dir=binding_state_dir,
+        lane_id=str(binding.get("lane_id") or ""),
+        lane_index=lane_index,
+    )
+    if dependency_store_root is not None:
+        return "dependency-preflight-store"
+    if _plan_bound_external_runtime_artifact(
+        state_root=state_root,
+        artifact=artifact,
+        state_prefix=lane_prefix,
+        directory_projection=directory_projection,
+        allowed_lane_indexes=allowed_lane_indexes,
+        state_dir=binding_state_dir,
+        lane_id=str(binding.get("lane_id") or ""),
+        lane_index=lane_index,
+    ):
+        return "external-authority"
+    if directory_projection:
+        return ""
+    portal_or_scan_kind = _plan_bound_portal_or_scan_runtime_kind(
+        state_root=state_root,
+        artifact=artifact,
+        state_prefix=lane_prefix,
+        directory_projection=directory_projection,
+        binding=binding,
+        state_dir=binding_state_dir,
+    )
+    if portal_or_scan_kind:
+        return portal_or_scan_kind
+    lane_relative = PurePosixPath(
+        *artifact.relative_to(binding_state_dir).parts
+    )
     name = lane_relative.name
+    if (
+        len(lane_relative.parts) == 1
+        and re.fullmatch(
+            rf"{re.escape(lane_prefix)}_managed_daemon\."
+            r"(?:pid|identity\.json)\.stale-child-identity-"
+            r"[0-9]{14}(?:-[1-9][0-9]{0,2}|-overflow)?",
+            name,
+        )
+        is not None
+    ):
+        return "file"
     if len(lane_relative.parts) == 1 and name in {
         "task_queue.json",
         ".implementation.lock.update.lock",
         f".{lane_prefix}_events.jsonl.lock",
+        f".{lane_prefix}_supervisor_events.jsonl.lock",
         f"{lane_prefix}_events.jsonl",
         f"{lane_prefix}_events.jsonl.manifest.json",
+        f"{lane_prefix}_supervisor_events.jsonl",
+        f"{lane_prefix}_supervisor_events.jsonl.manifest.json",
         f"{lane_prefix}_strategy.json",
+        f"{lane_prefix}_supervisor_status.json",
         f"{lane_prefix}_task_state.json",
         f"{lane_prefix}_status.json",
     }:
@@ -8849,67 +10737,528 @@ def _plan_bound_recovery_runtime_kind(
     return ""
 
 
+def _plan_bound_sibling_state_prefix(
+    *,
+    binding: Mapping[str, Any],
+    selected_state_prefix: str,
+    artifact: Path,
+    sibling_state_dir: Path,
+) -> str:
+    """Derive the only canonical prefix shape usable by one sealed sibling."""
+
+    lane_index = int(binding["lane_index"])
+    lane_id = str(binding.get("lane_id") or "")
+    recovery_match = re.fullmatch(
+        r"recovery-([1-9][0-9]{0,5})-([0-9a-f]{12})",
+        lane_id,
+    )
+    if recovery_match is not None:
+        return f"recovery_{recovery_match.group(1)}_{recovery_match.group(2)}"
+    selected_match = re.fullmatch(r"(.+)_lane_[0-9]+", selected_state_prefix)
+    if selected_match is not None:
+        return f"{selected_match.group(1)}_lane_{lane_index}"
+    if not artifact.is_relative_to(sibling_state_dir):
+        return ""
+    relative = artifact.relative_to(sibling_state_dir)
+    if not relative.parts:
+        return ""
+    candidate_name = relative.parts[0]
+    suffixes = (
+        "_database_portal_attempts",
+        "_scan_receipts",
+        "_database_coordination.duckdb.writer.lock",
+        "_database_coordination.duckdb.lock",
+        "_database_coordination.duckdb.wal",
+        "_database_coordination.duckdb",
+        "_database_execution.duckdb.writer.lock",
+        "_database_execution.duckdb.lock",
+        "_database_execution.duckdb.wal",
+        "_database_execution.duckdb",
+        "_supervisor_events.jsonl.manifest.json",
+        "_supervisor_events.jsonl.lock",
+        "_supervisor_events.jsonl",
+        "_events.jsonl.manifest.json",
+        "_events.jsonl.lock",
+        "_events.jsonl",
+        "_supervisor_status.json",
+        "_task_state.json",
+        "_strategy.json",
+        "_status.json",
+    )
+    for suffix in suffixes:
+        if candidate_name.endswith(suffix):
+            candidate = candidate_name[: -len(suffix)]
+            if re.fullmatch(
+                rf"[A-Za-z0-9][A-Za-z0-9_.-]{{0,111}}_lane_{lane_index}",
+                candidate,
+            ) is not None:
+                return candidate
+    # Prefix-free exact names (for example task_queue.json and a direct
+    # dependency store) still need a harmless prefix to drive their existing
+    # bounded classifier.
+    return f"sealed_sibling_lane_{lane_index}"
+
+
+def _plan_bound_sibling_runtime_kind(
+    artifact: Path,
+    *,
+    directory_projection: bool,
+    runtime_roots: tuple[Path, Path, Path],
+    runtime_bindings: tuple[Mapping[str, Any], ...],
+    selected_binding: Mapping[str, Any],
+    selected_state_dir: Path,
+    selected_state_prefix: str,
+) -> str:
+    """Classify an exact nonselected sealed-lane artifact for custody only."""
+
+    matches: list[str] = []
+    for binding in runtime_bindings:
+        if binding is selected_binding or (
+            binding.get("slice_id") == selected_binding.get("slice_id")
+            and binding.get("lane_id") == selected_binding.get("lane_id")
+        ):
+            continue
+        lane_id = str(binding.get("lane_id") or "")
+        if (
+            re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", lane_id)
+            is None
+        ):
+            continue
+        sibling_state_dir = runtime_roots[0] / lane_id
+        sibling_prefix = _plan_bound_sibling_state_prefix(
+            binding=binding,
+            selected_state_prefix=selected_state_prefix,
+            artifact=artifact,
+            sibling_state_dir=sibling_state_dir,
+        )
+        kind = _plan_bound_recovery_runtime_kind(
+            artifact,
+            directory_projection=directory_projection,
+            runtime_roots=runtime_roots,
+            owner_bound_artifacts=(),
+            runtime_bindings=(binding,),
+            state_dir=sibling_state_dir,
+            state_prefix=sibling_prefix,
+        )
+        if kind and kind != "store":
+            matches.append(kind)
+    if len(matches) != 1:
+        return ""
+    return matches[0]
+
+
+def _validate_plan_bound_custody_only_runtime_artifact(
+    accepted_tree_root: Path,
+    artifact: Path,
+    *,
+    directory_projection: bool,
+) -> None:
+    """Lstat one sealed sibling path without opening or locking its content."""
+
+    candidate = _lexical_contained_path(accepted_tree_root, artifact)
+    try:
+        observed = os.lstat(candidate)
+    except OSError as exc:
+        raise ValueError("sibling runtime artifact custody is unreadable") from exc
+    mode = stat.S_IMODE(observed.st_mode)
+    if (
+        stat.S_ISLNK(observed.st_mode)
+        or int(observed.st_uid) != os.geteuid()
+        or bool(mode & 0o7000)
+        or bool(mode & 0o022)
+        or (
+            directory_projection
+            and not stat.S_ISDIR(observed.st_mode)
+        )
+        or (
+            not directory_projection
+            and (
+                not stat.S_ISREG(observed.st_mode)
+                or int(observed.st_nlink) != 1
+                or bool(mode & 0o111)
+            )
+        )
+    ):
+        raise ValueError("sibling runtime artifact custody is unsafe")
+
+
+def _plan_bound_recovery_status_entries(
+    *,
+    root: Path,
+    runtime_roots: tuple[Path, Path, Path],
+    workspace_paths: Sequence[Path],
+) -> tuple[tuple[str, bool], ...]:
+    """Expand only the active ignored runtime roots into exact entries.
+
+    The global no-ignored query remains the strict source cleanliness signal
+    without making historical ignored run trees part of current authority.
+    A second traditional-mode query expands only the three sealed runtime
+    roots despite a directory-level ignore such as ``run-v*/``.
+    """
+
+    state_root, worktree_root, merge_root = tuple(
+        _lexical_contained_path(root, path) for path in runtime_roots
+    )
+    runtime_umbrella = state_root.parent
+    runtime_family_root = (
+        runtime_umbrella.parent
+        if re.fullmatch(r"run-v[0-9]+", runtime_umbrella.name) is not None
+        else runtime_umbrella
+    )
+    try:
+        runtime_family_relative = runtime_family_root.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            "plan-bound recovery runtime family is outside the repository"
+        ) from exc
+    if (
+        worktree_root.parent != runtime_umbrella
+        or merge_root.parent != runtime_umbrella
+        or len({state_root, worktree_root, merge_root}) != 3
+        or runtime_umbrella == root
+        or not runtime_umbrella.is_relative_to(root)
+        or runtime_family_root == root
+        or not runtime_family_root.is_relative_to(root)
+        or runtime_family_relative.parts[:1] != ("data",)
+        or len(runtime_family_relative.parts) < 2
+    ):
+        raise ValueError("plan-bound recovery runtime umbrella is ambiguous")
+    canonical_workspaces = tuple(
+        _lexical_contained_path(root, path) for path in workspace_paths
+    )
+    if any(
+        not workspace.is_relative_to(worktree_root)
+        for workspace in canonical_workspaces
+    ):
+        raise ValueError("plan-bound recovery workspace is outside its root")
+
+    common_arguments = (
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+    )
+    global_status = _plan_bound_git(
+        root,
+        *common_arguments,
+        "--ignored=no",
+    )
+    scoped_status = _plan_bound_git(
+        root,
+        *common_arguments,
+        "--ignored=traditional",
+        "--",
+        ":(top,literal)" + state_root.relative_to(root).as_posix(),
+        ":(top,literal)" + worktree_root.relative_to(root).as_posix(),
+        ":(top,literal)" + merge_root.relative_to(root).as_posix(),
+    )
+    ignored_shadow_status = _plan_bound_git(
+        root,
+        *common_arguments,
+        "--ignored=traditional",
+        "--",
+        ":(top)**",
+        ":(top,exclude,literal)"
+        + runtime_family_root.relative_to(root).as_posix(),
+    )
+    if (
+        global_status.returncode != 0
+        or scoped_status.returncode != 0
+        or ignored_shadow_status.returncode != 0
+    ):
+        raise ValueError("plan-bound recovery repository status is unavailable")
+
+    status_outputs = (
+        str(global_status.stdout),
+        str(scoped_status.stdout),
+        str(ignored_shadow_status.stdout),
+    )
+    if (
+        any(len(output.encode("utf-8")) > 67_108_864 for output in status_outputs)
+        or sum(output.count("\0") for output in status_outputs) > 70_000
+    ):
+        raise ValueError("plan-bound recovery repository status is oversized")
+    family_relative = PurePosixPath(runtime_family_relative.as_posix())
+    for raw_entry in str(ignored_shadow_status.stdout).split("\0"):
+        if not raw_entry:
+            continue
+        if raw_entry[:3] not in {"?? ", "!! "}:
+            raise ValueError(
+                "plan-bound recovery repository has tracked changes"
+            )
+        normalized_text = raw_entry[3:].removesuffix("/")
+        relative = PurePosixPath(normalized_text)
+        if (
+            not normalized_text
+            or len(os.fsencode(normalized_text)) > 4096
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or relative.as_posix() != normalized_text
+        ):
+            raise ValueError(
+                "plan-bound recovery has an unsafe ignored path"
+            )
+        # Git may still emit embedded-worktree projections below an excluded
+        # pathspec.  The whole runtime family is intentionally handled only by
+        # the exact active-root pass above.
+        if relative == family_relative or relative.is_relative_to(
+            family_relative
+        ):
+            continue
+        if raw_entry.startswith("?? "):
+            continue
+        suffix = relative.suffix.lower()
+        if (
+            suffix in {".py", ".so", ".pyd", ".dylib"}
+            or (
+                suffix in {".pyc", ".pyo"}
+                and "__pycache__" not in relative.parts
+            )
+            or (
+                raw_entry.endswith("/")
+                and relative.parts[:1]
+                in {("scripts",), ("ipfs_accelerate_py",), ("test",)}
+            )
+        ):
+            raise ValueError(
+                "plan-bound recovery repository has an ignored import shadow"
+            )
+    records: set[tuple[str, bool]] = set()
+    projection_kinds: dict[str, bool] = {}
+    for output in status_outputs[:2]:
+        for raw_entry in output.split("\0"):
+            if not raw_entry:
+                continue
+            if raw_entry[:3] not in {"?? ", "!! "}:
+                raise ValueError(
+                    "plan-bound recovery repository has tracked changes"
+                )
+            relative_text = raw_entry[3:]
+            directory_projection = relative_text.endswith("/")
+            normalized_text = (
+                relative_text[:-1]
+                if directory_projection
+                else relative_text
+            )
+            relative = PurePosixPath(normalized_text)
+            if (
+                not normalized_text
+                or len(os.fsencode(normalized_text)) > 4096
+                or relative.is_absolute()
+                or ".." in relative.parts
+                or relative.as_posix() != normalized_text
+            ):
+                raise ValueError(
+                    "plan-bound recovery has an unsafe untracked path"
+                )
+            artifact = _lexical_contained_path(root, root / relative)
+            for workspace in canonical_workspaces:
+                if artifact == workspace or artifact.is_relative_to(workspace):
+                    artifact = workspace
+                    normalized_text = workspace.relative_to(root).as_posix()
+                    directory_projection = True
+                    break
+            prior_projection = projection_kinds.get(normalized_text)
+            if (
+                prior_projection is not None
+                and prior_projection != directory_projection
+            ):
+                raise ValueError(
+                    "plan-bound recovery projection kind is ambiguous"
+                )
+            projection_kinds[normalized_text] = directory_projection
+            records.add((normalized_text, directory_projection))
+    return tuple(sorted(records))
+
+
 def _snapshot_plan_bound_recovery_artifacts(
     *,
     root: Path,
     runtime_roots: tuple[Path, Path, Path],
     owner_bound_artifacts: tuple[Path, ...],
     runtime_bindings: tuple[Mapping[str, Any], ...],
+    slice_id: str,
+    lane_id: str,
     state_dir: Path,
     state_prefix: str,
 ) -> tuple[dict[str, Any], ...]:
     """Validate and bind every pre-existing non-store untracked artifact."""
 
-    status = _plan_bound_git(
-        root,
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-        "--ignored=matching",
-        "--ignore-submodules=none",
-    )
-    if status.returncode != 0:
-        raise ValueError("plan-bound recovery repository status is unavailable")
     evidence: list[dict[str, Any]] = []
-    for raw_entry in str(status.stdout).split("\0"):
-        if not raw_entry:
-            continue
-        if raw_entry[:3] not in {"?? ", "!! "}:
-            raise ValueError("plan-bound recovery repository has tracked changes")
-        relative_text = raw_entry[3:]
-        directory_projection = relative_text.endswith("/")
-        relative_text = relative_text[:-1] if directory_projection else relative_text
+    dependency_preflight_stores: set[Path] = set()
+    portal_anchors: dict[
+        Path,
+        tuple[str, dict[Path, dict[str, Any]]],
+    ] = {}
+    allowed_lane_indexes = set(
+        _plan_bound_runtime_lane_indexes(runtime_bindings)
+    )
+    selected_binding = _plan_bound_selected_runtime_binding(
+        runtime_bindings=runtime_bindings,
+        slice_id=slice_id,
+        lane_id=lane_id,
+        state_root=runtime_roots[0],
+        state_dir=state_dir,
+        state_prefix=state_prefix,
+    )
+    selected_runtime_bindings = (selected_binding,)
+    workspace_paths = tuple(
+        Path(str(binding.get("workspace_path") or ""))
+        for binding in runtime_bindings
+        if binding.get("workspace_path")
+    )
+    status_entries = _plan_bound_recovery_status_entries(
+        root=root,
+        runtime_roots=runtime_roots,
+        workspace_paths=workspace_paths,
+    )
+    for relative_text, directory_projection in status_entries:
         relative = PurePosixPath(relative_text)
-        if (
-            not relative_text
-            or relative.is_absolute()
-            or ".." in relative.parts
-            or relative.as_posix() != relative_text
-        ):
-            raise ValueError("plan-bound recovery has an unsafe untracked path")
         artifact = _lexical_contained_path(root, root / relative)
+        # Keep classification precedence identical to the birth-time gate.
+        # Mutable database/lifecycle authority is custody-checked but never
+        # sealed as content evidence, even when one of its exact paths is also
+        # launch-owned (notably ``.<prefix>_supervisor.pid.update.lock``).
+        if _plan_bound_external_runtime_artifact(
+            state_root=runtime_roots[0],
+            artifact=artifact,
+            state_prefix=state_prefix,
+            directory_projection=directory_projection,
+            allowed_lane_indexes=allowed_lane_indexes,
+        ):
+            _validate_plan_bound_external_runtime_artifact(root, artifact)
+            continue
         kind = _plan_bound_recovery_runtime_kind(
             artifact,
             directory_projection=directory_projection,
             runtime_roots=runtime_roots,
             owner_bound_artifacts=owner_bound_artifacts,
-            runtime_bindings=runtime_bindings,
+            runtime_bindings=selected_runtime_bindings,
             state_dir=state_dir,
             state_prefix=state_prefix,
         )
         if not kind:
-            raise ValueError(
-                "plan-bound recovery has a noncanonical runtime projection: "
-                f"{relative_text!r}"
+            sibling_kind = _plan_bound_sibling_runtime_kind(
+                artifact,
+                directory_projection=directory_projection,
+                runtime_roots=runtime_roots,
+                runtime_bindings=runtime_bindings,
+                selected_binding=selected_binding,
+                selected_state_dir=state_dir,
+                selected_state_prefix=state_prefix,
             )
+            if not sibling_kind:
+                raise ValueError(
+                    "plan-bound recovery has a noncanonical runtime projection: "
+                    f"{relative_text!r}"
+                )
+            _validate_plan_bound_custody_only_runtime_artifact(
+                root,
+                artifact,
+                directory_projection=directory_projection,
+            )
+            continue
         if kind == "store":
+            continue
+        if kind == "external-authority":
+            _validate_plan_bound_external_runtime_artifact(root, artifact)
+            continue
+        if kind == "dependency-preflight-store":
+            store_root = _plan_bound_dependency_preflight_store_root(
+                state_root=runtime_roots[0],
+                artifact=artifact,
+                state_prefix=state_prefix,
+                allowed_lane_indexes=allowed_lane_indexes,
+                state_dir=state_dir,
+                lane_id=lane_id,
+                lane_index=int(selected_binding["lane_index"]),
+            )
+            if store_root is None:
+                raise ValueError(
+                    "dependency preflight store root is not plan-bound"
+                )
+            dependency_preflight_stores.add(store_root)
+            continue
+        if kind == "scan-receipt":
+            evidence.append(
+                _validate_plan_bound_scan_receipt(root, artifact)
+            )
+            continue
+        if kind == "portal-file":
+            scope = _plan_bound_lane_runtime_scope(
+                state_root=runtime_roots[0],
+                artifact=artifact,
+                state_prefix=state_prefix,
+                allowed_lane_indexes=allowed_lane_indexes,
+                state_dir=state_dir,
+                lane_id=lane_id,
+                lane_index=int(selected_binding["lane_index"]),
+            )
+            if scope is None:
+                raise ValueError("plan-bound Portal lane scope is absent")
+            lane_index, lane_prefix, lane_relative = scope
+            portal_root = state_dir / f"{lane_prefix}_database_portal_attempts"
+            attempt_root = portal_root / lane_relative.parts[1]
+            lane_binding = next(
+                (
+                    binding
+                    for binding in selected_runtime_bindings
+                    if binding.get("lane_index") == lane_index
+                ),
+                None,
+            )
+            if lane_binding is None:
+                raise ValueError("plan-bound Portal lane binding is absent")
+            if attempt_root not in portal_anchors:
+                portal_anchors[attempt_root] = (
+                    _validate_plan_bound_portal_attempt_identity(
+                        accepted_tree_root=root,
+                        portal_root=portal_root,
+                        attempt_root=attempt_root,
+                        binding=lane_binding,
+                    )
+                )
+            task_alias, anchor_evidence = portal_anchors[attempt_root]
+            attempt_relative = artifact.relative_to(attempt_root)
+            safe_alias = (
+                re.sub(
+                    r"[^a-z0-9._-]+",
+                    "-",
+                    task_alias.lower(),
+                ).strip("-")
+                or "task"
+            )
+            if not _plan_bound_portal_task_descendant_matches(
+                attempt_relative,
+                task_name=safe_alias,
+            ):
+                raise ValueError(
+                    "plan-bound Portal artifact belongs to another task"
+                )
+            anchored = anchor_evidence.get(artifact)
+            evidence.append(
+                anchored
+                if anchored is not None
+                else _plan_bound_recovery_artifact_evidence(
+                    root,
+                    artifact,
+                    workspace=False,
+                )
+            )
             continue
         evidence.append(
             _plan_bound_recovery_artifact_evidence(
                 root,
                 artifact,
                 workspace=kind == "workspace",
+            )
+        )
+    for store_root in sorted(dependency_preflight_stores, key=str):
+        evidence.extend(
+            _validate_plan_bound_dependency_preflight_store(
+                accepted_tree_root=root,
+                store_root=store_root,
             )
         )
     return tuple(sorted(evidence, key=lambda item: item["path"]))
@@ -8926,6 +11275,11 @@ def _validate_plan_bound_accepted_tree(
     recovery_runtime_roots: tuple[Path, ...] = (),
     recovery_owner_bound_artifacts: tuple[Path, ...] = (),
     recovery_artifacts: tuple[Mapping[str, Any], ...] = (),
+    recovery_state_prefix: str = "",
+    recovery_runtime_bindings: tuple[Mapping[str, Any], ...] = (),
+    recovery_slice_id: str = "",
+    recovery_lane_id: str = "",
+    recovery_state_dir: Path | None = None,
 ) -> None:
     """Bind initial launches to HEAD and recovery to the sealed source object."""
 
@@ -8953,6 +11307,20 @@ def _validate_plan_bound_accepted_tree(
         not isinstance(recovery_repository_head, str)
         or not isinstance(recovery_repository_tree, str)
         or bool(recovery_repository_head) != bool(recovery_repository_tree)
+        or not isinstance(recovery_state_prefix, str)
+        or bool(recovery_repository_head) != bool(recovery_state_prefix)
+        or bool(recovery_repository_head) != bool(recovery_runtime_bindings)
+        or bool(recovery_repository_head) != bool(recovery_slice_id)
+        or bool(recovery_repository_head) != bool(recovery_lane_id)
+        or bool(recovery_repository_head) != bool(recovery_state_dir)
+        or (
+            recovery_state_prefix
+            and re.fullmatch(
+                r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}",
+                recovery_state_prefix,
+            )
+            is None
+        )
     ):
         raise ValueError("plan-bound recovery repository identity is partial")
     if (
@@ -8965,6 +11333,12 @@ def _validate_plan_bound_accepted_tree(
         )
         or not isinstance(recovery_artifacts, tuple)
         or any(not isinstance(item, Mapping) for item in recovery_artifacts)
+        or not isinstance(recovery_runtime_bindings, tuple)
+        or any(
+            not isinstance(item, Mapping)
+            for item in recovery_runtime_bindings
+        )
+        or (recovery_state_dir is not None and not isinstance(recovery_state_dir, Path))
     ):
         raise ValueError("plan-bound recovery runtime authority is malformed")
     source_object = _plan_bound_git(root, "rev-parse", f"{source_head}^{{tree}}")
@@ -8978,6 +11352,9 @@ def _validate_plan_bound_accepted_tree(
     current_head = str(head.stdout).strip()
     current_tree = str(tree.stdout).strip()
     if recovery_repository_head:
+        allowed_lane_indexes = set(
+            _plan_bound_runtime_lane_indexes(recovery_runtime_bindings)
+        )
         if control_plane_pin is None:
             raise ValueError(
                 "plan-bound repository advance requires a sealed control plane"
@@ -9000,19 +11377,7 @@ def _validate_plan_bound_accepted_tree(
             source_head,
             recovery_repository_head,
         )
-        status = _plan_bound_git(
-            root,
-            "status",
-            "--porcelain=v1",
-            "-z",
-            "--untracked-files=all",
-            "--ignored=matching",
-            "--ignore-submodules=none",
-        )
-        if (
-            ancestor.returncode != 0
-            or status.returncode != 0
-        ):
+        if ancestor.returncode != 0:
             raise ValueError(
                 "plan-bound recovery repository is not a clean source descendant"
             )
@@ -9045,6 +11410,20 @@ def _validate_plan_bound_accepted_tree(
             raise ValueError(
                 "plan-bound recovery owner-bound artifact is absent or foreign"
             )
+        assert recovery_state_dir is not None
+        canonical_recovery_state_dir = _lexical_contained_path(
+            root,
+            recovery_state_dir,
+        )
+        selected_binding = _plan_bound_selected_runtime_binding(
+            runtime_bindings=recovery_runtime_bindings,
+            slice_id=recovery_slice_id,
+            lane_id=recovery_lane_id,
+            state_root=canonical_runtime_roots[0],
+            state_dir=canonical_recovery_state_dir,
+            state_prefix=recovery_state_prefix,
+        )
+        selected_runtime_bindings = (selected_binding,)
 
         expected_artifacts = {
             str(item.get("path") or ""): dict(item)
@@ -9059,31 +11438,46 @@ def _validate_plan_bound_accepted_tree(
                 "plan-bound recovery artifact evidence is absent or ambiguous"
             )
         observed_artifacts: set[str] = set()
-        for raw_entry in str(status.stdout).split("\0"):
-            if not raw_entry:
-                continue
-            if raw_entry[:3] not in {"?? ", "!! "}:
-                raise ValueError(
-                    "plan-bound recovery repository has tracked changes"
-                )
-            relative_text = raw_entry[3:]
-            directory_projection = relative_text.endswith("/")
-            normalized_relative_text = (
-                relative_text[:-1]
-                if directory_projection
-                else relative_text
+        dependency_preflight_stores: set[Path] = set()
+        portal_anchors: dict[
+            Path,
+            tuple[str, dict[Path, dict[str, Any]]],
+        ] = {}
+        sealed_workspace_paths = tuple(
+            _lexical_contained_path(
+                root,
+                root / Path(str(binding.get("workspace_path") or "")),
             )
+            for binding in recovery_runtime_bindings
+            if binding.get("workspace_path")
+        )
+        status_entries = _plan_bound_recovery_status_entries(
+            root=root,
+            runtime_roots=(
+                canonical_runtime_roots[0],
+                canonical_runtime_roots[1],
+                canonical_runtime_roots[2],
+            ),
+            workspace_paths=sealed_workspace_paths,
+        )
+        for expected_path in expected_artifacts:
+            candidate = _lexical_contained_path(root, root / expected_path)
+            store_root = _plan_bound_dependency_preflight_store_root(
+                state_root=canonical_runtime_roots[0],
+                artifact=candidate,
+                state_prefix=recovery_state_prefix,
+                allowed_lane_indexes=allowed_lane_indexes,
+                state_dir=canonical_recovery_state_dir,
+                lane_id=recovery_lane_id,
+                lane_index=int(selected_binding["lane_index"]),
+            )
+            if store_root is not None:
+                dependency_preflight_stores.add(store_root)
+        for (
+            normalized_relative_text,
+            directory_projection,
+        ) in status_entries:
             relative = PurePosixPath(normalized_relative_text)
-            if (
-                not normalized_relative_text
-                or relative.is_absolute()
-                or ".." in relative.parts
-                or relative.as_posix() != normalized_relative_text
-            ):
-                raise ValueError(
-                    "plan-bound recovery repository has an unsafe untracked path: "
-                    f"{relative_text!r}"
-                )
             artifact = _lexical_contained_path(root, root / relative)
             if not any(
                 artifact.is_relative_to(runtime_root)
@@ -9108,12 +11502,73 @@ def _validate_plan_bound_accepted_tree(
                     artifact,
                 )
                 continue
+            store_root = _plan_bound_dependency_preflight_store_root(
+                state_root=canonical_runtime_roots[0],
+                artifact=artifact,
+                state_prefix=recovery_state_prefix,
+                allowed_lane_indexes=allowed_lane_indexes,
+                state_dir=canonical_recovery_state_dir,
+                lane_id=recovery_lane_id,
+                lane_index=int(selected_binding["lane_index"]),
+            )
+            if store_root is not None:
+                dependency_preflight_stores.add(store_root)
+                continue
+            if _plan_bound_external_runtime_artifact(
+                state_root=canonical_runtime_roots[0],
+                artifact=artifact,
+                state_prefix=recovery_state_prefix,
+                directory_projection=directory_projection,
+                allowed_lane_indexes=allowed_lane_indexes,
+            ):
+                _validate_plan_bound_external_runtime_artifact(root, artifact)
+                continue
+            runtime_kind = _plan_bound_recovery_runtime_kind(
+                artifact,
+                directory_projection=directory_projection,
+                runtime_roots=(
+                    canonical_runtime_roots[0],
+                    canonical_runtime_roots[1],
+                    canonical_runtime_roots[2],
+                ),
+                owner_bound_artifacts=canonical_owner_bound_artifacts,
+                runtime_bindings=selected_runtime_bindings,
+                state_dir=canonical_recovery_state_dir,
+                state_prefix=recovery_state_prefix,
+            )
+            if not runtime_kind:
+                sibling_kind = _plan_bound_sibling_runtime_kind(
+                    artifact,
+                    directory_projection=directory_projection,
+                    runtime_roots=(
+                        canonical_runtime_roots[0],
+                        canonical_runtime_roots[1],
+                        canonical_runtime_roots[2],
+                    ),
+                    runtime_bindings=recovery_runtime_bindings,
+                    selected_binding=selected_binding,
+                    selected_state_dir=canonical_recovery_state_dir,
+                    selected_state_prefix=recovery_state_prefix,
+                )
+                if not sibling_kind:
+                    raise ValueError(
+                        "plan-bound recovery found a noncanonical runtime artifact"
+                    )
+                _validate_plan_bound_custody_only_runtime_artifact(
+                    root,
+                    artifact,
+                    directory_projection=directory_projection,
+                )
+                continue
+            if runtime_kind == "external-authority":
+                _validate_plan_bound_external_runtime_artifact(root, artifact)
+                continue
             evidence = expected_artifacts.get(normalized_relative_text)
             if evidence is None:
                 if artifact not in canonical_owner_bound_artifacts:
                     raise ValueError(
                         "plan-bound recovery found an unauthenticated runtime "
-                        f"artifact: {relative_text!r}"
+                        f"artifact: {normalized_relative_text!r}"
                     )
                 # These exact launch-owned paths may be created after the
                 # immutable recovery decision (PID reservation/log only).
@@ -9129,16 +11584,92 @@ def _validate_plan_bound_accepted_tree(
                     workspace=False,
                 )
                 continue
-            observed = _plan_bound_recovery_artifact_evidence(
-                root,
-                artifact,
-                workspace=directory_projection,
-            )
+            if runtime_kind == "scan-receipt":
+                observed = _validate_plan_bound_scan_receipt(root, artifact)
+            elif runtime_kind == "portal-file":
+                scope = _plan_bound_lane_runtime_scope(
+                    state_root=canonical_runtime_roots[0],
+                    artifact=artifact,
+                    state_prefix=recovery_state_prefix,
+                    allowed_lane_indexes=allowed_lane_indexes,
+                    state_dir=canonical_recovery_state_dir,
+                    lane_id=recovery_lane_id,
+                    lane_index=int(selected_binding["lane_index"]),
+                )
+                if scope is None:
+                    raise ValueError("plan-bound Portal lane scope is absent")
+                lane_index, lane_prefix, lane_relative = scope
+                portal_root = (
+                    canonical_recovery_state_dir
+                    / f"{lane_prefix}_database_portal_attempts"
+                )
+                attempt_root = portal_root / lane_relative.parts[1]
+                lane_binding = next(
+                    (
+                        binding
+                        for binding in selected_runtime_bindings
+                        if binding.get("lane_index") == lane_index
+                    ),
+                    None,
+                )
+                if lane_binding is None:
+                    raise ValueError("plan-bound Portal lane binding is absent")
+                if attempt_root not in portal_anchors:
+                    portal_anchors[attempt_root] = (
+                        _validate_plan_bound_portal_attempt_identity(
+                            accepted_tree_root=root,
+                            portal_root=portal_root,
+                            attempt_root=attempt_root,
+                            binding=lane_binding,
+                        )
+                    )
+                task_alias, anchor_evidence = portal_anchors[attempt_root]
+                attempt_relative = artifact.relative_to(attempt_root)
+                safe_alias = (
+                    re.sub(
+                        r"[^a-z0-9._-]+",
+                        "-",
+                        task_alias.lower(),
+                    ).strip("-")
+                    or "task"
+                )
+                if not _plan_bound_portal_task_descendant_matches(
+                    attempt_relative,
+                    task_name=safe_alias,
+                ):
+                    raise ValueError(
+                        "plan-bound Portal artifact belongs to another task"
+                    )
+                observed = anchor_evidence.get(artifact)
+                if observed is None:
+                    observed = _plan_bound_recovery_artifact_evidence(
+                        root,
+                        artifact,
+                        workspace=False,
+                    )
+            else:
+                observed = _plan_bound_recovery_artifact_evidence(
+                    root,
+                    artifact,
+                    workspace=directory_projection,
+                )
             if observed != evidence:
                 raise ValueError(
                     "plan-bound recovery runtime artifact content identity changed"
                 )
             observed_artifacts.add(normalized_relative_text)
+        for store_root in sorted(dependency_preflight_stores, key=str):
+            store_evidence = _validate_plan_bound_dependency_preflight_store(
+                accepted_tree_root=root,
+                store_root=store_root,
+            )
+            for observed in store_evidence:
+                path = str(observed.get("path") or "")
+                if observed != expected_artifacts.get(path):
+                    raise ValueError(
+                        "dependency preflight store content identity changed"
+                    )
+                observed_artifacts.add(path)
         if observed_artifacts != set(expected_artifacts):
             raise ValueError("plan-bound recovery runtime artifact set changed")
         return
@@ -11696,6 +14227,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             "--plan-bound-lane-id",
         )
         state_dirs = _profile_option_values(child_argv, "--state-dir")
+        state_prefixes = _profile_option_values(child_argv, "--state-prefix")
         worktree_roots = _profile_option_values(child_argv, "--worktree-root")
         merge_queue_roots = _profile_option_values(
             child_argv,
@@ -11723,6 +14255,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
         or len(lane_ids) != 1
         or len(source_heads) != 1
         or len(source_trees) != 1
+        or len(state_prefixes) != 1
         or not recovery_authorization_cid
         or (
             source_heads[0],
@@ -11756,6 +14289,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
         recovery_runtime_roots: tuple[Path, ...] = ()
         recovery_owner_bound_artifacts: tuple[Path, ...] = ()
         recovery_artifacts: tuple[Mapping[str, Any], ...] = ()
+        recovery_runtime_bindings: tuple[Mapping[str, Any], ...] = ()
         if recovery_authorization_cid != "-":
             from ..control.plan_execution_store import (
                 ProductionParallelPlanAdapter,
@@ -11814,6 +14348,10 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
             recovery_repository_head = recovery.repository_head
             recovery_repository_tree = recovery.repository_tree
             recovery_artifacts = recovery.runtime_artifacts
+            recovery_runtime_bindings = plan_adapter.recovery_runtime_bindings(
+                revision_cid=revision_cids[0],
+                slice_manifest_cid=recovery.slice_manifest_cid,
+            )
             recovery_owner_bound_artifacts = (
                 state_dir / "implementation.lock",
                 *(
@@ -11840,6 +14378,19 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
                 recovery_owner_bound_artifacts
             ),
             recovery_artifacts=recovery_artifacts,
+            recovery_state_prefix=(
+                state_prefixes[0] if recovery_repository_head else ""
+            ),
+            recovery_runtime_bindings=recovery_runtime_bindings,
+            recovery_slice_id=(
+                slice_ids[0] if recovery_repository_head else ""
+            ),
+            recovery_lane_id=(
+                lane_ids[0] if recovery_repository_head else ""
+            ),
+            recovery_state_dir=(
+                state_dir if recovery_repository_head else None
+            ),
         )
         if live_config != "-":
             live_verification = _verify_eaaef_configured_board_birth(

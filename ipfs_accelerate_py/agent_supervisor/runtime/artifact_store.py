@@ -706,7 +706,15 @@ class BoundedArtifactStore:
         self.previous_manifest_path = self.path / "manifest.previous.json"
         self.eviction_log_path = self.path / "evictions.jsonl"
         self.lock_path = self.path / ".bounded-store.lock"
-        for directory in (self.path, self.blobs_path, self.projections_path):
+        # Create the intermediate ``blobs`` directory explicitly.  Passing a
+        # private mode only to ``blobs/sha256`` leaves an auto-created parent
+        # subject to the ambient umask (and potentially group-writable).
+        for directory in (
+            self.path,
+            self.path / "blobs",
+            self.blobs_path,
+            self.projections_path,
+        ):
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._clock = clock
         self._eviction_observer = eviction_observer

@@ -5489,13 +5489,21 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         "mixed",
         "disjoint",
         "changed_no_change",
+        "repeated_no_change_cleanup",
         "compact_hidden_drift",
         "crash_proposal_ready",
+        "crash_proposal_ready_same_process_confirmed_retry",
+        "same_process_prepared_response_loss_retry",
         "crash_before_enqueue",
         "crash_after_enqueue",
+        "crash_after_enqueue_missing_handoff_receipt",
+        "crash_after_enqueue_divergent_handoff_receipt",
         "crash_confirmed",
         "crash_confirmed_retry",
         "crash_completed_before_finalize",
+        "crash_completed_after_publish",
+        "crash_completed_poisoned_sidecar",
+        "crash_changed_integration_before_cleanup",
         "crash_serialized_merge_confirmed",
         "crash_no_change",
         "crash_after_enqueue_mismatch",
@@ -5556,9 +5564,9 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         ),
     )
     if wave_scenario == "crash_serialized_merge_confirmed":
-        _write(repo / ".gitignore", "*.json\n*.log\n*.duckdb\n*.lock\n")
+        _write(repo / ".gitignore", "data/configured-board/\n")
         _git(repo, "add", ".gitignore")
-        _git(repo, "commit", "-m", "seed ignored runtime artifact patterns")
+        _git(repo, "commit", "-m", "seed ignored runtime umbrella")
     plan_common_args = scheduler_module.configured_board_common_args(
         board,
         implement=True,
@@ -6162,17 +6170,33 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
     ):
         if (
             wave_scenario == "crash_changed_integration_before_cleanup"
-            and "test-a" in str(branch_name)
-            and (repo / "src/test-a.py").is_file()
+            and str(branch_name) != implementation_branch
+            and str(branch_name).startswith("implementation/test-a-")
+            and "-attempt-" in str(branch_name)
             and not crash_receipt_path.exists()
         ):
-            task_id, phase = current_plan_attempt()
-            if task_id == "TEST-A" and phase == "merge_enqueue_confirmed":
-                crash_receipt_path.write_text(
-                    "changed_integration_before_cleanup\n",
-                    encoding="utf-8",
-                )
-                os._exit(86)
+            integrated_target = subprocess.run(
+                [
+                    "git",
+                    "show",
+                    f"{implementation_branch}:src/test-a.py",
+                ],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if (
+                integrated_target.returncode == 0
+                and integrated_target.stdout == "VALUE = 'TEST-A'\n"
+            ):
+                task_id, phase = current_plan_attempt()
+                if task_id == "TEST-A" and phase == "merge_enqueue_confirmed":
+                    crash_receipt_path.write_text(
+                        "changed_integration_before_cleanup\n",
+                        encoding="utf-8",
+                    )
+                    os._exit(86)
         return original_cleanup_merged_worktree(
             self,
             worktree_path,
@@ -6314,10 +6338,12 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             if pid == 0:  # pragma: no branch - isolated production boundary
                 try:
                     # The production runner applies this sealed environment
-                    # before it starts a plan-bound child.  This fixture
-                    # invokes the entry point directly after ``fork()``, so
-                    # mirror that boundary in the child without changing the
-                    # pytest parent's later recovery and assertion context.
+                    # and private runtime umask before it starts a plan-bound
+                    # child.  This fixture invokes the entry point directly
+                    # after ``fork()``, so mirror that boundary in the child
+                    # without changing the pytest parent's later recovery and
+                    # assertion context.
+                    os.umask(0o077)
                     os.environ.update(launch_plan["environment"])
                     child_rc = supervisor_module._run_plan_bound_daemon_child(
                         helper_argv
@@ -6470,8 +6496,12 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     "branch",
                     "--format=%(refname:short)",
                 ).stdout.splitlines()
-                assert all(
-                    not branch.startswith("implementation/")
+                assert implementation_branch in implementation_branches
+                assert not any(
+                    branch.startswith(
+                        ("implementation/test-a-", "implementation/test-b-")
+                    )
+                    and "-attempt-" in branch
                     for branch in implementation_branches
                 )
             if wave_scenario == "mixed":
@@ -7379,6 +7409,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     recovery_argv,
                     cwd=repo,
                     env=recovery_env,
+                    umask=0o077,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -7681,7 +7712,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     final_head = _git(
                         repo,
                         "rev-parse",
-                        "main",
+                        implementation_branch,
                     ).stdout.strip()
                     assert receipt_payload.get("target_commit") == final_head
                     _git(
@@ -7735,8 +7766,12 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     "branch",
                     "--format=%(refname:short)",
                 ).stdout.splitlines()
-                assert all(
-                    not branch.startswith("implementation/")
+                assert implementation_branch in implementation_branches
+                assert not any(
+                    branch.startswith(
+                        ("implementation/test-a-", "implementation/test-b-")
+                    )
+                    and "-attempt-" in branch
                     for branch in implementation_branches
                 )
                 if wave_scenario == "crash_completed_poisoned_sidecar":

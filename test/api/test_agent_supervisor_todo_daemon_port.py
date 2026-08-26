@@ -15224,6 +15224,7 @@ def test_implementation_daemon_moves_directory_lock_and_acquires_lock(tmp_path):
     assert reason == "acquired"
     assert existing is None
     assert lock_path.is_file()
+    assert lock_path.stat().st_mode & 0o777 == 0o600
     backups = list(state_dir.glob("implementation.lock.directory-backup-*"))
     assert len(backups) == 1
     assert (backups[0] / "fragment").exists()

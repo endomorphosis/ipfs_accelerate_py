@@ -66859,7 +66859,15 @@ class PortalImplementationDaemon:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         for _ in range(2):
             try:
-                return os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY), "acquired", None
+                return (
+                    os.open(
+                        lock_path,
+                        os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                        0o600,
+                    ),
+                    "acquired",
+                    None,
+                )
             except FileExistsError:
                 existing = load_json_dict(lock_path)
                 if existing is not None and owner_active(existing):
