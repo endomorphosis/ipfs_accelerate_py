@@ -11469,6 +11469,51 @@ def test_lgcvf_daemon_diagnostic_names_sealed_supervisor_exceptions(capfd):
     assert len(captured.err.encode("ascii")) <= 160
 
 
+def test_lgcvf_daemon_diagnostic_emits_bounded_typed_owner_cause_chain(capfd):
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+        QuackClientTransportError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TypedStateOwnerRemoteError,
+    )
+
+    sentinel = "must-not-cross-lgcvf-cause-chain"
+    try:
+        try:
+            try:
+                raise TypedStateOwnerRemoteError(
+                    "operation_failed",
+                    "DuckDBConnectionPolicyError",
+                )
+            except TypedStateOwnerRemoteError as remote:
+                raise QuackClientTransportError(sentinel) from remote
+        except QuackClientTransportError as transport:
+            raise TaskSourceIntegrityError(sentinel) from transport
+    except TaskSourceIntegrityError as exc:
+        implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
+            "runtime_pass",
+            exc,
+        )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    lines = captured.err.splitlines()
+    assert lines[0].startswith(
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=runtime_pass type=TaskSourceIntegrityError"
+    )
+    assert "depth=1 type=QuackClientTransportError" in lines[1]
+    assert lines[2].endswith(
+        "depth=2 type=TypedStateOwnerRemoteError "
+        "code=operation_failed remote=DuckDBConnectionPolicyError"
+    )
+    assert sentinel not in captured.err
+    assert all(len(line.encode("ascii")) + 1 <= 160 for line in lines)
+
+
 def test_lgcvf_daemon_diagnostic_rejects_forged_supervisor_module(capfd):
     sentinel = "must-not-cross-lgcvf-forged-supervisor-type"
 

@@ -118180,12 +118180,9 @@ def _lgcvf_daemon_diagnostic_site(exc: BaseException) -> str:
     return trusted_site
 
 
-def _emit_lgcvf_daemon_diagnostic(phase: str, exc: BaseException) -> None:
-    """Emit one bounded, detail-free failure class for sealed live recovery."""
+def _lgcvf_daemon_diagnostic_type(exc: BaseException) -> str:
+    """Return one allowlisted exception type without consulting its message."""
 
-    safe_phase = (
-        phase if phase in _LGCVF_DAEMON_DIAGNOSTIC_PHASES else "unknown"
-    )
     exception_type = type(exc)
     safe_type = exception_type.__name__
     if (
@@ -118215,7 +118212,39 @@ def _emit_lgcvf_daemon_diagnostic(phase: str, exc: BaseException) -> None:
             )
         )
     ):
-        safe_type = "BaseException"
+        return "BaseException"
+    return safe_type
+
+
+def _lgcvf_daemon_diagnostic_causes(
+    exc: BaseException,
+) -> tuple[BaseException, ...]:
+    """Return a bounded, cycle-free explicit/implicit exception chain."""
+
+    causes: list[BaseException] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    for _depth in range(6):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        causes.append(current)
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif not current.__suppress_context__:
+            current = current.__context__
+        else:
+            current = None
+    return tuple(causes)
+
+
+def _emit_lgcvf_daemon_diagnostic(phase: str, exc: BaseException) -> None:
+    """Emit one bounded, detail-free failure class for sealed live recovery."""
+
+    safe_phase = (
+        phase if phase in _LGCVF_DAEMON_DIAGNOSTIC_PHASES else "unknown"
+    )
+    safe_type = _lgcvf_daemon_diagnostic_type(exc)
     safe_site = _lgcvf_daemon_diagnostic_site(exc)
     site_field = f" site={safe_site}" if safe_site else ""
     record = (
@@ -118229,6 +118258,38 @@ def _emit_lgcvf_daemon_diagnostic(phase: str, exc: BaseException) -> None:
         )
     try:
         os.write(2, record)
+        for depth, cause in enumerate(
+            _lgcvf_daemon_diagnostic_causes(exc)[1:],
+            start=1,
+        ):
+            cause_type = _lgcvf_daemon_diagnostic_type(cause)
+            cause_site = _lgcvf_daemon_diagnostic_site(cause)
+            cause_site_field = f" site={cause_site}" if cause_site else ""
+            remote_fields = ""
+            if cause_type == "TypedStateOwnerRemoteError":
+                error_code = getattr(cause, "error_code", None)
+                error_type = getattr(cause, "error_type", None)
+                if (
+                    type(error_code) is str
+                    and 0 < len(error_code) <= 64
+                    and error_code.isascii()
+                    and error_code.replace("_", "a").isalnum()
+                    and type(error_type) is str
+                    and 0 < len(error_type) <= 64
+                    and error_type.isascii()
+                    and error_type.isidentifier()
+                ):
+                    remote_fields = f" code={error_code} remote={error_type}"
+            cause_record = (
+                "lgcvf-daemon-cause@1 "
+                f"depth={depth} type={cause_type}{cause_site_field}"
+                f"{remote_fields}\n"
+            ).encode("ascii")
+            if len(cause_record) > 160:
+                cause_record = (
+                    b"lgcvf-daemon-cause@1 depth=0 type=BaseException\n"
+                )
+            os.write(2, cause_record)
     except BaseException:
         pass
 
