@@ -17616,7 +17616,20 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
         outputs=["README.md"],
         validation=["python -m pytest"],
     )
-    state = TodoTaskState()
+    state = TodoTaskState(
+        task_statuses={task.task_id: "ready"},
+        ready_task_ids=[task.task_id],
+        selectable_ready_task_ids=[task.task_id],
+        eligible_ready_task_ids=[task.task_id],
+        strict_deprioritized_ready_task_ids=[],
+        waiting_task_ids=[],
+        ready_count=1,
+        selectable_ready_count=1,
+        eligible_ready_count=1,
+        strict_deprioritized_ready_count=0,
+        waiting_count=0,
+        task_count=1,
+    )
     enqueued: list[dict[str, object]] = []
     queue_outcomes: list[tuple[object, ...]] = []
     validation_order: list[str] = []
@@ -17739,6 +17752,11 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     assert result["returncode"] == 0
     assert result["implementation_commit"] == "provider-root-commit"
     assert result["merge_result"]["queued"] is True
+    assert result["board_completion"] == {
+        "complete": False,
+        "pending_merge": True,
+        "reason": "merge_queued_awaiting_integration",
+    }
     assert enqueued[0]["baseline_ref"] == "baseline-commit"
     assert enqueued[0]["implementation_commit"] == "provider-root-commit"
     assert "todo_update_result" not in result
@@ -17748,6 +17766,25 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
         "restore_then_bind",
         "finalize_fence",
     ]
+    persisted = TodoTaskState.load(daemon.state_path)
+    task_cid = daemon._canonical_ref(task)
+    assert persisted.task_statuses[task.task_id] == "merge-queued"
+    assert task.task_id not in persisted.ready_task_ids
+    assert task.task_id not in persisted.selectable_ready_task_ids
+    assert task.task_id not in persisted.eligible_ready_task_ids
+    assert task.task_id not in persisted.strict_deprioritized_ready_task_ids
+    assert persisted.waiting_task_ids == [task.task_id]
+    assert persisted.ready_count == 0
+    assert persisted.selectable_ready_count == 0
+    assert persisted.eligible_ready_count == 0
+    assert persisted.strict_deprioritized_ready_count == 0
+    assert persisted.waiting_count == 1
+    assert persisted.implementation_attempts[task.task_id] == 1
+    assert persisted.implementation_attempts_by_cid[task_cid] == 1
+    assert persisted.last_implementation_task_id == task.task_id
+    assert persisted.last_implementation_task_cid == task_cid
+    assert persisted.last_implementation_commit == "provider-root-commit"
+    assert persisted.last_implementation_returncode == 0
 
 
 def test_integrated_merge_reuses_durable_completion_with_float_validation(

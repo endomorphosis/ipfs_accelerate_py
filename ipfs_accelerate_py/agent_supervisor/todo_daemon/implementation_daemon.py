@@ -38206,6 +38206,7 @@ class PortalImplementationDaemon:
                             max(0, attempt - 1),
                         )
         elif board_completion.get("pending_merge"):
+            self._mark_task_pending_merge(state, task.task_id)
             self._record_event(
                 "implementation_pending_merge",
                 {
@@ -40802,6 +40803,52 @@ class PortalImplementationDaemon:
             "pending_merge": False,
             "reason": "not_integrated",
         }
+
+    @staticmethod
+    def _mark_task_pending_merge(
+        state: PortalTaskState,
+        task_id: str,
+    ) -> None:
+        """Publish one queued handoff coherently in the Portal projection.
+
+        The merge request is durable before this transition.  Keep every
+        readiness aggregate aligned with ``task_statuses`` so readers cannot
+        mistake the queued task for fresh dispatch work before the next full
+        reconciliation pass.
+        """
+
+        state.task_statuses[task_id] = "merge-queued"
+        state.ready_task_ids = [
+            item for item in state.ready_task_ids if item != task_id
+        ]
+        state.selectable_ready_task_ids = [
+            item
+            for item in state.selectable_ready_task_ids
+            if item != task_id
+        ]
+        state.eligible_ready_task_ids = [
+            item
+            for item in state.eligible_ready_task_ids
+            if item != task_id
+        ]
+        state.strict_deprioritized_ready_task_ids = [
+            item
+            for item in state.strict_deprioritized_ready_task_ids
+            if item != task_id
+        ]
+        state.waiting_task_ids = [
+            item for item in state.waiting_task_ids if item != task_id
+        ]
+        state.waiting_task_ids.append(task_id)
+        state.ready_count = len(state.ready_task_ids)
+        state.selectable_ready_count = len(
+            state.selectable_ready_task_ids
+        )
+        state.eligible_ready_count = len(state.eligible_ready_task_ids)
+        state.strict_deprioritized_ready_count = len(
+            state.strict_deprioritized_ready_task_ids
+        )
+        state.waiting_count = len(state.waiting_task_ids)
 
     def _create_seeded_worktree(
         self,
