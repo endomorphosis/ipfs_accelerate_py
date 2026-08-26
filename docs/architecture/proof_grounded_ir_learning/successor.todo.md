@@ -248,7 +248,7 @@ evidence.
 
 ## PGIR-205 Issue a superseding campaign input freeze
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
