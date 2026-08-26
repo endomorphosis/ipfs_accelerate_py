@@ -118338,13 +118338,20 @@ def main(argv: list[str] | None = None) -> None:
                 TYPED_STATE_OWNER_TOKEN_ENV,
             )
 
-            credentials.install_environment()
-            client = QuackStateClient(
-                owner_id=credentials.client_id,
-                store_id=credentials.store_id,
-                process_birth_id=credentials.process_birth_id,
-            )
+            client: Any = None
             try:
+                # Credential installation and client construction are part of
+                # the same attach boundary.  In particular, a constructor
+                # signature/configuration failure must not escape as the
+                # capsule's undifferentiated ``daemon_main`` failure, and the
+                # bootstrap values must be scrubbed even when no client was
+                # constructed.
+                credentials.install_environment()
+                client = QuackStateClient(
+                    owner_id=credentials.client_id,
+                    store_id=credentials.store_id,
+                    process_birth_id=credentials.process_birth_id,
+                )
                 client.attach(
                     credentials.endpoint,
                     server_id=credentials.server_id,
@@ -118355,7 +118362,8 @@ def main(argv: list[str] | None = None) -> None:
                 )
             except BaseException as exc:
                 _emit_lgcvf_daemon_diagnostic("owner_attach", exc)
-                client.close()
+                if client is not None:
+                    client.close()
                 raise
             finally:
                 # The authenticated socket is already bound to this birth.

@@ -11429,6 +11429,112 @@ def test_lgcvf_daemon_diagnostic_collapses_untrusted_metadata(capfd):
     assert sentinel not in captured.err
 
 
+def test_lgcvf_owner_client_construction_is_staged_and_scrubs_credentials(
+    tmp_path,
+    monkeypatch,
+    capfd,
+):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        quack_state_client as quack_state_client_module,
+        state_owner_bootstrap as state_owner_bootstrap_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        TYPED_STATE_OWNER_TOKEN_ENV,
+    )
+
+    sentinel = "must-not-cross-lgcvf-owner-client-construction"
+    endpoint = "quack:127.0.0.1:24701"
+    store_id = "state/control.duckdb"
+
+    class Credentials:
+        client_id = "database-implementation-daemon:lane-0"
+        process_birth_id = "birth:test-lane-0"
+        server_id = "server:test"
+        execution_route_policy = None
+
+        def __init__(self):
+            self.endpoint = endpoint
+            self.store_id = store_id
+
+        def install_environment(self):
+            os.environ[TYPED_STATE_OWNER_TOKEN_ENV] = sentinel
+            os.environ[TYPED_STATE_OWNER_SOCKET_ENV] = str(
+                tmp_path / "owner.sock"
+            )
+
+    program = SimpleNamespace(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        store_id=store_id,
+        quack_endpoint=endpoint,
+        schema_revision="test-schema-v1",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "database_program_from_daemon_namespace",
+        lambda _args: program,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "resolve_database_implementation_paths",
+        lambda _args, *, authority_mode: {
+            "database_path": tmp_path / "control.duckdb",
+            "coordination_path": tmp_path / "coordination.duckdb",
+            "execution_path": tmp_path / "execution.duckdb",
+        },
+    )
+    monkeypatch.setattr(
+        state_owner_bootstrap_module,
+        "request_state_owner_bootstrap",
+        lambda *_args, **_kwargs: Credentials(),
+    )
+
+    def fail_client_construction(**_kwargs):
+        raise TypeError(sentinel)
+
+    monkeypatch.setattr(
+        quack_state_client_module,
+        "QuackStateClient",
+        fail_client_construction,
+    )
+
+    with pytest.raises(TypeError, match=sentinel):
+        implementation_daemon_module.main(
+            [
+                "--once",
+                "--todo-path",
+                str(tmp_path / "board.md"),
+                "--state-dir",
+                str(tmp_path / "state"),
+                "--state-prefix",
+                "lgcvf_lane_0",
+                "--task-source-kind",
+                "duckdb",
+                "--authority-mode",
+                "quack",
+                "--quack-endpoint",
+                endpoint,
+                "--state-store-id",
+                store_id,
+                "--owner-session-id",
+                "lane-0",
+                "--state-owner-bootstrap-fd",
+                "99",
+                "--state-owner-bootstrap-store-id",
+                store_id,
+            ]
+        )
+
+    captured = capfd.readouterr()
+    assert captured.err == (
+        "lgcvf-daemon-diagnostic@1 phase=owner_attach type=TypeError\n"
+    )
+    assert sentinel not in captured.err
+    assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
+    assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
+
+
 def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
     parsed = argparse.Namespace(
         todo_path=tmp_path / "tasks.todo.md",

@@ -9,11 +9,11 @@
     "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py": "aac20fad55309266440c1e8f444399e4afd2161d",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "9b5613d1f36c642ffb6ee7acaea7a1b15715ce67",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "2f956991cfb8075739cf8408d3c37773cad732f9",
-    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "6a4bcfa49cb64a0f1edd4ac0e363a08d9dc761a0"
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "7e1ab90ac623ccb7c13a7597a72da77f67824924"
   },
   "fresh_signed_plan_r2_authority_required": true,
   "import_mode": "typed_code_only",
-  "manifest_cid": "sha256:6f88677059f6d1bc4efd6fbf5cfd5ced6ee7f4761b0c5d1ce771f8ddee54abf8",
+  "manifest_cid": "sha256:48d5a9f8117dee02c2325b4d2edf1a833a4ed9fa94cbb86c8dbe1124028f3914",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-casf-import-manifest@1",
   "sealed_predecessor": "22f657a07ed699ef90466fbdf6a61f908f776c54",
   "sealed_predecessor_tree": "99ddd30a0c653800659d92dd9b47c7c0971f3bf2",
