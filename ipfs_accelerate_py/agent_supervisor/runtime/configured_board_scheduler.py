@@ -1310,10 +1310,10 @@ def _configured_board_task_state_snapshots(
                     f"task-state projection entry is unreadable: {entry.path}"
                 ) from exc
             if stat.S_ISLNK(metadata.st_mode):
-                # Daemon log aliases such as managed_daemon.latest.log are not
-                # task-state projections.  A symlink posing as task state is
-                # still fail-closed.
-                if not entry.name.endswith("_task_state.json"):
+                # The managed daemon's latest-log alias is not task state.
+                # Every other symbolic entry can conceal attempt state and
+                # therefore remains fail-closed.
+                if entry.name.endswith("_managed_daemon.latest.log"):
                     continue
                 raise ConfiguredBoardError(
                     f"task-state projection entry is a symbolic link: {entry.path}"
@@ -6884,16 +6884,28 @@ def _launch_detached_plan_bound_coordinator(
                 process,
                 observed_start_ticks=0,
             )
+        if not fenced:
+            exc.add_note(
+                "detached coordinator failure could not be exactly fenced; "
+                "preserving PID projection and control-plane capsule"
+            )
+            assert process is not None
+            try:
+                _repair_unreaped_coordinator_pid_projection(
+                    pid_path,
+                    descriptor,
+                    reserved_identity,
+                    process.pid,
+                )
+            except ConfiguredBoardError as projection_error:
+                exc.add_note(str(projection_error))
+            raise
         _remove_reserved_coordinator_pid(pid_path, reserved_identity)
         if capsule_parent is not None:
             try:
                 shutil.rmtree(capsule_parent)
             except OSError:
                 pass
-        if not fenced:
-            raise ConfiguredBoardError(
-                "detached coordinator failure could not be exactly fenced"
-            ) from exc
         raise
     finally:
         os.close(descriptor)
@@ -7212,16 +7224,28 @@ def _launch_detached_receipt_coordinator(
                 process,
                 observed_start_ticks=observed_start_ticks,
             )
+        if not fenced:
+            fence_error = ConfiguredBoardError(
+                "receipt coordinator failure could not be exactly fenced; "
+                "preserving PID projection and control-plane capsule"
+            )
+            assert process is not None
+            try:
+                _repair_unreaped_coordinator_pid_projection(
+                    pid_path,
+                    descriptor,
+                    reserved_identity,
+                    process.pid,
+                )
+            except ConfiguredBoardError as projection_error:
+                fence_error.add_note(str(projection_error))
+            raise fence_error from exc
         _remove_reserved_coordinator_pid(pid_path, reserved_identity)
         if capsule_parent is not None:
             try:
                 shutil.rmtree(capsule_parent)
             except OSError:
                 pass
-        if not fenced:
-            raise ConfiguredBoardError(
-                "receipt coordinator failure could not be exactly fenced"
-            ) from exc
         raise
     finally:
         os.close(descriptor)

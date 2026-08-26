@@ -2191,12 +2191,14 @@ def test_detached_unreaped_coordinator_preserves_pid_projection(
         lambda **_kwargs: (b"tracked", "sha256:tracked"),
     )
     sealed_descriptor = os.open(os.devnull, os.O_RDONLY)
-    pin = SimpleNamespace(capsule_root=str(tmp_path / "authority" / "capsule"))
+    capsule_parent = tmp_path / "authority"
+    capsule_parent.mkdir()
+    pin = SimpleNamespace(capsule_root=str(capsule_parent / "capsule"))
     sealed = SimpleNamespace(descriptor=sealed_descriptor)
     monkeypatch.setattr(
         scheduler_module,
         "_materialize_plan_bound_control_plane",
-        lambda _board: (pin, sealed, tmp_path / "authority"),
+        lambda _board: (pin, sealed, capsule_parent),
     )
     monkeypatch.setattr(
         scheduler_module,
@@ -2208,13 +2210,6 @@ def test_detached_unreaped_coordinator_preserves_pid_projection(
         "_plan_bound_coordinator_module_argv",
         lambda *_args, **_kwargs: [],
     )
-    cleanup_calls: list[object] = []
-    monkeypatch.setattr(
-        scheduler_module,
-        "_cleanup_plan_bound_control_plane",
-        lambda *_args, **_kwargs: cleanup_calls.append((_args, _kwargs)),
-    )
-
     class StartedProcess:
         pid = 444444
 
@@ -2240,10 +2235,8 @@ def test_detached_unreaped_coordinator_preserves_pid_projection(
     )
     monkeypatch.setattr(
         scheduler_module,
-        "_terminate_plan_bound_coordinator",
-        lambda _process: (_ for _ in ()).throw(
-            ConfiguredBoardError("coordinator remained unreaped")
-        ),
+        "_fence_exact_coordinator_group",
+        lambda _process, *, observed_start_ticks: False,
     )
 
     with pytest.raises(RuntimeError, match="PID publication failed") as captured:
@@ -2252,11 +2245,14 @@ def test_detached_unreaped_coordinator_preserves_pid_projection(
             implement=False,
             duration_seconds=1.0,
         )
-    assert any("coordinator remained unreaped" in note for note in captured.value.__notes__)
+    assert any(
+        "could not be exactly fenced" in note
+        for note in captured.value.__notes__
+    )
     pid_path = board.path(board.runtime_paths["state"]) / "configured-board-master.pid"
     assert pid_path.exists()
     assert pid_path.read_bytes() == b"444444\n"
-    assert cleanup_calls == []
+    assert capsule_parent.is_dir()
     pid_path.unlink()
 
 
@@ -3224,7 +3220,16 @@ def test_detached_launch_default_output_remains_the_full_plan(
     monkeypatch: pytest.MonkeyPatch,
     capfd: pytest.CaptureFixture[str],
 ) -> None:
-    board = SimpleNamespace()
+    board = SimpleNamespace(
+        board_namespace="default-output-test",
+        payload={
+            "launch_policy": {
+                "blockers": [],
+                "bypass_prohibited": True,
+                "live_multi_supervisor_allowed": True,
+            }
+        },
+    )
     projection_repair = {
         "enabled": False,
         "repaired": False,
@@ -3885,6 +3890,34 @@ def test_v3_population_rejects_malformed_task_identity_projection(
                 },
             ),
         )
+
+
+def test_v3_materializer_ignores_managed_daemon_latest_log_alias(
+    tmp_path: Path,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    state_root = board.path(board.runtime_paths["state"])
+    state_root.mkdir(parents=True, exist_ok=True)
+    log_path = state_root / "test_managed_daemon.20260826.log"
+    _write(log_path, "managed daemon output\n")
+    (state_root / "test_managed_daemon.latest.log").symlink_to(log_path.name)
+
+    receipt = materialize_configured_board_execution_plan(
+        board,
+        now_ms=PLAN_NOW,
+        host_capacity_snapshot=_host_capacity(lanes=1),
+        provider_capacity_snapshots=_provider_capacity(lanes=1),
+    )
+
+    assert receipt is not None
+    assert tuple(
+        task_id
+        for execution_slice in receipt.slice_manifest.slices
+        for task_id in execution_slice.task_ids
+    ) == ("TEST-A",)
 
 
 def test_v3_materializer_rejects_unsafe_or_ambiguous_attempt_state(
