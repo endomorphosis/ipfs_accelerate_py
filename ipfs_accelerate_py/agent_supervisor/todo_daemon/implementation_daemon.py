@@ -194,6 +194,7 @@ from ..task_sources.database_task_source import (
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
 )
 from ..task_sources.intent_repository import (
+    DATABASE_CLAIM_POLICY_SCHEMA,
     DATABASE_VIRGIN_TASK_TRANSFER_MODE,
     DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
     database_task_alias_home_shard_index,
@@ -87396,6 +87397,303 @@ class DatabaseImplementationDaemon:
                 )
             return lineage
 
+        claim_policy_fields = {
+            "task_prefix",
+            "task_shard_count",
+            "task_shard_index",
+            "strict_task_sharding",
+            "idle_lane_work_stealing",
+        }
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        preserved_owner_fields = {"unknown_callback_reopen_count"}
+
+        def trusted_store_claim_authority() -> tuple[str, str]:
+            """Return the exact policy/generation stamped by the state owner."""
+
+            from ..runtime.multi_supervisor_runner import DATABASE_PROGRAM_JSON_ENV
+
+            expected_policy = {
+                "schema": DATABASE_CLAIM_POLICY_SCHEMA,
+                "task_prefix": self.task_prefix,
+                "task_shard_count": self.task_shard_count,
+                "strict_task_sharding": self.strict_task_sharding,
+                "idle_lane_work_stealing": self.idle_lane_work_stealing,
+            }
+            raw_program = str(
+                os.environ.get(DATABASE_PROGRAM_JSON_ENV, "") or ""
+            ).strip()
+            policy_id = ""
+            if raw_program:
+                try:
+                    program = json.loads(raw_program)
+                except json.JSONDecodeError as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        "validation retry successor store program is malformed"
+                    ) from exc
+                policy = (
+                    program.get("claim_policy")
+                    if isinstance(program, Mapping)
+                    else None
+                )
+                if policy is not None:
+                    if (
+                        not isinstance(policy, Mapping)
+                        or dict(policy) != expected_policy
+                    ):
+                        raise DatabaseImplementationAuthorityError(
+                            "validation retry successor claim policy differs "
+                            "from the trusted store policy"
+                        )
+                    policy_id = content_identity(expected_policy)
+            generation = str(
+                os.environ.get(
+                    "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+                    "",
+                )
+                or ""
+            ).strip()
+            return policy_id, generation
+
+        trusted_claim_policy_id, trusted_store_generation = (
+            trusted_store_claim_authority()
+        )
+
+        def verified_owner_preserved_fields(
+            receipt: Mapping[str, Any],
+            *,
+            label: str,
+        ) -> tuple[set[str], int | None]:
+            carried = set(receipt) & preserved_owner_fields
+            if not carried:
+                return set(), None
+            reopen_count = receipt.get("unknown_callback_reopen_count")
+            if (
+                carried != preserved_owner_fields
+                or isinstance(reopen_count, bool)
+                or not isinstance(reopen_count, int)
+                or reopen_count < 0
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt has an "
+                    "invalid preserved callback-reopen count"
+                )
+            return carried, int(reopen_count)
+
+        def verified_transfer_authority(
+            receipt: Mapping[str, Any],
+            receipt_body: Mapping[str, Any],
+            *,
+            label: str,
+            require_claim_route: bool,
+        ) -> tuple[set[str], dict[str, Any] | None]:
+            carried = set(receipt) & transfer_fields
+            request = receipt.get("virgin_task_transfer_request")
+            raw_binding = receipt.get("virgin_task_transfer")
+            raw_cursor = receipt.get("virgin_task_transfer_claim_cursor")
+            task_alias = str(attempt.task_alias or "").strip()
+            home_shard_index = database_task_alias_home_shard_index(
+                task_alias,
+                self.task_shard_count,
+            )
+            foreign_lane = home_shard_index != self.task_shard_index
+            transfer_policy = bool(
+                self.strict_task_sharding
+                and self.task_shard_count > 1
+                and self.idle_lane_work_stealing
+                == DATABASE_VIRGIN_TASK_TRANSFER_MODE
+            )
+
+            if request is not None:
+                expected_request = {
+                    "schema": DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+                    "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                    "task_shard_count": self.task_shard_count,
+                    "recipient_shard_index": self.task_shard_index,
+                    "task_prefix": self.task_prefix,
+                }
+                if (
+                    not require_claim_route
+                    or carried != {"virgin_task_transfer_request"}
+                    or not isinstance(request, Mapping)
+                    or dict(request) != expected_request
+                    or not transfer_policy
+                    or not foreign_lane
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt has an "
+                        "invalid virgin-transfer request"
+                    )
+                # This is the exact client-side request emitted before the
+                # owner CAS.  A durable revision must contain the owner's
+                # content-addressed binding and cursor instead; accepting the
+                # request here would turn an unstamped proposal into replay
+                # authority.
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt retained an "
+                    "unstamped virgin-transfer request"
+                )
+
+            binding_carried = {
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            }
+            if raw_binding is not None or raw_cursor is not None:
+                if (
+                    carried != binding_carried
+                    or not isinstance(raw_binding, Mapping)
+                    or not isinstance(raw_cursor, Mapping)
+                    or not transfer_policy
+                    or not foreign_lane
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt has an "
+                        "incomplete virgin-transfer binding"
+                    )
+                historical_task = {
+                    "task_cid": attempt.task_cid,
+                    "task_alias": task_alias,
+                    "status": "in_progress",
+                    "revision": 1,
+                    "body": dict(receipt_body),
+                }
+                try:
+                    binding = database_virgin_transfer_binding_for_task(
+                        historical_task,
+                        shard_count=self.task_shard_count,
+                    )
+                except Exception as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt has an "
+                        "invalid virgin-transfer binding"
+                    ) from exc
+                if binding is None:
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt lost its "
+                        "virgin-transfer binding"
+                    )
+                expected_binding = {
+                    "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                    "task_cid": attempt.task_cid,
+                    "task_alias": task_alias,
+                    "task_prefix": self.task_prefix,
+                    "task_shard_count": self.task_shard_count,
+                    "recipient_shard_index": self.task_shard_index,
+                    "claim_policy_id": trusted_claim_policy_id,
+                    "store_generation": trusted_store_generation,
+                }
+                if any(
+                    binding.get(name) != value
+                    for name, value in expected_binding.items()
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt changed "
+                        "its virgin-transfer store authority"
+                    )
+                cursor_identity = {
+                    "binding_id": binding.get("binding_id"),
+                    "claim_id": receipt.get("claim_id"),
+                    "attempt_id": receipt.get("attempt_id"),
+                    "owner_session_id": receipt.get("owner_session_id"),
+                    "lease_id": receipt.get("lease_id"),
+                    "fencing_token": receipt.get("fencing_token"),
+                    "fence_epoch": receipt.get("fence_epoch"),
+                }
+                if any(
+                    raw_cursor.get(name) != value
+                    for name, value in cursor_identity.items()
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt changed "
+                        "its virgin-transfer claim cursor"
+                    )
+                claimed_from_revision = receipt.get("claimed_from_revision")
+                if (
+                    claimed_from_revision is not None
+                    and raw_cursor.get("claimed_from_revision")
+                    != claimed_from_revision
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"validation retry successor {label} receipt changed "
+                        "its virgin-transfer claim revision"
+                    )
+                return carried, {
+                    "kind": "binding",
+                    "binding": dict(binding),
+                    "cursor": dict(raw_cursor),
+                }
+
+            if carried:
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt has malformed "
+                    "virgin-transfer authority"
+                )
+            if require_claim_route and transfer_policy and foreign_lane:
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt has no exact "
+                    "foreign-lane transfer authority"
+                )
+            return set(), None
+
+        def verified_claim_policy(
+            receipt: Mapping[str, Any],
+            receipt_body: Mapping[str, Any],
+            *,
+            label: str,
+        ) -> tuple[set[str], dict[str, Any] | None, int | None]:
+            expected_policy = {
+                "task_prefix": self.task_prefix,
+                "task_shard_count": self.task_shard_count,
+                "task_shard_index": self.task_shard_index,
+                "strict_task_sharding": self.strict_task_sharding,
+                "idle_lane_work_stealing": self.idle_lane_work_stealing,
+            }
+            if any(
+                type(receipt.get(name)) is not type(value)
+                or receipt.get(name) != value
+                for name, value in expected_policy.items()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt changed its "
+                    "database claim policy"
+                )
+            task_alias = str(attempt.task_alias or "").strip()
+            if self.task_prefix and not task_alias.startswith(self.task_prefix):
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt is outside "
+                    "its database task prefix"
+                )
+            transfer_carried, transfer = verified_transfer_authority(
+                receipt,
+                receipt_body,
+                label=label,
+                require_claim_route=True,
+            )
+            if (
+                self.strict_task_sharding
+                and transfer is None
+                and database_task_alias_home_shard_index(
+                    task_alias,
+                    self.task_shard_count,
+                )
+                != self.task_shard_index
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"validation retry successor {label} receipt changed its "
+                    "strict task shard"
+                )
+            preserved_carried, reopen_count = (
+                verified_owner_preserved_fields(receipt, label=label)
+            )
+            return (
+                claim_policy_fields | transfer_carried | preserved_carried,
+                transfer,
+                reopen_count,
+            )
+
         history = self._task_revision_history_for_recovery(attempt.task_cid)
         history_by_revision = {
             int(item["revision"]): item
@@ -87457,6 +87755,23 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "validation retry successor terminal receipt is malformed"
             )
+        terminal_transfer_fields, terminal_transfer = (
+            verified_transfer_authority(
+                terminal_receipt,
+                terminal_body,
+                label="terminal",
+                require_claim_route=False,
+            )
+        )
+        terminal_preserved_fields, terminal_reopen_count = (
+            verified_owner_preserved_fields(
+                terminal_receipt,
+                label="terminal",
+            )
+        )
+        terminal_fields.update(
+            terminal_transfer_fields | terminal_preserved_fields
+        )
         terminal_route = verified_route_lineage(
             terminal_receipt,
             terminal_fields,
@@ -87522,7 +87837,7 @@ class DatabaseImplementationDaemon:
             "lease_id",
             "validation_retry_source_attempt_id",
             "validation_retry_seed",
-        }
+        } | claim_policy_fields
         claim_operation = (
             str(claim_receipt.get("operation") or "")
             if isinstance(claim_receipt, Mapping)
@@ -87557,6 +87872,19 @@ class DatabaseImplementationDaemon:
                     "attempt_execution_revision",
                 }
             )
+        claim_transfer: dict[str, Any] | None = None
+        claim_reopen_count: int | None = None
+        if isinstance(claim_receipt, Mapping) and isinstance(claim_body, Mapping):
+            (
+                conditional_claim_fields,
+                claim_transfer,
+                claim_reopen_count,
+            ) = verified_claim_policy(
+                claim_receipt,
+                claim_body,
+                label="claim",
+            )
+            claim_fields.update(conditional_claim_fields)
         if (
             claim_record is None
             or claim_record.get("status") != "in_progress"
@@ -87620,6 +87948,67 @@ class DatabaseImplementationDaemon:
             claim_fields,
             label="claim",
         )
+        if typed_claim:
+            reservation_revision = claim_revision - 1
+            reservation_record = history_by_revision.get(
+                reservation_revision
+            )
+            reservation_body = (
+                reservation_record.get("body")
+                if reservation_record is not None
+                else None
+            )
+            reservation_receipt = (
+                reservation_body.get("completion_receipt")
+                if isinstance(reservation_body, Mapping)
+                else None
+            )
+            if (
+                reservation_record is None
+                or reservation_record.get("status") != "in_progress"
+                or not isinstance(reservation_body, Mapping)
+                or not isinstance(reservation_receipt, Mapping)
+                or reservation_receipt.get("operation") != "database_claim"
+                or reservation_receipt.get("claim_phase_schema")
+                != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                or reservation_receipt.get("claimed_from_revision")
+                != claim_revision - 2
+                or not isinstance(
+                    reservation_receipt.get("claim_process_attestation"),
+                    Mapping,
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor typed claim has no exact "
+                    "reservation revision"
+                )
+            reservation_fields = claim_fields - {
+                "admitted_from_revision",
+                "attempt_execution_phase",
+                "attempt_execution_revision",
+            }
+            reservation_route = verified_route_lineage(
+                reservation_receipt,
+                reservation_fields,
+                label="claim reservation",
+            )
+            expected_admission = {
+                **dict(reservation_receipt),
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": reservation_revision,
+                "attempt_execution_phase": ATTEMPT_PHASE_CLAIMED,
+                "attempt_execution_revision": 1,
+            }
+            if (
+                _database_daemon_json(dict(claim_receipt))
+                != _database_daemon_json(expected_admission)
+                or reservation_route != claim_route
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor typed admission differs from "
+                    "its exact reservation"
+                )
         source_attempt_id = str(
             claim_receipt.get("validation_retry_source_attempt_id") or ""
         )
@@ -87735,6 +88124,28 @@ class DatabaseImplementationDaemon:
         expected_source_retry_revision = claim_revision - (
             2 if typed_claim else 1
         )
+        source_retry_body = source_retry_record.get("body")
+        if not isinstance(source_retry_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor source control body is malformed"
+            )
+        source_transfer_fields, source_transfer = (
+            verified_transfer_authority(
+                source_retry_receipt,
+                source_retry_body,
+                label="source retry",
+                require_claim_route=False,
+            )
+        )
+        source_preserved_fields, source_reopen_count = (
+            verified_owner_preserved_fields(
+                source_retry_receipt,
+                label="source retry",
+            )
+        )
+        source_retry_fields.update(
+            source_transfer_fields | source_preserved_fields
+        )
         source_retry_route = verified_route_lineage(
             source_retry_receipt,
             source_retry_fields,
@@ -87800,6 +88211,60 @@ class DatabaseImplementationDaemon:
         ):
             raise DatabaseImplementationConflictError(
                 "validation retry successor execution-route lineage changed"
+            )
+        transfer_lineages = (
+            source_transfer,
+            claim_transfer,
+            terminal_transfer,
+        )
+        bound_transfers = [
+            transfer
+            for transfer in transfer_lineages
+            if transfer is not None and transfer.get("kind") == "binding"
+        ]
+        if bound_transfers:
+            if (
+                len(bound_transfers) != len(transfer_lineages)
+                or not all(
+                    transfer.get("binding")
+                    == bound_transfers[0].get("binding")
+                    for transfer in bound_transfers[1:]
+                )
+                or claim_transfer.get("cursor")
+                != terminal_transfer.get("cursor")
+            ):
+                raise DatabaseImplementationConflictError(
+                    "validation retry successor virgin-transfer lineage changed"
+                )
+            source_cursor = source_transfer.get("cursor")
+            claim_cursor = claim_transfer.get("cursor")
+            if (
+                not isinstance(source_cursor, Mapping)
+                or not isinstance(claim_cursor, Mapping)
+                or isinstance(source_cursor.get("claimed_from_revision"), bool)
+                or not isinstance(
+                    source_cursor.get("claimed_from_revision"), int
+                )
+                or claim_cursor.get("claimed_from_revision")
+                != claimed_from_revision
+                or int(claim_cursor["claimed_from_revision"])
+                <= int(source_cursor["claimed_from_revision"])
+            ):
+                raise DatabaseImplementationConflictError(
+                    "validation retry successor virgin-transfer claim cursor "
+                    "did not advance"
+                )
+        reopen_counts = (
+            source_reopen_count,
+            claim_reopen_count,
+            terminal_reopen_count,
+        )
+        if any(value is not None for value in reopen_counts) and (
+            any(value is None for value in reopen_counts)
+            or len(set(reopen_counts)) != 1
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor callback-reopen lineage changed"
             )
 
         get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
@@ -89262,12 +89727,81 @@ class DatabaseImplementationDaemon:
             "execution_route_policy_id",
             "execution_route_origin_revision",
         }
+        transfer_fields = {
+            "virgin_task_transfer_request",
+            "virgin_task_transfer",
+            "virgin_task_transfer_claim_cursor",
+        }
+        owner_preserved_fields = {"unknown_callback_reopen_count"}
         receipt_fields = set(receipt) if isinstance(receipt, Mapping) else set()
         carried_route_fields = receipt_fields & route_fields
+        carried_transfer_fields = receipt_fields & transfer_fields
+        carried_owner_fields = receipt_fields & owner_preserved_fields
+        if carried_transfer_fields:
+            if (
+                carried_transfer_fields
+                != {
+                    "virgin_task_transfer",
+                    "virgin_task_transfer_claim_cursor",
+                }
+                or not isinstance(receipt, Mapping)
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor control receipt retained an "
+                    "unstamped or incomplete virgin-transfer request"
+                )
+            try:
+                current_transfer = database_virgin_transfer_binding_for_task(
+                    task,
+                    shard_count=self.task_shard_count,
+                )
+            except Exception as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor control receipt has an invalid "
+                    "virgin-transfer binding"
+                ) from exc
+            if (
+                current_transfer is None
+                or current_transfer.get("mode")
+                != DATABASE_VIRGIN_TASK_TRANSFER_MODE
+                or current_transfer.get("task_cid") != attempt.task_cid
+                or current_transfer.get("task_alias") != attempt.task_alias
+                or current_transfer.get("task_prefix") != self.task_prefix
+                or current_transfer.get("task_shard_count")
+                != self.task_shard_count
+                or current_transfer.get("recipient_shard_index")
+                != self.task_shard_index
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor control receipt changed its "
+                    "virgin-transfer policy"
+                )
+        if carried_owner_fields:
+            reopen_count = (
+                receipt.get("unknown_callback_reopen_count")
+                if isinstance(receipt, Mapping)
+                else None
+            )
+            if (
+                carried_owner_fields != owner_preserved_fields
+                or isinstance(reopen_count, bool)
+                or not isinstance(reopen_count, int)
+                or reopen_count < 0
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor control receipt has an invalid "
+                    "preserved callback-reopen count"
+                )
         if (
             not isinstance(receipt, Mapping)
             or carried_route_fields not in (set(), route_fields)
-            or receipt_fields != expected_fields | carried_route_fields
+            or receipt_fields
+            != (
+                expected_fields
+                | carried_route_fields
+                | carried_transfer_fields
+                | carried_owner_fields
+            )
         ):
             raise DatabaseImplementationAuthorityError(
                 "validation retry successor control receipt is malformed"
@@ -89352,9 +89886,41 @@ class DatabaseImplementationDaemon:
             and set(terminal_receipt) & route_fields == route_fields
             else None
         )
+        historical_transfer_fields = (
+            set(terminal_receipt) & transfer_fields
+            if isinstance(terminal_receipt, Mapping)
+            else set()
+        )
+        historical_owner_fields = (
+            set(terminal_receipt) & owner_preserved_fields
+            if isinstance(terminal_receipt, Mapping)
+            else set()
+        )
         if current_route != historical_route:
             raise DatabaseImplementationConflictError(
                 "validation retry successor recovery rotated its execution route"
+            )
+        if (
+            carried_transfer_fields != historical_transfer_fields
+            or any(
+                receipt.get(field) != terminal_receipt.get(field)
+                for field in carried_transfer_fields
+            )
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor recovery rotated its "
+                "virgin-transfer lineage"
+            )
+        if (
+            carried_owner_fields != historical_owner_fields
+            or any(
+                receipt.get(field) != terminal_receipt.get(field)
+                for field in carried_owner_fields
+            )
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor recovery changed its preserved "
+                "callback-reopen count"
             )
         if (
             expected_recovery_evidence is not None

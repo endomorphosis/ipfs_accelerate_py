@@ -5348,14 +5348,15 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
 
 
 @pytest.mark.parametrize(
-    "path_count",
-    (2, 192),
-    ids=("ordinary", "bounded-large-receipt"),
+    ("path_count", "transfer_claim"),
+    ((2, False), (192, False), (2, True)),
+    ids=("ordinary", "bounded-large-receipt", "virgin-transfer"),
 )
 def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     path_count: int,
+    transfer_claim: bool,
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -5467,6 +5468,27 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
             historical_claim_body,
         )
 
+    if transfer_claim:
+        monkeypatch.setenv(
+            DATABASE_PROGRAM_JSON_ENV,
+            json.dumps(
+                {
+                    "claim_policy": {
+                        "schema": DATABASE_CLAIM_POLICY_SCHEMA,
+                        "task_prefix": "DQP-",
+                        "task_shard_count": 2,
+                        "strict_task_sharding": True,
+                        "idle_lane_work_stealing": (
+                            DATABASE_VIRGIN_TASK_TRANSFER_MODE
+                        ),
+                    }
+                }
+            ),
+        )
+        monkeypatch.setenv(
+            "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+            "generation:successor-transfer-test",
+        )
     daemon = _open_daemon(
         tmp_path,
         session="session:seed-order-successor-recovery",
@@ -5475,16 +5497,25 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
         lease_ms=5_000,
         clock_ms=lambda: now["ms"],
         validation_retry_successor_recovery_fn=replay,
+        task_shard_count=2 if transfer_claim else 1,
+        task_shard_index=0,
+        strict_task_sharding=transfer_claim,
+        idle_lane_work_stealing=(
+            DATABASE_VIRGIN_TASK_TRANSFER_MODE if transfer_claim else ""
+        ),
+        task_prefix="DQP-" if transfer_claim else "",
     )
     holder["daemon"] = daemon
     try:
-        population = _population(1)
-        population["tasks"][0]["outputs"] = [
+        population = _population(2 if transfer_claim else 1)
+        target_task_index = 1 if transfer_claim else 0
+        target_task_cid = f"task:cid:{target_task_index + 1:03d}"
+        population["tasks"][target_task_index]["outputs"] = [
             {"path": path}
             for path in declared_paths
         ]
         daemon.materialize_population(population)
-        initial_task = daemon.task_source.get("task:cid:001")
+        initial_task = daemon.task_source.get(target_task_cid)
         assert initial_task is not None
         route_binding = {
             "policy_id": "policy:successor-route-test",
@@ -5549,6 +5580,7 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
         source_result = daemon.run_once()
         source = daemon.get_attempt(source_result["attempt_id"])
         assert source is not None and source.attempt_number == 1
+        assert source.task_cid == target_task_cid
         assert daemon.task_source.get(source.task_cid).status == "retrying"
 
         now["ms"] = 7_000
@@ -5758,6 +5790,157 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
             assert verified_typed["recovery_receipt"][
                 "target_claim_control_revision"
             ] == source_retry_revision + 2
+
+            expected_claim_policy = {
+                "task_prefix": daemon.task_prefix,
+                "task_shard_count": daemon.task_shard_count,
+                "task_shard_index": daemon.task_shard_index,
+                "strict_task_sharding": daemon.strict_task_sharding,
+                "idle_lane_work_stealing": (
+                    daemon.idle_lane_work_stealing
+                ),
+            }
+            assert {
+                field: admission_receipt[field]
+                for field in expected_claim_policy
+            } == expected_claim_policy
+
+            def assert_typed_projection_rejected(
+                projected_revisions: list[dict[str, object]],
+                *,
+                projected_blocked: object = typed_blocked,
+            ) -> None:
+                corrupted_projection = history_projection_for(
+                    projected_revisions
+                )
+                with monkeypatch.context() as authority_patch:
+                    authority_patch.setattr(
+                        type(daemon.task_source),
+                        "task_revision_history_projection",
+                        lambda _source, _task_cid: corrupted_projection,
+                    )
+                    with pytest.raises(
+                        (
+                            DatabaseImplementationAuthorityError,
+                            DatabaseImplementationConflictError,
+                        )
+                    ):
+                        daemon._verified_validation_retry_successor_authority(
+                            target,
+                            projected_blocked,
+                        )
+
+            policy_corruptions = {
+                "task_prefix": "FOREIGN-",
+                "task_shard_count": daemon.task_shard_count + 1,
+                "task_shard_index": daemon.task_shard_index + 1,
+                "strict_task_sharding": not daemon.strict_task_sharding,
+                "idle_lane_work_stealing": (
+                    ""
+                    if daemon.idle_lane_work_stealing
+                    else DATABASE_VIRGIN_TASK_TRANSFER_MODE
+                ),
+            }
+            for field, forged_value in policy_corruptions.items():
+                corrupted_revisions = json.loads(
+                    json.dumps(typed_revisions)
+                )
+                corrupted_revisions[claim_index + 1]["body"][
+                    "completion_receipt"
+                ][field] = forged_value
+                assert_typed_projection_rejected(corrupted_revisions)
+
+            preserved_revisions = json.loads(json.dumps(typed_revisions))
+            preserved_operations = {
+                "database_portal_validation_retry",
+                "database_portal_validation_retry_recovery",
+                "database_claim",
+                "database_attempt_admitted",
+                "database_portal_terminal_failure",
+            }
+            for revision in preserved_revisions:
+                revision_body = revision.get("body")
+                revision_receipt = (
+                    revision_body.get("completion_receipt")
+                    if isinstance(revision_body, Mapping)
+                    else None
+                )
+                if (
+                    isinstance(revision_receipt, dict)
+                    and revision_receipt.get("operation")
+                    in preserved_operations
+                    and revision_receipt.get("attempt_id")
+                    in {source.attempt_id, target.attempt_id}
+                ):
+                    revision_receipt["unknown_callback_reopen_count"] = 2
+            preserved_terminal = preserved_revisions[claim_index + 2]
+            preserved_blocked = replace(
+                typed_blocked,
+                body=dict(preserved_terminal["body"]),
+            )
+            preserved_projection = history_projection_for(
+                preserved_revisions
+            )
+            with monkeypatch.context() as preserved_patch:
+                preserved_patch.setattr(
+                    type(daemon.task_source),
+                    "task_revision_history_projection",
+                    lambda _source, _task_cid: preserved_projection,
+                )
+                daemon._verified_validation_retry_successor_authority(
+                    target,
+                    preserved_blocked,
+                )
+            changed_reopen_count = json.loads(
+                json.dumps(preserved_revisions)
+            )
+            changed_reopen_count[claim_index + 2]["body"][
+                "completion_receipt"
+            ]["unknown_callback_reopen_count"] = 3
+            changed_count_blocked = replace(
+                preserved_blocked,
+                body=dict(changed_reopen_count[claim_index + 2]["body"]),
+            )
+            assert_typed_projection_rejected(
+                changed_reopen_count,
+                projected_blocked=changed_count_blocked,
+            )
+
+            if transfer_claim:
+                for transfer_field, nested_field, forged_value in (
+                    (
+                        "virgin_task_transfer",
+                        "recipient_shard_index",
+                        1,
+                    ),
+                    (
+                        "virgin_task_transfer_claim_cursor",
+                        "claim_id",
+                        "claim:forged",
+                    ),
+                ):
+                    corrupted_revisions = json.loads(
+                        json.dumps(typed_revisions)
+                    )
+                    corrupted_revisions[claim_index + 1]["body"][
+                        "completion_receipt"
+                    ][transfer_field][nested_field] = forged_value
+                    assert_typed_projection_rejected(corrupted_revisions)
+
+                unstamped_request = json.loads(json.dumps(typed_revisions))
+                unstamped_receipt = unstamped_request[claim_index + 1][
+                    "body"
+                ]["completion_receipt"]
+                unstamped_receipt.pop("virgin_task_transfer")
+                unstamped_receipt.pop("virgin_task_transfer_claim_cursor")
+                unstamped_receipt["virgin_task_transfer_request"] = {
+                    "schema": DATABASE_VIRGIN_TASK_TRANSFER_REQUEST_SCHEMA,
+                    "mode": DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+                    "task_shard_count": daemon.task_shard_count,
+                    "recipient_shard_index": daemon.task_shard_index,
+                    "task_prefix": daemon.task_prefix,
+                }
+                assert_typed_projection_rejected(unstamped_request)
 
             for corrupt in ("partial", "rotated"):
                 corrupted_revisions = json.loads(
