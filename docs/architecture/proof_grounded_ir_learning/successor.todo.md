@@ -304,7 +304,7 @@ evidence.
 - Required proof or evaluation evidence: training, checkpoint, proof, evaluation, resource, reducer-CAS, and paired-comparison receipts
 - Result identity: RESULT(PGIR-206) in successor-v1
 - Outputs: data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/
-- Validation: /usr/bin/python3.12 -S data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/build_not_run.py --check; /usr/bin/python3.12 -S data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/verify_not_run.py; python -m pytest -q test/api/test_agent_supervisor_implementation_protected_paths.py::test_external_protected_update_preserves_candidate_without_consuming_attempt test/api/test_agent_supervisor_implementation_protected_paths.py::test_reconciliation_keeps_late_untrusted_board_commit_latched test/api/test_agent_supervisor_implementation_protected_paths.py::test_operator_clearance_requires_exact_untrusted_commit_and_writes_receipt test/api/test_agent_supervisor_todo_daemon_port.py::test_implementation_supervisor_reconciles_clean_backlogged_worktree
+- Validation: python -S data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/build_not_run.py --check; python -S data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/verify_not_run.py; python -m pytest -q test/api/test_agent_supervisor_implementation_protected_paths.py::test_external_protected_update_preserves_candidate_without_consuming_attempt test/api/test_agent_supervisor_implementation_protected_paths.py::test_reconciliation_keeps_late_untrusted_board_commit_latched test/api/test_agent_supervisor_implementation_protected_paths.py::test_operator_clearance_requires_exact_untrusted_commit_and_writes_receipt test/api/test_agent_supervisor_todo_daemon_port.py::test_implementation_supervisor_reconciles_clean_backlogged_worktree
 - Bundle: pgir/successor/r1-r6
 - Parallel lane: experiment-orchestrator
 - Predicted files: data/agent_supervisor/proof_grounded_ir_learning/experiments/successor-v1/
@@ -337,7 +337,7 @@ evidence.
 - Required proof or evaluation evidence: manifest, evaluation, proof, promotion, publication, and complete result-graph verification
 - Result identity: RESULT(PGIR-207) in successor-v1
 - Outputs: data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/, docs/architecture/proof_grounded_ir_learning/successor-v1/
-- Validation: /usr/bin/python3.12 -S data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/verify_qualification.py --fresh-recursive; python -m pytest -q test/api/test_agent_supervisor_goal_completion.py test/api/test_agent_supervisor_proof_goal_completion.py
+- Validation: python -S data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/verify_qualification.py --fresh-recursive; python -m pytest -q test/api/test_agent_supervisor_goal_completion.py test/api/test_agent_supervisor_proof_goal_completion.py
 - Bundle: pgir/successor/qualification
 - Parallel lane: final-qualifier
 - Predicted files: data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/, docs/architecture/proof_grounded_ir_learning/successor-v1/
