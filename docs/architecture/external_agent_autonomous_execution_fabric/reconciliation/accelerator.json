@@ -1,0 +1,158 @@
+{
+  "schema": "ExternalAgentAcceleratorReconciliationTombstone@1",
+  "task_id": "EAAEF-002",
+  "artifact_kind": "declared_output_forward_removal_tombstone",
+  "authority": {
+    "evidence_only": true,
+    "authorizes_history_rewrite": false,
+    "authorizes_runtime_materialization": false,
+    "authorizes_secret_reuse": false,
+    "authorizes_wholesale_lineage_merge": false
+  },
+  "declared_output_resolution": {
+    "materialized_evidence_output": "docs/architecture/external_agent_autonomous_execution_fabric/reconciliation/accelerator.json",
+    "tombstoned_outputs": [
+      "dashboard.pid",
+      "data/model_manager.duckdb.wal",
+      "state/p2p_gpt2_2peer/peer1_queue.duckdb.wal",
+      "state/p2p_gpt2_2peer/peer2_queue.duckdb.wal",
+      "state/smoketest_logs/driver.out",
+      "state/tls/mcpplusplus.crt",
+      "state/tls/mcpplusplus.key",
+      "test/kitchen_sink_models.db.wal"
+    ],
+    "resolution": "The tombstoned outputs are intentionally absent, untracked and ignored. This evidence artifact must never be copied or linked to any tombstoned path."
+  },
+  "reviewed_baseline": {
+    "machine_manifest": {
+      "path": "docs/architecture/external_agent_autonomous_execution_fabric/source_reconciliation_manifest.json",
+      "git_blob": "3fdab8e56fa3168d698289abfbac9062132ed2ce"
+    },
+    "human_report": {
+      "path": "docs/architecture/external_agent_autonomous_execution_fabric/reconciliation_report.md",
+      "git_blob": "1ea6f70d9e22609db614f51cfea78d98949eb5e7"
+    },
+    "repository_manifest_pointer": "/repositories/ipfs_accelerate_py"
+  },
+  "residual_lineages": [
+    {
+      "scope": "dcr_git_authority_and_replay",
+      "branch": "agent/dcr-linked-git-authority-20260808",
+      "head": "d7aac67ee8ca9d06994333323ecd81fbae87e1c7",
+      "merge_base": "34420f615d3eebfefa3cc1a3e4ebf8f51b16afac",
+      "classification": "partially_merged_high_conflict",
+      "safe_to_cherry_pick": false,
+      "disposition": "semantic review and narrow port against current APIs; never merge the branch wholesale"
+    },
+    {
+      "scope": "self_hosting_recovery",
+      "branch": "agent/self-hosting-qualification-v1",
+      "head": "ef2ed37d87d07e7f7b845d67cc948bdbdaa09e14",
+      "merge_base": "7c9f3fa3d2ac14c7b5bfa5036e2fe6fb59f0afda",
+      "classification": "partial_unqualified",
+      "safe_to_cherry_pick": false,
+      "disposition": "review protected recovery-clearance contracts/tests only"
+    },
+    {
+      "scope": "semantic_runtime_residual",
+      "branch": "feat/semantic-runtime-authority",
+      "head": "e10694ce3fbb4129c69553168239c89961f9efb7",
+      "merge_base": "c1e33e8f443253e106c464d7c5b5c341c3095876",
+      "classification": "partially_merged_superseded",
+      "safe_to_cherry_pick": false,
+      "disposition": "review residual vector test and validation delta only"
+    },
+    {
+      "scope": "task_contract_residual",
+      "branch": "origin/fix/pcce-r6-governed-contract-phases",
+      "head": "e7fe9afc6eb9963b8fab715418c1bb0abae2a936",
+      "merge_base": "485edc0871c55b0e2ef21d83bece9fa12c2c8d84",
+      "classification": "potential_duplicate_contract_family",
+      "safe_to_cherry_pick": false,
+      "disposition": "compare with FormalWorkPlan/work-packet/completion contracts before any port"
+    }
+  ],
+  "forward_removal": {
+    "commit": "6764046a61145c3a3bdce727f3b4a254c3271282",
+    "tree": "d858de8c900cd4efea4f7cb9e663841fe85fc2c8",
+    "parent_commit": "c840fd50843c358fd2c89d4914cb6183ecf933b6",
+    "parent_tree": "28d6a1a2f61a4f7ad1b79f292f5b6d170e90a217",
+    "required_checkout_state": [
+      "absent",
+      "untracked",
+      "ignored"
+    ],
+    "history_policy": "metadata_provenance_only_never_checkout_materialization",
+    "supporting_source_blobs_at_removal": {
+      ".gitignore": "01602f696d9f23cc97c3474786541f524ca3f42c",
+      "scripts/systemd/generate_self_signed_cert.py": "af4ef7cac03ab250f758c6da3c0173889c2839ea",
+      "test/api/test_external_agent_source_hygiene.py": "9e1657fd668ccf0487228acdcd09ea95316f915a"
+    },
+    "artifacts": [
+      {
+        "path": "dashboard.pid",
+        "classification": "runtime_pid",
+        "historical_mode": "100755",
+        "historical_blob": "89ec147f5d05f9b8d315c604f6e6a6a41416dd4a",
+        "historical_size_bytes": 5
+      },
+      {
+        "path": "data/model_manager.duckdb.wal",
+        "classification": "database_write_ahead_log",
+        "historical_mode": "100755",
+        "historical_blob": "8df0beeac7587e3f88aea092f4c6e32a99bc4301",
+        "historical_size_bytes": 1726
+      },
+      {
+        "path": "state/p2p_gpt2_2peer/peer1_queue.duckdb.wal",
+        "classification": "database_write_ahead_log",
+        "historical_mode": "100644",
+        "historical_blob": "17961a7b11ae4c4089a8b000925a7bf123d2123f",
+        "historical_size_bytes": 236841
+      },
+      {
+        "path": "state/p2p_gpt2_2peer/peer2_queue.duckdb.wal",
+        "classification": "database_write_ahead_log",
+        "historical_mode": "100644",
+        "historical_blob": "e973eecf4c793ce9ca87737aa5748cd8b5151333",
+        "historical_size_bytes": 234378
+      },
+      {
+        "path": "state/smoketest_logs/driver.out",
+        "classification": "runtime_log",
+        "historical_mode": "100644",
+        "historical_blob": "3d79761986d234723a27e3fefdd574d26a349f3c",
+        "historical_size_bytes": 1212
+      },
+      {
+        "path": "state/tls/mcpplusplus.crt",
+        "classification": "certificate_shaped_runtime_artifact",
+        "historical_mode": "100644",
+        "historical_blob": "d075855b74c45f7115db7d8aa2820bfd99bc2bad",
+        "historical_size_bytes": 1216
+      },
+      {
+        "path": "state/tls/mcpplusplus.key",
+        "classification": "private_key_shaped_secret",
+        "historical_mode": "100644",
+        "historical_blob": "99f45c3f13dbe69b5a236df78e0874209ad0f692",
+        "historical_size_bytes": 1704
+      },
+      {
+        "path": "test/kitchen_sink_models.db.wal",
+        "classification": "database_write_ahead_log",
+        "historical_mode": "100755",
+        "historical_blob": "219fccdce3a073068230f1a5b05af32618ee68a1",
+        "historical_size_bytes": 1704
+      }
+    ]
+  },
+  "replacement_tls": {
+    "generator_path": "scripts/systemd/generate_self_signed_cert.py",
+    "private_key_mode": "0600",
+    "certificate_mode": "0644",
+    "permission_failure": "raise_before_final_path_publication",
+    "historical_private_key_trusted": false,
+    "rotation_required_if_ever_trusted": true
+  }
+}
