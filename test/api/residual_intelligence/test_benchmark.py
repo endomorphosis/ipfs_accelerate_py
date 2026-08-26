@@ -43,20 +43,25 @@ SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 VRIF_PORTAL_BASELINE_COMMIT = "3cf925ca62b583427c2e16843608b688901f6e6e"
 VRIF_PORTAL_BASELINE_TREE = "ccafb2d4bf1dc20dc606eea877c080ed383c54b6"
 # END VRIF-030 PORTAL BASELINE (materializer-owned)
+VRIF_BENCHMARK_ARTIFACT_COMMIT = "0d4fa2bdcd66bac2e5193e8f6e96679433ac322e"
 
 
-def _strict_json_object(path: Path) -> dict[str, Any]:
+def _strict_json_bytes(raw: bytes, *, noun: str) -> dict[str, Any]:
     def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
             if key in result:
-                raise AssertionError(f"{path} contains duplicate key {key!r}")
+                raise AssertionError(f"{noun} contains duplicate key {key!r}")
             result[key] = value
         return result
 
-    value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=object_pairs)
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=object_pairs)
     assert isinstance(value, dict)
     return value
+
+
+def _strict_json_object(path: Path) -> dict[str, Any]:
+    return _strict_json_bytes(path.read_bytes(), noun=str(path))
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -68,6 +73,18 @@ def _git(*args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         timeout=10,
     )
+
+
+def _git_blob(commit: str, path: str) -> bytes:
+    result = subprocess.run(
+        ["git", "show", f"{commit}:{path}"],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    return result.stdout
 
 
 def test_current_artifacts_equal_independent_owner_reconstruction() -> None:
@@ -85,6 +102,20 @@ def test_current_artifacts_equal_independent_owner_reconstruction() -> None:
     assert resolved_tree.returncode == 0
     assert resolved_tree.stdout.strip() == VRIF_PORTAL_BASELINE_TREE
     assert ancestry.returncode == 0
+    artifact_commit = _git(
+        "rev-parse",
+        "--verify",
+        f"{VRIF_BENCHMARK_ARTIFACT_COMMIT}^{{commit}}",
+    )
+    artifact_ancestry = _git(
+        "merge-base",
+        "--is-ancestor",
+        VRIF_BENCHMARK_ARTIFACT_COMMIT,
+        "HEAD",
+    )
+    assert artifact_commit.returncode == 0
+    assert artifact_commit.stdout.strip() == VRIF_BENCHMARK_ARTIFACT_COMMIT
+    assert artifact_ancestry.returncode == 0
 
     manifest = load_manifest(MANIFEST)
     freeze = manifest["benchmark_freeze"]
@@ -113,8 +144,34 @@ def test_current_artifacts_equal_independent_owner_reconstruction() -> None:
         "docs/architecture/residual_intelligence_inventory/"
         "residual_model_call_inventory.json"
     )
-    admission = _strict_json_object(ROOT / admission_path)
-    split = _strict_json_object(ROOT / split_path)
+    artifact_blobs = {
+        path: _git_blob(VRIF_BENCHMARK_ARTIFACT_COMMIT, path)
+        for path in (
+            *objective_paths,
+            operation_path,
+            provider_path,
+            admission_path,
+            split_path,
+            inventory_path,
+            "test/api/residual_intelligence/test_benchmark.py",
+        )
+    }
+    assert MANIFEST.read_bytes() == _git_blob(
+        VRIF_BENCHMARK_ARTIFACT_COMMIT,
+        "benchmarks/agent_supervisor/residual_intelligence/manifest.json",
+    )
+    assert CASES.read_bytes() == _git_blob(
+        VRIF_BENCHMARK_ARTIFACT_COMMIT,
+        "benchmarks/agent_supervisor/residual_intelligence/cases.jsonl",
+    )
+    admission = _strict_json_bytes(
+        artifact_blobs[admission_path],
+        noun=admission_path,
+    )
+    split = _strict_json_bytes(
+        artifact_blobs[split_path],
+        noun=split_path,
+    )
     admission_body = dict(admission)
     admission_id = admission_body.pop("admission_id")
     assert admission_id == content_identity(admission_body)
@@ -128,13 +185,13 @@ def test_current_artifacts_equal_independent_owner_reconstruction() -> None:
                     "residual-benchmark-objective-revisions@1"
                 ),
                 "artifacts": {
-                    path: sha256_identity((ROOT / path).read_bytes())
+                    path: sha256_identity(artifact_blobs[path])
                     for path in objective_paths
                 },
             }
         ),
-        "operation_catalog": sha256_identity((ROOT / operation_path).read_bytes()),
-        "provider_policy": sha256_identity((ROOT / provider_path).read_bytes()),
+        "operation_catalog": sha256_identity(artifact_blobs[operation_path]),
+        "provider_policy": sha256_identity(artifact_blobs[provider_path]),
         "tokenizer": sha256_identity(
             {
                 "admission_id": admission_id,
@@ -144,7 +201,7 @@ def test_current_artifacts_equal_independent_owner_reconstruction() -> None:
         "model_versions": sha256_identity(
             {
                 "inventory_blob_identity": sha256_identity(
-                    (ROOT / inventory_path).read_bytes()
+                    artifact_blobs[inventory_path]
                 ),
                 "disposition": "training_unavailable",
             }
@@ -157,7 +214,11 @@ def test_current_artifacts_equal_independent_owner_reconstruction() -> None:
                         "test/api/residual_intelligence/test_benchmark.py"
                     ]
                 ],
-                "test_blob_identity": sha256_identity(Path(__file__).read_bytes()),
+                "test_blob_identity": sha256_identity(
+                    artifact_blobs[
+                        "test/api/residual_intelligence/test_benchmark.py"
+                    ]
+                ),
             }
         ),
     }
