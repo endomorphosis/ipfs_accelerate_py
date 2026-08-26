@@ -6871,12 +6871,15 @@ def test_callback_integration_source_accepts_only_exact_settled_quarantine(
     candidate_tree = "e" * 40
     current_tree = "f" * 40
     blob = "1" * 40
-    task_alias = "LGSWF-004"
+    task_alias = "VRIF-032"
     task_cid = "task:cid:004"
     task_key = "task/v1/settled-callback-source"
     request_id = "request-settled-callback"
     dedupe_key = "2" * 64
-    output = "inventory/result.json"
+    output = (
+        "docs/architecture/residual_intelligence_inventory/"
+        "final_release_report.json"
+    )
     events_path = tmp_path / "portal-events.jsonl"
     events_path.write_text("", encoding="utf-8")
     receipt_dir = tmp_path / "receipts"
@@ -7354,6 +7357,118 @@ def test_callback_integration_source_accepts_only_exact_settled_quarantine(
     assert verified == qualification
     assert authority_calls == [(qualification, {"source": "test"})]
 
+    entry = source["entries"][0]
+    bound_identity = {
+        "path": entry["path"],
+        "index_mode": entry["mode"],
+        "index_object_id": entry["object_id"],
+        "worktree_mode": entry["mode"],
+        "worktree_object_id": entry["object_id"],
+    }
+    generated_identity = {
+        **bound_identity,
+        "worktree_object_id": "9" * 40,
+    }
+    hygiene = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "post-merge-callback-validation-workspace-hygiene@1"
+        ),
+        "target_commit": source["current_target_commit"],
+        "target_tree": source["current_target_tree"],
+        "declared_entries": source["entries"],
+        "pre_validation_identities": [bound_identity],
+        "generated_identities": [generated_identity],
+        "restored_identities": [bound_identity],
+        "generated_dirty_paths": [output],
+        "restoration_performed": True,
+        "final_clean": True,
+    }
+    hygiene["hygiene_id"] = content_identity(hygiene)
+    v3_qualification = {
+        **qualification,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "post-merge-callback-integration-requalification@3"
+        ),
+        "workspace_hygiene": hygiene,
+    }
+    v3_qualification.pop("receipt_id")
+    v3_qualification["receipt_id"] = content_identity(v3_qualification)
+    assert (
+        bridge._verified_post_merge_callback_integration_receipt(
+            v3_qualification,
+            source=source,
+        )
+        == v3_qualification
+    )
+    assert (
+        daemon._verified_post_merge_callback_integration_receipt(
+            v3_qualification,
+            recovery_evidence={"source": "v3-test"},
+        )
+        == v3_qualification
+    )
+    assert authority_calls[-1] == (v3_qualification, {"source": "v3-test"})
+
+    for field in ("restored_identities", "generated_dirty_paths"):
+        tampered_v3 = json.loads(json.dumps(v3_qualification))
+        if field == "restored_identities":
+            tampered_v3["workspace_hygiene"][field][0][
+                "worktree_object_id"
+            ] = "8" * 40
+        else:
+            tampered_v3["workspace_hygiene"][field] = [
+                "test/api/residual_intelligence/test_release_report.py"
+            ]
+        tampered_hygiene = dict(tampered_v3["workspace_hygiene"])
+        tampered_hygiene.pop("hygiene_id")
+        tampered_v3["workspace_hygiene"]["hygiene_id"] = content_identity(
+            tampered_hygiene
+        )
+        tampered_v3.pop("receipt_id")
+        tampered_v3["receipt_id"] = content_identity(tampered_v3)
+        assert (
+            bridge._verified_post_merge_callback_integration_receipt(
+                tampered_v3,
+                source=source,
+            )
+            is None
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="workspace hygiene is invalid",
+        ):
+            daemon._verified_post_merge_callback_integration_receipt(
+                tampered_v3,
+                recovery_evidence={"source": "tampered-v3"},
+            )
+
+    malformed_paths_v3 = json.loads(json.dumps(v3_qualification))
+    malformed_paths_v3["workspace_hygiene"]["generated_dirty_paths"] = [{}]
+    malformed_hygiene = dict(malformed_paths_v3["workspace_hygiene"])
+    malformed_hygiene.pop("hygiene_id")
+    malformed_paths_v3["workspace_hygiene"]["hygiene_id"] = content_identity(
+        malformed_hygiene
+    )
+    malformed_paths_v3.pop("receipt_id")
+    malformed_paths_v3["receipt_id"] = content_identity(malformed_paths_v3)
+    assert (
+        bridge._verified_post_merge_callback_integration_receipt(
+            malformed_paths_v3,
+            source=source,
+        )
+        is None
+    )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="workspace hygiene is invalid",
+    ):
+        daemon._verified_post_merge_callback_integration_receipt(
+            malformed_paths_v3,
+            recovery_evidence={"source": "malformed-paths-v3"},
+        )
+
     tampered_qualification = json.loads(json.dumps(qualification))
     tampered_qualification["settled_integration_source"][
         "completion_event_digest"
@@ -7382,6 +7497,389 @@ def test_callback_integration_source_accepts_only_exact_settled_quarantine(
             request,
             projection,
             train=train,
+        )
+        is None
+    )
+
+
+_VRIF_CALLBACK_REPORT_JSON = (
+    "docs/architecture/residual_intelligence_inventory/final_release_report.json"
+)
+_VRIF_CALLBACK_REPORT_MARKDOWN = (
+    "docs/architecture/residual_intelligence_inventory/final_release_report.md"
+)
+_VRIF_CALLBACK_REPORT_TEST = "test/api/residual_intelligence/test_release_report.py"
+
+
+def _run_vrif_callback_hygiene_requalification(
+    tmp_path: Path,
+    mutate: object,
+    *,
+    cleanup_authoritative: bool = True,
+    task_alias: str = "VRIF-032",
+) -> tuple[dict[str, object] | None, Path, list[bytes], list[dict[str, str]]]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "portal-test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Portal Test"],
+        cwd=repo,
+        check=True,
+    )
+    originals = {
+        _VRIF_CALLBACK_REPORT_JSON: b'{"release":"bound"}\n',
+        _VRIF_CALLBACK_REPORT_MARKDOWN: b"# Bound release\n",
+        _VRIF_CALLBACK_REPORT_TEST: b"def test_bound_release():\n    assert True\n",
+        "outside.txt": b"outside\n",
+    }
+    for path, payload in originals.items():
+        target = repo / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "bound target"], cwd=repo, check=True)
+
+    def git_text(*arguments: str) -> str:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    head = git_text("rev-parse", "HEAD")
+    tree = git_text("rev-parse", "HEAD^{tree}")
+    entries: list[dict[str, str]] = []
+    for path in (
+        _VRIF_CALLBACK_REPORT_JSON,
+        _VRIF_CALLBACK_REPORT_MARKDOWN,
+        _VRIF_CALLBACK_REPORT_TEST,
+    ):
+        raw = subprocess.run(
+            ["git", "ls-tree", "-z", head, "--", path],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        ).stdout
+        metadata, observed_path = raw[:-1].split(b"\t", 1)
+        mode, object_type, object_id = metadata.decode("ascii").split()
+        assert observed_path.decode("utf-8") == path
+        entries.append(
+            {
+                "path": path,
+                "mode": mode,
+                "object_type": object_type,
+                "object_id": object_id,
+            }
+        )
+
+    state_root = tmp_path / "state"
+    logs = state_root / "logs"
+    cleanup_statuses: list[bytes] = []
+    queue = object()
+    task_cid = f"task:{task_alias.lower()}"
+    task = SimpleNamespace(
+        task_id=task_alias,
+        canonical_task_cid=task_cid,
+        validation=("python -m pytest -q test/api/residual_intelligence/test_release_report.py",),
+    )
+
+    class Portal:
+        merge_queue = queue
+        repo_root = repo
+        resolved_merge_target_branch = "main"
+
+        @staticmethod
+        def _load_tasks() -> list[SimpleNamespace]:
+            return [task]
+
+        @staticmethod
+        def _run_validation_commands(
+            worktree: Path,
+            _task: object,
+            log_path: Path,
+            *,
+            force_uncached: bool,
+        ) -> dict[str, object]:
+            assert force_uncached is True
+            assert callable(mutate)
+            mutate(worktree)
+            log_path.write_text("uncached validation passed\n", encoding="utf-8")
+            return {
+                "passed": True,
+                "returncode": 0,
+                "results": [{"validation_result_digest": "7" * 64}],
+            }
+
+        @staticmethod
+        def _run_checkout_mutation_transaction(
+            *,
+            callback: object,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            assert callable(callback)
+            return callback()
+
+        @staticmethod
+        def _cleanup_main_merge_workspace(
+            worktree: Path,
+            *,
+            ephemeral: bool,
+        ) -> dict[str, object]:
+            assert ephemeral is True
+            cleanup_statuses.append(
+                subprocess.run(
+                    [
+                        "git",
+                        "status",
+                        "--porcelain=v1",
+                        "-z",
+                        "--untracked-files=all",
+                    ],
+                    cwd=worktree,
+                    check=False,
+                    capture_output=True,
+                ).stdout
+            )
+            removed = subprocess.run(
+                ["git", "worktree", "remove", "--force", str(worktree)],
+                cwd=repo,
+                check=False,
+                capture_output=True,
+            )
+            return {
+                "cleaned": removed.returncode == 0 and cleanup_authoritative
+            }
+
+        @staticmethod
+        def close() -> None:
+            return None
+
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.repository_root = repo
+    bridge.merge_queue = queue
+    bridge.merge_target_branch = "main"
+    bridge.portal_factory = lambda _paths, _alias: Portal()
+    bridge._load_post_merge_callback_integration_receipt = (
+        lambda path, *, source: json.loads(path.read_text(encoding="utf-8"))
+    )
+    source = {
+        "task_ids": [task_alias],
+        "task_cid": task_cid,
+        "train_receipt_id": "sha256:" + "1" * 64,
+        "current_target_commit": head,
+        "current_target_tree": tree,
+        "integration_commit": head,
+        "entries": entries,
+        "settled_integration_source": {"source_shape": "test-settled-source"},
+    }
+    projection = SimpleNamespace(
+        paths=SimpleNamespace(root=state_root, implementation_logs=logs)
+    )
+    receipt = bridge._requalify_callback_integration(
+        source,
+        request=SimpleNamespace(
+            task_id=task_alias,
+            canonical_task_id=task_cid,
+        ),
+        projection=projection,
+    )
+    assert git_text("rev-parse", "HEAD") == head
+    assert git_text("rev-parse", "HEAD^{tree}") == tree
+    for path, payload in originals.items():
+        assert (repo / path).read_bytes() == payload
+    return receipt, repo, cleanup_statuses, entries
+
+
+def test_generic_settled_clean_callback_retains_v2_without_hygiene_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_identity_capture(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("generic V2 callback invoked V3 identity capture")
+
+    monkeypatch.setattr(
+        DatabasePortalExecutionBridge,
+        "_callback_validation_output_identities",
+        staticmethod(forbidden_identity_capture),
+    )
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: None,
+            task_alias="LGSWF-004",
+        )
+    )
+
+    assert receipt is not None
+    assert receipt["schema"] == (
+        "ipfs_accelerate_py.agent_supervisor."
+        "post-merge-callback-integration-requalification@2"
+    )
+    assert "workspace_hygiene" not in receipt
+    assert cleanup_statuses == [b""]
+
+
+def test_callback_v3_restores_only_vrif_report_regeneration(
+    tmp_path: Path,
+) -> None:
+    def regenerate(worktree: Path) -> None:
+        (worktree / _VRIF_CALLBACK_REPORT_JSON).write_text(
+            '{"release":"fixture-generated"}\n',
+            encoding="utf-8",
+        )
+        (worktree / _VRIF_CALLBACK_REPORT_MARKDOWN).write_text(
+            "# Fixture-generated release\n",
+            encoding="utf-8",
+        )
+
+    receipt, _repo, cleanup_statuses, entries = (
+        _run_vrif_callback_hygiene_requalification(tmp_path, regenerate)
+    )
+
+    assert receipt is not None
+    assert receipt["schema"] == (
+        "ipfs_accelerate_py.agent_supervisor."
+        "post-merge-callback-integration-requalification@3"
+    )
+    hygiene = receipt["workspace_hygiene"]
+    assert hygiene["declared_entries"] == entries
+    assert hygiene["generated_dirty_paths"] == sorted(
+        [_VRIF_CALLBACK_REPORT_JSON, _VRIF_CALLBACK_REPORT_MARKDOWN]
+    )
+    assert hygiene["pre_validation_identities"] == hygiene[
+        "restored_identities"
+    ]
+    assert hygiene["generated_identities"][2] == hygiene[
+        "pre_validation_identities"
+    ][2]
+    assert cleanup_statuses == [b""]
+
+
+@pytest.mark.parametrize(
+    "mutated_path",
+    [_VRIF_CALLBACK_REPORT_TEST, "outside.txt"],
+)
+def test_callback_v3_rejects_other_declared_or_out_of_scope_mutation(
+    tmp_path: Path,
+    mutated_path: str,
+) -> None:
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda worktree: (worktree / mutated_path).write_text(
+                "validation mutation\n",
+                encoding="utf-8",
+            ),
+        )
+    )
+
+    assert receipt is None
+    assert cleanup_statuses and cleanup_statuses[0]
+
+
+def test_callback_v3_rejects_restore_tamper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_run = subprocess.run
+
+    def no_op_restore(argv: object, *args: object, **kwargs: object) -> object:
+        if isinstance(argv, list) and argv[:2] == ["git", "restore"]:
+            return subprocess.CompletedProcess(argv, 0, b"", b"")
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", no_op_restore)
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda worktree: (worktree / _VRIF_CALLBACK_REPORT_JSON).write_text(
+                '{"release":"tampered-restore"}\n',
+                encoding="utf-8",
+            ),
+        )
+    )
+
+    assert receipt is None
+    assert cleanup_statuses and cleanup_statuses[0]
+
+
+@pytest.mark.parametrize(
+    "mutation_kind",
+    ["staged", "untracked", "deleted", "mode_only"],
+)
+def test_callback_v3_rejects_non_content_workspace_mutation(
+    tmp_path: Path,
+    mutation_kind: str,
+) -> None:
+    def mutate(worktree: Path) -> None:
+        report = worktree / _VRIF_CALLBACK_REPORT_JSON
+        if mutation_kind == "staged":
+            report.write_text('{"release":"staged"}\n', encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "--", _VRIF_CALLBACK_REPORT_JSON],
+                cwd=worktree,
+                check=True,
+            )
+        elif mutation_kind == "untracked":
+            (worktree / "validation-scratch.txt").write_text(
+                "scratch\n",
+                encoding="utf-8",
+            )
+        elif mutation_kind == "deleted":
+            report.unlink()
+        else:
+            report.chmod(0o755)
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(tmp_path, mutate)
+    )
+
+    assert receipt is None
+    assert cleanup_statuses and cleanup_statuses[0]
+
+
+def test_callback_v3_rejects_cleanup_failure_after_clean_restore(
+    tmp_path: Path,
+) -> None:
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda worktree: (worktree / _VRIF_CALLBACK_REPORT_JSON).write_text(
+                '{"release":"cleanup-failure"}\n',
+                encoding="utf-8",
+            ),
+            cleanup_authoritative=False,
+        )
+    )
+
+    assert receipt is None
+    assert cleanup_statuses == [b""]
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        b"M  path\0",
+        b"?? path\0",
+        b" D path\0",
+        b" T path\0",
+        b"R  renamed\0path\0",
+        b" M path\0 M path\0",
+    ],
+)
+def test_callback_v3_porcelain_rejects_non_worktree_content_changes(
+    status: bytes,
+) -> None:
+    assert (
+        DatabasePortalExecutionBridge._callback_validation_generated_dirty_paths(
+            status
         )
         is None
     )

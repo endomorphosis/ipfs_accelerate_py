@@ -3061,6 +3061,50 @@ POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "post-merge-callback-integration-requalification@2"
 )
+POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-integration-requalification@3"
+)
+POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-validation-workspace-hygiene@1"
+)
+_POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_FIELDS = frozenset(
+    {
+        "schema",
+        "target_commit",
+        "target_tree",
+        "declared_entries",
+        "pre_validation_identities",
+        "generated_identities",
+        "restored_identities",
+        "generated_dirty_paths",
+        "restoration_performed",
+        "final_clean",
+        "hygiene_id",
+    }
+)
+_POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS = frozenset(
+    {
+        "path",
+        "index_mode",
+        "index_object_id",
+        "worktree_mode",
+        "worktree_object_id",
+    }
+)
+_POST_MERGE_CALLBACK_VALIDATION_REPORT_PATHS = frozenset(
+    {
+        (
+            "docs/architecture/residual_intelligence_inventory/"
+            "final_release_report.json"
+        ),
+        (
+            "docs/architecture/residual_intelligence_inventory/"
+            "final_release_report.md"
+        ),
+    }
+)
 POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "post-merge-settled-callback-integration-source@2"
@@ -87123,6 +87167,112 @@ class DatabaseImplementationDaemon:
             ) from exc
         return dict(source)
 
+    @staticmethod
+    def _verified_callback_validation_workspace_hygiene(
+        raw: Any,
+        *,
+        qualification: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Independently verify V3's declared-output restoration proof."""
+
+        if not isinstance(raw, Mapping):
+            return None
+        value = dict(raw)
+        hygiene_id = str(value.pop("hygiene_id", "") or "")
+        source_entries = qualification.get("entries")
+        declared = value.get("declared_entries")
+        dirty_paths = value.get("generated_dirty_paths")
+        pre = value.get("pre_validation_identities")
+        generated = value.get("generated_identities")
+        restored = value.get("restored_identities")
+        if (
+            set(raw)
+            != _POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_FIELDS
+            or value.get("schema")
+            != POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_SCHEMA
+            or value.get("target_commit")
+            != qualification.get("current_target_commit")
+            or value.get("target_tree")
+            != qualification.get("current_target_tree")
+            or declared != source_entries
+            or qualification.get("task_ids") != ["VRIF-032"]
+            or not isinstance(source_entries, list)
+            or not isinstance(dirty_paths, list)
+            or not dirty_paths
+            or any(type(path) is not str for path in dirty_paths)
+            or dirty_paths != sorted(set(dirty_paths))
+            or not set(dirty_paths).issubset(
+                _POST_MERGE_CALLBACK_VALIDATION_REPORT_PATHS
+            )
+            or value.get("restoration_performed") is not True
+            or value.get("final_clean") is not True
+            or hygiene_id != content_identity(value)
+            or any(not isinstance(item, list) for item in (pre, generated, restored))
+            or not (
+                len(pre)
+                == len(generated)
+                == len(restored)
+                == len(source_entries)
+            )
+        ):
+            return None
+        source_by_path = {
+            str(item.get("path") if isinstance(item, Mapping) else ""): item
+            for item in source_entries
+        }
+        if (
+            len(source_by_path) != len(source_entries)
+            or any(path not in source_by_path for path in dirty_paths)
+        ):
+            return None
+        observed_dirty: list[str] = []
+        git_id = r"[0-9a-f]{40}(?:[0-9a-f]{24})?"
+        for index, source_entry in enumerate(source_entries):
+            if not isinstance(source_entry, Mapping):
+                return None
+            path = str(source_entry.get("path") or "")
+            expected = {
+                "path": path,
+                "index_mode": str(source_entry.get("mode") or ""),
+                "index_object_id": str(source_entry.get("object_id") or ""),
+                "worktree_mode": str(source_entry.get("mode") or ""),
+                "worktree_object_id": str(source_entry.get("object_id") or ""),
+            }
+            before = pre[index]
+            during = generated[index]
+            after = restored[index]
+            if (
+                not isinstance(before, Mapping)
+                or not isinstance(during, Mapping)
+                or not isinstance(after, Mapping)
+                or set(before)
+                != _POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS
+                or set(during)
+                != _POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS
+                or set(after)
+                != _POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS
+                or dict(before) != expected
+                or dict(after) != expected
+                or during.get("path") != path
+                or during.get("index_mode") != expected["index_mode"]
+                or during.get("index_object_id") != expected["index_object_id"]
+                or during.get("worktree_mode") != expected["worktree_mode"]
+            ):
+                return None
+            changed = during.get("worktree_object_id") != source_entry.get(
+                "object_id"
+            )
+            if changed:
+                observed_dirty.append(path)
+                if re.fullmatch(
+                    git_id,
+                    str(during.get("worktree_object_id") or ""),
+                ) is None:
+                    return None
+        if sorted(observed_dirty) != dirty_paths:
+            return None
+        return {**value, "hygiene_id": hygiene_id}
+
     def _verified_post_merge_callback_integration_receipt(
         self,
         raw: Any,
@@ -87158,15 +87308,26 @@ class DatabaseImplementationDaemon:
             "validation",
         }
         settled_source = value.get("settled_integration_source")
-        is_v2 = isinstance(settled_source, Mapping)
+        schema = value.get("schema")
+        is_settled = isinstance(settled_source, Mapping)
+        is_v3 = bool(
+            is_settled
+            and schema
+            == POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+        )
         expected_fields = (
-            base_expected_fields | {"settled_integration_source"}
-            if is_v2
+            base_expected_fields
+            | {"settled_integration_source", "workspace_hygiene"}
+            if is_v3
+            else base_expected_fields | {"settled_integration_source"}
+            if is_settled
             else base_expected_fields
         )
         expected_schema = (
-            POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
-            if is_v2
+            POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+            if is_v3
+            else POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
+            if is_settled
             else POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
         )
         task_ids = value.get("task_ids")
@@ -87334,7 +87495,7 @@ class DatabaseImplementationDaemon:
         )
 
         settled_source_valid = False
-        if is_v2 and isinstance(settled_source, Mapping):
+        if is_settled and isinstance(settled_source, Mapping):
             settled_value = dict(settled_source)
             source_id = str(settled_value.pop("source_id", "") or "")
             canonical_embedded: dict[str, Mapping[str, Any]] = {}
@@ -87475,8 +87636,8 @@ class DatabaseImplementationDaemon:
             or value.get("train_receipt_id") != train_identity
             or train_receipt is None
             or not (
-                (is_v2 and v2_train_receipt_valid and settled_source_valid)
-                or (not is_v2 and v1_train_receipt_valid)
+                (is_settled and v2_train_receipt_valid and settled_source_valid)
+                or (not is_settled and v1_train_receipt_valid)
             )
             or not isinstance(entries, list)
             or not entries
@@ -87548,6 +87709,13 @@ class DatabaseImplementationDaemon:
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge callback integration validation is invalid"
+            )
+        if is_v3 and self._verified_callback_validation_workspace_hygiene(
+            value.get("workspace_hygiene"),
+            qualification=value,
+        ) is None:
+            raise DatabaseImplementationAuthorityError(
+                "post-merge callback validation workspace hygiene is invalid"
             )
         verified = {**value, "receipt_id": str(receipt_id)}
         self._verified_post_merge_callback_integration_source_authority(
@@ -88409,6 +88577,7 @@ class DatabaseImplementationDaemon:
                 in {
                     POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA,
                     POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA,
+                    POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA,
                 }
                 and qualification_receipt.get("task_cid")
                 == raw.get("task_cid")

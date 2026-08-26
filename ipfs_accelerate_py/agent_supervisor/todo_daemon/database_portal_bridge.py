@@ -22,6 +22,7 @@ import math
 import os
 import re
 import shlex
+import stat
 import subprocess
 import tempfile
 import time
@@ -607,6 +608,14 @@ _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA: Final[str] = (
     "ipfs_accelerate_py.agent_supervisor."
     "post-merge-callback-integration-requalification@2"
 )
+_POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-integration-requalification@3"
+)
+_POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-validation-workspace-hygiene@1"
+)
 _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py.agent_supervisor."
     "post-merge-settled-callback-integration-source@2"
@@ -669,6 +678,42 @@ _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_FIELDS: Final[frozenset[str]
             "settled_integration_source",
         }
     )
+)
+_POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        *_POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_FIELDS,
+        "workspace_hygiene",
+    }
+)
+_POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "schema",
+        "target_commit",
+        "target_tree",
+        "declared_entries",
+        "pre_validation_identities",
+        "generated_identities",
+        "restored_identities",
+        "generated_dirty_paths",
+        "restoration_performed",
+        "final_clean",
+        "hygiene_id",
+    }
+)
+_POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "path",
+        "index_mode",
+        "index_object_id",
+        "worktree_mode",
+        "worktree_object_id",
+    }
 )
 _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS: Final[frozenset[str]] = frozenset(
     {
@@ -4797,6 +4842,249 @@ class DatabasePortalExecutionBridge:
         )
 
     @staticmethod
+    def _callback_validation_output_identities(
+        worktree: Path,
+        entries: Any,
+    ) -> list[dict[str, str]] | None:
+        """Capture exact index/worktree identities for declared blob outputs."""
+
+        if not isinstance(entries, list) or not entries or len(entries) > 4096:
+            return None
+        identities: list[dict[str, str]] = []
+        seen: set[str] = set()
+        git_id = r"[0-9a-f]{40}(?:[0-9a-f]{24})?"
+        for raw_entry in entries:
+            path = str(raw_entry.get("path") if isinstance(raw_entry, Mapping) else "")
+            try:
+                safe_path = _safe_output_path(path)
+            except DatabasePortalBridgeError:
+                return None
+            if (
+                not isinstance(raw_entry, Mapping)
+                or set(raw_entry) != {"path", "mode", "object_type", "object_id"}
+                or safe_path != path
+                or path in seen
+                or raw_entry.get("mode") not in {"100644", "100755"}
+                or raw_entry.get("object_type") != "blob"
+                or re.fullmatch(git_id, str(raw_entry.get("object_id") or ""))
+                is None
+            ):
+                return None
+            seen.add(path)
+            literal_pathspec = f":(top,literal){path}"
+            try:
+                indexed = subprocess.run(
+                    ["git", "ls-files", "--stage", "-z", "--", literal_pathspec],
+                    cwd=worktree,
+                    capture_output=True,
+                    check=False,
+                    timeout=10,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return None
+            index_mode = ""
+            index_object_id = ""
+            if indexed.returncode != 0:
+                return None
+            if indexed.stdout:
+                records = indexed.stdout.split(b"\0")
+                if len(records) != 2 or records[-1] != b"" or b"\t" not in records[0]:
+                    return None
+                prefix, raw_path = records[0].split(b"\t", 1)
+                try:
+                    observed_path = raw_path.decode("utf-8")
+                    index_fields = prefix.decode("ascii").split()
+                except UnicodeDecodeError:
+                    return None
+                if (
+                    observed_path != path
+                    or len(index_fields) != 3
+                    or index_fields[0] not in {"100644", "100755"}
+                    or re.fullmatch(git_id, index_fields[1]) is None
+                    or index_fields[2] != "0"
+                ):
+                    return None
+                index_mode, index_object_id = index_fields[:2]
+
+            candidate = worktree.joinpath(*PurePosixPath(path).parts)
+            parent = worktree
+            for part in PurePosixPath(path).parts[:-1]:
+                parent /= part
+                try:
+                    parent_stat = parent.lstat()
+                except FileNotFoundError:
+                    break
+                except OSError:
+                    return None
+                if not stat.S_ISDIR(parent_stat.st_mode):
+                    return None
+            try:
+                candidate_stat = candidate.lstat()
+            except FileNotFoundError:
+                worktree_mode = ""
+                worktree_object_id = ""
+            except OSError:
+                return None
+            else:
+                if not stat.S_ISREG(candidate_stat.st_mode):
+                    return None
+                worktree_mode = (
+                    "100755" if candidate_stat.st_mode & 0o111 else "100644"
+                )
+                try:
+                    hashed = subprocess.run(
+                        ["git", "hash-object", "--no-filters", "--", path],
+                        cwd=worktree,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=10,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    return None
+                worktree_object_id = hashed.stdout.strip()
+                if (
+                    hashed.returncode != 0
+                    or re.fullmatch(git_id, worktree_object_id) is None
+                ):
+                    return None
+            identities.append(
+                {
+                    "path": path,
+                    "index_mode": index_mode,
+                    "index_object_id": index_object_id,
+                    "worktree_mode": worktree_mode,
+                    "worktree_object_id": worktree_object_id,
+                }
+            )
+        return identities
+
+    @staticmethod
+    def _callback_validation_generated_dirty_paths(raw: Any) -> list[str] | None:
+        """Admit only unique unstaged content changes to declared files."""
+
+        if not isinstance(raw, bytes) or not raw or not raw.endswith(b"\0"):
+            return None
+        paths: list[str] = []
+        for record in raw[:-1].split(b"\0"):
+            # Staging, untracked files, renames/copies, deletions, type/mode
+            # changes, and submodule states are not validation hygiene.
+            if len(record) < 4 or record[:3] != b" M ":
+                return None
+            try:
+                path = record[3:].decode("utf-8")
+                safe_path = _safe_output_path(path)
+            except (UnicodeDecodeError, DatabasePortalBridgeError):
+                return None
+            if safe_path != path or path in paths:
+                return None
+            paths.append(path)
+        return sorted(paths) if paths else None
+
+    @staticmethod
+    def _verified_callback_validation_workspace_hygiene(
+        raw: Any,
+        *,
+        source: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Verify V3's content-addressed declared-output restoration proof."""
+
+        from ..proof.formal_verification_contracts import content_identity
+
+        if not isinstance(raw, Mapping):
+            return None
+        value = dict(raw)
+        hygiene_id = str(value.pop("hygiene_id", "") or "")
+        declared = value.get("declared_entries")
+        dirty_paths = value.get("generated_dirty_paths")
+        pre = value.get("pre_validation_identities")
+        generated = value.get("generated_identities")
+        restored = value.get("restored_identities")
+        source_entries = source.get("entries")
+        if (
+            set(raw)
+            != _POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_FIELDS
+            or value.get("schema")
+            != _POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_SCHEMA
+            or value.get("target_commit") != source.get("current_target_commit")
+            or value.get("target_tree") != source.get("current_target_tree")
+            or declared != source_entries
+            or source.get("task_ids") != [_VRIF_TERMINAL_TASK_ALIAS]
+            or not isinstance(source_entries, list)
+            or not isinstance(dirty_paths, list)
+            or not dirty_paths
+            or any(type(path) is not str for path in dirty_paths)
+            or dirty_paths != sorted(set(dirty_paths))
+            or not set(dirty_paths).issubset(
+                {
+                    _VRIF_RELEASE_REPORT_JSON_PATH,
+                    _VRIF_RELEASE_REPORT_MARKDOWN_PATH,
+                }
+            )
+            or value.get("restoration_performed") is not True
+            or value.get("final_clean") is not True
+            or hygiene_id != content_identity(value)
+            or any(not isinstance(item, list) for item in (pre, generated, restored))
+            or not (len(pre) == len(generated) == len(restored) == len(source_entries))
+        ):
+            return None
+        source_by_path = {
+            str(item.get("path") if isinstance(item, Mapping) else ""): item
+            for item in source_entries
+        }
+        if (
+            len(source_by_path) != len(source_entries)
+            or any(path not in source_by_path for path in dirty_paths)
+        ):
+            return None
+        observed_dirty: list[str] = []
+        for index, source_entry in enumerate(source_entries):
+            if not isinstance(source_entry, Mapping):
+                return None
+            path = str(source_entry.get("path") or "")
+            expected_identity = {
+                "path": path,
+                "index_mode": str(source_entry.get("mode") or ""),
+                "index_object_id": str(source_entry.get("object_id") or ""),
+                "worktree_mode": str(source_entry.get("mode") or ""),
+                "worktree_object_id": str(source_entry.get("object_id") or ""),
+            }
+            before = pre[index]
+            during = generated[index]
+            after = restored[index]
+            if (
+                not isinstance(before, Mapping)
+                or not isinstance(during, Mapping)
+                or not isinstance(after, Mapping)
+                or set(before)
+                != _POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS
+                or set(during)
+                != _POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS
+                or set(after)
+                != _POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS
+                or dict(before) != expected_identity
+                or dict(after) != expected_identity
+                or during.get("path") != path
+                or during.get("index_mode") != expected_identity["index_mode"]
+                or during.get("index_object_id")
+                != expected_identity["index_object_id"]
+                or during.get("worktree_mode")
+                != expected_identity["worktree_mode"]
+            ):
+                return None
+            changed = during.get("worktree_object_id") != source_entry.get("object_id")
+            if changed:
+                observed_dirty.append(path)
+                if re.fullmatch(
+                    r"[0-9a-f]{40}(?:[0-9a-f]{24})?",
+                    str(during.get("worktree_object_id") or ""),
+                ) is None:
+                    return None
+        if sorted(observed_dirty) != dirty_paths:
+            return None
+        return {**value, "hygiene_id": hygiene_id}
+
+    @staticmethod
     def _verified_post_merge_callback_integration_receipt(
         raw: Any,
         *,
@@ -4810,21 +5098,36 @@ class DatabasePortalExecutionBridge:
         receipt_id = str(value.pop("receipt_id", "") or "")
         validation = value.get("validation")
         settled_source = value.get("settled_integration_source")
-        is_v2 = isinstance(settled_source, Mapping)
+        schema = value.get("schema")
+        is_settled = isinstance(settled_source, Mapping)
+        is_v3 = bool(
+            is_settled
+            and schema
+            == _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+        )
         expected_fields = (
-            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_FIELDS
-            if is_v2
-            else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_FIELDS
+            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_FIELDS
+            if is_v3
+            else (
+                _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_FIELDS
+                if is_settled
+                else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_FIELDS
+            )
         )
         expected_schema = (
-            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
-            if is_v2
-            else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+            if is_v3
+            else (
+                _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
+                if is_settled
+                else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+            )
         )
         expected_source_fields = {
             key
             for key in expected_fields
-            if key not in {"schema", "validation", "receipt_id"}
+            if key
+            not in {"schema", "validation", "workspace_hygiene", "receipt_id"}
         }
         if (
             set(raw) != expected_fields
@@ -4835,7 +5138,7 @@ class DatabasePortalExecutionBridge:
             or receipt_id != content_identity(value)
         ):
             return None
-        if is_v2:
+        if is_settled:
             settled_value = dict(settled_source)
             source_id = str(settled_value.pop("source_id", "") or "")
             canonical_strings: list[tuple[str, str]] = [
@@ -4894,6 +5197,14 @@ class DatabasePortalExecutionBridge:
                     != settled_value.get(identity_field)
                 ):
                     return None
+        if is_v3 and (
+            DatabasePortalExecutionBridge._verified_callback_validation_workspace_hygiene(
+                value.get("workspace_hygiene"),
+                source=source,
+            )
+            is None
+        ):
+            return None
         item = validation[0]
         digests = (
             item.get("validation_result_digests") if isinstance(item, Mapping) else None
@@ -4959,6 +5270,10 @@ class DatabasePortalExecutionBridge:
         task_cid = str(getattr(request, "canonical_task_id", "") or "")
         current_head = str(source.get("current_target_commit") or "")
         current_tree = str(source.get("current_target_tree") or "")
+        settled_source = isinstance(source.get("settled_integration_source"), Mapping)
+        hygiene_eligible = (
+            settled_source and task_alias == _VRIF_TERMINAL_TASK_ALIAS
+        )
         if source.get("task_ids") != [task_alias] or source.get("task_cid") != task_cid:
             return None
         path = self._post_merge_callback_integration_receipt_path(
@@ -5036,6 +5351,68 @@ class DatabasePortalExecutionBridge:
                     if worktree.returncode != 0:
                         return result
                     added = True
+                    pre_identities: list[dict[str, str]] | None = None
+                    if hygiene_eligible:
+                        initial_head = subprocess.run(
+                            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                            cwd=temporary,
+                            capture_output=True,
+                            check=False,
+                            text=True,
+                            timeout=10,
+                        )
+                        initial_tree = subprocess.run(
+                            ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+                            cwd=temporary,
+                            capture_output=True,
+                            check=False,
+                            text=True,
+                            timeout=10,
+                        )
+                        initial_status = subprocess.run(
+                            [
+                                "git",
+                                "status",
+                                "--porcelain=v1",
+                                "-z",
+                                "--untracked-files=all",
+                            ],
+                            cwd=temporary,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        pre_identities = self._callback_validation_output_identities(
+                            temporary,
+                            source.get("entries"),
+                        )
+                        source_entries = source.get("entries")
+                        expected_identities = [
+                            {
+                                "path": str(entry.get("path") or ""),
+                                "index_mode": str(entry.get("mode") or ""),
+                                "index_object_id": str(entry.get("object_id") or ""),
+                                "worktree_mode": str(entry.get("mode") or ""),
+                                "worktree_object_id": str(entry.get("object_id") or ""),
+                            }
+                            for entry in (
+                                source_entries
+                                if isinstance(source_entries, list)
+                                else ()
+                            )
+                            if isinstance(entry, Mapping)
+                        ]
+                        if (
+                            initial_head.returncode != 0
+                            or initial_head.stdout.strip() != current_head
+                            or initial_tree.returncode != 0
+                            or initial_tree.stdout.strip() != current_tree
+                            or initial_status.returncode != 0
+                            or initial_status.stdout
+                            or pre_identities is None
+                            or pre_identities != expected_identities
+                        ):
+                            return result
                     log_root = projection.paths.implementation_logs / "post-merge-callback-integration-requalification"
                     log_root.mkdir(parents=True, exist_ok=True)
                     log_path = log_root / f"{task_alias}-{current_head[:16]}.log"
@@ -5082,11 +5459,185 @@ class DatabasePortalExecutionBridge:
                         or tree.returncode != 0
                         or tree.stdout.strip() != current_tree
                         or status.returncode != 0
-                        or status.stdout
                         or after.returncode != 0
                         or after.stdout.strip() != current_head
                     ):
                         return result
+                    workspace_hygiene: dict[str, Any] | None = None
+                    settled_generated_identities = (
+                        self._callback_validation_output_identities(
+                            temporary,
+                            source.get("entries"),
+                        )
+                        if hygiene_eligible
+                        else None
+                    )
+                    if (
+                        hygiene_eligible
+                        and not status.stdout
+                        and settled_generated_identities != pre_identities
+                    ):
+                        return result
+                    if status.stdout:
+                        if not hygiene_eligible or pre_identities is None:
+                            return result
+                        dirty_paths = self._callback_validation_generated_dirty_paths(
+                            status.stdout
+                        )
+                        declared_entries = source.get("entries")
+                        generated_identities = settled_generated_identities
+                        if (
+                            dirty_paths is None
+                            or not set(dirty_paths).issubset(
+                                {
+                                    _VRIF_RELEASE_REPORT_JSON_PATH,
+                                    _VRIF_RELEASE_REPORT_MARKDOWN_PATH,
+                                }
+                            )
+                            or not isinstance(declared_entries, list)
+                            or generated_identities is None
+                            or any(
+                                path
+                                not in {
+                                    str(entry.get("path") or "")
+                                    for entry in declared_entries
+                                    if isinstance(entry, Mapping)
+                                }
+                                for path in dirty_paths
+                            )
+                        ):
+                            return result
+                        dirty_set = set(dirty_paths)
+                        for before_identity, generated_identity in zip(
+                            pre_identities,
+                            generated_identities,
+                        ):
+                            path_value = before_identity["path"]
+                            if (
+                                generated_identity["index_mode"]
+                                != before_identity["index_mode"]
+                                or generated_identity["index_object_id"]
+                                != before_identity["index_object_id"]
+                                or generated_identity["worktree_mode"]
+                                != before_identity["worktree_mode"]
+                                or (
+                                    path_value in dirty_set
+                                    and generated_identity["worktree_object_id"]
+                                    == before_identity["worktree_object_id"]
+                                )
+                                or (
+                                    path_value not in dirty_set
+                                    and generated_identity != before_identity
+                                )
+                            ):
+                                return result
+                        restored = subprocess.run(
+                            [
+                                "git",
+                                "restore",
+                                f"--source={current_head}",
+                                "--worktree",
+                                "--",
+                                *[
+                                    f":(top,literal){path_value}"
+                                    for path_value in dirty_paths
+                                ],
+                            ],
+                            cwd=temporary,
+                            capture_output=True,
+                            check=False,
+                            timeout=30,
+                        )
+                        restored_identities = (
+                            self._callback_validation_output_identities(
+                                temporary,
+                                declared_entries,
+                            )
+                        )
+                        final_head = subprocess.run(
+                            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                            cwd=temporary,
+                            capture_output=True,
+                            check=False,
+                            text=True,
+                            timeout=10,
+                        )
+                        final_tree = subprocess.run(
+                            ["git", "rev-parse", "--verify", "HEAD^{tree}"],
+                            cwd=temporary,
+                            capture_output=True,
+                            check=False,
+                            text=True,
+                            timeout=10,
+                        )
+                        final_status = subprocess.run(
+                            [
+                                "git",
+                                "status",
+                                "--porcelain=v1",
+                                "-z",
+                                "--untracked-files=all",
+                            ],
+                            cwd=temporary,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        final_target = subprocess.run(
+                            [
+                                "git",
+                                "rev-parse",
+                                "--verify",
+                                f"refs/heads/{self.merge_target_branch}^{{commit}}",
+                            ],
+                            cwd=self.repository_root,
+                            capture_output=True,
+                            check=False,
+                            text=True,
+                            timeout=10,
+                        )
+                        if (
+                            restored.returncode != 0
+                            or restored_identities != pre_identities
+                            or final_head.returncode != 0
+                            or final_head.stdout.strip() != current_head
+                            or final_tree.returncode != 0
+                            or final_tree.stdout.strip() != current_tree
+                            or final_status.returncode != 0
+                            or final_status.stdout
+                            or final_target.returncode != 0
+                            or final_target.stdout.strip() != current_head
+                        ):
+                            return result
+                        from ..proof.formal_verification_contracts import (
+                            content_identity,
+                        )
+
+                        workspace_hygiene = {
+                            "schema": (
+                                _POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_SCHEMA
+                            ),
+                            "target_commit": current_head,
+                            "target_tree": current_tree,
+                            "declared_entries": [
+                                dict(entry) for entry in declared_entries
+                            ],
+                            "pre_validation_identities": [
+                                dict(item) for item in pre_identities
+                            ],
+                            "generated_identities": [
+                                dict(item) for item in generated_identities
+                            ],
+                            "restored_identities": [
+                                dict(item) for item in restored_identities
+                            ],
+                            "generated_dirty_paths": dirty_paths,
+                            "restoration_performed": True,
+                            "final_clean": True,
+                        }
+                        workspace_hygiene["hygiene_id"] = content_identity(
+                            workspace_hygiene
+                        )
                     result.update(
                         passed=True,
                         validation=[
@@ -5100,6 +5651,8 @@ class DatabasePortalExecutionBridge:
                             }
                         ],
                     )
+                    if workspace_hygiene is not None:
+                        result["workspace_hygiene"] = workspace_hygiene
                     return result
                 except (OSError, subprocess.SubprocessError):
                     return result
@@ -5130,11 +5683,27 @@ class DatabasePortalExecutionBridge:
                 if isinstance(transaction, Mapping)
                 else None
             )
+            workspace_hygiene = (
+                transaction.get("workspace_hygiene")
+                if isinstance(transaction, Mapping)
+                else None
+            )
             if (
                 not isinstance(transaction, Mapping)
                 or transaction.get("passed") is not True
                 or not isinstance(validations, list)
                 or len(validations) != 1
+                or (
+                    workspace_hygiene is not None
+                    and (
+                        not settled_source
+                        or self._verified_callback_validation_workspace_hygiene(
+                            workspace_hygiene,
+                            source=source,
+                        )
+                        is None
+                    )
+                )
             ):
                 return None
         finally:
@@ -5144,13 +5713,17 @@ class DatabasePortalExecutionBridge:
 
         qualified = {
             "schema": (
-                _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
-                if "settled_integration_source" in source
+                _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+                if workspace_hygiene is not None
+                else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
+                if settled_source
                 else _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
             ),
             **dict(source),
             "validation": [dict(item) for item in validations],
         }
+        if workspace_hygiene is not None:
+            qualified["workspace_hygiene"] = dict(workspace_hygiene)
         qualified["receipt_id"] = content_identity(qualified)
         _atomic_write_once(
             path,
