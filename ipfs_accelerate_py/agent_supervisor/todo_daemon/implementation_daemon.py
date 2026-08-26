@@ -78147,6 +78147,42 @@ def _database_daemon_json(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True, default=str)
 
 
+def _require_validation_retry_transfer_cursor_advance(
+    source: Mapping[str, Any],
+    successor: Mapping[str, Any],
+) -> None:
+    """Require the exact owner contract for a transferred retry claim."""
+
+    integer_fields = ("claimed_from_revision", "fencing_token", "fence_epoch")
+    if any(
+        isinstance(cursor.get(field), bool)
+        or not isinstance(cursor.get(field), int)
+        for cursor in (source, successor)
+        for field in integer_fields
+    ) or any(
+        not str(cursor.get(field) or "")
+        for cursor in (source, successor)
+        for field in ("claim_id", "attempt_id", "lease_id")
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "validation retry successor virgin-transfer cursor is malformed"
+        )
+    if (
+        int(successor["claimed_from_revision"])
+        <= int(source["claimed_from_revision"])
+        or any(
+            successor.get(field) == source.get(field)
+            for field in ("claim_id", "attempt_id", "lease_id")
+        )
+        or int(successor["fencing_token"]) <= int(source["fencing_token"])
+        or int(successor["fence_epoch"]) < int(source["fence_epoch"])
+    ):
+        raise DatabaseImplementationConflictError(
+            "validation retry successor virgin-transfer claim cursor did not "
+            "advance"
+        )
+
+
 def _database_daemon_evidence_digest(value: Mapping[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(
         _database_daemon_json(dict(value)).encode("utf-8")
@@ -87874,9 +87910,10 @@ class DatabaseImplementationDaemon:
             )
         claim_transfer: dict[str, Any] | None = None
         claim_reopen_count: int | None = None
+        claim_policy_carried: set[str] = set()
         if isinstance(claim_receipt, Mapping) and isinstance(claim_body, Mapping):
             (
-                conditional_claim_fields,
+                claim_policy_carried,
                 claim_transfer,
                 claim_reopen_count,
             ) = verified_claim_policy(
@@ -87884,7 +87921,7 @@ class DatabaseImplementationDaemon:
                 claim_body,
                 label="claim",
             )
-            claim_fields.update(conditional_claim_fields)
+            claim_fields.update(claim_policy_carried)
         if (
             claim_record is None
             or claim_record.get("status") != "in_progress"
@@ -87921,8 +87958,7 @@ class DatabaseImplementationDaemon:
                 claim_operation == "database_claim"
                 and (
                     (modern_claim and claimed_from_revision != claim_revision - 1)
-                    or claim_phase_schema
-                    not in {"", TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA}
+                    or claim_phase_schema != ""
                 )
             )
             or (
@@ -87981,6 +88017,24 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     "validation retry successor typed claim has no exact "
                     "reservation revision"
+                )
+            (
+                reservation_policy_carried,
+                reservation_transfer,
+                reservation_reopen_count,
+            ) = verified_claim_policy(
+                reservation_receipt,
+                reservation_body,
+                label="claim reservation",
+            )
+            if (
+                reservation_policy_carried != claim_policy_carried
+                or reservation_transfer != claim_transfer
+                or reservation_reopen_count != claim_reopen_count
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor typed admission changed its "
+                    "reservation claim authority"
                 )
             reservation_fields = claim_fields - {
                 "admitted_from_revision",
@@ -88241,19 +88295,17 @@ class DatabaseImplementationDaemon:
             if (
                 not isinstance(source_cursor, Mapping)
                 or not isinstance(claim_cursor, Mapping)
-                or isinstance(source_cursor.get("claimed_from_revision"), bool)
-                or not isinstance(
-                    source_cursor.get("claimed_from_revision"), int
-                )
                 or claim_cursor.get("claimed_from_revision")
                 != claimed_from_revision
-                or int(claim_cursor["claimed_from_revision"])
-                <= int(source_cursor["claimed_from_revision"])
             ):
                 raise DatabaseImplementationConflictError(
                     "validation retry successor virgin-transfer claim cursor "
                     "did not advance"
                 )
+            _require_validation_retry_transfer_cursor_advance(
+                source_cursor,
+                claim_cursor,
+            )
         reopen_counts = (
             source_reopen_count,
             claim_reopen_count,

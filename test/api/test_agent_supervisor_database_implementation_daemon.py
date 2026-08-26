@@ -5830,6 +5830,27 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
                             projected_blocked,
                         )
 
+            reservation_without_admission = json.loads(json.dumps(revisions))
+            reservation_only_receipt = reservation_without_admission[
+                claim_index
+            ]["body"]["completion_receipt"]
+            reservation_only_receipt.update(
+                {
+                    "claim_phase_schema": (
+                        implementation_daemon_module
+                        .TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                    ),
+                    "claim_process_attestation": {
+                        "schema": "typed-claim-process@test",
+                        "grant_id": "grant:forged-reservation-only",
+                    },
+                }
+            )
+            assert_typed_projection_rejected(
+                reservation_without_admission,
+                projected_blocked=blocked,
+            )
+
             policy_corruptions = {
                 "task_prefix": "FOREIGN-",
                 "task_shard_count": daemon.task_shard_count + 1,
@@ -5907,6 +5928,36 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
             )
 
             if transfer_claim:
+                source_transfer_cursor = typed_revisions[source_retry_index][
+                    "body"
+                ]["completion_receipt"][
+                    "virgin_task_transfer_claim_cursor"
+                ]
+                successor_transfer_cursor = typed_revisions[claim_index + 1][
+                    "body"
+                ]["completion_receipt"][
+                    "virgin_task_transfer_claim_cursor"
+                ]
+                for reused_field in ("claim_id", "attempt_id", "lease_id"):
+                    reused_cursor = dict(successor_transfer_cursor)
+                    reused_cursor[reused_field] = source_transfer_cursor[
+                        reused_field
+                    ]
+                    reused_cursor_body = dict(reused_cursor)
+                    reused_cursor_body.pop("cursor_id")
+                    reused_cursor["cursor_id"] = content_identity(
+                        reused_cursor_body
+                    )
+                    with pytest.raises(DatabaseImplementationConflictError):
+                        require_cursor_advance = (
+                            implementation_daemon_module
+                            ._require_validation_retry_transfer_cursor_advance
+                        )
+                        require_cursor_advance(
+                            source_transfer_cursor,
+                            reused_cursor,
+                        )
+
                 for transfer_field, nested_field, forged_value in (
                     (
                         "virgin_task_transfer",
