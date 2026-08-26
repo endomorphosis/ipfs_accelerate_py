@@ -137,7 +137,10 @@ _AGENT_CONTROL_PLANE_MANIFEST_FILENAME = (
 )
 _AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 4 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
-_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+# The capsule contains the complete supervisor Python closure.  Keep a bounded
+# allowance above its current size so reviewed feature additions do not make
+# an otherwise valid, content-addressed control plane impossible to seal.
+_AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 80 * 1024 * 1024
 # The LGCVF live capsule is deliberately separate from the generic accepted
 # control-plane capsule above.  In particular, these limits and schemas must
 # never widen ``accepted-control-plane@2``: the live capsule also carries the
