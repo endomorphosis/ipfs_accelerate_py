@@ -49,6 +49,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
     TaskRecord,
+    TaskSourceBoundsError,
     TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
@@ -80,6 +81,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source
     TypedDatabaseTaskSource,
     daemon_required_owner_command_operations,
     daemon_required_owner_operations,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    typed_database_task_source as typed_database_task_source_module,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
@@ -1605,6 +1609,29 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
             evidence_digests=[evidence_digest],
         )
         assert completed.task.status == "completed"
+        history = adapter.task_revision_history_projection("CASF-TYPED")
+        assert set(history) == {
+            "schema",
+            "task_cid",
+            "revisions",
+            "projection_cid",
+        }
+        assert history["task_cid"] == completed.task.task_cid
+        assert [entry["revision"] for entry in history["revisions"]] == [
+            1,
+            2,
+            3,
+            4,
+        ]
+        assert [entry["status"] for entry in history["revisions"]] == [
+            "ready",
+            "in_progress",
+            "in_progress",
+            "completed",
+        ]
+        projection_body = dict(history)
+        projection_cid = projection_body.pop("projection_cid")
+        assert projection_cid == content_identity(projection_body)
         assert adapter.snapshot().terminal is True
 
         with pytest.raises(TypedStateOwnerAuthorizationError):
@@ -5240,6 +5267,239 @@ def test_typed_database_task_source_pages_transport_for_public_maximum() -> None
     ]
 
 
+def test_typed_task_revision_history_pages_one_closed_owner_read() -> None:
+    revision_count = 501
+    history_rows = [
+        {
+            "task_cid": "task:paged-history",
+            "revision": revision,
+            "status": "ready" if revision == 1 else "blocked",
+            "body_json": json.dumps({"revision": revision}),
+        }
+        for revision in range(1, revision_count + 1)
+    ]
+
+    class _PagedHistoryClient:
+        def __init__(self) -> None:
+            self.page_requests: list[dict[str, int | str]] = []
+
+        @staticmethod
+        def load_generation() -> SimpleNamespace:
+            return SimpleNamespace(content_id="generation:stable", revision=7)
+
+        def execute(
+            self, operation: str, parameters: Mapping[str, Any] | None = None
+        ) -> tuple[Mapping[str, Any], ...]:
+            request = dict(parameters or {})
+            if operation == "executor_task_projection_by_identity":
+                assert request == {
+                    "task_identity": "CASF-PAGED-HISTORY",
+                    "task_alias": "CASF-PAGED-HISTORY",
+                }
+                return (
+                    {
+                        "task_cid": "task:paged-history",
+                        "task_alias": "CASF-PAGED-HISTORY",
+                        "goal_cid": "goal:paged-history",
+                        "plan_cid": "plan:paged-history",
+                        "objective_id": "objective:paged-history",
+                        "ordinal": 1,
+                        "status": "blocked",
+                        "revision": revision_count,
+                        "priority": "normal",
+                        "identity_json": "{}",
+                        "body_json": json.dumps({"revision": revision_count}),
+                        "dependencies_json": "[]",
+                        "outputs_json": "[]",
+                        "acceptance_json": "[]",
+                        "validations_json": "[]",
+                    },
+                )
+            assert operation == "executor_task_revision_history_page"
+            self.page_requests.append(request)
+            offset = int(request["offset"])
+            limit = int(request["limit"])
+            return tuple(history_rows[offset : offset + limit])
+
+    client = _PagedHistoryClient()
+    adapter = object.__new__(TypedDatabaseTaskSource)
+    adapter._client = client  # type: ignore[attr-defined]
+    adapter._closed = False  # type: ignore[attr-defined]
+
+    projection = adapter.task_revision_history_projection("CASF-PAGED-HISTORY")
+
+    assert projection["task_cid"] == "task:paged-history"
+    assert len(projection["revisions"]) == revision_count
+    assert projection["revisions"][-1] == {
+        "revision": revision_count,
+        "status": "blocked",
+        "body": {"revision": revision_count},
+    }
+    assert len(client.page_requests) == revision_count + 1
+    assert client.page_requests[0] == {
+        "task_cid": "task:paged-history",
+        "limit": 1,
+        "offset": 0,
+    }
+    assert client.page_requests[-1] == {
+        "task_cid": "task:paged-history",
+        "limit": 1,
+        "offset": revision_count,
+    }
+    projection_body = dict(projection)
+    projection_cid = projection_body.pop("projection_cid")
+    assert projection_cid == content_identity(projection_body)
+
+
+def _typed_history_fault_adapter(
+    *,
+    head_revision: int,
+    history_rows: list[Mapping[str, Any]],
+    current_status: str = "blocked",
+    current_body: Mapping[str, Any] | None = None,
+    generation_ids: list[str] | None = None,
+) -> tuple[TypedDatabaseTaskSource, Any]:
+    body = (
+        dict(current_body)
+        if current_body is not None
+        else {"revision": head_revision}
+    )
+
+    class _HistoryClient:
+        def __init__(self) -> None:
+            self.generation_index = 0
+            self.history_requests: list[dict[str, Any]] = []
+
+        def load_generation(self) -> SimpleNamespace:
+            values = generation_ids or ["generation:stable"]
+            value = values[min(self.generation_index, len(values) - 1)]
+            self.generation_index += 1
+            return SimpleNamespace(content_id=value, revision=7)
+
+        def execute(
+            self, operation: str, parameters: Mapping[str, Any] | None = None
+        ) -> tuple[Mapping[str, Any], ...]:
+            request = dict(parameters or {})
+            if operation == "executor_task_projection_by_identity":
+                return (
+                    {
+                        "task_cid": "task:fault-history",
+                        "task_alias": "CASF-FAULT-HISTORY",
+                        "goal_cid": "goal:fault-history",
+                        "plan_cid": "plan:fault-history",
+                        "objective_id": "objective:fault-history",
+                        "ordinal": 1,
+                        "status": current_status,
+                        "revision": head_revision,
+                        "priority": "normal",
+                        "identity_json": "{}",
+                        "body_json": json.dumps(body),
+                        "dependencies_json": "[]",
+                        "outputs_json": "[]",
+                        "acceptance_json": "[]",
+                        "validations_json": "[]",
+                    },
+                )
+            assert operation == "executor_task_revision_history_page"
+            self.history_requests.append(request)
+            offset = int(request["offset"])
+            limit = int(request["limit"])
+            return tuple(history_rows[offset : offset + limit])
+
+    client = _HistoryClient()
+    adapter = object.__new__(TypedDatabaseTaskSource)
+    adapter._client = client  # type: ignore[attr-defined]
+    adapter._closed = False  # type: ignore[attr-defined]
+    return adapter, client
+
+
+def test_typed_task_revision_history_rejects_huge_head_before_query() -> None:
+    adapter, client = _typed_history_fault_adapter(
+        head_revision=10_001,
+        history_rows=[],
+    )
+
+    with pytest.raises(TaskSourceBoundsError, match="head exceeds"):
+        adapter.task_revision_history_projection("CASF-FAULT-HISTORY")
+
+    assert client.history_requests == []
+
+
+def test_typed_task_revision_history_rejects_gap_and_incremental_byte_overflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gapped, _client = _typed_history_fault_adapter(
+        head_revision=3,
+        history_rows=[
+            {
+                "task_cid": "task:fault-history",
+                "revision": 1,
+                "status": "ready",
+                "body_json": "{}",
+            },
+            {
+                "task_cid": "task:fault-history",
+                "revision": 3,
+                "status": "blocked",
+                "body_json": json.dumps({"revision": 3}),
+            },
+        ],
+    )
+    with pytest.raises(TaskSourceIntegrityError, match="invalid identity"):
+        gapped.task_revision_history_projection("CASF-FAULT-HISTORY")
+
+    oversized, _client = _typed_history_fault_adapter(
+        head_revision=1,
+        current_body={"payload": "x" * 256},
+        history_rows=[
+            {
+                "task_cid": "task:fault-history",
+                "revision": 1,
+                "status": "blocked",
+                "body_json": json.dumps({"payload": "x" * 256}),
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        typed_database_task_source_module,
+        "MAX_PLAN_PROJECTION_BYTES",
+        256,
+    )
+    with pytest.raises(TaskSourceBoundsError, match="byte bound"):
+        oversized.task_revision_history_projection("CASF-FAULT-HISTORY")
+
+
+def test_typed_task_revision_history_retries_generation_churn_then_conflicts() -> None:
+    adapter, client = _typed_history_fault_adapter(
+        head_revision=1,
+        current_status="ready",
+        current_body={},
+        history_rows=[
+            {
+                "task_cid": "task:fault-history",
+                "revision": 1,
+                "status": "ready",
+                "body_json": "{}",
+            }
+        ],
+        generation_ids=[
+            "generation:before-1",
+            "generation:after-1",
+            "generation:before-2",
+            "generation:after-2",
+            "generation:before-3",
+            "generation:after-3",
+            "generation:before-4",
+            "generation:after-4",
+        ],
+    )
+
+    with pytest.raises(TaskSourceConflictError, match="bounded projection"):
+        adapter.task_revision_history_projection("CASF-FAULT-HISTORY")
+
+    assert len(client.history_requests) == 8
+
+
 @pytest.mark.parametrize(
     "lease_kind",
     ("legacy", "malformed_typed", "forged_typed", "valid_old", "missing"),
@@ -5442,6 +5702,17 @@ def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
         "task_identity",
         "task_alias",
     )
+    assert catalog["executor_task_revision_history_page"].parameter_names == (
+        "task_cid",
+        "limit",
+        "offset",
+    )
+    assert catalog["executor_task_revision_history_page"].mutation is False
+    assert catalog["executor_insert_task_revision_history"].parameter_names == (
+        "task_cid",
+        "task_revision",
+    )
+    assert catalog["executor_insert_task_revision_history"].mutation is True
     assert catalog["executor_control_snapshot"].parameter_names == ()
     assert catalog["executor_control_snapshot"].mutation is False
     assert catalog["executor_retry_cooldown_by_task"].parameter_names == (

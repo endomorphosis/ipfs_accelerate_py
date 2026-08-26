@@ -15,6 +15,7 @@ import platform
 import socket
 from collections.abc import Mapping
 from pathlib import Path
+from types import SimpleNamespace
 
 import duckdb
 import pytest
@@ -96,6 +97,8 @@ def _authorization() -> tuple[
 ]:
     protected_task = _task("a", "EAAEF-000", 1, "accepted")
     frontier_task = _task("b", "EAAEF-001", 2, "todo")
+    frontier_task["revision"] = 2
+    new_task = _task("d", "EAAEF-002", 3, "todo")
     protected = {
         "task_cid": protected_task["task_cid"],
         "status": protected_task["status"],
@@ -136,13 +139,18 @@ def _authorization() -> tuple[
             "revision": 2,
             "body": {"objective": "continue after reconciliation"},
         },
-        tasks=[protected_task, frontier_task],
+        tasks=[protected_task, frontier_task, new_task],
         dependencies=[
             {
                 "task_cid": frontier_task["task_cid"],
                 "dependency_task_cid": protected_task["task_cid"],
                 "kind": "requires",
-            }
+            },
+            {
+                "task_cid": new_task["task_cid"],
+                "dependency_task_cid": frontier_task["task_cid"],
+                "kind": "requires",
+            },
         ],
         protected_tasks=[protected],
         frontier_task_cids=[str(frontier_task["task_cid"])],
@@ -718,6 +726,11 @@ def _provision_canonical_plan_r2_owner(
     )
     connection = duckdb.connect(str(path))
     protected = authorization["protected_tasks"][0]["task_row"]
+    existing = dict(authorization["tasks"][1])
+    existing["plan_cid"] = authorization["expected_active_plan_cid"]
+    existing["revision"] = 1
+    omitted = _task("c", "EAAEF-R1-OMITTED", 4, "todo")
+    omitted["plan_cid"] = authorization["expected_active_plan_cid"]
     try:
         connection.execute("DELETE FROM store_generations")
         connection.execute(
@@ -808,6 +821,49 @@ def _provision_canonical_plan_r2_owner(
                 _canonical(protected["body"]).decode("ascii"),
             ],
         )
+        connection.execute(
+            "INSERT INTO task_revisions VALUES (?, 1, ?, ?, "
+            "'1970-01-01T00:00:00Z')",
+            [
+                protected["task_cid"],
+                protected["status"],
+                _canonical(protected["body"]).decode("ascii"),
+            ],
+        )
+        for predecessor_task in (existing, omitted):
+            connection.execute(
+                """
+                INSERT INTO tasks (
+                    task_cid, task_alias, goal_cid, plan_cid, objective_id,
+                    ordinal, status, revision, priority, created_at, updated_at,
+                    identity_json, body_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          '1970-01-01T00:00:00Z',
+                          '1970-01-01T00:00:00Z', ?, ?)
+                """,
+                [
+                    predecessor_task["task_cid"],
+                    predecessor_task["task_alias"],
+                    predecessor_task["goal_cid"],
+                    predecessor_task["plan_cid"],
+                    predecessor_task["objective_id"],
+                    predecessor_task["ordinal"],
+                    predecessor_task["status"],
+                    predecessor_task["revision"],
+                    predecessor_task["priority"],
+                    _canonical(predecessor_task["identity"]).decode("ascii"),
+                    _canonical(predecessor_task["body"]).decode("ascii"),
+                ],
+            )
+            connection.execute(
+                "INSERT INTO task_revisions VALUES (?, 1, ?, ?, "
+                "'1970-01-01T00:00:00Z')",
+                [
+                    predecessor_task["task_cid"],
+                    predecessor_task["status"],
+                    _canonical(predecessor_task["body"]).decode("ascii"),
+                ],
+            )
         for sequence in range(1, 10):
             connection.execute(
                 "INSERT INTO domain_events (event_id, stream_id, sequence, "
@@ -913,6 +969,116 @@ def _production_adapter(tmp_path: Path):
     return adapter, fabric, authorization, operational
 
 
+def _apply_plan_r2_population_directly(
+    connection: object,
+    authorization: Mapping[str, object],
+) -> Mapping[str, object]:
+    snapshot = {
+        "plan_cid": authorization["expected_active_plan_cid"],
+        "plan_revision": authorization["expected_active_plan_revision"],
+        "goal_cid": authorization["tasks"][0]["goal_cid"],
+        "version": authorization["expected_version"],
+        "event_cursor": authorization["expected_event_cursor"],
+    }
+    envelope = SimpleNamespace(
+        envelope_cid="sha256:" + "f" * 64,
+        scope_id=authorization["plan_root_cid"],
+        command=SimpleNamespace(session_id="session:plan-r2-direct-test"),
+    )
+    transaction = SimpleNamespace(active=True, _connection=connection)
+    return QuackCommandFabric._plan_r2_apply_population(  # noqa: SLF001
+        transaction,
+        authorization=authorization,
+        snapshot=snapshot,
+        envelope=envelope,
+        committed_at_ms=NOW_MS,
+    )
+
+
+def test_plan_r2_direct_owner_keeps_every_task_history_contiguous(
+    tmp_path: Path,
+) -> None:
+    authorization = _authorization()[0]
+    operational = tmp_path / "direct-owner.duckdb"
+    _provision_canonical_plan_r2_owner(
+        operational,
+        authorization,
+        principal_did="did:key:plan-r2-direct-test",
+    )
+    connection = duckdb.connect(str(operational))
+    try:
+        connection.execute("BEGIN TRANSACTION")
+        _apply_plan_r2_population_directly(connection, authorization)
+        connection.execute("COMMIT")
+        assert connection.execute(
+            "SELECT task_alias, status, revision FROM tasks ORDER BY task_alias"
+        ).fetchall() == [
+            ("EAAEF-000", "accepted", 1),
+            ("EAAEF-001", "todo", 2),
+            ("EAAEF-002", "todo", 1),
+            ("EAAEF-R1-OMITTED", "superseded", 2),
+        ]
+        assert connection.execute(
+            "SELECT t.task_alias, COUNT(r.revision), MIN(r.revision), "
+            "MAX(r.revision) FROM tasks AS t JOIN task_revisions AS r "
+            "ON r.task_cid = t.task_cid GROUP BY t.task_alias "
+            "ORDER BY t.task_alias"
+        ).fetchall() == [
+            ("EAAEF-000", 1, 1, 1),
+            ("EAAEF-001", 2, 1, 2),
+            ("EAAEF-002", 1, 1, 1),
+            ("EAAEF-R1-OMITTED", 2, 1, 2),
+        ]
+        assert connection.execute(
+            "SELECT COUNT(*) FROM tasks AS t LEFT JOIN task_revisions AS r "
+            "ON r.task_cid = t.task_cid AND r.revision = t.revision "
+            "WHERE r.task_cid IS NULL OR r.status IS DISTINCT FROM t.status "
+            "OR r.body_json IS DISTINCT FROM t.body_json "
+            "OR r.recorded_at IS DISTINCT FROM t.updated_at"
+        ).fetchone() == (0,)
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("fault", ("gap", "revision_jump", "new_revision_zero"))
+def test_plan_r2_direct_owner_rejects_noncontiguous_history_or_revision(
+    tmp_path: Path,
+    fault: str,
+) -> None:
+    authorization = json.loads(json.dumps(_authorization()[0]))
+    operational = tmp_path / f"direct-owner-{fault}.duckdb"
+    _provision_canonical_plan_r2_owner(
+        operational,
+        authorization,
+        principal_did="did:key:plan-r2-direct-test",
+    )
+    connection = duckdb.connect(str(operational))
+    try:
+        if fault == "gap":
+            connection.execute(
+                "DELETE FROM task_revisions WHERE task_cid = ? AND revision = 1",
+                [authorization["tasks"][1]["task_cid"]],
+            )
+        elif fault == "revision_jump":
+            authorization["tasks"][1]["revision"] = 3
+        else:
+            authorization["tasks"][2]["revision"] = 0
+        connection.execute("BEGIN TRANSACTION")
+        with pytest.raises(QuackCommandFabricStateError):
+            _apply_plan_r2_population_directly(connection, authorization)
+        connection.execute("ROLLBACK")
+        assert connection.execute(
+            "SELECT status FROM plans WHERE plan_cid = ?",
+            [authorization["expected_active_plan_cid"]],
+        ).fetchone() == ("active",)
+        assert connection.execute(
+            "SELECT COUNT(*) FROM plans WHERE plan_cid = ?",
+            [authorization["new_plan"]["plan_cid"]],
+        ).fetchone() == (0,)
+    finally:
+        connection.close()
+
+
 def test_canonical_quack_owner_applies_and_reads_back_plan_r2_atomically(
     tmp_path: Path,
 ) -> None:
@@ -947,8 +1113,34 @@ def test_canonical_quack_owner_applies_and_reads_back_plan_r2_atomically(
                 ("EAAEF-PLAN-R1", "superseded"),
                 ("EAAEF-PLAN-R2", "active"),
             ]
-            assert check.execute("SELECT count(*) FROM tasks").fetchone() == (2,)
-            assert check.execute("SELECT count(*) FROM task_dependencies").fetchone() == (1,)
+            assert check.execute("SELECT count(*) FROM tasks").fetchone() == (4,)
+            assert check.execute("SELECT count(*) FROM task_dependencies").fetchone() == (2,)
+            assert check.execute(
+                "SELECT task_alias, status, revision FROM tasks ORDER BY task_alias"
+            ).fetchall() == [
+                ("EAAEF-000", "accepted", 1),
+                ("EAAEF-001", "todo", 2),
+                ("EAAEF-002", "todo", 1),
+                ("EAAEF-R1-OMITTED", "superseded", 2),
+            ]
+            assert check.execute(
+                "SELECT t.task_alias, COUNT(r.revision), MIN(r.revision), "
+                "MAX(r.revision) FROM tasks AS t JOIN task_revisions AS r "
+                "ON r.task_cid = t.task_cid GROUP BY t.task_alias "
+                "ORDER BY t.task_alias"
+            ).fetchall() == [
+                ("EAAEF-000", 1, 1, 1),
+                ("EAAEF-001", 2, 1, 2),
+                ("EAAEF-002", 1, 1, 1),
+                ("EAAEF-R1-OMITTED", 2, 1, 2),
+            ]
+            assert check.execute(
+                "SELECT COUNT(*) FROM tasks AS t LEFT JOIN task_revisions AS r "
+                "ON r.task_cid = t.task_cid AND r.revision = t.revision "
+                "WHERE r.task_cid IS NULL OR r.status IS DISTINCT FROM t.status "
+                "OR r.body_json IS DISTINCT FROM t.body_json "
+                "OR r.recorded_at IS DISTINCT FROM t.updated_at"
+            ).fetchone() == (0,)
             assert check.execute(
                 "SELECT count(*) FROM domain_events "
                 "WHERE event_type = 'authorized_plan_r2_owner_result'"

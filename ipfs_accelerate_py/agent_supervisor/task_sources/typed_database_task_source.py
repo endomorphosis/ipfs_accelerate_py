@@ -43,7 +43,13 @@ from .database_task_source import (
 from .database_task_source import (
     CASResult as DatabaseCASResult,
 )
-from .intent_repository import IntentReceipt, QueueEntry
+from .intent_repository import (
+    MAX_PLAN_PROJECTION_BYTES,
+    MAX_PROJECTION_RECORDS,
+    TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+    IntentReceipt,
+    QueueEntry,
+)
 from .quack_state_client import (
     ClientSession,
     QuackClientError,
@@ -80,6 +86,12 @@ TYPED_DATABASE_TASK_SOURCE_SCHEMA: Final = (
 )
 DEFAULT_QUERY_LIMIT: Final = 50
 _TRANSPORT_PAGE_LIMIT: Final = 500
+# A history row can contain a body at the typed transport's one-megabyte
+# scalar ceiling before the stricter task-body bound is checked locally.  One
+# row per response therefore remains below the 16 MiB owner frame even for a
+# corrupt row whose JSON string is maximally escaped.  History is a recovery
+# surface, so bounded safety takes precedence over bulk throughput here.
+_HISTORY_TRANSPORT_PAGE_LIMIT: Final = 1
 _MAX_JSON_BYTES: Final = 262_144
 _READY_STATUSES: Final[frozenset[str]] = frozenset(
     {"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"}
@@ -116,6 +128,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "executor_task_projection_page",
         "executor_control_snapshot",
         "executor_task_projection_by_identity",
+        "executor_task_revision_history_page",
         "executor_retry_cooldown_by_task",
         "executor_retry_cooldown_page",
         "txn_load_generation",
@@ -124,6 +137,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "txn_record_idempotency",
         "txn_cas_task_status",
         "executor_cas_task_status_receipt",
+        "executor_insert_task_revision_history",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
         "executor_insert_validation_run",
@@ -1142,6 +1156,138 @@ class TypedDatabaseTaskSource:
         return _record_from_row(rows[0])[0]
 
     get = get_task
+
+    def task_revision_history_projection(
+        self,
+        task_cid_or_alias: str,
+    ) -> Mapping[str, Any]:
+        """Return canonical lifecycle history through one closed owner read.
+
+        Identity resolution and each bounded history page are protected by a
+        store-generation sandwich.  A concurrent task transition therefore
+        retries the whole projection instead of combining rows from different
+        authoritative revisions.
+        """
+
+        self._require_open()
+        key = str(task_cid_or_alias or "").strip()
+        if not key:
+            raise TaskSourceIntegrityError("task identity must not be empty")
+        for _attempt in range(4):
+            before = self._client.load_generation()
+            resolved_task = self.get_task(key)
+            if resolved_task is None:
+                raise KeyError(key)
+            task_cid = resolved_task.task_cid
+
+            head_revision = resolved_task.revision
+            if (
+                isinstance(head_revision, bool)
+                or not isinstance(head_revision, int)
+                or not 1 <= head_revision <= MAX_PROJECTION_RECORDS
+            ):
+                raise TaskSourceBoundsError(
+                    "task revision head exceeds projection bound"
+                )
+
+            revisions: list[dict[str, Any]] = []
+            material_bytes = len(
+                canonical_json_bytes(
+                    {
+                        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                        "task_cid": task_cid,
+                        "revisions": [],
+                    }
+                )
+            )
+            offset = 0
+            while offset <= MAX_PROJECTION_RECORDS:
+                page_limit = min(
+                    _HISTORY_TRANSPORT_PAGE_LIMIT,
+                    MAX_PROJECTION_RECORDS + 1 - offset,
+                )
+                page = self._client.execute(
+                    "executor_task_revision_history_page",
+                    {
+                        "task_cid": task_cid,
+                        "limit": page_limit,
+                        "offset": offset,
+                    },
+                )
+                if len(page) > page_limit:
+                    raise TaskSourceIntegrityError(
+                        "typed task revision history page exceeds its request"
+                    )
+                if offset + len(page) > MAX_PROJECTION_RECORDS:
+                    raise TaskSourceBoundsError(
+                        "task revision history exceeds projection bound"
+                    )
+                for row in page:
+                    if set(row) != {
+                        "task_cid",
+                        "revision",
+                        "status",
+                        "body_json",
+                    }:
+                        raise TaskSourceIntegrityError(
+                            "typed task revision history differs from its schema"
+                        )
+                    revision = row.get("revision")
+                    expected_revision = offset + 1
+                    if (
+                        str(row.get("task_cid") or "") != task_cid
+                        or isinstance(revision, bool)
+                        or not isinstance(revision, int)
+                        or revision != expected_revision
+                    ):
+                        raise TaskSourceIntegrityError(
+                            "typed task revision history has invalid identity"
+                        )
+                    entry = {
+                        "revision": revision,
+                        "status": str(row.get("status") or ""),
+                        "body": _mapping_json(
+                            row.get("body_json"),
+                            noun="task revision body",
+                        ),
+                    }
+                    entry_bytes = len(canonical_json_bytes(entry))
+                    material_bytes += entry_bytes + (1 if revisions else 0)
+                    if material_bytes > MAX_PLAN_PROJECTION_BYTES:
+                        raise TaskSourceBoundsError(
+                            "task revision history projection exceeds byte bound"
+                        )
+                    revisions.append(entry)
+                    offset += 1
+                if len(page) < page_limit:
+                    break
+
+            after = self._client.load_generation()
+            if before.content_id != after.content_id:
+                continue
+            if (
+                len(revisions) != head_revision
+                or revisions[-1]["status"] != resolved_task.status
+                or revisions[-1]["body"] != resolved_task.body
+            ):
+                raise TaskSourceIntegrityError(
+                    "typed task revision history differs from its current head"
+                )
+            material = {
+                "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                "task_cid": task_cid,
+                "revisions": revisions,
+            }
+            if len(canonical_json_bytes(material)) != material_bytes:
+                raise TaskSourceBoundsError(
+                    "task revision history projection byte accounting differs"
+                )
+            return MappingProxyType(
+                {**material, "projection_cid": content_identity(material)}
+            )
+        raise TaskSourceConflictError(
+            "typed task revision history changed during bounded projection"
+        )
 
     def list_tasks(
         self,

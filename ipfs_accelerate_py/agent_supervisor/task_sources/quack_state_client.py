@@ -483,6 +483,20 @@ def _default_templates() -> dict[str, StatementTemplate]:
                 "Exact full-fidelity task projection for an admitted executor"
             ),
         ),
+        "executor_task_revision_history_page": StatementTemplate(
+            name="executor_task_revision_history_page",
+            sql=(
+                "SELECT task_cid, revision, status, body_json FROM "
+                "task_revisions WHERE task_cid = ? ORDER BY revision ASC "
+                "LIMIT ? OFFSET ?"
+            ),
+            parameter_names=("task_cid", "limit", "offset"),
+            kind=StatementKind.QUERY,
+            description=(
+                "Bounded canonical task revision-history page for an admitted "
+                "executor"
+            ),
+        ),
         "executor_control_snapshot": StatementTemplate(
             name="executor_control_snapshot",
             sql=(
@@ -739,6 +753,20 @@ def _default_templates() -> dict[str, StatementTemplate]:
             kind=StatementKind.MUTATION,
             description=(
                 "CAS task status while retaining its authoritative transition receipt"
+            ),
+        ),
+        "executor_insert_task_revision_history": StatementTemplate(
+            name="executor_insert_task_revision_history",
+            sql=(
+                "INSERT INTO task_revisions (task_cid, revision, status, "
+                "body_json, recorded_at) SELECT task_cid, revision, status, "
+                "body_json, updated_at FROM tasks WHERE task_cid = ? AND revision = ? "
+                "RETURNING revision"
+            ),
+            parameter_names=("task_cid", "task_revision"),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Append the authoritative post-CAS task row to lifecycle history"
             ),
         ),
         "insert_goal": StatementTemplate(
@@ -2014,12 +2042,13 @@ class QuackStateClient:
                     task_cid=str(parameters["task_cid"]),
                     requested_status=str(parameters["status"]),
                 )
+            recorded_at = self._clock()
             result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",
                 (
                     str(parameters["status"]),
                     expected + 1,
-                    self._clock(),
+                    recorded_at,
                     str(parameters["body_json"]),
                     str(parameters["task_cid"]),
                     expected,
@@ -2032,6 +2061,21 @@ class QuackStateClient:
                     details={
                         "task_cid": str(parameters["task_cid"]),
                         "expected_task_revision": expected,
+                    },
+                )
+            revision_result = txn.execute_named_operation(
+                "executor_insert_task_revision_history",
+                (
+                    str(parameters["task_cid"]),
+                    expected + 1,
+                ),
+            )
+            if _fetch_one(revision_result) is None:
+                raise OptimisticConflictError(
+                    "task status receipt history append failed",
+                    details={
+                        "task_cid": str(parameters["task_cid"]),
+                        "task_revision": expected + 1,
                     },
                 )
             return {
@@ -2328,12 +2372,13 @@ class QuackStateClient:
                     "dead claim recovery cooldown absence CAS failed"
                 )
             expected = int(values["expected_task_revision"])
+            recorded_at = self._clock()
             task_result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",
                 (
                     "retrying",
                     expected + 1,
-                    self._clock(),
+                    recorded_at,
                     values["body_json"],
                     values["task_cid"],
                     expected,
@@ -2342,6 +2387,14 @@ class QuackStateClient:
             if _fetch_one(task_result) is None:
                 raise OptimisticConflictError(
                     "dead claim recovery task CAS failed"
+                )
+            revision_result = txn.execute_named_operation(
+                "executor_insert_task_revision_history",
+                (values["task_cid"], expected + 1),
+            )
+            if _fetch_one(revision_result) is None:
+                raise OptimisticConflictError(
+                    "dead claim recovery task history append failed"
                 )
             return {
                 "schema": TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
@@ -2619,12 +2672,13 @@ class QuackStateClient:
                     "legacy unstall recovery cooldown CAS failed"
                 )
             task_revision = int(values["expected_task_revision"])
+            recorded_at = self._clock()
             task_result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",
                 (
                     "retrying",
                     task_revision + 1,
-                    self._clock(),
+                    recorded_at,
                     body_json,
                     values["task_cid"],
                     task_revision,
@@ -2633,6 +2687,14 @@ class QuackStateClient:
             if _fetch_one(task_result) is None:
                 raise OptimisticConflictError(
                     "legacy unstall recovery task CAS failed"
+                )
+            revision_result = txn.execute_named_operation(
+                "executor_insert_task_revision_history",
+                (values["task_cid"], task_revision + 1),
+            )
+            if _fetch_one(revision_result) is None:
+                raise OptimisticConflictError(
+                    "legacy unstall recovery task history append failed"
                 )
             return {
                 "schema": TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
@@ -3426,6 +3488,18 @@ class QuackStateClient:
                 "updated_at": self._clock(),
             },
         )
+        revision_result = txn.execute_named_operation(
+            "executor_insert_task_revision_history",
+            (task_cid, new_revision),
+        )
+        if _fetch_one(revision_result) is None:
+            raise OptimisticConflictError(
+                "task status history append failed",
+                details={
+                    "task_cid": task_cid,
+                    "task_revision": new_revision,
+                },
+            )
         return {
             "task_cid": task_cid,
             "status": status,

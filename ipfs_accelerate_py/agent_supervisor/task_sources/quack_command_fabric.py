@@ -2440,6 +2440,52 @@ class QuackCommandFabric:
         }
 
     @classmethod
+    def _plan_r2_assert_task_history_head(
+        cls,
+        connection: Any,
+        task_cid: str,
+    ) -> None:
+        """Require one task's lifecycle history to be contiguous and current."""
+
+        task_row = cls._plan_r2_one(
+            connection.execute(
+                "SELECT revision, status, body_json, updated_at FROM tasks "
+                "WHERE task_cid = ? LIMIT 1",
+                [task_cid],
+            ),
+            noun=f"Plan-R2 task history head {task_cid}",
+        )
+        revision = int(task_row[0])
+        aggregate = cls._plan_r2_one(
+            connection.execute(
+                "SELECT COUNT(*), MIN(revision), MAX(revision) "
+                "FROM task_revisions WHERE task_cid = ?",
+                [task_cid],
+            ),
+            noun=f"Plan-R2 task history aggregate {task_cid}",
+        )
+        history_head = cls._plan_r2_rows(
+            connection.execute(
+                "SELECT status, body_json, recorded_at FROM task_revisions "
+                "WHERE task_cid = ? AND revision = ?",
+                [task_cid, revision],
+            )
+        )
+        if (
+            revision < 1
+            or int(aggregate[0]) != revision
+            or int(aggregate[1] or 0) != 1
+            or int(aggregate[2] or 0) != revision
+            or len(history_head) != 1
+            or str(history_head[0][0]) != str(task_row[1])
+            or str(history_head[0][1]) != str(task_row[2])
+            or str(history_head[0][2]) != str(task_row[3])
+        ):
+            raise QuackCommandFabricStateError(
+                f"Plan-R2 task history is absent, gapped, or stale for {task_cid}"
+            )
+
+    @classmethod
     def _plan_r2_active_snapshot(
         cls,
         transaction: Any,
@@ -2696,31 +2742,50 @@ class QuackCommandFabric:
         )
         for task_cid, revision, status in old_rows:
             task_id = str(task_cid)
+            cls._plan_r2_assert_task_history_head(connection, task_id)
             if task_id in proposed or task_id in protected:
                 continue
             if str(status) in _PLAN_R2_PROTECTED_STATUSES:
                 raise QuackCommandFabricStateError(
                     "Plan-R2 attempted to omit a protected predecessor task"
                 )
-            connection.execute(
-                "UPDATE tasks SET status = 'superseded', revision = ?, "
-                "updated_at = ? WHERE task_cid = ? AND revision = ?",
-                [int(revision) + 1, now_iso, task_id, int(revision)],
+            superseded_revision = int(revision) + 1
+            returned_task = cls._plan_r2_rows(
+                connection.execute(
+                    "UPDATE tasks SET status = 'superseded', revision = ?, "
+                    "updated_at = ? WHERE task_cid = ? AND revision = ? "
+                    "RETURNING task_cid",
+                    [superseded_revision, now_iso, task_id, int(revision)],
+                )
             )
+            if returned_task != [(task_id,)]:
+                raise QuackCommandFabricStateError(
+                    f"Plan-R2 predecessor task CAS failed for {task_id}"
+                )
+            connection.execute(
+                "INSERT INTO task_revisions "
+                "(task_cid, revision, status, body_json, recorded_at) "
+                "SELECT task_cid, revision, status, body_json, updated_at "
+                "FROM tasks WHERE task_cid = ? AND revision = ?",
+                [task_id, superseded_revision],
+            )
+            cls._plan_r2_assert_task_history_head(connection, task_id)
 
         for task_id, task in proposed.items():
             existing_rows = cls._plan_r2_rows(
                 connection.execute("SELECT revision FROM tasks WHERE task_cid = ?", [task_id])
             )
             if task_id in protected:
+                cls._plan_r2_assert_task_history_head(connection, task_id)
                 continue
             identity_json = canonical_json_bytes(task["identity"]).decode("utf-8")
             body_json = canonical_json_bytes(task["body"]).decode("utf-8")
             if existing_rows:
                 current_revision = int(existing_rows[0][0])
-                if int(task["revision"]) <= current_revision:
+                cls._plan_r2_assert_task_history_head(connection, task_id)
+                if int(task["revision"]) != current_revision + 1:
                     raise QuackCommandFabricStateError(
-                        f"Plan-R2 task revision does not advance for {task_id}"
+                        f"Plan-R2 task revision is not contiguous for {task_id}"
                     )
                 returned_task = cls._plan_r2_rows(
                     connection.execute(
@@ -2750,6 +2815,10 @@ class QuackCommandFabric:
                 if returned_task != [(task_id,)]:
                     raise QuackCommandFabricStateError(f"Plan-R2 task CAS failed for {task_id}")
             else:
+                if int(task["revision"]) != 1:
+                    raise QuackCommandFabricStateError(
+                        f"Plan-R2 new task revision is not one for {task_id}"
+                    )
                 connection.execute(
                     """
                     INSERT INTO tasks (
@@ -2774,29 +2843,14 @@ class QuackCommandFabric:
                         body_json,
                     ],
                 )
-            revision_body = canonical_json_bytes(task).decode("utf-8")
-            prior_revision = cls._plan_r2_rows(
-                connection.execute(
-                    "SELECT status, body_json FROM task_revisions "
-                    "WHERE task_cid = ? AND revision = ?",
-                    [task_id, task["revision"]],
-                )
+            connection.execute(
+                "INSERT INTO task_revisions "
+                "(task_cid, revision, status, body_json, recorded_at) "
+                "SELECT task_cid, revision, status, body_json, updated_at "
+                "FROM tasks WHERE task_cid = ? AND revision = ?",
+                [task_id, task["revision"]],
             )
-            if prior_revision and prior_revision != [(task["status"], revision_body)]:
-                raise QuackCommandFabricStateError(
-                    f"Plan-R2 task revision identity conflicts for {task_id}"
-                )
-            if not prior_revision:
-                connection.execute(
-                    "INSERT INTO task_revisions VALUES (?, ?, ?, ?, ?)",
-                    [
-                        task_id,
-                        task["revision"],
-                        task["status"],
-                        revision_body,
-                        now_iso,
-                    ],
-                )
+            cls._plan_r2_assert_task_history_head(connection, task_id)
 
         for task_id in sorted(proposed):
             connection.execute("DELETE FROM task_dependencies WHERE task_cid = ?", [task_id])

@@ -4575,6 +4575,265 @@ def test_stopped_projection_profile_and_identity_use_one_sealed_snapshot(
                 os.pwrite(snapshot_descriptor, b"tamper", 0)
 
 
+def test_stopped_task_history_audit_detects_a_noncontiguous_head(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+    )
+
+    operator = _operator()
+    target_cid = "task:test-history-audit:00"
+    database = tmp_path / "history-audit.duckdb"
+    source = DatabaseTaskSource(database)
+    try:
+        source.materialize(
+            {
+                "repository_tree_id": "tree:test-history-audit",
+                "plan_root_cid": "plan:test-history-audit",
+                "goals": [
+                    {
+                        "goal_cid": "goal:test-history-audit",
+                        "goal_alias": "G-HISTORY-AUDIT",
+                        "title": "History audit",
+                    }
+                ],
+                "tasks": [
+                    {
+                        "task_cid": f"task:test-history-audit:{index:02d}",
+                        "task_id": task_alias,
+                        "goal_cid": "goal:test-history-audit",
+                        "status": "ready",
+                        "body": {"title": "History audit"},
+                    }
+                    for index, task_alias in enumerate(
+                        operator.LGCVF_TASK_ALIASES
+                    )
+                ],
+            }
+        )
+    finally:
+        source.close()
+
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        valid = operator._audit_task_history_connection(connection)
+    finally:
+        connection.close()
+    assert valid["valid"] is True
+    assert valid["task_count"] == len(operator.LGCVF_TASK_ALIASES)
+    assert valid["invalid_task_count"] == 0
+    assert valid["tasks"][0]["history_count"] == 1
+    assert valid["tasks"][0]["errors"] == []
+
+    connection = open_duckdb_connection(database)
+    try:
+        connection.execute(
+            "UPDATE tasks SET revision = 3 WHERE task_cid = ?",
+            [target_cid],
+        )
+    finally:
+        connection.close()
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        invalid = operator._audit_task_history_connection(connection)
+    finally:
+        connection.close()
+    assert invalid["valid"] is False
+    assert invalid["valid_task_count"] == len(operator.LGCVF_TASK_ALIASES) - 1
+    assert invalid["invalid_task_count"] == 1
+    assert invalid["tasks"][0]["head_revision"] == 3
+    assert invalid["tasks"][0]["history_count"] == 1
+    assert invalid["tasks"][0]["errors"] == [
+        "history_count_differs_from_head"
+    ]
+
+    connection = open_duckdb_connection(database)
+    try:
+        connection.execute(
+            "UPDATE tasks SET revision = 1 WHERE task_cid = ?",
+            [target_cid],
+        )
+        connection.execute(
+            "INSERT INTO task_revisions VALUES "
+            "('task:orphan-history', 1, 'ready', '{}', "
+            "'1970-01-01T00:00:00Z')"
+        )
+    finally:
+        connection.close()
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        orphaned = operator._audit_task_history_connection(connection)
+    finally:
+        connection.close()
+    assert orphaned["valid"] is False
+    assert orphaned["errors"] == ["orphan_task_revisions_present"]
+    assert orphaned["orphan_history_count"] == 1
+    assert orphaned["tasks"][0]["valid"] is True
+
+    connection = open_duckdb_connection(database)
+    try:
+        connection.execute(
+            "DELETE FROM task_revisions WHERE task_cid = 'task:orphan-history'"
+        )
+        connection.execute(
+            "UPDATE tasks SET body_json = '{\"value\":NaN}' "
+            "WHERE task_cid = ?",
+            [target_cid],
+        )
+        connection.execute(
+            "UPDATE task_revisions SET body_json = '{\"value\":NaN}' "
+            "WHERE task_cid = ?",
+            [target_cid],
+        )
+    finally:
+        connection.close()
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        nonfinite = operator._audit_task_history_connection(connection)
+    finally:
+        connection.close()
+    assert nonfinite["valid"] is False
+    assert nonfinite["errors"] == []
+    assert nonfinite["tasks"][0]["errors"] == [
+        "history_body_not_object",
+        "task_body_not_object",
+    ]
+
+    for rejected_json in ('{"value":1.5}', '{"value":1,"value":2}'):
+        connection = open_duckdb_connection(database)
+        try:
+            connection.execute(
+                "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+                [rejected_json, target_cid],
+            )
+            connection.execute(
+                "UPDATE task_revisions SET body_json = ? WHERE task_cid = ?",
+                [rejected_json, target_cid],
+            )
+        finally:
+            connection.close()
+        connection = duckdb.connect(str(database), read_only=True)
+        try:
+            rejected = operator._audit_task_history_connection(connection)
+        finally:
+            connection.close()
+        assert rejected["valid"] is False
+        assert rejected["tasks"][0]["errors"] == [
+            "history_body_not_object",
+            "task_body_not_object",
+        ]
+
+    missing_cid = (
+        f"task:test-history-audit:{len(operator.LGCVF_TASK_ALIASES) - 1:02d}"
+    )
+    connection = open_duckdb_connection(database)
+    try:
+        connection.execute(
+            "DELETE FROM task_revisions WHERE task_cid = ?",
+            [missing_cid],
+        )
+        connection.execute(
+            "DELETE FROM tasks WHERE task_cid = ?",
+            [missing_cid],
+        )
+    finally:
+        connection.close()
+    connection = duckdb.connect(str(database), read_only=True)
+    try:
+        below_initial = operator._audit_task_history_connection(connection)
+    finally:
+        connection.close()
+    assert below_initial["valid"] is False
+    assert below_initial["errors"] == ["task_population_below_initial_board"]
+
+
+def test_stopped_task_history_audit_uses_one_sealed_control_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import duckdb
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
+
+    operator = _operator()
+    _paths, provenance, continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    observed: dict[str, object] = {}
+
+    class FakeConnection:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    connection = FakeConnection()
+
+    def connect(
+        duckdb_module: object,
+        path: str,
+        *,
+        read_only: bool,
+    ) -> FakeConnection:
+        assert duckdb_module is duckdb
+        observed["snapshot_path"] = path
+        observed["read_only"] = read_only
+        assert path.startswith("/proc/self/fd/")
+        assert Path(path).is_file()
+        return connection
+
+    audit = {
+        "valid": False,
+        "errors": ["orphan_task_revisions_present"],
+        "task_count": 1,
+        "history_row_count": 2,
+        "orphan_history_count": 1,
+        "valid_task_count": 1,
+        "invalid_task_count": 0,
+        "tasks": [{"task_cid": "task:test", "valid": True}],
+    }
+    monkeypatch.setattr(duckdb_state, "connect_duckdb_with_policy", connect)
+    monkeypatch.setattr(
+        operator,
+        "_audit_task_history_connection",
+        lambda observed_connection: (
+            audit
+            if observed_connection is connection
+            else pytest.fail("history audit used a different connection")
+        ),
+    )
+
+    result = operator.stopped_task_history_audit(tmp_path)
+
+    assert observed["read_only"] is True
+    assert connection.closed is True
+    assert not Path(str(observed["snapshot_path"])).exists()
+    assert result["schema"] == operator.STOPPED_TASK_HISTORY_AUDIT_SCHEMA
+    assert result["valid"] is False
+    assert result["authoritative"] is False
+    assert result["mutation_authority"] is False
+    assert result["source_provenance_cid"] == provenance["receipt_cid"]
+    assert result["stopped_state_continuity_receipt_cid"] == continuity[
+        "receipt_cid"
+    ]
+    assert result["errors"] == ["orphan_task_revisions_present"]
+    assert result["history_row_count"] == 2
+    assert result["orphan_history_count"] == 1
+    assert result["tasks"] == audit["tasks"]
+    result_body = dict(result)
+    audit_cid = result_body.pop("audit_cid")
+    assert audit_cid == operator._content_id(result_body)
+    assert continuity["test_restart_calls"]() == 0
+
+
 def test_canonical_profile_verifier_reads_sealed_descriptor_without_sidecar(
     tmp_path: Path,
 ) -> None:

@@ -283,6 +283,9 @@ FAILED_START_SOURCE_MAINTENANCE_RESULT_SCHEMA: Final = (
 FAILED_START_SOURCE_MAINTENANCE_OPERATION: Final = (
     "reviewed_failed_start_source_maintenance_reseal"
 )
+STOPPED_TASK_HISTORY_AUDIT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-stopped-task-history-audit@1"
+)
 ABANDONED_OWNER_RECOVERY_PREFLIGHT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "lgcvf-abandoned-owner-recovery-preflight@1"
@@ -13109,6 +13112,400 @@ def project_ducklake_once(root: Path = ROOT) -> dict[str, Any]:
         )
 
 
+def _audit_task_history_connection(connection: Any) -> dict[str, Any]:
+    """Audit lifecycle history without exporting task bodies or mutating state."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        canonical_json_bytes,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        MAX_BODY_BYTES,
+        MAX_ID_BYTES,
+        MAX_PLAN_PROJECTION_BYTES,
+        MAX_PROJECTION_RECORDS,
+        TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+    )
+
+    task_population = connection.execute(
+        "SELECT COUNT(*), "
+        "COALESCE(MAX(octet_length(encode(task_cid))), 0) FROM tasks"
+    ).fetchone()
+    if task_population is None:
+        raise SuccessorOperatorError("stopped task population is unavailable")
+    task_count = int(task_population[0])
+    if task_count > MAX_PROJECTION_RECORDS:
+        raise SuccessorOperatorError(
+            "stopped task population exceeds history-audit bound"
+        )
+    if int(task_population[1]) > MAX_ID_BYTES:
+        raise SuccessorOperatorError(
+            "stopped task identity exceeds history-audit bound"
+        )
+    history_population = connection.execute(
+        "SELECT COUNT(*), COUNT(*) FILTER (WHERE t.task_cid IS NULL) "
+        "FROM task_revisions AS r LEFT JOIN tasks AS t "
+        "ON t.task_cid = r.task_cid"
+    ).fetchone()
+    if history_population is None:
+        raise SuccessorOperatorError(
+            "stopped task-history population is unavailable"
+        )
+    history_row_count = int(history_population[0])
+    orphan_history_count = int(history_population[1])
+    global_errors: list[str] = []
+    if task_count < len(LGCVF_TASK_ALIASES):
+        global_errors.append("task_population_below_initial_board")
+    if history_row_count > MAX_PROJECTION_RECORDS:
+        raise SuccessorOperatorError(
+            "stopped task-history population exceeds history-audit bound"
+        )
+    if orphan_history_count:
+        global_errors.append("orphan_task_revisions_present")
+    task_cids = connection.execute(
+        "SELECT task_cid FROM tasks ORDER BY task_cid LIMIT ?",
+        [MAX_PROJECTION_RECORDS + 1],
+    ).fetchall()
+    if len(task_cids) != task_count:
+        raise SuccessorOperatorError(
+            "stopped task population changed during history audit"
+    )
+    audits: list[dict[str, Any]] = []
+    valid_count = 0
+
+    def strict_json_object(raw: str) -> Any:
+        def closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON field: {key}")
+                result[key] = value
+            return result
+
+        def reject_constant(_value: str) -> Any:
+            raise ValueError("non-finite JSON constant")
+
+        def reject_float(_value: str) -> Any:
+            raise ValueError("floating-point JSON number")
+
+        return json.loads(
+            raw,
+            object_pairs_hook=closed_object,
+            parse_constant=reject_constant,
+            parse_float=reject_float,
+        )
+
+    for task_cid_row in task_cids:
+        task_cid = str(task_cid_row[0] or "")
+        errors: list[str] = []
+        if not task_cid:
+            errors.append("task_cid_empty")
+        task_row = connection.execute(
+            "SELECT "
+            "CASE WHEN octet_length(encode(task_alias)) <= ? "
+            "THEN task_alias END, octet_length(encode(task_alias)), "
+            "CASE WHEN octet_length(encode(status)) <= ? THEN status END, "
+            "octet_length(encode(status)), revision, "
+            "CASE WHEN octet_length(encode(body_json)) <= ? THEN body_json END, "
+            "octet_length(encode(body_json)), "
+            "CASE WHEN octet_length(encode(updated_at)) <= ? THEN updated_at END, "
+            "octet_length(encode(updated_at)) "
+            "FROM tasks WHERE task_cid = ?",
+            [MAX_ID_BYTES, MAX_ID_BYTES, MAX_BODY_BYTES, MAX_ID_BYTES, task_cid],
+        ).fetchone()
+        if task_row is None:
+            raise SuccessorOperatorError(
+                "stopped task population changed during history audit"
+            )
+        task_alias = str(task_row[0] or "")
+        task_alias_bytes = int(task_row[1])
+        task_status = str(task_row[2] or "")
+        task_status_bytes = int(task_row[3])
+        head_revision = task_row[4]
+        task_body_json = task_row[5]
+        task_body_byte_count = int(task_row[6])
+        task_updated_at = str(task_row[7] or "")
+        task_updated_at_bytes = int(task_row[8])
+        if task_alias_bytes > MAX_ID_BYTES:
+            errors.append("task_alias_exceeds_bound")
+        elif not task_alias:
+            errors.append("task_alias_empty")
+        if task_status_bytes > MAX_ID_BYTES:
+            errors.append("task_status_exceeds_bound")
+        elif not task_status:
+            errors.append("task_status_empty")
+        if task_updated_at_bytes > MAX_ID_BYTES:
+            errors.append("task_updated_at_exceeds_bound")
+        elif not task_updated_at:
+            errors.append("task_updated_at_empty")
+        if (
+            isinstance(head_revision, bool)
+            or not isinstance(head_revision, int)
+            or not 1 <= head_revision <= MAX_PROJECTION_RECORDS
+        ):
+            errors.append("head_revision_out_of_bounds")
+        if not isinstance(task_body_json, str):
+            errors.append(
+                "task_body_exceeds_bound"
+                if task_body_byte_count > MAX_BODY_BYTES
+                else "task_body_not_encoded_json"
+            )
+            task_body_bytes = b""
+            task_body: Any = None
+        else:
+            task_body_bytes = task_body_json.encode("utf-8")
+            try:
+                task_body = strict_json_object(task_body_json)
+            except (TypeError, ValueError, RecursionError, OverflowError):
+                task_body = None
+            if not isinstance(task_body, dict):
+                errors.append("task_body_not_object")
+
+        history_population = connection.execute(
+            "SELECT COUNT(*), MIN(revision), MAX(revision), "
+            "COALESCE(MAX(octet_length(encode(status))), 0), "
+            "COALESCE(MAX(octet_length(encode(body_json))), 0), "
+            "COALESCE(MAX(octet_length(encode(recorded_at))), 0) "
+            "FROM task_revisions WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone()
+        if history_population is None:
+            raise SuccessorOperatorError(
+                "stopped task history population is unavailable"
+            )
+        history_count = int(history_population[0])
+        history_first_revision = (
+            int(history_population[1])
+            if history_population[1] is not None
+            else -1
+        )
+        history_last_revision = (
+            int(history_population[2])
+            if history_population[2] is not None
+            else -1
+        )
+        history_status_bytes = int(history_population[3])
+        history_body_bytes = int(history_population[4])
+        history_recorded_at_bytes = int(history_population[5])
+        if history_count > MAX_PROJECTION_RECORDS:
+            errors.append("history_population_exceeds_bound")
+        if history_status_bytes > MAX_ID_BYTES:
+            errors.append("history_status_exceeds_bound")
+        if history_body_bytes > MAX_BODY_BYTES:
+            errors.append("history_body_exceeds_bound")
+        if history_recorded_at_bytes > MAX_ID_BYTES:
+            errors.append("history_recorded_at_exceeds_bound")
+        if history_count and (
+            history_first_revision != 1
+            or history_last_revision != history_count
+        ):
+            errors.append("history_revision_gap_or_reorder")
+        material_bytes = len(
+            canonical_json_bytes(
+                {
+                    "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                    "task_cid": task_cid,
+                    "revisions": [],
+                }
+            )
+        )
+        tail_status = ""
+        tail_body_json = ""
+        tail_recorded_at = ""
+        history_fields_bounded = (
+            history_count <= MAX_PROJECTION_RECORDS
+            and history_status_bytes <= MAX_ID_BYTES
+            and history_body_bytes <= MAX_BODY_BYTES
+            and history_recorded_at_bytes <= MAX_ID_BYTES
+        )
+        if history_count and history_fields_bounded:
+            tail_row = connection.execute(
+                "SELECT status, body_json, recorded_at FROM task_revisions "
+                "WHERE task_cid = ? ORDER BY revision DESC LIMIT 1",
+                [task_cid],
+            ).fetchone()
+            if tail_row is None:
+                raise SuccessorOperatorError(
+                    "stopped task history changed during history audit"
+                )
+            tail_status = str(tail_row[0] or "")
+            tail_body_json = str(tail_row[1] or "")
+            tail_recorded_at = str(tail_row[2] or "")
+            prior_revision: int | None = None
+            for index in range(1, history_count + 1):
+                if prior_revision is None:
+                    history_row = connection.execute(
+                        "SELECT revision, status, body_json "
+                        "FROM task_revisions WHERE task_cid = ? "
+                        "ORDER BY revision LIMIT 1",
+                        [task_cid],
+                    ).fetchone()
+                else:
+                    history_row = connection.execute(
+                        "SELECT revision, status, body_json "
+                        "FROM task_revisions WHERE task_cid = ? AND revision > ? "
+                        "ORDER BY revision LIMIT 1",
+                        [task_cid, prior_revision],
+                    ).fetchone()
+                if history_row is None:
+                    raise SuccessorOperatorError(
+                        "stopped task history changed during history audit"
+                    )
+                revision = history_row[0]
+                status = str(history_row[1] or "")
+                body_json = history_row[2]
+                if (
+                    isinstance(revision, bool)
+                    or not isinstance(revision, int)
+                    or revision != index
+                ):
+                    errors.append("history_revision_gap_or_reorder")
+                if not isinstance(body_json, str):
+                    errors.append("history_body_not_encoded_json")
+                    body: Any = None
+                else:
+                    try:
+                        body = strict_json_object(body_json)
+                    except (TypeError, ValueError, RecursionError, OverflowError):
+                        body = None
+                if not isinstance(body, dict):
+                    errors.append("history_body_not_object")
+                entry = {
+                    "revision": revision,
+                    "status": status,
+                    "body": body if isinstance(body, dict) else {},
+                }
+                try:
+                    entry_bytes = len(canonical_json_bytes(entry))
+                except (TypeError, ValueError, RecursionError, OverflowError):
+                    errors.append("history_body_not_canonicalizable")
+                    entry_bytes = 0
+                material_bytes += entry_bytes + (1 if index > 1 else 0)
+                if isinstance(revision, int) and not isinstance(revision, bool):
+                    prior_revision = revision
+                if material_bytes > MAX_PLAN_PROJECTION_BYTES:
+                    errors.append("history_projection_exceeds_byte_bound")
+                    break
+        if material_bytes > MAX_PLAN_PROJECTION_BYTES:
+            errors.append("history_projection_exceeds_byte_bound")
+        if not isinstance(head_revision, bool) and isinstance(head_revision, int):
+            if history_count != head_revision:
+                errors.append("history_count_differs_from_head")
+        if (
+            not history_count
+            or tail_status != task_status
+            or tail_body_json != (
+                task_body_json if isinstance(task_body_json, str) else ""
+            )
+            or tail_recorded_at != task_updated_at
+        ):
+            errors.append("history_tail_differs_from_task")
+        errors = sorted(set(errors))
+        valid = not errors
+        valid_count += int(valid)
+        audits.append(
+            {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "status": task_status,
+                "head_revision": (
+                    int(head_revision)
+                    if isinstance(head_revision, int)
+                    and not isinstance(head_revision, bool)
+                    else -1
+                ),
+                "history_count": history_count,
+                "history_first_revision": history_first_revision,
+                "history_last_revision": history_last_revision,
+                "task_body_sha256": hashlib.sha256(task_body_bytes).hexdigest(),
+                "tail_body_sha256": hashlib.sha256(
+                    tail_body_json.encode("utf-8")
+                ).hexdigest(),
+                "valid": valid,
+                "errors": errors,
+            }
+        )
+    return {
+        "valid": not global_errors and valid_count == task_count,
+        "errors": sorted(set(global_errors)),
+        "task_count": task_count,
+        "history_row_count": history_row_count,
+        "orphan_history_count": orphan_history_count,
+        "valid_task_count": valid_count,
+        "invalid_task_count": task_count - valid_count,
+        "tasks": audits,
+    }
+
+
+def stopped_task_history_audit(root: Path = ROOT) -> dict[str, Any]:
+    """Audit an immutable stopped control snapshot under continuity custody."""
+
+    paths = _paths(root)
+    with _exclusive_projection_checkpoint(
+        paths,
+        _read_only_existing_lock=True,
+    ) as lock_custody:
+        with _sealed_stopped_database_snapshots(paths, lock_custody) as snapshots:
+            continuity = _load_projection_source_continuity(
+                paths,
+                root=root,
+                stopped_database_snapshots=snapshots,
+                lock_custody=lock_custody,
+            )
+            control_snapshot = snapshots["control"]
+            from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                connect_duckdb_with_policy,
+            )
+
+            import duckdb
+
+            try:
+                connection = connect_duckdb_with_policy(
+                    duckdb,
+                    str(control_snapshot["snapshot_path"]),
+                    read_only=True,
+                )
+                try:
+                    audit = _audit_task_history_connection(connection)
+                finally:
+                    connection.close()
+            except SuccessorOperatorError:
+                raise
+            except Exception as exc:
+                raise SuccessorOperatorError(
+                    "stopped task-history policy read failed: "
+                    f"{type(exc).__name__}"
+                ) from exc
+            observed = _validate_stopped_database_snapshots(
+                paths,
+                lock_custody,
+                snapshots,
+            )
+            if observed != continuity["databases"]:
+                raise SuccessorOperatorError(
+                    "stopped task-history source changed during audit"
+                )
+            body = {
+                "schema": STOPPED_TASK_HISTORY_AUDIT_SCHEMA,
+                "valid": bool(audit["valid"]),
+                "authoritative": False,
+                "mutation_authority": False,
+                "source_admission_mode": continuity["admission_mode"],
+                "source_provenance_cid": continuity["provenance"]["receipt_cid"],
+                "stopped_state_continuity_receipt_cid": continuity["receipt"][
+                    "receipt_cid"
+                ],
+                "control_database_sha256": observed["control"]["sha256"],
+                "errors": audit["errors"],
+                "task_count": audit["task_count"],
+                "history_row_count": audit["history_row_count"],
+                "orphan_history_count": audit["orphan_history_count"],
+                "valid_task_count": audit["valid_task_count"],
+                "invalid_task_count": audit["invalid_task_count"],
+                "tasks": audit["tasks"],
+            }
+            return {**body, "audit_cid": _content_id(body)}
+
+
 def _private_regular_stat_pin(
     path: Path,
     *,
@@ -15063,6 +15460,7 @@ def _build_parser() -> argparse.ArgumentParser:
     recover_abandoned.add_argument("--reviewed-preflight-cid", required=True)
     subparsers.add_parser("projection-preflight")
     subparsers.add_parser("projection-once")
+    subparsers.add_parser("history-audit")
     return parser
 
 
@@ -15130,6 +15528,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = projection_preflight(root)
         elif args.command == "projection-once":
             result = project_ducklake_once(root)
+        elif args.command == "history-audit":
+            result = stopped_task_history_audit(root)
         else:  # pragma: no cover - argparse closes this branch.
             parser.error("unsupported command")
         print(json.dumps(result, indent=2, sort_keys=True))

@@ -1693,6 +1693,14 @@ _TRANSACTION_SQL_LOOKUP: Final[Mapping[str, str]] = MappingProxyType(
 _TRANSACTION_MUTATIONS: Final[frozenset[str]] = frozenset(
     {"txn_advance_store_revision", "txn_record_idempotency"}
 )
+
+_EXACT_SINGLE_ROW_TASK_MUTATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "txn_cas_task_status",
+        "executor_cas_task_status_receipt",
+        "executor_insert_task_revision_history",
+    }
+)
 _EVENT_MUTATIONS: Final[frozenset[str]] = frozenset(
     {
         "casf_seed_global_head",
@@ -1816,9 +1824,17 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "casf_reset_subscription_failures",
             }
         ),
-        "task.status.cas": frozenset({"txn_cas_task_status"}),
+        "task.status.cas": frozenset(
+            {
+                "txn_cas_task_status",
+                "executor_insert_task_revision_history",
+            }
+        ),
         "task.status.cas.receipt": frozenset(
-            {"executor_cas_task_status_receipt"}
+            {
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
+            }
         ),
         "task.retry.cooldown.record": frozenset(
             {
@@ -1829,12 +1845,14 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: frozenset(
             {
                 "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
                 "executor_insert_retry_cooldown",
             }
         ),
         TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: frozenset(
             {
                 "executor_cas_task_status_receipt",
+                "executor_insert_task_revision_history",
                 "executor_insert_retry_cooldown",
                 "executor_update_retry_cooldown",
             }
@@ -1929,7 +1947,7 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                 }
             ),
             "event.acknowledge": _COMMAND_MUTATION_CATALOG["event.acknowledge"],
-            "task.status.cas": frozenset({"txn_cas_task_status"}),
+            "task.status.cas": _COMMAND_MUTATION_CATALOG["task.status.cas"],
             "task.status.cas.receipt": _COMMAND_MUTATION_CATALOG[
                 "task.status.cas.receipt"
             ],
@@ -1939,7 +1957,10 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                 ]
             ),
             TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: frozenset(
-                {"executor_cas_task_status_receipt"}
+                {
+                    "executor_cas_task_status_receipt",
+                    "executor_insert_task_revision_history",
+                }
             ),
             "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
                 "task.validation.record.passed"
@@ -3214,6 +3235,12 @@ class TypedStateOwnerGateway:
                             )
                         if transaction_active:
                             result = self._execute(operation, parameters)
+                            if operation.mutation:
+                                self._validate_mutation_effect(
+                                    operation,
+                                    parameters,
+                                    result,
+                                )
                         else:
                             with self._transaction_lock:
                                 grant = self._require_active_grant(
@@ -5437,6 +5464,14 @@ class TypedStateOwnerGateway:
             )
         name = operation.name
         names = [item[0] for item in manifest]
+        if name == "executor_insert_task_revision_history" and (
+            not names
+            or names[-1]
+            not in {"txn_cas_task_status", "executor_cas_task_status_receipt"}
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "task revision history must immediately follow its task CAS"
+            )
         if name not in _REPEATABLE_MUTATIONS and name in names:
             raise TypedStateOwnerAuthorizationError(
                 "transaction repeats a singleton mutation role"
@@ -5566,6 +5601,25 @@ class TypedStateOwnerGateway:
             if any(bound.get(field) != value for field, value in expected.items()):
                 raise TypedStateOwnerAuthorizationError(
                     "task status receipt mutation differs from the admitted command"
+                )
+        elif name == "executor_insert_task_revision_history":
+            expected_task_revision = command.parameters.get(
+                "expected_task_revision"
+            )
+            expected = {
+                "task_cid": command.parameters.get("task_cid"),
+                "task_revision": (
+                    expected_task_revision + 1
+                    if isinstance(expected_task_revision, int)
+                    and not isinstance(expected_task_revision, bool)
+                    else None
+                ),
+            }
+            if (
+                any(bound.get(field) != value for field, value in expected.items())
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task revision history mutation differs from the admitted command"
                 )
         elif name == "executor_insert_validation_run":
             expected = {
@@ -5718,6 +5772,69 @@ class TypedStateOwnerGateway:
                     "transaction seal mutation count differs"
                 )
 
+        if "executor_insert_task_revision_history" in required:
+            task_cas_names = {
+                "txn_cas_task_status",
+                "executor_cas_task_status_receipt",
+            }
+            task_cas_positions = [
+                index for index, name in enumerate(names) if name in task_cas_names
+            ]
+            history_positions = [
+                index
+                for index, name in enumerate(names)
+                if name == "executor_insert_task_revision_history"
+            ]
+            expected_task_revision = command.parameters.get(
+                "expected_task_revision"
+            )
+            task_cid = str(command.parameters.get("task_cid") or "")
+            if (
+                len(task_cas_positions) != 1
+                or len(history_positions) != 1
+                or history_positions[0] != task_cas_positions[0] + 1
+                or isinstance(expected_task_revision, bool)
+                or not isinstance(expected_task_revision, int)
+                or expected_task_revision < 0
+                or not task_cid
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task CAS and revision history roles are not exact and adjacent"
+                )
+            new_task_revision = expected_task_revision + 1
+            task_cas_name, task_cas = manifest[task_cas_positions[0]]
+            rows = self._connection.execute(
+                """
+                SELECT t.status, t.revision, t.body_json, t.updated_at,
+                       r.status, r.revision, r.body_json, r.recorded_at
+                FROM tasks AS t
+                JOIN task_revisions AS r
+                  ON r.task_cid = t.task_cid AND r.revision = t.revision
+                WHERE t.task_cid = ? AND t.revision = ? LIMIT 2
+                """,
+                [task_cid, new_task_revision],
+            ).fetchall()
+            if (
+                len(rows) != 1
+                or str(rows[0][0])
+                != str(command.parameters.get("status") or "")
+                or str(rows[0][0]) != str(task_cas.get("status") or "")
+                or int(rows[0][1]) != new_task_revision
+                or int(rows[0][1]) != int(task_cas.get("new_revision") or -1)
+                or str(rows[0][3]) != str(task_cas.get("updated_at") or "")
+                or (
+                    task_cas_name == "executor_cas_task_status_receipt"
+                    and str(rows[0][2]) != str(task_cas.get("body_json") or "")
+                )
+                or str(rows[0][0]) != str(rows[0][4])
+                or int(rows[0][1]) != int(rows[0][5])
+                or str(rows[0][2]) != str(rows[0][6])
+                or str(rows[0][3]) != str(rows[0][7])
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task revision history differs from authoritative post-state"
+                )
+
         if command_operation in _EVENT_EMITTING_COMMANDS:
             for event_role in _EVENT_CORE_SEQUENCE:
                 if names.count(event_role) != 1:
@@ -5743,6 +5860,36 @@ class TypedStateOwnerGateway:
                 command,
                 manifest,
                 semantic_authority,
+            )
+
+    @staticmethod
+    def _validate_mutation_effect(
+        operation: OwnerOperation,
+        parameters: Sequence[Any],
+        result: Mapping[str, Any],
+    ) -> None:
+        """Require each task lifecycle mutation to prove one exact row effect."""
+
+        if operation.name not in _EXACT_SINGLE_ROW_TASK_MUTATIONS:
+            return
+        rows = result.get("rows")
+        columns = result.get("columns")
+        expected_name = (
+            "task_revision"
+            if operation.name == "executor_insert_task_revision_history"
+            else "new_revision"
+        )
+        expected_index = operation.parameter_names.index(expected_name)
+        expected_revision = parameters[expected_index]
+        if (
+            columns != ["revision"]
+            or not isinstance(rows, list)
+            or len(rows) != 1
+            or not isinstance(rows[0], list)
+            or rows[0] != [expected_revision]
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"{operation.name} did not affect its one admitted task row"
             )
 
     def _validate_semantic_manifest(

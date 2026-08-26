@@ -144,6 +144,7 @@ def _task_grant_operations() -> tuple[str, ...]:
         "txn_advance_store_revision",
         "txn_record_idempotency",
         "txn_cas_task_status",
+        "executor_insert_task_revision_history",
     )
 
 
@@ -307,6 +308,7 @@ def test_commit_observer_runs_after_owner_transaction_lock_release(
                 "task.status.cas",
                 (
                     "txn_cas_task_status",
+                    "executor_insert_task_revision_history",
                     "txn_advance_store_revision",
                     "txn_record_idempotency",
                 ),
@@ -1158,7 +1160,10 @@ def test_partial_federation_commands_cannot_commit(
     owner_connection.close()
 
 
-@pytest.mark.parametrize("attack", ("duplicate", "out_of_order"))
+@pytest.mark.parametrize(
+    "attack",
+    ("duplicate", "out_of_order", "omitted_history"),
+)
 def test_manifest_rejects_duplicate_and_out_of_order_mutations(
     tmp_path: Path,
     attack: str,
@@ -1212,7 +1217,7 @@ def test_manifest_rejects_duplicate_and_out_of_order_mutations(
             client.execute_operation("txn_cas_task_status", parameters)
             with pytest.raises(TypedStateOwnerRemoteError) as denied:
                 client.execute_operation("txn_cas_task_status", parameters)
-        else:
+        elif attack == "out_of_order":
             with pytest.raises(TypedStateOwnerRemoteError) as denied:
                 client.execute_operation(
                     "txn_record_idempotency",
@@ -1228,6 +1233,37 @@ def test_manifest_rejects_duplicate_and_out_of_order_mutations(
                         "{}",
                     ],
                 )
+        else:
+            client.execute_operation(
+                "txn_cas_task_status",
+                [
+                    "claimed",
+                    "1970-01-01T00:00:01Z",
+                    1,
+                    "task:typed-owner",
+                    0,
+                ],
+            )
+            client.execute_operation(
+                "txn_advance_store_revision",
+                [int(head[3]) + 1, int(head[0]), int(head[3]), int(head[2])],
+            )
+            client.execute_operation(
+                "txn_record_idempotency",
+                [
+                    command.idempotency_key,
+                    command.command_kind.value,
+                    command.command_id,
+                    command.store_id,
+                    command.session_id,
+                    "sha256:omitted-history",
+                    "1970-01-01T00:00:00Z",
+                    None,
+                    "{}",
+                ],
+            )
+            with pytest.raises(TypedStateOwnerRemoteError) as denied:
+                client.commit()
         assert denied.value.error_code == "authorization_denied"
     finally:
         client.close()
@@ -1236,5 +1272,85 @@ def test_manifest_rejects_duplicate_and_out_of_order_mutations(
     ).fetchone()
     assert task is not None
     assert (task[0], task[1]) == ("ready", 0)
+    gateway.stop()
+    owner_connection.close()
+
+
+def test_owner_rejects_zero_row_task_cas_before_history_or_seals(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    with open_duckdb_connection(db) as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'claimed', revision = 1, "
+            "updated_at = '1970-01-01T00:00:01Z' "
+            "WHERE task_cid = 'task:typed-owner'"
+        )
+    gateway, owner_connection = _gateway(db, socket_path)
+    token, _grant = gateway.issue_grant(
+        client_id="client:zero-row-cas",
+        allowed_operations=_task_grant_operations(),
+        allowed_command_operations=("task.status.cas",),
+        peer_pid=os.getpid(),
+    )
+    client = TypedStateOwnerConnection(
+        socket_path=socket_path,
+        token=token,
+        client_id="client:zero-row-cas",
+        process_birth_id="birth:zero-row-cas",
+        store_id="control.duckdb",
+    )
+    head = client.execute_operation("load_store_generation").fetchone()
+    assert head is not None
+    command = StateCommand(
+        command_id="command:zero-row-cas",
+        command_kind=CommandKind.CLAIM,
+        store_id="control.duckdb",
+        session_id=client.session_id,
+        expected_generation=int(head[0]),
+        expected_revision=int(head[3]),
+        fence_epoch=int(head[2]),
+        idempotency_key="idempotency:zero-row-cas",
+        parameters={
+            "operation": "task.status.cas",
+            "task_cid": "task:typed-owner",
+            "expected_task_revision": 0,
+            "status": "claimed",
+        },
+    )
+    try:
+        client.prepare_command(command)
+        client.execute("BEGIN TRANSACTION")
+        with pytest.raises(TypedStateOwnerRemoteError) as denied:
+            client.execute_operation(
+                "txn_cas_task_status",
+                [
+                    "claimed",
+                    "1970-01-01T00:00:02Z",
+                    1,
+                    "task:typed-owner",
+                    0,
+                ],
+            )
+        assert denied.value.error_code == "authorization_denied"
+    finally:
+        client.close()
+    task_row = owner_connection.execute(
+        "SELECT status, revision FROM tasks "
+        "WHERE task_cid = 'task:typed-owner'"
+    ).fetchone()
+    assert task_row is not None and (task_row[0], task_row[1]) == ("claimed", 1)
+    history_count = owner_connection.execute(
+        "SELECT COUNT(*) FROM task_revisions "
+        "WHERE task_cid = 'task:typed-owner'"
+    ).fetchone()
+    assert history_count is not None and history_count[0] == 0
+    idempotency_count = owner_connection.execute(
+        "SELECT COUNT(*) FROM idempotency_records "
+        "WHERE idempotency_key = 'idempotency:zero-row-cas'"
+    ).fetchone()
+    assert idempotency_count is not None and idempotency_count[0] == 0
     gateway.stop()
     owner_connection.close()
