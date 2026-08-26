@@ -3267,6 +3267,297 @@ def test_reviewed_failed_start_recovery_rejects_changed_exact_pins(
     assert paths["stopped_state_restart_admission"].exists()
 
 
+def _published_failed_start_source_maintenance_fixture(
+    operator: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[
+    dict[str, Path],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    paths, provenance, _prior = _failed_start_legacy_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    recovery = operator.failed_start_recovery_preflight(tmp_path)
+    operator.recover_failed_start_continuity(
+        tmp_path,
+        reviewed_preflight_cid=str(recovery["preflight_cid"]),
+    )
+    published = operator._strict_json(paths["stopped_state_continuity"])
+    old_source = published["final_source_continuity"]
+    assert isinstance(old_source, dict)
+    descendant = {
+        **old_source,
+        "current_head": "9" * 40,
+        "current_tree": "8" * 40,
+        "datasets_head": "7" * 40,
+        "datasets_tree": "6" * 40,
+        "superproject_runtime_inventory": {
+            "tracked_object_count": 2,
+            "tracked_inventory_root": "sha256:" + ("5" * 64),
+        },
+        "datasets_runtime_inventory": {
+            "tracked_object_count": 2,
+            "tracked_inventory_root": "sha256:" + ("4" * 64),
+        },
+    }
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda _root, *, require_resolved_remote: descendant,
+    )
+    monkeypatch.setattr(operator, "_git_quiet", lambda *args, **kwargs: None)
+    return paths, provenance, published, descendant
+
+
+def test_failed_start_source_maintenance_reseals_reviewed_descendant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, published, descendant = (
+        _published_failed_start_source_maintenance_fixture(
+            operator,
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    receipt_before = paths["stopped_state_continuity"].read_bytes()
+    status_before = paths["controller_status"].read_bytes()
+    databases_before = {
+        name: path.read_bytes()
+        for name, path in operator._successor_state_databases(paths).items()
+    }
+    inventory_before = sorted(path.name for path in paths["controller_lock"].parent.iterdir())
+
+    first = operator.failed_start_source_maintenance_preflight(tmp_path)
+    second = operator.failed_start_source_maintenance_preflight(tmp_path)
+
+    assert first["schema"] == (
+        operator.FAILED_START_SOURCE_MAINTENANCE_PREFLIGHT_SCHEMA
+    )
+    assert first["preflight_cid"] == second["preflight_cid"]
+    assert first["reviewed_pins"] == second["reviewed_pins"]
+    assert first["reviewed_pins"]["source_continuity"] == descendant
+    assert first["reviewed_pins"]["controller_status"].get(
+        "failed_start_recovery_anchors"
+    ) is None
+    assert paths["stopped_state_continuity"].read_bytes() == receipt_before
+    assert paths["controller_status"].read_bytes() == status_before
+    assert sorted(path.name for path in paths["controller_lock"].parent.iterdir()) == (
+        inventory_before
+    )
+    assert {
+        name: path.read_bytes()
+        for name, path in operator._successor_state_databases(paths).items()
+    } == databases_before
+
+    result = operator.reseal_failed_start_source_maintenance(
+        tmp_path,
+        reviewed_preflight_cid=str(first["preflight_cid"]),
+    )
+
+    receipt = operator._strict_json(paths["stopped_state_continuity"])
+    status = operator._strict_json(paths["controller_status"])
+    superseded = status["failed_start_recovery_anchors"][
+        "superseded_restart_admission"
+    ]
+    archive = Path(superseded["archive_path"])
+    assert result["schema"] == (
+        operator.FAILED_START_SOURCE_MAINTENANCE_RESULT_SCHEMA
+    )
+    assert result["repeated"] is False
+    assert result[
+        "superseded_stopped_state_continuity_receipt_cid"
+    ] == published["receipt_cid"]
+    assert receipt["receipt_cid"] != published["receipt_cid"]
+    assert receipt["final_source_continuity"] == descendant
+    assert receipt["stop_evidence"]["recovery_preflight_cid"] == (
+        first["preflight_cid"]
+    )
+    assert superseded["receipt"] == published
+    assert archive.read_bytes() == receipt_before
+    assert not paths["stopped_state_restart_admission"].exists()
+    assert operator._load_stopped_restart_admission(
+        paths,
+        root=tmp_path,
+        provenance=provenance,
+    )["receipt"] == receipt
+    caught_up = {
+        **descendant,
+        "resolved_remote_head": descendant["current_head"],
+    }
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda _root, *, require_resolved_remote: caught_up,
+    )
+    repeated = operator.reseal_failed_start_source_maintenance(
+        tmp_path,
+        reviewed_preflight_cid=str(first["preflight_cid"]),
+    )
+    assert repeated["repeated"] is True
+
+
+def test_failed_start_source_maintenance_wrong_cid_is_non_mutating(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _published, _descendant = (
+        _published_failed_start_source_maintenance_fixture(
+            operator,
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    preflight = operator.failed_start_source_maintenance_preflight(tmp_path)
+    receipt_before = paths["stopped_state_continuity"].read_bytes()
+    status_before = paths["controller_status"].read_bytes()
+    inventory_before = sorted(path.name for path in paths["controller_lock"].parent.iterdir())
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="maintenance preflight CID differs",
+    ):
+        operator.reseal_failed_start_source_maintenance(
+            tmp_path,
+            reviewed_preflight_cid=str(preflight["preflight_cid"]) + "wrong",
+        )
+
+    assert paths["stopped_state_continuity"].read_bytes() == receipt_before
+    assert paths["controller_status"].read_bytes() == status_before
+    assert not paths["stopped_state_restart_admission"].exists()
+    assert sorted(path.name for path in paths["controller_lock"].parent.iterdir()) == (
+        inventory_before
+    )
+
+
+@pytest.mark.parametrize("tamper", ("divergence", "database", "status"))
+def test_failed_start_source_maintenance_rejects_divergence_and_tamper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _published, _descendant = (
+        _published_failed_start_source_maintenance_fixture(
+            operator,
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    if tamper == "divergence":
+        def reject_divergence(
+            _root: Path,
+            _arguments: object,
+            *,
+            noun: str,
+        ) -> None:
+            if noun == "failed-start source maintenance ancestry":
+                raise operator.SuccessorOperatorError(
+                    "failed-start source maintenance ancestry failed"
+                )
+
+        monkeypatch.setattr(operator, "_git_quiet", reject_divergence)
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="source maintenance ancestry failed",
+        ):
+            operator.failed_start_source_maintenance_preflight(tmp_path)
+        assert paths["stopped_state_continuity"].exists()
+        return
+
+    preflight = operator.failed_start_source_maintenance_preflight(tmp_path)
+    if tamper == "database":
+        with paths["successor_database"].open("ab") as handle:
+            handle.write(b"post-maintenance-review-tamper\n")
+    else:
+        status = operator._strict_json(paths["controller_status"])
+        status.pop("status_cid")
+        status["reviewed_tamper"] = True
+        status["status_cid"] = operator._content_id(status)
+        operator._write_status(paths["controller_status"], status)
+
+    with pytest.raises(operator.SuccessorOperatorError):
+        operator.reseal_failed_start_source_maintenance(
+            tmp_path,
+            reviewed_preflight_cid=str(preflight["preflight_cid"]),
+        )
+    assert paths["stopped_state_continuity"].exists()
+    assert not paths["stopped_state_restart_admission"].exists()
+
+
+@pytest.mark.parametrize("interrupt_after_status", (False, True))
+def test_failed_start_source_maintenance_resumes_each_claim_boundary_and_repeats(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_after_status: bool,
+) -> None:
+    operator = _operator()
+    paths, _provenance, published, _descendant = (
+        _published_failed_start_source_maintenance_fixture(
+            operator,
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    preflight = operator.failed_start_source_maintenance_preflight(tmp_path)
+    original_write_status = operator._write_status
+    interrupted = False
+
+    def interrupt_projected_status(path: Path, payload: dict[str, object]) -> None:
+        nonlocal interrupted
+        is_projection = (
+            payload.get("error") == operator.FAILED_START_STATUS_ERROR
+            and "failed_start_recovery_anchors" not in payload
+            and "stopped_state_continuity_receipt_cid" not in payload
+        )
+        if is_projection and not interrupted:
+            interrupted = True
+            if interrupt_after_status:
+                original_write_status(path, payload)
+            raise RuntimeError("simulated source-maintenance interruption")
+        original_write_status(path, payload)
+
+    monkeypatch.setattr(operator, "_write_status", interrupt_projected_status)
+    with pytest.raises(
+        RuntimeError,
+        match="simulated source-maintenance interruption",
+    ):
+        operator.reseal_failed_start_source_maintenance(
+            tmp_path,
+            reviewed_preflight_cid=str(preflight["preflight_cid"]),
+        )
+    assert not paths["stopped_state_continuity"].exists()
+    assert paths["stopped_state_restart_admission"].exists()
+
+    monkeypatch.setattr(operator, "_write_status", original_write_status)
+    resumed = operator.reseal_failed_start_source_maintenance(
+        tmp_path,
+        reviewed_preflight_cid=str(preflight["preflight_cid"]),
+    )
+    repeated = operator.reseal_failed_start_source_maintenance(
+        tmp_path,
+        reviewed_preflight_cid=str(preflight["preflight_cid"]),
+    )
+
+    assert resumed["repeated"] is False
+    assert repeated["repeated"] is True
+    assert resumed["stopped_state_continuity_receipt_cid"] == repeated[
+        "stopped_state_continuity_receipt_cid"
+    ]
+    assert repeated[
+        "superseded_stopped_state_continuity_receipt_cid"
+    ] == published["receipt_cid"]
+    assert paths["stopped_state_continuity"].exists()
+    assert not paths["stopped_state_restart_admission"].exists()
+
+
 def test_restart_admission_reads_generation_fd_bound_surfaces(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

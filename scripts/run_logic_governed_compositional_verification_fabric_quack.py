@@ -266,6 +266,17 @@ FAILED_START_RECOVERY_RESULT_SCHEMA: Final = (
 FAILED_START_RECOVERY_OPERATION: Final = (
     "reviewed_failed_start_continuity_recovery"
 )
+FAILED_START_SOURCE_MAINTENANCE_PREFLIGHT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-failed-start-source-maintenance-preflight@1"
+)
+FAILED_START_SOURCE_MAINTENANCE_RESULT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-failed-start-source-maintenance-result@1"
+)
+FAILED_START_SOURCE_MAINTENANCE_OPERATION: Final = (
+    "reviewed_failed_start_source_maintenance_reseal"
+)
 FAILED_START_TRUSTED_FINALLY_MODE: Final = "trusted_operator_finally"
 FAILED_START_REVIEWED_LEGACY_MODE: Final = "reviewed_legacy_preflight"
 FAILED_START_STATUS_ERROR: Final = "unclean_controller_shutdown"
@@ -11731,6 +11742,106 @@ def _observe_stopped_projection_source_continuity(
     return observed
 
 
+def _observe_failed_start_source_maintenance_descendant(
+    root: Path,
+    sealed: Mapping[str, Any],
+    *,
+    minimum_remote_head: str | None = None,
+) -> dict[str, Any]:
+    """Admit only one clean, strict descendant of a failed-start source."""
+
+    observed = _observe_candidate_runtime_continuity(
+        root,
+        require_resolved_remote=False,
+    )
+    fixed_fields = {
+        "approved_branch",
+        "candidate_worktree_clean",
+        "datasets_worktree_clean",
+        "python_bytecode_quarantine",
+    }
+    if (
+        set(observed) != set(sealed)
+        or any(observed.get(field) != sealed.get(field) for field in fixed_fields)
+        or observed.get("approved_branch") != APPROVED_BOARD_BRANCH
+        or observed.get("candidate_worktree_clean") is not True
+        or observed.get("datasets_worktree_clean") is not True
+    ):
+        raise SuccessorOperatorError(
+            "failed-start source maintenance custody differs"
+        )
+    sealed_head = str(sealed.get("current_head") or "")
+    observed_head = str(observed.get("current_head") or "")
+    sealed_tree = str(sealed.get("current_tree") or "")
+    observed_tree = str(observed.get("current_tree") or "")
+    sealed_datasets_head = str(sealed.get("datasets_head") or "")
+    observed_datasets_head = str(observed.get("datasets_head") or "")
+    sealed_datasets_tree = str(sealed.get("datasets_tree") or "")
+    observed_datasets_tree = str(observed.get("datasets_tree") or "")
+    sealed_remote = str(sealed.get("resolved_remote_head") or "")
+    observed_remote = str(observed.get("resolved_remote_head") or "")
+    minimum_remote = (
+        sealed_remote if minimum_remote_head is None else minimum_remote_head
+    )
+    if any(
+        re.fullmatch(r"[0-9a-f]{40}", value) is None
+        for value in (
+            sealed_head,
+            observed_head,
+            sealed_tree,
+            observed_tree,
+            sealed_datasets_head,
+            observed_datasets_head,
+            sealed_datasets_tree,
+            observed_datasets_tree,
+            sealed_remote,
+            observed_remote,
+            minimum_remote,
+        )
+    ):
+        raise SuccessorOperatorError(
+            "failed-start source maintenance continuity is malformed"
+        )
+    if sealed_head == observed_head:
+        raise SuccessorOperatorError(
+            "failed-start continuity already matches the current source"
+        )
+    _git_quiet(
+        root,
+        ("merge-base", "--is-ancestor", sealed_head, observed_head),
+        noun="failed-start source maintenance ancestry",
+    )
+    datasets = _contained(root, "ipfs_datasets_py")
+    if sealed_datasets_head != observed_datasets_head:
+        _git_quiet(
+            datasets,
+            (
+                "merge-base",
+                "--is-ancestor",
+                sealed_datasets_head,
+                observed_datasets_head,
+            ),
+            noun="failed-start nested source maintenance ancestry",
+        )
+    checked_remote_ancestors: set[str] = set()
+    for ancestor in (sealed_remote, minimum_remote):
+        if ancestor == observed_remote or ancestor in checked_remote_ancestors:
+            continue
+        _git_quiet(
+            root,
+            ("merge-base", "--is-ancestor", ancestor, observed_remote),
+            noun="failed-start source maintenance remote ancestry",
+        )
+        checked_remote_ancestors.add(ancestor)
+    if observed_remote != observed_head:
+        _git_quiet(
+            root,
+            ("merge-base", "--is-ancestor", observed_remote, observed_head),
+            noun="failed-start source maintenance remote/current ancestry",
+        )
+    return observed
+
+
 def _load_projection_source_continuity(
     paths: Mapping[str, Path],
     *,
@@ -11738,6 +11849,7 @@ def _load_projection_source_continuity(
     stopped_database_snapshots: Mapping[str, Mapping[str, Any]] | None = None,
     lock_custody: Mapping[str, Any] | None = None,
     _stopped_provenance: Mapping[str, Any] | None = None,
+    _allow_failed_start_source_maintenance: bool = False,
 ) -> dict[str, Any]:
     """Authenticate one stopped state for non-authoritative projection only."""
 
@@ -11922,10 +12034,12 @@ def _load_projection_source_continuity(
         raise SuccessorOperatorError(
             "stopped-state final source continuity differs"
         )
-    observed_continuity = _observe_stopped_projection_source_continuity(
-        root,
-        final_continuity,
+    source_observer = (
+        _observe_failed_start_source_maintenance_descendant
+        if _allow_failed_start_source_maintenance
+        else _observe_stopped_projection_source_continuity
     )
+    observed_continuity = source_observer(root, final_continuity)
     _validate_stopped_projection_native_provenance(
         paths,
         root=root,
@@ -12226,7 +12340,7 @@ def _load_projection_source_continuity(
         raise SuccessorOperatorError(
             "stopped-state database identity differs from provenance"
         )
-    _observe_stopped_projection_source_continuity(
+    source_observer(
         root,
         final_continuity,
         minimum_remote_head=str(observed_continuity["resolved_remote_head"]),
@@ -12318,6 +12432,391 @@ def _load_projection_source_continuity(
         "databases": observed_databases,
         "observed_continuity": observed_continuity,
         "admission_mode": admission_mode,
+    }
+
+
+def _project_failed_start_source_maintenance_status(
+    status: Mapping[str, Any],
+    *,
+    provenance: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project a published failed start back to the legacy recovery boundary."""
+
+    projected = dict(status)
+    projected.pop("status_cid", None)
+    projected.pop("stopped_state_continuity_receipt_cid", None)
+    projected.pop("stopped_state_continuity_status_cid", None)
+    projected.pop("failed_start_recovery_anchors", None)
+    projected["status_cid"] = _content_id(projected)
+    _validate_unbound_failed_start_controller_status(
+        projected,
+        provenance=provenance,
+        require_dead=True,
+    )
+    return projected
+
+
+def _failed_start_source_maintenance_superseded_snapshot(
+    paths: Mapping[str, Path],
+    *,
+    receipt: Mapping[str, Any],
+    receipt_path: Path,
+    provenance: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Describe the current receipt exactly as the recovery machine will."""
+
+    snapshot = {
+        "receipt": dict(receipt),
+        "file_sha256": _sha256_regular_file(
+            receipt_path,
+            max_bytes=MAX_JSON_BYTES,
+            noun="failed-start source maintenance receipt",
+            require_private_owner=True,
+        ),
+        "archive_path": str(
+            _failed_start_superseded_archive_path(paths, receipt)
+        ),
+    }
+    validated = _validate_failed_start_superseded_admission_snapshot(
+        paths,
+        snapshot,
+        provenance=provenance,
+    )
+    if validated is None:
+        raise SuccessorOperatorError(
+            "failed-start source maintenance superseded receipt is unavailable"
+        )
+    return validated
+
+
+def _failed_start_source_maintenance_report(
+    preflight: Mapping[str, Any],
+    *,
+    published_receipt_cid: str,
+    published_controller_status_cid: str,
+    already_resealed: bool = False,
+) -> dict[str, Any]:
+    reviewed_pins = preflight.get("reviewed_pins")
+    if not isinstance(reviewed_pins, Mapping):
+        raise SuccessorOperatorError(
+            "failed-start source maintenance reviewed pins are malformed"
+        )
+    return {
+        "schema": FAILED_START_SOURCE_MAINTENANCE_PREFLIGHT_SCHEMA,
+        "operation": FAILED_START_SOURCE_MAINTENANCE_OPERATION,
+        "observed_at": _utc_now(),
+        "reviewed_pins": dict(reviewed_pins),
+        "preflight_cid": str(preflight.get("preflight_cid") or ""),
+        "published_stopped_state_continuity_receipt_cid": (
+            published_receipt_cid
+        ),
+        "published_controller_status_cid": published_controller_status_cid,
+        "already_resealed": already_resealed,
+        "clean_monotonic_descendant_required": True,
+        "controller_lock_held": True,
+        "live_wal_absent": True,
+        "restart_authority": False,
+        "authoritative": False,
+        "scheduling_authority": False,
+        "completion_authority": False,
+        "production_authorized": False,
+    }
+
+
+def _failed_start_source_maintenance_preflight_locked(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+    provenance: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Pin a published failed start and its exact clean descendant read-only."""
+
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+    if not os.path.lexists(io_paths["stopped_state_continuity"]):
+        raise SuccessorOperatorError(
+            "published failed-start continuity is unavailable for maintenance"
+        )
+    if os.path.lexists(io_paths["stopped_state_restart_admission"]):
+        raise SuccessorOperatorError(
+            "failed-start source maintenance transition is already in progress"
+        )
+    generation_inventory = _stopped_recovery_generation_inventory(
+        paths,
+        lock_custody,
+    )
+    admitted = _load_projection_source_continuity(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+        _stopped_provenance=provenance,
+        _allow_failed_start_source_maintenance=True,
+    )
+    observed_provenance = admitted.get("provenance")
+    receipt = admitted.get("receipt")
+    published_status = admitted.get("controller_status")
+    current_continuity = admitted.get("observed_continuity")
+    databases = admitted.get("databases")
+    if (
+        admitted.get("admission_mode")
+        != FAILED_START_CONTINUITY_ADMISSION_MODE
+        or not isinstance(observed_provenance, Mapping)
+        or not isinstance(receipt, Mapping)
+        or not isinstance(published_status, Mapping)
+        or not isinstance(current_continuity, Mapping)
+        or not isinstance(databases, Mapping)
+    ):
+        raise SuccessorOperatorError(
+            "source maintenance requires published failed-start continuity"
+        )
+    projected_status = _project_failed_start_source_maintenance_status(
+        published_status,
+        provenance=observed_provenance,
+    )
+    bootstrap_path = Path(io_paths["bootstrap"])
+    bootstrap_sha256 = _sha256_regular_file(
+        bootstrap_path,
+        max_bytes=MAX_JSON_BYTES,
+        noun="failed-start source maintenance bootstrap receipt",
+        require_private_owner=True,
+    )
+    _validate_stopped_projection_native_provenance(
+        paths,
+        root=root,
+        receipt=observed_provenance,
+        final_continuity=current_continuity,
+        _bootstrap_path=bootstrap_path,
+    )
+    owner_status_sha256 = _stopped_owner_status_sha256(
+        paths,
+        controller_status=projected_status,
+        _status_path=Path(io_paths["owner_status"]),
+        _marker_path=Path(io_paths["owner_marker"]),
+    )
+    superseded = _failed_start_source_maintenance_superseded_snapshot(
+        paths,
+        receipt=receipt,
+        receipt_path=Path(io_paths["stopped_state_continuity"]),
+        provenance=observed_provenance,
+    )
+    reviewed_pins = _failed_start_recovery_reviewed_pins(
+        failed_status=projected_status,
+        provenance=observed_provenance,
+        failed_start_reason=FAILED_START_REASON_LEGACY_UNCLASSIFIED,
+        final_continuity=current_continuity,
+        databases=databases,
+        owner_status_sha256=owner_status_sha256,
+        bootstrap_sha256=bootstrap_sha256,
+        superseded_restart_admission=superseded,
+        recovery_authorization_mode=FAILED_START_REVIEWED_LEGACY_MODE,
+        owner_stop_receipt=None,
+    )
+    preflight = {
+        "reviewed_pins": reviewed_pins,
+        "preflight_cid": _failed_start_preflight_cid(reviewed_pins),
+    }
+    report = _failed_start_source_maintenance_report(
+        preflight,
+        published_receipt_cid=str(receipt["receipt_cid"]),
+        published_controller_status_cid=str(published_status["status_cid"]),
+    )
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    if (
+        _stopped_recovery_generation_inventory(paths, lock_custody)
+        != generation_inventory
+        or _load_lgcvf_live_raw_provenance_receipt(
+            paths,
+            _receipt_path=Path(io_paths["provenance"]),
+        )
+        != dict(observed_provenance)
+        or _strict_json(
+            Path(io_paths["stopped_state_continuity"]),
+            expected_schema=STOPPED_STATE_CONTINUITY_SCHEMA,
+            require_private_owner=True,
+        )
+        != dict(receipt)
+        or _strict_json(
+            Path(io_paths["controller_status"]),
+            expected_schema=CONTROLLER_STATUS_SCHEMA,
+            require_private_owner=True,
+        )
+        != dict(published_status)
+        or _stopped_state_database_digests(
+            paths,
+            _database_paths=io_paths["databases"],
+        )
+        != dict(databases)
+        or _stopped_owner_status_sha256(
+            paths,
+            controller_status=projected_status,
+            _status_path=Path(io_paths["owner_status"]),
+            _marker_path=Path(io_paths["owner_marker"]),
+        )
+        != owner_status_sha256
+        or _sha256_regular_file(
+            bootstrap_path,
+            max_bytes=MAX_JSON_BYTES,
+            noun="failed-start source maintenance bootstrap receipt",
+            require_private_owner=True,
+        )
+        != bootstrap_sha256
+        or _failed_start_source_maintenance_superseded_snapshot(
+            paths,
+            receipt=receipt,
+            receipt_path=Path(io_paths["stopped_state_continuity"]),
+            provenance=observed_provenance,
+        )
+        != superseded
+        or _observe_stopped_projection_source_continuity(
+            root,
+            current_continuity,
+        )
+        != dict(current_continuity)
+    ):
+        raise SuccessorOperatorError(
+            "failed-start source maintenance evidence changed during preflight"
+        )
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    return report
+
+
+def _validate_failed_start_source_maintenance_transition_preflight(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    provenance: Mapping[str, Any],
+    preflight: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Prove a standard recovery preflight is the interrupted reseal."""
+
+    pins = preflight.get("reviewed_pins")
+    if not isinstance(pins, Mapping):
+        raise SuccessorOperatorError(
+            "failed-start source maintenance transition pins are malformed"
+        )
+    superseded = _validate_failed_start_superseded_admission_snapshot(
+        paths,
+        pins.get("superseded_restart_admission"),
+        provenance=provenance,
+    )
+    prior_receipt = (
+        superseded.get("receipt") if isinstance(superseded, Mapping) else None
+    )
+    current_continuity = pins.get("source_continuity")
+    projected_status = pins.get("controller_status")
+    if (
+        preflight.get("preflight_cid") != _failed_start_preflight_cid(pins)
+        or pins.get("failed_start_reason")
+        != FAILED_START_REASON_LEGACY_UNCLASSIFIED
+        or pins.get("recovery_authorization_mode")
+        != FAILED_START_REVIEWED_LEGACY_MODE
+        or pins.get("owner_stop_receipt") is not None
+        or not isinstance(prior_receipt, Mapping)
+        or prior_receipt.get("admission_mode")
+        != FAILED_START_CONTINUITY_ADMISSION_MODE
+        or not isinstance(current_continuity, Mapping)
+        or not isinstance(projected_status, Mapping)
+    ):
+        raise SuccessorOperatorError(
+            "failed-start source maintenance transition differs"
+        )
+    _validate_unbound_failed_start_controller_status(
+        projected_status,
+        provenance=provenance,
+        require_dead=True,
+    )
+    observed = _observe_failed_start_source_maintenance_descendant(
+        root,
+        prior_receipt["final_source_continuity"],
+    )
+    if observed != dict(current_continuity):
+        raise SuccessorOperatorError(
+            "failed-start source maintenance reviewed source changed"
+        )
+    return superseded
+
+
+def _completed_failed_start_source_maintenance(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    reviewed_preflight_cid: str,
+) -> dict[str, Any]:
+    """Replay one completed reseal before reporting idempotent success."""
+
+    admitted = _load_projection_source_continuity(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+        _stopped_provenance=provenance,
+    )
+    receipt = admitted.get("receipt")
+    status = admitted.get("controller_status")
+    if not isinstance(receipt, Mapping) or not isinstance(status, Mapping):
+        raise SuccessorOperatorError(
+            "completed failed-start source maintenance is unavailable"
+        )
+    anchor_status = dict(status)
+    anchor_status.pop("status_cid", None)
+    anchor_status.pop("stopped_state_continuity_receipt_cid", None)
+    anchor_status.pop("stopped_state_continuity_status_cid", None)
+    anchor_status["status_cid"] = _content_id(anchor_status)
+    anchors = anchor_status.get("failed_start_recovery_anchors")
+    evidence = receipt.get("stop_evidence")
+    superseded = (
+        anchors.get("superseded_restart_admission")
+        if isinstance(anchors, Mapping)
+        else None
+    )
+    prior_receipt = (
+        superseded.get("receipt") if isinstance(superseded, Mapping) else None
+    )
+    if (
+        admitted.get("admission_mode")
+        != FAILED_START_CONTINUITY_ADMISSION_MODE
+        or not isinstance(evidence, Mapping)
+        or evidence.get("mode") != FAILED_START_REVIEWED_EVIDENCE_MODE
+        or evidence.get("recovery_preflight_cid")
+        != reviewed_preflight_cid
+        or not isinstance(prior_receipt, Mapping)
+        or prior_receipt.get("admission_mode")
+        != FAILED_START_CONTINUITY_ADMISSION_MODE
+    ):
+        raise SuccessorOperatorError(
+            "reviewed failed-start source maintenance result differs"
+        )
+    observed = _observe_failed_start_source_maintenance_descendant(
+        root,
+        prior_receipt["final_source_continuity"],
+    )
+    final_continuity = receipt.get("final_source_continuity")
+    if not isinstance(final_continuity, Mapping) or any(
+        observed.get(field) != value
+        for field, value in final_continuity.items()
+        if field != "resolved_remote_head"
+    ):
+        raise SuccessorOperatorError(
+            "completed failed-start source maintenance source differs"
+        )
+    return {
+        "schema": FAILED_START_SOURCE_MAINTENANCE_RESULT_SCHEMA,
+        "resealed": True,
+        "repeated": True,
+        "preflight_cid": reviewed_preflight_cid,
+        "superseded_stopped_state_continuity_receipt_cid": prior_receipt[
+            "receipt_cid"
+        ],
+        "stopped_state_continuity_receipt_cid": receipt["receipt_cid"],
+        "controller_status_cid": receipt["controller_status_cid"],
+        "target_generation": SUCCESSOR_STORE_GENERATION,
+        "restart_authority": True,
+        "authoritative": False,
+        "scheduling_authority": False,
+        "completion_authority": False,
+        "production_authorized": False,
     }
 
 
@@ -12608,6 +13107,235 @@ def recover_stopped_continuity(
             "completion_authority": False,
             "production_authorized": False,
         }
+
+
+def failed_start_source_maintenance_preflight(
+    root: Path = ROOT,
+) -> dict[str, Any]:
+    """Report exact descendant-source reseal pins without changing custody."""
+
+    paths = _paths(root)
+    with _exclusive_projection_checkpoint(
+        paths,
+        _read_only_existing_lock=True,
+    ) as lock_custody:
+        io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+        provenance = _load_lgcvf_live_raw_provenance_receipt(
+            paths,
+            _receipt_path=Path(io_paths["provenance"]),
+        )
+        if os.path.lexists(io_paths["stopped_state_continuity"]):
+            status = _strict_json(
+                Path(io_paths["controller_status"]),
+                expected_schema=CONTROLLER_STATUS_SCHEMA,
+                require_private_owner=True,
+            )
+            linked = status.get("stopped_state_continuity_receipt_cid")
+            linked_status = status.get("stopped_state_continuity_status_cid")
+            if (linked is None) != (linked_status is None):
+                raise SuccessorOperatorError(
+                    "failed-start source maintenance status links are partial"
+                )
+            if linked is not None:
+                return _failed_start_source_maintenance_preflight_locked(
+                    paths,
+                    root=root,
+                    lock_custody=lock_custody,
+                    provenance=provenance,
+                )
+            standard = _failed_start_recovery_preflight_locked(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+                provenance=provenance,
+                _allow_continuity_receipt=True,
+            )
+        else:
+            standard = _failed_start_recovery_preflight_locked(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+                provenance=provenance,
+            )
+        superseded = _validate_failed_start_source_maintenance_transition_preflight(
+            paths,
+            root=root,
+            provenance=provenance,
+            preflight=standard,
+        )
+        prior = superseded["receipt"]
+        return _failed_start_source_maintenance_report(
+            standard,
+            published_receipt_cid=str(prior["receipt_cid"]),
+            published_controller_status_cid=str(
+                prior["controller_status_cid"]
+            ),
+        )
+
+
+def reseal_failed_start_source_maintenance(
+    root: Path = ROOT,
+    *,
+    reviewed_preflight_cid: str,
+) -> dict[str, Any]:
+    """Apply or resume only the separately reviewed descendant-source reseal."""
+
+    reviewed = str(reviewed_preflight_cid or "").strip()
+    if not reviewed:
+        raise SuccessorOperatorError(
+            "reviewed failed-start source maintenance preflight CID is required"
+        )
+    paths = _paths(root)
+    with _exclusive_projection_checkpoint(paths) as lock_custody:
+        io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+        receipt_paths = _stopped_receipt_io_view(paths, io_paths)
+        provenance = _load_lgcvf_live_raw_provenance_receipt(
+            paths,
+            _receipt_path=Path(io_paths["provenance"]),
+        )
+
+        def exact_status() -> dict[str, Any]:
+            status = _strict_json(
+                Path(io_paths["controller_status"]),
+                expected_schema=CONTROLLER_STATUS_SCHEMA,
+                require_private_owner=True,
+            )
+            linked = status.get("stopped_state_continuity_receipt_cid")
+            linked_status = status.get("stopped_state_continuity_status_cid")
+            if (linked is None) != (linked_status is None):
+                raise SuccessorOperatorError(
+                    "failed-start source maintenance status links are partial"
+                )
+            return status
+
+        def complete_standard_transition() -> dict[str, Any]:
+            standard = _failed_start_recovery_preflight_locked(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+                provenance=provenance,
+                _allow_continuity_receipt=os.path.lexists(
+                    io_paths["stopped_state_continuity"]
+                ),
+            )
+            _validate_failed_start_source_maintenance_transition_preflight(
+                paths,
+                root=root,
+                provenance=provenance,
+                preflight=standard,
+            )
+            if standard.get("preflight_cid") != reviewed:
+                raise SuccessorOperatorError(
+                    "reviewed failed-start source maintenance preflight CID differs"
+                )
+            _recover_interrupted_failed_start_continuity(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+                provenance=provenance,
+                reviewed_preflight_cid=reviewed,
+                failed_start_reason=FAILED_START_REASON_LEGACY_UNCLASSIFIED,
+            )
+            completed = _completed_failed_start_source_maintenance(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+                provenance=provenance,
+                reviewed_preflight_cid=reviewed,
+            )
+            completed["repeated"] = False
+            return completed
+
+        if os.path.lexists(io_paths["stopped_state_continuity"]):
+            published_receipt = _strict_json(
+                Path(io_paths["stopped_state_continuity"]),
+                expected_schema=STOPPED_STATE_CONTINUITY_SCHEMA,
+                require_private_owner=True,
+            )
+            status = exact_status()
+            evidence = published_receipt.get("stop_evidence")
+            if (
+                status.get("stopped_state_continuity_receipt_cid") is not None
+                and isinstance(evidence, Mapping)
+                and evidence.get("mode")
+                == FAILED_START_REVIEWED_EVIDENCE_MODE
+                and evidence.get("recovery_preflight_cid") == reviewed
+            ):
+                return _completed_failed_start_source_maintenance(
+                    paths,
+                    root=root,
+                    lock_custody=lock_custody,
+                    provenance=provenance,
+                    reviewed_preflight_cid=reviewed,
+                )
+            if status.get("stopped_state_continuity_receipt_cid") is None:
+                return complete_standard_transition()
+        elif os.path.lexists(io_paths["stopped_state_restart_admission"]):
+            status = exact_status()
+            if status.get("stopped_state_continuity_receipt_cid") is not None:
+                restored = _restore_or_retire_stopped_restart_admission(
+                    receipt_paths
+                )
+                if restored != "restored_interrupted_claim":
+                    raise SuccessorOperatorError(
+                        "failed-start source maintenance claim recovery differs"
+                    )
+            else:
+                return complete_standard_transition()
+        else:
+            status = exact_status()
+            if status.get("stopped_state_continuity_receipt_cid") is not None:
+                raise SuccessorOperatorError(
+                    "failed-start source maintenance receipt custody is unavailable"
+                )
+            return complete_standard_transition()
+
+        preflight = _failed_start_source_maintenance_preflight_locked(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+            provenance=provenance,
+        )
+        if preflight.get("preflight_cid") != reviewed:
+            raise SuccessorOperatorError(
+                "reviewed failed-start source maintenance preflight CID differs"
+            )
+        pins = preflight.get("reviewed_pins")
+        if not isinstance(pins, Mapping):
+            raise SuccessorOperatorError(
+                "failed-start source maintenance reviewed pins are malformed"
+            )
+        projected_status = pins.get("controller_status")
+        if not isinstance(projected_status, Mapping):
+            raise SuccessorOperatorError(
+                "failed-start source maintenance projected status is malformed"
+            )
+        if not _claim_stopped_state_restart_admission(
+            receipt_paths,
+            expected_restart=True,
+            expected_receipt_cid=str(
+                preflight[
+                    "published_stopped_state_continuity_receipt_cid"
+                ]
+            ),
+            expected_controller_status_cid=str(
+                preflight["published_controller_status_cid"]
+            ),
+        ):
+            raise SuccessorOperatorError(
+                "failed-start source maintenance receipt was not claimed"
+            )
+        _revalidate_generation_bound_controller_lock(paths, lock_custody)
+        _write_status(Path(io_paths["controller_status"]), projected_status)
+        if _strict_json(
+            Path(io_paths["controller_status"]),
+            expected_schema=CONTROLLER_STATUS_SCHEMA,
+            require_private_owner=True,
+        ) != dict(projected_status):
+            raise SuccessorOperatorError(
+                "failed-start source maintenance projected status changed"
+            )
+        return complete_standard_transition()
 
 
 def failed_start_recovery_preflight(root: Path = ROOT) -> dict[str, Any]:
@@ -13313,6 +14041,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "recover-failed-start-continuity"
     )
     recover_failed.add_argument("--reviewed-preflight-cid", required=True)
+    subparsers.add_parser("failed-start-source-maintenance-preflight")
+    reseal_failed = subparsers.add_parser(
+        "reseal-failed-start-source-maintenance"
+    )
+    reseal_failed.add_argument("--reviewed-preflight-cid", required=True)
     subparsers.add_parser("projection-preflight")
     subparsers.add_parser("projection-once")
     return parser
@@ -13361,6 +14094,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = failed_start_recovery_preflight(root)
         elif args.command == "recover-failed-start-continuity":
             result = recover_failed_start_continuity(
+                root,
+                reviewed_preflight_cid=str(args.reviewed_preflight_cid),
+            )
+        elif args.command == "failed-start-source-maintenance-preflight":
+            result = failed_start_source_maintenance_preflight(root)
+        elif args.command == "reseal-failed-start-source-maintenance":
+            result = reseal_failed_start_source_maintenance(
                 root,
                 reviewed_preflight_cid=str(args.reviewed_preflight_cid),
             )
