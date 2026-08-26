@@ -84612,6 +84612,14 @@ def _typed_quack_stable_authority_core(
     }
 
 
+def _legacy_typed_quack_stable_authority_json(
+    authority: Mapping[str, Any],
+) -> str:
+    """Render the exact JSON emitted by the retired @1 metadata writer."""
+
+    return json.dumps(dict(authority), sort_keys=True, separators=(",", ":"))
+
+
 def _typed_quack_stable_binding_migration_receipt(
     *,
     from_binding_id: str,
@@ -85882,6 +85890,7 @@ class DatabaseImplementationDaemon:
         value: Any,
         *,
         description: str,
+        allow_legacy_stable_authority: bool = False,
     ) -> dict[str, Any]:
         if (
             type(value) is not str
@@ -85897,7 +85906,18 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 f"typed Quack {description} metadata is invalid"
             ) from exc
-        if type(decoded) is not dict or canonical_json(decoded) != value:
+        if type(decoded) is not dict:
+            raise DatabaseImplementationAuthorityError(
+                f"typed Quack {description} metadata is not canonical"
+            )
+        expected = canonical_json(decoded)
+        if (
+            allow_legacy_stable_authority
+            and decoded.get("interface")
+            == _TYPED_QUACK_STABLE_AUTHORITY_V1
+        ):
+            expected = _legacy_typed_quack_stable_authority_json(decoded)
+        if expected != value:
             raise DatabaseImplementationAuthorityError(
                 f"typed Quack {description} metadata is not canonical"
             )
@@ -85994,6 +86014,7 @@ class DatabaseImplementationDaemon:
         authority = self._decode_typed_quack_metadata_json(
             metadata[_TYPED_QUACK_STABLE_AUTHORITY_KEY],
             description="stable-authority",
+            allow_legacy_stable_authority=True,
         )
         migration = None
         if _TYPED_QUACK_STABLE_BINDING_MIGRATION_KEY in metadata:

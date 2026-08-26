@@ -249,7 +249,13 @@ def _install_legacy_typed_quack_sidecar_binding(
         connection.execute(
             "INSERT OR REPLACE INTO daemon_execution_metadata(key, value) "
             "VALUES ('typed_quack_stable_authority', ?)",
-            [canonical_json_bytes(dict(authority)).decode("utf-8")],
+            [
+                json.dumps(
+                    dict(authority),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            ],
         )
         connection.execute(
             "DELETE FROM daemon_execution_metadata "
@@ -1947,7 +1953,10 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             expected_process_instance_id=identity.process_birth_id,
         )
         legacy_binding_id, legacy_authority = (
-            _legacy_typed_quack_stable_binding(initial_authority_binding)
+            _legacy_typed_quack_stable_binding(
+                initial_authority_binding,
+                route_policy_id="legacy-route-policy-☃",
+            )
         )
         _install_legacy_typed_quack_sidecar_binding(
             coordination_path=authority_coordination,
@@ -2034,6 +2043,9 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         assert migration_row is not None
         migration_receipt = json.loads(str(migration_row[0]))
         assert migration_receipt["from_stable_binding_id"] == legacy_binding_id
+        assert migration_receipt["from_stable_authority"][
+            "route_policy_id"
+        ] == "legacy-route-policy-☃"
         assert migration_receipt["to_stable_binding_id"] == (
             alternate_adapter.require_quack_authority_binding(
                 expected_endpoint=identity.listen_uri,
