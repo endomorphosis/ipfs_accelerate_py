@@ -5,13 +5,13 @@
   "canonical_tree": "7aa6f3c7c2bd90a046bb1514d7b3a92c7af55714",
   "current_eaaef_forest_required": true,
   "eaaef_import_overrides": {
-    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "e2ee7656c1508f847aee738c5aeccf37b0b73701",
-    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "31c918fb5173c992f008ac818810207a97e6a5f9",
+    "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "ad27ac356ceb1b7bcb14bb62187c9d834ff275c1",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "98d22cc3c258e8cc5d7d4b4199a184b2cee3afe5",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "79bc3f848d5b95e11f104653356d9cf78b408e8e"
   },
   "fresh_signed_plan_r2_authority_required": true,
   "import_mode": "typed_code_only",
-  "manifest_cid": "sha256:2aab1347c3962804f17439435a96284be567623982a58909d51b902902492081",
+  "manifest_cid": "sha256:4e7002bb66f883cfc22161fac9b48813a1f0972294aef3e18c5e758e54d08837",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-casf-import-manifest@1",
   "sealed_predecessor": "22f657a07ed699ef90466fbdf6a61f908f776c54",
   "sealed_predecessor_tree": "99ddd30a0c653800659d92dd9b47c7c0971f3bf2",
