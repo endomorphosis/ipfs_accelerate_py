@@ -21,6 +21,7 @@ import math
 import os
 import re
 import stat
+import tempfile
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
@@ -97,6 +98,9 @@ _JSON_MAX_BYTES = 262_144
 _MERGE_QUEUE_METADATA_MAX_BYTES = 64 * 1_024
 _HISTORY_ROW_BOUND = 8_192
 _RETIRED_STORE_MAX_BYTES = 64 * 1024 * 1024
+_TERMINAL_SHADOW_FILE_MAX_BYTES = 256 * 1024 * 1024
+_TERMINAL_SHADOW_TOTAL_MAX_BYTES = 1024 * 1024 * 1024
+_TERMINAL_SHADOW_PREFIX: Final[str] = ".vrif-terminal-shadow-"
 _RETIRED_COORDINATION_LANE_INDEXES: Final[tuple[int, ...]] = (2, 3)
 _MAX_RETIRED_COORDINATION_SNAPSHOTS = len(
     _RETIRED_COORDINATION_LANE_INDEXES
@@ -3161,16 +3165,37 @@ def _read_retired_coordination_lineage(
     repository_root: Path,
     policy_lock: Mapping[str, Any],
     max_active_ids: int,
+    snapshot_database_path: Path | None = None,
+    snapshot_store_identity: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], tuple[Path, dict[str, Any]]]:
-    database_path, store = _configured_retired_store_identity(
+    configured_database_path, configured_store = _configured_retired_store_identity(
         entry,
         repository_root=repository_root,
+    )
+    if (snapshot_database_path is None) != (snapshot_store_identity is None):
+        raise VRIFRuntimeSettlementError(
+            "retired coordination shadow binding is incomplete"
+        )
+    database_path = snapshot_database_path or configured_database_path
+    store = (
+        dict(snapshot_store_identity)
+        if snapshot_store_identity is not None
+        else configured_store
     )
     coordination = _read_coordination_snapshot(
         database_path,
         store_identity=store,
         max_active_ids=max(max_active_ids, _HISTORY_ROW_BOUND),
     )
+    if snapshot_database_path is not None:
+        # The writable shadow is an internal replay mechanism, never receipt
+        # identity.  Rebind the proven logical snapshot to the exact configured
+        # original pair so a future lineage consumer cannot emit a temp path.
+        coordination = dict(coordination)
+        coordination["store"] = dict(configured_store)
+        coordination_material = dict(coordination)
+        coordination_material.pop("snapshot_cid", None)
+        coordination["snapshot_cid"] = _content_id(coordination_material)
     active_counts = coordination["active_counts"]
     if any(
         count != 0
@@ -3224,8 +3249,8 @@ def _read_retired_coordination_lineage(
         "schema": VRIF_RETIRED_COORDINATION_LINEAGE_SCHEMA,
         "config_ordinal": config_ordinal,
         "lane_index": entry["lane_index"],
-        "database_path": str(database_path.absolute()),
-        "wal_path": str(Path(str(database_path) + ".wal").absolute()),
+        "database_path": str(configured_database_path.absolute()),
+        "wal_path": str(Path(str(configured_database_path) + ".wal").absolute()),
         "configured_content": {
             "database_size_bytes": entry["database_size_bytes"],
             "database_sha256": entry["database_sha256"],
@@ -3244,7 +3269,10 @@ def _read_retired_coordination_lineage(
             configured_attempt_ids
         ),
     }
-    return lineage, authority_by_attempt, (database_path, store)
+    return lineage, authority_by_attempt, (
+        configured_database_path,
+        configured_store,
+    )
 
 
 def _read_execution_authority_rows(
@@ -3537,6 +3565,513 @@ def _require_current_master_pid_projection(
     return identity
 
 
+def _terminal_shadow_directory_identity(path: Path) -> dict[str, int]:
+    try:
+        details = path.lstat()
+    except OSError as exc:
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow directory is unavailable"
+        ) from exc
+    if (
+        not stat.S_ISDIR(details.st_mode)
+        or stat.S_ISLNK(details.st_mode)
+        or int(details.st_uid) != os.geteuid()
+        or stat.S_IMODE(details.st_mode) != 0o700
+    ):
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow directory ownership differs"
+        )
+    return {
+        "device": int(details.st_dev),
+        "inode": int(details.st_ino),
+        "mode": int(stat.S_IMODE(details.st_mode)),
+        "uid": int(details.st_uid),
+        "modified_ns": int(details.st_mtime_ns),
+        "changed_ns": int(details.st_ctime_ns),
+    }
+
+
+def _terminal_opened_file_matches(
+    details: os.stat_result,
+    expected: Mapping[str, Any],
+) -> bool:
+    return (
+        stat.S_ISREG(details.st_mode)
+        and int(details.st_dev) == expected["device"]
+        and int(details.st_ino) == expected["inode"]
+        and int(stat.S_IMODE(details.st_mode)) == expected["mode"]
+        and int(details.st_nlink) == expected["link_count"]
+        and int(details.st_uid) == expected["uid"]
+        and int(details.st_size) == expected["size_bytes"]
+        and int(details.st_mtime_ns) == expected["modified_ns"]
+        and int(details.st_ctime_ns) == expected["changed_ns"]
+    )
+
+
+def _terminal_file_sha256(
+    path: Path,
+    *,
+    expected: Mapping[str, Any],
+    label: str,
+) -> str:
+    size_bytes = int(expected["size_bytes"])
+    if size_bytes <= 0 or size_bytes > _TERMINAL_SHADOW_FILE_MAX_BYTES:
+        raise VRIFRuntimeSettlementError(
+            f"{label} exceeds the terminal shadow file bound"
+        )
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    if int(expected["uid"]) == os.geteuid():
+        flags |= getattr(os, "O_NOATIME", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise VRIFRuntimeSettlementError(f"{label} is unreadable") from exc
+    digest = hashlib.sha256()
+    consumed = 0
+    try:
+        if not _terminal_opened_file_matches(os.fstat(descriptor), expected):
+            raise VRIFRuntimeSettlementError(
+                f"{label} identity changed during content binding"
+            )
+        while consumed <= size_bytes:
+            chunk = os.read(descriptor, min(1024 * 1024, size_bytes + 1 - consumed))
+            if not chunk:
+                break
+            digest.update(chunk)
+            consumed += len(chunk)
+    finally:
+        os.close(descriptor)
+    if (
+        consumed != size_bytes
+        or _file_identity(path, label=label) != dict(expected)
+    ):
+        raise VRIFRuntimeSettlementError(
+            f"{label} changed during content binding"
+        )
+    return "sha256:" + digest.hexdigest()
+
+
+def _copy_terminal_shadow_file(
+    source: Path,
+    *,
+    expected: Mapping[str, Any],
+    destination_directory_fd: int,
+    destination_directory: Path,
+    destination_name: str,
+    label: str,
+) -> tuple[dict[str, Any], str]:
+    if (
+        not destination_name
+        or destination_name in {".", ".."}
+        or "/" in destination_name
+        or "\\" in destination_name
+    ):
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow filename is not canonical"
+        )
+    size_bytes = int(expected["size_bytes"])
+    if size_bytes <= 0 or size_bytes > _TERMINAL_SHADOW_FILE_MAX_BYTES:
+        raise VRIFRuntimeSettlementError(
+            f"{label} exceeds the terminal shadow file bound"
+        )
+    source_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    source_flags |= getattr(os, "O_NOFOLLOW", 0)
+    if int(expected["uid"]) == os.geteuid():
+        source_flags |= getattr(os, "O_NOATIME", 0)
+    destination_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    destination_flags |= getattr(os, "O_CLOEXEC", 0)
+    destination_flags |= getattr(os, "O_NOFOLLOW", 0)
+    source_descriptor: int | None = None
+    destination_descriptor: int | None = None
+    digest = hashlib.sha256()
+    consumed = 0
+    try:
+        source_descriptor = os.open(source, source_flags)
+        if not _terminal_opened_file_matches(
+            os.fstat(source_descriptor), expected
+        ):
+            raise VRIFRuntimeSettlementError(
+                f"{label} identity changed before shadow copy"
+            )
+        destination_descriptor = os.open(
+            destination_name,
+            destination_flags,
+            0o600,
+            dir_fd=destination_directory_fd,
+        )
+        while consumed <= size_bytes:
+            chunk = os.read(
+                source_descriptor,
+                min(1024 * 1024, size_bytes + 1 - consumed),
+            )
+            if not chunk:
+                break
+            digest.update(chunk)
+            consumed += len(chunk)
+            view = memoryview(chunk)
+            while view:
+                written = os.write(destination_descriptor, view)
+                if written <= 0:
+                    raise VRIFRuntimeSettlementError(
+                        "terminal sidecar shadow copy made no progress"
+                    )
+                view = view[written:]
+        os.fsync(destination_descriptor)
+    except OSError as exc:
+        raise VRIFRuntimeSettlementError(
+            f"{label} could not be copied into the terminal shadow"
+        ) from exc
+    finally:
+        if destination_descriptor is not None:
+            os.close(destination_descriptor)
+        if source_descriptor is not None:
+            os.close(source_descriptor)
+    if consumed != size_bytes:
+        raise VRIFRuntimeSettlementError(
+            f"{label} changed or exceeded its terminal shadow bound"
+        )
+    if _file_identity(source, label=label) != dict(expected):
+        raise VRIFRuntimeSettlementError(
+            f"{label} identity changed during shadow copy"
+        )
+    destination = destination_directory / destination_name
+    copied = _file_identity(
+        destination,
+        label="terminal sidecar shadow file",
+        require_nonempty=True,
+    )
+    if (
+        copied["uid"] != os.geteuid()
+        or copied["mode"] != 0o600
+        or copied["size_bytes"] != size_bytes
+    ):
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow file ownership differs"
+        )
+    content_sha256 = "sha256:" + digest.hexdigest()
+    if _terminal_file_sha256(
+        destination,
+        expected=copied,
+        label="terminal sidecar shadow file",
+    ) != content_sha256:
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow copy content differs"
+        )
+    return copied, content_sha256
+
+
+def _require_terminal_originals_unchanged(
+    shadows: Mapping[str, Mapping[str, Any]],
+) -> None:
+    for shadow in shadows.values():
+        original_path = Path(str(shadow["original_path"]))
+        original_store = shadow["original_store"]
+        _require_store_unchanged(original_path, original_store)
+        hashes = shadow["original_sha256"]
+        if _terminal_file_sha256(
+            original_path,
+            expected=original_store["database"],
+            label="terminal original sidecar database",
+        ) != hashes["database"]:
+            raise VRIFRuntimeSettlementError(
+                "terminal original sidecar database content changed"
+            )
+        wal = original_store["wal"]
+        if wal["state"] == "present":
+            if _terminal_file_sha256(
+                Path(str(wal["path"])),
+                expected=wal["file"],
+                label="terminal original sidecar WAL",
+            ) != hashes["wal"]:
+                raise VRIFRuntimeSettlementError(
+                    "terminal original sidecar WAL content changed"
+                )
+
+
+def _require_terminal_shadows_unchanged(
+    shadows: Mapping[str, Mapping[str, Any]],
+) -> None:
+    for shadow in shadows.values():
+        shadow_store = shadow.get("shadow_store")
+        shadow_sha256 = shadow.get("shadow_sha256")
+        if shadow_store is None and shadow_sha256 is None:
+            continue
+        if not isinstance(shadow_store, Mapping) or not isinstance(
+            shadow_sha256, str
+        ):
+            raise VRIFRuntimeSettlementError(
+                "terminal sidecar shadow replay binding is incomplete"
+            )
+        shadow_path = Path(str(shadow["shadow_path"]))
+        _require_store_unchanged(shadow_path, shadow_store)
+        if _terminal_file_sha256(
+            shadow_path,
+            expected=shadow_store["database"],
+            label="replayed terminal sidecar shadow database",
+        ) != shadow_sha256:
+            raise VRIFRuntimeSettlementError(
+                "replayed terminal sidecar shadow content changed"
+            )
+
+
+def _replay_terminal_shadow_sidecar(database_path: Path) -> dict[str, Any]:
+    """Replay and checkpoint one private writable copy, never an original."""
+
+    connection: Any | None = None
+    try:
+        import duckdb
+
+        connection = connect_duckdb_with_policy(duckdb, database_path)
+        connection.execute("CHECKPOINT")
+    except Exception as exc:
+        if isinstance(exc, VRIFRuntimeSettlementError):
+            raise
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow replay failed"
+        ) from exc
+    finally:
+        if connection is not None:
+            connection.close()
+    store = _store_identity(database_path)
+    if store["wal"]["state"] != "absent":
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow WAL remained after replay"
+        )
+    if (
+        store["database"]["uid"] != os.geteuid()
+        or store["database"]["mode"] != 0o600
+        or store["database"]["size_bytes"] <= 0
+        or store["database"]["size_bytes"]
+        > _TERMINAL_SHADOW_FILE_MAX_BYTES
+    ):
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow database ownership or size changed"
+        )
+    return store
+
+
+def _terminal_logical_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove only physical store-address material from a sidecar snapshot."""
+
+    return {
+        key: value
+        for key, value in snapshot.items()
+        if key not in {"store", "snapshot_cid"}
+    }
+
+
+def _cleanup_terminal_shadow_directory(
+    path: Path,
+    *,
+    expected_directory: Mapping[str, Any],
+    expected_names: frozenset[str],
+) -> None:
+    current = _terminal_shadow_directory_identity(path)
+    stable_fields = ("device", "inode", "mode", "uid")
+    if any(current[field] != expected_directory[field] for field in stable_fields):
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow directory identity changed"
+        )
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow cleanup could not open its directory"
+        ) from exc
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            int(opened.st_dev) != expected_directory["device"]
+            or int(opened.st_ino) != expected_directory["inode"]
+        ):
+            raise VRIFRuntimeSettlementError(
+                "terminal sidecar shadow directory changed before cleanup"
+            )
+        names = set(os.listdir(descriptor))
+        if not names.issubset(expected_names):
+            raise VRIFRuntimeSettlementError(
+                "terminal sidecar shadow directory contains an unexpected entry"
+            )
+        for name in sorted(names):
+            details = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            if (
+                not stat.S_ISREG(details.st_mode)
+                or int(details.st_nlink) != 1
+                or int(details.st_uid) != os.geteuid()
+            ):
+                raise VRIFRuntimeSettlementError(
+                    "terminal sidecar shadow cleanup entry identity differs"
+                )
+            os.unlink(name, dir_fd=descriptor)
+        os.fsync(descriptor)
+        if os.listdir(descriptor):
+            raise VRIFRuntimeSettlementError(
+                "terminal sidecar shadow cleanup left files behind"
+            )
+    except OSError as exc:
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow cleanup failed"
+        ) from exc
+    finally:
+        os.close(descriptor)
+    try:
+        os.rmdir(path)
+    except OSError as exc:
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow directory cleanup failed"
+        ) from exc
+    if path.exists() or path.is_symlink():
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow directory remained after cleanup"
+        )
+
+
+@contextmanager
+def _hold_terminal_shadow_stores(
+    state_path: Path,
+    stores: Sequence[tuple[str, Path]],
+) -> Iterator[dict[str, dict[str, Any]]]:
+    """Yield writable private replicas while originals remain exact and locked."""
+
+    if not stores or len({key for key, _path in stores}) != len(stores):
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow inventory differs"
+        )
+    originals: dict[str, tuple[Path, dict[str, Any]]] = {}
+    total_size = 0
+    for key, database_path in stores:
+        store = _store_identity(database_path)
+        files = [store["database"]]
+        if store["wal"]["state"] == "present":
+            files.append(store["wal"]["file"])
+        for identity in files:
+            if (
+                identity["uid"] != os.geteuid()
+                or identity["size_bytes"] <= 0
+                or identity["size_bytes"] > _TERMINAL_SHADOW_FILE_MAX_BYTES
+            ):
+                raise VRIFRuntimeSettlementError(
+                    "terminal sidecar source exceeds its ownership or size bound"
+                )
+            total_size += int(identity["size_bytes"])
+        originals[key] = (database_path, store)
+    if total_size > _TERMINAL_SHADOW_TOTAL_MAX_BYTES:
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow inventory exceeds its aggregate size bound"
+        )
+
+    try:
+        shadow_directory = Path(
+            tempfile.mkdtemp(prefix=_TERMINAL_SHADOW_PREFIX, dir=state_path)
+        )
+    except OSError as exc:
+        raise VRIFRuntimeSettlementError(
+            "terminal sidecar shadow directory could not be created"
+        ) from exc
+    directory_identity = _terminal_shadow_directory_identity(shadow_directory)
+    directory_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    directory_flags |= getattr(os, "O_DIRECTORY", 0)
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    directory_descriptor: int | None = None
+    expected_names: set[str] = set()
+    shadows: dict[str, dict[str, Any]] = {}
+    try:
+        directory_descriptor = os.open(shadow_directory, directory_flags)
+        opened = os.fstat(directory_descriptor)
+        if (
+            int(opened.st_dev) != directory_identity["device"]
+            or int(opened.st_ino) != directory_identity["inode"]
+        ):
+            raise VRIFRuntimeSettlementError(
+                "terminal sidecar shadow directory changed during creation"
+            )
+        for ordinal, (key, _database_path) in enumerate(stores):
+            original_path, original_store = originals[key]
+            database_name = f"store-{ordinal}.duckdb"
+            wal_name = database_name + ".wal"
+            expected_names.update((database_name, wal_name))
+            _copied_database, database_sha256 = _copy_terminal_shadow_file(
+                original_path,
+                expected=original_store["database"],
+                destination_directory_fd=directory_descriptor,
+                destination_directory=shadow_directory,
+                destination_name=database_name,
+                label="terminal original sidecar database",
+            )
+            wal_sha256: str | None = None
+            if original_store["wal"]["state"] == "present":
+                _copied_wal, wal_sha256 = _copy_terminal_shadow_file(
+                    Path(str(original_store["wal"]["path"])),
+                    expected=original_store["wal"]["file"],
+                    destination_directory_fd=directory_descriptor,
+                    destination_directory=shadow_directory,
+                    destination_name=wal_name,
+                    label="terminal original sidecar WAL",
+                )
+            shadows[key] = {
+                "original_path": str(original_path),
+                "original_store": original_store,
+                "original_sha256": {
+                    "database": database_sha256,
+                    "wal": wal_sha256,
+                },
+                "shadow_path": shadow_directory / database_name,
+            }
+        os.fsync(directory_descriptor)
+        os.close(directory_descriptor)
+        directory_descriptor = None
+        _require_terminal_originals_unchanged(shadows)
+        replayed_total_size = 0
+        replayed_stores: dict[str, dict[str, Any]] = {}
+        for key, shadow in shadows.items():
+            replayed_store = _replay_terminal_shadow_sidecar(
+                shadow["shadow_path"]
+            )
+            replayed_size = int(replayed_store["database"]["size_bytes"])
+            if (
+                replayed_size <= 0
+                or replayed_size > _TERMINAL_SHADOW_FILE_MAX_BYTES
+            ):
+                raise VRIFRuntimeSettlementError(
+                    "replayed terminal shadow exceeds its file size bound"
+                )
+            replayed_total_size += replayed_size
+            replayed_stores[key] = replayed_store
+        if replayed_total_size > _TERMINAL_SHADOW_TOTAL_MAX_BYTES:
+            raise VRIFRuntimeSettlementError(
+                "replayed terminal shadows exceed their aggregate size bound"
+            )
+        for key, replayed_store in replayed_stores.items():
+            shadows[key]["shadow_store"] = replayed_store
+            shadows[key]["shadow_sha256"] = _terminal_file_sha256(
+                shadows[key]["shadow_path"],
+                expected=replayed_store["database"],
+                label="replayed terminal sidecar shadow database",
+            )
+        _require_terminal_shadows_unchanged(shadows)
+        _require_terminal_originals_unchanged(shadows)
+        yield shadows
+    finally:
+        if directory_descriptor is not None:
+            os.close(directory_descriptor)
+        try:
+            try:
+                if shadows:
+                    _require_terminal_shadows_unchanged(shadows)
+            finally:
+                if shadows:
+                    _require_terminal_originals_unchanged(shadows)
+        finally:
+            _cleanup_terminal_shadow_directory(
+                shadow_directory,
+                expected_directory=directory_identity,
+                expected_names=frozenset(expected_names),
+            )
+
+
 def _checkpoint_vrif_sidecar(database_path: Path) -> dict[str, Any]:
     """Checkpoint one already-locked local sidecar without deleting its WAL."""
 
@@ -3617,6 +4152,9 @@ def checkpoint_vrif_terminal_sidecars(
         target_branch=target_branch,
     )
     state_path = Path(profile["state_path"])
+    retired_entries = profile["runtime_settlement"][
+        "retired_coordination_snapshots"
+    ]
     expected_master_path = state_path / "configured-board-master.pid"
     supplied_master_path = _absolute_lexical(master_pid_path)
     if supplied_master_path != expected_master_path:
@@ -3653,29 +4191,57 @@ def checkpoint_vrif_terminal_sidecars(
                         timeout_seconds=timeout,
                     )
                 )
-            policy_specs = sorted(
-                (
-                    (paths["coordination_lock"], index, "coordination")
-                    for index, paths in enumerate(lane_paths)
-                ),
+            policy_specs: list[tuple[Path, str, int, str]] = []
+            for index, paths in enumerate(lane_paths):
+                policy_specs.extend(
+                    (
+                        (
+                            paths["coordination_lock"],
+                            "lane",
+                            index,
+                            "coordination",
+                        ),
+                        (
+                            paths["execution_lock"],
+                            "lane",
+                            index,
+                            "execution",
+                        ),
+                    )
+                )
+            for ordinal, entry in enumerate(retired_entries):
+                retired_database = root / entry["database_path"]
+                policy_specs.append(
+                    (
+                        retired_database.with_name(
+                            f".{retired_database.name}.lock"
+                        ),
+                        "retired",
+                        ordinal,
+                        "coordination",
+                    )
+                )
+            held_retired_locks: dict[int, dict[str, Any]] = {}
+            # Preserve the settlement lock order globally across every store.
+            for lock_path, source_kind, index, policy_kind in sorted(
+                policy_specs,
                 key=lambda item: str(item[0]),
-            ) + sorted(
-                (
-                    (paths["execution_lock"], index, "execution")
-                    for index, paths in enumerate(lane_paths)
-                ),
-                key=lambda item: str(item[0]),
-            )
-            # Preserve the settlement lock order globally, not by lock kind.
-            policy_specs.sort(key=lambda item: str(item[0]))
-            for lock_path, index, kind in policy_specs:
-                lane_locks.enter_context(
+            ):
+                lock_receipt = lane_locks.enter_context(
                     _hold_existing_lock(
                         lock_path,
-                        label=f"VRIF lane {index} {kind} policy lock",
+                        label=(
+                            f"VRIF lane {index} {policy_kind} policy lock"
+                            if source_kind == "lane"
+                            else (
+                                f"VRIF retired coordination {index} policy lock"
+                            )
+                        ),
                         timeout_seconds=timeout,
                     )
                 )
+                if source_kind == "retired":
+                    held_retired_locks[index] = lock_receipt
 
             lane_pid_observations = [
                 _pid_observation(
@@ -3688,30 +4254,106 @@ def checkpoint_vrif_terminal_sidecars(
             ]
             active_coordination = 0
             active_execution = 0
-            for paths in lane_paths:
-                coordination_store = _store_identity(paths["coordination"])
-                execution_store = _store_identity(paths["execution"])
-                owner_id = _logical_owner_id(
-                    logical_database_path=paths["logical"],
-                    coordination_path=paths["logical"],
-                    execution_path=paths["execution"],
-                )
-                coordination = _read_coordination_snapshot(
-                    paths["coordination"],
-                    store_identity=coordination_store,
-                    max_active_ids=max_active_ids,
-                )
-                execution = _read_execution_snapshot(
-                    paths["execution"],
-                    store_identity=execution_store,
-                    expected_owner_session_id=owner_id,
-                    max_active_ids=max_active_ids,
-                )
-                active_coordination += int(coordination["active_count"])
-                active_execution += int(execution["active_count"])
+            preflight_lanes: list[dict[str, Any]] = []
+            shadow_specs = [
+                (f"lane-{index}-coordination", paths["coordination"])
+                for index, paths in enumerate(lane_paths)
+            ] + [
+                (f"lane-{index}-execution", paths["execution"])
+                for index, paths in enumerate(lane_paths)
+            ] + [
+                (f"retired-{ordinal}", root / entry["database_path"])
+                for ordinal, entry in enumerate(retired_entries)
+            ]
+            with _hold_terminal_shadow_stores(
+                state_path,
+                shadow_specs,
+            ) as shadows:
+                retired_by_lane: dict[
+                    int,
+                    list[tuple[dict[str, Any], dict[str, dict[str, Any]]]],
+                ] = {index: [] for index in range(4)}
+                for ordinal, entry in enumerate(retired_entries):
+                    retired_shadow = shadows[f"retired-{ordinal}"]
+                    lineage, authorities, _guard = (
+                        _read_retired_coordination_lineage(
+                            entry,
+                            config_ordinal=ordinal,
+                            repository_root=root,
+                            policy_lock=held_retired_locks[ordinal],
+                            max_active_ids=max_active_ids,
+                            snapshot_database_path=retired_shadow["shadow_path"],
+                            snapshot_store_identity=retired_shadow["shadow_store"],
+                        )
+                    )
+                    retired_by_lane[entry["lane_index"]].append(
+                        (lineage, authorities)
+                    )
+                for index, paths in enumerate(lane_paths):
+                    coordination_shadow = shadows[
+                        f"lane-{index}-coordination"
+                    ]
+                    execution_shadow = shadows[f"lane-{index}-execution"]
+                    owner_id = _logical_owner_id(
+                        logical_database_path=paths["logical"],
+                        coordination_path=paths["logical"],
+                        execution_path=paths["execution"],
+                    )
+                    coordination = _read_coordination_snapshot(
+                        coordination_shadow["shadow_path"],
+                        store_identity=coordination_shadow["shadow_store"],
+                        max_active_ids=max_active_ids,
+                    )
+                    execution = _read_execution_snapshot(
+                        execution_shadow["shadow_path"],
+                        store_identity=execution_shadow["shadow_store"],
+                        expected_owner_session_id=owner_id,
+                        max_active_ids=max_active_ids,
+                    )
+                    cross_store = _read_lane_cross_store_binding(
+                        coordination_shadow["shadow_path"],
+                        execution_shadow["shadow_path"],
+                        retired_lineages=retired_by_lane[index],
+                    )
+                    preflight_lanes.append(
+                        {
+                            "coordination": _terminal_logical_snapshot(
+                                coordination
+                            ),
+                            "execution": _terminal_logical_snapshot(execution),
+                            "cross_store": cross_store,
+                        }
+                    )
+                    active_coordination += int(coordination["active_count"])
+                    active_execution += int(execution["active_count"])
             if active_coordination != 0 or active_execution != 0:
                 raise VRIFRuntimeSettlementError(
                     "terminal sidecar checkpoint requires exact zero-active stores"
+                )
+
+            # Shadow cleanup has completed successfully.  Rebind every original
+            # and all lifecycle authority immediately before the first mutation.
+            _require_terminal_originals_unchanged(shadows)
+            _require_config_unchanged(profile)
+            if (
+                _require_current_master_pid_projection(
+                    supplied_master_path,
+                    expected_pid=expected_master_pid,
+                )
+                != master_identity
+                or [
+                    _pid_observation(
+                        state_path
+                        / f"lane-{index}"
+                        / f"vrif_lane_{index}_supervisor.pid",
+                        label=f"VRIF lane {index} supervisor PID marker",
+                    )
+                    for index in range(4)
+                ]
+                != lane_pid_observations
+            ):
+                raise VRIFRuntimeSettlementError(
+                    "VRIF lifecycle state changed before terminal checkpoint"
                 )
 
             checkpointed_lanes: list[dict[str, Any]] = []
@@ -3734,26 +4376,47 @@ def checkpoint_vrif_terminal_sidecars(
                 )
                 coordination_store = _store_identity(paths["coordination"])
                 execution_store = _store_identity(paths["execution"])
-                if (
-                    coordination_store["wal"]["state"] != "absent"
-                    or execution_store["wal"]["state"] != "absent"
-                    or _read_coordination_snapshot(
-                        paths["coordination"],
-                        store_identity=coordination_store,
-                        max_active_ids=max_active_ids,
-                    )["active_count"]
-                    != 0
-                    or _read_execution_snapshot(
-                        paths["execution"],
-                        store_identity=execution_store,
-                        expected_owner_session_id=owner_id,
-                        max_active_ids=max_active_ids,
-                    )["active_count"]
-                    != 0
+                if coordination_store["wal"]["state"] != "absent" or (
+                    execution_store["wal"]["state"] != "absent"
                 ):
                     raise VRIFRuntimeSettlementError(
                         f"VRIF lane {index} changed during terminal checkpoint"
                     )
+                coordination = _read_coordination_snapshot(
+                    paths["coordination"],
+                    store_identity=coordination_store,
+                    max_active_ids=max_active_ids,
+                )
+                execution = _read_execution_snapshot(
+                    paths["execution"],
+                    store_identity=execution_store,
+                    expected_owner_session_id=owner_id,
+                    max_active_ids=max_active_ids,
+                )
+                cross_store = _read_lane_cross_store_binding(
+                    paths["coordination"],
+                    paths["execution"],
+                    retired_lineages=retired_by_lane[index],
+                )
+                if (
+                    coordination["active_count"] != 0
+                    or execution["active_count"] != 0
+                    or _terminal_logical_snapshot(coordination)
+                    != preflight_lanes[index]["coordination"]
+                    or _terminal_logical_snapshot(execution)
+                    != preflight_lanes[index]["execution"]
+                    or cross_store != preflight_lanes[index]["cross_store"]
+                ):
+                    raise VRIFRuntimeSettlementError(
+                        f"VRIF lane {index} logical state changed during "
+                        "terminal checkpoint"
+                    )
+
+            for entry in retired_entries:
+                _configured_retired_store_identity(
+                    entry,
+                    repository_root=root,
+                )
 
             _require_config_unchanged(profile)
             if (

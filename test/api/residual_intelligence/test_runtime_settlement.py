@@ -915,6 +915,73 @@ os._exit(0)
     return wal_path
 
 
+def _leave_ddl_index_coordination_wal(
+    database_path: Path,
+    *,
+    suffix: str,
+    ready: bool,
+) -> tuple[Path, str]:
+    """Leave the production ready-bit table-swap DDL committed in a WAL."""
+
+    task_cid = f"task:ddl-wal:{suffix}"
+    coordinator = DatabaseCoordinator(database_path).open()
+    try:
+        coordinator.register_task(
+            task_cid=task_cid,
+            task_id=f"VRIF-DDL-WAL-{suffix}",
+        )
+    finally:
+        coordinator.close()
+    script = """
+import os
+import sys
+import duckdb
+from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import DatabaseCoordinator
+path, task_cid, ready = sys.argv[1:]
+connection = duckdb.connect(path)
+connection.execute("PRAGMA disable_checkpoint_on_shutdown")
+connection.execute("BEGIN TRANSACTION")
+DatabaseCoordinator._set_task_ready_with_table_rebuild_unlocked(
+    connection,
+    task_cid=task_cid,
+    ready=ready == "true",
+)
+connection.execute("COMMIT")
+os._exit(0)
+"""
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(database_path),
+            task_cid,
+            "true" if ready else "false",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    wal_path = Path(str(database_path) + ".wal")
+    assert wal_path.is_file() and wal_path.stat().st_size > 0
+    return wal_path, task_cid
+
+
+def _exact_file_snapshot(path: Path) -> tuple[Any, ...]:
+    details = path.lstat()
+    return (
+        details.st_dev,
+        details.st_ino,
+        details.st_mode,
+        details.st_nlink,
+        details.st_uid,
+        details.st_size,
+        details.st_mtime_ns,
+        details.st_ctime_ns,
+        path.read_bytes(),
+    )
+
+
 def _publish_current_master_marker(runtime: RuntimeFixture) -> Path:
     marker = runtime.state_path / "configured-board-master.pid"
     marker.write_text(f"{os.getpid()}\n", encoding="ascii")
@@ -988,6 +1055,405 @@ def test_terminal_checkpoint_rejects_active_sidecar_without_checkpointing(
 
     assert checkpoint_calls == []
     assert wal_path.is_file() and wal_path.stat().st_size > 0
+
+
+def test_terminal_checkpoint_replays_production_ddl_index_wal_from_shadow(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    wal_path, task_cid = _leave_ddl_index_coordination_wal(
+        runtime.coordination_paths[0],
+        suffix="zero-active",
+        ready=False,
+    )
+
+    receipt = checkpoint_vrif_terminal_sidecars(
+        runtime.config_path,
+        repository_root=runtime.root,
+        target_branch=_TARGET_BRANCH,
+        master_pid_path=marker,
+        expected_master_pid=os.getpid(),
+        lock_timeout_seconds=0.0,
+    )
+
+    assert receipt["active_counts"]["total"] == 0
+    assert ".vrif-terminal-shadow-" not in json.dumps(receipt)
+    assert not wal_path.exists()
+    assert not list(runtime.state_path.glob(".vrif-terminal-shadow-*"))
+    import duckdb
+
+    connection = duckdb.connect(str(runtime.coordination_paths[0]), read_only=True)
+    try:
+        assert connection.execute(
+            "SELECT ready FROM coordination_tasks WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone() == (False,)
+        assert connection.execute(
+            """
+            SELECT COUNT(*) FROM duckdb_indexes()
+            WHERE schema_name = 'main'
+              AND table_name = 'coordination_tasks'
+              AND index_name = 'coordination_tasks_ready_idx'
+            """
+        ).fetchone() == (1,)
+    finally:
+        connection.close()
+
+
+def test_active_production_ddl_index_wal_never_checkpoints_original(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    wal_path, _task_cid = _leave_ddl_index_coordination_wal(
+        runtime.coordination_paths[1],
+        suffix="active",
+        ready=True,
+    )
+    database_before = _exact_file_snapshot(runtime.coordination_paths[1])
+    wal_before = _exact_file_snapshot(wal_path)
+    checkpoint_calls: list[Path] = []
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match="zero-active"):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert checkpoint_calls == []
+    assert _exact_file_snapshot(runtime.coordination_paths[1]) == database_before
+    assert _exact_file_snapshot(wal_path) == wal_before
+    assert not list(runtime.state_path.glob(".vrif-terminal-shadow-*"))
+
+
+def test_terminal_shadow_cleanup_failure_prevents_original_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    original_cleanup = runtime_settlement_module._cleanup_terminal_shadow_directory
+    checkpoint_calls: list[Path] = []
+
+    def cleanup_then_fail(*args: Any, **kwargs: Any) -> None:
+        original_cleanup(*args, **kwargs)
+        raise VRIFRuntimeSettlementError("injected terminal shadow cleanup failure")
+
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_cleanup_terminal_shadow_directory",
+        cleanup_then_fail,
+    )
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match="cleanup failure"):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert checkpoint_calls == []
+    assert not list(runtime.state_path.glob(".vrif-terminal-shadow-*"))
+
+
+def test_terminal_shadow_oversize_preflight_prevents_original_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    checkpoint_calls: list[Path] = []
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_TERMINAL_SHADOW_FILE_MAX_BYTES",
+        1,
+    )
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match="size bound"):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert checkpoint_calls == []
+    assert not list(runtime.state_path.glob(".vrif-terminal-shadow-*"))
+
+
+@pytest.mark.parametrize(
+    ("bound_kind", "error_pattern"),
+    (
+        ("file", "file size bound"),
+        ("aggregate", "aggregate size bound"),
+    ),
+)
+def test_terminal_shadow_post_replay_oversize_prevents_original_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bound_kind: str,
+    error_pattern: str,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    original_replay = runtime_settlement_module._replay_terminal_shadow_sidecar
+    checkpoint_calls: list[Path] = []
+
+    def replay_with_oversize_identity(path: Path) -> dict[str, Any]:
+        store = original_replay(path)
+        result = dict(store)
+        result["database"] = dict(store["database"])
+        if bound_kind == "file":
+            fake_size = (
+                runtime_settlement_module._TERMINAL_SHADOW_FILE_MAX_BYTES + 1
+            )
+        else:
+            fake_size = (
+                runtime_settlement_module._TERMINAL_SHADOW_TOTAL_MAX_BYTES // 8
+                + 1
+            )
+        result["database"]["size_bytes"] = fake_size
+        return result
+
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_replay_terminal_shadow_sidecar",
+        replay_with_oversize_identity,
+    )
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match=error_pattern):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert checkpoint_calls == []
+    assert not list(runtime.state_path.glob(".vrif-terminal-shadow-*"))
+
+
+def test_terminal_shadow_detects_original_tamper_before_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    source = runtime.execution_paths[2]
+    original_replay = runtime_settlement_module._replay_terminal_shadow_sidecar
+    replay_calls = 0
+    checkpoint_calls: list[Path] = []
+
+    def replay_then_tamper(path: Path) -> dict[str, Any]:
+        nonlocal replay_calls
+        result = original_replay(path)
+        replay_calls += 1
+        if replay_calls == 1:
+            with source.open("ab") as stream:
+                stream.write(b"tamper")
+        return result
+
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_replay_terminal_shadow_sidecar",
+        replay_then_tamper,
+    )
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match="identity changed"):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert checkpoint_calls == []
+    assert not list(runtime.state_path.glob(".vrif-terminal-shadow-*"))
+
+
+def test_terminal_shadow_tamper_during_cross_store_read_prevents_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    original_reader = runtime_settlement_module._read_lane_cross_store_binding
+    checkpoint_calls: list[Path] = []
+    tampered = False
+
+    def read_then_tamper(
+        coordination_path: Path,
+        execution_path: Path,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        nonlocal tampered
+        result = original_reader(coordination_path, execution_path, **kwargs)
+        if not tampered and ".vrif-terminal-shadow-" in str(coordination_path):
+            with coordination_path.open("ab") as stream:
+                stream.write(b"tamper")
+            tampered = True
+        return result
+
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_read_lane_cross_store_binding",
+        read_then_tamper,
+    )
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match="identity changed"):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert tampered is True
+    assert checkpoint_calls == []
+    assert not list(runtime.state_path.glob(".vrif-terminal-shadow-*"))
+
+
+def test_terminal_checkpoint_rejects_cross_store_mismatch_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    marker = _publish_current_master_marker(runtime)
+    attempt_id = _insert_execution_attempt(
+        runtime,
+        lane=0,
+        status="succeeded",
+        phase="complete",
+        finished_at_ms=2,
+    )
+    with open_duckdb_connection(runtime.execution_paths[0]) as connection:
+        connection.execute(
+            "UPDATE database_task_attempts SET claim_id = ? WHERE attempt_id = ?",
+            ["claim:cross-store-mismatch", attempt_id],
+        )
+    checkpoint_calls: list[Path] = []
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match="coordination authority"):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert checkpoint_calls == []
+
+
+def test_terminal_checkpoint_reads_retired_wal_only_through_shadow(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    retired = _configure_retired_rollover(runtime, lane=2)
+    marker = _publish_current_master_marker(runtime)
+    retired_database_before = _exact_file_snapshot(retired.database_path)
+    retired_wal_before = _exact_file_snapshot(retired.wal_path)
+
+    receipt = checkpoint_vrif_terminal_sidecars(
+        runtime.config_path,
+        repository_root=runtime.root,
+        target_branch=_TARGET_BRANCH,
+        master_pid_path=marker,
+        expected_master_pid=os.getpid(),
+        lock_timeout_seconds=0.0,
+    )
+
+    assert receipt["active_counts"]["total"] == 0
+    assert ".vrif-terminal-shadow-" not in json.dumps(receipt)
+    assert _exact_file_snapshot(retired.database_path) == retired_database_before
+    assert _exact_file_snapshot(retired.wal_path) == retired_wal_before
+    assert not list(runtime.state_path.glob(".vrif-terminal-shadow-*"))
+
+
+def test_terminal_checkpoint_rejects_retired_hash_mismatch_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _configure_retired_rollover(runtime, lane=3)
+    marker = _publish_current_master_marker(runtime)
+    config = json.loads(runtime.config_path.read_text(encoding="utf-8"))
+    config["runtime_settlement"]["retired_coordination_snapshots"][0][
+        "wal_sha256"
+    ] = "sha256:" + "0" * 64
+    _write_config(runtime.config_path, config)
+    checkpoint_calls: list[Path] = []
+    monkeypatch.setattr(
+        runtime_settlement_module,
+        "_checkpoint_vrif_sidecar",
+        lambda path: checkpoint_calls.append(path),
+    )
+
+    with pytest.raises(VRIFRuntimeSettlementError, match="content differs"):
+        checkpoint_vrif_terminal_sidecars(
+            runtime.config_path,
+            repository_root=runtime.root,
+            target_branch=_TARGET_BRANCH,
+            master_pid_path=marker,
+            expected_master_pid=os.getpid(),
+            lock_timeout_seconds=0.0,
+        )
+
+    assert checkpoint_calls == []
+    assert not list(runtime.state_path.glob(".vrif-terminal-shadow-*"))
 
 
 def test_terminal_checkpoint_rejects_busy_lane_writer_lock(tmp_path: Path) -> None:
