@@ -98,6 +98,13 @@ ASEH_R19_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r19-historical-live-policy-admission@1"
 )
+ASEH_R20_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r20-historical-live-policy-admission@1"
+)
+ASEH_R19_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:48e0aded2d74a8ff1f9ed8d5b9e0af8ad73072fd9d9f5152e9c1af0544828c82"
+)
 ASEH_R19_HISTORICAL_LIVE_READY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r19-historical-live-ready@1"
@@ -2154,6 +2161,95 @@ REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_NON_SUCCESS: Final = (
     "validation, database mutation, contention, or validation failure is "
     "rejected before owner acquisition."
 )
+REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-pre-duckdb-historical-live-transition@1"
+)
+REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD: Final = (
+    "e97380af36c49dd5097c2150659a2b7eeb54d8d9"
+)
+REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_CHANGED_PATHS: Final = (
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        (
+            "aseh_r19_historical_live or "
+            "aseh_r19_docker_snapshot or "
+            "aseh_r20_pre_duckdb or "
+            "repair_pre_duckdb_historical_live_transition or "
+            "delegates_r20_before_suffix_admission"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue fixing the existing canonical supervisor so the exact "
+    "historical live qualification is admitted before any DuckDB access "
+    "without weakening validation or creating another state writer"
+)
+REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SUCCESS: Final = (
+    "The exact published R19 child preserves the immutable R1-R19 receipt "
+    "vector, binds one R20 policy to the current candidate witness and parent "
+    "R19 executor contract, fresh-qualifies the unchanged historical-live "
+    "route before DuckDB access, and re-admits the unchanged receipt and "
+    "typed evidence after full launch validation without database mutation."
+)
+REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R19 parent, changed sibling, rewritten prior receipt, "
+    "non-adjacent chain, broadened route, post-DuckDB first qualification, "
+    "receipt replacement, reduced validation, database mutation, contention, "
+    "or validation failure is rejected before owner acquisition."
+)
+ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS: Final = (
+    "sha256:498dae56cef1484c43a318a88dd02155ecf56a4de9b611085ca0098fbc3cf9d8",
+    "sha256:e08514ca997ab6aaf6dffe566124fe6fb7b6c4824b4cd6b0dfc90274141a24ca",
+    "sha256:a4415963b6697f675b4774e0bbccf58ae84a7f262945aef22e6e212190aa6892",
+    "sha256:651b7a9bf4a66576914c08e1649af458fc736244e5a0cfd2f9ad89d7706dc4b0",
+    "sha256:11b320aab4e194d566472cd3481f86a7a74cb530d52788efe12af282e75f0aeb",
+    "sha256:d8095334d110b83403b5e43d91a3f5cf3645ff8f2b9c19cd894ae11c190e99fc",
+    "sha256:537f55e7522fb8307e446f5995a95966bb404072cdfc14e2839da5a8359a8773",
+    "sha256:380388b89028c5caa2c7283f62d130c0af6574ecda84ce0bf5a03ec93dbfd5cb",
+    "sha256:ff8fe1e5ac9701b719e9862e56ec0d48580f80ac700dbe6d073ac1ba9b42f989",
+    "sha256:ff5a9057d20db45bf93d2536487033f926a7484988a3c963cc3dbf3011de3e8d",
+    "sha256:7a716d0f9cbea293e5d2b5380a47c7974bfb48eac215b66ff0586f11ceabccbd",
+    "sha256:38d0479e40d7d51f17dfb4ce26b785d6217420680a4babec1095b133d19a1e51",
+    "sha256:34d26a28fa5e699839669b01938fa2fa8bb02ecbcb4546d1c3596f9eb83f2065",
+    "sha256:b9bdd9be2afc931ce8bc1cb392a8e24627bf07f60a951c85014a339b03166312",
+    "sha256:e164b604ad019229d406da1210f813a2e60c156508772aaa7c4998d4870b3e99",
+    "sha256:3375805e2b20e41f046bfa026574881f7d5506360b47d3f132f0ab415ea26ad4",
+    "sha256:c3293cb763a738fb0f2108c29e056362590f2b1d09946b3bb6fe0f011586f51b",
+    "sha256:542a7784cc2937c1c0c0970ae00a3cc6a8724a4e13d0907774c288738f576661",
+    "sha256:abd275ea896afb6a31e7ef7fcac7cf6776598d20e3e87a8ca883fdceca78d7c5",
+)
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
     REPAIR_FOLLOWUP_TRANSITION_SCHEMA,
@@ -2197,6 +2293,10 @@ ASEH_R18_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R19_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R18_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_SCHEMA,
+)
+ASEH_R20_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R19_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -2306,6 +2406,9 @@ REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_RECEIPT_FIELDS: Final = (
             "historical_live_execution_evidence",
         }
     )
+)
+REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -3509,6 +3612,67 @@ def _repair_historical_lifecycle_route_transition_receipt_id(
     return receipt_id
 
 
+def _repair_pre_duckdb_historical_live_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-20 pre-DuckDB live receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    policy_value = payload.get("historical_live_policy_admission")
+    evidence_value = payload.get("historical_live_execution_evidence")
+    policy = (
+        _validate_r20_historical_live_policy_admission_record(policy_value)
+        if isinstance(policy_value, Mapping)
+        else None
+    )
+    evidence = dict(evidence_value) if isinstance(evidence_value, Mapping) else {}
+    unsigned_evidence = dict(evidence)
+    evidence_cid = str(unsigned_evidence.pop("evidence_cid", "") or "")
+    if (
+        payload.get("schema")
+        != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 20
+        or payload.get("terminal_success_criteria")
+        != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r20_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+        or not isinstance(policy, Mapping)
+        or policy.get("bootstrap_receipt_id")
+        != payload.get("bootstrap_receipt_id")
+        or policy.get("previous_receipt_cid")
+        != payload.get("previous_receipt_cid")
+        or policy.get("candidate_head") != payload.get("repair_head")
+        or policy.get("candidate_tree") != payload.get("repair_tree")
+        or policy.get("candidate_authorization_witness_cid")
+        != _identity(dict(witness))
+        or evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or evidence.get("authorizing_receipt_cid") is not None
+        or evidence.get("returncode") != 0
+        or evidence.get("terminal_class") != "verified_success"
+        or evidence_cid != _identity(unsigned_evidence)
+    ):
+        raise OperatorError(
+            "bootstrap repair pre-DuckDB-historical-live schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair pre-DuckDB-historical-live CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -3718,6 +3882,9 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r19 = globals().get(
         "REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS"
     )
+    r20 = globals().get(
+        "REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
@@ -3725,6 +3892,7 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         *((r17,) if isinstance(r17, Sequence) else ()),
         *((r18,) if isinstance(r18, Sequence) else ()),
         *((r19,) if isinstance(r19, Sequence) else ()),
+        *((r20,) if isinstance(r20, Sequence) else ()),
     )
 
 
@@ -4355,6 +4523,64 @@ def _admit_r19_historical_live_executor_contract(
     return supplied
 
 
+def _r20_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend R19 without changing its one historical-live execution route."""
+
+    parent = _r19_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if parent_cid != ASEH_R19_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID:
+        raise OperatorError("historical R19 validation contract drifted")
+    matrix = REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_VALIDATIONS
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r20_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r20-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 20,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": _r19_historical_live_executor_contract(),
+            "scope": (
+                "r20_authorization_pre_duckdb_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
 def _validate_r19_historical_live_policy_admission_record(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -4565,6 +4791,235 @@ def _admit_r19_historical_live_policy_admission(
     return supplied
 
 
+def _validate_r20_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed R20 policy bound to the immutable R1-R19 vector."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R20 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "policy_revision",
+        "authorization_basis",
+        "bootstrap_receipt_id",
+        "prior_receipt_count",
+        "prior_receipt_cids",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_base_head",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    digest_fields = (
+        "bootstrap_receipt_id",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+    )
+    unsigned = dict(supplied)
+    policy_admission_cid = str(
+        unsigned.pop("policy_admission_cid", "") or ""
+    )
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R20_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 20
+        or supplied.get("authorization_basis")
+        != "validated_r1_r19_chain_plus_observed_r20_candidate_witness"
+        or type(supplied.get("prior_receipt_count")) is not int
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R19_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or supplied.get("prior_receipt_cids")
+        != list(ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS)
+        or supplied.get("prior_receipt_chain_cid")
+        != _identity(list(ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS))
+        or supplied.get("previous_receipt_cid")
+        != ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS[-1]
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(supplied.get(field) or ""),
+            )
+            is None
+            for field in digest_fields
+        )
+        or supplied.get("candidate_base_head")
+        != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or supplied.get("executor_contract_cid")
+        != _identity(_r19_sealed_receipt_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_admission_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R20 historical live policy admission differs")
+    return supplied
+
+
+def _r20_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build R20 authority from the exact R1-R19 receipt vector."""
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None:
+        raise OperatorError("R20 historical live bootstrap identity is invalid")
+    admitted_chain = _admit_exact_r19_transition_chain(list(prior_chain))
+    receipt_cids = tuple(str(item["receipt_cid"]) for item in admitted_chain)
+    if (
+        receipt_cids != ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS
+        or any(
+            item.get("bootstrap_receipt_id") != bootstrap_receipt_id
+            for item in admitted_chain
+        )
+        or admitted_chain[-1].get("repair_head")
+        != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError("R20 historical live prior receipt vector differs")
+    witness = dict(candidate_authorization_witness)
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    witness_digest_fields = (
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    )
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+        or re.fullmatch(
+            r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*",
+            str(witness.get("branch_ref") or ""),
+        )
+        is None
+        or ".." in str(witness.get("branch_ref") or "")
+        or "//" in str(witness.get("branch_ref") or "")
+        or str(witness.get("branch_ref") or "").endswith(("/", ".lock"))
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", witness[field]) is None
+            for field in witness_digest_fields
+        )
+        or witness.get("status_digest") != _identity(b"")
+    ):
+        raise OperatorError(
+            "R20 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    admission: dict[str, Any] = {
+        "schema": ASEH_R20_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 20,
+        "authorization_basis": (
+            "validated_r1_r19_chain_plus_observed_r20_candidate_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_cids": list(receipt_cids),
+        "prior_receipt_chain_cid": _identity(list(receipt_cids)),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": (
+            REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r20_historical_live_policy_admission_record(admission)
+
+
+def _admit_r20_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit only R20's deterministic record for the exact supplied inputs."""
+
+    supplied = _validate_r20_historical_live_policy_admission_record(value)
+    expected = _r20_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+    )
+    if supplied != expected:
+        raise OperatorError("R20 historical live policy admission is unknown")
+    return supplied
+
+
+def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
+    """Return the only admitted historical-live policy revision."""
+
+    schema = value.get("schema") if isinstance(value, Mapping) else None
+    if schema == ASEH_R19_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 19
+    if schema == ASEH_R20_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 20
+    raise OperatorError("historical live policy schema is unknown")
+
+
 def _validate_r19_historical_live_lock_identity(
     value: Mapping[str, Any],
     *,
@@ -4772,12 +5227,19 @@ def _r19_active_policy_scope(
     executor = _ASEH_RECEIPT_VALIDATION_EXECUTOR
     if executor is None:
         raise OperatorError("R19 historical live executor is unavailable")
+    revision = _historical_live_policy_revision(policy_admission)
     contract = _admit_r19_historical_live_executor_contract(
         executor_contract,
         declared=_r11_historical_live_docker_command(),
     )
-    policy = _validate_r19_historical_live_policy_admission_record(
-        policy_admission
+    policy = (
+        _validate_r20_historical_live_policy_admission_record(
+            policy_admission
+        )
+        if revision == 20
+        else _validate_r19_historical_live_policy_admission_record(
+            policy_admission
+        )
     )
     witness = json.loads(executor.authorization_witness_json)
     lifecycle_lock = _validate_r19_historical_live_lock_identity(
@@ -4908,6 +5370,27 @@ def _r19_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r20_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R20 suffix argv without broadening prior matrices."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_VALIDATIONS
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R20 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -4946,19 +5429,24 @@ def _admit_sealed_receipt_validation_executor_contract(
     r17 = _r17_sealed_receipt_validation_executor_contract()
     r18 = _r18_sealed_receipt_validation_executor_contract()
     r19 = _r19_sealed_receipt_validation_executor_contract()
-    if supplied not in (r16, r17, r18, r19):
+    r20 = _r20_sealed_receipt_validation_executor_contract()
+    if supplied not in (r16, r17, r18, r19, r20):
         raise OperatorError("sealed validation executor contract is unknown")
     if (
         (
-            _r19_validation_executor_class(command)
-            if supplied == r19
+            _r20_validation_executor_class(command)
+            if supplied == r20
             else (
-                _r18_validation_executor_class(command)
-                if supplied == r18
+                _r19_validation_executor_class(command)
+                if supplied == r19
                 else (
-                    _r17_validation_executor_class(command)
-                    if supplied == r17
-                    else _r16_validation_executor_class(command)
+                    _r18_validation_executor_class(command)
+                    if supplied == r18
+                    else (
+                        _r17_validation_executor_class(command)
+                        if supplied == r17
+                        else _r16_validation_executor_class(command)
+                    )
                 )
             )
         )
@@ -9340,22 +9828,16 @@ def _validate_r16_production_lifecycle_execution_evidence(
     return dict(evidence)
 
 
-def _r19_docker_scope_snapshot() -> dict[str, Any]:
-    """Observe every supervisor-owned Codex container without mutating it."""
+def _r19_docker_scope_enumeration(
+    command: list[str],
+    *,
+    deadline: float,
+) -> tuple[subprocess.CompletedProcess[Any], list[tuple[str, str, int]]]:
+    """Return one closed, identity-validated Docker-scope enumeration."""
 
-    docker_bin = "/usr/bin/docker"
-    _r16_admit_unprivileged_executable_path(Path(docker_bin))
-    command = [
-        docker_bin,
-        "--host=unix:///var/run/docker.sock",
-        "ps",
-        "--all",
-        "--no-trunc",
-        "--filter",
-        "label=ipfs_accelerate.codex_fallback_isolation=true",
-        "--format",
-        "{{.ID}} {{.Names}}",
-    ]
+    remaining = deadline - time.monotonic()
+    if remaining <= 0.0:
+        raise OperatorError("R19 Docker scope observation deadline expired")
     try:
         completed = subprocess.run(
             command,
@@ -9363,7 +9845,7 @@ def _r19_docker_scope_snapshot() -> dict[str, Any]:
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=5.0,
+            timeout=min(5.0, remaining),
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -9393,17 +9875,35 @@ def _r19_docker_scope_snapshot() -> dict[str, Any]:
     listed.sort()
     if len({item[0] for item in listed}) != len(listed):
         raise OperatorError("R19 Docker scope contains a duplicate identity")
+    return completed, listed
+
+
+def _r19_docker_scope_snapshot_attempt(
+    command: list[str],
+    *,
+    deadline: float,
+) -> dict[str, Any] | None:
+    """Return one confirmed snapshot, or ``None`` for observed scope churn."""
+
+    completed, listed = _r19_docker_scope_enumeration(
+        command,
+        deadline=deadline,
+    )
     inspect_command = [
-        docker_bin,
+        command[0],
         "--host=unix:///var/run/docker.sock",
         "inspect",
         *(item[0] for item in listed),
     ]
+    inspection_unknown = False
     if inspect_command[-1] == "inspect":
         inspect_stdout = b"[]\n"
         inspect_stderr = b""
         inspected: object = []
     else:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0.0:
+            raise OperatorError("R19 Docker scope observation deadline expired")
         try:
             inspection = subprocess.run(
                 inspect_command,
@@ -9411,7 +9911,7 @@ def _r19_docker_scope_snapshot() -> dict[str, Any]:
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                timeout=10.0,
+                timeout=min(10.0, remaining),
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -9421,18 +9921,21 @@ def _r19_docker_scope_snapshot() -> dict[str, Any]:
         inspect_stdout = inspection.stdout
         inspect_stderr = inspection.stderr
         if (
-            inspection.returncode != 0
-            or len(inspect_stdout) > 16 * 1024 * 1024
+            len(inspect_stdout) > 16 * 1024 * 1024
             or len(inspect_stderr) > 64 * 1024
         ):
             raise OperatorError("R19 Docker scope inspection is unknown")
-        try:
-            inspected = json.loads(inspect_stdout)
-        except (UnicodeError, json.JSONDecodeError) as exc:
-            raise OperatorError(
-                "R19 Docker scope inspection is invalid"
-            ) from exc
-    if not isinstance(inspected, list) or len(inspected) != len(listed):
+        inspection_unknown = inspection.returncode != 0
+        if inspection_unknown:
+            inspected = []
+        else:
+            try:
+                inspected = json.loads(inspect_stdout)
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                raise OperatorError(
+                    "R19 Docker scope inspection is invalid"
+                ) from exc
+    if not isinstance(inspected, list):
         raise OperatorError("R19 Docker scope inspection differs")
     inspected_by_id: dict[str, Mapping[str, Any]] = {}
     for value in inspected:
@@ -9445,6 +9948,20 @@ def _r19_docker_scope_snapshot() -> dict[str, Any]:
         ):
             raise OperatorError("R19 Docker scope inspection is invalid")
         inspected_by_id[container_id] = value
+    _, confirmed = _r19_docker_scope_enumeration(
+        command,
+        deadline=deadline,
+    )
+    if confirmed != listed:
+        return None
+    if inspection_unknown:
+        raise OperatorError("R19 Docker scope inspection is unknown")
+    listed_ids = {item[0] for item in listed}
+    if (
+        len(inspected) != len(listed)
+        or set(inspected_by_id) != listed_ids
+    ):
+        raise OperatorError("R19 Docker scope inspection differs")
     entries: list[dict[str, Any]] = []
     for container_id, name, runner_pid in listed:
         value = inspected_by_id.get(container_id)
@@ -9524,6 +10041,35 @@ def _r19_docker_scope_snapshot() -> dict[str, Any]:
         "entries": entries,
         "observed_at_ns": time.time_ns(),
     }
+
+
+def _r19_docker_scope_snapshot() -> dict[str, Any]:
+    """Observe every supervisor-owned Codex container without mutating it."""
+
+    docker_bin = "/usr/bin/docker"
+    _r16_admit_unprivileged_executable_path(Path(docker_bin))
+    command = [
+        docker_bin,
+        "--host=unix:///var/run/docker.sock",
+        "ps",
+        "--all",
+        "--no-trunc",
+        "--filter",
+        "label=ipfs_accelerate.codex_fallback_isolation=true",
+        "--format",
+        "{{.ID}} {{.Names}}",
+    ]
+    deadline = time.monotonic() + 30.0
+    for _attempt in range(3):
+        snapshot = _r19_docker_scope_snapshot_attempt(
+            command,
+            deadline=deadline,
+        )
+        if snapshot is not None:
+            return snapshot
+        if time.monotonic() >= deadline:
+            break
+    raise OperatorError("R19 Docker scope observation did not stabilize")
 
 
 def _r19_detached_effect_snapshot() -> dict[str, Any]:
@@ -10176,14 +10722,27 @@ def _validate_r19_historical_live_execution_evidence(
             )
         return result
 
-    policy = _admit_r19_historical_live_policy_admission(
-        policy_admission,
-        bootstrap_receipt_id=bootstrap_receipt_id,
-        prior_chain=prior_chain,
-        candidate_head=candidate_head,
-        candidate_tree=candidate_tree,
-        candidate_authorization_witness=candidate_authorization_witness,
-        executor_contract=executor_contract,
+    revision = _historical_live_policy_revision(policy_admission)
+    policy = (
+        _admit_r20_historical_live_policy_admission(
+            policy_admission,
+            bootstrap_receipt_id=bootstrap_receipt_id,
+            prior_chain=prior_chain,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=candidate_authorization_witness,
+            executor_contract=executor_contract,
+        )
+        if revision == 20
+        else _admit_r19_historical_live_policy_admission(
+            policy_admission,
+            bootstrap_receipt_id=bootstrap_receipt_id,
+            prior_chain=prior_chain,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=candidate_authorization_witness,
+            executor_contract=executor_contract,
+        )
     )
     if not isinstance(evidence, Mapping):
         raise OperatorError("R19 historical live execution evidence is invalid")
@@ -10549,11 +11108,11 @@ def _run_r19_historical_live_validation(
     executor = _ASEH_RECEIPT_VALIDATION_EXECUTOR
     if executor is None:
         raise OperatorError("R19 historical live executor is unavailable")
+    active_policy = _ASEH_ACTIVE_R19_POLICY
     admitted_contract = _admit_r19_historical_live_executor_contract(
         executor_contract,
         declared=declared,
     )
-    active_policy = _ASEH_ACTIVE_R19_POLICY
     if (
         not isinstance(active_policy, dict)
         or active_policy.get("consumed") is not False
@@ -10566,8 +11125,21 @@ def _run_r19_historical_live_validation(
         raise OperatorError(
             "R19 historical live policy was not actively admitted"
         )
-    policy_admission = _validate_r19_historical_live_policy_admission_record(
-        active_policy["policy_admission"]
+    active_policy_value = active_policy["policy_admission"]
+    revision = (
+        20
+        if active_policy_value.get("schema")
+        == ASEH_R20_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        else 19
+    )
+    policy_admission = (
+        _validate_r20_historical_live_policy_admission_record(
+            active_policy["policy_admission"]
+        )
+        if revision == 20
+        else _validate_r19_historical_live_policy_admission_record(
+            active_policy["policy_admission"]
+        )
     )
     lifecycle_lock_identity = _validate_r19_historical_live_lock_identity(
         active_policy["lifecycle_lock_identity"]
@@ -10953,11 +11525,24 @@ def _qualify_r19_historical_live_policy(
     candidate_authorization_witness: Mapping[str, str],
     policy_admission: Mapping[str, Any] | None,
     authorizing_receipt_cid: str | None,
+    _revision: int = 19,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run and admit the exact historical live route under one typed fence."""
 
+    if _revision not in {19, 20}:
+        raise OperatorError("historical live policy revision is invalid")
     executor_contract = _r19_sealed_receipt_validation_executor_contract()
-    computed_policy = _r19_historical_live_policy_admission(
+    policy_builder = (
+        _r20_historical_live_policy_admission
+        if _revision == 20
+        else _r19_historical_live_policy_admission
+    )
+    policy_admitter = (
+        _admit_r20_historical_live_policy_admission
+        if _revision == 20
+        else _admit_r19_historical_live_policy_admission
+    )
+    computed_policy = policy_builder(
         bootstrap_receipt_id=bootstrap_receipt_id,
         prior_chain=prior_chain,
         candidate_head=candidate_head,
@@ -10968,7 +11553,7 @@ def _qualify_r19_historical_live_policy(
     policy = (
         computed_policy
         if policy_admission is None
-        else _admit_r19_historical_live_policy_admission(
+        else policy_admitter(
             policy_admission,
             bootstrap_receipt_id=bootstrap_receipt_id,
             prior_chain=prior_chain,
@@ -11051,6 +11636,32 @@ def _qualify_r19_historical_live_policy(
                     "R19 historical live qualification failed"
                 )
     return policy, admitted_evidence
+
+
+def _qualify_r20_pre_duckdb_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Qualify R20 through R19's unchanged historical-live executor."""
+
+    return _qualify_r19_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        policy_admission=policy_admission,
+        authorizing_receipt_cid=authorizing_receipt_cid,
+        _revision=20,
+    )
 
 
 def _run(
@@ -11601,6 +12212,43 @@ def _admit_exact_r19_transition_chain(
     return chain
 
 
+def _admit_exact_r20_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit the exact immutable R1-R19 vector plus one adjacent R20."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R20_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R20 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R20_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R20 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R20 repair transition chain differs")
+        chain.append(item)
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in chain[:-1]
+    ) != ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS:
+        raise OperatorError("R20 historical receipt vector differs")
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -11851,6 +12499,35 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R19 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [
+        REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r20_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r19_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r19_admitted.get("repair_head")
+            != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r19_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r19_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current R20 candidate lacks its exact admitted validation seal"
+            )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -12025,6 +12702,17 @@ def _r19_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS[-2]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r20_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R20 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_VALIDATIONS[-2]
     ):
         return "candidate_authorization_worktree"
     return "immutable_candidate_checkout"
@@ -13160,16 +13848,23 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     authorization_witness: Mapping[str, str],
     _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16-R19 repair matrix against committed bytes."""
+    """Run the bounded R16-R20 repair matrix against committed bytes."""
 
-    if _revision not in {16, 17, 18, 19}:
+    if _revision not in {16, 17, 18, 19, 20}:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 19:
+    if _revision == 20:
+        matrix = REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r20_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r20_validation_working_tree_scope
+        executor_class_for = _r20_validation_executor_class
+    elif _revision == 19:
         matrix = REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_VALIDATIONS
         executor_contract_value = (
             _r19_sealed_receipt_validation_executor_contract()
@@ -13484,6 +14179,22 @@ def _run_repair_historical_lifecycle_route_transition_validations(
     )
 
 
+def _run_repair_pre_duckdb_historical_live_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R20 suffix through the existing typed executors."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=20,
+    )
+
+
 def _observe_repair_provider_cleanup_fence_known_baseline(
 ) -> dict[str, Any]:
     """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
@@ -13764,6 +14475,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-historical-lifecycle-route-transition.json"
+    )
+    result["repair_pre_duckdb_historical_live_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-pre-duckdb-historical-live-transition.json"
     )
     result["r19_historical_live_lifecycle_lock"] = (
         result["evidence"]
@@ -15737,6 +16453,24 @@ def _validate_repair_historical_lifecycle_route_transition(
         previous_receipt=previous_receipt,
         rerun_validations=rerun_validations,
         _revision=19,
+    )
+
+
+def _validate_repair_pre_duckdb_historical_live_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 20 chained to the immutable R19 receipt."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=20,
     )
 
 
@@ -18420,12 +19154,37 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     rerun_validations: bool,
     _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit one immutable transition in the exact R16-R19 suffix."""
+    """Admit one immutable transition in the exact R16-R20 suffix."""
 
-    if _revision not in {16, 17, 18, 19}:
+    if _revision not in {16, 17, 18, 19, 20}:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 19:
+    if _revision == 20:
+        receipt_id = _repair_pre_duckdb_historical_live_transition_receipt_id(
+            receipt
+        )
+        previous_receipt_id = (
+            _repair_historical_lifecycle_route_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = (
+            REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+        )
+        changed_paths_value = (
+            REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_AUTHORITY
+        )
+        commands = REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r20_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SCHEMA
+        executor_class_for = _r20_validation_executor_class
+        scope_for = _r20_validation_working_tree_scope
+    elif _revision == 19:
         receipt_id = _repair_historical_lifecycle_route_transition_receipt_id(
             receipt
         )
@@ -18936,6 +19695,30 @@ def _load_exact_r18_receipt_chain(
     return _admit_exact_r18_transition_chain(chain)
 
 
+def _load_exact_r19_receipt_chain(
+    paths: Mapping[str, Path],
+) -> list[Mapping[str, Any]]:
+    """Load, self-CID-admit, and vector-bind the raw R1-R19 receipts."""
+
+    chain = list(_load_exact_r18_receipt_chain(paths))
+    r19_path = paths.get(
+        "repair_historical_lifecycle_route_transition_receipt"
+    )
+    if not isinstance(r19_path, Path) or not r19_path.is_file():
+        raise OperatorError("R20 historical live prior R19 receipt is absent")
+    r19_receipt = _secure_runtime_json(
+        r19_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    _repair_historical_lifecycle_route_transition_receipt_id(r19_receipt)
+    admitted = _admit_exact_r19_transition_chain([*chain, r19_receipt])
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in admitted
+    ) != ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS:
+        raise OperatorError("R20 historical live prior receipt vector differs")
+    return admitted
+
+
 def _admit_active_r19_policy_identity(
     *,
     paths: Mapping[str, Path],
@@ -19056,6 +19839,30 @@ def _r19_population_requires_policy(
     )
 
 
+def _r20_population_requires_policy(
+    population: Mapping[str, Any],
+) -> bool:
+    """Recognize the exact committed R20 child before its receipt exists."""
+
+    head = str(population.get("source_head") or "")
+    tree = str(population.get("repository_tree_id") or "")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    return (
+        _git("show", "-s", "--format=%P", head).split()
+        == [REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD]
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(
+            REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD,
+            head,
+        )
+        == REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_CHANGED_PATHS
+    )
+
+
 def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     receipt: Mapping[str, Any],
     *,
@@ -19069,22 +19876,174 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     r19_path = paths.get(
         "repair_historical_lifecycle_route_transition_receipt"
     )
+    r20_path = paths.get(
+        "repair_pre_duckdb_historical_live_transition_receipt"
+    )
     if (
-        not isinstance(r19_path, Path)
-        or not r19_path.is_file()
-    ) and not _r19_population_requires_policy(population):
+        isinstance(r19_path, Path) and r19_path.is_file()
+    ) or _r19_population_requires_policy(population):
         return _validate_repair_provider_cleanup_fence_transition(
             receipt,
             bootstrap=bootstrap,
             previous_receipt=previous_receipt,
-            rerun_validations=True,
+            rerun_validations=False,
+        )
+    if (
+        isinstance(r20_path, Path) and r20_path.is_file()
+    ) or _r20_population_requires_policy(population):
+        return _validate_repair_provider_cleanup_fence_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=False,
         )
     return _validate_repair_provider_cleanup_fence_transition(
         receipt,
         bootstrap=bootstrap,
         previous_receipt=previous_receipt,
+        rerun_validations=True,
+    )
+
+
+def _prequalify_r20_historical_live_launch(
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Qualify R20 before canonical DuckDB state access in this launcher."""
+
+    if not _r20_population_requires_policy(population):
+        return None
+    r20_path = paths.get(
+        "repair_pre_duckdb_historical_live_transition_receipt"
+    )
+    if not isinstance(r20_path, Path) or not r20_path.is_file():
+        raise OperatorError(
+            "active R20 pre-DuckDB historical-live policy receipt is absent"
+        )
+    prior_chain = _load_exact_r19_receipt_chain(paths)
+    r19_receipt = prior_chain[-1]
+    first_receipt = _secure_runtime_json(
+        r20_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    receipt_cid = _repair_pre_duckdb_historical_live_transition_receipt_id(
+        first_receipt
+    )
+    transition = _validate_repair_pre_duckdb_historical_live_transition(
+        first_receipt,
+        bootstrap=bootstrap,
+        previous_receipt=r19_receipt,
         rerun_validations=False,
     )
+    current_head = str(population.get("source_head") or "")
+    current_tree = str(population.get("repository_tree_id") or "")
+    witness = transition.get("candidate_authorization_witness")
+    if (
+        current_head != transition.get("repair_head")
+        or current_tree != transition.get("repair_tree")
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "active R20 historical-live policy does not bind the current tree"
+        )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="before R20 pre-DuckDB historical live qualification",
+    )
+    bootstrap_receipt_id = _bootstrap_receipt_id(bootstrap)
+    executor_contract = _r19_sealed_receipt_validation_executor_contract()
+    policy_value = first_receipt.get("historical_live_policy_admission")
+    policy = _admit_r20_historical_live_policy_admission(
+        policy_value if isinstance(policy_value, Mapping) else {},
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+    )
+    stored_evidence_value = first_receipt.get(
+        "historical_live_execution_evidence"
+    )
+    if not isinstance(stored_evidence_value, Mapping):
+        raise OperatorError(
+            "active R20 historical-live stored execution evidence is absent"
+        )
+    stored_evidence = _validate_r19_historical_live_execution_evidence(
+        stored_evidence_value,
+        policy_admission=policy,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+        environment_identity=_r11_command_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            _r11_historical_live_docker_command(),
+            checkout=Path("/sealed-checkout"),
+        ),
+        returncode=int(stored_evidence_value.get("returncode", 78)),
+        stdout_digest=str(stored_evidence_value.get("stdout_digest") or ""),
+        stderr_digest=str(stored_evidence_value.get("stderr_digest") or ""),
+        authorizing_receipt_cid=None,
+    )
+    admitted_policy, fresh_evidence = (
+        _qualify_r20_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_receipt_id,
+            prior_chain=prior_chain,
+            candidate_head=current_head,
+            candidate_tree=current_tree,
+            candidate_authorization_witness=witness,
+            policy_admission=policy,
+            authorizing_receipt_cid=receipt_cid,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="after R20 pre-DuckDB historical live qualification",
+    )
+    second_receipt = _secure_runtime_json(
+        r20_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    second_receipt_cid = (
+        _repair_pre_duckdb_historical_live_transition_receipt_id(
+            second_receipt
+        )
+    )
+    if (
+        second_receipt != first_receipt
+        or second_receipt_cid != receipt_cid
+        or admitted_policy != policy
+        or fresh_evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or fresh_evidence.get("authorizing_receipt_cid") != receipt_cid
+    ):
+        raise OperatorError(
+            "R20 historical live receipt changed during prequalification"
+        )
+    exact_chain = _admit_exact_r20_transition_chain(
+        [*prior_chain, first_receipt]
+    )
+    return {
+        "receipt": first_receipt,
+        "receipt_cid": receipt_cid,
+        "prior_chain": prior_chain,
+        "exact_chain": exact_chain,
+        "transition": transition,
+        "policy_admission": policy,
+        "stored_evidence": stored_evidence,
+        "fresh_evidence": fresh_evidence,
+        "candidate_authorization_witness_cid": _identity(dict(witness)),
+    }
 
 
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
@@ -20970,11 +21929,27 @@ def _authorize_repair_historical_lifecycle_route_transition_if_applicable(
             str(transition["repair_head"]),
             head,
         )
+        expected_chain = [*prior_chain, receipt]
+        r20_result = (
+            _authorize_repair_pre_duckdb_historical_live_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r20_result is not None:
+            return r20_result
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = current_admission.get("repair_transition_chain")
         admitted_continuity = current_admission.get("canonical_continuity")
-        expected_chain = [*prior_chain, receipt]
         exact_chain = _admit_exact_r19_transition_chain(admitted_chain)
         if (
             not isinstance(admitted_repair, Mapping)
@@ -21119,6 +22094,244 @@ def _authorize_repair_historical_lifecycle_route_transition_if_applicable(
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R19 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_pre_duckdb_historical_live_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one exact R20 child before any materialized-state access."""
+
+    _config = config
+    r20_path = paths.get(
+        "repair_pre_duckdb_historical_live_transition_receipt"
+    )
+    if not isinstance(r20_path, Path):
+        return None
+    prior_chain = _admit_exact_r19_transition_chain(
+        list(prior_receipt_chain)
+    )
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in prior_chain
+    ) != ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS:
+        raise OperatorError(
+            "bootstrap repair pre-DuckDB historical-live prior vector differs"
+        )
+    prior_receipt = prior_chain[-1]
+    transition_binding_fields = (
+        "schema",
+        "task_id",
+        "transition_revision",
+        "base_head",
+        "base_tree",
+        "repair_head",
+        "repair_tree",
+        "changed_paths",
+        "patch_digest",
+        "previous_receipt_cid",
+        "candidate_authorization_witness",
+        "sealed_validation_executor_contract",
+        "receipt_cid",
+    )
+    if (
+        prior_receipt != previous_receipt
+        or any(
+            previous_transition.get(field) != prior_receipt.get(field)
+            for field in transition_binding_fields
+        )
+        or previous_transition.get("repair_head")
+        != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError(
+            "bootstrap repair pre-DuckDB historical-live prior chain differs"
+        )
+    if r20_path.is_file():
+        receipt = _secure_runtime_json(
+            r20_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = _validate_repair_pre_duckdb_historical_live_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=receipt.get("repair_head") == head,
+        )
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition["repair_head"]),
+            head,
+        )
+        current_admission = _admit_materialized_launch(board, _config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = _admit_exact_r20_transition_chain(
+            current_admission.get("repair_transition_chain")
+        )
+        admitted_continuity = current_admission.get("canonical_continuity")
+        expected_chain = [*prior_chain, receipt]
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head")
+            != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in admitted_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or "historical_lifecycle_route_to_pre_duckdb_historical_live"
+            not in admitted_continuity
+            or current_admission.get(
+                "historical_live_authorizing_receipt_cid"
+            )
+            != receipt.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current admission does not retain the R20 pre-DuckDB repair"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission[
+                "runtime_source_head"
+            ],
+        }
+    base_head = REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+    if _git("show", "-s", "--format=%P", head).split() != [base_head]:
+        return None
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair pre-DuckDB historical-live changed paths differ"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    validation_results = (
+        _run_repair_pre_duckdb_historical_live_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R20 validation before live qualification",
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r20_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R20 live qualification before receipt publication",
+    )
+    receipt = {
+        "schema": REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R20"
+        ),
+        "program_id": PROGRAM,
+        "transition_revision": 20,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": _git("rev-parse", f"{base_head}^{{tree}}"),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R19"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r20_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": historical_policy,
+        "historical_live_execution_evidence": historical_evidence,
+        "terminal_success_criteria": (
+            REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_pre_duckdb_historical_live_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R20 receipt publication",
+    )
+    _atomic_json_create(
+        r20_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R20 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -23426,6 +24639,11 @@ def _admit_materialized_launch(
         paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
     )
     receipt_id = _bootstrap_receipt_id(bootstrap)
+    r20_prequalification = _prequalify_r20_historical_live_launch(
+        paths=paths,
+        population=population,
+        bootstrap=bootstrap,
+    )
     expected_fields = {
         "source_head": population["source_head"],
         "repository_tree_id": population["repository_tree_id"],
@@ -23557,6 +24775,9 @@ def _admit_materialized_launch(
             historical_lifecycle_route_transition: (
                 dict[str, Any] | None
             ) = None
+            pre_duckdb_historical_live_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -23567,6 +24788,7 @@ def _admit_materialized_launch(
             r17_receipt: dict[str, Any] | None = None
             r18_receipt: dict[str, Any] | None = None
             r19_receipt: dict[str, Any] | None = None
+            r20_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -24280,12 +25502,44 @@ def _admit_materialized_launch(
                                                                                 active_transition = (
                                                                                     historical_lifecycle_route_transition
                                                                                 )
+            if r20_prequalification is not None:
+                raw_r20_transition = r20_prequalification.get("transition")
+                raw_r20_receipt = r20_prequalification.get("receipt")
+                raw_r20_prior_chain = r20_prequalification.get("prior_chain")
+                if (
+                    historical_lifecycle_route_transition is None
+                    or r19_receipt is None
+                    or not isinstance(raw_r20_transition, Mapping)
+                    or not isinstance(raw_r20_receipt, Mapping)
+                    or not isinstance(raw_r20_prior_chain, list)
+                    or not raw_r20_prior_chain
+                    or raw_r20_prior_chain[-1] != r19_receipt
+                    or raw_r20_transition.get("base_head")
+                    != historical_lifecycle_route_transition.get("repair_head")
+                    or raw_r20_transition.get("previous_receipt_cid")
+                    != historical_lifecycle_route_transition.get("receipt_cid")
+                ):
+                    raise OperatorError(
+                        "R20 pre-DuckDB transition does not extend admitted R19"
+                    )
+                pre_duckdb_historical_live_transition = dict(
+                    raw_r20_transition
+                )
+                r20_receipt = dict(raw_r20_receipt)
+                active_transition = pre_duckdb_historical_live_transition
             if (
                 historical_lifecycle_route_transition is None
                 and _r19_population_requires_policy(population)
             ):
                 raise OperatorError(
                     "active R19 historical-live policy receipt is absent"
+                )
+            if (
+                pre_duckdb_historical_live_transition is None
+                and _r20_population_requires_policy(population)
+            ):
+                raise OperatorError(
+                    "active R20 pre-DuckDB historical-live policy receipt is absent"
                 )
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -24365,62 +25619,134 @@ def _admit_materialized_launch(
                 exact_r19_chain = _admit_exact_r19_transition_chain(
                     repair_transition_chain
                 )
-                active_policy = _admit_active_r19_policy_identity(
-                    paths=paths,
-                    population=population,
-                    bootstrap=bootstrap,
-                )
-                raw_prior_chain = active_policy.get("prior_receipt_chain")
-                policy_admission = active_policy.get(
-                    "historical_live_policy_admission"
-                )
-                authorizing_receipt_cid = active_policy.get(
-                    "authorizing_receipt_cid"
-                )
-                if (
-                    not isinstance(raw_prior_chain, list)
-                    or not isinstance(policy_admission, Mapping)
-                    or not isinstance(authorizing_receipt_cid, str)
-                    or r19_receipt is None
-                    or authorizing_receipt_cid
-                    != r19_receipt.get("receipt_cid")
-                    or [item.get("receipt_cid") for item in exact_r19_chain]
-                    != [
-                        *(item.get("receipt_cid") for item in raw_prior_chain),
-                        r19_receipt.get("receipt_cid"),
-                    ]
-                ):
-                    raise OperatorError(
-                        "R19 historical live full-chain policy differs"
+                if pre_duckdb_historical_live_transition is not None:
+                    if r20_prequalification is None or r20_receipt is None:
+                        raise OperatorError(
+                            "R20 pre-DuckDB qualification bundle is absent"
+                        )
+                    repair_transition_chain.append(
+                        pre_duckdb_historical_live_transition
                     )
-                admitted_policy, historical_live_launch_evidence = (
-                    _qualify_r19_historical_live_policy(
+                    exact_r20_chain = _admit_exact_r20_transition_chain(
+                        repair_transition_chain
+                    )
+                    r20_path = paths.get(
+                        "repair_pre_duckdb_historical_live_transition_receipt"
+                    )
+                    if not isinstance(r20_path, Path):
+                        raise OperatorError("R20 receipt path is absent")
+                    late_receipt = _secure_runtime_json(
+                        r20_path,
+                        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+                    )
+                    late_transition = (
+                        _validate_repair_pre_duckdb_historical_live_transition(
+                            late_receipt,
+                            bootstrap=bootstrap,
+                            previous_receipt=r19_receipt,
+                            rerun_validations=True,
+                        )
+                    )
+                    early_exact_chain = r20_prequalification.get("exact_chain")
+                    policy_admission = r20_prequalification.get(
+                        "policy_admission"
+                    )
+                    stored_evidence = r20_prequalification.get(
+                        "stored_evidence"
+                    )
+                    fresh_evidence = r20_prequalification.get("fresh_evidence")
+                    if (
+                        late_receipt != r20_receipt
+                        or late_transition
+                        != pre_duckdb_historical_live_transition
+                        or not isinstance(early_exact_chain, list)
+                        or not isinstance(policy_admission, Mapping)
+                        or not isinstance(stored_evidence, Mapping)
+                        or not isinstance(fresh_evidence, Mapping)
+                        or late_receipt.get("historical_live_policy_admission")
+                        != policy_admission
+                        or late_receipt.get("historical_live_execution_evidence")
+                        != stored_evidence
+                        or [item.get("receipt_cid") for item in exact_r20_chain]
+                        != [
+                            item.get("receipt_cid")
+                            for item in early_exact_chain
+                        ]
+                        or fresh_evidence.get("active_policy_cid")
+                        != policy_admission.get("policy_admission_cid")
+                        or fresh_evidence.get("authorizing_receipt_cid")
+                        != r20_prequalification.get("receipt_cid")
+                        or r20_prequalification.get(
+                            "candidate_authorization_witness_cid"
+                        )
+                        != policy_admission.get(
+                            "candidate_authorization_witness_cid"
+                        )
+                    ):
+                        raise OperatorError(
+                            "R20 pre-DuckDB qualification changed during launch"
+                        )
+                    historical_live_launch_evidence = dict(fresh_evidence)
+                else:
+                    active_policy = _admit_active_r19_policy_identity(
                         paths=paths,
-                        bootstrap_receipt_id=receipt_id,
-                        prior_chain=raw_prior_chain,
-                        candidate_head=str(
-                            historical_lifecycle_route_transition[
-                                "repair_head"
-                            ]
-                        ),
-                        candidate_tree=str(
-                            historical_lifecycle_route_transition[
-                                "repair_tree"
-                            ]
-                        ),
-                        candidate_authorization_witness=(
-                            historical_lifecycle_route_transition[
-                                "candidate_authorization_witness"
-                            ]
-                        ),
-                        policy_admission=policy_admission,
-                        authorizing_receipt_cid=authorizing_receipt_cid,
+                        population=population,
+                        bootstrap=bootstrap,
                     )
-                )
-                if admitted_policy != policy_admission:
-                    raise OperatorError(
-                        "R19 historical live admitted policy changed"
+                    raw_prior_chain = active_policy.get("prior_receipt_chain")
+                    policy_admission = active_policy.get(
+                        "historical_live_policy_admission"
                     )
+                    authorizing_receipt_cid = active_policy.get(
+                        "authorizing_receipt_cid"
+                    )
+                    if (
+                        not isinstance(raw_prior_chain, list)
+                        or not isinstance(policy_admission, Mapping)
+                        or not isinstance(authorizing_receipt_cid, str)
+                        or r19_receipt is None
+                        or authorizing_receipt_cid
+                        != r19_receipt.get("receipt_cid")
+                        or [item.get("receipt_cid") for item in exact_r19_chain]
+                        != [
+                            *(
+                                item.get("receipt_cid")
+                                for item in raw_prior_chain
+                            ),
+                            r19_receipt.get("receipt_cid"),
+                        ]
+                    ):
+                        raise OperatorError(
+                            "R19 historical live full-chain policy differs"
+                        )
+                    admitted_policy, historical_live_launch_evidence = (
+                        _qualify_r19_historical_live_policy(
+                            paths=paths,
+                            bootstrap_receipt_id=receipt_id,
+                            prior_chain=raw_prior_chain,
+                            candidate_head=str(
+                                historical_lifecycle_route_transition[
+                                    "repair_head"
+                                ]
+                            ),
+                            candidate_tree=str(
+                                historical_lifecycle_route_transition[
+                                    "repair_tree"
+                                ]
+                            ),
+                            candidate_authorization_witness=(
+                                historical_lifecycle_route_transition[
+                                    "candidate_authorization_witness"
+                                ]
+                            ),
+                            policy_admission=policy_admission,
+                            authorizing_receipt_cid=authorizing_receipt_cid,
+                        )
+                    )
+                    if admitted_policy != policy_admission:
+                        raise OperatorError(
+                            "R19 historical live admitted policy changed"
+                        )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -24494,6 +25820,10 @@ def _admit_materialized_launch(
                 continuity[
                     "process_census_disappearance_to_historical_lifecycle_route"
                 ] = historical_lifecycle_route_transition
+            if pre_duckdb_historical_live_transition is not None:
+                continuity[
+                    "historical_lifecycle_route_to_pre_duckdb_historical_live"
+                ] = pre_duckdb_historical_live_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,

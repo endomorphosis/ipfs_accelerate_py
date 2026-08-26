@@ -6876,6 +6876,274 @@ def _aseh_r19_test_inert_container(
     }
 
 
+def _aseh_r19_test_docker_generation(
+    ordinal: int,
+) -> tuple[dict[str, object], dict[str, object]]:
+    name = (
+        f"ipfs-accelerate-codex-{800 + ordinal}-"
+        f"{ordinal:032x}"
+    )
+    entry = _aseh_r19_test_inert_container(name=name, status="created")
+    inspection = {
+        "Id": entry["container_id"],
+        "Name": f"/{name}",
+        "RestartCount": 0,
+        "Config": {"Labels": dict(entry["labels"])},
+        "State": {
+            "Status": "created",
+            "Running": False,
+            "Paused": False,
+            "Restarting": False,
+            "OOMKilled": False,
+            "Dead": False,
+            "Pid": 0,
+            "ExitCode": 0,
+            "Error": "",
+            "StartedAt": "",
+            "FinishedAt": "",
+        },
+    }
+    return entry, inspection
+
+
+def _aseh_r19_test_docker_ps_output(
+    entries: list[dict[str, object]],
+) -> bytes:
+    return b"".join(
+        (
+            f"{entry['container_id']} {entry['container_name']}\n"
+        ).encode("ascii")
+        for entry in entries
+    )
+
+
+def _aseh_r19_test_docker_inspect_output(
+    inspections: list[dict[str, object]],
+) -> bytes:
+    return json.dumps(inspections, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def _aseh_r19_read_only_docker_result(
+    *,
+    returncode: int = 0,
+    stdout: bytes = b"",
+    stderr: bytes = b"",
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+def test_aseh_r19_docker_snapshot_retries_disappeared_inspect_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_entry, first_inspection = _aseh_r19_test_docker_generation(1)
+    stable_entry, stable_inspection = _aseh_r19_test_docker_generation(2)
+    calls: list[tuple[str, ...]] = []
+    ps_calls = 0
+    inspect_calls = 0
+
+    def docker_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        nonlocal ps_calls, inspect_calls
+        calls.append(tuple(command))
+        operation = command[2]
+        assert operation in {"ps", "inspect"}, (
+            f"snapshot attempted mutating Docker operation {operation!r}"
+        )
+        if operation == "ps":
+            ps_calls += 1
+            entries = [first_entry] if ps_calls == 1 else [stable_entry]
+            return _aseh_r19_read_only_docker_result(
+                stdout=_aseh_r19_test_docker_ps_output(entries)
+            )
+        inspect_calls += 1
+        inspected_ids = command[3:]
+        if inspected_ids == [first_entry["container_id"]]:
+            return _aseh_r19_read_only_docker_result(
+                returncode=1,
+                stderr=(
+                    "Error response from daemon: No such container: "
+                    f"{first_entry['container_id']}\n"
+                ).encode("ascii"),
+            )
+        assert inspected_ids == [stable_entry["container_id"]]
+        return _aseh_r19_read_only_docker_result(
+            stdout=_aseh_r19_test_docker_inspect_output(
+                [stable_inspection]
+            )
+        )
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r16_admit_unprivileged_executable_path",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(aseh_operator.subprocess, "run", docker_run)
+
+    snapshot = aseh_operator._r19_docker_scope_snapshot()
+
+    assert [item["container_id"] for item in snapshot["entries"]] == [
+        stable_entry["container_id"]
+    ]
+    assert inspect_calls == 2
+    assert ps_calls == 4
+    assert {command[2] for command in calls} <= {"ps", "inspect"}
+
+
+def test_aseh_r19_docker_snapshot_retries_container_appearing_at_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_entry, first_inspection = _aseh_r19_test_docker_generation(3)
+    appeared_entry, appeared_inspection = _aseh_r19_test_docker_generation(4)
+    inspections_by_id = {
+        str(first_entry["container_id"]): first_inspection,
+        str(appeared_entry["container_id"]): appeared_inspection,
+    }
+    calls: list[tuple[str, ...]] = []
+    ps_calls = 0
+    inspect_generations: list[tuple[str, ...]] = []
+
+    def docker_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        nonlocal ps_calls
+        calls.append(tuple(command))
+        operation = command[2]
+        assert operation in {"ps", "inspect"}, (
+            f"snapshot attempted mutating Docker operation {operation!r}"
+        )
+        if operation == "ps":
+            ps_calls += 1
+            entries = (
+                [first_entry]
+                if ps_calls == 1
+                else [first_entry, appeared_entry]
+            )
+            return _aseh_r19_read_only_docker_result(
+                stdout=_aseh_r19_test_docker_ps_output(entries)
+            )
+        inspected_ids = tuple(command[3:])
+        inspect_generations.append(inspected_ids)
+        return _aseh_r19_read_only_docker_result(
+            stdout=_aseh_r19_test_docker_inspect_output(
+                [inspections_by_id[item] for item in inspected_ids]
+            )
+        )
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r16_admit_unprivileged_executable_path",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(aseh_operator.subprocess, "run", docker_run)
+
+    snapshot = aseh_operator._r19_docker_scope_snapshot()
+
+    assert [item["container_id"] for item in snapshot["entries"]] == sorted(
+        [first_entry["container_id"], appeared_entry["container_id"]]
+    )
+    assert inspect_generations == [
+        (str(first_entry["container_id"]),),
+        tuple(
+            sorted(
+                (
+                    str(first_entry["container_id"]),
+                    str(appeared_entry["container_id"]),
+                )
+            )
+        ),
+    ]
+    assert ps_calls == 4
+    assert {command[2] for command in calls} <= {"ps", "inspect"}
+
+
+def test_aseh_r19_docker_snapshot_persistent_churn_is_bounded_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    ps_calls = 0
+    inspections_by_id: dict[str, dict[str, object]] = {}
+
+    def docker_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        nonlocal ps_calls
+        calls.append(tuple(command))
+        operation = command[2]
+        assert operation in {"ps", "inspect"}, (
+            f"snapshot attempted mutating Docker operation {operation!r}"
+        )
+        if operation == "ps":
+            ps_calls += 1
+            if ps_calls > 16:
+                pytest.fail("Docker snapshot churn retry is not bounded")
+            entry, inspection = _aseh_r19_test_docker_generation(
+                20 + ps_calls
+            )
+            inspections_by_id[str(entry["container_id"])] = inspection
+            return _aseh_r19_read_only_docker_result(
+                stdout=_aseh_r19_test_docker_ps_output([entry])
+            )
+        return _aseh_r19_read_only_docker_result(
+            stdout=_aseh_r19_test_docker_inspect_output(
+                [inspections_by_id[item] for item in command[3:]]
+            )
+        )
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r16_admit_unprivileged_executable_path",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(aseh_operator.subprocess, "run", docker_run)
+
+    with pytest.raises(aseh_operator.OperatorError):
+        aseh_operator._r19_docker_scope_snapshot()
+
+    assert ps_calls == 6
+    assert sum(command[2] == "inspect" for command in calls) == 3
+    assert {command[2] for command in calls} <= {"ps", "inspect"}
+
+
+def test_aseh_r19_docker_snapshot_non_churn_inspect_failure_fails_closed_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry, _inspection = _aseh_r19_test_docker_generation(5)
+    calls: list[tuple[str, ...]] = []
+    ps_calls = 0
+    inspect_calls = 0
+
+    def docker_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        nonlocal ps_calls, inspect_calls
+        calls.append(tuple(command))
+        operation = command[2]
+        assert operation in {"ps", "inspect"}, (
+            f"snapshot attempted mutating Docker operation {operation!r}"
+        )
+        if operation == "ps":
+            ps_calls += 1
+            return _aseh_r19_read_only_docker_result(
+                stdout=_aseh_r19_test_docker_ps_output([entry])
+            )
+        inspect_calls += 1
+        return _aseh_r19_read_only_docker_result(
+            returncode=1,
+            stderr=b"permission denied while inspecting container\n",
+        )
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r16_admit_unprivileged_executable_path",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(aseh_operator.subprocess, "run", docker_run)
+
+    with pytest.raises(aseh_operator.OperatorError):
+        aseh_operator._r19_docker_scope_snapshot()
+
+    assert inspect_calls == 1
+    assert ps_calls == 2
+    assert {command[2] for command in calls} <= {"ps", "inspect"}
+
+
 def test_aseh_r19_historical_live_baseline_admits_stable_inert_containers_and_exact_other_tree_watchdog(
     tmp_path: Path,
 ) -> None:
@@ -15044,3 +15312,1119 @@ def test_aseh_r19_exact_candidate_requires_policy_before_receipt(
     assert aseh_operator._r19_population_requires_policy(
         {"source_head": head, "repository_tree_id": tree}
     )
+
+
+def _aseh_r20_structural_chain() -> list[dict[str, object]]:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R20_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        receipt_cid = (
+            aseh_operator.ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS[index]
+            if index < 19
+            else "sha256:" + ("f" * 64)
+        )
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": receipt_cid,
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+    return chain
+
+
+def test_aseh_r20_exact_candidate_policy_predicate_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head = "1" * 40
+    tree = "2" * 40
+    expected_parent = (
+        aseh_operator
+        .REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+    )
+    expected_paths = (
+        aseh_operator
+        .REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_CHANGED_PATHS
+    )
+    git_values = {
+        "parent": expected_parent,
+        "tree": tree,
+    }
+    changed_paths = {"value": expected_paths}
+
+    def git(*args: str) -> str:
+        if args == ("show", "-s", "--format=%P", head):
+            return git_values["parent"]
+        if args == ("rev-parse", f"{head}^{{tree}}"):
+            return git_values["tree"]
+        raise AssertionError(args)
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda base, candidate: (
+            changed_paths["value"]
+            if (base, candidate) == (expected_parent, head)
+            else pytest.fail("R20 predicate inspected the wrong commit edge")
+        ),
+    )
+    population = {"source_head": head, "repository_tree_id": tree}
+
+    assert aseh_operator._r20_population_requires_policy(population) is True
+
+    git_values["parent"] = "3" * 40
+    assert aseh_operator._r20_population_requires_policy(population) is False
+    git_values["parent"] = expected_parent
+    git_values["tree"] = "4" * 40
+    assert aseh_operator._r20_population_requires_policy(population) is False
+    git_values["tree"] = tree
+    changed_paths["value"] = (*expected_paths, "out-of-scope.py")
+    assert aseh_operator._r20_population_requires_policy(population) is False
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args: pytest.fail("invalid identities reached Git"),
+    )
+    assert aseh_operator._r20_population_requires_policy(
+        {"source_head": "not-a-head", "repository_tree_id": tree}
+    ) is False
+    assert aseh_operator._r20_population_requires_policy(
+        {"source_head": head, "repository_tree_id": "not-a-tree"}
+    ) is False
+
+
+def test_aseh_r20_pre_duckdb_requires_exact_r1_r20_chain() -> None:
+    chain = _aseh_r20_structural_chain()
+    assert aseh_operator._admit_exact_r20_transition_chain(chain) == chain
+
+    with pytest.raises(aseh_operator.OperatorError, match="R20"):
+        aseh_operator._admit_exact_r20_transition_chain(chain[:-1])
+    reordered = [dict(item) for item in chain]
+    reordered[-2], reordered[-1] = reordered[-1], reordered[-2]
+    with pytest.raises(aseh_operator.OperatorError, match="R20"):
+        aseh_operator._admit_exact_r20_transition_chain(reordered)
+    rewritten = [dict(item) for item in chain]
+    rewritten[7]["receipt_cid"] = "sha256:" + ("e" * 64)
+    rewritten[8]["previous_receipt_cid"] = rewritten[7]["receipt_cid"]
+    with pytest.raises(aseh_operator.OperatorError, match="vector"):
+        aseh_operator._admit_exact_r20_transition_chain(rewritten)
+
+
+def test_aseh_r20_pre_duckdb_policy_binds_exact_vector_and_r19_contract() -> None:
+    bootstrap_id = "sha256:" + ("a" * 64)
+    prior_chain = _aseh_r20_structural_chain()[:-1]
+    for item in prior_chain:
+        item["bootstrap_receipt_id"] = bootstrap_id
+    prior_chain[-1]["repair_head"] = (
+        aseh_operator.REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+    )
+    candidate_head = "b" * 40
+    candidate_tree = "c" * 40
+    witness = {
+        "head": candidate_head,
+        "tree": candidate_tree,
+        "branch_ref": "refs/heads/agent/aseh-r20-test",
+        "index_entries_digest": "sha256:" + ("1" * 64),
+        "index_flags_digest": "sha256:" + ("2" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("3" * 64),
+        "branch_reflog_digest": "sha256:" + ("4" * 64),
+    }
+    parent_contract = (
+        aseh_operator._r19_sealed_receipt_validation_executor_contract()
+    )
+
+    policy = aseh_operator._r20_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=parent_contract,
+    )
+
+    assert policy["policy_revision"] == 20
+    assert policy["prior_receipt_cids"] == list(
+        aseh_operator.ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS
+    )
+    assert policy["previous_receipt_cid"] == (
+        aseh_operator.ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS[-1]
+    )
+    assert policy["executor_contract_cid"] == aseh_operator._identity(
+        parent_contract
+    )
+    assert policy["executor_contract_cid"] == (
+        aseh_operator.ASEH_R19_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    )
+
+    rewritten = [dict(item) for item in prior_chain]
+    rewritten[4]["receipt_cid"] = "sha256:" + ("d" * 64)
+    rewritten[5]["previous_receipt_cid"] = rewritten[4]["receipt_cid"]
+    with pytest.raises(aseh_operator.OperatorError, match="vector"):
+        aseh_operator._r20_historical_live_policy_admission(
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=rewritten,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=witness,
+            executor_contract=parent_contract,
+        )
+
+
+def test_aseh_r20_pre_duckdb_exact_candidate_without_receipt_fails_before_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap = {
+        "source_head": "0" * 40,
+        "repository_tree_id": "1" * 40,
+        "plan_root_cid": "sha256:" + ("2" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("3" * 64)},
+        "source_identities": {},
+        "bootstrap_receipt_id": "sha256:" + ("4" * 64),
+    }
+    population = {
+        "source_head": "5" * 40,
+        "repository_tree_id": "6" * 40,
+        "plan_root_cid": "sha256:" + ("7" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("8" * 64)},
+        "source_identities": {},
+    }
+    monkeypatch.setattr(aseh_operator, "_population", lambda *_args: population)
+    monkeypatch.setattr(
+        aseh_operator, "_secure_runtime_json", lambda *_args, **_kwargs: bootstrap
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _value: bootstrap["bootstrap_receipt_id"],
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_r20_population_requires_policy", lambda _value: True
+    )
+    for name in (
+        "_read_continuity_state",
+        "_projection_matches_events_on_disposable_copy",
+    ):
+        monkeypatch.setattr(
+            aseh_operator,
+            name,
+            lambda *_args, _name=name, **_kwargs: pytest.fail(
+                f"{_name} ran before missing R20 receipt rejection"
+            ),
+        )
+
+    with pytest.raises(aseh_operator.OperatorError, match="receipt is absent"):
+        aseh_operator._admit_materialized_launch(
+            object(),
+            {},
+            {
+                "bootstrap_receipt": tmp_path / "bootstrap.json",
+                "repair_pre_duckdb_historical_live_transition_receipt": (
+                    tmp_path / "missing-r20.json"
+                ),
+            },
+        )
+
+
+def test_aseh_r20_pre_duckdb_qualification_precedes_continuity_state_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap_path = tmp_path / "bootstrap.json"
+    repair_path = tmp_path / "repair-r1.json"
+    repair_path.touch()
+    bootstrap = {
+        "source_head": "0" * 40,
+        "repository_tree_id": "1" * 40,
+        "plan_root_cid": "sha256:" + ("2" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("3" * 64)},
+        "source_identities": {},
+        "bootstrap_receipt_id": "sha256:" + ("4" * 64),
+    }
+    population = {
+        "source_head": "5" * 40,
+        "repository_tree_id": "6" * 40,
+        "plan_root_cid": "sha256:" + ("7" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("8" * 64)},
+        "source_identities": {},
+    }
+    events: list[str] = []
+    monkeypatch.setattr(aseh_operator, "_population", lambda *_args: population)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: bootstrap if path == bootstrap_path else {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _value: bootstrap["bootstrap_receipt_id"],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_prequalify_r20_historical_live_launch",
+        lambda **_kwargs: events.append("qualify") or {"qualified": True},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_transition",
+        lambda *_args, **_kwargs: {"repair_head": "9" * 40},
+    )
+
+    def continuity(*_args: object, **_kwargs: object) -> None:
+        events.append("read_continuity")
+        raise aseh_operator.OperatorError("continuity sentinel")
+
+    monkeypatch.setattr(aseh_operator, "_read_continuity_state", continuity)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_projection_matches_events_on_disposable_copy",
+        lambda *_args: pytest.fail("projection ran before continuity sentinel"),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="continuity sentinel"):
+        aseh_operator._admit_materialized_launch(
+            object(),
+            {},
+            {
+                "bootstrap_receipt": bootstrap_path,
+                "repair_transition_receipt": repair_path,
+            },
+        )
+    assert events == ["qualify", "read_continuity"]
+
+
+def test_aseh_r20_pre_duckdb_qualifies_once_before_receipt_reread(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r20_path = tmp_path / "r20.json"
+    r20_path.touch()
+    chain = _aseh_r20_structural_chain()
+    prior_chain = chain[:-1]
+    r20_receipt = chain[-1]
+    head = "a" * 40
+    tree = "b" * 40
+    transition = {
+        **r20_receipt,
+        "repair_head": head,
+        "repair_tree": tree,
+        "candidate_authorization_witness": {"witness": "r20"},
+    }
+    policy = {"policy_admission_cid": "sha256:" + ("c" * 64)}
+    stored = {"evidence_cid": "sha256:" + ("d" * 64)}
+    fresh = {
+        "evidence_cid": "sha256:" + ("e" * 64),
+        "active_policy_cid": policy["policy_admission_cid"],
+        "authorizing_receipt_cid": r20_receipt["receipt_cid"],
+    }
+    reads: list[str] = []
+    calls: list[str] = []
+    monkeypatch.setattr(
+        aseh_operator, "_r20_population_requires_policy", lambda _value: True
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_load_exact_r19_receipt_chain", lambda _paths: prior_chain
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: reads.append("read") or r20_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_pre_duckdb_historical_live_transition_receipt_id",
+        lambda _receipt: r20_receipt["receipt_cid"],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_pre_duckdb_historical_live_transition",
+        lambda *_args, **_kwargs: transition,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _bootstrap: "sha256:" + ("f" * 64),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r19_sealed_receipt_validation_executor_contract",
+        lambda: {"contract": "r19"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r20_historical_live_policy_admission",
+        lambda *_args, **_kwargs: policy,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_execution_evidence",
+        lambda *_args, **_kwargs: stored,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r20_pre_duckdb_historical_live_policy",
+        lambda **_kwargs: (
+            calls.append("qualify") or policy,
+            fresh,
+        ),
+    )
+    r20_receipt.update(
+        {
+            "historical_live_policy_admission": policy,
+            "historical_live_execution_evidence": stored,
+        }
+    )
+
+    bundle = aseh_operator._prequalify_r20_historical_live_launch(
+        paths={
+            "repair_pre_duckdb_historical_live_transition_receipt": r20_path
+        },
+        population={"source_head": head, "repository_tree_id": tree},
+        bootstrap={},
+    )
+
+    assert bundle is not None
+    assert calls == ["qualify"]
+    assert reads == ["read", "read"]
+    assert bundle["fresh_evidence"] is fresh
+
+
+def _configure_aseh_r20_materialized_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    replacement_read: int | None = None,
+) -> dict[str, object]:
+    """Configure a hermetic R1-R20 launch without opening the task store."""
+
+    receipt_specs = (
+        ("repair_transition_receipt", "_validate_repair_transition"),
+        (
+            "repair_followup_transition_receipt",
+            "_validate_repair_followup_transition",
+        ),
+        (
+            "repair_clean_launch_transition_receipt",
+            "_validate_repair_clean_launch_transition",
+        ),
+        (
+            "repair_runtime_hardening_transition_receipt",
+            "_validate_repair_runtime_hardening_transition",
+        ),
+        (
+            "repair_quack_recovery_transition_receipt",
+            "_validate_repair_quack_recovery_transition",
+        ),
+        (
+            "repair_parallel_blocked_startup_transition_receipt",
+            "_validate_repair_parallel_blocked_startup_transition",
+        ),
+        (
+            "repair_quack_publication_contention_transition_receipt",
+            "_validate_repair_quack_publication_contention_transition",
+        ),
+        (
+            "repair_quack_recovery_replay_transition_receipt",
+            "_validate_repair_quack_recovery_replay_transition",
+        ),
+        (
+            "repair_control_receipt_lifecycle_transition_receipt",
+            "_validate_repair_control_receipt_lifecycle_transition",
+        ),
+        (
+            "repair_provider_lease_ownership_transition_receipt",
+            "_validate_repair_provider_lease_ownership_transition",
+        ),
+        (
+            "repair_provider_cleanup_fence_transition_receipt",
+            "_validate_repair_provider_cleanup_fence_with_active_r19_policy",
+        ),
+        (
+            "repair_sealed_owner_identity_transition_receipt",
+            "_validate_repair_sealed_owner_identity_transition",
+        ),
+        (
+            "repair_validation_executor_identity_transition_receipt",
+            "_validate_repair_validation_executor_identity_transition",
+        ),
+        (
+            "repair_sealed_receipt_validation_transition_receipt",
+            "_validate_repair_sealed_receipt_validation_transition",
+        ),
+        (
+            "repair_sealed_owner_module_registration_transition_receipt",
+            "_validate_repair_sealed_owner_module_registration_transition",
+        ),
+        (
+            "repair_docker_create_readiness_vendor_resolver_transition_receipt",
+            "_validate_repair_docker_create_readiness_vendor_resolver_transition",
+        ),
+        (
+            "repair_provider_execution_identity_transition_receipt",
+            "_validate_repair_provider_execution_identity_transition",
+        ),
+        (
+            "repair_process_census_disappearance_transition_receipt",
+            "_validate_repair_process_census_disappearance_transition",
+        ),
+        (
+            "repair_historical_lifecycle_route_transition_receipt",
+            "_validate_repair_historical_lifecycle_route_transition",
+        ),
+    )
+    paths = {
+        key: tmp_path / f"repair-r{index}.json"
+        for index, (key, _validator) in enumerate(receipt_specs, start=1)
+    }
+    r20_path = tmp_path / "repair-r20.json"
+    paths["repair_pre_duckdb_historical_live_transition_receipt"] = (
+        r20_path
+    )
+    paths["bootstrap_receipt"] = tmp_path / "bootstrap.json"
+    paths["database"] = tmp_path / "control.duckdb"
+    for path in paths.values():
+        path.touch()
+
+    current_head = "e" * 40
+    current_tree = "d" * 40
+    population = {
+        "source_head": current_head,
+        "repository_tree_id": current_tree,
+        "plan_root_cid": "plan:sealed",
+        "source_forest": {"forest_cid": "forest:current"},
+        "source_identities": {"identity": "current"},
+    }
+    bootstrap = {
+        "source_head": "0" * 40,
+        "repository_tree_id": "tree:sealed",
+        "plan_root_cid": "plan:sealed",
+        "source_forest": {"forest_cid": "forest:sealed"},
+        "source_identities": {"identity": "sealed"},
+        "bootstrap_receipt_id": "bootstrap:sealed",
+    }
+    repair_heads = [
+        aseh_operator.REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT,
+        aseh_operator.REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD,
+        aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD,
+        *(f"{revision:040x}" for revision in range(4, 19)),
+        (
+            aseh_operator
+            .REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+        ),
+        current_head,
+    ]
+    assert len(repair_heads) == 20
+    raw_chain = [dict(item) for item in _aseh_r20_structural_chain()]
+    witness = {
+        "candidate_head": current_head,
+        "candidate_tree": current_tree,
+    }
+    witness_cid = aseh_operator._identity(witness)
+    policy = {
+        "policy_admission_cid": "sha256:" + ("a" * 64),
+        "candidate_authorization_witness_cid": witness_cid,
+    }
+    stored_evidence = {"evidence_cid": "sha256:" + ("b" * 64)}
+    fresh_evidence = {
+        "evidence_cid": "sha256:" + ("c" * 64),
+        "active_policy_cid": policy["policy_admission_cid"],
+        "authorizing_receipt_cid": raw_chain[-1]["receipt_cid"],
+    }
+    raw_chain[-1].update(
+        {
+            "historical_live_policy_admission": policy,
+            "historical_live_execution_evidence": stored_evidence,
+        }
+    )
+    transitions: list[dict[str, object]] = []
+    for index, (raw_receipt, repair_head) in enumerate(
+        zip(raw_chain, repair_heads, strict=True)
+    ):
+        base_head = (
+            bootstrap["source_head"]
+            if index == 0
+            else repair_heads[index - 1]
+        )
+        transition = {
+            **raw_receipt,
+            "base_head": base_head,
+            "repair_head": repair_head,
+            "repair_tree": current_tree,
+        }
+        transitions.append(transition)
+    transitions[18]["candidate_authorization_witness"] = {
+        "candidate_head": repair_heads[18],
+        "candidate_tree": current_tree,
+    }
+    transitions[19]["candidate_authorization_witness"] = witness
+
+    first_r20 = dict(raw_chain[-1])
+    replacement_r20 = {
+        **first_r20,
+        "receipt_cid": "sha256:" + ("0" * 64),
+        "replacement_generation": replacement_read,
+    }
+    r20_versions = [first_r20, first_r20, first_r20]
+    if replacement_read is not None:
+        r20_versions[replacement_read - 1 :] = [
+            replacement_r20
+        ] * (4 - replacement_read)
+
+    payloads = {
+        paths[key]: raw_chain[index]
+        for index, (key, _validator) in enumerate(receipt_specs)
+    }
+    payloads[paths["bootstrap_receipt"]] = bootstrap
+    events: list[str] = []
+    r20_reads: list[dict[str, object]] = []
+    r20_qualifications: list[dict[str, object]] = []
+    legacy_qualifications: list[dict[str, object]] = []
+    continuity_reads: list[str] = []
+    r20_validation_reruns: list[bool] = []
+
+    def secure_runtime_json(path: Path, **_kwargs: object) -> dict[str, object]:
+        if path == r20_path:
+            version = dict(r20_versions[len(r20_reads)])
+            r20_reads.append(version)
+            events.append(f"r20-read-{len(r20_reads)}")
+            return version
+        return dict(payloads[path])
+
+    monkeypatch.setattr(
+        aseh_operator, "_population", lambda _board, _config: population
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_secure_runtime_json", secure_runtime_json
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _payload: bootstrap["bootstrap_receipt_id"],
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_r20_population_requires_policy", lambda _value: True
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_load_exact_r19_receipt_chain",
+        lambda _paths: list(raw_chain[:19]),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_repair_pre_duckdb_historical_live_transition_receipt_id",
+        lambda receipt: str(receipt["receipt_cid"]),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r19_sealed_receipt_validation_executor_contract",
+        lambda: {"contract": "r19-sealed"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r20_historical_live_policy_admission",
+        lambda *_args, **_kwargs: dict(policy),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_execution_evidence",
+        lambda *_args, **_kwargs: dict(stored_evidence),
+    )
+
+    def qualify_r20(**kwargs: object) -> tuple[dict[str, str], dict[str, str]]:
+        events.append("r20-qualify")
+        r20_qualifications.append(dict(kwargs))
+        return dict(policy), dict(fresh_evidence)
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r20_pre_duckdb_historical_live_policy",
+        qualify_r20,
+    )
+
+    def validate_r20(
+        *_args: object,
+        rerun_validations: bool,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        r20_validation_reruns.append(rerun_validations)
+        return dict(transitions[19])
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_pre_duckdb_historical_live_transition",
+        validate_r20,
+    )
+    for index, (_key, validator_name) in enumerate(receipt_specs):
+        transition = transitions[index]
+        monkeypatch.setattr(
+            aseh_operator,
+            validator_name,
+            lambda *_args, _transition=transition, **_kwargs: dict(
+                _transition
+            ),
+        )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_exact_r19_transition_chain",
+        lambda chain: list(chain),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_exact_r20_transition_chain",
+        lambda chain: list(chain),
+    )
+
+    def continuity(*_args: object, **_kwargs: object) -> tuple[object, ...]:
+        events.append("continuity")
+        continuity_reads.append("continuity")
+        return (
+            {"projection_cid": "projection:current", "event_cursor": 20},
+            [],
+            {"task_statuses": {}, "task_revisions": {}},
+            {},
+            [],
+        )
+
+    monkeypatch.setattr(aseh_operator, "_read_continuity_state", continuity)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_repair_followup_base",
+        lambda *_args, **_kwargs: {"schema": "followup-base"},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_canonical_merge_suffix",
+        lambda _board, **kwargs: {
+            "schema": "canonical-suffix",
+            "base_head": kwargs["base_head"],
+            "target_head": kwargs["target_head"],
+            "integrations": [],
+        },
+    )
+
+    def qualify_legacy(**kwargs: object) -> tuple[dict[str, str], dict[str, str]]:
+        legacy_qualifications.append(dict(kwargs))
+        pytest.fail("legacy R19 live qualification ran for active R20")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r19_historical_live_policy",
+        qualify_legacy,
+    )
+    return {
+        "paths": paths,
+        "raw_chain": raw_chain,
+        "transitions": transitions,
+        "events": events,
+        "r20_reads": r20_reads,
+        "r20_qualifications": r20_qualifications,
+        "legacy_qualifications": legacy_qualifications,
+        "continuity_reads": continuity_reads,
+        "r20_validation_reruns": r20_validation_reruns,
+        "policy": policy,
+        "fresh_evidence": fresh_evidence,
+    }
+
+
+def test_aseh_r20_semantic_prior_chain_failure_precedes_live_and_continuity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admit_exact_r19 = aseh_operator._admit_exact_r19_transition_chain
+    context = _configure_aseh_r20_materialized_launch(tmp_path, monkeypatch)
+    broken_chain = _aseh_r20_structural_chain()[:-1]
+    broken_chain[10]["previous_receipt_cid"] = "sha256:" + ("9" * 64)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_load_exact_r19_receipt_chain",
+        lambda _paths: admit_exact_r19(broken_chain),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError):
+        aseh_operator._admit_materialized_launch(
+            object(), {}, context["paths"]
+        )
+
+    assert context["r20_reads"] == []
+    assert context["r20_qualifications"] == []
+    assert context["legacy_qualifications"] == []
+    assert context["continuity_reads"] == []
+
+
+def test_aseh_r20_receipt_replacement_between_prequalification_reads_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _configure_aseh_r20_materialized_launch(
+        tmp_path, monkeypatch, replacement_read=2
+    )
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="changed during prequalification",
+    ):
+        aseh_operator._admit_materialized_launch(
+            object(), {}, context["paths"]
+        )
+
+    assert context["events"] == [
+        "r20-read-1",
+        "r20-qualify",
+        "r20-read-2",
+    ]
+    assert len(context["r20_qualifications"]) == 1
+    assert context["legacy_qualifications"] == []
+    assert context["continuity_reads"] == []
+    assert context["r20_validation_reruns"] == [False]
+
+
+def test_aseh_r20_receipt_replacement_after_continuity_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _configure_aseh_r20_materialized_launch(
+        tmp_path, monkeypatch, replacement_read=3
+    )
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="changed during launch",
+    ):
+        aseh_operator._admit_materialized_launch(
+            object(), {}, context["paths"]
+        )
+
+    assert context["events"] == [
+        "r20-read-1",
+        "r20-qualify",
+        "r20-read-2",
+        "continuity",
+        "r20-read-3",
+    ]
+    assert len(context["r20_qualifications"]) == 1
+    assert context["legacy_qualifications"] == []
+    assert context["continuity_reads"] == ["continuity"]
+    assert context["r20_validation_reruns"] == [False, True]
+
+
+def test_aseh_r20_materialized_launch_consumes_prequalified_bundle_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _configure_aseh_r20_materialized_launch(tmp_path, monkeypatch)
+
+    admission = aseh_operator._admit_materialized_launch(
+        object(), {}, context["paths"]
+    )
+
+    assert context["events"] == [
+        "r20-read-1",
+        "r20-qualify",
+        "r20-read-2",
+        "continuity",
+        "r20-read-3",
+    ]
+    assert len(context["r20_qualifications"]) == 1
+    assert context["legacy_qualifications"] == []
+    assert context["continuity_reads"] == ["continuity"]
+    assert context["r20_validation_reruns"] == [False, True]
+    assert admission["repair_transition"] == context["transitions"][-1]
+    assert len(admission["repair_transition_chain"]) == 20
+    assert admission["repair_transition_chain"][-1] == (
+        context["transitions"][-1]
+    )
+    assert admission["canonical_continuity"][
+        "historical_lifecycle_route_to_pre_duckdb_historical_live"
+    ] == context["transitions"][-1]
+    assert admission["historical_live_launch_evidence_cid"] == (
+        context["fresh_evidence"]["evidence_cid"]
+    )
+    assert admission["historical_live_policy_admission_cid"] == (
+        context["policy"]["policy_admission_cid"]
+    )
+
+
+@pytest.mark.parametrize(
+    "r20_receipt_exists",
+    [True, False],
+    ids=["receipt-present", "exact-candidate-before-publication"],
+)
+def test_aseh_r20_active_policy_defers_provider_cleanup_live_rerun(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    r20_receipt_exists: bool,
+) -> None:
+    r19_path = tmp_path / "missing-r19.json"
+    r20_path = tmp_path / "r20.json"
+    if r20_receipt_exists:
+        r20_path.touch()
+    rerun_values: list[bool] = []
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r19_population_requires_policy",
+        lambda _population: False,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r20_population_requires_policy",
+        lambda _population: not r20_receipt_exists,
+    )
+
+    def validate_r11(
+        *_args: object,
+        rerun_validations: bool,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        rerun_values.append(rerun_validations)
+        return {"transition_revision": 11}
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_provider_cleanup_fence_transition",
+        validate_r11,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r20_pre_duckdb_historical_live_policy",
+        lambda **_kwargs: pytest.fail(
+            "R20 live qualification began before full-chain admission"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._validate_repair_provider_cleanup_fence_with_active_r19_policy(
+            {"revision": 11},
+            paths={
+                "repair_historical_lifecycle_route_transition_receipt": (
+                    r19_path
+                ),
+                "repair_pre_duckdb_historical_live_transition_receipt": (
+                    r20_path
+                ),
+            },
+            population={
+                "source_head": "3" * 40,
+                "repository_tree_id": "4" * 40,
+            },
+            bootstrap={},
+            previous_receipt={"revision": 10},
+        )
+    )
+
+    assert result == {"transition_revision": 11}
+    assert rerun_values == [False]
+
+
+def test_aseh_repair_historical_lifecycle_route_delegates_r20_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r19_path = tmp_path / "repair-r19.json"
+    r19_path.touch()
+    prior_chain = _aseh_r20_structural_chain()[:-1]
+    prior_chain[-2]["repair_head"] = (
+        aseh_operator.REPAIR_HISTORICAL_LIFECYCLE_ROUTE_TRANSITION_BASE_HEAD
+    )
+    r19_receipt = dict(prior_chain[-1])
+    r19_transition = dict(r19_receipt)
+    r19_transition["repair_head"] = (
+        aseh_operator.REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+    )
+    sentinel = {"delegated": "r20"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r19_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_historical_lifecycle_route_transition",
+        lambda *_args, **_kwargs: r19_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_pre_duckdb_historical_live_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if len(kwargs["prior_receipt_chain"]) == 19
+            else pytest.fail("R19 did not delegate the full chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R19 suffix admission ran before R20 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_historical_lifecycle_route_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_historical_lifecycle_route_transition_receipt": r19_path
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="9" * 40,
+            previous_receipt=prior_chain[-2],
+            previous_transition=prior_chain[-2],
+            prior_receipt_chain=prior_chain[:-1],
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
+
+
+def test_aseh_repair_pre_duckdb_historical_live_transition_publication_is_fenced_and_create_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt_path = tmp_path / "repair-r20.json"
+    prior_chain = _aseh_r20_structural_chain()[:-1]
+    previous_receipt = prior_chain[-1]
+    previous_receipt.update(
+        {
+            "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+            "base_head": "1" * 40,
+            "base_tree": "2" * 40,
+            "repair_head": (
+                aseh_operator
+                .REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": "3" * 40,
+            "changed_paths": ["operator.py"],
+            "patch_digest": "sha256:" + ("4" * 64),
+            "candidate_authorization_witness": {"candidate": "r19"},
+            "sealed_validation_executor_contract": {"executor": "r19"},
+        }
+    )
+    previous_transition = dict(previous_receipt)
+    candidate_head = "a" * 40
+    candidate_tree = "b" * 40
+    witness = {"candidate": "exact"}
+    validation_results = [{"revision": 20, "outcome": "validated"}]
+    policy = {"policy_admission_cid": "sha256:" + ("6" * 64)}
+    evidence = {"evidence_cid": "sha256:" + ("7" * 64)}
+    ordering: list[str] = []
+
+    def git(*args: str) -> str:
+        if args[:3] == ("show", "-s", "--format=%P"):
+            return (
+                aseh_operator
+                .REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+            )
+        if args[:1] == ("rev-parse",):
+            return candidate_tree
+        raise AssertionError(args)
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_CHANGED_PATHS
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: witness,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_pre_duckdb_historical_live_transition_validations",
+        lambda **_kwargs: ordering.append("validate") or validation_results,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda *_args: "sha256:" + ("d" * 64),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_qualify_r20_pre_duckdb_historical_live_policy",
+        lambda **_kwargs: (ordering.append("qualify") or policy, evidence),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_pre_duckdb_historical_live_transition",
+        lambda receipt, **_kwargs: ordering.append("admit") or receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda _witness, **kwargs: ordering.append(str(kwargs["boundary"])),
+    )
+    authority_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        result = (
+            aseh_operator
+            ._authorize_repair_pre_duckdb_historical_live_transition_if_applicable(
+                board=object(),
+                config={},
+                paths={
+                    "repair_pre_duckdb_historical_live_transition_receipt": (
+                        receipt_path
+                    )
+                },
+                bootstrap={
+                    "plan_root_cid": "plan:r20",
+                    "repository_tree_id": "tree:bootstrap",
+                },
+                bootstrap_id="sha256:" + ("e" * 64),
+                head=candidate_head,
+                previous_receipt=previous_receipt,
+                previous_transition=previous_transition,
+                prior_receipt_chain=prior_chain,
+                authorization_directory_fd=authority_fd,
+            )
+        )
+        assert result is not None
+        receipt = result["repair_transition_receipt"]
+        original = receipt_path.read_bytes()
+        with pytest.raises(aseh_operator.OperatorError, match="already exists"):
+            aseh_operator._atomic_json_create(
+                receipt_path,
+                {**receipt, "receipt_cid": "sha256:" + ("f" * 64)},
+                authority_directory_fd=authority_fd,
+            )
+        assert receipt_path.read_bytes() == original
+    finally:
+        os.close(authority_fd)
+    assert result["idempotent_replay"] is False
+    assert len(result["repair_transition_chain"]) == 20
+    assert result["repair_transition_receipt"]["database_mutated"] is False
+    assert ordering == [
+        "validate",
+        "after R20 validation before live qualification",
+        "qualify",
+        "after R20 live qualification before receipt publication",
+        "admit",
+        "immediately before R20 receipt publication",
+        "after R20 receipt publication",
+    ]
