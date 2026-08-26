@@ -148,6 +148,9 @@ from .implementation_daemon import (
     DEFAULT_TRACKS,
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
+    INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME,
+    INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA,
+    INTERRUPTED_IMPLEMENTATION_RECOVERY_FINAL_PROOF_FIELDS,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
     PROVIDER_EXTERNAL_ISOLATION_ENV,
     TASK_HEADER_PREFIX,
@@ -163,6 +166,7 @@ from .implementation_daemon import (
     _validated_provider_route_receipt,
     _validated_provider_filesystem_boundary_receipt,
     consume_stale_active_attempt,
+    interrupted_recovery_content_identity,
     load_json_dict,
     normalize_status,
     normalize_focus_tracks,
@@ -10337,10 +10341,28 @@ class PortalImplementationSupervisor:
         # active implementation lease.
         return process_is_running(pid)
 
+    @staticmethod
+    def _implementation_lease_pid_liveness(pid: int) -> str:
+        """Classify lease PID inspection without collapsing uncertainty."""
+
+        if pid <= 0:
+            return "unknown"
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return "dead"
+        except PermissionError:
+            return "alive"
+        except OSError:
+            return "unknown"
+        return "alive"
+
     def _publish_implementation_maintenance_lease(
         self,
         lock_path: Path,
         metadata: Mapping[str, Any],
+        *,
+        replace_existing: bool = False,
     ) -> bool:
         """Atomically publish a complete lease without an empty-file window."""
 
@@ -10364,10 +10386,23 @@ class PortalImplementationSupervisor:
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
+            if replace_existing:
+                os.replace(temporary_path, lock_path)
+            else:
+                try:
+                    os.link(temporary_path, lock_path)
+                except FileExistsError:
+                    return False
+            directory_fd = os.open(
+                lock_path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
             try:
-                os.link(temporary_path, lock_path)
-            except FileExistsError:
-                return False
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
             return True
         finally:
             if fd is not None:
@@ -10393,6 +10428,288 @@ class PortalImplementationSupervisor:
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
+    @staticmethod
+    def _read_private_implementation_json(
+        path: Path,
+        *,
+        maximum_bytes: int = 256 * 1024,
+        require_private: bool = True,
+    ) -> tuple[bytes, dict[str, Any], int] | None:
+        """Read one owned 0600 regular JSON object through a stable fd."""
+
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        try:
+            descriptor = os.open(path, flags)
+        except FileNotFoundError:
+            return None
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.geteuid()
+                or before.st_nlink != 1
+                or (
+                    stat.S_IMODE(before.st_mode) != 0o600
+                    if require_private
+                    else False
+                )
+                or before.st_size <= 0
+                or before.st_size > maximum_bytes
+            ):
+                raise OSError("implementation metadata is not a private regular file")
+            chunks: list[bytes] = []
+            remaining = int(before.st_size)
+            while remaining:
+                chunk = os.read(descriptor, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            payload_bytes = b"".join(chunks)
+            after = os.fstat(descriptor)
+            named = os.lstat(path)
+        finally:
+            os.close(descriptor)
+
+        def identity(item: os.stat_result) -> tuple[int, ...]:
+            return (
+                item.st_dev,
+                item.st_ino,
+                item.st_mode,
+                item.st_uid,
+                item.st_gid,
+                item.st_nlink,
+                item.st_size,
+                item.st_mtime_ns,
+                item.st_ctime_ns,
+            )
+
+        if (
+            len(payload_bytes) != before.st_size
+            or identity(before) != identity(after)
+            or identity(after) != identity(named)
+        ):
+            raise OSError("implementation metadata changed while being read")
+
+        def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
+        decoded = payload_bytes.decode("utf-8")
+        parsed = json.loads(decoded, object_pairs_hook=unique_object)
+        if not isinstance(parsed, dict):
+            raise ValueError("implementation metadata is not a JSON object")
+        return payload_bytes, parsed, stat.S_IMODE(after.st_mode)
+
+    @staticmethod
+    def _implementation_lock_custody(
+        raw: bytes,
+        metadata: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-attempt-lock-custody@1"
+            ),
+            "raw_utf8": raw.decode("utf-8"),
+            "sha256": "sha256:" + sha256(raw).hexdigest(),
+            "metadata": dict(metadata),
+        }
+
+    @staticmethod
+    def _valid_implementation_lock_custody(
+        custody: Any,
+    ) -> bool:
+        if not isinstance(custody, Mapping) or set(custody) != {
+            "schema",
+            "raw_utf8",
+            "sha256",
+            "metadata",
+        }:
+            return False
+        raw_text = custody.get("raw_utf8")
+        metadata = custody.get("metadata")
+        if (
+            custody.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-attempt-lock-custody@1"
+            )
+            or not isinstance(raw_text, str)
+            or not isinstance(metadata, Mapping)
+        ):
+            return False
+        raw = raw_text.encode("utf-8")
+        def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+        try:
+            reparsed = json.loads(
+                raw_text,
+                object_pairs_hook=unique_object,
+            )
+        except (UnicodeError, json.JSONDecodeError, ValueError):
+            return False
+        return bool(
+            isinstance(reparsed, dict)
+            and reparsed == dict(metadata)
+            and custody.get("sha256")
+            == "sha256:" + sha256(raw).hexdigest()
+        )
+
+    @classmethod
+    def _valid_interrupted_recovery_receipt(
+        cls,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        body = dict(receipt)
+        receipt_id = body.pop("receipt_id", None)
+        basis = receipt.get("basis")
+        expected_after = receipt.get("expected_after")
+        phase = receipt.get("phase")
+        custody = (
+            basis.get("predecessor_attempt_lock")
+            if isinstance(basis, Mapping)
+            else None
+        )
+        if (
+            receipt.get("schema") != INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA
+            or phase not in {"prepared", "completed"}
+            or not isinstance(basis, Mapping)
+            or not isinstance(expected_after, Mapping)
+            or receipt.get("operation_id")
+            != interrupted_recovery_content_identity(basis)
+            or receipt_id != interrupted_recovery_content_identity(body)
+            or not cls._valid_implementation_lock_custody(custody)
+            or not str(receipt.get("prepared_at") or "")
+        ):
+            return False
+        common = {
+            "schema",
+            "phase",
+            "operation_id",
+            "basis",
+            "expected_after",
+            "prepared_at",
+            "receipt_id",
+        }
+        if phase == "prepared":
+            return set(receipt) == common
+        completion = receipt.get("completion")
+        final_proof = (
+            completion.get("final_proof")
+            if isinstance(completion, Mapping)
+            else None
+        )
+        return bool(
+            set(receipt) == common | {"completed_at", "completion"}
+            and str(receipt.get("completed_at") or "")
+            and isinstance(completion, Mapping)
+            and set(completion) == {"final_proof", "final_proof_id"}
+            and isinstance(final_proof, Mapping)
+            and set(final_proof)
+            == INTERRUPTED_IMPLEMENTATION_RECOVERY_FINAL_PROOF_FIELDS
+            and completion.get("final_proof_id")
+            == interrupted_recovery_content_identity(final_proof)
+            and str(final_proof.get("marker_cid") or "")
+            and str(final_proof.get("lifecycle_cid") or "")
+            and str(final_proof.get("lifecycle_index_cid") or "")
+            and str(final_proof.get("state_cid") or "")
+            and str(final_proof.get("close_event_id") or "")
+            and str(final_proof.get("close_event_cid") or "")
+            and str(final_proof.get("state_recovered_event_id") or "")
+            and str(final_proof.get("state_recovered_event_cid") or "")
+        )
+
+    def _prepared_interrupted_recovery_custody(
+        self,
+    ) -> tuple[dict[str, Any] | None, str]:
+        receipt_path = (
+            self.config.state_path.parent
+            / INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME
+        )
+        try:
+            loaded = self._read_private_implementation_json(receipt_path)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+            return None, "interrupted_implementation_recovery_receipt_malformed"
+        if loaded is None:
+            return None, ""
+        _raw, receipt, _mode = loaded
+        if not self._valid_interrupted_recovery_receipt(receipt):
+            return None, "interrupted_implementation_recovery_receipt_malformed"
+        if receipt.get("phase") == "completed":
+            basis = receipt.get("basis")
+            custody = (
+                basis.get("predecessor_attempt_lock")
+                if isinstance(basis, Mapping)
+                else None
+            )
+            # A completed record is not maintenance authority by itself. Carry
+            # its exact predecessor custody into a fresh lease so the daemon's
+            # strict canonical event replay revalidates the completion before
+            # ordinary maintenance can proceed.
+            return dict(custody), ""
+        basis = receipt.get("basis")
+        custody = (
+            basis.get("predecessor_attempt_lock")
+            if isinstance(basis, Mapping)
+            else None
+        )
+        if (
+            receipt.get("phase") != "prepared"
+            or not str(receipt.get("operation_id") or "")
+            or not self._valid_implementation_lock_custody(custody)
+        ):
+            return None, "interrupted_implementation_recovery_receipt_malformed"
+        return dict(custody), ""
+
+    def _validate_predecessor_attempt_lock(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> tuple[bool, str]:
+        try:
+            pid = int(metadata.get("pid"))
+            attempt = int(metadata.get("attempt"))
+        except (TypeError, ValueError):
+            return False, "implementation_predecessor_lock_numeric_identity_invalid"
+        expected_repo = str(self.config.repo_root.resolve())
+        expected_state_dir = str(self.config.state_path.parent.resolve())
+        role = str(metadata.get("lease_role") or "implementation_attempt")
+        if (
+            str(metadata.get("kind") or "") != "implementation"
+            or role != "implementation_attempt"
+            or pid <= 0
+            or attempt <= 0
+            or not str(metadata.get("lease_id") or "")
+            or not str(metadata.get("task_id") or "")
+            or not str(metadata.get("canonical_task_key") or "")
+            or not str(metadata.get("canonical_task_cid") or "")
+            or not str(metadata.get("board_namespace") or "")
+            or not str(metadata.get("started_at") or "")
+            or str(metadata.get("repo_root") or "") != expected_repo
+            or str(metadata.get("state_dir") or "") != expected_state_dir
+        ):
+            return False, "implementation_predecessor_lock_identity_invalid"
+        liveness = self._implementation_lease_pid_liveness(pid)
+        if liveness == "alive":
+            return False, "implementation_protected_path_attempt_active"
+        if liveness != "dead":
+            return False, "implementation_predecessor_lock_liveness_unknown"
+        return True, ""
+
     def _acquire_implementation_maintenance_lease_serialized(
         self,
         lock_path: Path,
@@ -10400,31 +10717,59 @@ class PortalImplementationSupervisor:
     ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         """Acquire the durable lease while its update guard is held."""
 
+        prepared_custody, receipt_error = (
+            self._prepared_interrupted_recovery_custody()
+        )
+        if receipt_error:
+            return None, {
+                "blocked": True,
+                "reason": receipt_error,
+                "lock_path": str(lock_path),
+            }
+        lease_metadata = dict(metadata)
+        if prepared_custody is not None:
+            lease_metadata["predecessor_attempt_lock"] = prepared_custody
+
         for _ in range(2):
             if self._publish_implementation_maintenance_lease(
                 lock_path,
-                metadata,
+                lease_metadata,
             ):
-                return metadata, {
+                return lease_metadata, {
                     "blocked": False,
                     "reason": "implementation_maintenance_lease_acquired",
                     "lock_path": str(lock_path),
-                    "lease_id": str(metadata["lease_id"]),
+                    "lease_id": str(lease_metadata["lease_id"]),
                 }
-            existing = load_json_dict(lock_path)
-            if existing is None:
-                try:
-                    lock_path.unlink()
-                except FileNotFoundError:
-                    continue
-                except OSError:
-                    return None, {
-                        "blocked": True,
-                        "reason": "implementation_maintenance_lease_cleanup_failed",
-                        "lock_path": str(lock_path),
-                    }
+            try:
+                loaded = self._read_private_implementation_json(
+                    lock_path,
+                    require_private=False,
+                )
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+                return None, {
+                    "blocked": True,
+                    "reason": "implementation_predecessor_lock_malformed",
+                    "lock_path": str(lock_path),
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            if loaded is None:
                 continue
-            if self._implementation_lease_owner_is_active(existing):
+            raw, existing, existing_mode = loaded
+            existing_role = str(
+                existing.get("lease_role") or "implementation_attempt"
+            )
+            try:
+                existing_pid = int(existing.get("pid") or 0)
+            except (TypeError, ValueError):
+                existing_pid = 0
+            existing_liveness = self._implementation_lease_pid_liveness(
+                existing_pid
+            )
+            if (
+                self._implementation_lease_owner_is_active(existing)
+                or existing_liveness == "alive"
+            ):
                 return None, {
                     "blocked": True,
                     "reason": "implementation_protected_path_attempt_active",
@@ -10435,16 +10780,98 @@ class PortalImplementationSupervisor:
                         existing.get("lease_role") or "implementation_attempt"
                     ),
                 }
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                continue
-            except OSError:
+            if existing_pid > 0 and existing_liveness == "unknown":
                 return None, {
                     "blocked": True,
-                    "reason": "implementation_maintenance_lease_cleanup_failed",
+                    "reason": (
+                        "implementation_predecessor_lock_liveness_unknown"
+                    ),
+                    "lock_path": str(lock_path),
+                    "lock_owner_pid": existing_pid,
+                }
+            if existing_role == "implementation_attempt":
+                valid, reason = self._validate_predecessor_attempt_lock(
+                    existing
+                )
+                if not valid:
+                    return None, {
+                        "blocked": True,
+                        "reason": reason,
+                        "lock_path": str(lock_path),
+                    }
+                # Only the new owned/private lock shape may become durable
+                # predecessor custody. Older read-only 0644 locks continue
+                # through the pre-existing reconciliation path without being
+                # upgraded into journal authority.
+                observed_custody = (
+                    self._implementation_lock_custody(raw, existing)
+                    if existing_mode == 0o600
+                    else None
+                )
+            elif existing_role == "supervisor_maintenance":
+                observed_custody = existing.get(
+                    "predecessor_attempt_lock"
+                )
+                try:
+                    owner_pid = int(existing.get("pid"))
+                except (TypeError, ValueError):
+                    owner_pid = 0
+                if (
+                    str(existing.get("kind") or "") != "implementation"
+                    or not str(existing.get("lease_id") or "")
+                    or owner_pid <= 0
+                    or str(existing.get("repo_root") or "")
+                    != str(self.config.repo_root.resolve())
+                    or str(existing.get("state_dir") or "")
+                    != str(self.config.state_path.parent.resolve())
+                    or str(existing.get("state_path") or "")
+                    != str(self.config.state_path.resolve())
+                    or (
+                        observed_custody is not None
+                        and not self._valid_implementation_lock_custody(
+                            observed_custody
+                        )
+                    )
+                ):
+                    return None, {
+                        "blocked": True,
+                        "reason": "implementation_predecessor_lock_identity_invalid",
+                        "lock_path": str(lock_path),
+                    }
+            else:
+                return None, {
+                    "blocked": True,
+                    "reason": "implementation_predecessor_lock_role_unknown",
                     "lock_path": str(lock_path),
                 }
+            if (
+                prepared_custody is not None
+                and observed_custody != prepared_custody
+            ):
+                return None, {
+                    "blocked": True,
+                    "reason": "implementation_predecessor_lock_custody_mismatch",
+                    "lock_path": str(lock_path),
+                }
+            if observed_custody is not None:
+                lease_metadata["predecessor_attempt_lock"] = dict(
+                    observed_custody
+                )
+            if not self._publish_implementation_maintenance_lease(
+                lock_path,
+                lease_metadata,
+                replace_existing=True,
+            ):
+                continue
+            return lease_metadata, {
+                "blocked": False,
+                "reason": "implementation_maintenance_lease_acquired",
+                "lock_path": str(lock_path),
+                "lease_id": str(lease_metadata["lease_id"]),
+                "predecessor_attempt_lock_captured": (
+                    "predecessor_attempt_lock" in lease_metadata
+                ),
+            }
         return None, {
             "blocked": True,
             "reason": "implementation_maintenance_lease_unavailable",
@@ -10475,18 +10902,88 @@ class PortalImplementationSupervisor:
         lock_path: Path,
         metadata: Mapping[str, Any],
     ) -> None:
-        existing = load_json_dict(lock_path)
-        if existing is None:
+        try:
+            loaded = self._read_private_implementation_json(lock_path)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+            logger.warning(
+                "Refusing to remove malformed or replaced implementation "
+                "lease: %s",
+                lock_path,
+            )
             return
-        if str(existing.get("lease_id") or "") != str(
-            metadata.get("lease_id") or ""
-        ):
+        if loaded is None:
+            return
+        _raw, existing, _mode = loaded
+        if existing != dict(metadata):
             logger.warning(
                 "Refusing to remove implementation lease no longer owned by "
                 "this supervisor pass: %s",
                 lock_path,
             )
             return
+        custody = metadata.get("predecessor_attempt_lock")
+        if self._valid_implementation_lock_custody(custody):
+            receipt_path = (
+                self.config.state_path.parent
+                / INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME
+            )
+            try:
+                loaded_receipt = self._read_private_implementation_json(
+                    receipt_path
+                )
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+                loaded_receipt = None
+            durable_custody = bool(
+                loaded_receipt is not None
+                and self._valid_interrupted_recovery_receipt(
+                    loaded_receipt[1]
+                )
+                and dict(
+                    loaded_receipt[1]["basis"][
+                        "predecessor_attempt_lock"
+                    ]
+                )
+                == dict(custody)
+            )
+            if not durable_custody:
+                raw = str(custody["raw_utf8"]).encode("utf-8")
+                temporary = lock_path.with_name(
+                    f".{lock_path.name}.restore-{metadata['lease_id']}.tmp"
+                )
+                descriptor = -1
+                try:
+                    descriptor = os.open(
+                        temporary,
+                        os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                        0o600,
+                    )
+                    offset = 0
+                    while offset < len(raw):
+                        written = os.write(descriptor, raw[offset:])
+                        if written <= 0:
+                            raise OSError(
+                                "short write while restoring predecessor lock"
+                            )
+                        offset += written
+                    os.fsync(descriptor)
+                    os.close(descriptor)
+                    descriptor = -1
+                    os.replace(temporary, lock_path)
+                    directory = os.open(
+                        lock_path.parent,
+                        os.O_RDONLY
+                        | getattr(os, "O_DIRECTORY", 0)
+                        | getattr(os, "O_CLOEXEC", 0),
+                    )
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
+                finally:
+                    if descriptor >= 0:
+                        os.close(descriptor)
+                    temporary.unlink(missing_ok=True)
+                return
         try:
             lock_path.unlink()
         except FileNotFoundError:
@@ -10543,51 +11040,33 @@ class PortalImplementationSupervisor:
         include_refill: bool = True,
         implementation_maintenance_lease: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        # A producer can retain the checkout lease only when its protected
-        # outputs could not be proven clean.  Resolve that state before any
-        # other maintenance callback is allowed to mutate repository state.
-        update_maintenance_phase("retained_generated_checkout_recovery")
-        retained_generated_checkout_recovery = (
-            self._recover_retained_generated_checkout_lease()
-        )
-        if retained_generated_checkout_recovery.get("retained_lease"):
-            return {
-                "stuck": False,
-                "maintenance_blocked": True,
-                "reason": "checkout_mutation_protected_recovery_required",
-                "retained_generated_checkout_recovery": (
-                    retained_generated_checkout_recovery
-                ),
-            }
-        update_maintenance_phase("event_log_repair")
-        event_log_repair = self.ensure_event_log_file()
-        update_maintenance_phase("state_file_repair")
-        state_file_repair = self.ensure_state_file()
         interrupted_implementation_reconciliation: dict[str, Any] = {
             "reconciled": False,
             "blocked": False,
-            "reason": "no_active_protected_attempt",
+            "reason": "no_interrupted_implementation_authority",
         }
         active_protected_attempt = (
             self.config.state_path.parent
             / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
         )
-        if active_protected_attempt.exists():
+        recovery_custody = (
+            implementation_maintenance_lease.get(
+                "predecessor_attempt_lock"
+            )
+            if isinstance(implementation_maintenance_lease, Mapping)
+            else None
+        )
+        if active_protected_attempt.exists() or recovery_custody is not None:
             if implementation_maintenance_lease is None:
                 return {
                     "stuck": False,
                     "maintenance_blocked": True,
                     "reason": (
                         "interrupted_implementation_reconciliation_requires_"
-                        "maintenance_lease"
+                        "predecessor_custody"
                     ),
-                    "event_log_repair": event_log_repair,
-                    "state_file_repair": state_file_repair,
                     "interrupted_implementation_reconciliation": (
                         interrupted_implementation_reconciliation
-                    ),
-                    "retained_generated_checkout_recovery": (
-                        retained_generated_checkout_recovery
                     ),
                 }
             update_maintenance_phase(
@@ -10613,15 +11092,30 @@ class PortalImplementationSupervisor:
                         interrupted_implementation_reconciliation.get("reason")
                         or "interrupted_implementation_reconciliation_blocked"
                     ),
-                    "event_log_repair": event_log_repair,
-                    "state_file_repair": state_file_repair,
                     "interrupted_implementation_reconciliation": (
                         interrupted_implementation_reconciliation
                     ),
-                    "retained_generated_checkout_recovery": (
-                        retained_generated_checkout_recovery
-                    ),
                 }
+        # A producer can retain the checkout lease only when its protected
+        # outputs could not be proven clean.  Resolve that state before any
+        # other maintenance callback is allowed to mutate repository state.
+        update_maintenance_phase("retained_generated_checkout_recovery")
+        retained_generated_checkout_recovery = (
+            self._recover_retained_generated_checkout_lease()
+        )
+        if retained_generated_checkout_recovery.get("retained_lease"):
+            return {
+                "stuck": False,
+                "maintenance_blocked": True,
+                "reason": "checkout_mutation_protected_recovery_required",
+                "retained_generated_checkout_recovery": (
+                    retained_generated_checkout_recovery
+                ),
+            }
+        update_maintenance_phase("event_log_repair")
+        event_log_repair = self.ensure_event_log_file()
+        update_maintenance_phase("state_file_repair")
+        state_file_repair = self.ensure_state_file()
         update_maintenance_phase("implementation_protected_path_guard")
         protected_path_guard = self._implementation_protected_maintenance_guard()
         if protected_path_guard.get("blocked", False):
@@ -16574,7 +17068,11 @@ class PortalImplementationSupervisor:
             return "other_dirty"
         return "clean"
 
-    def _build_worktree_reconciliation_daemon(self) -> PortalImplementationDaemon:
+    def _build_worktree_reconciliation_daemon(
+        self,
+        *,
+        reclaim_dead_lifecycle_on_startup: bool | None = None,
+    ) -> PortalImplementationDaemon:
         return PortalImplementationDaemon(
             todo_path=self.config.todo_path,
             state_path=self.config.state_path,
@@ -16610,6 +17108,9 @@ class PortalImplementationSupervisor:
             task_shard_index=self.config.task_shard_index,
             strict_task_sharding=self.config.strict_task_sharding,
             idle_lane_work_stealing=self.config.idle_lane_work_stealing,
+            reclaim_dead_lifecycle_on_startup=(
+                reclaim_dead_lifecycle_on_startup
+            ),
         )
 
     @staticmethod
@@ -17034,7 +17535,17 @@ class PortalImplementationSupervisor:
         """Close an interrupted attempt only after proving it is quiescent."""
 
         try:
-            daemon = self._build_worktree_reconciliation_daemon()
+            strict_custody = bool(
+                isinstance(preacquired_implementation_lock, Mapping)
+                and preacquired_implementation_lock.get(
+                    "predecessor_attempt_lock"
+                )
+            )
+            daemon = self._build_worktree_reconciliation_daemon(
+                reclaim_dead_lifecycle_on_startup=(
+                    False if strict_custody else None
+                ),
+            )
             return daemon.reconcile_quiesced_active_attempt(
                 preacquired_implementation_lock=(
                     preacquired_implementation_lock

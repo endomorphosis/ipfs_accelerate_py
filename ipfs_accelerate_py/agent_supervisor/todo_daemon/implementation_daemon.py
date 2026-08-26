@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ctypes
 import errno
 import fcntl
 import fnmatch
@@ -1356,6 +1357,46 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME = (
+    "interrupted-implementation-recovery.json"
+)
+INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "interrupted-implementation-recovery@1"
+)
+INTERRUPTED_IMPLEMENTATION_RECOVERY_FINAL_PROOF_FIELDS = frozenset(
+    {
+        "marker_tombstone_path",
+        "marker_cid",
+        "lifecycle_path",
+        "lifecycle_cid",
+        "lifecycle_index_path",
+        "lifecycle_index_cid",
+        "state_path",
+        "state_cid",
+        "task_claim_reason",
+        "task_claim_receipt_id",
+        "close_event_id",
+        "close_event_cid",
+        "state_recovered_event_id",
+        "state_recovered_event_cid",
+    }
+)
+
+
+def interrupted_recovery_content_identity(value: Any) -> str:
+    """Hash exact journal JSON, including lifecycle timestamp floats."""
+
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-protected-path-recovery-guard@1"
@@ -1433,6 +1474,34 @@ class CrashFenceReconciler:
         recovery_io = self._protected_path_recovery_io
         verifier = recovery_io.get("verify") if isinstance(recovery_io, Mapping) else None
         return callable(verifier) and verifier() is True
+
+    def _retire_active_snapshot(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        reason: str,
+    ) -> bool:
+        recovery_io = self._protected_path_recovery_io
+        retire = (
+            recovery_io.get("retire_active_snapshot")
+            if isinstance(recovery_io, Mapping)
+            else None
+        )
+        if callable(retire):
+            return bool(
+                retire(
+                    task_id=task_id,
+                    attempt=attempt,
+                    reason=reason,
+                )
+            )
+        self._daemon._clear_implementation_protected_snapshot(
+            task_id=task_id,
+            attempt=attempt,
+            reason=reason,
+        )
+        return True
 
     def reconcile(self) -> dict[str, Any]:
         daemon = self._daemon
@@ -1956,11 +2025,16 @@ class CrashFenceReconciler:
                 attempt = int(plan.get("attempt") or 0)
             except (TypeError, ValueError):
                 attempt = 0
-            daemon._clear_implementation_protected_snapshot(
+            if not self._retire_active_snapshot(
                 task_id=task_id,
                 attempt=attempt,
                 reason="crash_reconciliation_device_renumbered",
-            )
+            ):
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "crash_reconciliation_snapshot_retirement_changed",
+                }
             result = {
                 "blocked": False,
                 "reason": "crash_reconciliation_device_renumbered",
@@ -1979,11 +2053,16 @@ class CrashFenceReconciler:
             except (TypeError, ValueError):
                 attempt = 0
             reason = str(plan.get("reason") or "crash_reconciliation_unchanged")
-            daemon._clear_implementation_protected_snapshot(
+            if not self._retire_active_snapshot(
                 task_id=task_id,
                 attempt=attempt,
                 reason=reason,
-            )
+            ):
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "crash_reconciliation_snapshot_retirement_changed",
+                }
             result = {
                 "blocked": False,
                 "reason": reason,
@@ -8148,6 +8227,7 @@ class PortalImplementationDaemon:
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
         worker_network_launch_authority_json: str = "",
+        reclaim_dead_lifecycle_on_startup: bool | None = None,
     ) -> None:
         if type(isolate_merge_queue_to_task_projection) is not bool:
             raise TypeError(
@@ -8454,10 +8534,15 @@ class PortalImplementationDaemon:
             proc_root=self.worktree_lifecycle.proc_root,
         )
         self.worktree_lifecycle_restart_recovery = []
-        if _env_bool(
-            WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
-            True,
-        ):
+        reclaim_dead_lifecycle = (
+            _env_bool(
+                WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
+                True,
+            )
+            if reclaim_dead_lifecycle_on_startup is None
+            else bool(reclaim_dead_lifecycle_on_startup)
+        )
+        if reclaim_dead_lifecycle:
             self.worktree_lifecycle_restart_recovery = (
                 self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
                     expected_state_dir=self.state_path.parent.resolve(),
@@ -13219,6 +13304,7 @@ class PortalImplementationDaemon:
         canonical_task_cid: str,
         board_namespace: str,
         attempt: int,
+        interrupted_recovery_receipt: Mapping[str, Any] | None = None,
     ) -> tuple[WorkspaceLifecycleRecord | None, str, str]:
         """Prove the task revision and its exact worktree are terminal."""
 
@@ -13282,7 +13368,49 @@ class PortalImplementationDaemon:
             return record, "", "canonical_task_identity_mismatch"
         status = normalize_status(matches[0].status)
         if status not in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
-            return record, status, "canonical_task_not_terminal"
+            recovery_identity = (
+                interrupted_recovery_receipt.get("basis", {}).get(
+                    "identity"
+                )
+                if isinstance(interrupted_recovery_receipt, Mapping)
+                and isinstance(
+                    interrupted_recovery_receipt.get("basis"),
+                    Mapping,
+                )
+                else None
+            )
+            expected_lifecycle = (
+                interrupted_recovery_receipt.get("expected_after", {}).get(
+                    "lifecycle"
+                )
+                if isinstance(interrupted_recovery_receipt, Mapping)
+                and isinstance(
+                    interrupted_recovery_receipt.get("expected_after"),
+                    Mapping,
+                )
+                else None
+            )
+            if (
+                # ``normalize_status`` projects ready/todo/queued/pending to
+                # the single nonterminal scheduler status ``todo``.
+                status != "todo"
+                or not isinstance(interrupted_recovery_receipt, Mapping)
+                or interrupted_recovery_receipt.get("phase") != "prepared"
+                or not isinstance(recovery_identity, Mapping)
+                or recovery_identity.get("task_id") != task_id
+                or recovery_identity.get("canonical_task_cid")
+                != canonical_task_cid
+                or recovery_identity.get("attempt") != attempt
+                or normalize_workspace_path(
+                    recovery_identity.get("workspace_path") or ""
+                )
+                != normalize_workspace_path(workspace_path)
+                or not isinstance(expected_lifecycle, Mapping)
+                or expected_lifecycle.get("payload") != raw_record
+                or expected_lifecycle.get("cid")
+                != interrupted_recovery_content_identity(raw_record)
+            ):
+                return record, status, "canonical_task_not_terminal"
         projected_status = normalize_status(
             state.task_statuses.get(task_id, "")
         )
@@ -13309,6 +13437,109 @@ class PortalImplementationDaemon:
             / IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME
             / f"canonical-task-{digest}-a{attempt}.json"
         )
+
+    def _interrupted_implementation_recovery_receipt_path(self) -> Path:
+        return (
+            self.state_path.parent
+            / INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME
+        )
+
+    def _interrupted_implementation_marker_tombstone_path(
+        self,
+        operation_id: str,
+    ) -> Path:
+        if not str(operation_id).strip():
+            raise ValueError("interrupted recovery operation id is invalid")
+        digest = hashlib.sha256(str(operation_id).encode("utf-8")).hexdigest()
+        return self.state_path.parent / (
+            f"interrupted-implementation-marker-{digest[:24]}.json"
+        )
+
+    @staticmethod
+    def _durable_private_json(path: Path, payload: Mapping[str, Any]) -> None:
+        """Publish one fsynced private receipt and its directory entry."""
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        rendered = (
+            json.dumps(dict(payload), indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        temporary = path.with_name(
+            f".{path.name}.{os.getpid()}.{secrets.token_hex(12)}.tmp"
+        )
+        descriptor = -1
+        try:
+            descriptor = os.open(
+                temporary,
+                os.O_CREAT
+                | os.O_EXCL
+                | os.O_WRONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            offset = 0
+            while offset < len(rendered):
+                written = os.write(descriptor, rendered[offset:])
+                if written <= 0:
+                    raise OSError("short write while publishing recovery receipt")
+                offset += written
+            os.fsync(descriptor)
+            os.close(descriptor)
+            descriptor = -1
+            os.replace(temporary, path)
+            directory = os.open(
+                path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _rename_without_replace(source: Path, target: Path) -> None:
+        """Atomically move a marker into journal custody without replacement."""
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is None:
+            raise OSError(errno.ENOSYS, "renameat2 is unavailable")
+        renameat2.argtypes = (
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        )
+        renameat2.restype = ctypes.c_int
+        ctypes.set_errno(0)
+        if renameat2(
+            -100,
+            os.fsencode(source),
+            -100,
+            os.fsencode(target),
+            1,
+        ) != 0:
+            error_number = ctypes.get_errno() or errno.EIO
+            raise OSError(error_number, os.strerror(error_number), str(target))
+        directory = os.open(
+            source.parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
 
     @staticmethod
     def _load_exact_json_object(path: Path) -> dict[str, Any] | None:
@@ -13351,6 +13582,7 @@ class PortalImplementationDaemon:
         attempt: int,
         display_attempt: int,
         canonical_attempt: int,
+        require_canonical_events: bool = False,
     ) -> dict[str, Any] | None:
         """Bind a decremented attempt counter to its exact recovery event.
 
@@ -13368,7 +13600,7 @@ class PortalImplementationDaemon:
             return None
 
         if (
-            attempt <= 1
+            attempt <= 0
             or display_attempt != attempt - 1
             or canonical_attempt != display_attempt
             or exact_int(claim.get("attempt")) != attempt
@@ -13382,14 +13614,30 @@ class PortalImplementationDaemon:
         raw_canonical_attempts = raw_state.get(
             "implementation_attempts_by_cid"
         )
+        exact_display = (
+            exact_int(raw_display_attempts.get(task_id))
+            if isinstance(raw_display_attempts, dict)
+            and task_id in raw_display_attempts
+            else 0
+        )
+        exact_canonical = (
+            exact_int(raw_canonical_attempts.get(canonical_task_cid))
+            if isinstance(raw_canonical_attempts, dict)
+            and canonical_task_cid in raw_canonical_attempts
+            else 0
+        )
         if (
             not isinstance(raw_display_attempts, dict)
-            or task_id not in raw_display_attempts
-            or exact_int(raw_display_attempts[task_id]) != display_attempt
             or not isinstance(raw_canonical_attempts, dict)
-            or canonical_task_cid not in raw_canonical_attempts
-            or exact_int(raw_canonical_attempts[canonical_task_cid])
-            != canonical_attempt
+            or exact_display != display_attempt
+            or exact_canonical != canonical_attempt
+            or (
+                display_attempt == 0
+                and (
+                    task_id in raw_display_attempts
+                    or canonical_task_cid in raw_canonical_attempts
+                )
+            )
         ):
             return None
 
@@ -13447,7 +13695,9 @@ class PortalImplementationDaemon:
             return None
 
         try:
-            events = self._iter_merge_lifecycle_events()
+            events = self._iter_merge_lifecycle_events(
+                require_canonical_raw=require_canonical_events,
+            )
         except CursorReplayError:
             return None
 
@@ -13595,6 +13845,8 @@ class PortalImplementationDaemon:
     def _reconcile_quiesced_implementation_task_claim(
         self,
         state: PortalTaskState,
+        *,
+        interrupted_recovery_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Release one exact dead claim after terminal lane/task proof."""
 
@@ -13629,6 +13881,26 @@ class PortalImplementationDaemon:
             if claim is None:
                 if claim_path.exists() or claim_path.is_symlink():
                     return blocked("task_claim_metadata_unreadable")
+                if interrupted_recovery_receipt is not None:
+                    released = (
+                        self._interrupted_recovery_released_claim_result(
+                            state,
+                            interrupted_recovery_receipt,
+                        )
+                    )
+                    if released is not None:
+                        return released
+                    claim_before = interrupted_recovery_receipt.get(
+                        "basis",
+                        {},
+                    ).get("task_claim_before", {})
+                    if (
+                        isinstance(claim_before, Mapping)
+                        and claim_before.get("present") is True
+                    ):
+                        return blocked(
+                            "task_claim_release_receipt_invalid"
+                        )
                 return {
                     "reconciled": False,
                     "blocked": False,
@@ -13702,6 +13974,9 @@ class PortalImplementationDaemon:
                         attempt=attempt,
                         display_attempt=display_attempt,
                         canonical_attempt=canonical_attempt,
+                        require_canonical_events=(
+                            interrupted_recovery_receipt is not None
+                        ),
                     )
                 )
             if (
@@ -13801,6 +14076,9 @@ class PortalImplementationDaemon:
                         claim.get("board_namespace") or ""
                     ),
                     attempt=attempt,
+                    interrupted_recovery_receipt=(
+                        interrupted_recovery_receipt
+                    ),
                 )
             )
             if record is None or authority_reason:
@@ -13848,6 +14126,10 @@ class PortalImplementationDaemon:
                 },
                 "task_source_identity": self._task_source_identity_record(),
             }
+            if interrupted_recovery_receipt is not None:
+                basis["interrupted_recovery_operation_id"] = str(
+                    interrupted_recovery_receipt.get("operation_id") or ""
+                )
             if released_attempt_evidence is not None:
                 basis["released_unfinished_attempt"] = (
                     released_attempt_evidence
@@ -13958,7 +14240,1655 @@ class PortalImplementationDaemon:
             )
         return result
 
+    @staticmethod
+    def _interrupted_recovery_pid_liveness(pid: int) -> str:
+        if pid <= 0:
+            return "unknown"
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return "dead"
+        except PermissionError:
+            return "alive"
+        except OSError:
+            return "unknown"
+        return "alive"
+
+    @staticmethod
+    def _parse_unique_json_object(text: str) -> dict[str, Any] | None:
+        def unique_object(
+            pairs: list[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
+        try:
+            payload = json.loads(text, object_pairs_hook=unique_object)
+        except (json.JSONDecodeError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _validated_interrupted_recovery_custody(
+        self,
+        lease: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        custody = lease.get("predecessor_attempt_lock")
+        if not isinstance(custody, Mapping) or set(custody) != {
+            "schema",
+            "raw_utf8",
+            "sha256",
+            "metadata",
+        }:
+            return None
+        raw_text = custody.get("raw_utf8")
+        metadata = custody.get("metadata")
+        if (
+            custody.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-attempt-lock-custody@1"
+            )
+            or not isinstance(raw_text, str)
+            or not isinstance(metadata, Mapping)
+        ):
+            return None
+        parsed = self._parse_unique_json_object(raw_text)
+        raw = raw_text.encode("utf-8")
+        if (
+            parsed is None
+            or parsed != dict(metadata)
+            or custody.get("sha256")
+            != "sha256:" + hashlib.sha256(raw).hexdigest()
+        ):
+            return None
+        try:
+            pid = int(metadata.get("pid"))
+            attempt = int(metadata.get("attempt"))
+        except (TypeError, ValueError):
+            return None
+        if (
+            str(metadata.get("kind") or "") != "implementation"
+            or str(metadata.get("lease_role") or "implementation_attempt")
+            != "implementation_attempt"
+            or not str(metadata.get("lease_id") or "")
+            or pid <= 0
+            or attempt <= 0
+            or not str(metadata.get("task_id") or "")
+            or not str(metadata.get("canonical_task_key") or "")
+            or not str(metadata.get("canonical_task_cid") or "")
+            or not str(metadata.get("board_namespace") or "")
+            or not str(metadata.get("started_at") or "")
+            or normalize_workspace_path(metadata.get("repo_root") or "")
+            != normalize_workspace_path(self.repo_root)
+            or normalize_workspace_path(metadata.get("state_dir") or "")
+            != normalize_workspace_path(self.state_path.parent.resolve())
+            or self._interrupted_recovery_pid_liveness(pid) != "dead"
+        ):
+            return None
+        return dict(custody)
+
+    def _load_private_interrupted_recovery_receipt(
+        self,
+    ) -> dict[str, Any] | None:
+        path = self._interrupted_implementation_recovery_receipt_path()
+        try:
+            observed = path.lstat()
+        except FileNotFoundError:
+            return None
+        if (
+            not stat_module.S_ISREG(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or observed.st_nlink != 1
+            or stat_module.S_IMODE(observed.st_mode) != 0o600
+        ):
+            raise RuntimeError("interrupted recovery receipt is not private")
+        receipt = self._load_exact_json_object(path)
+        if receipt is None:
+            raise RuntimeError("interrupted recovery receipt is malformed")
+        body = dict(receipt)
+        receipt_id = body.pop("receipt_id", None)
+        basis = receipt.get("basis")
+        expected_after = receipt.get("expected_after")
+        phase = receipt.get("phase")
+        common_fields = {
+            "schema",
+            "phase",
+            "operation_id",
+            "basis",
+            "expected_after",
+            "prepared_at",
+            "receipt_id",
+        }
+        if (
+            receipt.get("schema")
+            != INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA
+            or phase not in {"prepared", "completed"}
+            or not isinstance(basis, Mapping)
+            or not isinstance(expected_after, Mapping)
+            or receipt.get("operation_id")
+            != interrupted_recovery_content_identity(basis)
+            or receipt_id != interrupted_recovery_content_identity(body)
+            or not str(receipt.get("prepared_at") or "")
+        ):
+            raise RuntimeError("interrupted recovery receipt identity is invalid")
+        custody = basis.get("predecessor_attempt_lock")
+        raw_custody = (
+            custody.get("raw_utf8")
+            if isinstance(custody, Mapping)
+            else None
+        )
+        if (
+            not isinstance(custody, Mapping)
+            or not isinstance(raw_custody, str)
+            or self._parse_unique_json_object(raw_custody)
+            != custody.get("metadata")
+        ):
+            raise RuntimeError("interrupted recovery receipt custody is invalid")
+        if phase == "prepared" and set(receipt) != common_fields:
+            raise RuntimeError("interrupted recovery prepared receipt is invalid")
+        if phase == "completed":
+            completion = receipt.get("completion")
+            final_proof = (
+                completion.get("final_proof")
+                if isinstance(completion, Mapping)
+                else None
+            )
+            if (
+                set(receipt)
+                != common_fields | {"completed_at", "completion"}
+                or not str(receipt.get("completed_at") or "")
+                or not isinstance(completion, Mapping)
+                or set(completion) != {"final_proof", "final_proof_id"}
+                or not isinstance(final_proof, Mapping)
+                or set(final_proof)
+                != INTERRUPTED_IMPLEMENTATION_RECOVERY_FINAL_PROOF_FIELDS
+                or completion.get("final_proof_id")
+                != interrupted_recovery_content_identity(final_proof)
+                or not str(final_proof.get("marker_cid") or "")
+                or not str(final_proof.get("lifecycle_cid") or "")
+                or not str(
+                    final_proof.get("lifecycle_index_cid") or ""
+                )
+                or not str(final_proof.get("state_cid") or "")
+                or not str(final_proof.get("close_event_id") or "")
+                or not str(final_proof.get("close_event_cid") or "")
+                or not str(
+                    final_proof.get("state_recovered_event_id") or ""
+                )
+                or not str(
+                    final_proof.get("state_recovered_event_cid") or ""
+                )
+            ):
+                raise RuntimeError(
+                    "interrupted recovery completed receipt is invalid"
+                )
+            if not self._completed_interrupted_recovery_is_current(receipt):
+                raise RuntimeError(
+                    "interrupted recovery completed proof is not current"
+                )
+        return receipt
+
+    def _recovery_state_payload(
+        self,
+        state: PortalTaskState,
+        *,
+        reconciled_at: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        recovered = PortalTaskState(**asdict(state))
+        attempt_recovery = self._release_unfinished_active_attempt(
+            recovered,
+            task_id=state.active_task_id,
+            attempt=state.active_attempt,
+        )
+        if (
+            attempt_recovery.get("released") is not True
+            or attempt_recovery.get("consumed") is not False
+        ):
+            raise RuntimeError(
+                "interrupted recovery attempt is not rollback-eligible"
+            )
+        recovered.active_task_id = ""
+        recovered.active_task_key = ""
+        recovered.active_task_cid = ""
+        recovered.active_task_title = ""
+        recovered.active_task_track = ""
+        recovered.active_task_started_at = ""
+        recovered.recommended_task_id = ""
+        recovered.recommended_actions = []
+        recovered.active_attempt = 0
+        recovered.active_phase = ""
+        recovered.active_phase_started_at = ""
+        recovered.active_phase_detail = ""
+        recovered.active_log_path = ""
+        recovered.active_worktree_path = ""
+        recovered.active_branch = ""
+        recovered.implementation_in_progress = False
+        recovered.active_provider_runner = {}
+        recovered.heartbeat_at = reconciled_at
+        recovered.last_progress_at = reconciled_at
+        return asdict(recovered), attempt_recovery
+
+    def _interrupted_recovery_claim_evidence(
+        self,
+        *,
+        task_id: str,
+        canonical_task_cid: str,
+        attempt: int,
+        owner_pid: int,
+        canonical_task_key: str,
+        board_namespace: str,
+        started_at: str,
+    ) -> dict[str, Any]:
+        claim_path = self._implementation_task_claim_path(
+            task_id,
+            canonical_task_cid=canonical_task_cid,
+        )
+        claim = self._load_exact_json_object(claim_path)
+        if claim is None:
+            if claim_path.exists() or claim_path.is_symlink():
+                raise RuntimeError("interrupted recovery task claim is malformed")
+            return {"present": False, "path": str(claim_path)}
+        try:
+            claim_attempt = int(claim.get("attempt"))
+            claim_pid = int(claim.get("pid"))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "interrupted recovery task claim identity is malformed"
+            ) from exc
+        if (
+            str(claim.get("kind") or "")
+            != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+            or str(claim.get("task_id") or "") != task_id
+            or str(claim.get("canonical_task_cid") or "")
+            != canonical_task_cid
+            or claim_attempt != attempt
+            or claim_pid != owner_pid
+            or str(claim.get("canonical_task_key") or "")
+            != canonical_task_key
+            or str(claim.get("board_namespace") or "")
+            != board_namespace
+            or str(claim.get("started_at") or "") != started_at
+            or normalize_workspace_path(claim.get("state_dir") or "")
+            != normalize_workspace_path(self.state_path.parent.resolve())
+            or normalize_workspace_path(claim.get("state_path") or "")
+            != normalize_workspace_path(self.state_path.resolve())
+        ):
+            raise RuntimeError("interrupted recovery task claim identity differs")
+        return {
+            "present": True,
+            "path": str(claim_path),
+            "cid": content_identity(claim),
+            "payload": claim,
+        }
+
+    def _interrupted_recovery_released_claim_result(
+        self,
+        state: PortalTaskState,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Rebind a crash-completed claim release to its exact receipt."""
+
+        try:
+            basis = dict(receipt["basis"])
+            identity = dict(basis["identity"])
+            claim_before = dict(basis["task_claim_before"])
+            claim = dict(claim_before["payload"])
+            expected_lifecycle = dict(
+                dict(receipt["expected_after"])["lifecycle"]
+            )["payload"]
+            task_id = str(identity["task_id"])
+            canonical_task_cid = str(identity["canonical_task_cid"])
+            attempt = int(identity["attempt"])
+            claim_attempt = int(claim["attempt"])
+            lease_id = str(claim["lease_id"])
+            claim_path = Path(str(claim_before["path"]))
+        except (KeyError, TypeError, ValueError):
+            return None
+        if (
+            claim_before.get("present") is not True
+            or asdict(state)
+            != dict(receipt["expected_after"])["state"]["payload"]
+            or content_identity(claim) != claim_before.get("cid")
+            or str(claim.get("task_id") or "") != task_id
+            or str(claim.get("canonical_task_cid") or "")
+            != canonical_task_cid
+            or claim_attempt != attempt
+            or claim_path.exists()
+            or claim_path
+            != self._implementation_task_claim_path(
+                task_id,
+                canonical_task_cid=canonical_task_cid,
+            )
+        ):
+            return None
+        release_path = self._task_claim_release_receipt_path(
+            canonical_task_cid=canonical_task_cid,
+            attempt=attempt,
+            lease_id=lease_id,
+        )
+        released = self._load_exact_json_object(release_path)
+        if released is None:
+            return None
+        evidence = released.get("released_unfinished_attempt")
+        start = dict(basis["start_event"])["payload"]
+        expected_recovery_event = (
+            self._interrupted_state_recovered_event_payload(receipt)
+        )
+        try:
+            events = self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+        except CursorReplayError:
+            return None
+        recovered_events = [
+            event
+            for event in events
+            if isinstance(evidence, Mapping)
+            and event.get("event_id") == evidence.get("event_id")
+            and event.get("type") == "implementation_state_recovered"
+            and all(
+                event.get(key) == value
+                for key, value in expected_recovery_event.items()
+            )
+        ]
+        if len(recovered_events) != 1:
+            return None
+        recovered_event = recovered_events[0]
+        expected_evidence = {
+            "event_id": recovered_event["event_id"],
+            "stream_id": recovered_event["stream_id"],
+            "snapshot_id": recovered_event["snapshot_id"],
+            "sequence": recovered_event["sequence"],
+            "timestamp": recovered_event["timestamp"],
+            "start_event_id": start["event_id"],
+            "start_sequence": start["sequence"],
+            "started_at": start["timestamp"],
+            "claim_started_at": claim["started_at"],
+            "canonical_task_key": claim["canonical_task_key"],
+            "board_namespace": claim["board_namespace"],
+            "released_from": attempt,
+            "released_to": dict(receipt["expected_after"])[
+                "attempt_recovery"
+            ]["released_to"],
+            "worktree_path": identity["workspace_path"],
+            "branch": identity["branch"],
+        }
+        if evidence != expected_evidence:
+            return None
+        release_events = [
+            event
+            for event in events
+            if event.get("type") == "implementation_task_claim_released"
+            and event.get("receipt_id") == released.get("receipt_id")
+            and event.get("operation_id") == released.get("operation_id")
+            and event.get("reason") == "quiesced_task_claim_released"
+            and event.get("task_id") == task_id
+            and event.get("canonical_task_cid") == canonical_task_cid
+            and event.get("attempt") == attempt
+            and event.get("released_unfinished_attempt") == evidence
+        ]
+        if len(release_events) != 1:
+            return None
+        release_body = dict(released)
+        receipt_id = release_body.pop("receipt_id", None)
+        release_basis = dict(release_body)
+        operation_id = release_basis.pop("operation_id", None)
+        phase = release_basis.pop("phase", None)
+        prepared_at = release_basis.pop("prepared_at", None)
+        released_at = release_basis.pop("released_at", None)
+        expected_fields = {
+            "schema",
+            "operation",
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+            "task_status",
+            "claim",
+            "worktree_lifecycle",
+            "task_source_identity",
+            "interrupted_recovery_operation_id",
+            "released_unfinished_attempt",
+        }
+        claim_proof = release_basis.get("claim")
+        lifecycle_proof = release_basis.get("worktree_lifecycle")
+        expected_lifecycle_proof = {
+            "record_id": expected_lifecycle["record_id"],
+            "lease_id": expected_lifecycle["lease_id"],
+            "fence": expected_lifecycle["fence"],
+            "state": expected_lifecycle["state"],
+            "workspace_path": expected_lifecycle["workspace_path"],
+            "terminal_reason": expected_lifecycle["terminal_reason"],
+        }
+        if (
+            set(release_basis) != expected_fields
+            or release_basis.get("schema")
+            != IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA
+            or release_basis.get("operation")
+            != "release_quiesced_implementation_task_claim"
+            or release_basis.get("task_id") != task_id
+            or release_basis.get("canonical_task_cid")
+            != canonical_task_cid
+            or release_basis.get("attempt") != attempt
+            or normalize_status(release_basis.get("task_status") or "")
+            != "todo"
+            or not isinstance(claim_proof, Mapping)
+            or claim_proof.get("path") != str(claim_path)
+            or claim_proof.get("claim_id") != claim_before.get("cid")
+            or claim_proof.get("lease_id") != lease_id
+            or claim_proof.get("owner_pid") != claim.get("pid")
+            or lifecycle_proof != expected_lifecycle_proof
+            or release_basis.get("interrupted_recovery_operation_id")
+            != receipt.get("operation_id")
+            or release_basis.get("released_unfinished_attempt") != evidence
+            or phase != "released"
+            or not isinstance(prepared_at, str)
+            or not prepared_at
+            or not isinstance(released_at, str)
+            or not released_at
+            or operation_id != content_identity(release_basis)
+            or receipt_id != content_identity(release_body)
+        ):
+            return None
+        return {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_task_claim_released",
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "claim_path": str(claim_path),
+            "receipt_id": receipt_id,
+            "receipt_path": str(release_path),
+            "released_unfinished_attempt": evidence,
+        }
+
+    @staticmethod
+    def _interrupted_recovery_lifecycle_index_payload(
+        lifecycle: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "schema": str(lifecycle["schema"]),
+            "workspace_path": str(lifecycle["workspace_path"]),
+            "record_id": str(lifecycle["record_id"]),
+            "task_id": str(lifecycle["task_id"]),
+            "canonical_task_cid": str(
+                lifecycle["canonical_task_cid"]
+            ),
+            "attempt": int(lifecycle["attempt"]),
+            "fence": int(lifecycle["fence"]),
+            "lease_id": str(lifecycle["lease_id"]),
+            "state": str(lifecycle["state"]),
+        }
+
+    def _build_interrupted_recovery_receipt(
+        self,
+        custody: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        predecessor = dict(custody["metadata"])
+        task_id = str(predecessor["task_id"])
+        canonical_task_cid = str(predecessor["canonical_task_cid"])
+        attempt = int(predecessor["attempt"])
+        owner_pid = int(predecessor["pid"])
+        canonical_task_key = str(
+            predecessor.get("canonical_task_key") or ""
+        )
+        board_namespace = str(predecessor.get("board_namespace") or "")
+        started_at = str(predecessor.get("started_at") or "")
+        raw_state = self._load_exact_json_object(self.state_path)
+        state = PortalTaskState.load(self.state_path)
+        if raw_state is None or raw_state != asdict(state):
+            raise RuntimeError("interrupted recovery state is not exact")
+        active_path = self._implementation_protected_active_snapshot_path()
+        marker = self._load_exact_json_object(active_path)
+        if marker is None:
+            raise RuntimeError("interrupted recovery marker is not exact")
+        expected_marker_fields = {
+            "schema",
+            "recorded_at",
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "ephemeral_worktree",
+            "protected_paths",
+            "snapshot",
+        }
+        workspace = str(marker.get("workspace_path") or "")
+        branch = str(state.active_branch or "").removeprefix("refs/heads/")
+        projected_identity = state.task_identities.get(task_id, {})
+        if (
+            set(marker) != expected_marker_fields
+            or marker.get("schema")
+            != "implementation-protected-path-active-v1"
+            or marker.get("task_id") != task_id
+            or type(marker.get("attempt")) is not int
+            or marker.get("attempt") != attempt
+            or not workspace
+            or not branch
+            or state.implementation_in_progress is not True
+            or state.active_task_id != task_id
+            or not canonical_task_key
+            or not board_namespace
+            or not started_at
+            or state.active_task_key != canonical_task_key
+            or state.active_task_cid != canonical_task_cid
+            or state.active_attempt != attempt
+            or normalize_workspace_path(state.active_worktree_path)
+            != normalize_workspace_path(workspace)
+            or state.active_branch.removeprefix("refs/heads/") != branch
+            or state.last_implementation_task_id != task_id
+            or state.last_implementation_task_key != canonical_task_key
+            or state.last_implementation_task_cid != canonical_task_cid
+            or state.last_implementation_started_at != started_at
+            or normalize_workspace_path(state.last_implementation_worktree_path)
+            != normalize_workspace_path(workspace)
+            or state.last_implementation_branch.removeprefix("refs/heads/")
+            != branch
+            or not isinstance(projected_identity, Mapping)
+            or projected_identity.get("display_task_id") != task_id
+            or projected_identity.get("canonical_task_key")
+            != canonical_task_key
+            or projected_identity.get("canonical_task_cid")
+            != canonical_task_cid
+            or projected_identity.get("board_namespace") != board_namespace
+        ):
+            raise RuntimeError("interrupted recovery state/marker identity differs")
+        if self._implementation_protected_incident_path().exists():
+            raise RuntimeError("interrupted recovery incident is already latched")
+        lifecycle_path = self.worktree_lifecycle.workspace_path_for(workspace)
+        lifecycle = self.worktree_lifecycle.load_workspace(workspace)
+        raw_lifecycle = self._load_exact_json_object(lifecycle_path)
+        lifecycle_index_path = (
+            self.worktree_lifecycle.task_index_path_for(
+                canonical_task_cid=canonical_task_cid,
+                task_id=task_id,
+                attempt=attempt,
+            )
+        )
+        raw_lifecycle_index = self._load_exact_json_object(
+            lifecycle_index_path
+        )
+        if (
+            lifecycle is None
+            or raw_lifecycle is None
+            or raw_lifecycle != lifecycle.to_dict()
+            or raw_lifecycle_index
+            != self._interrupted_recovery_lifecycle_index_payload(
+                raw_lifecycle
+            )
+            or lifecycle.record_id != lifecycle.compute_record_id()
+            or lifecycle.task_id != task_id
+            or lifecycle.canonical_task_cid != canonical_task_cid
+            or lifecycle.attempt != attempt
+            or normalize_workspace_path(lifecycle.workspace_path)
+            != normalize_workspace_path(workspace)
+            or lifecycle.branch.removeprefix("refs/heads/") != branch
+            or normalize_workspace_path(lifecycle.repo_root)
+            != normalize_workspace_path(self.repo_root)
+            or normalize_workspace_path(lifecycle.state_dir)
+            != normalize_workspace_path(self.state_path.parent.resolve())
+        ):
+            raise RuntimeError("interrupted recovery lifecycle identity differs")
+        lifecycle_preflight = self._reconcile_quiesced_worktree_lifecycle(
+            state,
+            terminalize=False,
+        )
+        safe_terminal = bool(
+            lifecycle.is_terminal
+            and lifecycle.terminal_reason
+            in INFLIGHT_CONTROLLED_RECOVERY_TERMINAL_REASONS
+        )
+        if not safe_terminal and (
+            lifecycle_preflight.get("reason")
+            != "worktree_lifecycle_dead_owner_reclaimable"
+            or lifecycle_preflight.get("owner_liveness")
+            != OwnerLiveness.DEAD.value
+            or lifecycle.owner.pid != owner_pid
+        ):
+            raise RuntimeError("interrupted recovery lifecycle owner is not dead")
+        try:
+            strict_events = self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+        except CursorReplayError as exc:
+            raise RuntimeError(
+                "interrupted recovery event history is unverifiable"
+            ) from exc
+        starts = []
+        for event in strict_events:
+            raw_attempt = event.get("attempt")
+            if isinstance(raw_attempt, bool):
+                continue
+            try:
+                event_attempt = int(raw_attempt or 0)
+            except (TypeError, ValueError):
+                continue
+            if (
+                event.get("type") == "implementation_started"
+                and str(event.get("task_id") or "") == task_id
+                and event_attempt == attempt
+            ):
+                starts.append(event)
+        if len(starts) != 1:
+            raise RuntimeError("interrupted recovery start event is not unique")
+        start = starts[0]
+        start_sequence = start.get("sequence")
+        if (
+            not isinstance(start_sequence, int)
+            or isinstance(start_sequence, bool)
+            or start_sequence <= 0
+        ):
+            raise RuntimeError(
+                "interrupted recovery start sequence is invalid"
+            )
+        conflicting_later = []
+        for event in strict_events:
+            event_sequence = event.get("sequence")
+            raw_attempt = event.get("attempt")
+            if (
+                not isinstance(event_sequence, int)
+                or isinstance(event_sequence, bool)
+                or event_sequence <= start_sequence
+                or isinstance(raw_attempt, bool)
+            ):
+                continue
+            try:
+                event_attempt = int(raw_attempt or 0)
+            except (TypeError, ValueError):
+                continue
+            if (
+                str(event.get("task_id") or "") == task_id
+                and event_attempt == attempt
+                and event.get("type")
+                in {
+                    "implementation_started",
+                    "implementation_finished",
+                    "implementation_provider_exhausted",
+                    "implementation_shutdown_recovery_closed",
+                    "implementation_state_recovered",
+                    "implementation_terminated",
+                    "implementation_timeout",
+                }
+            ):
+                conflicting_later.append(event)
+        if conflicting_later:
+            raise RuntimeError(
+                "interrupted recovery attempt already has a later outcome"
+            )
+        disposition = self._implementation_inflight_disposition(start)
+        if (
+            disposition.get("disposition")
+            != "controlled_restart_recovery"
+            or self._implementation_runner_process_active(start)
+        ):
+            raise RuntimeError("interrupted recovery worker is not quiescent")
+        if (
+            str(start.get("canonical_task_cid") or "")
+            != canonical_task_cid
+            or str(start.get("canonical_task_key") or "")
+            != canonical_task_key
+            or str(start.get("board_namespace") or "")
+            != board_namespace
+            or normalize_workspace_path(start.get("worktree_path") or "")
+            != normalize_workspace_path(workspace)
+            or str(start.get("branch") or "").removeprefix("refs/heads/")
+            != branch
+        ):
+            raise RuntimeError("interrupted recovery start identity differs")
+        claim = self._interrupted_recovery_claim_evidence(
+            task_id=task_id,
+            canonical_task_cid=canonical_task_cid,
+            attempt=attempt,
+            owner_pid=owner_pid,
+            canonical_task_key=canonical_task_key,
+            board_namespace=board_namespace,
+            started_at=started_at,
+        )
+        recovery_clock = time.time()
+        reconciled_at = datetime.fromtimestamp(
+            recovery_clock,
+            tz=timezone.utc,
+        ).isoformat()
+        state_after, attempt_recovery = self._recovery_state_payload(
+            state,
+            reconciled_at=reconciled_at,
+        )
+        basis = {
+            "predecessor_attempt_lock": dict(custody),
+            "identity": {
+                "repo_root": str(self.repo_root.resolve()),
+                "state_dir": str(self.state_path.parent.resolve()),
+                "state_path": str(self.state_path.resolve()),
+                "task_id": task_id,
+                "canonical_task_cid": canonical_task_cid,
+                "attempt": attempt,
+                "workspace_path": str(Path(workspace).resolve()),
+                "branch": branch,
+            },
+            "state_before": {
+                "cid": interrupted_recovery_content_identity(raw_state),
+                "payload": raw_state,
+            },
+            "marker_before": {
+                "cid": interrupted_recovery_content_identity(marker),
+                "payload": marker,
+            },
+            "lifecycle_before": {
+                "cid": interrupted_recovery_content_identity(raw_lifecycle),
+                "payload": raw_lifecycle,
+            },
+            "lifecycle_task_index_before": {
+                "path": str(lifecycle_index_path),
+                "cid": interrupted_recovery_content_identity(
+                    raw_lifecycle_index
+                ),
+                "payload": raw_lifecycle_index,
+            },
+            "task_claim_before": claim,
+            "start_event": {
+                "cid": interrupted_recovery_content_identity(start),
+                "payload": start,
+            },
+            "recovery_clock": recovery_clock,
+            "reconciled_at": reconciled_at,
+        }
+        operation_id = interrupted_recovery_content_identity(basis)
+        if lifecycle.is_terminal:
+            lifecycle_after = raw_lifecycle
+        else:
+            lifecycle_after = replace(
+                lifecycle,
+                state=WorkspaceLifecycleState.TERMINAL,
+                owner=lifecycle.owner,
+                lease_id=(
+                    "interrupted-recovery-"
+                    + hashlib.sha256(operation_id.encode("utf-8")).hexdigest()
+                ),
+                fence=lifecycle.fence + 1,
+                updated_at=recovery_clock,
+                expires_at=recovery_clock,
+                terminal_reason="controlled_shutdown_quiesced_owner",
+            ).to_dict()
+        lifecycle_index_after = (
+            self._interrupted_recovery_lifecycle_index_payload(
+                lifecycle_after
+            )
+        )
+        expected_after = {
+            "marker_tombstone_path": str(
+                self._interrupted_implementation_marker_tombstone_path(
+                    operation_id
+                )
+            ),
+            "marker_cid": interrupted_recovery_content_identity(marker),
+            "lifecycle": {
+                "cid": interrupted_recovery_content_identity(lifecycle_after),
+                "payload": lifecycle_after,
+            },
+            "lifecycle_task_index": {
+                "path": str(lifecycle_index_path),
+                "cid": interrupted_recovery_content_identity(
+                    lifecycle_index_after
+                ),
+                "payload": lifecycle_index_after,
+            },
+            "state": {
+                "cid": interrupted_recovery_content_identity(state_after),
+                "payload": state_after,
+            },
+            "attempt_recovery": attempt_recovery,
+        }
+        body = {
+            "schema": INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA,
+            "phase": "prepared",
+            "operation_id": operation_id,
+            "basis": basis,
+            "expected_after": expected_after,
+            "prepared_at": reconciled_at,
+        }
+        receipt = {
+            **body,
+            "receipt_id": interrupted_recovery_content_identity(body),
+        }
+        self._durable_private_json(
+            self._interrupted_implementation_recovery_receipt_path(),
+            receipt,
+        )
+        if self._load_private_interrupted_recovery_receipt() != receipt:
+            raise RuntimeError("interrupted recovery receipt publication changed")
+        return receipt
+
+    def _validate_interrupted_recovery_intermediate(
+        self,
+        receipt: Mapping[str, Any],
+        custody: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if receipt.get("phase") != "prepared":
+            raise RuntimeError("interrupted recovery is not prepared")
+        basis = dict(receipt["basis"])
+        expected = dict(receipt["expected_after"])
+        if basis.get("predecessor_attempt_lock") != dict(custody):
+            raise RuntimeError("interrupted recovery predecessor custody changed")
+        identity = basis.get("identity")
+        if not isinstance(identity, Mapping):
+            raise RuntimeError("interrupted recovery identity is malformed")
+        if (
+            normalize_workspace_path(identity.get("repo_root") or "")
+            != normalize_workspace_path(self.repo_root)
+            or normalize_workspace_path(identity.get("state_dir") or "")
+            != normalize_workspace_path(self.state_path.parent.resolve())
+            or normalize_workspace_path(identity.get("state_path") or "")
+            != normalize_workspace_path(self.state_path.resolve())
+        ):
+            raise RuntimeError("interrupted recovery lane identity changed")
+        marker_before = dict(basis["marker_before"])
+        active_path = self._implementation_protected_active_snapshot_path()
+        tombstone_path = Path(str(expected["marker_tombstone_path"]))
+        active = self._load_exact_json_object(active_path)
+        tombstone = self._load_exact_json_object(tombstone_path)
+        marker_state = ""
+        if active == marker_before.get("payload") and tombstone is None:
+            marker_state = "before"
+        elif active is None and tombstone == marker_before.get("payload"):
+            marker_state = "retired"
+        else:
+            raise RuntimeError("interrupted recovery marker state diverged")
+        state_current = self._load_exact_json_object(self.state_path)
+        state_before = dict(basis["state_before"])["payload"]
+        state_after = dict(expected["state"])["payload"]
+        if state_current == state_before:
+            state_phase = "before"
+        elif state_current == state_after:
+            state_phase = "after"
+        else:
+            raise RuntimeError("interrupted recovery task state diverged")
+        lifecycle_before = dict(basis["lifecycle_before"])["payload"]
+        lifecycle_after = dict(expected["lifecycle"])["payload"]
+        lifecycle_index_before = dict(
+            basis["lifecycle_task_index_before"]
+        )
+        lifecycle_index_after = dict(
+            expected["lifecycle_task_index"]
+        )
+        lifecycle_path = self.worktree_lifecycle.workspace_path_for(
+            str(identity["workspace_path"])
+        )
+        lifecycle_index_path = self.worktree_lifecycle.task_index_path_for(
+            canonical_task_cid=str(identity["canonical_task_cid"]),
+            task_id=str(identity["task_id"]),
+            attempt=int(identity["attempt"]),
+        )
+        if (
+            Path(str(lifecycle_index_before.get("path") or ""))
+            != lifecycle_index_path
+            or Path(str(lifecycle_index_after.get("path") or ""))
+            != lifecycle_index_path
+            or lifecycle_index_before.get("cid")
+            != interrupted_recovery_content_identity(
+                lifecycle_index_before.get("payload")
+            )
+            or lifecycle_index_after.get("cid")
+            != interrupted_recovery_content_identity(
+                lifecycle_index_after.get("payload")
+            )
+        ):
+            raise RuntimeError(
+                "interrupted recovery lifecycle index binding changed"
+            )
+        lifecycle_current = self._load_exact_json_object(lifecycle_path)
+        lifecycle_index_current = self._load_exact_json_object(
+            lifecycle_index_path
+        )
+        if (
+            lifecycle_current == lifecycle_after
+            and lifecycle_index_current
+            == lifecycle_index_after.get("payload")
+        ):
+            lifecycle_phase = "after"
+        elif (
+            lifecycle_current == lifecycle_after
+            and lifecycle_index_current
+            == lifecycle_index_before.get("payload")
+        ):
+            lifecycle_phase = "record_after"
+        elif (
+            lifecycle_current == lifecycle_before
+            and lifecycle_index_current
+            == lifecycle_index_before.get("payload")
+        ):
+            lifecycle_phase = "before"
+        else:
+            raise RuntimeError("interrupted recovery lifecycle diverged")
+        claim_before = dict(basis["task_claim_before"])
+        claim_path = Path(str(claim_before["path"]))
+        claim_current = self._load_exact_json_object(claim_path)
+        if claim_before.get("present") is True:
+            if claim_current == claim_before.get("payload"):
+                claim_phase = "before"
+            elif claim_current is None and not claim_path.exists():
+                claim_phase = "released"
+            else:
+                raise RuntimeError("interrupted recovery task claim diverged")
+        else:
+            if claim_current is not None or claim_path.exists():
+                raise RuntimeError("interrupted recovery task claim appeared")
+            claim_phase = "before"
+        close_events = [
+            event
+            for event in self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+            if event.get("type")
+            == "implementation_shutdown_recovery_closed"
+            and event.get("operation_id") == receipt.get("operation_id")
+        ]
+        if len(close_events) > 1:
+            raise RuntimeError("interrupted recovery close event is duplicated")
+        close_phase = "after" if close_events else "before"
+        allowed = {
+            ("before", "before", "before", "before", "before"),
+            ("before", "after", "before", "before", "before"),
+            ("retired", "before", "before", "before", "before"),
+            ("retired", "record_after", "before", "before", "before"),
+            ("retired", "after", "before", "before", "before"),
+            ("retired", "after", "before", "before", "after"),
+            ("retired", "after", "after", "before", "after"),
+            ("retired", "after", "after", "released", "after"),
+        }
+        phases = (
+            marker_state,
+            lifecycle_phase,
+            state_phase,
+            claim_phase,
+            close_phase,
+        )
+        if phases not in allowed:
+            raise RuntimeError(
+                "interrupted recovery artifact phases are not monotonic: "
+                + repr(phases)
+            )
+        return {
+            "marker": marker_state,
+            "lifecycle": lifecycle_phase,
+            "state": state_phase,
+            "claim": claim_phase,
+            "close_event": close_phase,
+        }
+
+    def _retire_interrupted_recovery_marker(
+        self,
+        receipt: Mapping[str, Any],
+        *,
+        task_id: str,
+        attempt: int,
+        reason: str,
+    ) -> bool:
+        basis = dict(receipt["basis"])
+        expected = dict(receipt["expected_after"])
+        active_path = self._implementation_protected_active_snapshot_path()
+        tombstone_path = Path(str(expected["marker_tombstone_path"]))
+        before = dict(basis["marker_before"])["payload"]
+        if (
+            task_id != dict(basis["identity"])["task_id"]
+            or attempt != dict(basis["identity"])["attempt"]
+            or self._load_exact_json_object(active_path) != before
+            or tombstone_path.exists()
+        ):
+            return False
+        self._rename_without_replace(active_path, tombstone_path)
+        if (
+            active_path.exists()
+            or self._load_exact_json_object(tombstone_path) != before
+        ):
+            return False
+        self._record_event(
+            "implementation_protected_path_snapshot_cleared",
+            {
+                "task_id": task_id,
+                "attempt": attempt,
+                "reason": reason,
+                "recovery_operation_id": receipt["operation_id"],
+                "tombstone_path": str(tombstone_path),
+            },
+        )
+        return True
+
+    def _ensure_interrupted_recovery_close_event(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        operation_id = str(receipt["operation_id"])
+        expected = self._interrupted_recovery_close_event_payload(receipt)
+        matches = [
+            event
+            for event in self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+            if event.get("type")
+            == "implementation_shutdown_recovery_closed"
+            and event.get("operation_id") == operation_id
+        ]
+        if not matches:
+            self._record_event(
+                "implementation_shutdown_recovery_closed",
+                expected,
+            )
+            matches = [
+                event
+                for event in self._iter_merge_lifecycle_events(
+                    require_canonical_raw=True,
+                )
+                if event.get("type")
+                == "implementation_shutdown_recovery_closed"
+                and event.get("operation_id") == operation_id
+            ]
+        if len(matches) != 1 or any(
+            matches[0].get(key) != value
+            for key, value in expected.items()
+        ):
+            raise RuntimeError("interrupted recovery close event changed")
+        return matches[0]
+
+    @staticmethod
+    def _interrupted_recovery_close_event_payload(
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        identity = dict(receipt["basis"])["identity"]
+        return {
+            "operation_id": str(receipt["operation_id"]),
+            "task_id": identity["task_id"],
+            "canonical_task_cid": identity["canonical_task_cid"],
+            "attempt": identity["attempt"],
+            "worktree_path": identity["workspace_path"],
+            "branch": identity["branch"],
+            "predecessor_lock_sha256": dict(
+                dict(receipt["basis"])["predecessor_attempt_lock"]
+            )["sha256"],
+        }
+
+    def _ensure_interrupted_state_recovered_event(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected = self._interrupted_state_recovered_event_payload(receipt)
+        matches = [
+            event
+            for event in self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+            if event.get("type") == "implementation_state_recovered"
+            and event.get("interrupted_recovery_operation_id")
+            == receipt["operation_id"]
+        ]
+        if not matches:
+            self._record_event("implementation_state_recovered", expected)
+            matches = [
+                event
+                for event in self._iter_merge_lifecycle_events(
+                    require_canonical_raw=True,
+                )
+                if event.get("type") == "implementation_state_recovered"
+                and event.get("interrupted_recovery_operation_id")
+                == receipt["operation_id"]
+            ]
+        if len(matches) != 1 or any(
+            matches[0].get(key) != value
+            for key, value in expected.items()
+        ):
+            raise RuntimeError("interrupted state recovery event changed")
+        return matches[0]
+
+    @staticmethod
+    def _interrupted_state_recovered_event_payload(
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        basis = dict(receipt["basis"])
+        identity = dict(basis["identity"])
+        predecessor = dict(basis["predecessor_attempt_lock"])["metadata"]
+        return {
+            "task_id": identity["task_id"],
+            "canonical_task_key": str(
+                predecessor.get("canonical_task_key") or ""
+            ),
+            "canonical_task_cid": identity["canonical_task_cid"],
+            "board_namespace": str(
+                predecessor.get("board_namespace") or ""
+            ),
+            "attempt": identity["attempt"],
+            "reason": "inflight_process_missing",
+            "worktree_path": identity["workspace_path"],
+            "branch": identity["branch"],
+            "attempt_recovery": dict(receipt["expected_after"])[
+                "attempt_recovery"
+            ],
+            "finished_attempt": False,
+            "interrupted_recovery_operation_id": receipt["operation_id"],
+        }
+
+    def _complete_interrupted_recovery_receipt(
+        self,
+        receipt: Mapping[str, Any],
+        *,
+        task_claim_reconciliation: Mapping[str, Any],
+        close_event: Mapping[str, Any],
+        state_recovered_event: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        expected = dict(receipt["expected_after"])
+        tombstone_path = Path(str(expected["marker_tombstone_path"]))
+        tombstone = self._load_exact_json_object(tombstone_path)
+        identity = dict(receipt["basis"])["identity"]
+        lifecycle_path = self.worktree_lifecycle.workspace_path_for(
+            str(identity["workspace_path"])
+        )
+        lifecycle_index_path = self.worktree_lifecycle.task_index_path_for(
+            canonical_task_cid=str(identity["canonical_task_cid"]),
+            task_id=str(identity["task_id"]),
+            attempt=int(identity["attempt"]),
+        )
+        lifecycle = self._load_exact_json_object(lifecycle_path)
+        lifecycle_index = self._load_exact_json_object(
+            lifecycle_index_path
+        )
+        state = self._load_exact_json_object(self.state_path)
+        if (
+            tombstone is None
+            or interrupted_recovery_content_identity(tombstone)
+            != expected["marker_cid"]
+            or lifecycle != dict(expected["lifecycle"])["payload"]
+            or lifecycle_index
+            != dict(expected["lifecycle_task_index"])["payload"]
+            or state != dict(expected["state"])["payload"]
+            or task_claim_reconciliation.get("blocked") is True
+            or task_claim_reconciliation.get("reason")
+            not in {"quiesced_task_claim_released", "no_task_claim"}
+        ):
+            raise RuntimeError("interrupted recovery final proof is incomplete")
+        final_proof = {
+            "marker_tombstone_path": str(tombstone_path),
+            "marker_cid": interrupted_recovery_content_identity(tombstone),
+            "lifecycle_path": str(lifecycle_path),
+            "lifecycle_cid": interrupted_recovery_content_identity(lifecycle),
+            "lifecycle_index_path": str(lifecycle_index_path),
+            "lifecycle_index_cid": interrupted_recovery_content_identity(
+                lifecycle_index
+            ),
+            "state_path": str(self.state_path),
+            "state_cid": interrupted_recovery_content_identity(state),
+            "task_claim_reason": str(
+                task_claim_reconciliation.get("reason") or ""
+            ),
+            "task_claim_receipt_id": str(
+                task_claim_reconciliation.get("receipt_id") or ""
+            ),
+            "close_event_id": str(close_event.get("event_id") or ""),
+            "close_event_cid": interrupted_recovery_content_identity(
+                close_event
+            ),
+            "state_recovered_event_id": str(
+                state_recovered_event.get("event_id") or ""
+            ),
+            "state_recovered_event_cid": (
+                interrupted_recovery_content_identity(
+                    state_recovered_event
+                )
+            ),
+        }
+        completion = {
+            "final_proof": final_proof,
+            "final_proof_id": interrupted_recovery_content_identity(
+                final_proof
+            ),
+        }
+        body = {
+            "schema": INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA,
+            "phase": "completed",
+            "operation_id": receipt["operation_id"],
+            "basis": receipt["basis"],
+            "expected_after": receipt["expected_after"],
+            "prepared_at": receipt["prepared_at"],
+            "completed_at": utc_now(),
+            "completion": completion,
+        }
+        completed = {
+            **body,
+            "receipt_id": interrupted_recovery_content_identity(body),
+        }
+        self._durable_private_json(
+            self._interrupted_implementation_recovery_receipt_path(),
+            completed,
+        )
+        if self._load_private_interrupted_recovery_receipt() != completed:
+            raise RuntimeError("interrupted recovery completion changed")
+        return completed
+
+    def _completed_interrupted_recovery_is_current(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        try:
+            basis = dict(receipt["basis"])
+            expected = dict(receipt["expected_after"])
+            identity = dict(basis["identity"])
+            completion = dict(receipt["completion"])
+            final_proof = dict(completion["final_proof"])
+            tombstone_path = Path(str(expected["marker_tombstone_path"]))
+            lifecycle_path = self.worktree_lifecycle.workspace_path_for(
+                str(identity["workspace_path"])
+            )
+            lifecycle_index_path = (
+                self.worktree_lifecycle.task_index_path_for(
+                    canonical_task_cid=str(
+                        identity["canonical_task_cid"]
+                    ),
+                    task_id=str(identity["task_id"]),
+                    attempt=int(identity["attempt"]),
+                )
+            )
+            state = self._load_exact_json_object(self.state_path)
+            lifecycle = self._load_exact_json_object(lifecycle_path)
+            lifecycle_index = self._load_exact_json_object(
+                lifecycle_index_path
+            )
+            marker = self._load_exact_json_object(tombstone_path)
+            claim_before = dict(basis["task_claim_before"])
+            claim_path = Path(str(claim_before["path"]))
+            start_before = dict(basis["start_event"])
+            start_payload = dict(start_before["payload"])
+            events = self._iter_merge_lifecycle_events(
+                require_canonical_raw=True,
+            )
+            claim_release = (
+                self._interrupted_recovery_released_claim_result(
+                    PortalTaskState(**state),
+                    receipt,
+                )
+                if claim_before.get("present") is True
+                else None
+            )
+        except (CursorReplayError, KeyError, OSError, TypeError, ValueError):
+            return False
+        close_expected = self._interrupted_recovery_close_event_payload(
+            receipt
+        )
+        recovered_expected = (
+            self._interrupted_state_recovered_event_payload(receipt)
+        )
+        starts = [
+            event
+            for event in events
+            if event == start_payload
+            and event.get("event_id") == start_payload.get("event_id")
+            and interrupted_recovery_content_identity(event)
+            == start_before.get("cid")
+        ]
+        close = [
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_shutdown_recovery_closed"
+            and event.get("operation_id") == receipt.get("operation_id")
+            and event.get("event_id") == final_proof.get("close_event_id")
+            and interrupted_recovery_content_identity(event)
+            == final_proof.get("close_event_cid")
+            and all(
+                event.get(key) == value
+                for key, value in close_expected.items()
+            )
+        ]
+        recovered = [
+            event
+            for event in events
+            if event.get("type") == "implementation_state_recovered"
+            and event.get("interrupted_recovery_operation_id")
+            == receipt.get("operation_id")
+            and event.get("event_id")
+            == final_proof.get("state_recovered_event_id")
+            and interrupted_recovery_content_identity(event)
+            == final_proof.get("state_recovered_event_cid")
+            and all(
+                event.get(key) == value
+                for key, value in recovered_expected.items()
+            )
+        ]
+        expected_claim_reason = (
+            "quiesced_task_claim_released"
+            if claim_before.get("present") is True
+            else "no_task_claim"
+        )
+        return bool(
+            self._implementation_protected_active_snapshot_path().exists()
+            is False
+            and self._implementation_protected_incident_path().exists()
+            is False
+            and not claim_path.exists()
+            and len(starts) == 1
+            and str(tombstone_path)
+            == final_proof.get("marker_tombstone_path")
+            and marker == dict(basis["marker_before"])["payload"]
+            and interrupted_recovery_content_identity(marker)
+            == expected["marker_cid"]
+            == final_proof.get("marker_cid")
+            and lifecycle == dict(expected["lifecycle"])["payload"]
+            and str(lifecycle_path) == final_proof.get("lifecycle_path")
+            and interrupted_recovery_content_identity(lifecycle)
+            == dict(expected["lifecycle"])["cid"]
+            == final_proof.get("lifecycle_cid")
+            and lifecycle_index
+            == dict(expected["lifecycle_task_index"])["payload"]
+            and str(lifecycle_index_path)
+            == final_proof.get("lifecycle_index_path")
+            and interrupted_recovery_content_identity(lifecycle_index)
+            == dict(expected["lifecycle_task_index"])["cid"]
+            == final_proof.get("lifecycle_index_cid")
+            and state == dict(expected["state"])["payload"]
+            and str(self.state_path) == final_proof.get("state_path")
+            and interrupted_recovery_content_identity(state)
+            == dict(expected["state"])["cid"]
+            == final_proof.get("state_cid")
+            and len(close) == 1
+            and len(recovered) == 1
+            and final_proof.get("task_claim_reason")
+            == expected_claim_reason
+            and (
+                (
+                    isinstance(claim_release, Mapping)
+                    and final_proof.get("task_claim_receipt_id")
+                    == claim_release.get("receipt_id")
+                )
+                if claim_before.get("present") is True
+                else not final_proof.get("task_claim_receipt_id")
+            )
+            and completion.get("final_proof_id")
+            == interrupted_recovery_content_identity(final_proof)
+        )
+
+    def _interrupted_recovery_checkpoint(self, _phase: str) -> None:
+        """Test seam for injected process loss between durable phases."""
+
     def reconcile_quiesced_active_attempt(
+        self,
+        *,
+        preacquired_implementation_lock: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Journal and resume one exactly bound dead implementation attempt."""
+
+        # Compatibility path for historical, non-journaled supervisor state.
+        # The strict restart protocol is selected only when acquisition has
+        # captured an exact private predecessor lock. Direct callers and
+        # legacy markers retain the established fail-closed reconciliation
+        # semantics and result reasons.
+        if not isinstance(preacquired_implementation_lock, Mapping) or not (
+            preacquired_implementation_lock.get("predecessor_attempt_lock")
+        ):
+            return self._legacy_reconcile_quiesced_active_attempt(
+                preacquired_implementation_lock=(
+                    preacquired_implementation_lock
+                ),
+            )
+
+        lock_path = self._implementation_lock_path()
+        lock = self._load_exact_json_object(lock_path)
+        expected_lock = dict(preacquired_implementation_lock or {})
+        try:
+            expected_pid = int(expected_lock.get("pid") or 0)
+        except (TypeError, ValueError):
+            expected_pid = 0
+        if (
+            not expected_lock
+            or lock != expected_lock
+            or expected_lock.get("lease_role") != "supervisor_maintenance"
+            or not str(expected_lock.get("lease_id") or "")
+            or expected_pid != os.getpid()
+            or not self._implementation_lock_owner_is_active(expected_lock)
+        ):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "preacquired_implementation_lock_mismatch",
+                "lock_path": str(lock_path),
+            }
+        custody = self._validated_interrupted_recovery_custody(
+            expected_lock
+        )
+        if custody is None:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "predecessor_implementation_lock_custody_invalid",
+                "lock_path": str(lock_path),
+            }
+        receipt = self._load_private_interrupted_recovery_receipt()
+        if receipt is None:
+            receipt = self._build_interrupted_recovery_receipt(custody)
+        elif dict(receipt["basis"]).get(
+            "predecessor_attempt_lock"
+        ) != dict(custody):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "interrupted_recovery_predecessor_custody_changed",
+                "lock_path": str(lock_path),
+            }
+        if receipt.get("phase") == "completed":
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "quiesced_active_attempt_already_reconciled",
+                "operation_id": str(receipt.get("operation_id") or ""),
+                "receipt_id": str(receipt.get("receipt_id") or ""),
+                "receipt_path": str(
+                    self._interrupted_implementation_recovery_receipt_path()
+                ),
+            }
+
+        phases = self._validate_interrupted_recovery_intermediate(
+            receipt,
+            custody,
+        )
+        basis = dict(receipt["basis"])
+        expected_after = dict(receipt["expected_after"])
+        identity = dict(basis["identity"])
+        start_event = dict(basis["start_event"])["payload"]
+        predecessor = dict(basis["predecessor_attempt_lock"])["metadata"]
+        if (
+            self._interrupted_recovery_pid_liveness(
+                int(predecessor["pid"])
+            )
+            != "dead"
+            or self._implementation_runner_process_active(start_event)
+            or self._implementation_protected_incident_path().exists()
+        ):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "interrupted_implementation_owner_not_quiescent",
+                "operation_id": receipt["operation_id"],
+            }
+
+        if phases["marker"] == "before":
+            protected_path_reconciliation = (
+                self._reconcile_implementation_protected_path_fence(
+                    protected_path_recovery_io={
+                        "retire_active_snapshot": (
+                            lambda **kwargs: (
+                                self._retire_interrupted_recovery_marker(
+                                    receipt,
+                                    **kwargs,
+                                )
+                            )
+                        )
+                    },
+                )
+            )
+            if protected_path_reconciliation.get("blocked", False):
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "protected_path_reconciliation_blocked",
+                    "protected_path_reconciliation": (
+                        protected_path_reconciliation
+                    ),
+                    "operation_id": receipt["operation_id"],
+                }
+            self._interrupted_recovery_checkpoint("marker_retired")
+            phases = self._validate_interrupted_recovery_intermediate(
+                receipt,
+                custody,
+            )
+        else:
+            protected_path_reconciliation = {
+                "blocked": False,
+                "reason": "crash_reconciliation_marker_already_retired",
+            }
+
+        if phases["lifecycle"] == "before":
+            lifecycle_before = dict(basis["lifecycle_before"])["payload"]
+            expected_lifecycle = dict(expected_after["lifecycle"])[
+                "payload"
+            ]
+            if lifecycle_before != expected_lifecycle:
+                terminal = (
+                    self.worktree_lifecycle
+                    .reclaim_dead_owner_for_controlled_restart(
+                        identity["workspace_path"],
+                        expected_state_dir=identity["state_dir"],
+                        reclaimer_lease_id=str(
+                            expected_lifecycle["lease_id"]
+                        ),
+                        reclaimer=ProcessBirthIdentity.from_dict(
+                            lifecycle_before["owner"]
+                        ),
+                        reason="controlled_shutdown_quiesced_owner",
+                        now=float(basis["recovery_clock"]),
+                    )
+                )
+                if terminal is None or terminal.to_dict() != expected_lifecycle:
+                    return {
+                        "reconciled": False,
+                        "blocked": True,
+                        "reason": "worktree_lifecycle_reconciliation_blocked",
+                        "operation_id": receipt["operation_id"],
+                    }
+            phases = self._validate_interrupted_recovery_intermediate(
+                receipt,
+                custody,
+            )
+
+        if phases["lifecycle"] == "record_after":
+            lifecycle_index_before = dict(
+                basis["lifecycle_task_index_before"]
+            )
+            lifecycle_index_after = dict(
+                expected_after["lifecycle_task_index"]
+            )
+            lifecycle_index_path = Path(
+                str(lifecycle_index_after["path"])
+            )
+            with serialized_lock_update(lifecycle_index_path):
+                if self._load_exact_json_object(
+                    lifecycle_index_path
+                ) != lifecycle_index_before["payload"]:
+                    return {
+                        "reconciled": False,
+                        "blocked": True,
+                        "reason": (
+                            "worktree_lifecycle_index_reconciliation_blocked"
+                        ),
+                        "operation_id": receipt["operation_id"],
+                    }
+                write_json_atomic(
+                    lifecycle_index_path,
+                    lifecycle_index_after["payload"],
+                )
+            phases = self._validate_interrupted_recovery_intermediate(
+                receipt,
+                custody,
+            )
+
+        close_event = self._ensure_interrupted_recovery_close_event(receipt)
+        phases = self._validate_interrupted_recovery_intermediate(
+            receipt,
+            custody,
+        )
+        if phases["state"] == "before":
+            write_json_atomic(
+                self.state_path,
+                dict(expected_after["state"])["payload"],
+            )
+            if self._load_exact_json_object(self.state_path) != dict(
+                expected_after["state"]
+            )["payload"]:
+                raise RuntimeError("interrupted recovery state CAS changed")
+            self._interrupted_recovery_checkpoint("state_cleared")
+        state_recovered_event = (
+            self._ensure_interrupted_state_recovered_event(receipt)
+        )
+        state = PortalTaskState.load(self.state_path)
+        task_claim_reconciliation = (
+            self._reconcile_quiesced_implementation_task_claim(
+                state,
+                interrupted_recovery_receipt=receipt,
+            )
+        )
+        if task_claim_reconciliation.get("blocked", False):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "task_claim_reconciliation_blocked",
+                "task_claim_reconciliation": task_claim_reconciliation,
+                "operation_id": receipt["operation_id"],
+            }
+        self._interrupted_recovery_checkpoint("claim_released")
+        phases = self._validate_interrupted_recovery_intermediate(
+            receipt,
+            custody,
+        )
+        completed_receipt = self._complete_interrupted_recovery_receipt(
+            receipt,
+            task_claim_reconciliation=task_claim_reconciliation,
+            close_event=close_event,
+            state_recovered_event=state_recovered_event,
+        )
+        if self._load_exact_json_object(lock_path) != expected_lock:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "preacquired_implementation_lock_changed",
+                "operation_id": receipt["operation_id"],
+            }
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_active_attempt_reconciled",
+            "operation_id": receipt["operation_id"],
+            "receipt_id": completed_receipt["receipt_id"],
+            "receipt_path": str(
+                self._interrupted_implementation_recovery_receipt_path()
+            ),
+            "task_id": identity["task_id"],
+            "canonical_task_cid": identity["canonical_task_cid"],
+            "attempt": identity["attempt"],
+            "attempt_recovery": expected_after["attempt_recovery"],
+            "task_claim_reconciliation": task_claim_reconciliation,
+            "protected_path_reconciliation": protected_path_reconciliation,
+            "worktree_lifecycle_reconciliation": {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "worktree_lifecycle_dead_owner_terminalized",
+                "record_id": dict(expected_after["lifecycle"])["payload"][
+                    "record_id"
+                ],
+            },
+            "recovery_phases": phases,
+            "stale_lock_cleared": False,
+        }
+        self._record_event("implementation_shutdown_reconciled", result)
+        return result
+
+    def _legacy_reconcile_quiesced_active_attempt(
         self,
         *,
         preacquired_implementation_lock: Mapping[str, Any] | None = None,
@@ -73367,6 +75297,7 @@ class PortalImplementationDaemon:
                 "implementation_finished",
                 "implementation_provider_exhausted",
                 "implementation_state_recovered",
+                "implementation_shutdown_recovery_closed",
             }:
                 inflight.pop(key, None)
 
@@ -73964,7 +75895,11 @@ class PortalImplementationDaemon:
         self._events_cache_data = data
         return data
 
-    def _iter_merge_lifecycle_events(self) -> list[dict[str, Any]]:
+    def _iter_merge_lifecycle_events(
+        self,
+        *,
+        require_canonical_raw: bool = False,
+    ) -> list[dict[str, Any]]:
         """Strictly replay the retained active and rotated lifecycle history.
 
         General supervisor events predate the float-free control-contract
@@ -74026,6 +75961,7 @@ class PortalImplementationDaemon:
             ) from exc
 
         cache_key = (
+            require_canonical_raw,
             str(manifest.get("manifest_digest") or ""),
             tuple(source_cache_key),
         )
@@ -74046,6 +75982,17 @@ class PortalImplementationDaemon:
         event_ids_by_sequence: dict[int, str] = {}
         latest_sequence = 0
         latest_event_id = ""
+
+        def unique_object(
+            pairs: list[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
         try:
             for source in sources:
                 record = manifest_records[source.name]
@@ -74064,10 +76011,18 @@ class PortalImplementationDaemon:
                             continue
                         source_event_count += 1
                         try:
-                            raw_event = json.loads(raw_line)
+                            raw_event = json.loads(
+                                raw_line,
+                                object_pairs_hook=(
+                                    unique_object
+                                    if require_canonical_raw
+                                    else None
+                                ),
+                            )
                         except (
                             UnicodeDecodeError,
                             json.JSONDecodeError,
+                            ValueError,
                         ) as exc:
                             raise CursorReplayError(
                                 "merge lifecycle event source contains "
@@ -74092,6 +76047,18 @@ class PortalImplementationDaemon:
                             and str(raw_event.get("snapshot_id") or "")
                             == snapshot_id
                         )
+                        if require_canonical_raw and not canonical:
+                            raise CursorReplayError(
+                                "merge lifecycle strict replay contains a "
+                                "non-canonical event envelope"
+                            )
+                        if require_canonical_raw and str(
+                            raw_event.get("previous_event_id") or ""
+                        ) != source_previous_event_id:
+                            raise CursorReplayError(
+                                "merge lifecycle strict replay contains a "
+                                "broken physical hash chain"
+                            )
                         sequence = (
                             int(raw_sequence)
                             if canonical
@@ -74136,6 +76103,11 @@ class PortalImplementationDaemon:
                             + hashlib.sha256(identity_bytes).hexdigest()
                         )
                         event_id = str(event.get("event_id") or "")
+                        if require_canonical_raw and not event_id:
+                            raise CursorReplayError(
+                                "merge lifecycle strict replay contains an "
+                                "event without an original event_id"
+                            )
                         if event_id and event_id != expected_event_id:
                             raise CursorReplayError(
                                 f"merge lifecycle event {sequence} has "

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -13,6 +15,9 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.merge import checkout_lock as checkout_lock_module
+from ipfs_accelerate_py.agent_supervisor.merge import (
+    worktree_lifecycle as worktree_lifecycle_module,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     serialized_lock_update,
 )
@@ -335,6 +340,204 @@ def _persist_stale_implementation_lock(
     payload["pid"] = 2**30 - 7
     lock_path.write_text(json.dumps(payload), encoding="utf-8")
     return lock_path
+
+
+def _stub_supervisor_maintenance_tail(
+    supervisor: PortalImplementationSupervisor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for method_name in (
+        "detect_stale_worktrees",
+        "reconcile_orphaned_worktree_pool_metadata",
+        "repair_stale_active_execution_state",
+        "release_completed_leftover_execution",
+        "repair_main_checkout_merge_state",
+        "repair_generated_dirty_checkouts",
+        "reconcile_backlogged_worktrees",
+        "recover_already_merged_reconciliation_candidates",
+        "cleanup_backlogged_worktrees",
+        "ensure_strategy_file",
+        "ensure_todo_board_for_refill",
+        "migrate_legacy_objective_goal_completion",
+        "reconcile_objective_task_janitor",
+    ):
+        monkeypatch.setattr(
+            supervisor,
+            method_name,
+            lambda *_args, **_kwargs: {},
+        )
+    for method_name in (
+        "record_reconciliation_guardrails",
+        "release_completed_guardrail_blocks",
+        "record_retry_budget_guardrails",
+        "record_dependency_guardrails",
+    ):
+        monkeypatch.setattr(
+            supervisor,
+            method_name,
+            lambda *_args, **_kwargs: [],
+        )
+    monkeypatch.setattr(
+        supervisor,
+        "is_stuck",
+        lambda *_args, **_kwargs: (False, ""),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda *_args, **_kwargs: None,
+    )
+
+
+def _persist_live_shaped_interrupted_attempt(
+    daemon: PortalImplementationDaemon,
+    *,
+    workspace: Path,
+    dead_pid: int = 2**30 - 7,
+) -> tuple[PortalTask, Path, Path]:
+    daemon.events_path = daemon.state_path.parent / "portal_events.jsonl"
+    daemon.todo_path.write_text(
+        """# Tasks
+
+## PORTAL-001 Example implementation
+
+- Status: ready
+- Completion: manual
+- Priority: P1
+- Track: quality
+- Outputs: src/example.py
+""",
+        encoding="utf-8",
+    )
+    tasks = daemon._load_tasks()
+    assert len(tasks) == 1
+    task = replace(tasks[0], status="ready")
+    # The live board row is ready. The compatibility Markdown adapter used by
+    # this narrow fixture projects unsealed legacy rows as todo, so retain the
+    # exact source identity while modeling the authoritative ready status.
+    daemon._register_task_identities(tasks)
+    identity = daemon._identity_for_task(task)
+    started_at = "2026-08-26T00:00:00+00:00"
+    branch = "lane"
+    log_path = daemon.state_path.parent / "implementation-PORTAL-001-a1.log"
+    dead_owner = ProcessBirthIdentity(
+        pid=dead_pid,
+        start_time_ticks=1,
+        boot_id="dead-owner",
+    )
+
+    _seed_active_lifecycle(
+        daemon,
+        task,
+        workspace,
+        dead_owner,
+    )
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    state = PortalTaskState()
+    state.implementation_in_progress = True
+    state.active_task_id = task.task_id
+    state.active_task_key = identity.canonical_task_key
+    state.active_task_cid = identity.canonical_task_cid
+    state.active_task_title = task.title
+    state.active_task_track = task.track
+    state.active_task_started_at = started_at
+    state.active_attempt = 1
+    state.active_phase = "implementing"
+    state.active_phase_started_at = started_at
+    state.active_log_path = str(log_path)
+    state.active_worktree_path = str(workspace)
+    state.active_branch = branch
+    state.ready_task_ids = [task.task_id]
+    state.selectable_ready_task_ids = [task.task_id]
+    state.eligible_ready_task_ids = [task.task_id]
+    state.task_statuses = {task.task_id: "ready"}
+    state.task_identities = {task.task_id: identity.to_dict()}
+    state.implementation_attempts = {task.task_id: 1}
+    state.implementation_attempts_by_cid = {
+        identity.canonical_task_cid: 1
+    }
+    state.last_implementation_task_id = task.task_id
+    state.last_implementation_task_key = identity.canonical_task_key
+    state.last_implementation_task_cid = identity.canonical_task_cid
+    state.last_implementation_started_at = started_at
+    state.last_implementation_log_path = str(log_path)
+    state.last_implementation_worktree_path = str(workspace)
+    state.last_implementation_branch = branch
+    state.save(daemon.state_path)
+
+    daemon._record_event("fixture_prior_event", {"slot": 1})
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "outputs": ["src/example.py"],
+            "command": ["fake-agent"],
+            "log_path": str(log_path),
+            "worktree_path": str(workspace),
+            "branch": branch,
+            "baseline_ref": _git(workspace, "rev-parse", "HEAD"),
+            "execution_mode": "model-assisted",
+        },
+    )
+    start = daemon._inflight_implementation_events()
+    assert len(start) == 1
+    assert start[0]["sequence"] == 3
+
+    claim = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        started_at,
+    )
+    claim["pid"] = dead_pid
+    claim["owner_process_birth"] = dead_owner.to_dict()
+    claim["dispatch_authority_cid"] = (
+        daemon._implementation_dispatch_authority_cid(claim)
+    )
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+    )
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_path.write_text(
+        json.dumps(claim, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    claim_path.chmod(0o600)
+
+    lock = daemon._build_implementation_lock_metadata(task, 1, started_at)
+    lock["pid"] = dead_pid
+    lock["lease_role"] = "implementation_attempt"
+    lock_path = daemon._implementation_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(
+        json.dumps(lock, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    lock_path.chmod(0o600)
+    return task, lock_path, claim_path
+
+
+def _rewrite_first_event(
+    events_path: Path,
+    event_type: str,
+    rewrite,
+) -> None:
+    lines = events_path.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        event = json.loads(line)
+        if event.get("type") == event_type:
+            lines[index] = rewrite(event)
+            events_path.write_text(
+                "\n".join(lines) + "\n",
+                encoding="utf-8",
+            )
+            return
+    raise AssertionError(f"missing fixture event: {event_type}")
 
 
 def test_normalize_implementation_protected_paths_is_exact_and_fail_closed(
@@ -4265,6 +4468,623 @@ def test_supervisor_reconciles_dead_protected_attempt_before_guard(
     lifecycle = daemon.worktree_lifecycle.load_workspace(workspace)
     assert lifecycle is not None
     assert lifecycle.is_terminal
+    assert not daemon._implementation_lock_path().exists()
+
+
+def test_supervisor_recovers_live_shaped_started_attempt_under_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task, _lock_path, claim_path = _persist_live_shaped_interrupted_attempt(
+        daemon,
+        workspace=workspace,
+    )
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_load_tasks",
+        lambda _self: [task],
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    _stub_supervisor_maintenance_tail(supervisor, monkeypatch)
+    phases: list[str] = []
+    original_run = supervisor._run_once_with_maintenance
+
+    def run_with_phases(_update, *, include_refill=True):
+        return original_run(phases.append, include_refill=include_refill)
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        run_with_phases,
+    )
+
+    result = supervisor.run_once(include_refill=False)
+
+    recovery = result["interrupted_implementation_reconciliation"]
+    assert result["stuck"] is False
+    assert "maintenance_blocked" not in result
+    assert recovery["reconciled"] is True
+    assert recovery["blocked"] is False
+    assert recovery["reason"] == "quiesced_active_attempt_reconciled"
+    assert phases.index("interrupted_implementation_reconciliation") < (
+        phases.index("event_log_repair")
+    )
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert not claim_path.exists()
+    assert not daemon._implementation_lock_path().exists()
+    state = PortalTaskState.load(daemon.state_path)
+    identity = daemon._identity_for_task(task)
+    assert state.implementation_in_progress is False
+    assert state.active_task_id == ""
+    assert task.task_id not in state.implementation_attempts
+    assert identity.canonical_task_cid not in (
+        state.implementation_attempts_by_cid
+    )
+    assert state.task_statuses[task.task_id] == "ready"
+    lifecycle = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert lifecycle is not None
+    assert lifecycle.is_terminal
+    assert lifecycle.terminal_reason == "controlled_shutdown_quiesced_owner"
+    receipt = json.loads(
+        (
+            daemon.state_path.parent
+            / "interrupted-implementation-recovery.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert receipt["phase"] == "completed"
+    events = daemon._iter_events()
+    assert sum(
+        event["type"] == "implementation_shutdown_recovery_closed"
+        for event in events
+    ) == 1
+    assert sum(
+        event["type"] == "implementation_state_recovered"
+        and event.get("interrupted_recovery_operation_id")
+        == receipt["operation_id"]
+        for event in events
+    ) == 1
+
+
+@pytest.mark.parametrize(
+    "checkpoint",
+    ["marker_retired", "state_cleared", "claim_released"],
+)
+def test_supervisor_resumes_journaled_interrupted_recovery_after_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checkpoint: str,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task, lock_path, claim_path = _persist_live_shaped_interrupted_attempt(
+        daemon,
+        workspace=workspace,
+    )
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_load_tasks",
+        lambda _self: [task],
+    )
+    injected = {"raised": False}
+
+    def crash_once(_self, phase: str) -> None:
+        if phase == checkpoint and not injected["raised"]:
+            injected["raised"] = True
+            raise RuntimeError(f"injected crash after {phase}")
+
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_interrupted_recovery_checkpoint",
+        crash_once,
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    _stub_supervisor_maintenance_tail(supervisor, monkeypatch)
+
+    first = supervisor.run_once(include_refill=False)
+
+    assert first["maintenance_blocked"] is True
+    assert first["reason"] == "shutdown_attempt_reconciliation_failed"
+    assert injected["raised"] is True
+    receipt_path = (
+        daemon.state_path.parent
+        / "interrupted-implementation-recovery.json"
+    )
+    prepared = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert prepared["phase"] == "prepared"
+    assert not lock_path.exists()
+    assert claim_path.exists() is (checkpoint != "claim_released")
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    assert Path(prepared["expected_after"]["marker_tombstone_path"]).exists()
+    if checkpoint == "marker_retired":
+        assert PortalTaskState.load(daemon.state_path).implementation_in_progress
+    else:
+        assert not PortalTaskState.load(
+            daemon.state_path
+        ).implementation_in_progress
+
+    second = supervisor.run_once(include_refill=False)
+
+    recovery = second["interrupted_implementation_reconciliation"]
+    assert "maintenance_blocked" not in second
+    assert recovery["reconciled"] is True
+    assert recovery["reason"] == "quiesced_active_attempt_reconciled"
+    assert not claim_path.exists()
+    assert not lock_path.exists()
+    assert json.loads(receipt_path.read_text(encoding="utf-8"))[
+        "phase"
+    ] == "completed"
+
+
+def test_supervisor_resumes_lifecycle_record_index_split(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task, lock_path, claim_path = _persist_live_shaped_interrupted_attempt(
+        daemon,
+        workspace=workspace,
+    )
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_load_tasks",
+        lambda _self: [task],
+    )
+    lifecycle_path = daemon.worktree_lifecycle.workspace_path_for(workspace)
+    identity = daemon._identity_for_task(task)
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=identity.canonical_task_cid,
+        task_id=task.task_id,
+        attempt=1,
+    )
+    index_before = json.loads(index_path.read_text(encoding="utf-8"))
+    original_write = worktree_lifecycle_module._atomic_write_json
+    injected = {"raised": False}
+
+    def split_record_and_index(path: Path, payload) -> None:
+        if path == index_path and not injected["raised"]:
+            current = json.loads(lifecycle_path.read_text(encoding="utf-8"))
+            assert current["state"] == "terminal"
+            injected["raised"] = True
+            raise RuntimeError("injected lifecycle index write loss")
+        original_write(path, payload)
+
+    monkeypatch.setattr(
+        worktree_lifecycle_module,
+        "_atomic_write_json",
+        split_record_and_index,
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    _stub_supervisor_maintenance_tail(supervisor, monkeypatch)
+
+    first = supervisor.run_once(include_refill=False)
+
+    assert first["maintenance_blocked"] is True
+    assert first["reason"] == "shutdown_attempt_reconciliation_failed"
+    assert injected["raised"] is True
+    assert json.loads(lifecycle_path.read_text(encoding="utf-8"))[
+        "state"
+    ] == "terminal"
+    assert json.loads(index_path.read_text(encoding="utf-8")) == index_before
+    assert not lock_path.exists()
+    assert claim_path.exists()
+
+    second = supervisor.run_once(include_refill=False)
+
+    recovery = second["interrupted_implementation_reconciliation"]
+    assert recovery["reconciled"] is True
+    assert recovery["reason"] == "quiesced_active_attempt_reconciled"
+    assert json.loads(index_path.read_text(encoding="utf-8"))[
+        "state"
+    ] == "terminal"
+    assert not claim_path.exists()
+
+
+def test_supervisor_refuses_two_unfinished_start_events(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task, lock_path, _claim_path = _persist_live_shaped_interrupted_attempt(
+        daemon,
+        workspace=workspace,
+    )
+    original_lock = lock_path.read_bytes()
+    start = next(
+        event
+        for event in daemon._iter_merge_lifecycle_events()
+        if event.get("type") == "implementation_started"
+    )
+    envelope_fields = {
+        "event_id",
+        "position",
+        "previous_event_id",
+        "sequence",
+        "snapshot_id",
+        "stream_id",
+        "timestamp",
+        "type",
+    }
+    daemon._record_event(
+        "implementation_started",
+        {
+            key: value
+            for key, value in start.items()
+            if key not in envelope_fields
+        },
+    )
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_load_tasks",
+        lambda _self: [task],
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    _stub_supervisor_maintenance_tail(supervisor, monkeypatch)
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "shutdown_attempt_reconciliation_failed"
+    assert lock_path.read_bytes() == original_lock
+    assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
+    assert not (
+        daemon.state_path.parent
+        / "interrupted-implementation-recovery.json"
+    ).exists()
+    assert daemon._implementation_protected_active_snapshot_path().exists()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["duplicate_key", "missing_event_id", "noncanonical_envelope"],
+)
+def test_supervisor_refuses_noncanonical_start_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task, lock_path, _claim_path = _persist_live_shaped_interrupted_attempt(
+        daemon,
+        workspace=workspace,
+    )
+    original_lock = lock_path.read_bytes()
+
+    def mutate_start(event: dict[str, object]) -> str:
+        if mutation == "duplicate_key":
+            rendered = json.dumps(
+                event,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            needle = f'"attempt":{event["attempt"]}'
+            replaced = rendered.replace(
+                needle,
+                f'"attempt":999999,{needle}',
+                1,
+            )
+            assert replaced != rendered
+            return replaced
+        changed = dict(event)
+        if mutation == "missing_event_id":
+            changed.pop("event_id")
+        else:
+            changed.pop("stream_id")
+        return json.dumps(changed, sort_keys=True, separators=(",", ":"))
+
+    _rewrite_first_event(
+        daemon.events_path,
+        "implementation_started",
+        mutate_start,
+    )
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_load_tasks",
+        lambda _self: [task],
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    _stub_supervisor_maintenance_tail(supervisor, monkeypatch)
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "shutdown_attempt_reconciliation_failed"
+    assert lock_path.read_bytes() == original_lock
+    assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
+    assert not (
+        daemon.state_path.parent
+        / "interrupted-implementation-recovery.json"
+    ).exists()
+
+
+@pytest.mark.parametrize("field", ["task_id", "attempt", "workspace_path"])
+def test_supervisor_restores_predecessor_after_marker_tamper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task, lock_path, _claim_path = _persist_live_shaped_interrupted_attempt(
+        daemon,
+        workspace=workspace,
+    )
+    original_lock = lock_path.read_bytes()
+    marker_path = daemon._implementation_protected_active_snapshot_path()
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    marker[field] = (
+        marker[field] + 1
+        if field == "attempt"
+        else str(marker[field]) + "-tampered"
+    )
+    marker_path.write_text(
+        json.dumps(marker, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_load_tasks",
+        lambda _self: [task],
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    _stub_supervisor_maintenance_tail(supervisor, monkeypatch)
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "shutdown_attempt_reconciliation_failed"
+    assert lock_path.read_bytes() == original_lock
+    assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
+    assert not (
+        daemon.state_path.parent
+        / "interrupted-implementation-recovery.json"
+    ).exists()
+
+
+def test_supervisor_rejects_duplicate_key_predecessor_lock(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    _task_value, lock_path, _claim_path = (
+        _persist_live_shaped_interrupted_attempt(
+            daemon,
+            workspace=workspace,
+        )
+    )
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    rendered = json.dumps(lock, sort_keys=True, separators=(",", ":"))
+    needle = f'"pid":{lock["pid"]}'
+    duplicate = rendered.replace(
+        needle,
+        f'"pid":{os.getpid()},{needle}',
+        1,
+    )
+    lock_path.write_text(duplicate + "\n", encoding="utf-8")
+    lock_path.chmod(0o600)
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "implementation_predecessor_lock_malformed"
+    assert lock_path.read_text(encoding="utf-8") == duplicate + "\n"
+    assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
+
+
+def test_supervisor_rejects_bare_completed_recovery_receipt(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, _workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    receipt_path = (
+        daemon.state_path.parent
+        / "interrupted-implementation-recovery.json"
+    )
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(
+        '{"phase":"completed"}\n',
+        encoding="utf-8",
+    )
+    receipt_path.chmod(0o600)
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert result["maintenance_blocked"] is True
+    assert (
+        result["reason"]
+        == "interrupted_implementation_recovery_receipt_malformed"
+    )
+    assert not daemon._implementation_lock_path().exists()
+
+
+def test_supervisor_rejects_recomputed_incomplete_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task, lock_path, claim_path = _persist_live_shaped_interrupted_attempt(
+        daemon,
+        workspace=workspace,
+    )
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_load_tasks",
+        lambda _self: [task],
+    )
+    injected = {"raised": False}
+
+    def crash_after_marker(_self, phase: str) -> None:
+        if phase == "marker_retired" and not injected["raised"]:
+            injected["raised"] = True
+            raise RuntimeError("injected crash before lifecycle recovery")
+
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_interrupted_recovery_checkpoint",
+        crash_after_marker,
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    _stub_supervisor_maintenance_tail(supervisor, monkeypatch)
+    first = supervisor.run_once(include_refill=False)
+    assert first["maintenance_blocked"] is True
+    assert not lock_path.exists()
+    assert claim_path.exists()
+
+    receipt_path = (
+        daemon.state_path.parent
+        / "interrupted-implementation-recovery.json"
+    )
+    prepared = json.loads(receipt_path.read_text(encoding="utf-8"))
+    identity = prepared["basis"]["identity"]
+    expected = prepared["expected_after"]
+    fake_cid = "sha256:" + "0" * 64
+    final_proof = {
+        "marker_tombstone_path": expected["marker_tombstone_path"],
+        "marker_cid": expected["marker_cid"],
+        "lifecycle_path": str(
+            daemon.worktree_lifecycle.workspace_path_for(workspace)
+        ),
+        "lifecycle_cid": expected["lifecycle"]["cid"],
+        "lifecycle_index_path": expected["lifecycle_task_index"]["path"],
+        "lifecycle_index_cid": expected["lifecycle_task_index"]["cid"],
+        "state_path": identity["state_path"],
+        "state_cid": expected["state"]["cid"],
+        "task_claim_reason": "quiesced_task_claim_released",
+        "task_claim_receipt_id": fake_cid,
+        "close_event_id": fake_cid,
+        "close_event_cid": fake_cid,
+        "state_recovered_event_id": fake_cid,
+        "state_recovered_event_cid": fake_cid,
+    }
+    completion = {
+        "final_proof": final_proof,
+        "final_proof_id": (
+            implementation_daemon_module.interrupted_recovery_content_identity(
+                final_proof
+            )
+        ),
+    }
+    body = {
+        "schema": prepared["schema"],
+        "phase": "completed",
+        "operation_id": prepared["operation_id"],
+        "basis": prepared["basis"],
+        "expected_after": prepared["expected_after"],
+        "prepared_at": prepared["prepared_at"],
+        "completed_at": "2026-08-26T01:00:00+00:00",
+        "completion": completion,
+    }
+    forged = {
+        **body,
+        "receipt_id": (
+            implementation_daemon_module.interrupted_recovery_content_identity(
+                body
+            )
+        ),
+    }
+    receipt_path.write_text(
+        json.dumps(forged, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    receipt_path.chmod(0o600)
+
+    second = supervisor.run_once(include_refill=False)
+
+    assert second["maintenance_blocked"] is True
+    assert second["reason"] == "shutdown_attempt_reconciliation_failed"
+    assert claim_path.exists()
+    assert not lock_path.exists()
+
+
+def test_supervisor_refuses_unknown_predecessor_liveness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    _task_value, lock_path, _claim_path = (
+        _persist_live_shaped_interrupted_attempt(
+            daemon,
+            workspace=workspace,
+        )
+    )
+    original_lock = lock_path.read_bytes()
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    monkeypatch.setattr(
+        supervisor,
+        "_implementation_lease_pid_liveness",
+        lambda _pid: "unknown",
+    )
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert result["maintenance_blocked"] is True
+    assert (
+        result["reason"]
+        == "implementation_predecessor_lock_liveness_unknown"
+    )
+    assert lock_path.read_bytes() == original_lock
+    assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
+
+
+def test_supervisor_revalidates_completed_event_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task, _lock_path, _claim_path = _persist_live_shaped_interrupted_attempt(
+        daemon,
+        workspace=workspace,
+    )
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_load_tasks",
+        lambda _self: [task],
+    )
+    supervisor = _protected_git_worktree_supervisor(daemon, repo)
+    _stub_supervisor_maintenance_tail(supervisor, monkeypatch)
+    first = supervisor.run_once(include_refill=False)
+    assert first["interrupted_implementation_reconciliation"][
+        "reconciled"
+    ] is True
+
+    def mutate_close(event: dict[str, object]) -> str:
+        changed = dict(event)
+        changed["branch"] = "tampered-branch"
+        # Retain the stored event_id to exercise strict recomputation rather
+        # than merely an absent-ID check.
+        return json.dumps(changed, sort_keys=True, separators=(",", ":"))
+
+    _rewrite_first_event(
+        daemon.events_path,
+        "implementation_shutdown_recovery_closed",
+        mutate_close,
+    )
+
+    second = supervisor.run_once(include_refill=False)
+
+    assert second["maintenance_blocked"] is True
+    assert second["reason"] == "shutdown_attempt_reconciliation_failed"
     assert not daemon._implementation_lock_path().exists()
 
 
