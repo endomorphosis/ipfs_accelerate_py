@@ -1,0 +1,33 @@
+{
+  "artifact_cid": "baguqeerabp4y3vi5egjicarfzs4x5v4qfarrhibazpwlmacw2g5ybk7dumzq",
+  "authenticated_principal_effects": [
+    "inspect_repository",
+    "run_validation"
+  ],
+  "evidence_mode": "contract_fail_closed",
+  "forbidden_authority_sources": [
+    "cid",
+    "commit",
+    "imported_history",
+    "payment",
+    "prompt"
+  ],
+  "live_runtime_invoked": false,
+  "producer_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/security/test_external_agent_authority_boundaries.py"
+  ],
+  "producer_source_cid": "sha256:fd93e3dabaaf9c39c375998178fd2476f0bb2bcdc69a1e520cc0c6b5d306ee8e",
+  "production_qualification_claimed": false,
+  "proof_key_disclosure_permitted": false,
+  "qualification_scope": "offline_authority_contract_only",
+  "qualification_status": "not_live_qualified",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1",
+  "task_completion_claimed": false,
+  "task_id": "EAAEF-034",
+  "transport_widening_permitted": false,
+  "worker_self_approval_permitted": false
+}

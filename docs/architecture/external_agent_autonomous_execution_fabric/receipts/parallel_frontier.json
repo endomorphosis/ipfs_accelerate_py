@@ -1,0 +1,32 @@
+{
+  "artifact_cid": "baguqeerau5gdww5zvlqh2ffphliwdbqguqpttxjgja623jc7wmvgxy6wlqua",
+  "disjoint_frontier_contract": [
+    "left",
+    "right"
+  ],
+  "evidence_mode": "contract_fail_closed",
+  "live_concurrency_invoked": false,
+  "live_runtime_invoked": false,
+  "observed_live_task_count": 0,
+  "overlap_serialized_by_contract": true,
+  "producer_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_agent_parallel_frontier.py"
+  ],
+  "producer_source_cid": "sha256:df78fe4b2ab27219def98d7be5d0ef57125a563bedeb261ae738d781d3ea682e",
+  "production_qualification_claimed": false,
+  "qualification_scope": "offline_parallel_frontier_contract_only",
+  "qualification_status": "not_live_qualified",
+  "resource_budget_contract_validated": true,
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1",
+  "task_completion_claimed": false,
+  "task_id": "EAAEF-085",
+  "unqualified_requirements": [
+    "live_one-result_verification",
+    "live_resource_enforcement",
+    "live_stale_fence_rejection"
+  ]
+}
