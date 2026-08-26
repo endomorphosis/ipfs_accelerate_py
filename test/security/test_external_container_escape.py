@@ -48,12 +48,58 @@ def _profile() -> ContainerExecutionProfile:
 
 def test_seccomp_profile_is_default_deny() -> None:
     payload = json.loads(SECCOMP.read_text(encoding="utf-8"))
+    assert payload["schema"].endswith("external-agent-seccomp-profile@1")
+    assert payload["task_id"] == "EAAEF-123"
+    assert payload["evidence_mode"] == "contract_fail_closed"
+    assert payload["qualification_scope"] == "offline_profile_contract_only"
+    assert payload["task_completion_claimed"] is False
+    assert payload["production_qualification_claimed"] is False
+    assert payload["live_escape_harness_ran"] is False
+    assert payload["live_runtime_invoked"] is False
     assert payload["defaultAction"] == "SCMP_ACT_ERRNO"
-    names = payload["syscalls"][0]["names"]
-    assert "ptrace" not in names
-    assert "mount" not in names
-    assert "reboot" not in names
-    assert "openat" in names
+    allowed = {
+        name
+        for rule in payload["syscalls"]
+        if rule["action"] == "SCMP_ACT_ALLOW"
+        for name in rule["names"]
+    }
+    assert {
+        "add_key",
+        "bpf",
+        "delete_module",
+        "finit_module",
+        "init_module",
+        "kexec_file_load",
+        "kexec_load",
+        "keyctl",
+        "mount",
+        "open_by_handle_at",
+        "perf_event_open",
+        "pivot_root",
+        "process_vm_readv",
+        "process_vm_writev",
+        "ptrace",
+        "reboot",
+        "request_key",
+        "setns",
+        "umount2",
+        "unshare",
+        "userfaultfd",
+    }.isdisjoint(allowed)
+    assert "openat" in allowed
+
+    clone_rules = [rule for rule in payload["syscalls"] if "clone" in rule["names"]]
+    assert len(clone_rules) == 1
+    clone_rule = clone_rules[0]
+    assert clone_rule["names"] == ["clone"]
+    assert clone_rule["args"] == [
+        {
+            "index": 0,
+            "value": 0x7E020000,
+            "valueTwo": 0,
+            "op": "SCMP_CMP_MASKED_EQ",
+        }
+    ]
 
 
 def test_escape_vectors_are_refused_without_live_engine() -> None:
