@@ -966,6 +966,122 @@ class CASFBootstrapEAAEFTypedReconciliationOwner:
         finally:
             os.close(descriptor)
 
+    def _verified_current_population(self) -> Any:
+        """Compile the exact current board/forest without adopting old state.
+
+        Management reattachment needs an expected binding, not reconstructed
+        authority.  Rebuilding the public population from the currently sealed
+        Git forest supplies that expectation while the existing management
+        capsule remains the sole authenticator for the live owner and its
+        process birth.
+        """
+
+        from ..runtime import eaaef_reconciliation_lifecycle as reconciliation
+
+        forest = reconciliation._require_sealed_forest(  # noqa: SLF001
+            reconciliation.inspect_current_repository_forest(self._repo_root)
+        )
+        board = reconciliation._json_object(  # noqa: SLF001
+            self._repo_root / reconciliation.EAAEF_BOARD_PATH,
+            noun="EAAEF task board",
+        )
+        population = reconciliation.compile_fresh_eaaef_population(
+            board,
+            forest=forest,
+            repo_root=self._repo_root,
+        )
+        population = reconciliation.verify_compiled_eaaef_population_commitments(
+            population,
+            current_board=board,
+            current_forest=forest,
+            repo_root=self._repo_root,
+        )
+        if population.source_forest_root != self._source_forest_root:
+            raise EAAEFCASFBootstrapOwnerError(
+                "bootstrap source forest differs from the explicit host binding"
+            )
+        return population
+
+    def _binding_for_population(
+        self,
+        generation_id: str,
+        population: Any,
+    ) -> EAAEFCASFBootstrapBinding:
+        """Derive fixed private paths from one verified public population."""
+
+        generation_dir = self._registry.generation_dir(generation_id)
+        return EAAEFCASFBootstrapBinding(
+            generation_id=generation_id,
+            source_head=population.source_head,
+            source_tree=population.source_tree,
+            source_forest_root=population.source_forest_root,
+            board_cid=population.board_cid,
+            population_cid=population.population_cid,
+            bootstrap_population_cid=population.bootstrap_population_cid,
+            plan_r1_cid=population.plan_r1_cid,
+            database_path=generation_dir / "control.duckdb",
+            owner_state_dir=generation_dir / "casf-owner",
+        )
+
+    def _current_management_binding(
+        self,
+        generation_id: str,
+    ) -> EAAEFCASFBootstrapBinding:
+        population = self._verified_current_population()
+        return self._binding_for_population(generation_id, population)
+
+    def reattach_committed_owner(
+        self,
+        generation_id: str,
+    ) -> Mapping[str, Any]:
+        """Authenticate one exact live owner without opening DuckDB again.
+
+        This is a host-local recovery seam, not part of the public bootstrap
+        protocol.  The concrete lifecycle checks the write-once management
+        capsule and key, exact generation/binding/snapshot identities, peer
+        credentials, process birth, and durable owner-started record.  It never
+        calls ``hold_exclusive_bootstrap`` or constructs another Quack server.
+        """
+
+        reattach = getattr(self._owner_lifecycle, "reattach_committed_owner", None)
+        if not callable(reattach):
+            raise EAAEFCASFBootstrapOwnerError(
+                "CASF bootstrap lifecycle has no private committed-owner reattach"
+            )
+        return reattach(self._current_management_binding(generation_id))
+
+    def shutdown_committed_owner(
+        self,
+        generation_id: str,
+    ) -> Mapping[str, Any]:
+        """Stop the capsule-bound birth over the private management channel."""
+
+        binding = self._current_management_binding(generation_id)
+        reattach = getattr(self._owner_lifecycle, "reattach_committed_owner", None)
+        shutdown = getattr(self._owner_lifecycle, "shutdown_committed_owner", None)
+        if not callable(reattach) or not callable(shutdown):
+            raise EAAEFCASFBootstrapOwnerError(
+                "CASF bootstrap lifecycle has no private exact-birth shutdown"
+            )
+        # Authenticate the complete live binding before requesting its one-shot
+        # stop.  The lifecycle then reuses that management client; no database
+        # connection, sidecar, token, or SQL surface is opened here.
+        reattach(binding)
+        return shutdown(generation_id)
+
+    def adopt_completed_owner_stop(
+        self,
+        generation_id: str,
+    ) -> Mapping[str, Any]:
+        """Verify a dead exact owner's durable stop proof without revival."""
+
+        adopt = getattr(self._owner_lifecycle, "adopt_completed_owner_stop", None)
+        if not callable(adopt):
+            raise EAAEFCASFBootstrapOwnerError(
+                "CASF bootstrap lifecycle has no private completed-stop adoption"
+            )
+        return adopt(self._current_management_binding(generation_id))
+
     def materialize_offline_population(
         self,
         request: Mapping[str, Any],
@@ -1002,18 +1118,7 @@ class CASFBootstrapEAAEFTypedReconciliationOwner:
             repo_root=self._repo_root,
         )
         generation_id = expected["generation_id"]
-        binding = EAAEFCASFBootstrapBinding(
-            generation_id=generation_id,
-            source_head=population.source_head,
-            source_tree=population.source_tree,
-            source_forest_root=population.source_forest_root,
-            board_cid=population.board_cid,
-            population_cid=population.population_cid,
-            bootstrap_population_cid=population.bootstrap_population_cid,
-            plan_r1_cid=population.plan_r1_cid,
-            database_path=self._registry.generation_dir(generation_id) / "control.duckdb",
-            owner_state_dir=self._registry.generation_dir(generation_id) / "casf-owner",
-        )
+        binding = self._binding_for_population(generation_id, population)
         lifecycle_interface = str(self._owner_lifecycle.INTERFACE)
         with self._registry.exclusive() as registry_capability:
             self._registry.prepare_generation(registry_capability, generation_id)

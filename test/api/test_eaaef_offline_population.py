@@ -57,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_eaaef_reconciliation
     EAAEFCASFBootstrapRegistry,
     EAAEFTypedReconciliationOwnerUnavailable,
     bind_eaaef_casf_bootstrap_owner,
+    open_eaaef_bootstrap_reconciliation_owner,
     open_eaaef_typed_reconciliation_owner,
 )
 
@@ -1202,6 +1203,58 @@ def test_static_owner_facade_reports_blockers_and_cannot_effect(repo_root: Path)
                 method({})
 
 
+def test_explicit_bootstrap_opener_requires_complete_host_local_binding(
+    repo_root: Path,
+    tmp_path: Path,
+) -> None:
+    population = _population(repo_root)
+    snapshot_bindings = _concrete_snapshot_bindings()
+
+    # The statically named resolver supplies only repo_root.  Merely adding the
+    # source seam must therefore remain an inert, typed no-go.
+    assert open_eaaef_bootstrap_reconciliation_owner(repo_root=repo_root) is None
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationBlocked,
+        match="bootstrap_portfolio_materialization_owner_unavailable",
+    ):
+        lifecycle.resolve_bootstrap_reconciliation_owner(repo_root)
+    with pytest.raises(
+        EAAEFCASFBootstrapOwnerError,
+        match="complete explicit host binding",
+    ):
+        open_eaaef_bootstrap_reconciliation_owner(
+            repo_root=repo_root,
+            registry_root=tmp_path / "incomplete",
+        )
+    with pytest.raises(
+        EAAEFCASFBootstrapOwnerError,
+        match="exact absolute path",
+    ):
+        open_eaaef_bootstrap_reconciliation_owner(
+            repo_root=repo_root,
+            registry_root=Path("relative-state"),
+            source_forest_root=population.source_forest_root,
+            snapshot_bindings=snapshot_bindings,
+        )
+
+    registry_root = tmp_path / "explicit-bootstrap-owner"
+    owner = open_eaaef_bootstrap_reconciliation_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        snapshot_bindings=snapshot_bindings,
+        startup_timeout_seconds=60,
+        operation_timeout_seconds=60,
+        shutdown_timeout_seconds=30,
+    )
+    assert owner is not None
+    qualification = owner.bootstrap_reconciliation_qualification()
+    assert qualification["bootstrap_owner_ready"] is True
+    assert qualification["provider_launch_allowed"] is False
+    assert owner._owner_lifecycle.snapshot_bindings is snapshot_bindings
+    assert not registry_root.exists()
+
+
 def test_casf_bootstrap_binding_holds_owner_guard_through_commit_and_start(
     repo_root: Path,
     tmp_path: Path,
@@ -1808,46 +1861,41 @@ def test_persistent_casf_partial_management_artifact_never_acquires_lease(
 def test_persistent_casf_bootstrap_owner_reattaches_and_stops_privately(
     repo_root: Path,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     if not DatabaseTaskSource.available():
         pytest.skip("DuckDB unavailable")
     population = _population(repo_root)
     snapshot_bindings = _concrete_snapshot_bindings()
-    original_lifecycle = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+    registry_root = tmp_path / "persistent-casf-reattach"
+    owner = open_eaaef_bootstrap_reconciliation_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
         snapshot_bindings=snapshot_bindings,
         startup_timeout_seconds=60,
         operation_timeout_seconds=180,
         shutdown_timeout_seconds=30,
     )
-    registry_root = tmp_path / "persistent-casf-reattach"
-    owner = bind_eaaef_casf_bootstrap_owner(
-        repo_root=repo_root,
-        registry_root=registry_root,
-        source_forest_root=population.source_forest_root,
-        owner_lifecycle=original_lifecycle,
-    )
+    assert owner is not None
+    original_lifecycle = owner._owner_lifecycle
     generation_id = "eaaef-persistent-reattach-001"
     request = lifecycle._build_offline_population_request(
         generation_id=generation_id,
         population=population,
     )
-    owner.materialize_offline_population(request, population=population)
+    receipt = owner.materialize_offline_population(request, population=population)
+    assert receipt["task_count"] == 116
+    assert receipt["task_status_counts"] == {"blocked": 94, "todo": 22}
+    assert receipt["provider_process_started"] is False
 
     generation_dir = registry_root / "generations" / generation_id
-    binding = EAAEFCASFBootstrapBinding(
-        generation_id=generation_id,
-        source_head=population.source_head,
-        source_tree=population.source_tree,
-        source_forest_root=population.source_forest_root,
-        board_cid=population.board_cid,
-        population_cid=population.population_cid,
-        bootstrap_population_cid=population.bootstrap_population_cid,
-        plan_r1_cid=population.plan_r1_cid,
-        database_path=generation_dir / "control.duckdb",
-        owner_state_dir=generation_dir / "casf-owner",
-    )
+    binding = owner._binding_for_population(generation_id, population)
     broker = original_lifecycle._brokers[generation_id]
     owner_birth = dict(broker.start_receipt["owner_process_birth"])
+    marker_path = generation_dir / ".control.duckdb.state-owner.json"
+    marker_before = marker_path.read_bytes()
+    marker_inode = marker_path.stat().st_ino
 
     # Simulate loss of every inherited caller descriptor and Python object.
     broker.close_descriptors()
@@ -1856,18 +1904,71 @@ def test_persistent_casf_bootstrap_owner_reattaches_and_stops_privately(
     assert broker.process.poll() is None
     assert lifecycle.inspect_process_birth(owner_birth["pid"]).to_dict() == owner_birth
 
-    recovered = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+    # An incomplete generation and a snapshot-binding mismatch both fail before
+    # any second broker, database connection, or owner lease can be opened.
+    partial_generation = "eaaef-persistent-partial-001"
+    partial_dir = registry_root / "generations" / partial_generation
+    partial_dir.mkdir(mode=0o700)
+    (partial_dir / "casf-owner").mkdir(mode=0o700)
+    partial_owner = open_eaaef_bootstrap_reconciliation_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
         snapshot_bindings=snapshot_bindings,
         startup_timeout_seconds=60,
         operation_timeout_seconds=180,
         shutdown_timeout_seconds=30,
     )
-    status = recovered.reattach_committed_owner(binding)
+    assert partial_owner is not None
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="artifact.*unavailable"):
+        partial_owner.reattach_committed_owner(partial_generation)
+    assert partial_owner._owner_lifecycle._brokers == {}
+    assert not (partial_dir / ".control.duckdb.state-owner.lock").exists()
+    assert not (partial_dir / ".control.duckdb.state-owner.json").exists()
+
+    divergent_snapshot = replace(snapshot_bindings, lease_id="different-lease")
+    divergent_owner = open_eaaef_bootstrap_reconciliation_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        snapshot_bindings=divergent_snapshot,
+        startup_timeout_seconds=60,
+        operation_timeout_seconds=180,
+        shutdown_timeout_seconds=30,
+    )
+    assert divergent_owner is not None
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="stale or divergent"):
+        divergent_owner.reattach_committed_owner(generation_id)
+    assert divergent_owner._owner_lifecycle._brokers == {}
+    assert lifecycle.inspect_process_birth(owner_birth["pid"]).to_dict() == owner_birth
+
+    recovered = open_eaaef_bootstrap_reconciliation_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
+        snapshot_bindings=snapshot_bindings,
+        startup_timeout_seconds=60,
+        operation_timeout_seconds=180,
+        shutdown_timeout_seconds=30,
+    )
+    assert recovered is not None
+    recovered_lifecycle = recovered._owner_lifecycle
+
+    def _forbid_second_broker(_binding: EAAEFCASFBootstrapBinding) -> object:
+        pytest.fail("management reattachment attempted to open a second broker")
+
+    monkeypatch.setattr(recovered_lifecycle, "_open_broker", _forbid_second_broker)
+    status = recovered.reattach_committed_owner(generation_id)
     assert status["phase"] == "committed"
     assert status["owner_process_birth"] == owner_birth
     assert status["owner_process_alive"] is True
-    assert recovered.committed_owner_status(generation_id) == status
-    assert recovered.committed_generation_ids() == (generation_id,)
+    assert recovered.reattach_committed_owner(generation_id) == status
+    assert recovered_lifecycle.committed_owner_status(generation_id) == status
+    assert recovered_lifecycle.committed_generation_ids() == (generation_id,)
+    assert recovered_lifecycle._brokers == {}
+    assert marker_path.read_bytes() == marker_before
+    assert marker_path.stat().st_ino == marker_inode
+    assert lifecycle.inspect_process_birth(owner_birth["pid"]).to_dict() == owner_birth
     boundary = json.dumps(status, sort_keys=True)
     for forbidden in (
         "database_path",
@@ -1884,19 +1985,33 @@ def test_persistent_casf_bootstrap_owner_reattaches_and_stops_privately(
     assert result["task_state_mutated"] is False
     assert broker.wait_dead(30)
     assert lifecycle.inspect_process_birth(owner_birth["pid"]) is None
-    assert not (generation_dir / ".control.duckdb.state-owner.json").exists()
-    assert recovered.committed_generation_ids() == ()
+    assert not marker_path.exists()
+    assert recovered_lifecycle.committed_generation_ids() == ()
 
-    terminal_controller = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+    # Only after the exact owner birth and lease are gone may the test open the
+    # database independently to verify the materialized bootstrap projection.
+    with DatabaseTaskSource(binding.database_path) as source:
+        page = source.list_tasks(limit=200)
+    assert len(page.tasks) == 116
+    assert Counter(item.status for item in page.tasks) == {
+        "blocked": 94,
+        "todo": 22,
+    }
+
+    terminal_controller = open_eaaef_bootstrap_reconciliation_owner(
+        repo_root=repo_root,
+        registry_root=registry_root,
+        source_forest_root=population.source_forest_root,
         snapshot_bindings=snapshot_bindings,
         startup_timeout_seconds=60,
         operation_timeout_seconds=180,
         shutdown_timeout_seconds=30,
     )
-    assert terminal_controller.adopt_completed_owner_stop(binding) == result
-    assert terminal_controller.committed_generation_ids() == ()
+    assert terminal_controller is not None
+    assert terminal_controller.adopt_completed_owner_stop(generation_id) == result
+    assert terminal_controller._owner_lifecycle.committed_generation_ids() == ()
     with pytest.raises(EAAEFCASFBootstrapOwnerError, match="stale or divergent"):
-        terminal_controller.reattach_committed_owner(binding)
+        terminal_controller.reattach_committed_owner(generation_id)
 
     owner_state = binding.owner_state_dir
     assert stat.S_IMODE(owner_state.stat().st_mode) == 0o700
