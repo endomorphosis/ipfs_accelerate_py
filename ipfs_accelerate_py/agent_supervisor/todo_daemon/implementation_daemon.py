@@ -69769,10 +69769,12 @@ class PortalImplementationDaemon:
                     "that requires independent Codex review",
                     backoff_seconds=300,
                 )
-            codex = shutil.which("codex")
+            codex = _trusted_codex_quota_fallback_executable(
+                workspace_path=workspace_path,
+            )
             if not codex:
                 raise ImplementationRetryDeferred(
-                    "sealed quota-only route requires the Codex CLI fallback",
+                    "sealed Grok/Codex route requires a trusted Codex CLI",
                     backoff_seconds=300,
                 )
             # Do not turn a pre-dispatch ``grok models`` quota response into

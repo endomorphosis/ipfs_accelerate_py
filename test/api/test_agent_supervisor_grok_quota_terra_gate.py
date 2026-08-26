@@ -674,6 +674,43 @@ def test_daemon_quota_route_requires_trusted_codex_at_both_boundaries(
         daemon._build_implementation_command(tmp_path)
 
 
+def test_daemon_quota_route_keeps_trusted_codex_outside_sealed_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seal_quota_high_route(monkeypatch)
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/opt/providers/grok",
+    )
+    # The live sealed daemon PATH is /usr/bin:/bin, while the reviewed Codex
+    # entry may live in /usr/local/bin and is resolved by the trust boundary.
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda _name: None,
+    )
+    monkeypatch.setattr(
+        provider_executable_trust,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
+    )
+
+    daemon = _daemon(tmp_path)
+    daemon._require_primary_provider_readiness(None)
+    command = daemon._build_implementation_command(tmp_path)
+
+    fallback = json.loads(command[command.index("--fallback-command-json") + 1])
+    assert fallback[0] == "/usr/local/bin/codex"
+
+
 @pytest.mark.parametrize("override_source", ("constructor", "environment"))
 def test_auth_or_quota_route_rejects_raw_command_override_before_dispatch(
     tmp_path: Path,
