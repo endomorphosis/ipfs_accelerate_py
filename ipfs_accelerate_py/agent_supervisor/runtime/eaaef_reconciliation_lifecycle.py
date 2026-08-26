@@ -3073,11 +3073,7 @@ def _stage_one_request_from_signed_authority(
         raise EAAEFReconciliationIdentityError(
             "fresh Plan-R2 signed approvals cannot reconstruct stage one"
         )
-    statement = dict(authorization)
-    statement.pop("operator_approval", None)
-    statement.pop("security_approval", None)
-    statement.pop("authorization_cid", None)
-    statement["schema"] = PLAN_R2_TRANSITION_STATEMENT_SCHEMA
+    statement = _unsigned_plan_r2_statement_from_authorization(authorization)
     operator_payload = dict(operator_approval)
     operator_payload.pop("signature", None)
     security_payload = dict(security_approval)
@@ -3118,6 +3114,104 @@ def _stage_one_request_from_signed_authority(
     }
     value["request_cid"] = _cid(value)
     return value
+
+
+def _unsigned_plan_r2_statement_from_authorization(
+    authorization: Mapping[str, Any],
+) -> dict[str, Any]:
+    statement = dict(authorization)
+    statement.pop("operator_approval", None)
+    statement.pop("security_approval", None)
+    statement.pop("authorization_cid", None)
+    statement["schema"] = PLAN_R2_TRANSITION_STATEMENT_SCHEMA
+    return statement
+
+
+def _bootstrap_snapshot_from_signed_plan_r2_statement(
+    authorization: Mapping[str, Any],
+    *,
+    population: CompiledEAAEFPopulation,
+) -> dict[str, Any]:
+    """Reconstruct the public bootstrap inputs carried by the signed statement."""
+
+    value = {
+        "schema": EAAEF_BOOTSTRAP_SNAPSHOT_SCHEMA,
+        "source_head": authorization.get("source_head"),
+        "source_tree": authorization.get("source_tree"),
+        "source_forest_root": authorization.get("source_generation_cid"),
+        "board_cid": population.board_cid,
+        "reconciliation_population_cid": population.population_cid,
+        "bootstrap_population_cid": population.bootstrap_population_cid,
+        "bootstrap_task_count": EAAEF_BOOTSTRAP_TASK_COUNT,
+        "held_task_count": EAAEF_PLAN_R2_TASK_COUNT,
+        "terminal_statuses_imported": 0,
+        "bootstrap_materialization_mode": "offline_before_exclusive_owner_start",
+        "bootstrap_owner_absent_during_materialization": True,
+        "owner_started_after_bootstrap": True,
+        "direct_database_mutation_after_owner_start": False,
+        "bootstrap_admission_cid": authorization.get("bootstrap_admission_cid"),
+        "r1_launch_capsule_cid": authorization.get("r1_launch_capsule_cid"),
+        "quack_owner_qualification_cid": authorization.get(
+            "quack_owner_qualification_cid"
+        ),
+        "quack_command_fabric_qualification_cid": authorization.get(
+            "quack_command_fabric_qualification_cid"
+        ),
+        "owner_principal_did": authorization.get("owner_principal_did"),
+        "shard_id": authorization.get("shard_id"),
+        "store_id": authorization.get("store_id"),
+        "owner_generation": authorization.get("owner_generation"),
+        "expected_epoch": authorization.get("expected_epoch"),
+        "fencing_token": authorization.get("fencing_token"),
+        "lease_id": authorization.get("lease_id"),
+        "expected_version": authorization.get("expected_version"),
+        "expected_active_plan_cid": authorization.get("expected_active_plan_cid"),
+        "expected_active_plan_root_cid": authorization.get(
+            "expected_active_plan_root_cid"
+        ),
+        "expected_active_plan_revision": authorization.get(
+            "expected_active_plan_revision"
+        ),
+        "expected_event_cursor": authorization.get("expected_event_cursor"),
+        "expected_semantic_root_cid": authorization.get(
+            "expected_semantic_root_cid"
+        ),
+        "request_id": authorization.get("request_id"),
+        "idempotency_key": authorization.get("idempotency_key"),
+        "deadline_ms": authorization.get("deadline_ms"),
+        "issued_at_ms": authorization.get("issued_at_ms"),
+        "expires_at_ms": authorization.get("expires_at_ms"),
+        "one_use_nonce": authorization.get("one_use_nonce"),
+    }
+    value["snapshot_cid"] = _cid(value)
+    return value
+
+
+def _require_canonical_signed_plan_r2_statement(
+    authorization: Mapping[str, Any],
+    *,
+    population: CompiledEAAEFPopulation,
+) -> dict[str, Any]:
+    """Recompute every current Plan-R2 frontier and population commitment."""
+
+    try:
+        expected = build_unsigned_fresh_plan_r2_statement(
+            population=population,
+            bootstrap_snapshot=_bootstrap_snapshot_from_signed_plan_r2_statement(
+                authorization,
+                population=population,
+            ),
+        )
+    except EAAEFReconciliationError as exc:
+        raise EAAEFReconciliationIdentityError(
+            "fresh signed Plan-R2 statement cannot be reconstructed canonically"
+        ) from exc
+    actual = _unsigned_plan_r2_statement_from_authorization(authorization)
+    if actual != expected:
+        raise EAAEFReconciliationIdentityError(
+            "fresh signed Plan-R2 frontier or population commitments are noncanonical"
+        )
+    return expected
 
 
 def _remote_owner_signing_payload_from_signed_authority(
@@ -3350,6 +3444,7 @@ def _verify_current_plan_r2_stage_two_signing_request(
     request: Mapping[str, Any],
     *,
     population: CompiledEAAEFPopulation,
+    stage_one_request: Mapping[str, Any],
     trust_roots: Mapping[str, Any],
     now_ms: int,
 ) -> dict[str, Any]:
@@ -3426,7 +3521,9 @@ def _verify_current_plan_r2_stage_two_signing_request(
         population=population,
     )
     if (
-        value.get("stage_one_request_cid") != recovered_stage_one["request_cid"]
+        recovered_stage_one != dict(stage_one_request)
+        or value.get("stage_one_request_cid") != stage_one_request.get("request_cid")
+        or value.get("stage_one_request_cid") != recovered_stage_one["request_cid"]
         or value.get("statement_cid") != recovered_stage_one["statement_cid"]
     ):
         raise EAAEFReconciliationIdentityError(
@@ -3484,6 +3581,8 @@ def _verify_current_plan_r2_stage_two_signing_request(
 def finalize_fresh_plan_r2_signing_request(
     *,
     population: CompiledEAAEFPopulation,
+    bootstrap_snapshot: Mapping[str, Any],
+    stage_one_request: Mapping[str, Any],
     stage_two_request: Mapping[str, Any],
     trust_roots: Mapping[str, Any],
     remote_reviewer_signature: str,
@@ -3491,9 +3590,15 @@ def finalize_fresh_plan_r2_signing_request(
 ) -> dict[str, Any]:
     """Verify the last detached signature and return the fully signed bundle."""
 
+    stage_one = _verify_current_plan_r2_signing_request(
+        stage_one_request,
+        population=population,
+        bootstrap_snapshot=bootstrap_snapshot,
+    )
     stage_two = _verify_current_plan_r2_stage_two_signing_request(
         stage_two_request,
         population=population,
+        stage_one_request=stage_one,
         trust_roots=trust_roots,
         now_ms=now_ms,
     )
@@ -3610,6 +3715,10 @@ def verify_fresh_authority_bundle(
         raise EAAEFReconciliationIdentityError(
             "Plan-R2 authorization is stale or belongs to another source"
         )
+    _require_canonical_signed_plan_r2_statement(
+        authorization,
+        population=population,
+    )
     raw_tasks = authorization.get("tasks")
     if not isinstance(raw_tasks, list) or len(raw_tasks) != EAAEF_TASK_COUNT:
         raise EAAEFReconciliationIdentityError(
@@ -5296,7 +5405,9 @@ def _argument_parser() -> argparse.ArgumentParser:
             "state, provider, or supervisor is opened."
         ),
     )
+    signing_finalize.add_argument("--stage-one-request", required=True)
     signing_finalize.add_argument("--stage-two-request", required=True)
+    signing_finalize.add_argument("--bootstrap-snapshot", required=True)
     signing_finalize.add_argument("--trust-roots", required=True)
     signing_finalize.add_argument("--remote-reviewer-signature", required=True)
     signing_finalize.add_argument("--now-ms", required=True, type=int)
@@ -5410,6 +5521,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "signing-finalize":
             result = finalize_fresh_plan_r2_signing_request(
                 population=_current_signing_population(repo_root),
+                bootstrap_snapshot=load_fresh_bootstrap_snapshot(
+                    args.bootstrap_snapshot
+                ),
+                stage_one_request=_json_object(
+                    Path(args.stage_one_request).resolve(strict=True),
+                    noun="fresh Plan-R2 stage-one signing request",
+                ),
                 stage_two_request=_json_object(
                     Path(args.stage_two_request).resolve(strict=True),
                     noun="fresh Plan-R2 stage-two signing request",
