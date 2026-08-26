@@ -1,0 +1,146 @@
+{
+  "artifact_count": 14,
+  "artifacts": {
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/README.md": {
+      "raw_cid": "bafkreifh2epoiodatnu2zspzpqflhbi6byfpnbiq5q6edsuywf26625gb4",
+      "sha256": "sha256:a7d11ee438609b69acc9f97c0ab3851e0e0af68510ec3c41ca98b175ef6ba60f",
+      "size_bytes": 2375
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/acceptance.json": {
+      "raw_cid": "bafkreif2htyam7rgv3lgo73tgdta67n5f7ivziqbou6hrblvrqbrui2n6u",
+      "sha256": "sha256:ba3cf0067e26aed6677f7330e60f7dbd2fd15ca201753c7885758c031a234df5",
+      "size_bytes": 9142
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/build_qualification.py": {
+      "raw_cid": "bafkreiai53mbjjsrentmcawjch4igdent4bzskooysuy7imimxo4clff5e",
+      "sha256": "sha256:08eed814a6512366c102c911f8830c8d9f039929cec4a98fa18865ddc12ca5e9",
+      "size_bytes": 72690
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/decision.json": {
+      "raw_cid": "bafkreic5wwwggo6dzlnk36y7mcpcslegbdwbdsum2r6utaal7jbhqyteqm",
+      "sha256": "sha256:5db5ac633bc3cadaadfb1f609e292c8608ec11ca8cd47d49800bfa4278626483",
+      "size_bytes": 2148
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/evaluation_receipt.json": {
+      "raw_cid": "bafkreicmuqfwafqxmas2rczfdutzrnhsb3j4s7vh2kvt4sidbui5neix4q",
+      "sha256": "sha256:4ca40b6016176025a88b251d2798b4f20ed3c97ea7d2ab3e49030d11d69117e4",
+      "size_bytes": 1625
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/promotion_receipt.json": {
+      "raw_cid": "bafkreifub22xlmokidtjlfesui6zc4klxghmkot7iy6d77odw5324iyune",
+      "sha256": "sha256:b40eb575b1ca40e6959492a23d91714bb98ec53a7f463c3ffdc3b777ae231469",
+      "size_bytes": 1785
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/proof_receipt.json": {
+      "raw_cid": "bafkreibjwql7qjmxkzxxfd6szoqlds5w4jdc45gv5uuq7kksgkwovmymy4",
+      "sha256": "sha256:29b417f82597566f728fd2cba0b1cbb6e2462e74d5ed290fa95232aceab30cc7",
+      "size_bytes": 1424
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/publication_receipt.json": {
+      "raw_cid": "bafkreich5aqgbe5ype3h2yivvfpyyenjyfxu6r2mi46qa6zdvm6ignrqj4",
+      "sha256": "sha256:47e8206093b879367d6115a95f8c11a9c16f4f474c473d007b23ab3c8336304f",
+      "size_bytes": 1314
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/recipe.json": {
+      "raw_cid": "bafkreibb65gisv2dwlqc6ho2oyzdkyogjjub36hirkktjbhbaxyguf3tge",
+      "sha256": "sha256:21f74c895743b2e02f1dda76323561c64a681df8e88a953484e105f06a177331",
+      "size_bytes": 3364
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/report_sections.json": {
+      "raw_cid": "bafkreiao36ngrdtssbkvzqb7q3wlkhrrdlg55gznzipjaox3v4sutqjsv4",
+      "sha256": "sha256:0edf9a688e7290555cc03f86ecb51e311acdde9b2dca1e903afbaf2549c132af",
+      "size_bytes": 23854
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/result_graph.json": {
+      "raw_cid": "bafkreibugbg7xu65ghg6wrtfrz3visjp75genwhuxk73cc423sdatelltu",
+      "sha256": "sha256:34304dfbd3dd31cdeb46658e7754492fff4c46d8f4babfb10b9adc8609916b9d",
+      "size_bytes": 11163
+    },
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/verify_qualification.py": {
+      "raw_cid": "bafkreidfznnqge7re6ngz2pjxp34by64yrzerairpjwi3vs2e3koqgpuqu",
+      "sha256": "sha256:65cb5b0313f1279a6ce9e9bbf7c0e3dcc4724881117a6c8dd65a26d4e819f485",
+      "size_bytes": 54994
+    },
+    "docs/architecture/proof_grounded_ir_learning/successor-v1/final_report.md": {
+      "raw_cid": "bafkreib5e75yhcrnp6wkqvlyoqdutiqufxgejt4uoavfteg7cawlhruzea",
+      "sha256": "sha256:3d27fb838a2d7faca85578740749a2142dcc44cf94702a5990df102cb3c69920",
+      "size_bytes": 20304
+    },
+    "docs/architecture/proof_grounded_ir_learning/successor-v1/next.todo.md": {
+      "raw_cid": "bafkreifjelt5cs7zagjvxhdjxrklilbnk5qzz6vdipbvj2lfxph5cdwnnm",
+      "sha256": "sha256:a922e7d14bf901935b9c69bc54b42c2d57619cfaa343c354e965bbcfd10ecd6b",
+      "size_bytes": 2323
+    }
+  },
+  "decision": "no_go",
+  "decision_cid": "baguqeeraxlp6azus5brolzyypub6hraj44fcfgm6zzq34rda7y2lo37hf6eq",
+  "excluded_paths": [
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/manifest.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/verification_receipt.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/result.json"
+  ],
+  "immutability": "supersede_never_overwrite",
+  "interface": "proof-grounded-ir-learning/qualification-manifest/v2",
+  "manifest_cid": "baguqeerakjdbcdj4sxmpob63bjxc72rur3boch2kh4ol4e7f4nju36cqbzsq",
+  "manifest_sha256": "sha256:5246110d3c95d8f707db0a6e2fea348ec2e11f4a3f1cbe13e5e3534df8500e65",
+  "pgir_206_forest": [
+    {
+      "commit": "0373c2968b9b46b43ee9f564051182df137c08e4",
+      "parents": [
+        "c03180fbbd64b225a121fcc7be046bd0beab8918"
+      ],
+      "role": "implementation",
+      "subject": "PGIR-206: Re-run R1-R6 on the superseding freeze",
+      "tree": "387f92d22fe7804a11436d2382b7592308233234"
+    },
+    {
+      "commit": "efd5bc4107a595ba7b56632faa7d2f6c82f249d8",
+      "parents": [
+        "c03180fbbd64b225a121fcc7be046bd0beab8918",
+        "0373c2968b9b46b43ee9f564051182df137c08e4"
+      ],
+      "role": "merge",
+      "subject": "Merge commit '0373c2968b9b46b43ee9f564051182df137c08e4' into agent/pgir-successor-current-supervisor-20260825",
+      "tree": "387f92d22fe7804a11436d2382b7592308233234"
+    },
+    {
+      "commit": "ef4a74b362386578858d368a8e7420238e4c897d",
+      "parents": [
+        "efd5bc4107a595ba7b56632faa7d2f6c82f249d8"
+      ],
+      "role": "completion",
+      "subject": "PGIR-206: mark todo completed",
+      "tree": "556e95765e90f00025eecefb8048a655956d70a3"
+    }
+  ],
+  "pgir_206_manifest_cid": "baguqeerao2izb4i6bv7ffg3flharhjlph35gpwl4rbekzrrwm3n25mibqxsq",
+  "pgir_206_result_cid": "baguqeera7pwtswk2472r2yi2ijs5veamgx4hmy2nice2bnd3fvf72o3kgswq",
+  "recipe_cid": "baguqeeraimjhwwo5x5ljjjkg3jzw3bs2nfbmr6sayioeksoogsyogkdo2xga",
+  "result_graph_cid": "baguqeeralwlykkhim733fswfozup6n2zwh5wqtbqjlw2pmwaivzwe2h4eruq",
+  "schema": "PGIRTerminalQualificationManifest@1",
+  "sealed_path_order": [
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/README.md",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/acceptance.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/build_qualification.py",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/decision.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/evaluation_receipt.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/proof_receipt.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/promotion_receipt.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/publication_receipt.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/recipe.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/report_sections.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/result_graph.json",
+    "data/agent_supervisor/proof_grounded_ir_learning/qualification/successor-v1/verify_qualification.py",
+    "docs/architecture/proof_grounded_ir_learning/successor-v1/final_report.md",
+    "docs/architecture/proof_grounded_ir_learning/successor-v1/next.todo.md"
+  ],
+  "task_binding": {
+    "current_task_cid": "baguqeera57skpqzdhbrufeuhg7vpr4mmvur7lf7rntbhzvfm6mutsbtkgj4q",
+    "current_task_key": "task/v1/efe4a7c323386342928737eaf8f18cad23f597f16cc27cd4acf32939066a3279",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "final-decision-report-v2",
+    "task_id": "PGIR-207",
+    "title": "Re-qualify, publish or reject, and issue the following board"
+  }
+}
