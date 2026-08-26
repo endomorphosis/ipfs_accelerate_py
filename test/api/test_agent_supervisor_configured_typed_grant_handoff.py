@@ -21833,3 +21833,921 @@ def test_aseh_r25_delegates_r26_before_suffix_admission(
         )
     )
     assert result == sentinel
+
+
+def _aseh_r27_structural_chain() -> list[dict[str, object]]:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        receipt_cid = (
+            aseh_operator.ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS[index]
+            if index < len(aseh_operator.ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS)
+            else "sha256:" + ("7" * 64)
+        )
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": receipt_cid,
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+    return chain
+
+
+def _aseh_r27_terminal_failure_evidence_fixture() -> dict[str, object]:
+    evidence: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R27_R26_TERMINAL_FAILURE_EVIDENCE_SCHEMA,
+        "authority": "non_authoritative_operator_observation",
+        "failed_candidate_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        ),
+        "failed_candidate_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+        ),
+        "prior_repair_receipt_cid": (
+            aseh_operator.ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID
+        ),
+        "terminal_observation": (
+            aseh_operator._r27_expected_r26_terminal_observation()
+        ),
+        "failure_stage": "materialized_launch_admission",
+        "owner_start_attempted": False,
+        "owner_identity_observed": False,
+        "scheduler_birth_observed": False,
+        "r26_retry_authorized": False,
+        "database_observed_during_evidence_capture": False,
+        "database_mutated_during_evidence_capture": False,
+    }
+    evidence["evidence_cid"] = aseh_operator._identity(evidence)
+    return evidence
+
+
+def _aseh_r27_exact_absence_observation(
+    *,
+    container_name: str,
+    container_id: str,
+    observed_at_ns: int,
+) -> dict[str, object]:
+    selectors = (
+        ("exact_name", f"name=^/{container_name}$"),
+        ("exact_id", f"id={container_id}"),
+    )
+    queries: list[dict[str, object]] = []
+    for selector, filter_value in selectors:
+        command = [
+            "/usr/bin/docker",
+            "--host=unix:///var/run/docker.sock",
+            "container",
+            "ls",
+            "--all",
+            "--no-trunc",
+            "--filter",
+            filter_value,
+            "--format",
+            "{{.ID}} {{.Names}}",
+        ]
+        queries.append(
+            {
+                "selector": selector,
+                "command_sha256": aseh_operator._identity(command),
+                "returncode": 0,
+                "stdout_sha256": aseh_operator._identity(b""),
+                "stderr_sha256": aseh_operator._identity(b""),
+            }
+        )
+    return {
+        "schema": aseh_operator.ASEH_R16_DOCKER_OBSERVATION_SCHEMA,
+        "docker_bin": "/usr/bin/docker",
+        "observed_at_ns": observed_at_ns,
+        "expected": "absent",
+        "container_name": container_name,
+        "container_id": container_id,
+        "queries": queries,
+    }
+
+
+def _aseh_r27_foreign_waiter_fixture() -> tuple[
+    dict[str, object], dict[str, object]
+]:
+    target = "ipfs-accelerate-codex-733-" + ("a" * 32)
+    container_id = "b" * 64
+    lease_root = "/tmp/asref-codex-container-r27fixture"
+    argv_sha256 = "sha256:" + ("c" * 64)
+    script_path = str(
+        aseh_operator.ROOT.parent
+        / "verified-residual-intelligence-foundry-v1"
+        / "data"
+        / "agent_supervisor"
+        / "residual_intelligence_foundry"
+        / "worktrees"
+        / "workspace_111111111111_222222222222"
+        / "ipfs_accelerate_py"
+        / "agent_supervisor"
+        / "runtime"
+        / "grok_cli_runner.py"
+    )
+    item: dict[str, object] = {
+        "pid": 733,
+        "start_time_ticks": 734,
+        "boot_id": "11111111-1111-1111-1111-111111111111",
+        "parent_pid": 1,
+        "state": "S",
+        "marker": "--internal-docker-cleanup-watchdog",
+        "argv_sha256": argv_sha256,
+        "executable_path": "/usr/bin/python3",
+        "script_path": script_path,
+        "script_identity": {"availability": "unavailable_deleted"},
+        "cwd": "/",
+        "target_container_name": target,
+        "lease_root": lease_root,
+    }
+    binding = {
+        "provider": "codex",
+        "docker_bin": "/usr/bin/docker",
+        "container_name": target,
+        "cidfile": f"{lease_root}/container.cid",
+        "lease_root": lease_root,
+        "argv_sha256": argv_sha256,
+    }
+
+    def identity(
+        *,
+        inode: int,
+        mode: int,
+        nlink: int,
+        size: int,
+    ) -> list[int]:
+        return [
+            1,
+            inode,
+            mode,
+            os.geteuid(),
+            os.getegid(),
+            nlink,
+            size,
+            100,
+            100,
+        ]
+
+    def lease_observation(observed_at_ns: int) -> dict[str, object]:
+        target_bytes = target.encode("ascii")
+        cid_bytes = container_id.encode("ascii")
+        observation: dict[str, object] = {
+            "schema": (
+                aseh_operator
+                .ASEH_R27_FOREIGN_RECOVERY_LEASE_OBSERVATION_SCHEMA
+            ),
+            "lease_root": lease_root,
+            "lease_root_identity": identity(
+                inode=10,
+                mode=stat.S_IFDIR | 0o700,
+                nlink=2,
+                size=4096,
+            ),
+            "docker_config_identity": identity(
+                inode=11,
+                mode=stat.S_IFDIR | 0o700,
+                nlink=2,
+                size=4096,
+            ),
+            "cas_owned": {
+                "identity": identity(
+                    inode=12,
+                    mode=stat.S_IFREG | 0o600,
+                    nlink=1,
+                    size=len(target_bytes),
+                ),
+                "sha256": aseh_operator._identity(target_bytes),
+                "size_bytes": len(target_bytes),
+            },
+            "cidfile": {
+                "identity": identity(
+                    inode=13,
+                    mode=stat.S_IFREG | 0o600,
+                    nlink=1,
+                    size=len(cid_bytes),
+                ),
+                "sha256": aseh_operator._identity(cid_bytes),
+                "size_bytes": len(cid_bytes),
+            },
+            "cidfile_container_id": container_id,
+            "cas_terminal_availability": "absent",
+            "observed_at_ns": observed_at_ns,
+        }
+        observation["observation_cid"] = aseh_operator._identity(observation)
+        return observation
+
+    ownership: dict[str, object] = {
+        "schema": aseh_operator.ASEH_R27_FOREIGN_RECOVERY_OWNERSHIP_SCHEMA,
+        "classification": "foreign_durable_cas_waiter_preserved",
+        "disposition": "preserve_without_signal_cleanup_or_adoption",
+        "process_birth": {
+            "pid": item["pid"],
+            "start_time_ticks": item["start_time_ticks"],
+            "boot_id": item["boot_id"],
+            "parent_pid": item["parent_pid"],
+        },
+        "script_path": script_path,
+        "cwd": item["cwd"],
+        "binding": binding,
+        "lease_before": lease_observation(1),
+        "exact_docker_absence": _aseh_r27_exact_absence_observation(
+            container_name=target,
+            container_id=container_id,
+            observed_at_ns=2,
+        ),
+        "lease_after": lease_observation(3),
+        "observed_at_ns": 4,
+    }
+    ownership["ownership_cid"] = aseh_operator._identity(ownership)
+    return item, ownership
+
+
+def test_aseh_r27_foreign_recovery_requires_exact_r1_r27_chain() -> None:
+    chain = _aseh_r27_structural_chain()
+    assert aseh_operator._admit_exact_r27_transition_chain(chain) == chain
+
+    with pytest.raises(aseh_operator.OperatorError, match="R27"):
+        aseh_operator._admit_exact_r27_transition_chain(chain[:-1])
+    rewritten = [dict(item) for item in chain]
+    rewritten[-2]["receipt_cid"] = "sha256:" + ("6" * 64)
+    rewritten[-1]["previous_receipt_cid"] = rewritten[-2]["receipt_cid"]
+    with pytest.raises(aseh_operator.OperatorError, match="vector"):
+        aseh_operator._admit_exact_r27_transition_chain(rewritten)
+
+
+def test_aseh_r27_validation_contract_versions_only_the_live_route() -> None:
+    registered = {
+        tuple(tuple(command) for command in candidate)
+        for candidate in aseh_operator._receipt_validation_matrices()
+    }
+    matrix = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_VALIDATIONS
+    )
+    assert tuple(tuple(command) for command in matrix) in registered
+    assert (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_CHANGED_PATHS
+    ) == (
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    )
+    for revision in range(19, 27):
+        contract = getattr(
+            aseh_operator,
+            f"_r{revision}_sealed_receipt_validation_executor_contract",
+        )()
+        assert aseh_operator._identity(contract) == getattr(
+            aseh_operator,
+            f"ASEH_R{revision}_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID",
+        )
+    parent = aseh_operator._r26_sealed_receipt_validation_executor_contract()
+    historical = (
+        aseh_operator._r27_historical_live_validation_executor_contract()
+    )
+    contract = aseh_operator._r27_sealed_receipt_validation_executor_contract()
+    route = aseh_operator._r27_historical_live_executor_contract()
+    assert historical["historical_live_route"] == route
+    assert contract["historical_live_route"] == route
+    assert contract["parent_executor_contract_cid"] == (
+        aseh_operator._identity(parent)
+    )
+    assert route != aseh_operator._r19_historical_live_executor_contract()
+
+
+def test_aseh_r27_exact_r26_terminal_failure_evidence_is_pure_and_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: pytest.fail(
+            "pure R27 terminal validation reread runtime evidence"
+        ),
+    )
+    observation = aseh_operator._r27_expected_r26_terminal_observation()
+    terminal_record = dict(observation["terminal_record"])
+    terminal_record_cid = terminal_record.pop("record_cid")
+    unsigned_observation = dict(observation)
+    observation_cid = unsigned_observation.pop("receipt_cid")
+
+    assert terminal_record_cid == (
+        aseh_operator.ASEH_R27_EXACT_R26_TERMINAL_RECORD_CID
+    )
+    assert terminal_record_cid == aseh_operator._identity(terminal_record)
+    assert observation_cid == (
+        aseh_operator.ASEH_R27_EXACT_R26_TERMINAL_OBSERVATION_CID
+    )
+    assert observation_cid == aseh_operator._identity(unsigned_observation)
+    assert observation["terminal_record"]["stage"] == (
+        "materialized_launch_admission"
+    )
+    assert observation["terminal_record"]["owner_start_attempted"] is False
+    assert observation["terminal_record"]["owner_identity_observed"] is False
+    assert observation["terminal_record"]["scheduler_birth_observed"] is False
+    assert observation["retry_authorized"] is False
+
+    evidence = _aseh_r27_terminal_failure_evidence_fixture()
+    assert (
+        aseh_operator._validate_r27_r26_terminal_failure_evidence(evidence)
+        == evidence
+    )
+    changed = json.loads(json.dumps(evidence))
+    changed["r26_retry_authorized"] = True
+    changed["evidence_cid"] = aseh_operator._identity(
+        {key: value for key, value in changed.items() if key != "evidence_cid"}
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R27"):
+        aseh_operator._validate_r27_r26_terminal_failure_evidence(changed)
+
+
+def test_aseh_r27_launch_assertion_binds_terminal_failure_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain = _aseh_r27_structural_chain()
+    base_head = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+    )
+    base_tree = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+    )
+    candidate_head = "7" * 40
+    candidate_tree = "8" * 40
+    chain[-2].update(
+        {
+            "repair_head": base_head,
+            "repair_tree": base_tree,
+            "receipt_cid": aseh_operator.ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID,
+        }
+    )
+    failure_evidence = _aseh_r27_terminal_failure_evidence_fixture()
+    active = chain[-1]
+    active.update(
+        {
+            "repair_head": candidate_head,
+            "repair_tree": candidate_tree,
+            "previous_receipt_cid": chain[-2]["receipt_cid"],
+            "projection_recovery_failure_evidence_cid": (
+                "sha256:" + ("9" * 64)
+            ),
+            "r25_preflight_failure_evidence_cid": (
+                "sha256:" + ("a" * 64)
+            ),
+            "r26_terminal_failure_evidence_cid": failure_evidence[
+                "evidence_cid"
+            ],
+        }
+    )
+    admission: dict[str, object] = {
+        "runtime_source_head": candidate_head,
+        "runtime_repository_tree_id": candidate_tree,
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "projection_matches_events": True,
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base_head
+            if args == ("show", "-s", "--format=%P", candidate_head)
+            else ""
+        ),
+    )
+
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+
+    changed = json.loads(json.dumps(admission))
+    changed["repair_transition"]["r26_terminal_failure_evidence_cid"] = (
+        "sha256:" + ("b" * 64)
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R27"):
+        aseh_operator._assert_exact_run_launch_admission(
+            changed,
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+
+
+def test_aseh_r27_exact_launch_projects_one_bound_r23_permission_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain = _aseh_r27_structural_chain()
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+    )
+    base_tree = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+    )
+    head = "7" * 40
+    tree = "8" * 40
+    witness = _aseh_r22_witness(head, tree)
+    chain[-5]["receipt_cid"] = (
+        aseh_operator.ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    )
+    chain[-4].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_TREE
+            ),
+            "receipt_cid": aseh_operator.ASEH_R25_EXACT_R24_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-5]["receipt_cid"],
+        }
+    )
+    chain[-3].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_TREE
+            ),
+            "receipt_cid": aseh_operator.ASEH_R26_EXACT_R25_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-4]["receipt_cid"],
+        }
+    )
+    chain[-2].update(
+        {
+            "repair_head": base,
+            "repair_tree": base_tree,
+            "receipt_cid": aseh_operator.ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID,
+            "previous_receipt_cid": chain[-3]["receipt_cid"],
+        }
+    )
+    active = chain[-1]
+    active.update(
+        {
+            "base_head": base,
+            "repair_head": head,
+            "repair_tree": tree,
+            "previous_receipt_cid": chain[-2]["receipt_cid"],
+            "candidate_authorization_witness": witness,
+            "projection_recovery_failure_evidence_cid": (
+                "sha256:" + ("9" * 64)
+            ),
+            "r25_preflight_failure_evidence_cid": (
+                "sha256:" + ("a" * 64)
+            ),
+            "r26_terminal_failure_evidence_cid": (
+                _aseh_r27_terminal_failure_evidence_fixture()["evidence_cid"]
+            ),
+        }
+    )
+    admission: dict[str, object] = {
+        "runtime_source_head": head,
+        "runtime_repository_tree_id": tree,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "repair_transition": active,
+        "repair_transition_chain": chain,
+        "historical_live_authorizing_receipt_cid": active["receipt_cid"],
+        "projection_matches_events": True,
+    }
+    admission["admission_cid"] = aseh_operator._identity(admission)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base if args == ("show", "-s", "--format=%P", head) else ""
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    board = SimpleNamespace(
+        resolved_database_program=lambda: SimpleNamespace(
+            store_id="data/aseh/control.duckdb"
+        )
+    )
+
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=head,
+        candidate_tree=tree,
+    )
+    context = (
+        aseh_operator._r23_owner_start_permission_context_from_launch_admission(
+            board=board,
+            launch_admission=admission,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+        )
+    )
+    assert context is not None
+    assert context["repair_transition_receipt_cid"] == active["receipt_cid"]
+    assert chain[-2]["receipt_cid"] == (
+        aseh_operator.ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID
+    )
+    assert chain[-5]["receipt_cid"] == (
+        aseh_operator.ASEH_R24_EXACT_R1_R23_RECEIPT_CIDS[-1]
+    )
+
+
+def test_aseh_r27_exact_candidate_without_receipt_fails_pre_duckdb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r27_population_requires_policy",
+        lambda _population: True,
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R27 pre-DuckDB"):
+        aseh_operator._prequalify_r27_historical_live_launch(
+            paths={
+                "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": (
+                    tmp_path / "absent-r27.json"
+                )
+            },
+            population={},
+            bootstrap={},
+        )
+
+
+def test_aseh_r27_prequalification_precedes_continuity_and_duckdb(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap_path = tmp_path / "bootstrap.json"
+    repair_path = tmp_path / "repair-r1.json"
+    repair_path.touch()
+    bootstrap = {
+        "source_head": "0" * 40,
+        "repository_tree_id": "1" * 40,
+        "plan_root_cid": "sha256:" + ("2" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("3" * 64)},
+        "source_identities": {},
+        "bootstrap_receipt_id": "sha256:" + ("4" * 64),
+    }
+    population = {
+        "source_head": "5" * 40,
+        "repository_tree_id": "6" * 40,
+        "plan_root_cid": "sha256:" + ("7" * 64),
+        "source_forest": {"forest_cid": "sha256:" + ("8" * 64)},
+        "source_identities": {},
+    }
+    events: list[str] = []
+    monkeypatch.setattr(aseh_operator, "_population", lambda *_args: population)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: bootstrap if path == bootstrap_path else {},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_bootstrap_receipt_id",
+        lambda _value: bootstrap["bootstrap_receipt_id"],
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_prequalify_r27_historical_live_launch",
+        lambda **_kwargs: events.append("qualify-r27") or {"qualified": True},
+    )
+    for revision in range(20, 27):
+        monkeypatch.setattr(
+            aseh_operator,
+            f"_prequalify_r{revision}_historical_live_launch",
+            lambda **_kwargs: pytest.fail("older qualifier ran after R27"),
+        )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_transition",
+        lambda *_args, **_kwargs: {"repair_head": "9" * 40},
+    )
+
+    def continuity(*_args: object, **kwargs: object) -> None:
+        assert kwargs["r27_projection_recovery_prequalification"] == {
+            "qualified": True
+        }
+        events.append("read-continuity")
+        raise aseh_operator.OperatorError("continuity sentinel")
+
+    monkeypatch.setattr(aseh_operator, "_read_continuity_state", continuity)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_projection_matches_events_on_disposable_copy",
+        lambda *_args: pytest.fail("DuckDB replay ran before R27 qualification"),
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="continuity sentinel"):
+        aseh_operator._admit_materialized_launch(
+            object(),
+            {},
+            {
+                "bootstrap_receipt": bootstrap_path,
+                "repair_transition_receipt": repair_path,
+            },
+        )
+    assert events == ["qualify-r27", "read-continuity"]
+
+
+def test_aseh_r26_delegates_r27_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r26_path = tmp_path / "repair-r26.json"
+    r26_path.touch()
+    r27_path = tmp_path / "repair-r27.json"
+    full_prior = _aseh_r27_structural_chain()[:-1]
+    r25_chain = full_prior[:-1]
+    r25_chain[-1].update(
+        {
+            "repair_head": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_HEAD
+            ),
+            "repair_tree": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_TREE
+            ),
+        }
+    )
+    r26_receipt = dict(full_prior[-1])
+    r26_transition = {
+        **r26_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        ),
+        "repair_tree": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+        ),
+    }
+    sentinel = {"delegated": "r27"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r26_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_sealed_owner_projection_recovery_admission_correction_transition",
+        lambda *_args, **_kwargs: r26_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if [item["receipt_cid"] for item in kwargs["prior_receipt_chain"]]
+            == list(aseh_operator.ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS)
+            else pytest.fail("R26 did not delegate the exact R1-R26 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R26 materialized suffix ran before R27 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_sealed_owner_projection_recovery_admission_correction_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_sealed_owner_projection_recovery_admission_correction_transition_receipt": (
+                    r26_path
+                ),
+                "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt": (
+                    r27_path
+                ),
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="9" * 40,
+            previous_receipt=r25_chain[-1],
+            previous_transition=r25_chain[-1],
+            prior_receipt_chain=r25_chain,
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
+
+
+def test_aseh_r27_absent_target_foreign_recovery_proof_is_pure_and_scoped(
+    tmp_path: Path,
+) -> None:
+    item, ownership = _aseh_r27_foreign_waiter_fixture()
+    assert (
+        aseh_operator._validate_r27_foreign_recovery_ownership(
+            ownership,
+            item=item,
+        )
+        == ownership
+    )
+    first_docker = _aseh_r19_test_docker_snapshot([], observed_at_ns=10)
+    confirmed_docker = _aseh_r19_test_docker_snapshot([], observed_at_ns=11)
+    first_entry = {**item, "foreign_recovery_ownership": ownership}
+    confirmed_entry = json.loads(json.dumps(first_entry))
+    first_detached = {
+        "schema": aseh_operator.ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA,
+        "entries": [first_entry],
+        "observed_at_ns": 12,
+    }
+    confirmed_detached = {
+        "schema": aseh_operator.ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA,
+        "entries": [confirmed_entry],
+        "observed_at_ns": 13,
+    }
+    working_directory = tmp_path / "current-tree"
+    working_directory.mkdir()
+
+    assert (
+        aseh_operator._r27_admit_stable_unrelated_baseline(
+            first_docker=first_docker,
+            confirmed_docker=confirmed_docker,
+            first_detached=first_detached,
+            confirmed_detached=confirmed_detached,
+            working_directory=working_directory,
+        )
+        is None
+    )
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="detached baseline is not unrelated",
+    ):
+        aseh_operator._r19_admit_stable_unrelated_baseline(
+            first_docker=first_docker,
+            confirmed_docker=confirmed_docker,
+            first_detached=_aseh_r19_test_detached_snapshot(
+                [dict(item)], observed_at_ns=12
+            ),
+            confirmed_detached=_aseh_r19_test_detached_snapshot(
+                [dict(item)], observed_at_ns=13
+            ),
+            working_directory=working_directory,
+        )
+
+
+def test_aseh_r27_foreign_recovery_accepts_one_trailing_cid_lf() -> None:
+    item, ownership = _aseh_r27_foreign_waiter_fixture()
+    changed = json.loads(json.dumps(ownership))
+    container_id = str(changed["lease_before"]["cidfile_container_id"])
+    cidfile_bytes = container_id.encode("ascii") + b"\n"
+    for field in ("lease_before", "lease_after"):
+        lease = changed[field]
+        lease["cidfile"]["identity"][6] = len(cidfile_bytes)
+        lease["cidfile"]["sha256"] = aseh_operator._identity(cidfile_bytes)
+        lease["cidfile"]["size_bytes"] = len(cidfile_bytes)
+        unsigned_lease = dict(lease)
+        unsigned_lease.pop("observation_cid")
+        lease["observation_cid"] = aseh_operator._identity(unsigned_lease)
+    unsigned = dict(changed)
+    unsigned.pop("ownership_cid")
+    changed["ownership_cid"] = aseh_operator._identity(unsigned)
+
+    assert (
+        aseh_operator._validate_r27_foreign_recovery_ownership(
+            changed,
+            item=item,
+        )
+        == changed
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("marker", "--internal-docker-removal-issuer"),
+        ("parent_pid", 2),
+        ("state", "Z"),
+        ("script_identity", {"availability": "observed"}),
+        ("script_path", "/tmp/runtime/grok_cli_runner.py"),
+        (
+            "script_path",
+            str(
+                aseh_operator.ROOT.parent
+                / "verified-residual-intelligence-foundry-v1"
+                / "data"
+                / "agent_supervisor"
+                / "residual_intelligence_foundry"
+                / "worktrees"
+                / "workspace_111111111111_222222222222"
+                / "ipfs_accelerate_py"
+                / "runtime"
+                / "grok_cli_runner.py"
+            ),
+        ),
+        (
+            "script_path",
+            str(
+                aseh_operator.ROOT.parent
+                / "verified-residual-intelligence-foundry-v1"
+                / "data"
+                / "agent_supervisor"
+                / "residual_intelligence_foundry"
+                / "worktrees"
+                / "unexpected-prefix"
+                / "workspace_111111111111_222222222222"
+                / "ipfs_accelerate_py"
+                / "agent_supervisor"
+                / "runtime"
+                / "grok_cli_runner.py"
+            ),
+        ),
+        ("cwd", "/tmp"),
+    ],
+)
+def test_aseh_r27_foreign_recovery_scope_near_misses_fail_closed(
+    field: str,
+    value: object,
+) -> None:
+    item, ownership = _aseh_r27_foreign_waiter_fixture()
+    changed_item = json.loads(json.dumps(item))
+    changed_ownership = json.loads(json.dumps(ownership))
+    changed_item[field] = value
+    if field in {"script_path", "cwd"}:
+        changed_ownership[field] = value
+        unsigned = dict(changed_ownership)
+        unsigned.pop("ownership_cid")
+        changed_ownership["ownership_cid"] = aseh_operator._identity(unsigned)
+
+    with pytest.raises(aseh_operator.OperatorError, match="R27"):
+        aseh_operator._validate_r27_foreign_recovery_ownership(
+            changed_ownership,
+            item=changed_item,
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["terminal-present", "docker-present", "lease-changed", "missing-proof"],
+)
+def test_aseh_r27_absent_target_foreign_recovery_near_misses_fail_closed(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    item, ownership = _aseh_r27_foreign_waiter_fixture()
+    changed = json.loads(json.dumps(ownership))
+    if mutation == "terminal-present":
+        changed["lease_after"]["cas_terminal_availability"] = "observed"
+        unsigned_lease = dict(changed["lease_after"])
+        unsigned_lease.pop("observation_cid")
+        changed["lease_after"]["observation_cid"] = aseh_operator._identity(
+            unsigned_lease
+        )
+    elif mutation == "docker-present":
+        changed["exact_docker_absence"]["queries"][0]["stdout_sha256"] = (
+            "sha256:" + ("d" * 64)
+        )
+    elif mutation == "lease-changed":
+        changed["lease_after"]["cas_owned"]["identity"][1] += 1
+        unsigned_lease = dict(changed["lease_after"])
+        unsigned_lease.pop("observation_cid")
+        changed["lease_after"]["observation_cid"] = aseh_operator._identity(
+            unsigned_lease
+        )
+    else:
+        first_docker = _aseh_r19_test_docker_snapshot([], observed_at_ns=10)
+        detached = {
+            "schema": aseh_operator.ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA,
+            "entries": [{**item, "foreign_recovery_ownership": None}],
+            "observed_at_ns": 11,
+        }
+        with pytest.raises(aseh_operator.OperatorError, match="ownership"):
+            aseh_operator._r27_admit_stable_unrelated_baseline(
+                first_docker=first_docker,
+                confirmed_docker={**first_docker, "observed_at_ns": 12},
+                first_detached=detached,
+                confirmed_detached={**detached, "observed_at_ns": 13},
+                working_directory=tmp_path,
+            )
+        return
+    unsigned = dict(changed)
+    unsigned.pop("ownership_cid")
+    changed["ownership_cid"] = aseh_operator._identity(unsigned)
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="R27|R16 Docker observation",
+    ):
+        aseh_operator._validate_r27_foreign_recovery_ownership(
+            changed,
+            item=item,
+        )

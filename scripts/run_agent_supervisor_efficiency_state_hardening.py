@@ -127,6 +127,26 @@ ASEH_R26_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r26-historical-live-policy-admission@1"
 )
+ASEH_R27_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r27-historical-live-policy-admission@1"
+)
+ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r27-historical-live-execution@1"
+)
+ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r27-detached-effect-snapshot@1"
+)
+ASEH_R27_FOREIGN_RECOVERY_OWNERSHIP_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r27-foreign-recovery-ownership@1"
+)
+ASEH_R27_FOREIGN_RECOVERY_LEASE_OBSERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r27-foreign-recovery-lease-observation@1"
+)
 ASEH_R19_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
     "sha256:48e0aded2d74a8ff1f9ed8d5b9e0af8ad73072fd9d9f5152e9c1af0544828c82"
 )
@@ -147,6 +167,9 @@ ASEH_R24_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
 )
 ASEH_R25_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
     "sha256:39a4a9095c1b568c30a6839c7b4553b7eacb3eadcec3529fe328b1fe937eb066"
+)
+ASEH_R26_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:973cf9354c4879c3fedcbcd253d6fd2e324d32a663a36121ca435f10108b0501"
 )
 ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -199,6 +222,10 @@ ASEH_R26_R25_PREFLIGHT_FAILURE_EVIDENCE_SCHEMA: Final = (
 ASEH_R26_PROJECTION_RECOVERY_PRESTART_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r26-projection-recovery-prestart-admission@1"
+)
+ASEH_R27_R26_TERMINAL_FAILURE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-r27-r26-terminal-failure-evidence@1"
 )
 ASEH_R21_OWNER_START_RECOVERY_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -2944,6 +2971,88 @@ REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_NON_SUCC
     "any live database mutation, gate reduction, or self-authorized promotion "
     "is rejected."
 )
+REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-sealed-owner-foreign-recovery-waiter-admission-"
+    "transition@1"
+)
+REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD: Final = (
+    "c67559c0c9dde6d2b9182a7a13ef12967a4fe3dc"
+)
+REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE: Final = (
+    "efedcfacb3a7bd63b4fec5f3d9243ef19ec2bd37"
+)
+REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_CHANGED_PATHS: Final = (
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID: Final = (
+    "sha256:b9a4b5117ea008b6efefb62a325460bec65e69188d63352c441339686245ba4b"
+)
+ASEH_R27_EXACT_R26_TERMINAL_OBSERVATION_CID: Final = (
+    "sha256:6b7733a0d385fe24f40dba5029a89c9b138fa2da7c8ff9adcda78728e2476297"
+)
+ASEH_R27_EXACT_R26_TERMINAL_RECORD_CID: Final = (
+    "sha256:cdc3c86561b757fdc5085c77724010e2702618f9916b946f901b9ad50735b35c"
+)
+ASEH_R27_EXACT_R26_CAPSULE_ID: Final = (
+    "sha256:ec9942f22930848056fb44ad3d2ddac088a995f404925dd3658147ba5dd734e4"
+)
+ASEH_R27_EXACT_R26_CAPSULE_ARCHIVE_SHA256: Final = (
+    "sha256:dc1264e08a8ab3260c2e41b8e64a406bb5cf58604b1cf8b6d57422ce1b667e52"
+)
+REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        "aseh_r26_ or aseh_r27_ or delegates_r27_before_suffix_admission",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue repairing the existing canonical supervisor while preserving "
+    "foreign recovery ownership and admitting only read-only, exact absence "
+    "evidence for stable sibling-worktree cleanup watchdogs"
+)
+REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SUCCESS: Final = (
+    "The exact published R27 child retains immutable R1-R26 receipts, binds the "
+    "failed R26 terminal observation without retrying R26, and admits only "
+    "stable PID-1 sibling-worktree cleanup watchdogs whose exact Docker targets "
+    "remain absent and whose owner-only cas-owned markers remain unchanged with "
+    "no cas-terminal marker throughout baseline and terminal observations."
+)
+REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R26 parent, tree, receipt, terminal observation, watchdog "
+    "birth, target, marker, lease identity, exact-name Docker observation, "
+    "current-tree ownership, active target, cleanup mutation, signal, R26 "
+    "retry, live database access during authorization, gate reduction, or "
+    "self-authorized promotion is rejected."
+)
 ASEH_R20_EXACT_R1_R19_RECEIPT_CIDS: Final = (
     "sha256:498dae56cef1484c43a318a88dd02155ecf56a4de9b611085ca0098fbc3cf9d8",
     "sha256:e08514ca997ab6aaf6dffe566124fe6fb7b6c4824b4cd6b0dfc90274141a24ca",
@@ -2988,6 +3097,10 @@ ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS: Final = (
 ASEH_R26_EXACT_R1_R25_RECEIPT_CIDS: Final = (
     *ASEH_R25_EXACT_R1_R24_RECEIPT_CIDS,
     ASEH_R26_EXACT_R25_REPAIR_RECEIPT_CID,
+)
+ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS: Final = (
+    *ASEH_R26_EXACT_R1_R25_RECEIPT_CIDS,
+    ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID,
 )
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
@@ -3060,6 +3173,10 @@ ASEH_R25_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R26_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R25_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_SCHEMA,
+)
+ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R26_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -3198,6 +3315,10 @@ REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_RECEIPT_
             "projection_recovery_prestart_admission",
         }
     )
+)
+REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_RECEIPT_FIELDS
+    | frozenset({"r26_terminal_failure_evidence"})
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -5480,6 +5601,281 @@ def _repair_sealed_owner_projection_recovery_admission_correction_transition_rec
     return receipt_id
 
 
+def _r27_expected_r26_terminal_observation() -> dict[str, Any]:
+    """Return the exact parent-observed R26 terminal receipt, without inference."""
+
+    child = {
+        "boot_id": "fe7ef8ca-8b86-4280-a74e-f37d621c2f96",
+        "parent_pid": 2817747,
+        "pid": 927920,
+        "start_time_ticks": 33616186,
+    }
+    terminal_record: dict[str, Any] = {
+        "candidate_head": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        ),
+        "candidate_tree": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+        ),
+        "capsule_archive_sha256": ASEH_R27_EXACT_R26_CAPSULE_ARCHIVE_SHA256,
+        "capsule_id": ASEH_R27_EXACT_R26_CAPSULE_ID,
+        "child_process": dict(child),
+        "direct_cause_type": None,
+        "error_type": "OperatorError",
+        "nonce": "77fc10dec22bac8adef3e0657d587a60b3275c67658b62f108e92a8d2fb52807",
+        "observed_at_ns": 1787766281400342619,
+        "outcome": "failed",
+        "owner_identity_observed": False,
+        "owner_start_attempted": False,
+        "record_cid": ASEH_R27_EXACT_R26_TERMINAL_RECORD_CID,
+        "retry_authorized": False,
+        "scheduler_birth_observed": False,
+        "schema": ASEH_SEALED_OWNER_TERMINAL_RECORD_SCHEMA,
+        "stage": "materialized_launch_admission",
+    }
+    observation: dict[str, Any] = {
+        "authority": "non_authoritative_observability",
+        "candidate_head": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        ),
+        "candidate_tree": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+        ),
+        "capsule_archive_sha256": ASEH_R27_EXACT_R26_CAPSULE_ARCHIVE_SHA256,
+        "capsule_id": ASEH_R27_EXACT_R26_CAPSULE_ID,
+        "child_process": dict(child),
+        "child_returncode": 78,
+        "observed_at_ns": 1787766281511649125,
+        "program_id": PROGRAM,
+        "receipt_cid": ASEH_R27_EXACT_R26_TERMINAL_OBSERVATION_CID,
+        "retry_authorized": False,
+        "schema": ASEH_SEALED_OWNER_TERMINAL_OBSERVATION_SCHEMA,
+        "terminal_record": terminal_record,
+        "terminal_record_availability": "observed",
+        "unavailability_reason": None,
+    }
+    return observation
+
+
+def _r27_expected_r26_terminal_failure_evidence() -> dict[str, Any]:
+    """Build the closed R26 failure wrapper without reading live state."""
+
+    evidence: dict[str, Any] = {
+        "schema": ASEH_R27_R26_TERMINAL_FAILURE_EVIDENCE_SCHEMA,
+        "authority": "non_authoritative_operator_observation",
+        "failed_candidate_head": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        ),
+        "failed_candidate_tree": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+        ),
+        "prior_repair_receipt_cid": ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID,
+        "terminal_observation": _r27_expected_r26_terminal_observation(),
+        "failure_stage": "materialized_launch_admission",
+        "owner_start_attempted": False,
+        "owner_identity_observed": False,
+        "scheduler_birth_observed": False,
+        "r26_retry_authorized": False,
+        "database_observed_during_evidence_capture": False,
+        "database_mutated_during_evidence_capture": False,
+    }
+    evidence["evidence_cid"] = _identity(evidence)
+    return evidence
+
+
+def _validate_r27_r26_terminal_failure_evidence(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit only the exact no-owner, no-retry R26 terminal observation."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R27 R26-terminal failure evidence is invalid")
+    evidence = dict(value)
+    fields = {
+        "schema",
+        "authority",
+        "failed_candidate_head",
+        "failed_candidate_tree",
+        "prior_repair_receipt_cid",
+        "terminal_observation",
+        "failure_stage",
+        "owner_start_attempted",
+        "owner_identity_observed",
+        "scheduler_birth_observed",
+        "r26_retry_authorized",
+        "database_observed_during_evidence_capture",
+        "database_mutated_during_evidence_capture",
+        "evidence_cid",
+    }
+    observation = evidence.get("terminal_observation")
+    expected_observation = _r27_expected_r26_terminal_observation()
+    record = observation.get("terminal_record") if isinstance(
+        observation, Mapping
+    ) else None
+    unsigned = dict(evidence)
+    evidence_cid = str(unsigned.pop("evidence_cid", "") or "")
+    expected_record = expected_observation["terminal_record"]
+    unsigned_record = dict(expected_record)
+    record_cid = str(unsigned_record.pop("record_cid"))
+    unsigned_observation = dict(expected_observation)
+    observation_cid = str(unsigned_observation.pop("receipt_cid"))
+    if (
+        set(evidence) != fields
+        or evidence.get("schema")
+        != ASEH_R27_R26_TERMINAL_FAILURE_EVIDENCE_SCHEMA
+        or evidence.get("authority")
+        != "non_authoritative_operator_observation"
+        or evidence.get("failed_candidate_head")
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        or evidence.get("failed_candidate_tree")
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+        or evidence.get("prior_repair_receipt_cid")
+        != ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID
+        or observation != expected_observation
+        or not isinstance(record, Mapping)
+        or record != expected_record
+        or record_cid != _identity(unsigned_record)
+        or observation_cid != _identity(unsigned_observation)
+        or evidence.get("failure_stage") != "materialized_launch_admission"
+        or evidence.get("owner_start_attempted") is not False
+        or evidence.get("owner_identity_observed") is not False
+        or evidence.get("scheduler_birth_observed") is not False
+        or evidence.get("r26_retry_authorized") is not False
+        or evidence.get("database_observed_during_evidence_capture") is not False
+        or evidence.get("database_mutated_during_evidence_capture") is not False
+        or evidence_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R27 R26-terminal failure evidence differs")
+    return evidence
+
+
+def _r27_r26_terminal_failure_evidence(
+    *,
+    paths: Mapping[str, Path],
+) -> dict[str, Any]:
+    """Read the exact existing R26 observation without touching DuckDB or retrying."""
+
+    directory = paths.get("sealed_owner_terminal_observations")
+    if not isinstance(directory, Path):
+        raise OperatorError("R27 R26-terminal observation directory is absent")
+    observed = _secure_runtime_json(
+        directory / f"{ASEH_R27_EXACT_R26_TERMINAL_OBSERVATION_CID[7:]}.json",
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    if observed != _r27_expected_r26_terminal_observation():
+        raise OperatorError("R27 R26-terminal observation differs")
+    return _validate_r27_r26_terminal_failure_evidence(
+        _r27_expected_r26_terminal_failure_evidence()
+    )
+
+
+def _repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-27 foreign-recovery waiter receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    policy_value = payload.get("historical_live_policy_admission")
+    evidence_value = payload.get("historical_live_execution_evidence")
+    failure_value = payload.get("projection_recovery_failure_evidence")
+    preflight_value = payload.get("r25_preflight_failure_evidence")
+    proof_value = payload.get("projection_recovery_prestart_admission")
+    terminal_value = payload.get("r26_terminal_failure_evidence")
+    policy = (
+        _validate_r27_historical_live_policy_admission_record(policy_value)
+        if isinstance(policy_value, Mapping)
+        else None
+    )
+    historical_evidence = (
+        dict(evidence_value) if isinstance(evidence_value, Mapping) else {}
+    )
+    unsigned_historical = dict(historical_evidence)
+    historical_evidence_cid = str(
+        unsigned_historical.pop("evidence_cid", "") or ""
+    )
+    failure = (
+        _validate_r25_projection_recovery_failure_evidence(failure_value)
+        if isinstance(failure_value, Mapping)
+        else None
+    )
+    preflight = (
+        _validate_r26_r25_preflight_failure_evidence(preflight_value)
+        if isinstance(preflight_value, Mapping)
+        else None
+    )
+    proof = (
+        _validate_r26_projection_recovery_prestart_admission(
+            proof_value,
+            expected_failure_evidence_cid=(
+                str(failure.get("evidence_cid") or "")
+                if isinstance(failure, Mapping)
+                else ""
+            ),
+            expected_preflight_failure_evidence_cid=(
+                str(preflight.get("evidence_cid") or "")
+                if isinstance(preflight, Mapping)
+                else ""
+            ),
+        )
+        if isinstance(proof_value, Mapping)
+        else None
+    )
+    terminal = (
+        _validate_r27_r26_terminal_failure_evidence(terminal_value)
+        if isinstance(terminal_value, Mapping)
+        else None
+    )
+    if (
+        payload.get("schema")
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 27
+        or payload.get("terminal_success_criteria")
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r27_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+        or not isinstance(policy, Mapping)
+        or not isinstance(failure, Mapping)
+        or not isinstance(preflight, Mapping)
+        or not isinstance(proof, Mapping)
+        or not isinstance(terminal, Mapping)
+        or policy.get("bootstrap_receipt_id")
+        != payload.get("bootstrap_receipt_id")
+        or policy.get("previous_receipt_cid")
+        != payload.get("previous_receipt_cid")
+        or policy.get("candidate_head") != payload.get("repair_head")
+        or policy.get("candidate_tree") != payload.get("repair_tree")
+        or policy.get("candidate_authorization_witness_cid")
+        != _identity(dict(witness))
+        or historical_evidence.get("schema")
+        != ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
+        or historical_evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or historical_evidence.get("authorizing_receipt_cid") is not None
+        or historical_evidence.get("returncode") != 0
+        or historical_evidence.get("terminal_class") != "verified_success"
+        or historical_evidence_cid != _identity(unsigned_historical)
+    ):
+        raise OperatorError(
+            "bootstrap repair foreign-recovery waiter schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair foreign-recovery waiter CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -5710,6 +6106,9 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r26 = globals().get(
         "REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_VALIDATIONS"
     )
+    r27 = globals().get(
+        "REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
@@ -5724,6 +6123,7 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
         *((r24,) if isinstance(r24, Sequence) else ()),
         *((r25,) if isinstance(r25, Sequence) else ()),
         *((r26,) if isinstance(r26, Sequence) else ()),
+        *((r27,) if isinstance(r27, Sequence) else ()),
     )
 
 
@@ -6270,6 +6670,28 @@ def _r19_historical_live_executor_contract() -> dict[str, Any]:
     }
 
 
+def _r27_historical_live_executor_contract() -> dict[str, Any]:
+    """Version R19's route for preserved, non-contending foreign recovery."""
+
+    parent = _r19_historical_live_executor_contract()
+    contract = dict(parent)
+    contract.update(
+        {
+            "parent_executor_contract_cid": _identity(parent),
+            "policy_revision": 27,
+            "descendant_cleanup_policy": (
+                "exact_group_fence_plus_owned_docker_absence_plus_typed_"
+                "stable_foreign_recovery_waiter_preservation"
+            ),
+            "result_authority": (
+                "exact_process_exit_typed_terminal_cleanup_and_read_only_"
+                "foreign_recovery_ownership_evidence"
+            ),
+        }
+    )
+    return contract
+
+
 def _r19_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     """Extend immutable R18 with one exact historical-live route and matrix."""
 
@@ -6333,6 +6755,32 @@ def _r19_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+def _r27_historical_live_validation_executor_contract() -> dict[str, Any]:
+    """Bind the sole R27 historical route without changing R19-R26 contracts."""
+
+    parent = _r19_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if parent_cid != ASEH_R19_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID:
+        raise OperatorError("historical R19 validation contract drifted")
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r27-historical-live-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 27,
+            "historical_live_route": _r27_historical_live_executor_contract(),
+            "scope": (
+                "r27_historical_live_authorization_pre_duckdb_and_"
+                "materialized_launch_admission_only"
+            ),
+        }
+    )
+    return contract
+
+
 def _admit_r19_historical_live_executor_contract(
     executor_contract: Mapping[str, Any],
     *,
@@ -6341,11 +6789,17 @@ def _admit_r19_historical_live_executor_contract(
     """Admit no command except the frozen R11 live suite."""
 
     supplied = dict(executor_contract)
-    expected = _r19_sealed_receipt_validation_executor_contract()
-    if supplied != expected:
+    r19 = _r19_sealed_receipt_validation_executor_contract()
+    r27 = _r27_historical_live_validation_executor_contract()
+    if supplied not in (r19, r27):
         raise OperatorError("R19 historical live executor contract is unknown")
     route = supplied.get("historical_live_route")
-    if route != _r19_historical_live_executor_contract():
+    expected_route = (
+        _r27_historical_live_executor_contract()
+        if supplied == r27
+        else _r19_historical_live_executor_contract()
+    )
+    if route != expected_route:
         raise OperatorError("R19 historical live route contract differs")
     if tuple(declared) != _r11_historical_live_docker_command():
         raise OperatorError(
@@ -6759,6 +7213,66 @@ def _r26_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
             "historical_live_route": _r19_historical_live_executor_contract(),
             "scope": (
                 "r26_authorization_pre_duckdb_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
+def _r27_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend immutable R26 without adding an executor or mutable authority."""
+
+    parent = _r26_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if parent_cid != ASEH_R26_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID:
+        raise OperatorError("historical R26 validation contract drifted")
+    matrix = (
+        REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_VALIDATIONS
+    )
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r27_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r27-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 27,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "historical_live_route": _r27_historical_live_executor_contract(),
+            "scope": (
+                "r27_authorization_pre_duckdb_and_materialized_launch_"
                 "admission_only"
             ),
         }
@@ -8490,6 +9004,224 @@ def _admit_r26_historical_live_policy_admission(
     return supplied
 
 
+def _validate_r27_historical_live_policy_admission_record(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed R27 policy bound to immutable R1-R26 receipts."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R27 historical live policy admission is invalid")
+    supplied = dict(value)
+    fields = {
+        "schema",
+        "program_id",
+        "task_id",
+        "policy_revision",
+        "authorization_basis",
+        "bootstrap_receipt_id",
+        "prior_receipt_count",
+        "prior_receipt_cids",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_base_head",
+        "candidate_head",
+        "candidate_tree",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+        "validation_subject_head",
+        "validation_subject_tree",
+        "policy_admission_cid",
+    }
+    unsigned = dict(supplied)
+    policy_admission_cid = str(
+        unsigned.pop("policy_admission_cid", "") or ""
+    )
+    digest_fields = (
+        "bootstrap_receipt_id",
+        "prior_receipt_chain_cid",
+        "previous_receipt_cid",
+        "candidate_authorization_witness_cid",
+        "executor_contract_cid",
+        "logical_argv_sha256",
+    )
+    if (
+        set(supplied) != fields
+        or supplied.get("schema")
+        != ASEH_R27_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA
+        or supplied.get("program_id") != PROGRAM
+        or supplied.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or supplied.get("policy_revision") != 27
+        or supplied.get("authorization_basis")
+        != "validated_r1_r26_chain_plus_observed_r27_candidate_witness"
+        or supplied.get("prior_receipt_count")
+        != len(ASEH_R26_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+        or supplied.get("prior_receipt_cids")
+        != list(ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS)
+        or supplied.get("prior_receipt_chain_cid")
+        != _identity(list(ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS))
+        or supplied.get("previous_receipt_cid")
+        != ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS[-1]
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(supplied.get(field) or ""),
+            )
+            is None
+            for field in digest_fields
+        )
+        or supplied.get("candidate_base_head")
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_head") or "")
+        )
+        is None
+        or re.fullmatch(
+            r"[0-9a-f]{40}", str(supplied.get("candidate_tree") or "")
+        )
+        is None
+        or supplied.get("executor_contract_cid")
+        != _identity(_r27_historical_live_validation_executor_contract())
+        or supplied.get("logical_argv_sha256")
+        != _identity(list(_r11_historical_live_docker_command()))
+        or supplied.get("validation_subject_head")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD
+        or supplied.get("validation_subject_tree")
+        != ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE
+        or policy_admission_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R27 historical live policy admission differs")
+    return supplied
+
+
+def _r27_historical_live_policy_admission(
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build R27 live authority from the exact immutable R1-R26 vector."""
+
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", bootstrap_receipt_id) is None:
+        raise OperatorError("R27 historical live bootstrap identity is invalid")
+    admitted_chain = _admit_exact_r26_transition_chain(list(prior_chain))
+    receipt_cids = tuple(str(item["receipt_cid"]) for item in admitted_chain)
+    if (
+        receipt_cids != ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS
+        or any(
+            item.get("bootstrap_receipt_id") != bootstrap_receipt_id
+            for item in admitted_chain
+        )
+        or admitted_chain[-1].get("repair_head")
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError("R27 historical live prior receipt vector differs")
+    witness = dict(candidate_authorization_witness)
+    witness_fields = {
+        "head",
+        "tree",
+        "branch_ref",
+        "index_entries_digest",
+        "index_flags_digest",
+        "status_digest",
+        "head_reflog_digest",
+        "branch_reflog_digest",
+    }
+    if (
+        set(witness) != witness_fields
+        or any(type(item) is not str for item in witness.values())
+        or witness.get("head") != candidate_head
+        or witness.get("tree") != candidate_tree
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+        or re.fullmatch(
+            r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]*",
+            str(witness.get("branch_ref") or ""),
+        )
+        is None
+        or ".." in str(witness.get("branch_ref") or "")
+        or "//" in str(witness.get("branch_ref") or "")
+        or str(witness.get("branch_ref") or "").endswith(("/", ".lock"))
+        or witness.get("status_digest") != _identity(b"")
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", witness[field]) is None
+            for field in (
+                "index_entries_digest",
+                "index_flags_digest",
+                "status_digest",
+                "head_reflog_digest",
+                "branch_reflog_digest",
+            )
+        )
+    ):
+        raise OperatorError(
+            "R27 historical live candidate authorization witness differs"
+        )
+    admitted_contract = _admit_r19_historical_live_executor_contract(
+        executor_contract,
+        declared=_r11_historical_live_docker_command(),
+    )
+    if admitted_contract != _r27_historical_live_validation_executor_contract():
+        raise OperatorError("R27 historical live executor contract differs")
+    admission: dict[str, Any] = {
+        "schema": ASEH_R27_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "program_id": PROGRAM,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "policy_revision": 27,
+        "authorization_basis": (
+            "validated_r1_r26_chain_plus_observed_r27_candidate_witness"
+        ),
+        "bootstrap_receipt_id": bootstrap_receipt_id,
+        "prior_receipt_count": len(receipt_cids),
+        "prior_receipt_cids": list(receipt_cids),
+        "prior_receipt_chain_cid": _identity(list(receipt_cids)),
+        "previous_receipt_cid": receipt_cids[-1],
+        "candidate_base_head": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        ),
+        "candidate_head": candidate_head,
+        "candidate_tree": candidate_tree,
+        "candidate_authorization_witness_cid": _identity(witness),
+        "executor_contract_cid": _identity(admitted_contract),
+        "logical_argv_sha256": _identity(
+            list(_r11_historical_live_docker_command())
+        ),
+        "validation_subject_head": ASEH_R11_HISTORICAL_LIVE_SUBJECT_HEAD,
+        "validation_subject_tree": ASEH_R11_HISTORICAL_LIVE_SUBJECT_TREE,
+    }
+    admission["policy_admission_cid"] = _identity(admission)
+    return _validate_r27_historical_live_policy_admission_record(admission)
+
+
+def _admit_r27_historical_live_policy_admission(
+    value: Mapping[str, Any],
+    *,
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    executor_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit only R27's deterministic record for the supplied exact inputs."""
+
+    supplied = _validate_r27_historical_live_policy_admission_record(value)
+    expected = _r27_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        executor_contract=executor_contract,
+    )
+    if supplied != expected:
+        raise OperatorError("R27 historical live policy admission is unknown")
+    return supplied
+
+
 def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
     """Return the only admitted historical-live policy revision."""
 
@@ -8510,6 +9242,8 @@ def _historical_live_policy_revision(value: Mapping[str, Any]) -> int:
         return 25
     if schema == ASEH_R26_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
         return 26
+    if schema == ASEH_R27_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA:
+        return 27
     raise OperatorError("historical live policy schema is unknown")
 
 
@@ -8734,6 +9468,7 @@ def _r19_active_policy_scope(
         24: _validate_r24_historical_live_policy_admission_record,
         25: _validate_r25_historical_live_policy_admission_record,
         26: _validate_r26_historical_live_policy_admission_record,
+        27: _validate_r27_historical_live_policy_admission_record,
     }[revision]
     policy = policy_validator(policy_admission)
     witness = json.loads(executor.authorization_witness_json)
@@ -9034,6 +9769,29 @@ def _r26_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r27_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R27 suffix argv without broadening prior matrices."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_VALIDATIONS
+        )
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R27 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -9079,7 +9837,10 @@ def _admit_sealed_receipt_validation_executor_contract(
     r24 = _r24_sealed_receipt_validation_executor_contract()
     r25 = _r25_sealed_receipt_validation_executor_contract()
     r26 = _r26_sealed_receipt_validation_executor_contract()
-    contracts = (r16, r17, r18, r19, r20, r21, r22, r23, r24, r25, r26)
+    r27 = _r27_sealed_receipt_validation_executor_contract()
+    contracts = (
+        r16, r17, r18, r19, r20, r21, r22, r23, r24, r25, r26, r27
+    )
     if supplied not in contracts:
         raise OperatorError("sealed validation executor contract is unknown")
     classifier = {
@@ -9098,6 +9859,7 @@ def _admit_sealed_receipt_validation_executor_contract(
                 _r24_validation_executor_class,
                 _r25_validation_executor_class,
                 _r26_validation_executor_class,
+                _r27_validation_executor_class,
             ),
             strict=True,
         )
@@ -13956,6 +14718,748 @@ def _r19_path_is_within(path: Path, root: Path) -> bool:
     return True
 
 
+def _r27_regular_file_observation(
+    directory_fd: int,
+    name: str,
+    *,
+    maximum: int,
+) -> tuple[dict[str, Any], bytes]:
+    """Read one bounded regular file through a retained owner-only directory."""
+
+    if name in {"", ".", ".."} or "/" in name or maximum <= 0:
+        raise OperatorError("R27 foreign recovery file name is invalid")
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NOATIME", 0),
+            dir_fd=directory_fd,
+        )
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > maximum
+        ):
+            raise OperatorError("R27 foreign recovery file identity is unsafe")
+        payload = bytearray()
+        while len(payload) <= maximum:
+            block = os.read(descriptor, maximum + 1 - len(payload))
+            if not block:
+                break
+            payload.extend(block)
+        after = os.fstat(descriptor)
+        named = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except OSError as exc:
+        raise OperatorError(
+            "R27 foreign recovery file observation is unavailable"
+        ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if (
+        len(payload) != before.st_size
+        or _validation_stat_identity(before)
+        != _validation_stat_identity(after)
+        or _validation_stat_identity(before)
+        != _validation_stat_identity(named)
+    ):
+        raise OperatorError("R27 foreign recovery file changed during read")
+    observation = {
+        "identity": _validation_stat_identity(before),
+        "sha256": _identity(bytes(payload)),
+        "size_bytes": len(payload),
+    }
+    return observation, bytes(payload)
+
+
+def _r27_watchdog_argv_binding(item: Mapping[str, Any]) -> dict[str, Any]:
+    """Re-read and bind the exact durable-CAS arguments of one live waiter."""
+
+    pid = item.get("pid")
+    if type(pid) is not int or int(pid) <= 1:
+        raise OperatorError("R27 foreign recovery waiter PID is invalid")
+    try:
+        payload = Path(f"/proc/{pid}/cmdline").read_bytes()
+        argv = [
+            value.decode("utf-8", errors="strict")
+            for value in payload.rstrip(b"\0").split(b"\0")
+            if value
+        ]
+    except (OSError, UnicodeError) as exc:
+        raise OperatorError("R27 foreign recovery argv is unavailable") from exc
+    names = (
+        "--provider",
+        "--docker-bin",
+        "--container-name",
+        "--cidfile",
+        "--lease-root",
+    )
+    values: dict[str, str] = {}
+    for name in names:
+        positions = [index for index, value in enumerate(argv) if value == name]
+        if len(positions) != 1 or positions[0] + 1 >= len(argv):
+            raise OperatorError("R27 foreign recovery argv binding is invalid")
+        values[name] = argv[positions[0] + 1]
+    lease_root = Path(values["--lease-root"])
+    cidfile = Path(values["--cidfile"])
+    if (
+        _identity(argv) != item.get("argv_sha256")
+        or argv.count("--internal-docker-cleanup-watchdog") != 1
+        or any(
+            marker in argv
+            for marker in (
+                "--internal-docker-cleanup-watchdog-launcher",
+                "--internal-docker-removal-issuer",
+                "--internal-docker-removal-issuer-launcher",
+            )
+        )
+        or values["--provider"] != "codex"
+        or values["--docker-bin"] != "/usr/bin/docker"
+        or values["--container-name"]
+        != item.get("target_container_name")
+        or values["--lease-root"] != item.get("lease_root")
+        or cidfile != lease_root / "container.cid"
+    ):
+        raise OperatorError("R27 foreign recovery argv binding differs")
+    return {
+        "provider": values["--provider"],
+        "docker_bin": values["--docker-bin"],
+        "container_name": values["--container-name"],
+        "cidfile": values["--cidfile"],
+        "lease_root": values["--lease-root"],
+        "argv_sha256": str(item["argv_sha256"]),
+    }
+
+
+def _validate_r27_foreign_recovery_lease_observation(
+    value: Mapping[str, Any],
+    *,
+    target_container_name: str,
+    binding: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Purely validate one stable owner-only lease observation."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R27 foreign recovery lease observation is invalid")
+    observation = dict(value)
+    fields = {
+        "schema",
+        "lease_root",
+        "lease_root_identity",
+        "docker_config_identity",
+        "cas_owned",
+        "cidfile",
+        "cidfile_container_id",
+        "cas_terminal_availability",
+        "observed_at_ns",
+        "observation_cid",
+    }
+    lease_root_identity = observation.get("lease_root_identity")
+    docker_config_identity = observation.get("docker_config_identity")
+    cas_owned = observation.get("cas_owned")
+    cidfile = observation.get("cidfile")
+    unsigned = dict(observation)
+    observation_cid = str(unsigned.pop("observation_cid", "") or "")
+
+    def safe_identity(
+        identity: Any,
+        *,
+        kind: str,
+        mode: int,
+        nlink: int | None,
+    ) -> bool:
+        if (
+            not isinstance(identity, list)
+            or len(identity) != 9
+            or any(type(item) is not int for item in identity)
+        ):
+            return False
+        observed_mode = int(identity[2])
+        return (
+            (stat.S_ISDIR(observed_mode) if kind == "directory" else stat.S_ISREG(observed_mode))
+            and stat.S_IMODE(observed_mode) == mode
+            and int(identity[3]) == os.geteuid()
+            and (nlink is None or int(identity[5]) == nlink)
+            and int(identity[6]) >= 0
+        )
+
+    def safe_file(
+        file_value: Any,
+        *,
+        mode: int,
+        expected: bytes,
+    ) -> bool:
+        return bool(
+            isinstance(file_value, Mapping)
+            and set(file_value) == {"identity", "sha256", "size_bytes"}
+            and safe_identity(
+                file_value.get("identity"),
+                kind="file",
+                mode=mode,
+                nlink=1,
+            )
+            and file_value.get("sha256") == _identity(expected)
+            and file_value.get("size_bytes") == len(expected)
+            and file_value.get("identity")[6] == len(expected)
+        )
+
+    container_id = str(observation.get("cidfile_container_id") or "")
+    target_bytes = target_container_name.encode("ascii", errors="strict")
+    cid_bytes = container_id.encode("ascii", errors="strict")
+    cidfile_size = cidfile.get("size_bytes") if isinstance(
+        cidfile, Mapping
+    ) else None
+    expected_cidfile_bytes = (
+        cid_bytes + b"\n" if cidfile_size == 65 else cid_bytes
+    )
+    if (
+        set(observation) != fields
+        or observation.get("schema")
+        != ASEH_R27_FOREIGN_RECOVERY_LEASE_OBSERVATION_SCHEMA
+        or observation.get("lease_root") != binding.get("lease_root")
+        or Path(str(observation.get("lease_root") or "")).parent
+        != Path("/tmp")
+        or re.fullmatch(
+            r"asref-codex-container-[A-Za-z0-9_-]{6,32}",
+            Path(str(observation.get("lease_root") or "")).name,
+        )
+        is None
+        or not safe_identity(
+            lease_root_identity,
+            kind="directory",
+            mode=0o700,
+            nlink=None,
+        )
+        or not safe_identity(
+            docker_config_identity,
+            kind="directory",
+            mode=0o700,
+            nlink=None,
+        )
+        or not safe_file(cas_owned, mode=0o600, expected=target_bytes)
+        or re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+        or not isinstance(cidfile, Mapping)
+        or set(cidfile) != {"identity", "sha256", "size_bytes"}
+        or not isinstance(cidfile.get("identity"), list)
+        or len(cidfile["identity"]) != 9
+        or any(type(item) is not int for item in cidfile["identity"])
+        or not stat.S_ISREG(int(cidfile["identity"][2]))
+        or stat.S_IMODE(int(cidfile["identity"][2])) not in {0o600, 0o664}
+        or int(cidfile["identity"][3]) != os.geteuid()
+        or int(cidfile["identity"][5]) != 1
+        or cidfile_size not in {64, 65}
+        or cidfile.get("sha256") != _identity(expected_cidfile_bytes)
+        or cidfile["identity"][6] != cidfile_size
+        or observation.get("cas_terminal_availability") != "absent"
+        or type(observation.get("observed_at_ns")) is not int
+        or int(observation["observed_at_ns"]) <= 0
+        or observation_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R27 foreign recovery lease observation differs")
+    return observation
+
+
+def _r27_foreign_recovery_lease_observation(
+    item: Mapping[str, Any],
+    *,
+    binding: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Observe exact durable ownership without mutating another program's lease."""
+
+    raw_root = Path(str(binding.get("lease_root") or ""))
+    try:
+        resolved_root = raw_root.resolve(strict=True)
+    except OSError as exc:
+        raise OperatorError("R27 foreign recovery lease root is unavailable") from exc
+    if raw_root != resolved_root or resolved_root.parent != Path("/tmp"):
+        raise OperatorError("R27 foreign recovery lease root differs")
+    directory_fd = docker_config_fd = -1
+    try:
+        directory_fd = os.open(
+            resolved_root,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        root_identity = _validation_stat_identity(os.fstat(directory_fd))
+        docker_config_fd = os.open(
+            "docker-config",
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=directory_fd,
+        )
+        docker_config_identity = _validation_stat_identity(
+            os.fstat(docker_config_fd)
+        )
+        cas_owned, cas_owned_bytes = _r27_regular_file_observation(
+            directory_fd,
+            "cas-owned",
+            maximum=256,
+        )
+        cidfile, cidfile_bytes = _r27_regular_file_observation(
+            directory_fd,
+            "container.cid",
+            maximum=256,
+        )
+        try:
+            os.stat(
+                "cas-terminal",
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise OperatorError(
+                "R27 foreign recovery terminal marker is unobservable"
+            ) from exc
+        else:
+            raise OperatorError("R27 foreign recovery terminal marker exists")
+    except OperatorError:
+        raise
+    except OSError as exc:
+        raise OperatorError("R27 foreign recovery lease is unavailable") from exc
+    finally:
+        if docker_config_fd >= 0:
+            os.close(docker_config_fd)
+        if directory_fd >= 0:
+            os.close(directory_fd)
+    target = str(item.get("target_container_name") or "")
+    try:
+        normalized_cidfile = (
+            cidfile_bytes[:-1]
+            if len(cidfile_bytes) == 65 and cidfile_bytes.endswith(b"\n")
+            else cidfile_bytes
+        )
+        if len(normalized_cidfile) != 64:
+            raise OperatorError(
+                "R27 foreign recovery container CID bytes differ"
+            )
+        container_id = normalized_cidfile.decode("ascii", errors="strict")
+        target_bytes = target.encode("ascii", errors="strict")
+    except UnicodeError as exc:
+        raise OperatorError("R27 foreign recovery lease content is invalid") from exc
+    if cas_owned_bytes != target_bytes:
+        raise OperatorError("R27 foreign recovery cas-owned marker differs")
+    observation: dict[str, Any] = {
+        "schema": ASEH_R27_FOREIGN_RECOVERY_LEASE_OBSERVATION_SCHEMA,
+        "lease_root": str(resolved_root),
+        "lease_root_identity": root_identity,
+        "docker_config_identity": docker_config_identity,
+        "cas_owned": cas_owned,
+        "cidfile": cidfile,
+        "cidfile_container_id": container_id,
+        "cas_terminal_availability": "absent",
+        "observed_at_ns": time.time_ns(),
+    }
+    observation["observation_cid"] = _identity(observation)
+    return _validate_r27_foreign_recovery_lease_observation(
+        observation,
+        target_container_name=target,
+        binding=binding,
+    )
+
+
+def _r27_validate_foreign_waiter_scope(
+    item: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    """Purely admit the one narrow deleted-sibling waiter shape."""
+
+    script_path = Path(str(item.get("script_path") or ""))
+    process_cwd = Path(str(item.get("cwd") or ""))
+    normalized_script = Path(os.path.normpath(str(script_path)))
+    named_worktree_root = ROOT.parent
+    try:
+        relative_script = script_path.relative_to(named_worktree_root)
+    except ValueError as exc:
+        raise OperatorError(
+            "R27 foreign recovery script is not a sibling"
+        ) from exc
+    if (
+        item.get("marker") != "--internal-docker-cleanup-watchdog"
+        or item.get("parent_pid") != 1
+        or item.get("state") == "Z"
+        or item.get("script_identity")
+        != {"availability": "unavailable_deleted"}
+        or not script_path.is_absolute()
+        or normalized_script != script_path
+        or len(relative_script.parts) != 10
+        or relative_script.parts[:5]
+        != (
+            "verified-residual-intelligence-foundry-v1",
+            "data",
+            "agent_supervisor",
+            "residual_intelligence_foundry",
+            "worktrees",
+        )
+        or re.fullmatch(
+            r"workspace_[0-9a-f]{12}_[0-9a-f]{12}",
+            relative_script.parts[5],
+        )
+        is None
+        or relative_script.parts[6:]
+        != (
+            "ipfs_accelerate_py",
+            "agent_supervisor",
+            "runtime",
+            "grok_cli_runner.py",
+        )
+        or _r19_path_is_within(script_path, ROOT)
+        # The two exact inherited PID-1 waiters were reparented after their
+        # sibling checkout vanished and have cwd '/'.  Widening this to an
+        # arbitrary unrelated directory would turn a self-CID into scope
+        # authority, so R27 deliberately freezes the observed shape.
+        or process_cwd != Path("/")
+    ):
+        raise OperatorError("R27 foreign recovery waiter is not unrelated")
+    return script_path, process_cwd
+
+
+def _validate_r27_foreign_recovery_ownership(
+    value: Mapping[str, Any],
+    *,
+    item: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Purely validate one preserved waiter and its bounded read-only proof."""
+
+    if not isinstance(value, Mapping):
+        raise OperatorError("R27 foreign recovery ownership is invalid")
+    ownership = dict(value)
+    fields = {
+        "schema",
+        "classification",
+        "disposition",
+        "process_birth",
+        "script_path",
+        "cwd",
+        "binding",
+        "lease_before",
+        "exact_docker_absence",
+        "lease_after",
+        "observed_at_ns",
+        "ownership_cid",
+    }
+    binding = ownership.get("binding")
+    process_birth = ownership.get("process_birth")
+    exact_absence = ownership.get("exact_docker_absence")
+    target = str(item.get("target_container_name") or "")
+    unsigned = dict(ownership)
+    ownership_cid = str(unsigned.pop("ownership_cid", "") or "")
+    expected_birth = {
+        "pid": item.get("pid"),
+        "start_time_ticks": item.get("start_time_ticks"),
+        "boot_id": item.get("boot_id"),
+        "parent_pid": item.get("parent_pid"),
+    }
+    _r27_validate_foreign_waiter_scope(item)
+    if (
+        set(ownership) != fields
+        or ownership.get("schema")
+        != ASEH_R27_FOREIGN_RECOVERY_OWNERSHIP_SCHEMA
+        or ownership.get("classification")
+        != "foreign_durable_cas_waiter_preserved"
+        or ownership.get("disposition")
+        != "preserve_without_signal_cleanup_or_adoption"
+        or process_birth != expected_birth
+        or ownership.get("script_path") != item.get("script_path")
+        or ownership.get("cwd") != item.get("cwd")
+        or not isinstance(binding, Mapping)
+        or set(binding)
+        != {
+            "provider",
+            "docker_bin",
+            "container_name",
+            "cidfile",
+            "lease_root",
+            "argv_sha256",
+        }
+        or binding.get("provider") != "codex"
+        or binding.get("docker_bin") != "/usr/bin/docker"
+        or binding.get("container_name") != target
+        or binding.get("lease_root") != item.get("lease_root")
+        or binding.get("cidfile")
+        != str(Path(str(item.get("lease_root") or "")) / "container.cid")
+        or binding.get("argv_sha256") != item.get("argv_sha256")
+        or not isinstance(exact_absence, Mapping)
+        or type(ownership.get("observed_at_ns")) is not int
+        or int(ownership["observed_at_ns"]) <= 0
+        or ownership_cid != _identity(unsigned)
+    ):
+        raise OperatorError("R27 foreign recovery ownership differs")
+    before = _validate_r27_foreign_recovery_lease_observation(
+        ownership.get("lease_before"),
+        target_container_name=target,
+        binding=binding,
+    )
+    after = _validate_r27_foreign_recovery_lease_observation(
+        ownership.get("lease_after"),
+        target_container_name=target,
+        binding=binding,
+    )
+    container_id = str(before["cidfile_container_id"])
+    if (
+        after["cidfile_container_id"] != container_id
+        or _r27_lease_stable_value(before) != _r27_lease_stable_value(after)
+    ):
+        raise OperatorError("R27 foreign recovery lease changed")
+    _validate_r16_exact_docker_list_observation(
+        exact_absence,
+        docker_bin="/usr/bin/docker",
+        container_name=target,
+        container_id=container_id,
+        expect_present=False,
+    )
+    observation_times = [
+        int(before["observed_at_ns"]),
+        int(exact_absence["observed_at_ns"]),
+        int(after["observed_at_ns"]),
+        int(ownership["observed_at_ns"]),
+    ]
+    if observation_times != sorted(observation_times):
+        raise OperatorError("R27 foreign recovery observation order differs")
+    return ownership
+
+
+def _r27_foreign_recovery_ownership_observation(
+    item: Mapping[str, Any],
+    *,
+    working_directory: Path,
+) -> dict[str, Any]:
+    """Observe one exact foreign waiter without signalling or adopting it."""
+
+    script_path, process_cwd = _r27_validate_foreign_waiter_scope(item)
+    if (
+        _r19_path_is_within(
+            script_path, working_directory.resolve(strict=False)
+        )
+        or _r19_path_is_within(
+            process_cwd, working_directory.resolve(strict=False)
+        )
+    ):
+        raise OperatorError("R27 foreign recovery waiter is not unrelated")
+    expected_birth = {
+        "pid": item.get("pid"),
+        "start_time_ticks": item.get("start_time_ticks"),
+        "boot_id": item.get("boot_id"),
+        "parent_pid": item.get("parent_pid"),
+    }
+    if _r16_exact_process_birth(int(item["pid"])) != expected_birth:
+        raise OperatorError("R27 foreign recovery waiter birth differs")
+    binding = _r27_watchdog_argv_binding(item)
+    before = _r27_foreign_recovery_lease_observation(item, binding=binding)
+    absence = _r16_exact_docker_list_observation(
+        docker_bin="/usr/bin/docker",
+        container_name=str(item["target_container_name"]),
+        container_id=str(before["cidfile_container_id"]),
+        expect_present=False,
+    )
+    after = _r27_foreign_recovery_lease_observation(item, binding=binding)
+    if (
+        _r16_exact_process_birth(int(item["pid"])) != expected_birth
+        or _r27_lease_stable_value(before) != _r27_lease_stable_value(after)
+    ):
+        raise OperatorError("R27 foreign recovery waiter changed")
+    ownership: dict[str, Any] = {
+        "schema": ASEH_R27_FOREIGN_RECOVERY_OWNERSHIP_SCHEMA,
+        "classification": "foreign_durable_cas_waiter_preserved",
+        "disposition": "preserve_without_signal_cleanup_or_adoption",
+        "process_birth": expected_birth,
+        "script_path": str(script_path),
+        "cwd": str(process_cwd),
+        "binding": binding,
+        "lease_before": before,
+        "exact_docker_absence": absence,
+        "lease_after": after,
+        "observed_at_ns": time.time_ns(),
+    }
+    ownership["ownership_cid"] = _identity(ownership)
+    return _validate_r27_foreign_recovery_ownership(
+        ownership,
+        item=item,
+    )
+
+
+def _r27_lease_stable_value(value: Mapping[str, Any]) -> dict[str, Any]:
+    result = dict(value)
+    result.pop("observed_at_ns", None)
+    result.pop("observation_cid", None)
+    return result
+
+
+def _r27_foreign_recovery_stable_value(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = dict(value)
+    result.pop("observed_at_ns", None)
+    result.pop("ownership_cid", None)
+    for field in ("lease_before", "lease_after"):
+        nested = result.get(field)
+        if isinstance(nested, Mapping):
+            result[field] = _r27_lease_stable_value(nested)
+    absence = result.get("exact_docker_absence")
+    if isinstance(absence, Mapping):
+        normalized_absence = dict(absence)
+        normalized_absence.pop("observed_at_ns", None)
+        result["exact_docker_absence"] = normalized_absence
+    return result
+
+
+def _r27_snapshot_stable_value(snapshot: Mapping[str, Any]) -> Any:
+    """Normalize only typed observation times while retaining every identity."""
+
+    if snapshot.get("schema") != ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA:
+        return _r19_snapshot_stable_value(snapshot)
+    entries = snapshot.get("entries")
+    if not isinstance(entries, list):
+        raise OperatorError("R27 detached snapshot is invalid")
+    normalized: list[dict[str, Any]] = []
+    for item in entries:
+        if not isinstance(item, Mapping):
+            raise OperatorError("R27 detached snapshot entry is invalid")
+        entry = dict(item)
+        ownership = entry.get("foreign_recovery_ownership")
+        if isinstance(ownership, Mapping):
+            entry["foreign_recovery_ownership"] = (
+                _r27_foreign_recovery_stable_value(ownership)
+            )
+        normalized.append(entry)
+    return {"schema": ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA, "entries": normalized}
+
+
+def _r27_detached_effect_snapshot(
+    *,
+    docker_snapshot: Mapping[str, Any],
+    working_directory: Path,
+) -> dict[str, Any]:
+    """Augment R19's read-only process census with exact foreign ownership."""
+
+    base = _r19_detached_effect_snapshot()
+    docker_entries = docker_snapshot.get("entries")
+    detached_entries = base.get("entries")
+    if not isinstance(docker_entries, list) or not isinstance(
+        detached_entries, list
+    ):
+        raise OperatorError("R27 detached baseline is invalid")
+    present_names = {
+        str(item.get("container_name") or "")
+        for item in docker_entries
+        if isinstance(item, Mapping)
+    }
+    entries: list[dict[str, Any]] = []
+    for raw in detached_entries:
+        if not isinstance(raw, Mapping):
+            raise OperatorError("R27 detached baseline is invalid")
+        item = dict(raw)
+        item["foreign_recovery_ownership"] = (
+            None
+            if str(item.get("target_container_name") or "") in present_names
+            else _r27_foreign_recovery_ownership_observation(
+                item,
+                working_directory=working_directory,
+            )
+        )
+        entries.append(item)
+    return {
+        "schema": ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA,
+        "entries": entries,
+        "observed_at_ns": time.time_ns(),
+    }
+
+
+def _r27_admit_stable_unrelated_baseline(
+    *,
+    first_docker: Mapping[str, Any],
+    confirmed_docker: Mapping[str, Any],
+    first_detached: Mapping[str, Any],
+    confirmed_detached: Mapping[str, Any],
+    working_directory: Path,
+) -> None:
+    """Purely admit present R19 baselines plus exact preserved foreign waiters."""
+
+    if (
+        _r27_snapshot_stable_value(first_docker)
+        != _r27_snapshot_stable_value(confirmed_docker)
+        or _r27_snapshot_stable_value(first_detached)
+        != _r27_snapshot_stable_value(confirmed_detached)
+    ):
+        raise OperatorError("R27 historical live baseline is contended")
+    docker_entries = first_docker.get("entries")
+    detached_entries = first_detached.get("entries")
+    if not isinstance(docker_entries, list) or not isinstance(
+        detached_entries, list
+    ):
+        raise OperatorError("R27 historical live baseline is invalid")
+    docker_names = {
+        str(item.get("container_name") or "")
+        for item in docker_entries
+        if isinstance(item, Mapping)
+    }
+    present_entries: list[dict[str, Any]] = []
+    absent_entries: list[Mapping[str, Any]] = []
+    for raw in detached_entries:
+        if not isinstance(raw, Mapping):
+            raise OperatorError("R27 historical live baseline is invalid")
+        item = dict(raw)
+        ownership = item.pop("foreign_recovery_ownership", None)
+        target = str(item.get("target_container_name") or "")
+        if target in docker_names:
+            if ownership is not None:
+                raise OperatorError("R27 present target claimed foreign absence")
+            present_entries.append(item)
+        else:
+            if not isinstance(ownership, Mapping):
+                raise OperatorError("R27 absent target lacks ownership evidence")
+            _validate_r27_foreign_recovery_ownership(ownership, item=item)
+            absent_entries.append(item)
+    r19_first = {
+        "schema": ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA,
+        "entries": present_entries,
+        "observed_at_ns": first_detached.get("observed_at_ns"),
+    }
+    confirmed_by_birth = {
+        (
+            item.get("pid"),
+            item.get("start_time_ticks"),
+            item.get("boot_id"),
+        ): item
+        for item in (confirmed_detached.get("entries") or ())
+        if isinstance(item, Mapping)
+    }
+    confirmed_present: list[dict[str, Any]] = []
+    for item in present_entries:
+        key = (item.get("pid"), item.get("start_time_ticks"), item.get("boot_id"))
+        confirmed = confirmed_by_birth.get(key)
+        if not isinstance(confirmed, Mapping):
+            raise OperatorError("R27 present target waiter changed")
+        normalized = dict(confirmed)
+        if normalized.pop("foreign_recovery_ownership", None) is not None:
+            raise OperatorError("R27 present target ownership changed")
+        confirmed_present.append(normalized)
+    r19_confirmed = {
+        "schema": ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA,
+        "entries": confirmed_present,
+        "observed_at_ns": confirmed_detached.get("observed_at_ns"),
+    }
+    _r19_admit_stable_unrelated_baseline(
+        first_docker=first_docker,
+        confirmed_docker=confirmed_docker,
+        first_detached=r19_first,
+        confirmed_detached=r19_confirmed,
+        working_directory=working_directory,
+    )
+    if len(absent_entries) != len(detached_entries) - len(present_entries):
+        raise OperatorError("R27 foreign recovery waiter set differs")
+
+
 def _r19_admit_stable_unrelated_baseline(
     *,
     first_docker: Mapping[str, Any],
@@ -14244,7 +15748,7 @@ def _validate_r19_historical_live_execution_evidence(
                 "R19 historical live detached-effect entry is invalid"
             )
         result = dict(value)
-        fields = {
+        base_fields = {
             "pid",
             "start_time_ticks",
             "boot_id",
@@ -14259,6 +15763,11 @@ def _validate_r19_historical_live_execution_evidence(
             "target_container_name",
             "lease_root",
         }
+        fields = (
+            base_fields | {"foreign_recovery_ownership"}
+            if revision == 27
+            else base_fields
+        )
         script_identity = result.get("script_identity")
         observed_script_fields = {
             "availability",
@@ -14335,6 +15844,16 @@ def _validate_r19_historical_live_execution_evidence(
             raise OperatorError(
                 "R19 historical live detached-effect entry is invalid"
             )
+        if revision == 27:
+            ownership = result.get("foreign_recovery_ownership")
+            if ownership is not None:
+                base_item = {
+                    key: item for key, item in result.items() if key in base_fields
+                }
+                _validate_r27_foreign_recovery_ownership(
+                    ownership,
+                    item=base_item,
+                )
         return result
 
     def validate_detached_snapshot(value: Any) -> dict[str, Any]:
@@ -14352,7 +15871,11 @@ def _validate_r19_historical_live_execution_evidence(
         if (
             set(result) != {"schema", "entries", "observed_at_ns"}
             or result.get("schema")
-            != ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA
+            != (
+                ASEH_R27_DETACHED_EFFECT_SNAPSHOT_SCHEMA
+                if revision == 27
+                else ASEH_R19_DETACHED_EFFECT_SNAPSHOT_SCHEMA
+            )
             or entries
             != sorted(
                 entries,
@@ -14383,6 +15906,7 @@ def _validate_r19_historical_live_execution_evidence(
         24: _admit_r24_historical_live_policy_admission,
         25: _admit_r25_historical_live_policy_admission,
         26: _admit_r26_historical_live_policy_admission,
+        27: _admit_r27_historical_live_policy_admission,
     }[revision]
     policy = policy_admitter(
         policy_admission,
@@ -14433,7 +15957,12 @@ def _validate_r19_historical_live_execution_evidence(
     }
     if (
         set(supplied) != fields
-        or supplied.get("schema") != ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
+        or supplied.get("schema")
+        != (
+            ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
+            if revision == 27
+            else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
+        )
         or supplied.get("executor_class")
         != ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS
         or supplied.get("executor_contract_cid")
@@ -14658,7 +16187,12 @@ def _validate_r19_historical_live_execution_evidence(
         before_docker=before_docker,
         before_detached=before_detached,
     )
-    _r19_admit_stable_unrelated_baseline(
+    baseline_admitter = (
+        _r27_admit_stable_unrelated_baseline
+        if revision == 27
+        else _r19_admit_stable_unrelated_baseline
+    )
+    baseline_admitter(
         first_docker=before_docker,
         confirmed_docker=confirmed_docker,
         first_detached=before_detached,
@@ -14680,18 +16214,18 @@ def _validate_r19_historical_live_execution_evidence(
         int(terminal_detached[1]["observed_at_ns"]),
     ]
     if (
-        _r19_snapshot_stable_value(before_docker)
-        != _r19_snapshot_stable_value(confirmed_docker)
-        or _r19_snapshot_stable_value(before_detached)
-        != _r19_snapshot_stable_value(confirmed_detached)
+        _r27_snapshot_stable_value(before_docker)
+        != _r27_snapshot_stable_value(confirmed_docker)
+        or _r27_snapshot_stable_value(before_detached)
+        != _r27_snapshot_stable_value(confirmed_detached)
         or any(
-            _r19_snapshot_stable_value(item)
-            != _r19_snapshot_stable_value(before_docker)
+            _r27_snapshot_stable_value(item)
+            != _r27_snapshot_stable_value(before_docker)
             for item in terminal_docker
         )
         or any(
-            _r19_snapshot_stable_value(item)
-            != _r19_snapshot_stable_value(before_detached)
+            _r27_snapshot_stable_value(item)
+            != _r27_snapshot_stable_value(before_detached)
             for item in terminal_detached
         )
         or any(item["container_id"] in baseline_ids for item in owned)
@@ -14744,6 +16278,46 @@ def _r19_terminal_scope_guard(
             )
 
 
+@contextmanager
+def _r27_terminal_scope_guard(
+    *,
+    before_docker: Mapping[str, Any],
+    before_detached: Mapping[str, Any],
+    working_directory: Path,
+) -> Any:
+    """Re-observe preserved foreign ownership on both terminal samples."""
+
+    observations: dict[str, list[dict[str, Any]]] = {
+        "docker": [],
+        "detached": [],
+    }
+    try:
+        yield observations
+    finally:
+        for _sample in range(2):
+            docker = _r19_docker_scope_snapshot()
+            detached = _r27_detached_effect_snapshot(
+                docker_snapshot=docker,
+                working_directory=working_directory,
+            )
+            observations["docker"].append(docker)
+            observations["detached"].append(detached)
+            time.sleep(0.05)
+        if any(
+            _r27_snapshot_stable_value(item)
+            != _r27_snapshot_stable_value(before_docker)
+            for item in observations["docker"]
+        ) or any(
+            _r27_snapshot_stable_value(item)
+            != _r27_snapshot_stable_value(before_detached)
+            for item in observations["detached"]
+        ):
+            raise OperatorError(
+                "R27 historical live terminal scope differs from its "
+                "admitted baseline"
+            )
+
+
 def _run_r19_historical_live_validation(
     declared: tuple[str, ...],
     *,
@@ -14786,6 +16360,7 @@ def _run_r19_historical_live_validation(
         ASEH_R24_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 24,
         ASEH_R25_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 25,
         ASEH_R26_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 26,
+        ASEH_R27_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA: 27,
     }.get(active_policy_value.get("schema"), 19)
     policy_validator = {
         19: _validate_r19_historical_live_policy_admission_record,
@@ -14796,6 +16371,7 @@ def _run_r19_historical_live_validation(
         24: _validate_r24_historical_live_policy_admission_record,
         25: _validate_r25_historical_live_policy_admission_record,
         26: _validate_r26_historical_live_policy_admission_record,
+        27: _validate_r27_historical_live_policy_admission_record,
     }[revision]
     policy_admission = policy_validator(active_policy_value)
     lifecycle_lock_identity = _validate_r19_historical_live_lock_identity(
@@ -14861,11 +16437,30 @@ def _run_r19_historical_live_validation(
     )
     authorization_witness = json.loads(executor.authorization_witness_json)
     before_docker = _r19_docker_scope_snapshot()
-    before_detached = _r19_detached_effect_snapshot()
+    before_detached = (
+        _r27_detached_effect_snapshot(
+            docker_snapshot=before_docker,
+            working_directory=working_directory,
+        )
+        if revision == 27
+        else _r19_detached_effect_snapshot()
+    )
     time.sleep(0.05)
     confirmed_docker = _r19_docker_scope_snapshot()
-    confirmed_detached = _r19_detached_effect_snapshot()
-    _r19_admit_stable_unrelated_baseline(
+    confirmed_detached = (
+        _r27_detached_effect_snapshot(
+            docker_snapshot=confirmed_docker,
+            working_directory=working_directory,
+        )
+        if revision == 27
+        else _r19_detached_effect_snapshot()
+    )
+    baseline_admitter = (
+        _r27_admit_stable_unrelated_baseline
+        if revision == 27
+        else _r19_admit_stable_unrelated_baseline
+    )
+    baseline_admitter(
         first_docker=before_docker,
         confirmed_docker=confirmed_docker,
         first_detached=before_detached,
@@ -14882,10 +16477,19 @@ def _run_r19_historical_live_validation(
     exact_execution: dict[str, Any] = {}
     stdout = stderr = b""
     returncode = 78
-    with _r19_terminal_scope_guard(
-        before_docker=before_docker,
-        before_detached=before_detached,
-    ) as terminal_scope, tempfile.TemporaryDirectory(
+    terminal_guard = (
+        _r27_terminal_scope_guard(
+            before_docker=before_docker,
+            before_detached=before_detached,
+            working_directory=working_directory,
+        )
+        if revision == 27
+        else _r19_terminal_scope_guard(
+            before_docker=before_docker,
+            before_detached=before_detached,
+        )
+    )
+    with terminal_guard as terminal_scope, tempfile.TemporaryDirectory(
         prefix="aseh-r19-historical-live-"
     ) as raw:
         temporary_root = Path(raw)
@@ -15116,7 +16720,11 @@ def _run_r19_historical_live_validation(
     except UnicodeError as exc:
         raise OperatorError("R19 historical live output is not UTF-8") from exc
     evidence: dict[str, Any] = {
-        "schema": ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA,
+        "schema": (
+            ASEH_R27_HISTORICAL_LIVE_EXECUTION_SCHEMA
+            if revision == 27
+            else ASEH_R19_HISTORICAL_LIVE_EXECUTION_SCHEMA
+        ),
         "executor_class": ASEH_R19_HISTORICAL_LIVE_EXECUTOR_CLASS,
         "executor_contract_cid": _identity(admitted_contract),
         "active_policy_cid": active_policy_cid,
@@ -15186,9 +16794,13 @@ def _qualify_r19_historical_live_policy(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run and admit the exact historical live route under one typed fence."""
 
-    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26}:
+    if _revision not in {19, 20, 21, 22, 23, 24, 25, 26, 27}:
         raise OperatorError("historical live policy revision is invalid")
-    executor_contract = _r19_sealed_receipt_validation_executor_contract()
+    executor_contract = (
+        _r27_historical_live_validation_executor_contract()
+        if _revision == 27
+        else _r19_sealed_receipt_validation_executor_contract()
+    )
     policy_builder = {
         19: _r19_historical_live_policy_admission,
         20: _r20_historical_live_policy_admission,
@@ -15198,6 +16810,7 @@ def _qualify_r19_historical_live_policy(
         24: _r24_historical_live_policy_admission,
         25: _r25_historical_live_policy_admission,
         26: _r26_historical_live_policy_admission,
+        27: _r27_historical_live_policy_admission,
     }[_revision]
     policy_admitter = {
         19: _admit_r19_historical_live_policy_admission,
@@ -15208,6 +16821,7 @@ def _qualify_r19_historical_live_policy(
         24: _admit_r24_historical_live_policy_admission,
         25: _admit_r25_historical_live_policy_admission,
         26: _admit_r26_historical_live_policy_admission,
+        27: _admit_r27_historical_live_policy_admission,
     }[_revision]
     computed_policy = policy_builder(
         bootstrap_receipt_id=bootstrap_receipt_id,
@@ -15484,6 +17098,32 @@ def _qualify_r26_pre_duckdb_historical_live_policy(
         policy_admission=policy_admission,
         authorizing_receipt_cid=authorizing_receipt_cid,
         _revision=26,
+    )
+
+
+def _qualify_r27_pre_duckdb_historical_live_policy(
+    *,
+    paths: Mapping[str, Path],
+    bootstrap_receipt_id: str,
+    prior_chain: Sequence[Mapping[str, Any]],
+    candidate_head: str,
+    candidate_tree: str,
+    candidate_authorization_witness: Mapping[str, str],
+    policy_admission: Mapping[str, Any] | None,
+    authorizing_receipt_cid: str | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Qualify R27 through its revision-scoped read-only waiter route."""
+
+    return _qualify_r19_historical_live_policy(
+        paths=paths,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        candidate_authorization_witness=candidate_authorization_witness,
+        policy_admission=policy_admission,
+        authorizing_receipt_cid=authorizing_receipt_cid,
+        _revision=27,
     )
 
 
@@ -16294,6 +17934,43 @@ def _admit_exact_r26_transition_chain(
     return chain
 
 
+def _admit_exact_r27_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit immutable R1-R26 plus one exact adjacent R27 receipt."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R27 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R27_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R27 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R27 repair transition chain differs")
+        chain.append(item)
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in chain[:-1]
+    ) != ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS:
+        raise OperatorError("R27 historical receipt vector differs")
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -16836,6 +18513,92 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R26 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [
+        REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r27_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r26_admitted = chain[-2]
+        active_admitted = chain[-1]
+        failure_evidence_cid = (
+            transition.get("projection_recovery_failure_evidence_cid")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        preflight_failure_evidence_cid = (
+            transition.get("r25_preflight_failure_evidence_cid")
+            if isinstance(transition, Mapping)
+            else None
+        )
+        recovery_admission = (
+            _validate_r26_projection_recovery_prestart_admission(
+                admission.get("projection_recovery_prestart_admission"),
+                expected_failure_evidence_cid=str(
+                    failure_evidence_cid or ""
+                ),
+                expected_preflight_failure_evidence_cid=str(
+                    preflight_failure_evidence_cid or ""
+                ),
+            )
+            if isinstance(
+                admission.get("projection_recovery_prestart_admission"),
+                Mapping,
+            )
+            else None
+        )
+        projection_matches_events = admission.get("projection_matches_events")
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r26_admitted.get("repair_head")
+            != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+            or r26_admitted.get("repair_tree")
+            != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+            or r26_admitted.get("receipt_cid")
+            != ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r26_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r26_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or transition.get("r26_terminal_failure_evidence_cid")
+            != _r27_expected_r26_terminal_failure_evidence().get(
+                "evidence_cid"
+            )
+            or (
+                isinstance(recovery_admission, Mapping)
+                and transition.get(
+                    "projection_recovery_prestart_semantic_admission_cid"
+                )
+                != recovery_admission.get("semantic_admission_cid")
+            )
+            or type(projection_matches_events) is not bool
+            or (
+                projection_matches_events is False
+                and (
+                    not isinstance(recovery_admission, Mapping)
+                    or admission.get("projection_cid")
+                    != recovery_admission.get("before_projection_cid")
+                    or admission.get("event_cursor")
+                    != recovery_admission.get("before_event_watermark")
+                )
+            )
+            or (
+                projection_matches_events is True
+                and recovery_admission is not None
+            )
+        ):
+            raise OperatorError(
+                "current R27 candidate lacks its exact admitted validation seal"
+            )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -17097,6 +18860,19 @@ def _r26_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_VALIDATIONS[
+            -2
+        ]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r27_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R27 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_VALIDATIONS[
             -2
         ]
     ):
@@ -18234,16 +20010,25 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     authorization_witness: Mapping[str, str],
     _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16-R26 repair matrix against committed bytes."""
+    """Run the bounded R16-R27 repair matrix against committed bytes."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26}:
+    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27}:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    if _revision == 26:
+    if _revision == 27:
+        matrix = (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r27_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r27_validation_working_tree_scope
+        executor_class_for = _r27_validation_executor_class
+    elif _revision == 26:
         matrix = (
             REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_VALIDATIONS
         )
@@ -18729,6 +20514,22 @@ def _run_repair_sealed_owner_projection_recovery_admission_correction_transition
     )
 
 
+def _run_repair_sealed_owner_foreign_recovery_waiter_admission_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R27 suffix through the existing typed executors."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=27,
+    )
+
+
 def _observe_repair_provider_cleanup_fence_known_baseline(
 ) -> dict[str, Any]:
     """Record, but never admit, the branch-specific Prompt-v3 R10 failure."""
@@ -19056,6 +20857,14 @@ def _paths(board: Any) -> dict[str, Path]:
         / "bootstrap"
         / "bootstrap-repair-sealed-owner-projection-recovery-admission-"
         "correction-transition.json"
+    )
+    result[
+        "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt"
+    ] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-sealed-owner-foreign-recovery-waiter-admission-"
+        "transition.json"
     )
     result["owner_start_recovery_decisions"] = (
         result["evidence"] / "control-plane" / "owner-start-recovery"
@@ -21210,6 +23019,24 @@ def _validate_repair_sealed_owner_projection_recovery_admission_correction_trans
         previous_receipt=previous_receipt,
         rerun_validations=rerun_validations,
         _revision=26,
+    )
+
+
+def _validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 27 chained to the immutable R26 receipt."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=27,
     )
 
 
@@ -23893,12 +25720,43 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     rerun_validations: bool,
     _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit one immutable transition in the exact R16-R26 suffix."""
+    """Admit one immutable transition in the exact R16-R27 suffix."""
 
-    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26}:
+    if _revision not in {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27}:
         raise OperatorError("repair receipt revision is invalid")
     revision_label = f"R{_revision}"
-    if _revision == 26:
+    if _revision == 27:
+        receipt_id = (
+            _repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt_id(
+                receipt
+            )
+        )
+        previous_receipt_id = (
+            _repair_sealed_owner_projection_recovery_admission_correction_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        )
+        changed_paths_value = (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_AUTHORITY
+        )
+        commands = (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r27_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SCHEMA
+        )
+        executor_class_for = _r27_validation_executor_class
+        scope_for = _r27_validation_working_tree_scope
+    elif _revision == 26:
         receipt_id = (
             _repair_sealed_owner_projection_recovery_admission_correction_transition_receipt_id(
                 receipt
@@ -24528,7 +26386,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         ),
         "receipt_cid": receipt_id,
     }
-    if _revision == 26:
+    if _revision in {26, 27}:
         failure_value = receipt.get("projection_recovery_failure_evidence")
         failure = (
             _validate_r25_projection_recovery_failure_evidence(failure_value)
@@ -24564,7 +26422,9 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             or not isinstance(preflight, Mapping)
             or not isinstance(recovery, Mapping)
         ):
-            raise OperatorError("R26 projection-recovery evidence is absent")
+            raise OperatorError(
+                f"R{_revision} projection-recovery evidence is absent"
+            )
         transition_result["projection_recovery_failure_evidence_cid"] = (
             failure["evidence_cid"]
         )
@@ -24574,6 +26434,18 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
         transition_result[
             "projection_recovery_prestart_semantic_admission_cid"
         ] = recovery["semantic_admission_cid"]
+        if _revision == 27:
+            terminal_value = receipt.get("r26_terminal_failure_evidence")
+            terminal = (
+                _validate_r27_r26_terminal_failure_evidence(terminal_value)
+                if isinstance(terminal_value, Mapping)
+                else None
+            )
+            if not isinstance(terminal, Mapping):
+                raise OperatorError("R27 terminal failure evidence is absent")
+            transition_result["r26_terminal_failure_evidence_cid"] = (
+                terminal["evidence_cid"]
+            )
     elif _revision == 25:
         failure_value = receipt.get("projection_recovery_failure_evidence")
         failure = (
@@ -24854,6 +26726,32 @@ def _load_exact_r25_receipt_chain(
         str(item.get("receipt_cid") or "") for item in admitted
     ) != ASEH_R26_EXACT_R1_R25_RECEIPT_CIDS:
         raise OperatorError("R26 historical live prior receipt vector differs")
+    return admitted
+
+
+def _load_exact_r26_receipt_chain(
+    paths: Mapping[str, Path],
+) -> list[Mapping[str, Any]]:
+    """Load, self-CID-admit, and vector-bind raw R1-R26 receipts."""
+
+    chain = list(_load_exact_r25_receipt_chain(paths))
+    r26_path = paths.get(
+        "repair_sealed_owner_projection_recovery_admission_correction_transition_receipt"
+    )
+    if not isinstance(r26_path, Path) or not r26_path.is_file():
+        raise OperatorError("R27 historical live prior R26 receipt is absent")
+    r26_receipt = _secure_runtime_json(
+        r26_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    _repair_sealed_owner_projection_recovery_admission_correction_transition_receipt_id(
+        r26_receipt
+    )
+    admitted = _admit_exact_r26_transition_chain([*chain, r26_receipt])
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in admitted
+    ) != ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS:
+        raise OperatorError("R27 historical live prior receipt vector differs")
     return admitted
 
 
@@ -25153,6 +27051,32 @@ def _r26_population_requires_policy(
     )
 
 
+def _r27_population_requires_policy(
+    population: Mapping[str, Any],
+) -> bool:
+    """Recognize the exact committed R27 child before its receipt exists."""
+
+    head = str(population.get("source_head") or "")
+    tree = str(population.get("repository_tree_id") or "")
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+    ):
+        return False
+    return (
+        _git("show", "-s", "--format=%P", head).split()
+        == [
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        ]
+        and _git("rev-parse", f"{head}^{{tree}}") == tree
+        and _git_changed_paths(
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD,
+            head,
+        )
+        == REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_CHANGED_PATHS
+    )
+
+
 def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     receipt: Mapping[str, Any],
     *,
@@ -25186,6 +27110,9 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
     )
     r26_path = paths.get(
         "repair_sealed_owner_projection_recovery_admission_correction_transition_receipt"
+    )
+    r27_path = paths.get(
+        "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt"
     )
     if (
         isinstance(r19_path, Path) and r19_path.is_file()
@@ -25252,6 +27179,15 @@ def _validate_repair_provider_cleanup_fence_with_active_r19_policy(
         )
     if isinstance(r26_path, Path) and (
         r26_path.is_file() or _r26_population_requires_policy(population)
+    ):
+        return _validate_repair_provider_cleanup_fence_transition(
+            receipt,
+            bootstrap=bootstrap,
+            previous_receipt=previous_receipt,
+            rerun_validations=False,
+        )
+    if isinstance(r27_path, Path) and (
+        r27_path.is_file() or _r27_population_requires_policy(population)
     ):
         return _validate_repair_provider_cleanup_fence_transition(
             receipt,
@@ -26287,6 +28223,153 @@ def _prequalify_r26_historical_live_launch(
     }
 
 
+def _prequalify_r27_historical_live_launch(
+    *,
+    paths: Mapping[str, Path],
+    population: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Qualify R27's preserved-waiter route before canonical DuckDB access."""
+
+    r27_path = paths.get(
+        "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt"
+    )
+    if not isinstance(r27_path, Path):
+        return None
+    if not _r27_population_requires_policy(population):
+        return None
+    if not r27_path.is_file():
+        raise OperatorError(
+            "active R27 pre-DuckDB historical-live policy receipt is absent"
+        )
+    prior_chain = _load_exact_r26_receipt_chain(paths)
+    r26_receipt = prior_chain[-1]
+    first_receipt = _secure_runtime_json(
+        r27_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    receipt_cid = (
+        _repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt_id(
+            first_receipt
+        )
+    )
+    transition = (
+        _validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition(
+            first_receipt,
+            bootstrap=bootstrap,
+            previous_receipt=r26_receipt,
+            rerun_validations=False,
+        )
+    )
+    current_head = str(population.get("source_head") or "")
+    current_tree = str(population.get("repository_tree_id") or "")
+    witness = transition.get("candidate_authorization_witness")
+    if (
+        current_head != transition.get("repair_head")
+        or current_tree != transition.get("repair_tree")
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "active R27 historical-live policy does not bind the current tree"
+        )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="before R27 pre-DuckDB historical live qualification",
+    )
+    bootstrap_receipt_id = _bootstrap_receipt_id(bootstrap)
+    executor_contract = _r27_historical_live_validation_executor_contract()
+    policy_value = first_receipt.get("historical_live_policy_admission")
+    policy = _admit_r27_historical_live_policy_admission(
+        policy_value if isinstance(policy_value, Mapping) else {},
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+    )
+    stored_evidence_value = first_receipt.get(
+        "historical_live_execution_evidence"
+    )
+    if not isinstance(stored_evidence_value, Mapping):
+        raise OperatorError(
+            "active R27 historical-live stored execution evidence is absent"
+        )
+    stored_evidence = _validate_r19_historical_live_execution_evidence(
+        stored_evidence_value,
+        policy_admission=policy,
+        bootstrap_receipt_id=bootstrap_receipt_id,
+        prior_chain=prior_chain,
+        candidate_head=current_head,
+        candidate_tree=current_tree,
+        candidate_authorization_witness=witness,
+        executor_contract=executor_contract,
+        environment_identity=_r11_command_environment_identity(
+            _r11_validation_environment(Path("/sealed-checkout")),
+            _r11_historical_live_docker_command(),
+            checkout=Path("/sealed-checkout"),
+        ),
+        returncode=int(stored_evidence_value.get("returncode", 78)),
+        stdout_digest=str(stored_evidence_value.get("stdout_digest") or ""),
+        stderr_digest=str(stored_evidence_value.get("stderr_digest") or ""),
+        authorizing_receipt_cid=None,
+    )
+    admitted_policy, fresh_evidence = (
+        _qualify_r27_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_receipt_id,
+            prior_chain=prior_chain,
+            candidate_head=current_head,
+            candidate_tree=current_tree,
+            candidate_authorization_witness=witness,
+            policy_admission=policy,
+            authorizing_receipt_cid=receipt_cid,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        witness,
+        expected_head=current_head,
+        expected_tree=current_tree,
+        boundary="after R27 pre-DuckDB historical live qualification",
+    )
+    second_receipt = _secure_runtime_json(
+        r27_path,
+        max_bytes=STATUS_RECEIPT_MAX_BYTES,
+    )
+    second_receipt_cid = (
+        _repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt_id(
+            second_receipt
+        )
+    )
+    if (
+        second_receipt != first_receipt
+        or second_receipt_cid != receipt_cid
+        or admitted_policy != policy
+        or fresh_evidence.get("active_policy_cid")
+        != policy.get("policy_admission_cid")
+        or fresh_evidence.get("authorizing_receipt_cid") != receipt_cid
+    ):
+        raise OperatorError(
+            "R27 historical live receipt changed during prequalification"
+        )
+    exact_chain = _admit_exact_r27_transition_chain(
+        [*prior_chain, first_receipt]
+    )
+    return {
+        "receipt": first_receipt,
+        "receipt_cid": receipt_cid,
+        "prior_chain": prior_chain,
+        "exact_chain": exact_chain,
+        "transition": transition,
+        "policy_admission": policy,
+        "stored_evidence": stored_evidence,
+        "fresh_evidence": fresh_evidence,
+        "candidate_authorization_witness_cid": _identity(dict(witness)),
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -26734,6 +28817,7 @@ def _read_continuity_state(
     *,
     r25_projection_recovery_prequalification: Mapping[str, Any] | None = None,
     r26_projection_recovery_prequalification: Mapping[str, Any] | None = None,
+    r27_projection_recovery_prequalification: Mapping[str, Any] | None = None,
 ) -> tuple[
     dict[str, Any],
     list[str],
@@ -26747,16 +28831,18 @@ def _read_continuity_state(
     with _offline_database_guard(paths):
         with _offline_merge_queue_guard(paths) as queue_database:
             recovery_admission: dict[str, Any] | None = None
-            if r26_projection_recovery_prequalification is not None:
+            r26_projection_bundle = (
+                r27_projection_recovery_prequalification
+                or r26_projection_recovery_prequalification
+            )
+            if r26_projection_bundle is not None:
                 projection_matches = (
                     _projection_matches_events_on_disposable_copy(
                         paths["database"]
                     )
                 )
                 if not projection_matches:
-                    receipt = r26_projection_recovery_prequalification.get(
-                        "receipt"
-                    )
+                    receipt = r26_projection_bundle.get("receipt")
                     failure_value = (
                         receipt.get("projection_recovery_failure_evidence")
                         if isinstance(receipt, Mapping)
@@ -30794,6 +32880,22 @@ def _authorize_repair_sealed_owner_projection_recovery_admission_correction_tran
         )
         _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
         expected_chain = [*prior_chain, receipt]
+        r27_result = (
+            _authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r27_result is not None:
+            return r27_result
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = _admit_exact_r26_transition_chain(
@@ -30997,6 +33099,295 @@ def _authorize_repair_sealed_owner_projection_recovery_admission_correction_tran
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R26 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_sealed_owner_foreign_recovery_waiter_admission_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one exact R27 child without retrying or rewriting R26."""
+
+    r27_path = paths.get(
+        "repair_sealed_owner_foreign_recovery_waiter_admission_transition_receipt"
+    )
+    if not isinstance(r27_path, Path):
+        return None
+    prior_chain = _admit_exact_r26_transition_chain(list(prior_receipt_chain))
+    if tuple(
+        str(item.get("receipt_cid") or "") for item in prior_chain
+    ) != ASEH_R27_EXACT_R1_R26_RECEIPT_CIDS:
+        raise OperatorError(
+            "bootstrap repair foreign-recovery prior vector differs"
+        )
+    prior_receipt = prior_chain[-1]
+    transition_binding_fields = (
+        "schema",
+        "task_id",
+        "transition_revision",
+        "base_head",
+        "base_tree",
+        "repair_head",
+        "repair_tree",
+        "changed_paths",
+        "patch_digest",
+        "previous_receipt_cid",
+        "candidate_authorization_witness",
+        "sealed_validation_executor_contract",
+        "receipt_cid",
+    )
+    if (
+        prior_receipt != previous_receipt
+        or any(
+            previous_transition.get(field) != prior_receipt.get(field)
+            for field in transition_binding_fields
+        )
+        or previous_transition.get("repair_head")
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        or previous_transition.get("repair_tree")
+        != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+        or previous_transition.get("receipt_cid")
+        != ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID
+    ):
+        raise OperatorError(
+            "bootstrap repair foreign-recovery prior chain differs"
+        )
+    if r27_path.is_file():
+        receipt = _secure_runtime_json(
+            r27_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = (
+            _validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition(
+                receipt,
+                bootstrap=bootstrap,
+                previous_receipt=previous_receipt,
+                rerun_validations=receipt.get("repair_head") == head,
+            )
+        )
+        _git("merge-base", "--is-ancestor", str(transition["repair_head"]), head)
+        expected_chain = [*prior_chain, receipt]
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = _admit_exact_r27_transition_chain(
+            current_admission.get("repair_transition_chain")
+        )
+        admitted_continuity = current_admission.get("canonical_continuity")
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head") != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid") != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in admitted_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or (
+                "sealed_owner_projection_recovery_admission_correction_to_"
+                "sealed_owner_foreign_recovery_waiter_admission"
+            )
+            not in admitted_continuity
+            or current_admission.get("historical_live_authorizing_receipt_cid")
+            != receipt.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current admission does not retain the R27 foreign-recovery repair"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission["runtime_source_head"],
+        }
+    base_head = (
+        REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+    )
+    if _git("show", "-s", "--format=%P", head).split() != [base_head]:
+        return None
+    if _git("rev-parse", f"{base_head}^{{tree}}") != (
+        REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+    ):
+        raise OperatorError("bootstrap repair foreign-recovery base tree differs")
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair foreign-recovery changed paths differ"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    terminal_evidence = _r27_r26_terminal_failure_evidence(paths=paths)
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R27 terminal evidence before validation",
+    )
+    validation_results = (
+        _run_repair_sealed_owner_foreign_recovery_waiter_admission_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R27 validation before live qualification",
+    )
+    historical_policy, historical_evidence = (
+        _qualify_r27_pre_duckdb_historical_live_policy(
+            paths=paths,
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=prior_chain,
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            candidate_authorization_witness=authorization_witness,
+            policy_admission=None,
+            authorizing_receipt_cid=None,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R27 live qualification before receipt publication",
+    )
+    failure_value = previous_receipt.get("projection_recovery_failure_evidence")
+    preflight_value = previous_receipt.get("r25_preflight_failure_evidence")
+    proof_value = previous_receipt.get("projection_recovery_prestart_admission")
+    failure = (
+        _validate_r25_projection_recovery_failure_evidence(failure_value)
+        if isinstance(failure_value, Mapping)
+        else None
+    )
+    preflight = (
+        _validate_r26_r25_preflight_failure_evidence(preflight_value)
+        if isinstance(preflight_value, Mapping)
+        else None
+    )
+    proof = (
+        _validate_r26_projection_recovery_prestart_admission(
+            proof_value,
+            expected_failure_evidence_cid=(
+                str(failure.get("evidence_cid") or "")
+                if isinstance(failure, Mapping)
+                else ""
+            ),
+            expected_preflight_failure_evidence_cid=(
+                str(preflight.get("evidence_cid") or "")
+                if isinstance(preflight, Mapping)
+                else ""
+            ),
+        )
+        if isinstance(proof_value, Mapping)
+        else None
+    )
+    if not all(
+        isinstance(item, Mapping)
+        for item in (failure, preflight, proof)
+    ):
+        raise OperatorError("R27 inherited projection-recovery proof is absent")
+    receipt: dict[str, Any] = {
+        "schema": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SCHEMA
+        ),
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R27",
+        "program_id": PROGRAM,
+        "transition_revision": 27,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+        ),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R26"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r27_sealed_receipt_validation_executor_contract()
+        ),
+        "historical_live_policy_admission": historical_policy,
+        "historical_live_execution_evidence": historical_evidence,
+        "projection_recovery_failure_evidence": dict(failure),
+        "r25_preflight_failure_evidence": dict(preflight),
+        "projection_recovery_prestart_admission": dict(proof),
+        "r26_terminal_failure_evidence": terminal_evidence,
+        "terminal_success_criteria": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    if _r27_r26_terminal_failure_evidence(paths=paths) != terminal_evidence:
+        raise OperatorError("R27 R26-terminal evidence changed before publication")
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R27 receipt publication",
+    )
+    _atomic_json_create(
+        r27_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R27 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -33304,19 +35695,37 @@ def _admit_materialized_launch(
         paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
     )
     receipt_id = _bootstrap_receipt_id(bootstrap)
-    r26_prequalification = _prequalify_r26_historical_live_launch(
-        paths=paths, population=population, bootstrap=bootstrap
+    r27_prequalification = _prequalify_r27_historical_live_launch(
+        paths=paths,
+        population=population,
+        bootstrap=bootstrap,
+    )
+    r26_prequalification = (
+        None
+        if r27_prequalification is not None
+        else _prequalify_r26_historical_live_launch(
+            paths=paths,
+            population=population,
+            bootstrap=bootstrap,
+        )
     )
     r25_prequalification = (
         None
-        if r26_prequalification is not None
+        if (
+            r27_prequalification is not None
+            or r26_prequalification is not None
+        )
         else _prequalify_r25_historical_live_launch(
             paths=paths, population=population, bootstrap=bootstrap
         )
     )
     r24_prequalification = (
         None
-        if r26_prequalification is not None or r25_prequalification is not None
+        if (
+            r27_prequalification is not None
+            or r26_prequalification is not None
+            or r25_prequalification is not None
+        )
         else _prequalify_r24_historical_live_launch(
             paths=paths,
             population=population,
@@ -33326,7 +35735,8 @@ def _admit_materialized_launch(
     r23_prequalification = (
         None
         if (
-            r26_prequalification is not None
+            r27_prequalification is not None
+            or r26_prequalification is not None
             or r25_prequalification is not None
             or r24_prequalification is not None
         )
@@ -33339,7 +35749,8 @@ def _admit_materialized_launch(
     r22_prequalification = (
         None
         if (
-            r26_prequalification is not None
+            r27_prequalification is not None
+            or r26_prequalification is not None
             or r25_prequalification is not None
             or r24_prequalification is not None
             or r23_prequalification is not None
@@ -33353,7 +35764,8 @@ def _admit_materialized_launch(
     r21_prequalification = (
         None
         if (
-            r26_prequalification is not None
+            r27_prequalification is not None
+            or r26_prequalification is not None
             or r24_prequalification is not None
             or r25_prequalification is not None
             or r23_prequalification is not None
@@ -33368,7 +35780,8 @@ def _admit_materialized_launch(
     r20_prequalification = (
         None
         if (
-            r26_prequalification is not None
+            r27_prequalification is not None
+            or r26_prequalification is not None
             or r23_prequalification is not None
             or r24_prequalification is not None
             or r25_prequalification is not None
@@ -33448,6 +35861,7 @@ def _admit_materialized_launch(
             bootstrap,
             r25_projection_recovery_prequalification=r25_prequalification,
             r26_projection_recovery_prequalification=r26_prequalification,
+            r27_projection_recovery_prequalification=r27_prequalification,
         )
         base_proof = _admit_canonical_merge_suffix(
             board,
@@ -33545,6 +35959,9 @@ def _admit_materialized_launch(
             sealed_owner_projection_recovery_admission_correction_transition: (
                 dict[str, Any] | None
             ) = None
+            sealed_owner_foreign_recovery_waiter_admission_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -33562,6 +35979,7 @@ def _admit_materialized_launch(
             r24_receipt: dict[str, Any] | None = None
             r25_receipt: dict[str, Any] | None = None
             r26_receipt: dict[str, Any] | None = None
+            r27_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -34627,9 +37045,34 @@ def _admit_materialized_launch(
                 active_transition = (
                     sealed_owner_capsule_schema_data_completeness_transition
                 )
+            r26_reconstruction = r26_prequalification
+            if r27_prequalification is not None:
+                raw_r27_prior = r27_prequalification.get("prior_chain")
+                if (
+                    not isinstance(raw_r27_prior, list)
+                    or len(raw_r27_prior)
+                    != len(ASEH_R26_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+                    or not isinstance(raw_r27_prior[-1], Mapping)
+                    or not isinstance(raw_r27_prior[-2], Mapping)
+                ):
+                    raise OperatorError("R27 prior R26 chain differs")
+                inherited_r26 = raw_r27_prior[-1]
+                inherited_r25 = raw_r27_prior[-2]
+                r26_reconstruction = {
+                    "transition": (
+                        _validate_repair_sealed_owner_projection_recovery_admission_correction_transition(
+                            inherited_r26,
+                            bootstrap=bootstrap,
+                            previous_receipt=inherited_r25,
+                            rerun_validations=False,
+                        )
+                    ),
+                    "receipt": inherited_r26,
+                    "prior_chain": raw_r27_prior[:-1],
+                }
             r25_reconstruction = r25_prequalification
-            if r26_prequalification is not None:
-                raw_r26_prior = r26_prequalification.get("prior_chain")
+            if r26_reconstruction is not None:
+                raw_r26_prior = r26_reconstruction.get("prior_chain")
                 if (
                     not isinstance(raw_r26_prior, list)
                     or len(raw_r26_prior)
@@ -34783,10 +37226,10 @@ def _admit_materialized_launch(
                 active_transition = (
                     sealed_owner_event_sourced_projection_recovery_transition
                 )
-            if r26_prequalification is not None:
-                raw_r26_transition = r26_prequalification.get("transition")
-                raw_r26_receipt = r26_prequalification.get("receipt")
-                raw_r26_prior_chain = r26_prequalification.get("prior_chain")
+            if r26_reconstruction is not None:
+                raw_r26_transition = r26_reconstruction.get("transition")
+                raw_r26_receipt = r26_reconstruction.get("receipt")
+                raw_r26_prior_chain = r26_reconstruction.get("prior_chain")
                 if (
                     sealed_owner_event_sourced_projection_recovery_transition
                     is None
@@ -34815,6 +37258,39 @@ def _admit_materialized_launch(
                 r26_receipt = dict(raw_r26_receipt)
                 active_transition = (
                     sealed_owner_projection_recovery_admission_correction_transition
+                )
+            if r27_prequalification is not None:
+                raw_r27_transition = r27_prequalification.get("transition")
+                raw_r27_receipt = r27_prequalification.get("receipt")
+                raw_r27_prior_chain = r27_prequalification.get("prior_chain")
+                if (
+                    sealed_owner_projection_recovery_admission_correction_transition
+                    is None
+                    or r26_receipt is None
+                    or not isinstance(raw_r27_transition, Mapping)
+                    or not isinstance(raw_r27_receipt, Mapping)
+                    or not isinstance(raw_r27_prior_chain, list)
+                    or len(raw_r27_prior_chain)
+                    != len(ASEH_R26_REPAIR_TRANSITION_CHAIN_SCHEMAS)
+                    or raw_r27_prior_chain[-1] != r26_receipt
+                    or raw_r27_transition.get("base_head")
+                    != sealed_owner_projection_recovery_admission_correction_transition.get(
+                        "repair_head"
+                    )
+                    or raw_r27_transition.get("previous_receipt_cid")
+                    != sealed_owner_projection_recovery_admission_correction_transition.get(
+                        "receipt_cid"
+                    )
+                ):
+                    raise OperatorError(
+                        "R27 foreign-recovery admission does not extend admitted R26"
+                    )
+                sealed_owner_foreign_recovery_waiter_admission_transition = dict(
+                    raw_r27_transition
+                )
+                r27_receipt = dict(raw_r27_receipt)
+                active_transition = (
+                    sealed_owner_foreign_recovery_waiter_admission_transition
                 )
             if (
                 historical_lifecycle_route_transition is None
@@ -34893,6 +37369,21 @@ def _admit_materialized_launch(
             ):
                 raise OperatorError(
                     "active R26 admission-correction policy receipt is absent"
+                )
+            if (
+                sealed_owner_foreign_recovery_waiter_admission_transition
+                is None
+                and isinstance(
+                    paths.get(
+                        "repair_sealed_owner_foreign_recovery_waiter_"
+                        "admission_transition_receipt"
+                    ),
+                    Path,
+                )
+                and _r27_population_requires_policy(population)
+            ):
+                raise OperatorError(
+                    "active R27 foreign-recovery policy receipt is absent"
                 )
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -35005,6 +37496,7 @@ def _admit_materialized_launch(
                             and r24_prequalification is None
                             and r25_prequalification is None
                             and r26_prequalification is None
+                            and r27_prequalification is None
                         ) or r21_receipt is None:
                             raise OperatorError(
                                 "R21 pre-DuckDB qualification bundle is absent"
@@ -35039,6 +37531,7 @@ def _admit_materialized_launch(
                                     and r24_prequalification is None
                                     and r25_prequalification is None
                                     and r26_prequalification is None
+                                    and r27_prequalification is None
                                 )
                                 or r22_receipt is None
                             ):
@@ -35074,6 +37567,7 @@ def _admit_materialized_launch(
                                         and r24_prequalification is None
                                         and r25_prequalification is None
                                         and r26_prequalification is None
+                                        and r27_prequalification is None
                                     )
                                     or r23_receipt is None
                                 ):
@@ -35109,6 +37603,7 @@ def _admit_materialized_launch(
                                             r24_prequalification is None
                                             and r25_prequalification is None
                                             and r26_prequalification is None
+                                            and r27_prequalification is None
                                         )
                                         or r24_receipt is None
                                     ):
@@ -35174,7 +37669,7 @@ def _admit_materialized_launch(
                                             is not None
                                         ):
                                             if (
-                                                r26_prequalification is None
+                                                r26_reconstruction is None
                                                 or r26_receipt is None
                                             ):
                                                 raise OperatorError(
@@ -35203,6 +37698,40 @@ def _admit_materialized_launch(
                                                 _validate_repair_sealed_owner_projection_recovery_admission_correction_transition
                                             )
                                             launch_previous_receipt = r25_receipt
+                                            if (
+                                                sealed_owner_foreign_recovery_waiter_admission_transition
+                                                is not None
+                                            ):
+                                                if (
+                                                    r27_prequalification is None
+                                                    or r27_receipt is None
+                                                ):
+                                                    raise OperatorError(
+                                                        "R27 pre-DuckDB qualification "
+                                                        "bundle is absent"
+                                                    )
+                                                repair_transition_chain.append(
+                                                    sealed_owner_foreign_recovery_waiter_admission_transition
+                                                )
+                                                launch_chain = (
+                                                    _admit_exact_r27_transition_chain(
+                                                        repair_transition_chain
+                                                    )
+                                                )
+                                                launch_bundle = r27_prequalification
+                                                launch_receipt = r27_receipt
+                                                launch_transition = (
+                                                    sealed_owner_foreign_recovery_waiter_admission_transition
+                                                )
+                                                launch_path = paths.get(
+                                                    "repair_sealed_owner_foreign_"
+                                                    "recovery_waiter_admission_"
+                                                    "transition_receipt"
+                                                )
+                                                launch_validator = (
+                                                    _validate_repair_sealed_owner_foreign_recovery_waiter_admission_transition
+                                                )
+                                                launch_previous_receipt = r26_receipt
                     if not isinstance(launch_bundle, Mapping):
                         raise OperatorError(
                             "pre-DuckDB qualification bundle is absent"
@@ -35442,6 +37971,14 @@ def _admit_materialized_launch(
                 ] = (
                     sealed_owner_projection_recovery_admission_correction_transition
                 )
+            if (
+                sealed_owner_foreign_recovery_waiter_admission_transition
+                is not None
+            ):
+                continuity[
+                    "sealed_owner_projection_recovery_admission_correction_to_"
+                    "sealed_owner_foreign_recovery_waiter_admission"
+                ] = sealed_owner_foreign_recovery_waiter_admission_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -35491,6 +38028,7 @@ def _admit_materialized_launch(
     if (
         r25_prequalification is not None
         or r26_prequalification is not None
+        or r27_prequalification is not None
     ):
         admission["projection_matches_events"] = integrity[
             "projection_matches_events"
@@ -37320,7 +39858,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
     candidate_tree: str,
     candidate_authorization_witness: Mapping[str, str],
 ) -> dict[str, Any] | None:
-    """Project unchanged R23 permission authority through exact R26."""
+    """Project unchanged R23 permission authority through exact R27."""
 
     parents = _git("show", "-s", "--format=%P", candidate_head).split()
     exact_r23 = parents == [
@@ -37335,7 +39873,10 @@ def _r23_owner_start_permission_context_from_launch_admission(
     exact_r26 = parents == [
         REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_HEAD
     ]
-    if not exact_r23 and not exact_r24 and not exact_r25 and not exact_r26:
+    exact_r27 = parents == [
+        REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+    ]
+    if not any((exact_r23, exact_r24, exact_r25, exact_r26, exact_r27)):
         return None
     if not isinstance(launch_admission, Mapping):
         raise OperatorError("R23 materialized launch admission is invalid")
@@ -37344,7 +39885,11 @@ def _r23_owner_start_permission_context_from_launch_admission(
     if admission_cid != _identity(unsigned_admission):
         raise OperatorError("R23 materialized launch admission CID differs")
     chain = (
-        _admit_exact_r26_transition_chain(
+        _admit_exact_r27_transition_chain(
+            launch_admission.get("repair_transition_chain")
+        )
+        if exact_r27
+        else _admit_exact_r26_transition_chain(
             launch_admission.get("repair_transition_chain")
         )
         if exact_r26
@@ -37364,7 +39909,9 @@ def _r23_owner_start_permission_context_from_launch_admission(
     transition = launch_admission.get("repair_transition")
     current_witness = dict(candidate_authorization_witness)
     r23_authority = (
-        chain[-4]
+        chain[-5]
+        if exact_r27
+        else chain[-4]
         if exact_r26
         else chain[-3]
         if exact_r25
@@ -37372,10 +39919,23 @@ def _r23_owner_start_permission_context_from_launch_admission(
         if exact_r24
         else chain[-1]
     )
-    r24_authority = chain[-3] if exact_r26 else chain[-2] if exact_r25 else None
-    r25_authority = chain[-2] if exact_r26 else None
+    r24_authority = (
+        chain[-4]
+        if exact_r27
+        else chain[-3]
+        if exact_r26
+        else chain[-2]
+        if exact_r25
+        else None
+    )
+    r25_authority = (
+        chain[-3] if exact_r27 else chain[-2] if exact_r26 else None
+    )
+    r26_authority = chain[-2] if exact_r27 else None
     expected_schema = (
-        REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_SCHEMA
+        REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_SCHEMA
+        if exact_r27
+        else REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_SCHEMA
         if exact_r26
         else REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_SCHEMA
         if exact_r25
@@ -37384,7 +39944,9 @@ def _r23_owner_start_permission_context_from_launch_admission(
         else REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
     )
     expected_base = (
-        REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_HEAD
+        REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+        if exact_r27
+        else REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_BASE_HEAD
         if exact_r26
         else REPAIR_SEALED_OWNER_EVENT_SOURCED_PROJECTION_RECOVERY_TRANSITION_BASE_HEAD
         if exact_r25
@@ -37407,7 +39969,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
         or launch_admission.get("historical_live_authorizing_receipt_cid")
         != transition.get("receipt_cid")
         or (
-            (exact_r24 or exact_r25 or exact_r26)
+            (exact_r24 or exact_r25 or exact_r26 or exact_r27)
             and (
                 r23_authority.get("schema")
                 != REPAIR_SEALED_OWNER_DATABASE_PERMISSION_HARDENING_TRANSITION_SCHEMA
@@ -37421,7 +39983,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            (exact_r25 or exact_r26)
+            (exact_r25 or exact_r26 or exact_r27)
             and (
                 not isinstance(r24_authority, Mapping)
                 or r24_authority.get("schema")
@@ -37442,7 +40004,7 @@ def _r23_owner_start_permission_context_from_launch_admission(
             )
         )
         or (
-            exact_r26
+            (exact_r26 or exact_r27)
             and (
                 not isinstance(r25_authority, Mapping)
                 or r25_authority.get("schema")
@@ -37455,8 +40017,29 @@ def _r23_owner_start_permission_context_from_launch_admission(
                 != ASEH_R26_EXACT_R25_REPAIR_RECEIPT_CID
                 or r25_authority.get("previous_receipt_cid")
                 != r24_authority.get("receipt_cid")
-                or transition.get("previous_receipt_cid")
+                or (
+                    exact_r26
+                    and transition.get("previous_receipt_cid")
+                    != r25_authority.get("receipt_cid")
+                )
+            )
+        )
+        or (
+            exact_r27
+            and (
+                not isinstance(r26_authority, Mapping)
+                or r26_authority.get("schema")
+                != REPAIR_SEALED_OWNER_PROJECTION_RECOVERY_ADMISSION_CORRECTION_TRANSITION_SCHEMA
+                or r26_authority.get("repair_head")
+                != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_HEAD
+                or r26_authority.get("repair_tree")
+                != REPAIR_SEALED_OWNER_FOREIGN_RECOVERY_WAITER_ADMISSION_TRANSITION_BASE_TREE
+                or r26_authority.get("receipt_cid")
+                != ASEH_R27_EXACT_R26_REPAIR_RECEIPT_CID
+                or r26_authority.get("previous_receipt_cid")
                 != r25_authority.get("receipt_cid")
+                or transition.get("previous_receipt_cid")
+                != r26_authority.get("receipt_cid")
             )
         )
     ):
