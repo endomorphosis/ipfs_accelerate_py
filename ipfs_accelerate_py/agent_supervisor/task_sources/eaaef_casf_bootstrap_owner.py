@@ -52,6 +52,9 @@ EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE: Final = (
 EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE: Final = (
     "EAAEFCASFBootstrapOwnerGuard@1"
 )
+EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS: Final = (
+    "persistent_quack_handoff_source_complete_cutover_unqualified"
+)
 EAAEF_CASF_OWNER_ABSENCE_ATTESTATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-casf-owner-absence-attestation@1"
 )
@@ -163,7 +166,9 @@ class EAAEFCASFBootstrapBinding:
     source_head: str
     source_tree: str
     source_forest_root: str
+    board_cid: str
     population_cid: str
+    bootstrap_population_cid: str
     plan_r1_cid: str
     database_path: Path
     owner_state_dir: Path
@@ -545,6 +550,10 @@ class CASFBootstrapEAAEFTypedReconciliationOwner:
         self._registry = registry
         self._source_forest_root = str(source_forest_root or "")
         self._owner_lifecycle = owner_lifecycle
+        self._persistent_quack_handoff_bound = (
+            getattr(owner_lifecycle, "QUALIFICATION_STATUS", "")
+            == EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS
+        )
         if (
             not self._repo_root.is_dir()
             or not _SHA256_RE.fullmatch(self._source_forest_root)
@@ -557,6 +566,9 @@ class CASFBootstrapEAAEFTypedReconciliationOwner:
     def reconciliation_qualification(self) -> Mapping[str, Any]:
         from ..runtime.eaaef_reconciliation_lifecycle import _cid
 
+        blockers = list(EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS)
+        if self._persistent_quack_handoff_bound:
+            blockers.remove("casf_quack_exclusive_owner_lifecycle_not_bound")
         value: dict[str, Any] = {
             "schema": EAAEF_OWNER_QUALIFICATION_SCHEMA,
             "interface": EAAEF_RECONCILIATION_OWNER_INTERFACE,
@@ -572,9 +584,7 @@ class CASFBootstrapEAAEFTypedReconciliationOwner:
             "plan_r2_remote_runtime_qualification_status": (
                 PLAN_R2_REMOTE_RUNTIME_QUALIFICATION_STATUS
             ),
-            "plan_r2_remote_runtime_blockers": list(
-                EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS
-            ),
+            "plan_r2_remote_runtime_blockers": blockers,
             "status_operation": "unavailable",
             "stop_tracks_operation": "unavailable",
             "launch_modes": [],
@@ -992,7 +1002,9 @@ class CASFBootstrapEAAEFTypedReconciliationOwner:
             source_head=population.source_head,
             source_tree=population.source_tree,
             source_forest_root=population.source_forest_root,
+            board_cid=population.board_cid,
             population_cid=population.population_cid,
+            bootstrap_population_cid=population.bootstrap_population_cid,
             plan_r1_cid=population.plan_r1_cid,
             database_path=self._registry.generation_dir(generation_id) / "control.duckdb",
             owner_state_dir=self._registry.generation_dir(generation_id) / "casf-owner",
@@ -1147,6 +1159,7 @@ __all__ = [
     "EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS",
     "EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE",
     "EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE",
+    "EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS",
     "EAAEF_CASF_BOOTSTRAP_REGISTRY_SCHEMA",
     "EAAEF_CASF_OWNER_ABSENCE_ATTESTATION_SCHEMA",
     "EAAEF_CASF_OWNER_ABORT_RECEIPT_SCHEMA",
