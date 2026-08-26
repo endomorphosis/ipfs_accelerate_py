@@ -23089,8 +23089,92 @@ class PortalImplementationDaemon:
             )
         return False
 
+    def _todo_path_is_disposable_database_portal_projection(self) -> bool:
+        """Recognize one sealed, ignored, non-authoritative Portal projection.
+
+        Database execution attempts use a private Markdown projection as a
+        bounded compatibility surface for the Portal daemon.  Its adjacent
+        content-addressed binding proves that DuckDB remains authoritative;
+        mutating its status must not contend for the repository-wide checkout
+        lease already held by the merge train.  Every failed check keeps the
+        ordinary Markdown checkout fence in place.
+        """
+
+        if (
+            self.task_source is not None
+            or self._todo_board_is_implementation_protected()
+        ):
+            return False
+        try:
+            repository_root = self.repo_root.resolve(strict=True)
+            supplied = (
+                self.todo_path
+                if self.todo_path.is_absolute()
+                else repository_root / self.todo_path
+            )
+            projection = supplied.resolve(strict=True)
+            # Refuse path aliases and symlinked parents at this privilege-
+            # narrowing boundary.  The canonical attempt path is absolute.
+            if supplied.absolute() != projection:
+                return False
+            relative = projection.relative_to(repository_root).as_posix()
+            if relative in set(self.implementation_protected_paths):
+                return False
+
+            git_top_level = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=projection.parent,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if git_top_level.returncode != 0:
+                return False
+            try:
+                projection_repository_root = Path(
+                    git_top_level.stdout.strip()
+                ).resolve(strict=True)
+            except (OSError, RuntimeError):
+                return False
+            if projection_repository_root != repository_root:
+                return False
+
+            ignored = subprocess.run(
+                ["git", "check-ignore", "--quiet", "--", relative],
+                cwd=repository_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if ignored.returncode != 0:
+                return False
+
+            from .database_portal_bridge import (
+                verify_database_portal_attempt_projection,
+            )
+
+            binding = verify_database_portal_attempt_projection(
+                projection,
+                allowed_root=repository_root,
+            )
+        except Exception:
+            # This classifier can only remove a checkout lease requirement.
+            # Missing Git state, malformed bindings, or unreadable paths must
+            # therefore retain the established fence.
+            return False
+        return bool(
+            binding.get("verified") is True
+            and binding.get("projection_authority") is False
+            and binding.get("authoritative_task_store") == "duckdb"
+            and str(binding.get("projection_path") or "")
+            == str(projection)
+        )
+
     def _todo_mutation_requires_checkout_lease(self) -> bool:
-        return self.task_source is None or (
+        return (
+            self.task_source is None
+            and not self._todo_path_is_disposable_database_portal_projection()
+        ) or (
             self._task_source_writes_markdown_checkout()
             and self._todo_board_is_implementation_protected()
         )

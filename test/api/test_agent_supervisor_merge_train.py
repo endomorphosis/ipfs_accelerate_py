@@ -9,6 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
     checkout_repository_id,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
@@ -135,6 +137,253 @@ def _database_projection_daemon(
         worktree_pool_enabled=False,
     )
     return daemon, paths, dict(binding)
+
+
+def test_database_projection_checkout_lease_exemption_is_fail_closed(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:lease-classification",
+        claim_id="claim:lease-classification",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=repo / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(),
+    )
+
+    # A verified projection is still fenced until Git proves it is disposable.
+    assert daemon._todo_mutation_requires_checkout_lease() is True
+
+    (repo / ".gitignore").write_text("attempts/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore database attempt projections")
+    assert daemon._todo_mutation_requires_checkout_lease() is False
+
+    relative = paths.task_projection.resolve().relative_to(repo).as_posix()
+    daemon.implementation_protected_paths = (relative,)
+    assert daemon._todo_mutation_requires_checkout_lease() is True
+    daemon.implementation_protected_paths = ()
+
+    binding = json.loads(paths.binding.read_text(encoding="utf-8"))
+    binding["projection_authority"] = True
+    paths.binding.write_text(
+        json.dumps(binding, sort_keys=True),
+        encoding="utf-8",
+    )
+    assert daemon._todo_mutation_requires_checkout_lease() is True
+
+
+def test_database_projection_checkout_lease_exemption_rejects_nested_repo(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ".gitignore").write_text("attempts/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore database attempt projections")
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:nested-repository",
+        claim_id="claim:nested-repository",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=repo / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(),
+    )
+    assert daemon._todo_mutation_requires_checkout_lease() is False
+
+    nested_repo = paths.task_projection.parent
+    _git(nested_repo, "init", "-b", "nested")
+    _git(nested_repo, "config", "user.name", "Nested Projection Test")
+    _git(
+        nested_repo,
+        "config",
+        "user.email",
+        "nested-projection@example.invalid",
+    )
+    _git(nested_repo, "add", "task-projection.md")
+    _git(nested_repo, "commit", "-m", "track nested projection")
+
+    # The outer repository still reports the path ignored, but it must not
+    # authorize a lease exemption for a tracked file in another checkout.
+    assert daemon._todo_mutation_requires_checkout_lease() is True
+
+
+def test_database_projection_completion_survives_foreign_checkout_lease(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ".gitignore").write_text("attempts/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore database attempt projections")
+    task_cid = "task:cid:ref-040"
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:lease-contention",
+        claim_id="claim:lease-contention",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=repo / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(task_cid=task_cid),
+    )
+    assert daemon._todo_mutation_requires_checkout_lease() is False
+
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_payload = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="FOREIGN-MERGE",
+        branch="implementation/foreign",
+        owner_script="",
+        extra={"operation": "merge_train_callback"},
+    )
+    lock_path.write_text(
+        json.dumps(lock_payload, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    result = daemon._mark_task_completed_in_todo(
+        "REF-040",
+        expected_task_cids={"REF-040": task_cid},
+    )
+
+    assert result["updated"] is True
+    assert result["completion_receipts"] == [
+        {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "member_completion_receipt@1"
+            ),
+            "task_id": "REF-040",
+            "canonical_task_key": result["completion_receipts"][0][
+                "canonical_task_key"
+            ],
+            "canonical_task_cid": task_cid,
+            "board_namespace": "task-projection.md",
+            "status": "succeeded",
+        }
+    ]
+    assert daemon._todo_completion_is_durable(result) is True
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert result["commit_result"]["reason"] == (
+        "checkout_mutation_lock_exists"
+    )
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == lock_payload
+
+
+def test_synchronous_callback_completes_ignored_projection_under_foreign_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ".gitignore").write_text("attempts/\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore database attempt projections")
+    task_cid = "task:cid:ref-040"
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:synchronous-lock-contention",
+        claim_id="claim:synchronous-lock-contention",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=repo / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(task_cid=task_cid),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/synchronous-lock")
+    (repo / "base.txt").write_text(
+        "synchronous callback with foreign lease\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "synchronous lock candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    [task] = daemon._load_tasks()
+    request, _queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/synchronous-lock",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_payload = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="FOREIGN-MERGE",
+        branch="implementation/foreign",
+        owner_script="",
+        extra={"operation": "merge_train_callback"},
+    )
+    original_completion = daemon._mark_task_completed_in_todo
+
+    def complete_while_foreign_lease_is_live(*args: object, **kwargs: object):
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(
+            json.dumps(lock_payload, sort_keys=True),
+            encoding="utf-8",
+        )
+        return original_completion(*args, **kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_completed_in_todo",
+        complete_while_foreign_lease_is_live,
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result["merge_reconciliation_receipt"]["recorded"] is True
+    receipts = result["todo_update_result"]["completion_receipts"]
+    assert {
+        receipt["task_id"]: receipt["canonical_task_cid"]
+        for receipt in receipts
+    } == {"REF-040": task_cid}
+    assert daemon._todo_completion_is_durable(
+        result["todo_update_result"]
+    ) is True
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == lock_payload
+    events = daemon._iter_merge_lifecycle_events()
+    event_types = [event["type"] for event in events]
+    assert event_types.index("worktree_reconciliation_candidate_queued") < (
+        event_types.index("merge_reconciled")
+    )
+    assert event_types.index("merge_reconciled") < event_types.index(
+        "todo_status_updated"
+    )
 
 
 def test_queue_deduplicates_canonical_task_and_commit_across_lanes(tmp_path: Path) -> None:
