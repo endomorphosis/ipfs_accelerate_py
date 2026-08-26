@@ -1364,6 +1364,22 @@ INTERRUPTED_IMPLEMENTATION_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "interrupted-implementation-recovery@1"
 )
+# Recovery embeds the bounded 8,192-task projection twice plus its marker,
+# lifecycle, start event, and proof.  Keep a finite stable-fd read bound while
+# leaving several KiB per projected task and ample fixed-record headroom.
+MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES = 64 * 1024 * 1024
+INTERRUPTED_IMPLEMENTATION_RECOVERY_EVENT_ENVELOPE_FIELDS = frozenset(
+    {
+        "type",
+        "timestamp",
+        "stream_id",
+        "snapshot_id",
+        "sequence",
+        "position",
+        "event_id",
+        "previous_event_id",
+    }
+)
 INTERRUPTED_IMPLEMENTATION_RECOVERY_FINAL_PROOF_FIELDS = frozenset(
     {
         "marker_tombstone_path",
@@ -13444,6 +13460,21 @@ class PortalImplementationDaemon:
             / INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_FILENAME
         )
 
+    @staticmethod
+    def _interrupted_recovery_path_is_exactly_absent(path: Path) -> bool:
+        return bool(not path.exists() and not path.is_symlink())
+
+    def _completed_interrupted_recovery_receipt_archive_path(
+        self,
+        operation_id: str,
+    ) -> Path:
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", operation_id) is None:
+            raise ValueError("interrupted recovery operation id is invalid")
+        return self.state_path.parent / (
+            "interrupted-implementation-recovery-completed-"
+            f"{operation_id.removeprefix('sha256:')}.json"
+        )
+
     def _interrupted_implementation_marker_tombstone_path(
         self,
         operation_id: str,
@@ -13459,10 +13490,17 @@ class PortalImplementationDaemon:
     def _durable_private_json(path: Path, payload: Mapping[str, Any]) -> None:
         """Publish one fsynced private receipt and its directory entry."""
 
-        path.parent.mkdir(parents=True, exist_ok=True)
         rendered = (
             json.dumps(dict(payload), indent=2, sort_keys=True) + "\n"
         ).encode("utf-8")
+        if (
+            len(rendered)
+            > MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES
+        ):
+            raise RuntimeError(
+                "interrupted recovery receipt exceeds its stable read bound"
+            )
+        path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_name(
             f".{path.name}.{os.getpid()}.{secrets.token_hex(12)}.tmp"
         )
@@ -13890,6 +13928,15 @@ class PortalImplementationDaemon:
                     )
                     if released is not None:
                         return released
+                    resumed = (
+                        self._resume_interrupted_recovery_claim_release(
+                            state,
+                            interrupted_recovery_receipt,
+                            claim_path=claim_path,
+                        )
+                    )
+                    if resumed is not None:
+                        return resumed
                     claim_before = interrupted_recovery_receipt.get(
                         "basis",
                         {},
@@ -14098,6 +14145,14 @@ class PortalImplementationDaemon:
                 )
 
             claim_id = content_identity(claim)
+            task_source_identity = self._task_source_identity_record()
+            if interrupted_recovery_receipt is not None:
+                interrupted_basis = dict(
+                    interrupted_recovery_receipt["basis"]
+                )
+                task_source_identity = dict(
+                    dict(interrupted_basis["start_event"])["payload"]
+                ).get("task_source_identity")
             basis = {
                 "schema": IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA,
                 "operation": "release_quiesced_implementation_task_claim",
@@ -14124,7 +14179,7 @@ class PortalImplementationDaemon:
                     "workspace_path": record.workspace_path,
                     "terminal_reason": record.terminal_reason,
                 },
-                "task_source_identity": self._task_source_identity_record(),
+                "task_source_identity": task_source_identity,
             }
             if interrupted_recovery_receipt is not None:
                 basis["interrupted_recovery_operation_id"] = str(
@@ -14140,7 +14195,12 @@ class PortalImplementationDaemon:
                 attempt=attempt,
                 lease_id=lease_id,
             )
-            existing_receipt = load_json_dict(receipt_path)
+            try:
+                existing_receipt = (
+                    self._load_private_recovery_json_object(receipt_path)
+                )
+            except RuntimeError:
+                existing_receipt = None
             if existing_receipt is None and (
                 receipt_path.exists() or receipt_path.is_symlink()
             ):
@@ -14162,7 +14222,7 @@ class PortalImplementationDaemon:
                 if existing_receipt is not None
                 else utc_now()
             )
-            write_json_atomic(
+            self._durable_private_json(
                 receipt_path,
                 {
                     **basis,
@@ -14186,6 +14246,20 @@ class PortalImplementationDaemon:
                     receipt_path=str(receipt_path),
                 )
             claim_path.unlink()
+            claim_directory = os.open(
+                claim_path.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.fsync(claim_directory)
+            finally:
+                os.close(claim_directory)
+            self._implementation_task_claim_release_checkpoint(
+                "claim_removed"
+            )
 
         released_at = utc_now()
         receipt_body = {
@@ -14196,7 +14270,7 @@ class PortalImplementationDaemon:
             "released_at": released_at,
         }
         receipt_id = content_identity(receipt_body)
-        write_json_atomic(
+        self._durable_private_json(
             receipt_path,
             {**receipt_body, "receipt_id": receipt_id},
         )
@@ -14205,7 +14279,14 @@ class PortalImplementationDaemon:
             "blocked": False,
             "reason": "quiesced_task_claim_released",
             "task_id": task_id,
+            "canonical_task_key": str(
+                claim.get("canonical_task_key") or ""
+            ),
             "canonical_task_cid": canonical_task_cid,
+            "board_namespace": str(
+                claim.get("board_namespace") or ""
+            ),
+            "task_source_identity": basis["task_source_identity"],
             "attempt": attempt,
             "task_status": task_status,
             "claim_path": str(claim_path),
@@ -14224,8 +14305,325 @@ class PortalImplementationDaemon:
             result["released_unfinished_attempt"] = (
                 released_attempt_evidence
             )
-        self._record_event("implementation_task_claim_released", result)
+        self._ensure_interrupted_task_claim_released_event(result)
         return result
+
+    def _implementation_task_claim_release_checkpoint(
+        self,
+        _phase: str,
+    ) -> None:
+        """Test seam for loss after claim removal or receipt publication."""
+
+    def _ensure_interrupted_task_claim_released_event(
+        self,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Publish or verify one exact claim-release event per operation."""
+
+        operation_id = str(payload.get("operation_id") or "")
+        receipt_id = str(payload.get("receipt_id") or "")
+        if not operation_id or not receipt_id:
+            raise RuntimeError(
+                "interrupted claim release event identity is missing"
+            )
+
+        def matching_events() -> list[dict[str, Any]]:
+            return [
+                event
+                for event in self._iter_merge_lifecycle_events(
+                    require_canonical_raw=True,
+                )
+                if event.get("type")
+                == "implementation_task_claim_released"
+                and event.get("operation_id") == operation_id
+            ]
+
+        matches = matching_events()
+        if not matches:
+            self._record_event(
+                "implementation_task_claim_released",
+                dict(payload),
+            )
+            matches = matching_events()
+        if (
+            len(matches) != 1
+            or matches[0].get("receipt_id") != receipt_id
+            or not self._interrupted_recovery_event_has_exact_semantics(
+                matches[0],
+                event_type="implementation_task_claim_released",
+                expected=payload,
+            )
+        ):
+            raise RuntimeError(
+                "interrupted claim release event changed or duplicated"
+            )
+        return matches[0]
+
+    def _resume_interrupted_recovery_claim_release(
+        self,
+        state: PortalTaskState,
+        interrupted_recovery_receipt: Mapping[str, Any],
+        *,
+        claim_path: Path,
+    ) -> dict[str, Any] | None:
+        """Finish an exact prepared/released claim receipt after process loss."""
+
+        try:
+            interrupted_basis = dict(
+                interrupted_recovery_receipt["basis"]
+            )
+            interrupted_expected = dict(
+                interrupted_recovery_receipt["expected_after"]
+            )
+            claim_before = dict(interrupted_basis["task_claim_before"])
+            claim = dict(claim_before["payload"])
+            identity = dict(interrupted_basis["identity"])
+            expected_state = dict(interrupted_expected["state"])[
+                "payload"
+            ]
+            expected_lifecycle = dict(
+                interrupted_expected["lifecycle"]
+            )["payload"]
+            task_id = str(identity["task_id"])
+            canonical_task_cid = str(identity["canonical_task_cid"])
+            attempt = int(identity["attempt"])
+            claim_attempt = int(claim["attempt"])
+            pid = int(claim["pid"])
+            lease_id = str(claim["lease_id"])
+            claim_state_dir = normalize_workspace_path(claim["state_dir"])
+            claim_state_path = normalize_workspace_path(claim["state_path"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if (
+            interrupted_recovery_receipt.get("phase") != "prepared"
+            or claim_before.get("present") is not True
+            or claim_attempt != attempt
+            or claim_before.get("cid") != content_identity(claim)
+            or Path(str(claim_before.get("path") or "")) != claim_path
+            or not self._interrupted_recovery_path_is_exactly_absent(
+                claim_path
+            )
+            or claim_path.is_symlink()
+            or asdict(state) != expected_state
+            or self._load_exact_json_object(self.state_path)
+            != expected_state
+            or str(claim.get("task_id") or "") != task_id
+            or str(claim.get("canonical_task_cid") or "")
+            != canonical_task_cid
+            or pid <= 0
+            or not lease_id
+            or claim_state_dir
+            != normalize_workspace_path(self.state_path.parent.resolve())
+            or claim_state_path
+            != normalize_workspace_path(self.state_path.resolve())
+        ):
+            return None
+        owner_payload = claim.get("owner_process_birth")
+        try:
+            owner = (
+                ProcessBirthIdentity.from_dict(owner_payload)
+                if isinstance(owner_payload, Mapping)
+                else ProcessBirthIdentity(pid=pid, start_time_ticks=0)
+            )
+        except (TypeError, ValueError):
+            return None
+        if (
+            owner.pid != pid
+            or (
+                isinstance(owner_payload, Mapping)
+                and owner.start_time_ticks <= 0
+            )
+            or owner_liveness(
+                owner,
+                proc_root=self.worktree_lifecycle.proc_root,
+            )
+            is not OwnerLiveness.DEAD
+            or implementation_task_claim_protected_fence_paths(claim)
+        ):
+            return None
+        released_attempt_evidence = (
+            self._released_unfinished_attempt_evidence(
+                state,
+                claim=claim,
+                task_id=task_id,
+                canonical_task_cid=canonical_task_cid,
+                attempt=attempt,
+                display_attempt=int(
+                    state.implementation_attempts.get(task_id, 0) or 0
+                ),
+                canonical_attempt=int(
+                    state.implementation_attempts_by_cid.get(
+                        canonical_task_cid,
+                        0,
+                    )
+                    or 0
+                ),
+                require_canonical_events=True,
+            )
+        )
+        if released_attempt_evidence is None:
+            return None
+        record, task_status, authority_reason = (
+            self._terminal_authority_for_quiesced_task_claim(
+                state,
+                task_id=task_id,
+                canonical_task_key=str(
+                    claim.get("canonical_task_key") or ""
+                ),
+                canonical_task_cid=canonical_task_cid,
+                board_namespace=str(claim.get("board_namespace") or ""),
+                attempt=attempt,
+                interrupted_recovery_receipt=(
+                    interrupted_recovery_receipt
+                ),
+            )
+        )
+        if (
+            record is None
+            or authority_reason
+            or record.to_dict() != expected_lifecycle
+            or record.branch != released_attempt_evidence["branch"]
+        ):
+            return None
+        expected_state_dir = normalize_workspace_path(
+            self.state_path.parent.resolve()
+        )
+        expected_state_path = normalize_workspace_path(
+            self.state_path.resolve()
+        )
+        claim_worktree_root = str(claim.get("worktree_root") or "")
+        task_source_identity = dict(
+            dict(interrupted_basis["start_event"])["payload"]
+        ).get("task_source_identity")
+        expected_basis = {
+            "schema": IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA,
+            "operation": "release_quiesced_implementation_task_claim",
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "task_status": task_status,
+            "claim": {
+                "path": str(claim_path),
+                "claim_id": claim_before["cid"],
+                "lease_id": lease_id,
+                "owner_pid": pid,
+                "state_dir": expected_state_dir,
+                "state_path": expected_state_path,
+                "legacy_worktree_root_missing": not bool(
+                    claim_worktree_root
+                ),
+            },
+            "worktree_lifecycle": {
+                "record_id": record.record_id,
+                "lease_id": record.lease_id,
+                "fence": record.fence,
+                "state": record.state.value,
+                "workspace_path": record.workspace_path,
+                "terminal_reason": record.terminal_reason,
+            },
+            "task_source_identity": task_source_identity,
+            "interrupted_recovery_operation_id": str(
+                interrupted_recovery_receipt.get("operation_id") or ""
+            ),
+            "released_unfinished_attempt": released_attempt_evidence,
+        }
+        operation_id = content_identity(expected_basis)
+        receipt_path = self._task_claim_release_receipt_path(
+            canonical_task_cid=canonical_task_cid,
+            attempt=attempt,
+            lease_id=lease_id,
+        )
+        try:
+            existing = self._load_private_recovery_json_object(receipt_path)
+        except RuntimeError:
+            return None
+        if existing is None:
+            return None
+        phase = str(existing.get("phase") or "")
+        prepared_at = str(existing.get("prepared_at") or "")
+        if not prepared_at:
+            return None
+        if phase == "prepared":
+            if existing != {
+                **expected_basis,
+                "operation_id": operation_id,
+                "phase": "prepared",
+                "prepared_at": prepared_at,
+            }:
+                return None
+            released_at = utc_now()
+            receipt_body = {
+                **expected_basis,
+                "operation_id": operation_id,
+                "phase": "released",
+                "prepared_at": prepared_at,
+                "released_at": released_at,
+            }
+            receipt_id = content_identity(receipt_body)
+            self._durable_private_json(
+                receipt_path,
+                {**receipt_body, "receipt_id": receipt_id},
+            )
+            self._implementation_task_claim_release_checkpoint(
+                "released_receipt_published"
+            )
+        elif phase == "released":
+            released_at = str(existing.get("released_at") or "")
+            receipt_body = dict(existing)
+            receipt_id = str(receipt_body.pop("receipt_id", ""))
+            if (
+                not released_at
+                or receipt_body
+                != {
+                    **expected_basis,
+                    "operation_id": operation_id,
+                    "phase": "released",
+                    "prepared_at": prepared_at,
+                    "released_at": released_at,
+                }
+                or receipt_id != content_identity(receipt_body)
+            ):
+                return None
+        else:
+            return None
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_task_claim_released",
+            "task_id": task_id,
+            "canonical_task_key": str(
+                claim.get("canonical_task_key") or ""
+            ),
+            "canonical_task_cid": canonical_task_cid,
+            "board_namespace": str(
+                claim.get("board_namespace") or ""
+            ),
+            "task_source_identity": expected_basis[
+                "task_source_identity"
+            ],
+            "attempt": attempt,
+            "task_status": task_status,
+            "claim_path": str(claim_path),
+            "claim_id": claim_before["cid"],
+            "claim_lease_id": lease_id,
+            "owner_pid": pid,
+            "state_dir": expected_state_dir,
+            "lifecycle_record_id": record.record_id,
+            "lifecycle_fence": record.fence,
+            "operation_id": operation_id,
+            "released_at": released_at,
+            "receipt_id": receipt_id,
+            "receipt_path": str(receipt_path),
+            "released_unfinished_attempt": released_attempt_evidence,
+        }
+        try:
+            self._ensure_interrupted_task_claim_released_event(result)
+        except (CursorReplayError, RuntimeError):
+            return None
+        return self._interrupted_recovery_released_claim_result(
+            state,
+            interrupted_recovery_receipt,
+        )
 
     def reconcile_quiesced_implementation_task_claim(self) -> dict[str, Any]:
         """Reconcile only the repo-wide claim for already-clean lane state."""
@@ -14254,6 +14652,31 @@ class PortalImplementationDaemon:
             return "unknown"
         return "alive"
 
+    def _interrupted_recovery_predecessor_liveness(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> str:
+        try:
+            pid = int(metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            return "unknown"
+        if "owner_process_birth" not in metadata:
+            return self._interrupted_recovery_pid_liveness(pid)
+        payload = metadata.get("owner_process_birth")
+        if not isinstance(payload, Mapping):
+            return "unknown"
+        try:
+            owner = ProcessBirthIdentity.from_dict(payload)
+        except (TypeError, ValueError):
+            return "unknown"
+        if owner.pid != pid or owner.start_time_ticks <= 0:
+            return "unknown"
+        observed = owner_liveness(
+            owner,
+            proc_root=self.worktree_lifecycle.proc_root,
+        )
+        return observed.value
+
     @staticmethod
     def _parse_unique_json_object(text: str) -> dict[str, Any] | None:
         def unique_object(
@@ -14277,22 +14700,35 @@ class PortalImplementationDaemon:
         lease: Mapping[str, Any],
     ) -> dict[str, Any] | None:
         custody = lease.get("predecessor_attempt_lock")
-        if not isinstance(custody, Mapping) or set(custody) != {
-            "schema",
-            "raw_utf8",
-            "sha256",
-            "metadata",
-        }:
+        if not isinstance(custody, Mapping):
+            return None
+        custody_schema = custody.get("schema")
+        common_fields = {"schema", "raw_utf8", "sha256", "metadata"}
+        if custody_schema == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "implementation-attempt-lock-custody@1"
+        ):
+            if set(custody) != common_fields:
+                return None
+        elif custody_schema == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "implementation-attempt-lock-custody@2"
+        ):
+            if set(custody) != common_fields | {"mode"}:
+                return None
+            custody_mode = custody.get("mode")
+            if (
+                not isinstance(custody_mode, int)
+                or isinstance(custody_mode, bool)
+                or custody_mode not in {0o600, 0o644, 0o664}
+            ):
+                return None
+        else:
             return None
         raw_text = custody.get("raw_utf8")
         metadata = custody.get("metadata")
         if (
-            custody.get("schema")
-            != (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "implementation-attempt-lock-custody@1"
-            )
-            or not isinstance(raw_text, str)
+            not isinstance(raw_text, str)
             or not isinstance(metadata, Mapping)
         ):
             return None
@@ -14310,6 +14746,30 @@ class PortalImplementationDaemon:
             attempt = int(metadata.get("attempt"))
         except (TypeError, ValueError):
             return None
+        owner_birth_payload = metadata.get("owner_process_birth")
+        if "owner_process_birth" in metadata:
+            if not isinstance(owner_birth_payload, Mapping):
+                return None
+            try:
+                owner_birth = ProcessBirthIdentity.from_dict(
+                    owner_birth_payload
+                )
+            except (TypeError, ValueError):
+                return None
+            owner_is_dead = bool(
+                owner_birth.pid == pid
+                and owner_birth.start_time_ticks > 0
+                and owner_liveness(
+                    owner_birth,
+                    proc_root=self.worktree_lifecycle.proc_root,
+                )
+                is OwnerLiveness.DEAD
+            )
+        else:
+            # Narrow compatibility for legacy PID-only implementation locks.
+            owner_is_dead = (
+                self._interrupted_recovery_pid_liveness(pid) == "dead"
+            )
         if (
             str(metadata.get("kind") or "") != "implementation"
             or str(metadata.get("lease_role") or "implementation_attempt")
@@ -14326,29 +14786,122 @@ class PortalImplementationDaemon:
             != normalize_workspace_path(self.repo_root)
             or normalize_workspace_path(metadata.get("state_dir") or "")
             != normalize_workspace_path(self.state_path.parent.resolve())
-            or self._interrupted_recovery_pid_liveness(pid) != "dead"
+            or not owner_is_dead
         ):
             return None
         return dict(custody)
 
-    def _load_private_interrupted_recovery_receipt(
+    def _load_private_recovery_json_object(
         self,
+        path: Path | None = None,
+        *,
+        maximum_bytes: int = (
+            MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES
+        ),
+        validate_interrupted_receipt: bool = False,
     ) -> dict[str, Any] | None:
-        path = self._interrupted_implementation_recovery_receipt_path()
+        path = (
+            self._interrupted_implementation_recovery_receipt_path()
+            if path is None
+            else path
+        )
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
         try:
-            observed = path.lstat()
+            descriptor = os.open(path, flags)
         except FileNotFoundError:
             return None
+        except OSError as exc:
+            raise RuntimeError(
+                "interrupted recovery receipt cannot be opened safely"
+            ) from exc
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat_module.S_ISREG(before.st_mode)
+                or before.st_uid != os.geteuid()
+                or before.st_nlink != 1
+                or stat_module.S_IMODE(before.st_mode) != 0o600
+                or before.st_size <= 0
+                or before.st_size > maximum_bytes
+            ):
+                raise RuntimeError(
+                    "interrupted recovery receipt is not private"
+                )
+            chunks: list[bytes] = []
+            remaining = int(before.st_size)
+            while remaining:
+                chunk = os.read(descriptor, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw_receipt = b"".join(chunks)
+            grew = bool(os.read(descriptor, 1))
+            after = os.fstat(descriptor)
+            named = os.lstat(path)
+        except OSError as exc:
+            raise RuntimeError(
+                "interrupted recovery receipt changed while reading"
+            ) from exc
+        finally:
+            os.close(descriptor)
+
+        def stable_identity(value: os.stat_result) -> tuple[int, ...]:
+            return (
+                value.st_dev,
+                value.st_ino,
+                value.st_mode,
+                value.st_uid,
+                value.st_gid,
+                value.st_nlink,
+                value.st_size,
+                value.st_mtime_ns,
+                value.st_ctime_ns,
+            )
+
         if (
-            not stat_module.S_ISREG(observed.st_mode)
-            or observed.st_uid != os.geteuid()
-            or observed.st_nlink != 1
-            or stat_module.S_IMODE(observed.st_mode) != 0o600
+            grew
+            or remaining != 0
+            or len(raw_receipt) != before.st_size
+            or stable_identity(before) != stable_identity(after)
+            or stable_identity(after) != stable_identity(named)
         ):
-            raise RuntimeError("interrupted recovery receipt is not private")
-        receipt = self._load_exact_json_object(path)
-        if receipt is None:
+            raise RuntimeError(
+                "interrupted recovery receipt changed while reading"
+            )
+
+        def unique_object(
+            pairs: list[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError(f"duplicate JSON key: {key}")
+                result[key] = value
+            return result
+
+        try:
+            receipt = json.loads(
+                raw_receipt.decode("utf-8"),
+                object_pairs_hook=unique_object,
+            )
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
+            raise RuntimeError(
+                "interrupted recovery receipt is malformed"
+            ) from exc
+        if not isinstance(receipt, dict):
             raise RuntimeError("interrupted recovery receipt is malformed")
+        if not validate_interrupted_receipt:
+            return receipt
         body = dict(receipt)
         receipt_id = body.pop("receipt_id", None)
         basis = receipt.get("basis")
@@ -14431,6 +14984,83 @@ class PortalImplementationDaemon:
                     "interrupted recovery completed proof is not current"
                 )
         return receipt
+
+    def _load_private_interrupted_recovery_receipt(
+        self,
+        path: Path | None = None,
+    ) -> dict[str, Any] | None:
+        return self._load_private_recovery_json_object(
+            path,
+            maximum_bytes=(
+                MAX_INTERRUPTED_IMPLEMENTATION_RECOVERY_RECEIPT_BYTES
+            ),
+            validate_interrupted_receipt=True,
+        )
+
+    def _archive_completed_interrupted_recovery_receipt(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> Path:
+        """Retire one fully revalidated proof without replacing history."""
+
+        if receipt.get("phase") != "completed":
+            raise RuntimeError(
+                "interrupted recovery archive source is not completed"
+            )
+        source = self._interrupted_implementation_recovery_receipt_path()
+        operation_id = str(receipt.get("operation_id") or "")
+        archive = self._completed_interrupted_recovery_receipt_archive_path(
+            operation_id
+        )
+        if self._load_private_interrupted_recovery_receipt() != dict(receipt):
+            raise RuntimeError(
+                "interrupted recovery archive source changed"
+            )
+        if archive.exists() or archive.is_symlink():
+            archived = self._load_private_interrupted_recovery_receipt(
+                archive
+            )
+            if archived != dict(receipt):
+                raise RuntimeError(
+                    "interrupted recovery completed archive conflicts"
+                )
+            if (
+                self._load_private_interrupted_recovery_receipt()
+                != dict(receipt)
+            ):
+                raise RuntimeError(
+                    "interrupted recovery archive source changed"
+                )
+            source.unlink()
+            directory = os.open(
+                source.parent,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            if source.exists() or source.is_symlink():
+                raise RuntimeError(
+                    "interrupted recovery duplicate source was not retired"
+                )
+            return archive
+        self._rename_without_replace(source, archive)
+        if source.exists() or source.is_symlink():
+            raise RuntimeError(
+                "interrupted recovery completed receipt was not retired"
+            )
+        if (
+            self._load_private_interrupted_recovery_receipt(archive)
+            != dict(receipt)
+        ):
+            raise RuntimeError(
+                "interrupted recovery completed archive changed"
+            )
+        return archive
 
     def _recovery_state_payload(
         self,
@@ -14557,7 +15187,9 @@ class PortalImplementationDaemon:
             or str(claim.get("canonical_task_cid") or "")
             != canonical_task_cid
             or claim_attempt != attempt
-            or claim_path.exists()
+            or not self._interrupted_recovery_path_is_exactly_absent(
+                claim_path
+            )
             or claim_path
             != self._implementation_task_claim_path(
                 task_id,
@@ -14570,7 +15202,10 @@ class PortalImplementationDaemon:
             attempt=attempt,
             lease_id=lease_id,
         )
-        released = self._load_exact_json_object(release_path)
+        try:
+            released = self._load_private_recovery_json_object(release_path)
+        except RuntimeError:
+            return None
         if released is None:
             return None
         evidence = released.get("released_unfinished_attempt")
@@ -14587,15 +15222,21 @@ class PortalImplementationDaemon:
         recovered_events = [
             event
             for event in events
-            if isinstance(evidence, Mapping)
-            and event.get("event_id") == evidence.get("event_id")
-            and event.get("type") == "implementation_state_recovered"
-            and all(
-                event.get(key) == value
-                for key, value in expected_recovery_event.items()
-            )
+            if event.get("type") == "implementation_state_recovered"
+            and event.get("interrupted_recovery_operation_id")
+            == receipt.get("operation_id")
         ]
-        if len(recovered_events) != 1:
+        if (
+            len(recovered_events) != 1
+            or not isinstance(evidence, Mapping)
+            or recovered_events[0].get("event_id")
+            != evidence.get("event_id")
+            or not self._interrupted_recovery_event_has_exact_semantics(
+                recovered_events[0],
+                event_type="implementation_state_recovered",
+                expected=expected_recovery_event,
+            )
+        ):
             return None
         recovered_event = recovered_events[0]
         expected_evidence = {
@@ -14623,13 +15264,7 @@ class PortalImplementationDaemon:
             event
             for event in events
             if event.get("type") == "implementation_task_claim_released"
-            and event.get("receipt_id") == released.get("receipt_id")
             and event.get("operation_id") == released.get("operation_id")
-            and event.get("reason") == "quiesced_task_claim_released"
-            and event.get("task_id") == task_id
-            and event.get("canonical_task_cid") == canonical_task_cid
-            and event.get("attempt") == attempt
-            and event.get("released_unfinished_attempt") == evidence
         ]
         if len(release_events) != 1:
             return None
@@ -14655,6 +15290,21 @@ class PortalImplementationDaemon:
         }
         claim_proof = release_basis.get("claim")
         lifecycle_proof = release_basis.get("worktree_lifecycle")
+        expected_claim_proof = {
+            "path": str(claim_path),
+            "claim_id": claim_before["cid"],
+            "lease_id": lease_id,
+            "owner_pid": claim["pid"],
+            "state_dir": normalize_workspace_path(
+                self.state_path.parent.resolve()
+            ),
+            "state_path": normalize_workspace_path(
+                self.state_path.resolve()
+            ),
+            "legacy_worktree_root_missing": not bool(
+                str(claim.get("worktree_root") or "")
+            ),
+        }
         expected_lifecycle_proof = {
             "record_id": expected_lifecycle["record_id"],
             "lease_id": expected_lifecycle["lease_id"],
@@ -14675,12 +15325,10 @@ class PortalImplementationDaemon:
             or release_basis.get("attempt") != attempt
             or normalize_status(release_basis.get("task_status") or "")
             != "todo"
-            or not isinstance(claim_proof, Mapping)
-            or claim_proof.get("path") != str(claim_path)
-            or claim_proof.get("claim_id") != claim_before.get("cid")
-            or claim_proof.get("lease_id") != lease_id
-            or claim_proof.get("owner_pid") != claim.get("pid")
+            or claim_proof != expected_claim_proof
             or lifecycle_proof != expected_lifecycle_proof
+            or release_basis.get("task_source_identity")
+            != start.get("task_source_identity")
             or release_basis.get("interrupted_recovery_operation_id")
             != receipt.get("operation_id")
             or release_basis.get("released_unfinished_attempt") != evidence
@@ -14693,18 +15341,66 @@ class PortalImplementationDaemon:
             or receipt_id != content_identity(release_body)
         ):
             return None
-        return {
+        event_payload = {
             "reconciled": True,
             "blocked": False,
             "reason": "quiesced_task_claim_released",
             "task_id": task_id,
+            "canonical_task_key": str(
+                claim.get("canonical_task_key") or ""
+            ),
             "canonical_task_cid": canonical_task_cid,
+            "board_namespace": str(
+                claim.get("board_namespace") or ""
+            ),
+            "task_source_identity": release_basis[
+                "task_source_identity"
+            ],
             "attempt": attempt,
+            "task_status": str(release_basis["task_status"]),
             "claim_path": str(claim_path),
+            "claim_id": claim_before["cid"],
+            "claim_lease_id": lease_id,
+            "owner_pid": int(claim["pid"]),
+            "state_dir": str(claim_proof["state_dir"]),
+            "lifecycle_record_id": expected_lifecycle["record_id"],
+            "lifecycle_fence": expected_lifecycle["fence"],
+            "operation_id": operation_id,
+            "released_at": released_at,
             "receipt_id": receipt_id,
             "receipt_path": str(release_path),
             "released_unfinished_attempt": evidence,
         }
+        if (
+            release_events[0].get("receipt_id") != receipt_id
+            or not self._interrupted_recovery_event_has_exact_semantics(
+                release_events[0],
+                event_type="implementation_task_claim_released",
+                expected=event_payload,
+            )
+        ):
+            return None
+        return event_payload
+
+    @staticmethod
+    def _interrupted_recovery_event_has_exact_semantics(
+        event: Mapping[str, Any],
+        *,
+        event_type: str,
+        expected: Mapping[str, Any],
+    ) -> bool:
+        """Match the whole logical payload after its physical envelope."""
+
+        semantic_payload = {
+            key: value
+            for key, value in event.items()
+            if key
+            not in INTERRUPTED_IMPLEMENTATION_RECOVERY_EVENT_ENVELOPE_FIELDS
+        }
+        return bool(
+            event.get("type") == event_type
+            and semantic_payload == dict(expected)
+        )
 
     @staticmethod
     def _interrupted_recovery_lifecycle_index_payload(
@@ -14796,7 +15492,9 @@ class PortalImplementationDaemon:
             or projected_identity.get("board_namespace") != board_namespace
         ):
             raise RuntimeError("interrupted recovery state/marker identity differs")
-        if self._implementation_protected_incident_path().exists():
+        if not self._interrupted_recovery_path_is_exactly_absent(
+            self._implementation_protected_incident_path()
+        ):
             raise RuntimeError("interrupted recovery incident is already latched")
         lifecycle_path = self.worktree_lifecycle.workspace_path_for(workspace)
         lifecycle = self.worktree_lifecycle.load_workspace(workspace)
@@ -14832,6 +15530,89 @@ class PortalImplementationDaemon:
             != normalize_workspace_path(self.state_path.parent.resolve())
         ):
             raise RuntimeError("interrupted recovery lifecycle identity differs")
+        claim = self._interrupted_recovery_claim_evidence(
+            task_id=task_id,
+            canonical_task_cid=canonical_task_cid,
+            attempt=attempt,
+            owner_pid=owner_pid,
+            canonical_task_key=canonical_task_key,
+            board_namespace=board_namespace,
+            started_at=started_at,
+        )
+
+        def exact_owner_birth(
+            payload: Any,
+            *,
+            noun: str,
+        ) -> ProcessBirthIdentity:
+            if not isinstance(payload, Mapping):
+                raise TypeError(
+                    f"interrupted recovery {noun} birth is malformed"
+                )
+            try:
+                birth = ProcessBirthIdentity.from_dict(payload)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"interrupted recovery {noun} birth is malformed"
+                ) from exc
+            if birth.pid != owner_pid or birth.start_time_ticks <= 0:
+                raise RuntimeError(
+                    f"interrupted recovery {noun} birth identity differs"
+                )
+            return birth
+
+        def same_owner_birth(
+            left: ProcessBirthIdentity,
+            right: ProcessBirthIdentity,
+        ) -> bool:
+            return bool(
+                left.pid == right.pid
+                and left.start_time_ticks == right.start_time_ticks
+                and left.boot_id == right.boot_id
+            )
+
+        lock_birth = (
+            exact_owner_birth(
+                predecessor["owner_process_birth"],
+                noun="predecessor lock owner",
+            )
+            if "owner_process_birth" in predecessor
+            else None
+        )
+        claim_payload = (
+            claim.get("payload")
+            if claim.get("present") is True
+            else None
+        )
+        claim_birth = (
+            exact_owner_birth(
+                claim_payload["owner_process_birth"],
+                noun="task claim owner",
+            )
+            if isinstance(claim_payload, Mapping)
+            and "owner_process_birth" in claim_payload
+            else None
+        )
+        if (
+            lock_birth is not None
+            and claim_birth is not None
+            and not same_owner_birth(lock_birth, claim_birth)
+        ):
+            raise RuntimeError(
+                "interrupted recovery lock/claim owner births differ"
+            )
+        expected_owner_birth = lock_birth or claim_birth
+        if lifecycle.owner.pid != owner_pid:
+            raise RuntimeError(
+                "interrupted recovery lifecycle owner pid differs"
+            )
+        if expected_owner_birth is not None and not same_owner_birth(
+            lifecycle.owner,
+            expected_owner_birth,
+        ):
+            raise RuntimeError(
+                "interrupted recovery lifecycle owner birth differs"
+            )
         lifecycle_preflight = self._reconcile_quiesced_worktree_lifecycle(
             state,
             terminalize=False,
@@ -14846,7 +15627,6 @@ class PortalImplementationDaemon:
             != "worktree_lifecycle_dead_owner_reclaimable"
             or lifecycle_preflight.get("owner_liveness")
             != OwnerLiveness.DEAD.value
-            or lifecycle.owner.pid != owner_pid
         ):
             raise RuntimeError("interrupted recovery lifecycle owner is not dead")
         try:
@@ -14938,15 +15718,6 @@ class PortalImplementationDaemon:
             != branch
         ):
             raise RuntimeError("interrupted recovery start identity differs")
-        claim = self._interrupted_recovery_claim_evidence(
-            task_id=task_id,
-            canonical_task_cid=canonical_task_cid,
-            attempt=attempt,
-            owner_pid=owner_pid,
-            canonical_task_key=canonical_task_key,
-            board_namespace=board_namespace,
-            started_at=started_at,
-        )
         recovery_clock = time.time()
         reconciled_at = datetime.fromtimestamp(
             recovery_clock,
@@ -15090,9 +15861,21 @@ class PortalImplementationDaemon:
         active = self._load_exact_json_object(active_path)
         tombstone = self._load_exact_json_object(tombstone_path)
         marker_state = ""
-        if active == marker_before.get("payload") and tombstone is None:
+        if (
+            active == marker_before.get("payload")
+            and tombstone is None
+            and self._interrupted_recovery_path_is_exactly_absent(
+                tombstone_path
+            )
+        ):
             marker_state = "before"
-        elif active is None and tombstone == marker_before.get("payload"):
+        elif (
+            active is None
+            and self._interrupted_recovery_path_is_exactly_absent(
+                active_path
+            )
+            and tombstone == marker_before.get("payload")
+        ):
             marker_state = "retired"
         else:
             raise RuntimeError("interrupted recovery marker state diverged")
@@ -15168,12 +15951,21 @@ class PortalImplementationDaemon:
         if claim_before.get("present") is True:
             if claim_current == claim_before.get("payload"):
                 claim_phase = "before"
-            elif claim_current is None and not claim_path.exists():
+            elif (
+                claim_current is None
+                and self._interrupted_recovery_path_is_exactly_absent(
+                    claim_path
+                )
+            ):
                 claim_phase = "released"
             else:
                 raise RuntimeError("interrupted recovery task claim diverged")
         else:
-            if claim_current is not None or claim_path.exists():
+            if claim_current is not None or not (
+                self._interrupted_recovery_path_is_exactly_absent(
+                    claim_path
+                )
+            ):
                 raise RuntimeError("interrupted recovery task claim appeared")
             claim_phase = "before"
         close_events = [
@@ -15235,12 +16027,16 @@ class PortalImplementationDaemon:
             task_id != dict(basis["identity"])["task_id"]
             or attempt != dict(basis["identity"])["attempt"]
             or self._load_exact_json_object(active_path) != before
-            or tombstone_path.exists()
+            or not self._interrupted_recovery_path_is_exactly_absent(
+                tombstone_path
+            )
         ):
             return False
         self._rename_without_replace(active_path, tombstone_path)
         if (
-            active_path.exists()
+            not self._interrupted_recovery_path_is_exactly_absent(
+                active_path
+            )
             or self._load_exact_json_object(tombstone_path) != before
         ):
             return False
@@ -15285,9 +16081,12 @@ class PortalImplementationDaemon:
                 == "implementation_shutdown_recovery_closed"
                 and event.get("operation_id") == operation_id
             ]
-        if len(matches) != 1 or any(
-            matches[0].get(key) != value
-            for key, value in expected.items()
+        if len(matches) != 1 or not (
+            self._interrupted_recovery_event_has_exact_semantics(
+                matches[0],
+                event_type="implementation_shutdown_recovery_closed",
+                expected=expected,
+            )
         ):
             raise RuntimeError("interrupted recovery close event changed")
         return matches[0]
@@ -15296,11 +16095,16 @@ class PortalImplementationDaemon:
     def _interrupted_recovery_close_event_payload(
         receipt: Mapping[str, Any],
     ) -> dict[str, Any]:
-        identity = dict(receipt["basis"])["identity"]
+        basis = dict(receipt["basis"])
+        identity = basis["identity"]
+        start = dict(basis["start_event"])["payload"]
         return {
             "operation_id": str(receipt["operation_id"]),
             "task_id": identity["task_id"],
+            "canonical_task_key": start.get("canonical_task_key"),
             "canonical_task_cid": identity["canonical_task_cid"],
+            "board_namespace": start.get("board_namespace"),
+            "task_source_identity": start.get("task_source_identity"),
             "attempt": identity["attempt"],
             "worktree_path": identity["workspace_path"],
             "branch": identity["branch"],
@@ -15334,9 +16138,12 @@ class PortalImplementationDaemon:
                 and event.get("interrupted_recovery_operation_id")
                 == receipt["operation_id"]
             ]
-        if len(matches) != 1 or any(
-            matches[0].get(key) != value
-            for key, value in expected.items()
+        if len(matches) != 1 or not (
+            self._interrupted_recovery_event_has_exact_semantics(
+                matches[0],
+                event_type="implementation_state_recovered",
+                expected=expected,
+            )
         ):
             raise RuntimeError("interrupted state recovery event changed")
         return matches[0]
@@ -15347,6 +16154,7 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         basis = dict(receipt["basis"])
         identity = dict(basis["identity"])
+        start = dict(basis["start_event"])["payload"]
         predecessor = dict(basis["predecessor_attempt_lock"])["metadata"]
         return {
             "task_id": identity["task_id"],
@@ -15357,6 +16165,7 @@ class PortalImplementationDaemon:
             "board_namespace": str(
                 predecessor.get("board_namespace") or ""
             ),
+            "task_source_identity": start.get("task_source_identity"),
             "attempt": identity["attempt"],
             "reason": "inflight_process_missing",
             "worktree_path": identity["workspace_path"],
@@ -15524,46 +16333,63 @@ class PortalImplementationDaemon:
             and interrupted_recovery_content_identity(event)
             == start_before.get("cid")
         ]
-        close = [
+        close_for_operation = [
             event
             for event in events
             if event.get("type")
             == "implementation_shutdown_recovery_closed"
             and event.get("operation_id") == receipt.get("operation_id")
-            and event.get("event_id") == final_proof.get("close_event_id")
-            and interrupted_recovery_content_identity(event)
-            == final_proof.get("close_event_cid")
-            and all(
-                event.get(key) == value
-                for key, value in close_expected.items()
-            )
         ]
-        recovered = [
+        recovered_for_operation = [
             event
             for event in events
             if event.get("type") == "implementation_state_recovered"
             and event.get("interrupted_recovery_operation_id")
             == receipt.get("operation_id")
-            and event.get("event_id")
-            == final_proof.get("state_recovered_event_id")
-            and interrupted_recovery_content_identity(event)
-            == final_proof.get("state_recovered_event_cid")
-            and all(
-                event.get(key) == value
-                for key, value in recovered_expected.items()
-            )
         ]
+        close_proof_matches = bool(
+            len(close_for_operation) == 1
+            and close_for_operation[0].get("event_id")
+            == final_proof.get("close_event_id")
+            and interrupted_recovery_content_identity(
+                close_for_operation[0]
+            )
+            == final_proof.get("close_event_cid")
+            and self._interrupted_recovery_event_has_exact_semantics(
+                close_for_operation[0],
+                event_type="implementation_shutdown_recovery_closed",
+                expected=close_expected,
+            )
+        )
+        recovered_proof_matches = bool(
+            len(recovered_for_operation) == 1
+            and recovered_for_operation[0].get("event_id")
+            == final_proof.get("state_recovered_event_id")
+            and interrupted_recovery_content_identity(
+                recovered_for_operation[0]
+            )
+            == final_proof.get("state_recovered_event_cid")
+            and self._interrupted_recovery_event_has_exact_semantics(
+                recovered_for_operation[0],
+                event_type="implementation_state_recovered",
+                expected=recovered_expected,
+            )
+        )
         expected_claim_reason = (
             "quiesced_task_claim_released"
             if claim_before.get("present") is True
             else "no_task_claim"
         )
         return bool(
-            self._implementation_protected_active_snapshot_path().exists()
-            is False
-            and self._implementation_protected_incident_path().exists()
-            is False
-            and not claim_path.exists()
+            self._interrupted_recovery_path_is_exactly_absent(
+                self._implementation_protected_active_snapshot_path()
+            )
+            and self._interrupted_recovery_path_is_exactly_absent(
+                self._implementation_protected_incident_path()
+            )
+            and self._interrupted_recovery_path_is_exactly_absent(
+                claim_path
+            )
             and len(starts) == 1
             and str(tombstone_path)
             == final_proof.get("marker_tombstone_path")
@@ -15588,8 +16414,8 @@ class PortalImplementationDaemon:
             and interrupted_recovery_content_identity(state)
             == dict(expected["state"])["cid"]
             == final_proof.get("state_cid")
-            and len(close) == 1
-            and len(recovered) == 1
+            and close_proof_matches
+            and recovered_proof_matches
             and final_proof.get("task_claim_reason")
             == expected_claim_reason
             and (
@@ -15682,6 +16508,7 @@ class PortalImplementationDaemon:
                 "receipt_path": str(
                     self._interrupted_implementation_recovery_receipt_path()
                 ),
+                "completed_receipt_pending_archive": True,
             }
 
         phases = self._validate_interrupted_recovery_intermediate(
@@ -15694,12 +16521,12 @@ class PortalImplementationDaemon:
         start_event = dict(basis["start_event"])["payload"]
         predecessor = dict(basis["predecessor_attempt_lock"])["metadata"]
         if (
-            self._interrupted_recovery_pid_liveness(
-                int(predecessor["pid"])
-            )
+            self._interrupted_recovery_predecessor_liveness(predecessor)
             != "dead"
             or self._implementation_runner_process_active(start_event)
-            or self._implementation_protected_incident_path().exists()
+            or not self._interrupted_recovery_path_is_exactly_absent(
+                self._implementation_protected_incident_path()
+            )
         ):
             return {
                 "reconciled": False,
@@ -15852,6 +16679,7 @@ class PortalImplementationDaemon:
             close_event=close_event,
             state_recovered_event=state_recovered_event,
         )
+        self._interrupted_recovery_checkpoint("completion_published")
         if self._load_exact_json_object(lock_path) != expected_lock:
             return {
                 "reconciled": False,
@@ -15868,6 +16696,7 @@ class PortalImplementationDaemon:
             "receipt_path": str(
                 self._interrupted_implementation_recovery_receipt_path()
             ),
+            "completed_receipt_pending_archive": True,
             "task_id": identity["task_id"],
             "canonical_task_cid": identity["canonical_task_cid"],
             "attempt": identity["attempt"],
@@ -71810,6 +72639,9 @@ class PortalImplementationDaemon:
             "kind": "implementation",
             "lease_id": hashlib.sha1(lease_seed.encode("utf-8")).hexdigest(),
             "pid": os.getpid(),
+            "owner_process_birth": (
+                self._implementation_dispatch_process_birth.to_dict()
+            ),
             "owner_script": Path(sys.argv[0]).name,
             "repo_root": str(self.repo_root.resolve()),
             "state_dir": str(self.state_path.parent.resolve()),
@@ -72009,6 +72841,31 @@ class PortalImplementationDaemon:
         state_dir = str(metadata.get("state_dir") or "")
         if state_dir and Path(state_dir).resolve() != self.state_path.parent.resolve():
             return False
+        if "owner_process_birth" in metadata:
+            payload = metadata.get("owner_process_birth")
+            if not isinstance(payload, Mapping):
+                return True
+            try:
+                owner = ProcessBirthIdentity.from_dict(payload)
+                metadata_pid = int(metadata.get("pid") or 0)
+            except (TypeError, ValueError):
+                return True
+            if (
+                owner.pid <= 0
+                or owner.start_time_ticks <= 0
+                or owner.pid != metadata_pid
+            ):
+                return True
+            # UNKNOWN remains active so unavailable process inspection never
+            # becomes lock-stealing authority. A mismatched exact birth proves
+            # PID reuse and permits automatic stale-lock recovery.
+            return (
+                owner_liveness(
+                    owner,
+                    proc_root=self.worktree_lifecycle.proc_root,
+                )
+                is not OwnerLiveness.DEAD
+            )
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
