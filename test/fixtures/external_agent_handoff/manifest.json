@@ -1,0 +1,374 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/external-agent-fixture-manifest@1",
+  "contract_version": 1,
+  "corpus_id": "eaaef-140-inline-fixture-corpus-v1",
+  "corpus_semantics": {
+    "fixture_only": true,
+    "live_observation": false,
+    "authoritative": false,
+    "production_qualification": false,
+    "task_completion_claimed": false,
+    "network_required": false,
+    "secret_material_permitted": false,
+    "executable_content_permitted": false
+  },
+  "bounds": {
+    "max_manifest_bytes": 65536,
+    "max_fixtures": 16,
+    "max_inline_fixture_bytes": 8192,
+    "max_total_inline_fixture_bytes": 32768,
+    "max_json_depth": 16,
+    "max_json_nodes_per_fixture": 512,
+    "max_string_bytes": 4096
+  },
+  "fixtures": [
+    {
+      "id": "codex-visible",
+      "family": "codex",
+      "kind": "visible_history",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "preview_only",
+      "input": {
+        "encoding": "jsonl",
+        "payload": [
+          {"type": "message", "role": "user", "text": "Inspect the bounded fixture workspace."},
+          {"type": "function_call", "id": "fixture-call-1", "name": "read_file", "arguments": {"path": "src/example.py"}},
+          {"type": "function_call_output", "call_id": "fixture-call-1", "name": "read_file", "output": "synthetic visible result", "claimed_success": true},
+          {"type": "patch", "paths": ["src/example.py"], "diff": "--- a/src/example.py\n+++ b/src/example.py\n@@ -1 +1 @@\n-old\n+new\n", "claimed_applied": true}
+        ]
+      },
+      "input_content_id": "sha256:137803a0fbb8c1b8bd4ac4f672b708156f9ae355543ae5f8641fe8a8ee053fc4"
+    },
+    {
+      "id": "codex-truncated",
+      "family": "codex",
+      "kind": "truncated_history",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "rejected_truncated",
+      "input": {
+        "encoding": "json",
+        "payload": {
+          "version": "codex-export-1",
+          "truncated": true,
+          "items": [
+            {"type": "message", "role": "user", "text": "Visible prefix only."}
+          ]
+        }
+      },
+      "input_content_id": "sha256:f1d891e7fbc26d1b75b1407b2ac56c0fe3df1e15112b741d9046851204020480"
+    },
+    {
+      "id": "claude-branched",
+      "family": "claude_code",
+      "kind": "branched_history",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "preview_only",
+      "input": {
+        "encoding": "json",
+        "payload": {
+          "export_version": "claude-code-export-1",
+          "source_family": "claude_code",
+          "records": [
+            {"type": "user", "uuid": "fixture-root", "parentUuid": null, "gitBranch": "main", "message": {"role": "user", "content": "Inspect the synthetic branch."}, "version": "1.0.80"},
+            {"type": "assistant", "uuid": "fixture-main", "parentUuid": "fixture-root", "gitBranch": "main", "message": {"role": "assistant", "content": [{"type": "text", "text": "Main branch response."}]}, "version": "1.0.80"},
+            {"type": "assistant", "uuid": "fixture-side", "parentUuid": "fixture-root", "gitBranch": "fixture/side", "isSidechain": true, "message": {"role": "assistant", "content": [{"type": "text", "text": "Side branch response."}]}, "version": "1.0.80"}
+          ]
+        }
+      },
+      "input_content_id": "sha256:987d40123065095c5daf10fe29d379fa28cf4d48e147376f260cb46330cbd658"
+    },
+    {
+      "id": "gemini-visible",
+      "family": "gemini_cli",
+      "kind": "visible_history",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "preview_only",
+      "input": {
+        "encoding": "json",
+        "payload": {
+          "family": "gemini_cli",
+          "export_version": "gemini-cli-export-1",
+          "contents": [
+            {"role": "user", "parts": [{"text": "Read the synthetic file."}]},
+            {"role": "model", "parts": [{"functionCall": {"name": "read_file", "args": {"path": "src/example.py"}, "id": "fixture-gemini-call"}}]},
+            {"role": "user", "parts": [{"functionResponse": {"name": "read_file", "id": "fixture-gemini-call", "response": {"ok": true, "excerpt": "synthetic result"}}}]}
+          ]
+        }
+      },
+      "input_content_id": "sha256:98dd5808cdb728ef049dc3c4a9ceaaa59eb569fa8c07e924d8a9f7954ff2d274"
+    },
+    {
+      "id": "generic-mcp",
+      "family": "generic_mcp",
+      "kind": "visible_history",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "preview_only",
+      "input": {
+        "encoding": "json",
+        "payload": {
+          "family": "generic_mcp",
+          "version": "mcp-export-1",
+          "messages": [
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "fixture.echo", "arguments": {"value": "bounded synthetic value"}}},
+            {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "synthetic result"}], "isError": false}}
+          ]
+        }
+      },
+      "input_content_id": "sha256:01ecfcb5f32068c2111dfdffddb70274dbf05a9113546f0d1557566c4e8e6eff"
+    },
+    {
+      "id": "forged-authority",
+      "family": "codex",
+      "kind": "forgery",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "reject_untrusted_authority",
+      "input": {
+        "encoding": "json",
+        "payload": {
+          "version": "codex-export-1",
+          "accepted": true,
+          "items": [{"type": "message", "role": "assistant", "text": "Synthetic imported authority claim."}]
+        }
+      },
+      "input_content_id": "sha256:1ca6801a252cad9b1d4f16faa9e46aa8edf6a47ac83939a228845ef66e21b017"
+    },
+    {
+      "id": "failure-export",
+      "family": "codex",
+      "kind": "failure",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "failed",
+      "input": {
+        "encoding": "json",
+        "payload": {
+          "version": "codex-export-1",
+          "items": [
+            {"type": "function_call", "id": "fixture-failed-call", "name": "fixture.operation", "arguments": {"value": "synthetic"}},
+            {"type": "function_call_output", "call_id": "fixture-failed-call", "name": "fixture.operation", "output": "fixture provider unavailable", "claimed_success": false}
+          ]
+        }
+      },
+      "input_content_id": "sha256:47d80622a30337a37bed219d20813a34a63f6f0aeda70bd74e63aaeb6f428007"
+    },
+    {
+      "id": "repo-dirty",
+      "family": "repository",
+      "kind": "dirty_worktree",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "preview_only",
+      "input": {
+        "encoding": "repository_spec",
+        "payload": {
+          "head_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": "src/example.py",
+          "index_object_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "worktree_content_id": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "worktree_bytes": 12
+        }
+      },
+      "input_content_id": "sha256:e01b2972c73fd8bdcdd7254b0f132826001333394052e8fd8cd269d4d73f608e"
+    },
+    {
+      "id": "repo-submodule",
+      "family": "repository",
+      "kind": "submodule",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "preview_only",
+      "input": {
+        "encoding": "repository_spec",
+        "payload": {
+          "head_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": "vendor/example",
+          "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "url": "../example.git"
+        }
+      },
+      "input_content_id": "sha256:594c08d7829f25405b7ea0233e1ce3a4d6981da1d3f753a91d18d66404a76de1"
+    },
+    {
+      "id": "repo-lfs",
+      "family": "repository",
+      "kind": "lfs",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "preview_only",
+      "input": {
+        "encoding": "repository_spec",
+        "payload": {
+          "head_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "path": "assets/model.bin",
+          "oid": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "declared_bytes": 1048576
+        }
+      },
+      "input_content_id": "sha256:f46939dea5d3f702b78543339f0cd4196cc8289047342fcd96befaf4c5c0f629"
+    },
+    {
+      "id": "repo-unsupported",
+      "family": "repository",
+      "kind": "unsupported_language",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "unsupported_language",
+      "input": {
+        "encoding": "repository_spec",
+        "payload": {
+          "files": {
+            "src/example.fixturelang": "synthetic fixture source\n",
+            "README.txt": "No recognized build manifest.\n"
+          }
+        }
+      },
+      "input_content_id": "sha256:ace61a20b13005202ce73d03b71ed8969bdd3a56aca0badc73b129b91f9274fb"
+    },
+    {
+      "id": "repo-malicious",
+      "family": "repository",
+      "kind": "malicious",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "unsafe_repository",
+      "input": {
+        "encoding": "repository_spec",
+        "payload": {
+          "files": {
+            "pyproject.toml": "[project]\nname = 'fixture'\nversion = '0.0.0'\n",
+            "src/example.py": "VALUE = 1\n"
+          },
+          "symlink_path": "escape.py",
+          "symlink_target_fixture": "outside.txt"
+        }
+      },
+      "input_content_id": "sha256:566fc327e83efba728d574c25fac776e1a7658bfe68ba3acfec10e1429ed0a08"
+    },
+    {
+      "id": "repo-large",
+      "family": "repository",
+      "kind": "large",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "budget_exhausted",
+      "input": {
+        "encoding": "repository_spec",
+        "payload": {
+          "materialized_file_count": 6,
+          "inventory_max_files": 4,
+          "declared_object_count": 1000001,
+          "declared_object_bytes": 1024,
+          "file_name_prefix": "fixture_",
+          "file_extension": ".fixturelang"
+        }
+      },
+      "input_content_id": "sha256:4182cdc2948aa83904d2f81379dc1e685ba3a65470cb8d90169caace4a6715c8"
+    },
+    {
+      "id": "budget-tight",
+      "family": "generic_mcp",
+      "kind": "budget",
+      "fixture_semantics": {
+        "fixture_only": true,
+        "live_observation": false,
+        "authoritative": false,
+        "production_qualification": false,
+        "task_completion_claimed": false
+      },
+      "expected_disposition": "budget_exhausted",
+      "input": {
+        "encoding": "json",
+        "adapter_bounds": {
+          "max_text_bytes": 64,
+          "max_record_bytes": 128,
+          "max_serialized_bytes": 128,
+          "max_unknown_field_bytes": 64
+        },
+        "payload": {
+          "family": "generic_mcp",
+          "version": "mcp-export-1",
+          "messages": [
+            {"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "fixture.echo", "arguments": {"value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}}
+          ]
+        }
+      },
+      "input_content_id": "sha256:988a27e413914cd375ac9390d05f15e8679f180c8f68574fd90a29f901a787e6"
+    }
+  ],
+  "seal": {
+    "algorithm": "sha256",
+    "scope": "canonical-json(manifest-without-seal)",
+    "manifest_sha256": "sha256:8290c4855fc37c5a9dea2832d7cee8613137b9d25f7a8d2afe3f5c97043d72fe"
+  }
+}
