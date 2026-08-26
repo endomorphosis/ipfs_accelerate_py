@@ -1,0 +1,136 @@
+{
+  "board_inputs": [
+    "docs/architecture/external_agent_autonomous_execution_fabric/source_reconciliation_manifest.json",
+    "docs/architecture/external_agent_autonomous_execution_fabric/stack_compatibility_manifest.json",
+    "docs/architecture/external_agent_autonomous_execution_fabric/task_board.json",
+    "docs/architecture/external_agent_autonomous_execution_fabric/reconciliation_report.md"
+  ],
+  "board_source_forest_root": "sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa",
+  "campaign": "ExternalAgentAutonomousExecutionFabric",
+  "classifications": {
+    "Mcp-Plus-Plus": [],
+    "ipfs_accelerate_py": [
+      {
+        "branch": "agent/dcr-linked-git-authority-20260808",
+        "classification": "partially_merged_high_conflict",
+        "disposition": "semantic review and narrow port against current APIs; never merge the branch wholesale",
+        "files_changed_sha256": "1e1fa3bc0f407e410205a299a794a9cf17d74aee768ad82f707d0da4e357c461"
+      },
+      {
+        "branch": "agent/self-hosting-qualification-v1",
+        "classification": "partial_unqualified",
+        "disposition": "review protected recovery-clearance contracts/tests only",
+        "files_changed_sha256": "91d2b16bd85dd114b149770b50c0bb205fafd02bc7f778a459cd05b20e81cedf"
+      },
+      {
+        "branch": "feat/semantic-runtime-authority",
+        "classification": "partially_merged_superseded",
+        "disposition": "review residual vector test and validation delta only",
+        "files_changed_sha256": "6744b13d715a70d9add27e56a1b015536495bc83fe7aec04eca2341700505b2e"
+      },
+      {
+        "branch": "origin/fix/pcce-r6-governed-contract-phases",
+        "classification": "potential_duplicate_contract_family",
+        "disposition": "compare with FormalWorkPlan/work-packet/completion contracts before any port",
+        "files_changed_sha256": "bcdf8e3b3b86c86f39747eb6d10fd518fbfc43cf870dd0444297206f570d008a"
+      }
+    ],
+    "ipfs_datasets_py": [
+      {
+        "branch": "origin/agent/ui-ux-ir",
+        "classification": "content_integrated_without_ancestry",
+        "disposition": "real two-parent merge completed at 41533721c5559ad68cecfe226fa6ba5f76f8a15d",
+        "files_changed_sha256": "5beab77a574d948d603828fa3dd2a1da9b7eede9b0f53e978a5cc15521032835"
+      },
+      {
+        "branch": "origin/agent/ptr-161-163-171-g140-restore",
+        "classification": "stale_proof_reuse_restoration",
+        "disposition": "compare against current proof sealer; manual port or typed no-go, never blind cherry-pick",
+        "files_changed_sha256": "58b37fec03c0cdc70ec2fece0c33962c0978700c6c6a3f7e6c755e5290d46ba9"
+      },
+      {
+        "branch": "detached/d087dd9c781f9e953c148ee9fd29395c5b4f0e1c",
+        "classification": "isolated_two_file_semantic_contract_candidate",
+        "disposition": "review child delta without importing conflict-heavy parent 0691203",
+        "files_changed_sha256": "d4b6e67331a599cbb0ef920c327807e1df2c3cdb08cf41c641b10088f0998e04"
+      },
+      {
+        "branch": "detached/0691203550c0f316852c74d293d8fc3c4ce130a6",
+        "classification": "alternate_conflict_heavy_snapshot",
+        "disposition": "preserve; do not merge wholesale",
+        "files_changed_sha256": "a4a2a639e604b816a2973e73a9ec46336b168090bbe7c84999018f9290f4abc7"
+      }
+    ],
+    "ipfs_kit_py": [
+      {
+        "branch": "origin/agent/ptr-162-g140-restore",
+        "classification": "incompatible_stale_proof_api",
+        "disposition": "quarantine and compare manually",
+        "files_changed_sha256": "1e79c9f20131d2c4570a06bc900cfe75408a79767ef6dc0976bc5af89182b084"
+      },
+      {
+        "branch": "origin/copilot/improve-copilot-sdk-handling",
+        "classification": "simplistic_subprocess_wrappers_not_handoff_adapters",
+        "disposition": "do not use",
+        "files_changed_sha256": "ad021e3d850b387397f6922be6724ee228c60697e6208db772ec92f30cc2bca8"
+      },
+      {
+        "branch": "implementation/ksr-002-ce41dfca5e3d-attempt-1-1786430953",
+        "classification": "superseded_partial_CAS",
+        "disposition": "preserve dirty worktree; do not merge",
+        "files_changed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "decision": "verified_independent_reproduction",
+  "inputs_unmutated": true,
+  "policy": {
+    "branch_names_are_qualification": false,
+    "discard_unmerged_work": false,
+    "force_push": false,
+    "historical_test_claims_are_current": false,
+    "history_rewrite": false,
+    "overwrite_dirty_worktrees": false,
+    "squash_provenance": false
+  },
+  "preservation_receipt": {
+    "dirty_overlays_overwritten": 0,
+    "force_pushes": 0,
+    "history_rewrites": 0,
+    "refs_deleted": 0,
+    "remote_pushes": 0,
+    "worktrees_deleted": 0
+  },
+  "report_sha256": "sha256:cd270040da8589128b34c681a4df69c473a03f2e6c32962e4231a93c91d8368f",
+  "schema": "SourceReconciliationVerification@1",
+  "selected_integration_roots": {
+    "Mcp-Plus-Plus": {
+      "commit": "5bf87beba3acf18d705c5c8ee3174e5e16ab5e04",
+      "decision": "documentation-only backend-role clarification; no profile, schema, wire identity, API or CID changed",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "tree": "9459e5a6695771e284142577da00aac07370fde8"
+    },
+    "ipfs_accelerate_py": {
+      "commit": "0085dc719686bf4cd077c8099170bdd55fa2cf99",
+      "decision": "origin/main plus narrow forward repairs for checkout lease-state classification and direct single-supervisor DatabaseProgramConfig propagation while preserving later maintenance and authority guards",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "tree": "4298f4b06fa753a60ff8f95ffead39be9a83092c"
+    },
+    "ipfs_datasets_py": {
+      "commit": "41533721c5559ad68cecfe226fa6ba5f76f8a15d",
+      "decision": "provenance-preserving UI/UX-IR merge; current LPC API and registry semantics retained in the two conflicts",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "tree": "d88b10b706d91c37e4be346366ff06bb58d1e8a3"
+    },
+    "ipfs_kit_py": {
+      "commit": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "decision": "exact origin/main; all relevant semantic-root, proof-sealer, artifact and MCP++ adapter lineages are already contained",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "tree": "98ab8d00f79ec542032dbbb21a1ea416b983a845"
+    }
+  },
+  "source_forest_root": "sha256:ed543c10f6aa90e093c8ae8b8866934e0cc1614e1be49ddcdc5dd7a2ce8565fa",
+  "source_reconciliation_manifest_cid": "sha256:34a7ed3762a27e88b9c6ad55510ac7bc8ce8b1201bfdc505d6d8ed893b326b79",
+  "stack_compatibility_manifest_cid": "sha256:fd4bf0a17e840cfaaee7da8850155c1378a6749df8026f04e6ce7f5ada881a10",
+  "task_id": "EAAEF-001"
+}
