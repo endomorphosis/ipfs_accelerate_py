@@ -13109,7 +13109,12 @@ def project_ducklake_once(root: Path = ROOT) -> dict[str, Any]:
         )
 
 
-def _private_regular_stat_pin(path: Path, *, noun: str) -> dict[str, Any]:
+def _private_regular_stat_pin(
+    path: Path,
+    *,
+    noun: str,
+    require_private_mode: bool = True,
+) -> dict[str, Any]:
     """Bind one private regular recovery surface without exporting its bytes."""
 
     try:
@@ -13120,7 +13125,17 @@ def _private_regular_stat_pin(path: Path, *, noun: str) -> dict[str, Any]:
         not stat.S_ISREG(metadata.st_mode)
         or stat.S_ISLNK(metadata.st_mode)
         or metadata.st_uid != os.geteuid()
-        or stat.S_IMODE(metadata.st_mode) & 0o077
+        or (
+            require_private_mode
+            and stat.S_IMODE(metadata.st_mode) & 0o077
+        )
+        or (
+            not require_private_mode
+            and (
+                stat.S_IMODE(metadata.st_mode) & 0o600 != 0o600
+                or stat.S_IMODE(metadata.st_mode) & 0o111
+            )
+        )
         or metadata.st_nlink != 1
     ):
         raise SuccessorOperatorError(f"{noun} custody is unsafe")
@@ -13241,6 +13256,7 @@ def _abandoned_owner_wal_pins(
         pin = _private_regular_stat_pin(
             wal,
             noun=f"abandoned {name} database WAL",
+            require_private_mode=False,
         )
         pin["path"] = str(database.with_name(database.name + ".wal"))
         pins[name] = pin

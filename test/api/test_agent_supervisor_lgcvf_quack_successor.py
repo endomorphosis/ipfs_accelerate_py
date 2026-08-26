@@ -3406,7 +3406,9 @@ def _abandoned_owner_fixture(
         paths["successor_database"].name + ".wal"
     )
     wal.write_bytes(b"test-abandoned-owner-wal")
-    wal.chmod(0o600)
+    # DuckDB creates WALs using the process umask (commonly 0664).  The
+    # generation directory itself is private and descriptor-bound.
+    wal.chmod(0o664)
     return paths, provenance, receipt
 
 
