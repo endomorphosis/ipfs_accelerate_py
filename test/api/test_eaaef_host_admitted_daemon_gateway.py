@@ -365,7 +365,7 @@ def test_record_defaults_missing_task_dependencies() -> None:
 def test_owner_mutation_rejects_non_cas_sql(tmp_path: Path) -> None:
     inbox = tmp_path / "mutations"
     inbox.mkdir()
-    with pytest.raises(QuackDaemonGatewayError, match="closed CAS template"):
+    with pytest.raises(QuackDaemonGatewayError, match="signed command fabric"):
         _submit_owner_mutation(
             mutation_dir=inbox,
             sql="DELETE FROM tasks",
@@ -374,37 +374,17 @@ def test_owner_mutation_rejects_non_cas_sql(tmp_path: Path) -> None:
         )
 
 
-def test_owner_mutation_reads_owner_done_receipt(tmp_path: Path) -> None:
-    import json
-    import threading
-
+def test_owner_mutation_never_publishes_bare_cas_request(tmp_path: Path) -> None:
     inbox = tmp_path / "mutations"
     inbox.mkdir()
-
-    def _consume() -> None:
-        deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline:
-            requests = list(inbox.glob("*.request.json"))
-            if not requests:
-                time.sleep(0.01)
-                continue
-            request = requests[0]
-            payload = json.loads(request.read_text(encoding="utf-8"))
-            assert payload["sql"] == _CAS_TASK_STATUS_SQL
-            done = request.with_name(request.name.replace(".request.json", ".done.json"))
-            done.write_text(json.dumps({"ok": True, "rowcount": 1}) + "\n", encoding="utf-8")
-            return
-
-    worker = threading.Thread(target=_consume, daemon=True)
-    worker.start()
-    updated = _submit_owner_mutation(
-        mutation_dir=inbox,
-        sql=_CAS_TASK_STATUS_SQL,
-        parameters=["in_progress", 3, "2026-08-21T00:00:00Z", "cid:1", 2],
-        timeout_seconds=2.0,
-    )
-    worker.join(timeout=2.0)
-    assert updated == 1
+    with pytest.raises(QuackDaemonGatewayError, match="signed command fabric"):
+        _submit_owner_mutation(
+            mutation_dir=inbox,
+            sql=_CAS_TASK_STATUS_SQL,
+            parameters=["in_progress", 3, "2026-08-21T00:00:00Z", "cid:1", 2],
+            timeout_seconds=2.0,
+        )
+    assert list(inbox.iterdir()) == []
 
 
 def test_owned_patch_cid_hashes_only_owned_files(tmp_path: Path) -> None:
@@ -709,7 +689,7 @@ def test_ready_tasks_skip_unmet_dependencies() -> None:
     assert [task.task_alias for task in page.tasks] == ["EAAEF-011", "EAAEF-012"]
 
 
-def test_configured_board_overlay_prefers_live_quack(
+def test_configured_board_never_promotes_raw_live_quack_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.runtime import (
@@ -730,11 +710,5 @@ def test_configured_board_overlay_prefers_live_quack(
         "_eaaef_live_quack_status_overlay",
         lambda board: {"EAAEF-011": "todo", "EAAEF-010": "completed"},
     )
-    monkeypatch.setattr(
-        scheduler,
-        "_eaaef_write_task_status_projection",
-        lambda board, overlay: None,
-    )
     overlay = scheduler._eaaef_task_status_overlay(_Board())
-    assert overlay["EAAEF-011"] == "todo"
-    assert overlay["EAAEF-010"] == "completed"
+    assert overlay == {}

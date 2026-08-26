@@ -15,6 +15,7 @@ import stat
 import subprocess
 import sys
 import time
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -316,6 +317,16 @@ def test_duckdb_quack_probe_requires_the_exact_host_profile(
     assert profile.pinned_platform == REQUIRED_QUACK_PLATFORM
     assert profile.allow_experimental_within_minor is False
     assert observed["allow_network_install"] is False
+    memory_connections: list[str] = []
+    connection = object()
+    assert observed["connection_factory"](
+        SimpleNamespace(
+            connect=lambda *, database: (
+                memory_connections.append(database) or connection
+            )
+        )
+    ) is connection
+    assert memory_connections == [":memory:"]
     assert evidence["decision"] == "admitted"
     assert evidence["required_quack_extension_version"] == (
         REQUIRED_QUACK_EXTENSION_VERSION
@@ -2275,8 +2286,17 @@ def test_collect_publish_guards_source_and_never_writes_staging(
             assert dict(expected) == identity
         return dict(identity)
 
-    def collect(*, timeout_seconds: int) -> dict[str, dict[str, Any]]:
+    def collect(
+        *,
+        launch_plan: Mapping[str, Any],
+        timeout_seconds: int,
+    ) -> dict[str, dict[str, Any]]:
         assert timeout_seconds == 41
+        assert launch_plan["source_only"] is True
+        assert launch_plan["file_backed_duckdb_opened"] is False
+        assert launch_plan["database_state_observed"] is False
+        assert launch_plan["materialization_receipt_cid"] == ""
+        assert launch_plan["allowed"] is False
         calls.append("collect")
         return receipts
 
@@ -2312,6 +2332,13 @@ def test_collect_publish_guards_source_and_never_writes_staging(
         "write_early_frontier_host_admission_receipts",
         lambda *_args, **_kwargs: pytest.fail("immutable collection wrote staging"),
     )
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "load_isolated_launch_plan",
+        lambda **_kwargs: pytest.fail(
+            "immutable observation invoked file-backed launch-plan verification"
+        ),
+    )
 
     result = (
         eaaef_host_admission.collect_early_frontier_and_publish_observation(
@@ -2324,42 +2351,32 @@ def test_collect_publish_guards_source_and_never_writes_staging(
     assert calls == ["require_current", "collect", "require_current", "publish"]
 
 
-def test_runner_stops_before_duckdb_at_explicit_casf_binding_boundary(
-    tmp_path: Path,
+def test_runner_stops_before_control_db_resolution_at_casf_binding_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runner = _load_script(RUNNER, "tested_eaaef_observation_binding_boundary")
     identity = _identity()
-    released: list[int] = []
-    statuses: list[dict[str, Any]] = []
     events: list[str] = []
 
-    class Lease:
-        fence_token = 17
-
-        def release(self, *, fence_token: int) -> None:
-            assert fence_token == self.fence_token
-            released.append(fence_token)
-            events.append("lease_released")
-
-    def acquire(path: Path) -> Lease:
-        assert path == tmp_path / "control.duckdb"
-        events.append("lease_acquired")
-        return Lease()
-
     def collect() -> dict[str, Any]:
-        assert events == ["lease_acquired"]
+        assert events == []
         events.append("observation_collected")
         return collection
 
+    def forbidden(name: str):
+        def fail(*_args: Any, **_kwargs: Any) -> None:
+            pytest.fail(f"immutable observation reached {name}")
+
+        return fail
+
     collection = _runner_collection(identity)
-    monkeypatch.setattr(runner, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        runner,
+    for name in (
         "_active_control_db",
-        lambda: tmp_path / "control.duckdb",
-    )
-    monkeypatch.setattr(runner, "_acquire_state_owner_lease", acquire)
+        "_acquire_state_owner_lease",
+        "_database_task_source_class",
+        "_write_status",
+    ):
+        monkeypatch.setattr(runner, name, forbidden(name))
     monkeypatch.setattr(runner, "_collect_immutable_observation", collect)
     monkeypatch.setattr(
         runner,
@@ -2371,20 +2388,19 @@ def test_runner_stops_before_duckdb_at_explicit_casf_binding_boundary(
         "_current_host_admission_identity",
         lambda: identity,
     )
-    monkeypatch.setattr(
-        runner,
-        "_database_task_source_class",
-        lambda: pytest.fail("immutable observation constructed DatabaseTaskSource"),
-    )
-    monkeypatch.setattr(runner, "_write_status", statuses.append)
 
-    result = runner.run_once(scope="immutable_observation")
+    result = runner.run_once()
 
     assert result["execution_scope"] == "immutable_observation"
+    assert result["process_started"] is False
+    assert result["control_database_path_resolved"] is False
     assert result["control_database_opened"] is False
-    assert result["control_database_owner_lease_acquired"] is True
+    assert result["control_database_owner_lease_acquired"] is False
     assert result["in_memory_duckdb_capability_probe_may_open"] is True
-    assert result["owner_contention_strategy"] == "exclusive_fail_closed_lease"
+    assert result["owner_contention_strategy"] == (
+        "authority_registry_create_once_without_control_plane_lease"
+    )
+    assert result["staging_receipts_written"] is False
     assert result["direct_database_binding_allowed"] is False
     assert result["database_state_observed"] is False
     assert result["task_count"] is None
@@ -2392,16 +2408,10 @@ def test_runner_stops_before_duckdb_at_explicit_casf_binding_boundary(
     assert result["immutable_observation"]["observation_cid"] == collection[
         "observation_cid"
     ]
-    assert statuses == [result]
-    assert released == [17]
-    assert events == [
-        "lease_acquired",
-        "observation_collected",
-        "lease_released",
-    ]
+    assert events == ["observation_collected"]
 
 
-def test_immutable_observation_runner_scope_requires_explicit_cli_flag() -> None:
+def test_runner_scope_parser_retains_explicit_legacy_selectors() -> None:
     runner = _load_script(RUNNER, "tested_eaaef_observation_cli_scope")
 
     assert not hasattr(runner._parse_args([]), "scope")
@@ -2425,9 +2435,8 @@ def test_immutable_observation_runner_scope_requires_explicit_cli_flag() -> None
         "board_mismatch",
     ),
 )
-def test_runner_rejects_malformed_observation_before_duckdb_and_releases_lease(
+def test_runner_rejects_malformed_observation_before_control_db_resolution(
     malformation: str,
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runner = _load_script(
@@ -2455,22 +2464,19 @@ def test_runner_rejects_malformed_observation_before_duckdb_and_releases_lease(
     else:  # pragma: no cover - parameter list is exhaustive.
         raise AssertionError(malformation)
 
-    released: list[int] = []
+    def forbidden(name: str):
+        def fail(*_args: Any, **_kwargs: Any) -> None:
+            pytest.fail(f"malformed immutable observation reached {name}")
 
-    class Lease:
-        fence_token = 29
+        return fail
 
-        def release(self, *, fence_token: int) -> None:
-            assert fence_token == self.fence_token
-            released.append(fence_token)
-
-    monkeypatch.setattr(runner, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        runner,
+    for name in (
         "_active_control_db",
-        lambda: tmp_path / "control.duckdb",
-    )
-    monkeypatch.setattr(runner, "_acquire_state_owner_lease", lambda _path: Lease())
+        "_acquire_state_owner_lease",
+        "_database_task_source_class",
+        "_write_status",
+    ):
+        monkeypatch.setattr(runner, name, forbidden(name))
     monkeypatch.setattr(runner, "_collect_immutable_observation", lambda: collection)
     monkeypatch.setattr(
         runner,
@@ -2482,21 +2488,8 @@ def test_runner_rejects_malformed_observation_before_duckdb_and_releases_lease(
         "_current_host_admission_identity",
         lambda: identity,
     )
-    monkeypatch.setattr(
-        runner,
-        "_database_task_source_class",
-        lambda: pytest.fail("malformed observation constructed DatabaseTaskSource"),
-    )
-    monkeypatch.setattr(
-        runner,
-        "_write_status",
-        lambda _payload: pytest.fail("malformed observation wrote success status"),
-    )
-
     with pytest.raises(RuntimeError, match="early-frontier collection"):
         runner.run_once(scope="immutable_observation")
-
-    assert released == [29]
 
 
 def test_full_observation_extends_exact_explicit_early_parent() -> None:

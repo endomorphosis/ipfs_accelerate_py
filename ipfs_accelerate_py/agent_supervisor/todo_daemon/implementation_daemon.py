@@ -51047,9 +51047,8 @@ class PortalImplementationDaemon:
                     module._load_object(receipt_path).get("source_head") or ""
                 )
             source_head = module._git("rev-parse", "HEAD")
-            overlay = snapshot_overlay_alias_status(
-                module._overlay_projection_path(config)
-            )
+            overlay_path = module._overlay_projection_path(config)
+            overlay = snapshot_overlay_alias_status(overlay_path)
             plan = plan_control_plane_identity_recovery(
                 source_head=source_head,
                 materialization_source_head=materialization_head,
@@ -51061,6 +51060,14 @@ class PortalImplementationDaemon:
                     "process_started": False,
                     "reason": plan.reason,
                     "action": plan.action.value,
+                    "historical_status_projection_retained_as_evidence": (
+                        overlay_path.is_file()
+                    ),
+                    "historical_status_projection_completed_count": (
+                        plan.overlay_completed
+                    ),
+                    "historical_status_projection_replayed": False,
+                    "historical_statuses_replayed": 0,
                     "ducklake_current_authority": False,
                 }
             mutation_dir = Path(
@@ -51162,8 +51169,12 @@ class PortalImplementationDaemon:
             "receipt_cid": str(receipt.get("receipt_cid") or ""),
             "source_head": str(receipt.get("source_head") or ""),
             "generation_recoveries": list(receipt.get("generation_recoveries") or ()),
-            "overlay_preserved": receipt.get("overlay_preserved") is True,
-            "overlay_restored": int(receipt.get("overlay_restored") or 0),
+            "historical_status_projection_retained_as_evidence": (
+                overlay_path.is_file()
+            ),
+            "historical_status_projection_completed_count": plan.overlay_completed,
+            "historical_status_projection_replayed": False,
+            "historical_statuses_replayed": 0,
             "ducklake_current_authority": False,
         }
 

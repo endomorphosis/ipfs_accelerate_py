@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import shutil
 import subprocess
 import sys
-import threading
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
@@ -21,7 +18,6 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     OWNER_MARKER_SUFFIX,
     ExclusiveOwnerLease,
     QuackStateServerOwnershipError,
-    build_server,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -117,137 +113,45 @@ def test_live_quack_lease_makes_held_ingest_fail_before_receipt_or_db_open(
         owner.release(fence_token=owner.fence_token)
 
 
-def test_live_quack_lease_makes_offline_writer_fail_before_receipt_or_db_open(
+@pytest.mark.parametrize("scope", ("early_frontier", "full_bootstrap"))
+def test_legacy_host_writer_fails_closed_before_owner_contention_or_effects(
+    scope: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    host = _load_script(HOST_ADMISSION, "tested_host_loses_owner_race")
+    host = _load_script(
+        HOST_ADMISSION,
+        f"tested_disabled_host_writer_{scope}",
+    )
     database = tmp_path / "run-v-test/control.duckdb"
     status = tmp_path / "status.json"
     calls: list[str] = []
-    owner = _lease(database, server_id="quack:test-winner")
-    try:
-        monkeypatch.setattr(host, "_active_control_db", lambda: database)
-        monkeypatch.setattr(host, "STATUS_PATH", status)
-        monkeypatch.setattr(
-            host,
-            "_collect_host_admission",
-            lambda: calls.append("receipt") or {"decisions": {}},
-        )
-        monkeypatch.setattr(
-            host,
-            "_database_task_source_class",
-            lambda: calls.append("database") or object,
-        )
 
-        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock"):
-            host.run_once()
-
-        assert calls == []
-        assert not database.exists()
-        assert not status.exists()
-    finally:
-        owner.release(fence_token=owner.fence_token)
-
-
-class _EmptyPage:
-    tasks: tuple[Any, ...] = ()
-
-
-class _EmptyTaskSource:
-    opens: list[Path] = []
-
-    def __init__(self, database: Path, *, install_schema: bool) -> None:
-        assert install_schema is False
-        self.database = Path(database)
-        type(self).opens.append(self.database)
-
-    def __enter__(self) -> _EmptyTaskSource:
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        return None
-
-    def get_task(self, _alias: str) -> None:
-        return None
-
-    def ready_tasks(self, *, limit: int) -> _EmptyPage:
-        assert limit == 1000
-        return _EmptyPage()
-
-    def list_tasks(self, *, limit: int) -> _EmptyPage:
-        assert limit == 1000
-        return _EmptyPage()
-
-
-def test_offline_writer_lease_makes_quack_owner_fail_before_db_open(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    host = _load_script(HOST_ADMISSION, "tested_host_wins_owner_race")
-    database = tmp_path / "run-v-test/control.duckdb"
-    marker = database.with_name(f".{database.name}{OWNER_MARKER_SUFFIX}")
-    receipt = tmp_path / "host-receipt.json"
-    status = tmp_path / "status.json"
-    receipt_started = threading.Event()
-    allow_receipt_to_finish = threading.Event()
-    host_results: list[dict[str, Any]] = []
-    host_errors: list[BaseException] = []
-    quack_calls: list[str] = []
-    _EmptyTaskSource.opens = []
-
-    def collect_receipt() -> dict[str, Any]:
-        payload = json.loads(marker.read_text(encoding="utf-8"))
-        assert payload["server_id"].startswith("offline:eaaef-host-admission:")
-        receipt.write_text("under-exclusive-owner-lease\n", encoding="utf-8")
-        receipt_started.set()
-        assert allow_receipt_to_finish.wait(timeout=10)
-        return {"decisions": {}}
-
-    monkeypatch.setattr(host, "_active_control_db", lambda: database)
-    monkeypatch.setattr(host, "ROOT", tmp_path)
-    monkeypatch.setattr(host, "STATUS_PATH", status)
-    monkeypatch.setattr(host, "_collect_host_admission", collect_receipt)
-    monkeypatch.setattr(host, "_database_task_source_class", lambda: _EmptyTaskSource)
-
-    def run_host() -> None:
-        try:
-            host_results.append(host.run_once())
-        except BaseException as exc:  # pragma: no cover - asserted below
-            host_errors.append(exc)
-
-    thread = threading.Thread(target=run_host, daemon=True)
-    thread.start()
-    assert receipt_started.wait(timeout=10)
-
-    def forbidden(stage: str):
+    def forbidden(name: str):
         def fail(*_args: object, **_kwargs: object) -> None:
-            quack_calls.append(stage)
-            raise AssertionError(f"Quack loser reached {stage}")
+            calls.append(name)
+            raise AssertionError(f"disabled host writer reached {name}")
 
         return fail
 
-    server = build_server(
-        database_path=database,
-        state_dir=tmp_path / "quack-state",
-        capability_probe=forbidden("capability_probe"),
-        migrate=forbidden("migration"),
-        connection_factory=forbidden("database_open"),
-    )
-    try:
-        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock"):
-            server.start()
-    finally:
-        allow_receipt_to_finish.set()
-        thread.join(timeout=10)
+    for name in (
+        "_active_control_db",
+        "_acquire_state_owner_lease",
+        "_collect_host_admission",
+        "_collect_full_host_admission",
+        "_current_host_admission_identity",
+        "_database_task_source_class",
+        "_write_status",
+    ):
+        monkeypatch.setattr(host, name, forbidden(name))
+    monkeypatch.setattr(host, "STATUS_PATH", status)
 
-    assert not thread.is_alive()
-    assert host_errors == []
-    assert len(host_results) == 1
-    assert host_results[0]["control_db"] == "run-v-test/control.duckdb"
-    assert quack_calls == []
-    assert _EmptyTaskSource.opens == [database]
-    assert receipt.is_file()
-    assert status.is_file()
+    with pytest.raises(
+        RuntimeError,
+        match="legacy mutable EAAEF host-admission scope is disabled",
+    ):
+        host.run_once(scope=scope)
+
+    assert calls == []
     assert not database.exists()
-    assert not marker.exists()
+    assert not status.exists()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
+    CAS_TASK_STATUS_SQL,
     CLAIM_IDENTITY_RECOVERY_SQL,
     OWNER_IDENTITY_RECOVERY_SQL,
     IdentityRecoveryAction,
@@ -105,6 +106,7 @@ def test_owner_sql_is_closed_and_includes_claim() -> None:
     assert CLAIM_IDENTITY_RECOVERY_SQL in OWNER_IDENTITY_RECOVERY_SQL
     assert "identity_recovery" in CLAIM_IDENTITY_RECOVERY_SQL
     assert "RETURNING action_id" in CLAIM_IDENTITY_RECOVERY_SQL
+    assert CAS_TASK_STATUS_SQL not in OWNER_IDENTITY_RECOVERY_SQL
 
 
 def test_auto_rescue_routes_source_drift_to_host_bootstrap_recovery() -> None:

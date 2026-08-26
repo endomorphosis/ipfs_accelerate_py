@@ -392,6 +392,10 @@ EARLY_FRONTIER_OBSERVATION_SCOPE: Final = "early_frontier_180_183"
 EARLY_FRONTIER_OBSERVATION_DB_BINDING_BLOCKER: Final = (
     "immutable_early_frontier_observation_requires_separate_casf_owner_db_binding"
 )
+EARLY_FRONTIER_SOURCE_ONLY_PREFLIGHT_BLOCKER: Final = (
+    "immutable_early_frontier_observation_intentionally_omits_file_backed_"
+    "duckdb_verification_and_requires_signed_casf_owner_snapshot"
+)
 HOST_ADMISSION_OBSERVATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-full-host-admission-observation@1"
 )
@@ -3041,6 +3045,37 @@ def validate_early_frontier_launch_plan(value: object) -> dict[str, Any]:
     return plan
 
 
+def immutable_early_frontier_launch_plan() -> dict[str, Any]:
+    """Return a typed no-go without inspecting any file-backed database.
+
+    Immutable observations describe public source and host capabilities. They
+    cannot establish current task authority, so their preflight deliberately
+    omits the materializer's read-only database verification. A later signed,
+    fenced CASF-owner snapshot must bind the observation to live task state.
+    """
+
+    blocker = EARLY_FRONTIER_SOURCE_ONLY_PREFLIGHT_BLOCKER
+    return validate_early_frontier_launch_plan(
+        {
+            "schema": EARLY_FRONTIER_LAUNCH_PLAN_SCHEMA,
+            "allowed": False,
+            "blockers": [blocker],
+            "blocker_classes": {blocker: "host_gated_external_authority"},
+            "argv": [],
+            "candidate_executable_withheld": True,
+            "execution_prohibited": True,
+            "materialization_receipt_cid": "",
+            "bootstrap_admission_statement": None,
+            "bootstrap_admission_published": False,
+            "process_started": False,
+            "source_only": True,
+            "database_state_observed": False,
+            "control_database_path_resolved": False,
+            "file_backed_duckdb_opened": False,
+        }
+    )
+
+
 def load_isolated_launch_plan(*, timeout_seconds: int = 180) -> dict[str, Any]:
     """Run the admitted isolated launcher. Never starts configured-board-launch."""
 
@@ -3233,6 +3268,12 @@ def bind_runtime_principals(
     }
 
 
+def _connect_eaaef_quack_probe_in_memory(duckdb_module: Any) -> Any:
+    """Fence the EAAEF capability probe away from file-backed databases."""
+
+    return duckdb_module.connect(database=":memory:")
+
+
 def probe_duckdb_quack() -> dict[str, Any]:
     """Refuse silent 1.5.2 substitution. Do not network-install Quack."""
 
@@ -3265,6 +3306,7 @@ def probe_duckdb_quack() -> dict[str, Any]:
         profile=profile,
         allow_network_install=False,
         allow_local_load=True,
+        connection_factory=_connect_eaaef_quack_probe_in_memory,
         use_cache=False,
     )
     exact_duckdb = observed == REQUIRED_DUCKDB
@@ -5832,6 +5874,7 @@ def probe_plan_r2_for_observation(
 
 def collect_early_frontier_host_admission_receipts(
     *,
+    launch_plan: Mapping[str, Any] | None = None,
     timeout_seconds: int = 180,
 ) -> dict[str, dict[str, Any]]:
     """Build only EAAEF-180..183 receipts without later host-evidence effects."""
@@ -5839,7 +5882,9 @@ def collect_early_frontier_host_admission_receipts(
     # This is deliberately the last fallible lifecycle gate before principal,
     # Quack, Docker, or receipt effects become reachable.
     plan = validate_early_frontier_launch_plan(
-        load_isolated_launch_plan(timeout_seconds=timeout_seconds)
+        launch_plan
+        if launch_plan is not None
+        else load_isolated_launch_plan(timeout_seconds=timeout_seconds)
     )
     source_identity = _source_identity()
     blocker_classes = {
@@ -6181,11 +6226,12 @@ def collect_early_frontier_and_publish_observation(
     timeout_seconds: int = 180,
     authority_root: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Collect in memory and publish one observation without writing staging."""
+    """Publish source-only evidence without reading control-plane databases."""
 
     identity_before = _require_current_early_frontier_source_identity()
     receipts = collect_early_frontier_host_admission_receipts(
-        timeout_seconds=timeout_seconds
+        launch_plan=immutable_early_frontier_launch_plan(),
+        timeout_seconds=timeout_seconds,
     )
     _require_current_early_frontier_source_identity(identity_before)
     return publish_early_frontier_observation(

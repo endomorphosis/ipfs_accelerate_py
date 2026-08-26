@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Host-controlled EAAEF evidence and DuckDB bootstrap supervisor.
+"""Host-controlled immutable EAAEF evidence supervisor.
 
-Completes ready S and A bootstrap tasks against the embedded DuckDB control
-plane without configured-board live launch, provider invocation, or Docker-socket
-mounts. Held Plan-R2 tasks stay blocked. Live multi-supervisor launch remains a
-separate fail-closed gate. The explicit ``--immutable-observation`` scope only
-publishes source-addressed no-go evidence and never opens the control/task
-DuckDB; its EAAEF-182 capability probe may use an isolated in-memory connection.
-The explicit ``--immutable-full-observation`` scope extends one explicitly
-selected current early observation across EAAEF-180..191 using static public
-evidence only; it also bypasses the control database, owner lease, and status.
+The default ``--immutable-observation`` scope publishes source-addressed no-go
+evidence and never opens the control/task DuckDB; its EAAEF-182 capability probe
+may use only an isolated in-memory connection. ``--immutable-full-observation``
+extends one explicitly selected current early observation across EAAEF-180..191
+using static public evidence and likewise bypasses the control database, owner
+lease, and status. Historical mutable bootstrap selectors remain parseable for
+CLI compatibility but fail closed until the signed CASF owner fabric exists.
 """
 
 from __future__ import annotations
@@ -91,7 +89,7 @@ MAX_PASSES = 24
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse a bounded execution scope; an omitted scope is early-only."""
+    """Parse a bounded execution scope; an omitted scope is immutable-only."""
 
     parser = argparse.ArgumentParser(description=__doc__)
     scope = parser.add_mutually_exclusive_group()
@@ -101,7 +99,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_const",
         const="early_frontier",
         default=argparse.SUPPRESS,
-        help="collect and complete only EAAEF-180 through EAAEF-183 (default)",
+        help=(
+            "disabled legacy mutable scope for EAAEF-180 through EAAEF-183; "
+            "use --immutable-observation"
+        ),
     )
     scope.add_argument(
         "--immutable-observation",
@@ -111,7 +112,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=argparse.SUPPRESS,
         help=(
             "publish an immutable EAAEF-180 through EAAEF-183 no-go "
-            "observation without opening the control/task DuckDB"
+            "observation without opening the control/task DuckDB (default)"
         ),
     )
     scope.add_argument(
@@ -131,7 +132,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_const",
         const="full_bootstrap",
         default=argparse.SUPPRESS,
-        help="explicitly collect and advance the complete S/A bootstrap",
+        help=(
+            "disabled legacy mutable scope for the complete S/A bootstrap; "
+            "use --immutable-full-observation"
+        ),
     )
     parser.add_argument(
         "--early-observation-cid",
@@ -142,7 +146,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
-    parsed_scope = str(getattr(args, "scope", "early_frontier"))
+    parsed_scope = str(getattr(args, "scope", "immutable_observation"))
     early_cid = str(getattr(args, "early_observation_cid", "") or "")
     if parsed_scope == "immutable_full_observation":
         if not _full_sha256_cid(early_cid):
@@ -1130,7 +1134,7 @@ def _reopen_invalid_host_admission_tasks(
 
 def run_once(
     *,
-    scope: str = "early_frontier",
+    scope: str = "immutable_observation",
     early_observation_cid: str | None = None,
 ) -> dict:
     if scope not in {
@@ -1208,157 +1212,63 @@ def run_once(
         raise ValueError(
             "early observation CID is valid only for immutable full observation"
         )
-    early_frontier = scope == "early_frontier"
-    immutable_observation = scope == "immutable_observation"
-    target_tasks = (
-        EARLY_FRONTIER
-        if early_frontier or immutable_observation
-        else frozenset(HOST_AUTO)
-    )
-    control = _active_control_db()
-    lease = _acquire_state_owner_lease(control)
-    try:
-        # Host-evidence materialization writes durable receipts, so it belongs
-        # inside the exact same exclusive lease as the embedded DuckDB writer.
-        if immutable_observation:
-            collection = _collect_immutable_observation()
-        elif early_frontier:
-            collection = _collect_host_admission()
-        else:
-            collection = _collect_full_host_admission()
+    if scope == "immutable_observation":
         expected_identity = _current_host_admission_identity()
-        if immutable_observation:
-            collection = _validated_early_frontier_collection(
-                collection,
-                expected_identity=expected_identity,
-            )
-            payload = {
-                "schema": (
-                    "ipfs_accelerate_py/agent-supervisor/"
-                    "eaaef-host-admission-supervisor@1"
-                ),
-                "execution_scope": scope,
-                "process_started": True,
-                "configured_board_launch": False,
-                "live_multi_supervisor": False,
-                "provider_invoked": False,
-                "control_db": str(control.relative_to(ROOT)),
-                "expected_receipt_identity": expected_identity,
-                "collection": collection["decisions"],
-                "immutable_observation": {
-                    "logical_path": collection["logical_path"],
-                    "observation_cid": collection["observation_cid"],
-                    "child_receipt_cids": collection["child_receipt_cids"],
-                    "typed_missing_task_ids": collection[
-                        "typed_missing_task_ids"
-                    ],
-                    "direct_completion_eligible_task_ids": [],
-                    "casf_owner_transaction_eligible_task_ids": collection[
-                        "casf_owner_transaction_eligible_task_ids"
-                    ],
-                },
-                "control_database_opened": False,
-                "control_database_owner_lease_acquired": True,
-                "in_memory_duckdb_capability_probe_may_open": True,
-                "owner_contention_strategy": "exclusive_fail_closed_lease",
-                "direct_database_binding_allowed": False,
-                "casf_owner_binding_required": True,
-                "database_binding_blocker": collection[
-                    "database_binding_blocker"
-                ],
-                "completed": [],
-                "ready_before": [],
-                "ready_after": [],
-                "blocked_held": [],
-                "database_state_observed": False,
-                "task_count": None,
-                "status_counts": {},
-                "updated_at": int(time.time()),
-            }
-            _write_status(payload)
-            return payload
-        database_task_source = _database_task_source_class()
-        completed: list[dict] = []
-        ready_before: list[str] = []
-        blocked_held: list[str] = []
-        with database_task_source(control, install_schema=False) as source:
-            completed.extend(
-                _reopen_invalid_host_admission_tasks(
-                    source,
-                    expected_identity,
-                    task_ids=target_tasks if early_frontier else None,
-                )
-            )
-            first = source.ready_tasks(limit=1000)
-            ready_before = [
-                item.task_alias
-                for item in first.tasks
-                if item.task_alias in target_tasks
-            ]
-            passes = 1 if early_frontier else MAX_PASSES
-            for _pass in range(passes):
-                page = source.ready_tasks(limit=1000)
-                ready = [
-                    item.task_alias
-                    for item in page.tasks
-                    if item.task_alias in target_tasks
-                ]
-                held_ready = [
-                    item.task_alias
-                    for item in page.tasks
-                    if item.task_alias not in target_tasks
-                ]
-                blocked_held = held_ready
-                if held_ready and not early_frontier:
-                    raise RuntimeError(
-                        "held Plan-R2 tasks became ready without EAAEF-009: "
-                        + ",".join(held_ready)
-                    )
-                if not ready:
-                    break
-                progressed = False
-                for alias in ready:
-                    if alias not in target_tasks:
-                        raise RuntimeError("host-admission execution escaped its scope")
-                    result = _complete(source, alias, expected_identity)
-                    completed.append(result)
-                    if result.get("status") == "completed" and result.get("changed"):
-                        progressed = True
-                if not progressed:
-                    break
-            after = source.ready_tasks(limit=1000)
-            ready_after = [item.task_alias for item in after.tasks]
-            page_all = source.list_tasks(limit=1000)
-            status_counts: dict[str, int] = {}
-            for item in page_all.tasks:
-                status_counts[item.status] = status_counts.get(item.status, 0) + 1
-        payload = {
-            "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-supervisor@1",
+        collection = _validated_early_frontier_collection(
+            _collect_immutable_observation(),
+            expected_identity=expected_identity,
+        )
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "eaaef-host-admission-supervisor@1"
+            ),
             "execution_scope": scope,
-            "process_started": True,
+            "process_started": False,
             "configured_board_launch": False,
             "live_multi_supervisor": False,
             "provider_invoked": False,
-            "control_db": str(control.relative_to(ROOT)),
             "expected_receipt_identity": expected_identity,
             "collection": collection["decisions"],
-            "completed": completed,
-            "ready_before": ready_before,
-            "ready_after": ready_after,
-            "blocked_held": blocked_held,
-            "task_count": sum(status_counts.values()),
-            "status_counts": status_counts,
+            "immutable_observation": {
+                "logical_path": collection["logical_path"],
+                "observation_cid": collection["observation_cid"],
+                "child_receipt_cids": collection["child_receipt_cids"],
+                "typed_missing_task_ids": collection["typed_missing_task_ids"],
+                "direct_completion_eligible_task_ids": [],
+                "casf_owner_transaction_eligible_task_ids": collection[
+                    "casf_owner_transaction_eligible_task_ids"
+                ],
+            },
+            "control_database_path_resolved": False,
+            "control_database_opened": False,
+            "control_database_owner_lease_acquired": False,
+            "in_memory_duckdb_capability_probe_may_open": True,
+            "owner_contention_strategy": (
+                "authority_registry_create_once_without_control_plane_lease"
+            ),
+            "staging_receipts_written": False,
+            "direct_database_binding_allowed": False,
+            "casf_owner_binding_required": True,
+            "database_binding_blocker": collection["database_binding_blocker"],
+            "completed": [],
+            "ready_before": [],
+            "ready_after": [],
+            "blocked_held": [],
+            "database_state_observed": False,
+            "task_count": None,
+            "status_counts": {},
             "updated_at": int(time.time()),
         }
-        _write_status(payload)
-        return payload
-    finally:
-        lease.release(fence_token=lease.fence_token)
+    raise RuntimeError(
+        "legacy mutable EAAEF host-admission scope is disabled; publish an "
+        "immutable observation and use the signed CASF owner command fabric"
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    scope = str(getattr(args, "scope", "early_frontier"))
+    scope = str(getattr(args, "scope", "immutable_observation"))
     if scope == "immutable_full_observation":
         payload = run_once(
             scope=scope,

@@ -3810,6 +3810,87 @@ def test_v3_population_scopes_display_attempts_to_canonical_revision(
     assert legacy_revision.ready_records == ()
 
 
+def test_eaaef_status_overlay_never_falls_back_to_historical_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    database_path = tmp_path / "run-v15/control.duckdb"
+    database_path.parent.mkdir(parents=True)
+    connection = duckdb.connect(str(database_path))
+    try:
+        connection.execute("CREATE TABLE tasks (task_alias VARCHAR, status VARCHAR)")
+        connection.execute("INSERT INTO tasks VALUES ('EAAEF-000', 'completed')")
+    finally:
+        connection.close()
+    projection_path = tmp_path / "runtime/task-status-projection.json"
+    projection_path.parent.mkdir(parents=True)
+    projection_path.write_text(
+        json.dumps({"statuses": {"EAAEF-001": "completed"}}) + "\n",
+        encoding="utf-8",
+    )
+    original_projection = projection_path.read_bytes()
+    board = SimpleNamespace(
+        payload={
+            "bootstrap_database_program": {
+                "store_id": "run-v15/control.duckdb",
+            }
+        },
+        runtime_paths={"state": "runtime"},
+        path=lambda relative: tmp_path / str(relative),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_eaaef_plan_bound_profile",
+        lambda _board: True,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_eaaef_live_quack_status_overlay",
+        lambda _board: {},
+    )
+
+    assert scheduler_module._eaaef_task_status_overlay(board) == {}
+    assert projection_path.read_bytes() == original_projection
+
+
+def test_eaaef_status_overlay_does_not_promote_raw_live_quack_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = SimpleNamespace()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_eaaef_live_quack_status_overlay",
+        lambda _board: {"EAAEF-000": "completed"},
+    )
+
+    assert scheduler_module._eaaef_task_status_overlay(board) == {}
+
+
+def test_eaaef_population_never_imports_raw_quack_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = load_configured_board(
+        REPO_ROOT / "config/external_agent_autonomous_execution_fabric_scheduler.json",
+        repo_root=REPO_ROOT,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_eaaef_live_quack_status_overlay",
+        lambda _board: {"EAAEF-000": "completed"},
+    )
+    source_head = _git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+
+    population = scheduler_module._configured_board_task_population(
+        board,
+        source_head=source_head,
+        task_state_snapshots=(),
+    )
+
+    assert "EAAEF-000" not in population.completed_task_ids
+    assert population.completed_task_ids == ()
+
+
 def test_v3_population_rejects_unbacked_mismatched_task_identity(
     tmp_path: Path,
 ) -> None:
