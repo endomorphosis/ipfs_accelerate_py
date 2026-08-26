@@ -1761,6 +1761,50 @@ def test_persistent_casf_bootstrap_aborts_after_final_record_failure(
     assert not (generation_dir / ".control.duckdb.state-owner.json").exists()
 
 
+@pytest.mark.parametrize(
+    ("artifact_name", "payload"),
+    [
+        (casf_management.MANAGEMENT_KEY_NAME, b"k" * 32),
+        (casf_management.MANAGEMENT_CAPSULE_NAME, b"{}"),
+    ],
+)
+def test_persistent_casf_partial_management_artifact_never_acquires_lease(
+    tmp_path: Path,
+    artifact_name: str,
+    payload: bytes,
+) -> None:
+    if not DatabaseTaskSource.available():
+        pytest.skip("DuckDB unavailable")
+    binding = _concrete_bootstrap_binding(
+        tmp_path / f"partial-management-{artifact_name}",
+        generation_id="eaaef-partial-management-001",
+    )
+    binding.owner_state_dir.mkdir(mode=0o700)
+    artifact = binding.owner_state_dir / artifact_name
+    artifact.write_bytes(payload)
+    artifact.chmod(0o600)
+    lifecycle_owner = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+        snapshot_bindings=_concrete_snapshot_bindings(),
+        startup_timeout_seconds=30,
+        operation_timeout_seconds=30,
+        shutdown_timeout_seconds=10,
+    )
+    marker_path = binding.database_path.with_name(
+        f".{binding.database_path.name}.state-owner.json"
+    )
+    lock_path = binding.database_path.with_name(
+        f".{binding.database_path.name}.state-owner.lock"
+    )
+
+    for _attempt in range(2):
+        with pytest.raises((EAAEFCASFBootstrapOwnerError, EOFError)):
+            with lifecycle_owner.hold_exclusive_bootstrap(binding):
+                pytest.fail("quarantined generation acquired its owner lease")
+        assert not marker_path.exists()
+        assert not lock_path.exists()
+        assert lifecycle_owner.committed_generation_ids() == ()
+
+
 def test_persistent_casf_bootstrap_owner_reattaches_and_stops_privately(
     repo_root: Path,
     tmp_path: Path,
@@ -1842,6 +1886,17 @@ def test_persistent_casf_bootstrap_owner_reattaches_and_stops_privately(
     assert lifecycle.inspect_process_birth(owner_birth["pid"]) is None
     assert not (generation_dir / ".control.duckdb.state-owner.json").exists()
     assert recovered.committed_generation_ids() == ()
+
+    terminal_controller = casf_lifecycle.QuackEAAEFCASFBootstrapOwnerLifecycle(
+        snapshot_bindings=snapshot_bindings,
+        startup_timeout_seconds=60,
+        operation_timeout_seconds=180,
+        shutdown_timeout_seconds=30,
+    )
+    assert terminal_controller.adopt_completed_owner_stop(binding) == result
+    assert terminal_controller.committed_generation_ids() == ()
+    with pytest.raises(EAAEFCASFBootstrapOwnerError, match="stale or divergent"):
+        terminal_controller.reattach_committed_owner(binding)
 
     owner_state = binding.owner_state_dir
     assert stat.S_IMODE(owner_state.stat().st_mode) == 0o700

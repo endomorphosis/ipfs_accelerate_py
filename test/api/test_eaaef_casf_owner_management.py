@@ -43,6 +43,11 @@ def _private_state(tmp_path: Path) -> Path:
 
 def _committed_server(
     tmp_path: Path,
+    *,
+    authentication_timeout_seconds: float = 1.0,
+    stop_delay_seconds: float = 0.0,
+    stop_timeout_seconds: float = 5.0,
+    client_timeout_seconds: float = 5.0,
 ) -> tuple[
     management.CASFOwnerManagementServer,
     management.CASFOwnerManagementClient,
@@ -52,6 +57,8 @@ def _committed_server(
 
     def _request_stop() -> None:
         def _complete() -> None:
+            if stop_delay_seconds:
+                time.sleep(stop_delay_seconds)
             holder["server"].mark_stopped()
 
         threading.Thread(target=_complete, daemon=True).start()
@@ -63,7 +70,8 @@ def _committed_server(
         state_dir=state_dir,
         owner_process_birth=_owner_birth(),
         request_stop=_request_stop,
-        stop_timeout_seconds=5,
+        stop_timeout_seconds=stop_timeout_seconds,
+        authentication_timeout_seconds=authentication_timeout_seconds,
     )
     holder["server"] = server
     server.start()
@@ -77,7 +85,7 @@ def _committed_server(
         binding_cid=_BINDING_CID,
         snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
         state_dir=state_dir,
-        timeout_seconds=5,
+        timeout_seconds=client_timeout_seconds,
     )
     return server, client
 
@@ -115,15 +123,43 @@ def test_management_status_and_stop_are_exact_private_operations(
                 client.state_dir, management.MANAGEMENT_STOP_INTENT_NAME
             ),
             generation_id=_GENERATION_ID,
+            binding_cid=_BINDING_CID,
+            snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
+            capsule_cid=client.capsule["capsule_cid"],
+            key=client.key,
         )
         retained = management._validate_stop_result(
             management._read_private(
                 client.state_dir, management.MANAGEMENT_STOP_RESULT_NAME
             ),
             generation_id=_GENERATION_ID,
+            binding_cid=_BINDING_CID,
+            snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
+            capsule_cid=client.capsule["capsule_cid"],
+            key=client.key,
         )
         assert intent["stop_request_cid"] == retained["stop_request_cid"]
         assert intent["stop_request_id"] == retained["stop_request_id"]
+        assert intent["capsule_cid"] == client.capsule["capsule_cid"]
+        assert retained["stop_intent_cid"] == intent["intent_cid"]
+        tampered = dict(retained)
+        tampered["final_record_cid"] = _CID_A
+        tampered_body = dict(tampered)
+        tampered_body.pop("result_mac")
+        tampered_body.pop("result_cid")
+        tampered["result_cid"] = management._cid(tampered_body)
+        with pytest.raises(
+            management.EAAEFCASFOwnerManagementError,
+            match="stop result differs",
+        ):
+            management._validate_stop_result(
+                management._canonical_bytes(tampered, noun="tampered stop result"),
+                generation_id=_GENERATION_ID,
+                binding_cid=_BINDING_CID,
+                snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
+                capsule_cid=client.capsule["capsule_cid"],
+                key=client.key,
+            )
         for name in (
             management.MANAGEMENT_KEY_NAME,
             management.MANAGEMENT_CAPSULE_NAME,
@@ -161,6 +197,48 @@ def test_management_stop_adopts_durable_result_after_response_loss(
         server.close()
 
 
+def test_management_stop_gets_fresh_adoption_window_after_transport_timeout(
+    tmp_path: Path,
+) -> None:
+    server, client = _committed_server(
+        tmp_path,
+        stop_delay_seconds=0.15,
+        stop_timeout_seconds=1.0,
+        client_timeout_seconds=0.1,
+    )
+    try:
+        started = time.monotonic()
+        result = client.stop()
+        elapsed = time.monotonic() - started
+        assert elapsed >= 0.1
+        assert elapsed < 0.4
+        assert result["committed_owner_stopped"] is True
+        assert result["exclusive_owner_lease_released"] is True
+    finally:
+        server.close()
+
+
+def test_management_stop_adopts_result_after_authenticated_unavailable(
+    tmp_path: Path,
+) -> None:
+    server, client = _committed_server(
+        tmp_path,
+        stop_delay_seconds=0.2,
+        stop_timeout_seconds=0.1,
+        client_timeout_seconds=0.5,
+    )
+    try:
+        started = time.monotonic()
+        result = client.stop()
+        elapsed = time.monotonic() - started
+        assert elapsed >= 0.1
+        assert elapsed < 0.7
+        assert result["committed_owner_stopped"] is True
+        assert result["exclusive_owner_lease_released"] is True
+    finally:
+        server.close()
+
+
 def test_management_stop_is_unavailable_before_owner_commit(tmp_path: Path) -> None:
     state_dir = _private_state(tmp_path)
     server = management.CASFOwnerManagementServer(
@@ -189,6 +267,79 @@ def test_management_stop_is_unavailable_before_owner_commit(tmp_path: Path) -> N
             client.stop()
         assert not (state_dir / management.MANAGEMENT_STOP_INTENT_NAME).exists()
         assert not (state_dir / management.MANAGEMENT_STOP_RESULT_NAME).exists()
+    finally:
+        server.close()
+
+
+def test_rejected_provisional_stop_nonce_cannot_be_replayed_after_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(management, "_MAX_STATUS_REQUEST_NONCES", 1)
+    state_dir = _private_state(tmp_path)
+    holder: dict[str, management.CASFOwnerManagementServer] = {}
+
+    def _request_stop() -> None:
+        threading.Thread(
+            target=holder["server"].mark_stopped,
+            daemon=True,
+        ).start()
+
+    server = management.CASFOwnerManagementServer(
+        generation_id=_GENERATION_ID,
+        binding_cid=_BINDING_CID,
+        snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
+        state_dir=state_dir,
+        owner_process_birth=_owner_birth(),
+        request_stop=_request_stop,
+        stop_timeout_seconds=1,
+    )
+    holder["server"] = server
+    server.start()
+    client = management.CASFOwnerManagementClient(
+        generation_id=_GENERATION_ID,
+        binding_cid=_BINDING_CID,
+        snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
+        state_dir=state_dir,
+        timeout_seconds=1,
+    )
+    rejected = management._build_request(
+        generation_id=_GENERATION_ID,
+        capsule_cid=client.capsule["capsule_cid"],
+        key=client.key,
+        operation="stop",
+        arguments={
+            "stop_request_id": "1" * 64,
+            "owner_start_receipt_cid": "sha256:" + "7" * 64,
+            "final_record_cid": "sha256:" + "8" * 64,
+            "commit_receipt_cid": "sha256:" + "9" * 64,
+        },
+    )
+    rejected_raw = management._canonical_bytes(
+        rejected,
+        noun="provisional stop replay",
+    )
+    try:
+        first = client._round_trip(rejected)
+        assert first["ok"] is False
+        assert first["error_code"] == "owner_not_committed"
+        assert client.status_snapshot()["phase"] == "provisional"
+        assert rejected["request_nonce"] not in server._status_request_nonces
+        server.mark_committed(
+            owner_start_receipt_cid=_CID_A,
+            final_record_cid=_CID_B,
+            commit_receipt_cid=_CID_C,
+        )
+        assert (
+            management._canonical_bytes(rejected, noun="committed stop replay")
+            == rejected_raw
+        )
+        replay = client._round_trip(rejected)
+        assert replay["ok"] is False
+        assert replay["error_code"] == "stop_request_diverged"
+        assert not server.stop_requested.is_set()
+        assert not (state_dir / management.MANAGEMENT_STOP_INTENT_NAME).exists()
+        assert client.stop()["committed_owner_stopped"] is True
     finally:
         server.close()
 
@@ -306,6 +457,106 @@ def test_management_rejects_replayed_authenticated_request_nonce(
         server.close()
 
 
+def test_stalled_drip_frame_cannot_block_authenticated_status_or_stop(
+    tmp_path: Path,
+) -> None:
+    server, client = _committed_server(
+        tmp_path,
+        authentication_timeout_seconds=0.5,
+    )
+    stalled = client._connect()
+    stopped = threading.Event()
+    drip_errors: list[BaseException] = []
+
+    def _drip() -> None:
+        try:
+            while not stopped.wait(0.04):
+                stalled.sendall(b" ")
+        except (BrokenPipeError, ConnectionError, OSError) as exc:
+            drip_errors.append(exc)
+
+    try:
+        stalled.sendall(management._FRAME_HEADER.pack(1024) + b"{")
+        dripper = threading.Thread(target=_drip, daemon=True)
+        dripper.start()
+        time.sleep(0.03)
+        with server._connection_gate:
+            assert 1 <= len(server._connection_threads) <= management._MAX_CONNECTION_WORKERS
+        started = time.monotonic()
+        assert client.status_snapshot()["phase"] == "committed"
+        assert client.stop()["committed_owner_stopped"] is True
+        assert time.monotonic() - started < 0.3
+        assert dripper.is_alive()
+        assert not drip_errors
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            with server._connection_gate:
+                if not server._connections:
+                    break
+            time.sleep(0.01)
+        with server._connection_gate:
+            assert not server._connections
+            assert not server._connection_threads
+        deadline = time.monotonic() + 0.3
+        while not drip_errors and dripper.is_alive() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert drip_errors
+    finally:
+        stopped.set()
+        try:
+            stalled.close()
+        except OSError:
+            pass
+        if "dripper" in locals():
+            dripper.join(timeout=1)
+            assert not dripper.is_alive()
+        server.close()
+        with server._connection_gate:
+            assert not server._connections
+            assert not server._connection_threads
+    assert not drip_errors or all(
+        isinstance(exc, (BrokenPipeError, ConnectionError, OSError))
+        for exc in drip_errors
+    )
+
+
+def test_status_nonce_window_is_bounded_and_reserves_first_exact_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(management, "_MAX_STATUS_REQUEST_NONCES", 2)
+    server, client = _committed_server(tmp_path)
+    try:
+        statuses = [
+            management._build_request(
+                generation_id=_GENERATION_ID,
+                capsule_cid=client.capsule["capsule_cid"],
+                key=client.key,
+                operation="status.snapshot",
+                arguments={},
+            )
+            for _index in range(3)
+        ]
+        assert client._round_trip(statuses[0])["ok"] is True
+        assert client._round_trip(statuses[1])["ok"] is True
+        assert client._round_trip(statuses[2])["ok"] is True
+        assert len(server._status_request_nonces) == 2
+        assert statuses[0]["request_nonce"] not in server._status_request_nonces
+        replay = client._round_trip(statuses[1])
+        assert replay["ok"] is False
+        assert replay["error_code"] == "request_nonce_replayed"
+        assert client._round_trip(statuses[0])["ok"] is True
+        assert len(server._status_request_nonces) == 2
+        assert server._stop_request_nonce is None
+
+        result = client.stop()
+        assert result["committed_owner_stopped"] is True
+        assert server._stop_request_nonce is not None
+        assert len(server._status_request_nonces) == 2
+    finally:
+        server.close()
+
+
 def test_management_rejects_cross_generation_capsule_key_swap(
     tmp_path: Path,
 ) -> None:
@@ -376,6 +627,59 @@ def test_management_capsule_and_key_are_fresh_generation_write_once(
     ):
         second.start()
     assert management._read_private(state_dir, management.MANAGEMENT_KEY_NAME) == first_key
+
+
+@pytest.mark.parametrize(
+    ("artifact_name", "payload"),
+    [
+        (management.MANAGEMENT_KEY_NAME, b"k" * 32),
+        (management.MANAGEMENT_CAPSULE_NAME, b"{}"),
+    ],
+)
+def test_partial_management_artifact_quarantines_generation(
+    tmp_path: Path,
+    artifact_name: str,
+    payload: bytes,
+) -> None:
+    state_dir = _private_state(tmp_path)
+    artifact = state_dir / artifact_name
+    artifact.write_bytes(payload)
+    artifact.chmod(0o600)
+    server = management.CASFOwnerManagementServer(
+        generation_id=_GENERATION_ID,
+        binding_cid=_BINDING_CID,
+        snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
+        state_dir=state_dir,
+        owner_process_birth=_owner_birth(),
+        request_stop=lambda: pytest.fail("partial generation requested stop"),
+        stop_timeout_seconds=1,
+    )
+    with pytest.raises(
+        management.EAAEFCASFOwnerManagementError,
+        match="already exists",
+    ):
+        server.start()
+    assert server.key == b""
+    assert server.capsule == {}
+    assert server.listener is None
+    assert server.thread is None
+
+    retry = management.CASFOwnerManagementServer(
+        generation_id=_GENERATION_ID,
+        binding_cid=_BINDING_CID,
+        snapshot_bindings_cid=_SNAPSHOT_BINDINGS_CID,
+        state_dir=state_dir,
+        owner_process_birth=_owner_birth(),
+        request_stop=lambda: pytest.fail("quarantined generation requested stop"),
+        stop_timeout_seconds=1,
+    )
+    with pytest.raises(
+        management.EAAEFCASFOwnerManagementError,
+        match="already exists",
+    ):
+        retry.start()
+    assert retry.key == b""
+    assert retry.listener is None
 
 
 def test_management_request_requires_exact_peer_process_birth(tmp_path: Path) -> None:
@@ -571,8 +875,27 @@ print(child.pid, flush=True)
         assert observed is not None
         assert observed["parent_pid"] != sealed_birth["parent_pid"]
         assert client.status_snapshot()["phase"] == "committed"
-        assert client.stop()["committed_owner_stopped"] is True
+        result = client.stop()
+        assert result["committed_owner_stopped"] is True
         assert client.wait_dead(10)
+        adopted = management.CASFOwnerManagementClient.adopt_completed_stop(
+            generation_id="eaaef-management-reparent-001",
+            binding_cid="sha256:" + "1" * 64,
+            snapshot_bindings_cid="sha256:" + "2" * 64,
+            state_dir=state_dir,
+        )
+        assert adopted == result
+        with pytest.raises(
+            management.EAAEFCASFOwnerManagementError,
+            match="stale or divergent",
+        ):
+            management.CASFOwnerManagementClient(
+                generation_id="eaaef-management-reparent-001",
+                binding_cid="sha256:" + "1" * 64,
+                snapshot_bindings_cid="sha256:" + "2" * 64,
+                state_dir=state_dir,
+                timeout_seconds=1,
+            )
     finally:
         observed = management._observed_process_birth(broker_pid)
         if observed is not None:
