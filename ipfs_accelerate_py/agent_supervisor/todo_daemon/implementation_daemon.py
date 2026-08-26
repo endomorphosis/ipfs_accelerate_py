@@ -92641,15 +92641,26 @@ class DatabaseImplementationDaemon:
         # revision-history proof is what makes it safe to exclude; replacing
         # it with the current inventory object loses the crash fence.
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-        excluded.update(
-            str(task.task_cid)
-            for task in ready.tasks
-            if self._post_merge_completion_crash_recovery_context(
-                task,
-                require_current_blocked=False,
-            )
-            is not None
-        )
+        for task in ready.tasks:
+            task_cid = str(getattr(task, "task_cid", "") or "")
+            if not task_cid:
+                continue
+            try:
+                recovery_context = (
+                    self._post_merge_completion_crash_recovery_context(
+                        task,
+                        require_current_blocked=False,
+                    )
+                )
+            except DatabaseImplementationAuthorityError:
+                # This history read is a denial-only discovery fence.  A
+                # legacy task whose canonical revision history is incomplete
+                # must remain unclaimable, but it must not prevent unrelated
+                # tasks with intact authority from reaching another lane.
+                excluded.add(task_cid)
+                continue
+            if recovery_context is not None:
+                excluded.add(task_cid)
         return excluded
 
     def _remember_control_claim_rejection(self, task: Any) -> None:
@@ -93878,7 +93889,13 @@ class DatabaseImplementationDaemon:
                         "unavailable"
                     ),
                 )
-                raise
+                # The projection changed (or proved incomplete) after the
+                # local lease was taken.  Release that lease, quarantine only
+                # this candidate for the current bounded claim pass, and keep
+                # looking.  No recovery or execution authority is derived
+                # from the unavailable history.
+                excluded.add(str(claim.task_cid))
+                continue
             ready = (
                 task is not None
                 and projection_matches

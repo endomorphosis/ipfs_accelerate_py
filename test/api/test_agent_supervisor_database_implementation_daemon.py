@@ -1931,6 +1931,36 @@ def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
             "task_revision_history_projection",
             original_history_projection,
         )
+        original_ready_tasks = daemon.task_source.ready_tasks
+
+        def history_unavailable_preclaim(
+            _task: object,
+            *,
+            require_current_blocked: bool,
+        ) -> None:
+            assert require_current_blocked is False
+            raise DatabaseImplementationAuthorityError(
+                "fixture canonical history is incomplete"
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_post_merge_completion_crash_recovery_context",
+            history_unavailable_preclaim,
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "ready_tasks",
+            lambda *, limit: SimpleNamespace(
+                tasks=(plausible_history_candidate,)
+            ),
+        )
+        assert daemon._automatic_claim_exclusions() == {task.task_cid}
+        monkeypatch.setattr(
+            daemon.task_source,
+            "ready_tasks",
+            original_ready_tasks,
+        )
         crash_context = {"context_id": "sha256:" + "1" * 64}
         monkeypatch.setattr(
             daemon,
@@ -2014,11 +2044,7 @@ def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
             "_post_merge_completion_crash_recovery_context",
             history_unavailable_after_local_claim,
         )
-        with pytest.raises(
-            DatabaseImplementationAuthorityError,
-            match="canonical history became unavailable",
-        ):
-            daemon.claim_next()
+        assert daemon.claim_next() is None
         assert authority_observations == 2
         assert len(released) == 2
         claim_id, lease_id, reason = released[-1]

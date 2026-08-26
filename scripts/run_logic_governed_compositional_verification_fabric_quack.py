@@ -13259,6 +13259,28 @@ def _audit_task_history_connection(connection: Any) -> dict[str, Any]:
                 task_body = None
             if not isinstance(task_body, dict):
                 errors.append("task_body_not_object")
+        completion_receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, dict)
+            else None
+        )
+        completion_receipt_operation_raw = (
+            completion_receipt.get("operation")
+            if isinstance(completion_receipt, dict)
+            else None
+        )
+        completion_receipt_operation = (
+            completion_receipt_operation_raw
+            if isinstance(completion_receipt_operation_raw, str)
+            and len(completion_receipt_operation_raw.encode("utf-8"))
+            <= MAX_ID_BYTES
+            else ""
+        )
+        if (
+            completion_receipt_operation_raw is not None
+            and not completion_receipt_operation
+        ):
+            errors.append("completion_receipt_operation_invalid")
 
         history_population = connection.execute(
             "SELECT COUNT(*), MIN(revision), MAX(revision), "
@@ -13416,6 +13438,12 @@ def _audit_task_history_connection(connection: Any) -> dict[str, Any]:
                 "history_count": history_count,
                 "history_first_revision": history_first_revision,
                 "history_last_revision": history_last_revision,
+                # This bounded discriminator lets a stopped operator decide
+                # which recovery contract applies without exporting the task
+                # body or treating the audit as mutation authority.
+                "completion_receipt_operation": (
+                    completion_receipt_operation
+                ),
                 "task_body_sha256": hashlib.sha256(task_body_bytes).hexdigest(),
                 "tail_body_sha256": hashlib.sha256(
                     tail_body_json.encode("utf-8")

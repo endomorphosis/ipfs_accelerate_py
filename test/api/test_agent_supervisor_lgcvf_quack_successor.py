@@ -4629,6 +4629,7 @@ def test_stopped_task_history_audit_detects_a_noncontiguous_head(
     assert valid["task_count"] == len(operator.LGCVF_TASK_ALIASES)
     assert valid["invalid_task_count"] == 0
     assert valid["tasks"][0]["history_count"] == 1
+    assert valid["tasks"][0]["completion_receipt_operation"] == ""
     assert valid["tasks"][0]["errors"] == []
 
     connection = open_duckdb_connection(database)
