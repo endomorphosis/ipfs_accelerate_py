@@ -1080,6 +1080,8 @@ def test_canonical_casf_import_is_exact_and_structurally_valid(
     assert len(evidence["selected_blobs"]) == 17
     assert lifecycle._EAAEF_CASF_IMPORT_OVERRIDE_PATHS == {
         "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     }
