@@ -3047,6 +3047,226 @@ def test_stopped_recovery_rejects_nonexistent_or_aliased_process_births(
     assert not paths["stopped_state_continuity"].exists()
 
 
+def _failed_start_legacy_fixture(
+    operator: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[dict[str, Path], dict[str, object], dict[str, object]]:
+    paths, provenance, prior = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    bound = operator._strict_json(paths["controller_status"])
+    assert operator._claim_stopped_state_restart_admission(
+        paths,
+        expected_restart=True,
+        expected_receipt_cid=str(prior["receipt_cid"]),
+        expected_controller_status_cid=str(bound["status_cid"]),
+    ) is True
+    failed = operator._status_payload(
+        lifecycle="stopped",
+        controller_birth=bound["controller_birth"],
+        provenance_cid=str(provenance["receipt_cid"]),
+        owner_identity=bound["owner_identity"],
+        scheduler_birth=bound["scheduler_birth"],
+        scheduler_returncode=-15,
+        error=operator.FAILED_START_STATUS_ERROR,
+        projection_root=paths["projection_root"],
+    )
+    operator._write_status(paths["controller_status"], failed)
+    return paths, provenance, prior
+
+
+def test_reviewed_legacy_failed_start_publishes_new_current_byte_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, prior = _failed_start_legacy_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    admission_before = paths["stopped_state_restart_admission"].read_bytes()
+    status_before = paths["controller_status"].read_bytes()
+    database_before = {
+        name: path.read_bytes()
+        for name, path in operator._successor_state_databases(paths).items()
+    }
+
+    first = operator.failed_start_recovery_preflight(tmp_path)
+    second = operator.failed_start_recovery_preflight(tmp_path)
+
+    assert first["preflight_cid"] == second["preflight_cid"]
+    assert first["reviewed_pins"] == second["reviewed_pins"]
+    assert first["legacy_explicit_review_required"] is True
+    assert first["restart_authority"] is False
+    assert first["reviewed_pins"]["failed_start_reason"] == (
+        operator.FAILED_START_REASON_LEGACY_UNCLASSIFIED
+    )
+    assert paths["controller_status"].read_bytes() == status_before
+    assert paths["stopped_state_restart_admission"].read_bytes() == (
+        admission_before
+    )
+    assert {
+        name: path.read_bytes()
+        for name, path in operator._successor_state_databases(paths).items()
+    } == database_before
+
+    result = operator.recover_failed_start_continuity(
+        tmp_path,
+        reviewed_preflight_cid=str(first["preflight_cid"]),
+    )
+
+    receipt = operator._strict_json(paths["stopped_state_continuity"])
+    status = operator._strict_json(paths["controller_status"])
+    anchors = status["failed_start_recovery_anchors"]
+    archive = Path(
+        anchors["superseded_restart_admission"]["archive_path"]
+    )
+    assert result["schema"] == operator.FAILED_START_RECOVERY_RESULT_SCHEMA
+    assert receipt["receipt_cid"] != prior["receipt_cid"]
+    assert receipt["admission_mode"] == (
+        operator.FAILED_START_CONTINUITY_ADMISSION_MODE
+    )
+    assert receipt["requires_stopped_checkpoint"] is False
+    assert receipt["stop_evidence"]["mode"] == (
+        operator.FAILED_START_REVIEWED_EVIDENCE_MODE
+    )
+    assert receipt["stop_evidence"]["historical_owner_receipts_reconstructed"] is False
+    assert not paths["stopped_state_restart_admission"].exists()
+    assert archive.read_bytes() == admission_before
+    admitted = operator._load_stopped_restart_admission(
+        paths,
+        root=tmp_path,
+        provenance=provenance,
+    )
+    assert admitted["receipt"] == receipt
+
+
+def test_trusted_failed_start_anchors_replay_after_interrupted_finally(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, prior = _failed_start_legacy_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    failed = operator._strict_json(paths["controller_status"])
+    io_paths = operator._stopped_recovery_io_paths(paths, None)
+    anchors = operator._capture_failed_start_recovery_anchors(
+        paths,
+        root=tmp_path,
+        failed_status=failed,
+        provenance=provenance,
+        failed_start_reason=operator.FAILED_START_REASON_BOOTSTRAP_TIMEOUT,
+        owner_stop={
+            "stopped": True,
+            "server_id": failed["owner_identity"]["server_id"],
+            "at": "2026-08-26T12:37:41Z",
+        },
+        io_paths=io_paths,
+    )
+    anchored = operator._bind_failed_start_recovery_anchors_status(
+        failed,
+        anchors,
+    )
+    operator._write_status(paths["controller_status"], anchored)
+
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        receipt = operator._recover_interrupted_failed_start_continuity(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+            provenance=provenance,
+        )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert receipt is not None
+    assert receipt["receipt_cid"] != prior["receipt_cid"]
+    assert receipt["stop_evidence"]["mode"] == (
+        operator.FAILED_START_LIVE_OWNER_EVIDENCE_MODE
+    )
+    assert receipt["stop_evidence"]["failed_start_reason"] == (
+        operator.FAILED_START_REASON_BOOTSTRAP_TIMEOUT
+    )
+    assert operator._load_stopped_restart_admission(
+        paths,
+        root=tmp_path,
+        provenance=provenance,
+    )["receipt"] == receipt
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ("database", "owner_status", "source", "wal", "birth"),
+)
+def test_reviewed_failed_start_recovery_rejects_changed_exact_pins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _prior = _failed_start_legacy_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    preflight = operator.failed_start_recovery_preflight(tmp_path)
+    if tamper == "database":
+        with paths["successor_database"].open("ab") as handle:
+            handle.write(b"failed-start-post-review-tamper\n")
+    elif tamper == "owner_status":
+        owner_path = (
+            paths["owner_state"] / "quack-state-server.status.json"
+        )
+        owner = operator._strict_json(
+            owner_path,
+            verify_content_identity=False,
+        )
+        owner["reviewed_tamper"] = True
+        operator._atomic_json(owner_path, owner, replace=True)
+    elif tamper == "source":
+        observed = operator._observe_candidate_runtime_continuity(
+            tmp_path,
+            require_resolved_remote=False,
+        )
+        monkeypatch.setattr(
+            operator,
+            "_observe_candidate_runtime_continuity",
+            lambda _root, *, require_resolved_remote: {
+                **observed,
+                "current_head": "9" * 40,
+            },
+        )
+    elif tamper == "wal":
+        paths["successor_database"].with_name(
+            paths["successor_database"].name + ".wal"
+        ).write_bytes(b"live-wal")
+    else:
+        status = operator._strict_json(paths["controller_status"])
+        status.pop("status_cid")
+        status["scheduler_birth"] = {}
+        status["status_cid"] = operator._content_id(status)
+        operator._write_status(paths["controller_status"], status)
+
+    with pytest.raises(operator.SuccessorOperatorError):
+        operator.recover_failed_start_continuity(
+            tmp_path,
+            reviewed_preflight_cid=str(preflight["preflight_cid"]),
+        )
+    assert not paths["stopped_state_continuity"].exists()
+    assert paths["stopped_state_restart_admission"].exists()
+
+
 def test_restart_admission_reads_generation_fd_bound_surfaces(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

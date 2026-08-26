@@ -245,6 +245,53 @@ STOPPED_RECOVERY_RESULT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-stopped-recovery-result@1"
 )
 STOPPED_RECOVERY_OPERATION: Final = "reviewed_stopped_continuity_recovery"
+FAILED_START_CONTINUITY_ADMISSION_MODE: Final = (
+    "typed_failed_start_continuity"
+)
+FAILED_START_LIVE_OWNER_EVIDENCE_MODE: Final = (
+    "live_owner_failed_start_stop"
+)
+FAILED_START_REVIEWED_EVIDENCE_MODE: Final = (
+    "reviewed_failed_start_status_recovery"
+)
+FAILED_START_RECOVERY_ANCHORS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-failed-start-recovery-anchors@1"
+)
+FAILED_START_RECOVERY_PREFLIGHT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-failed-start-recovery-preflight@1"
+)
+FAILED_START_RECOVERY_RESULT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-failed-start-recovery-result@1"
+)
+FAILED_START_RECOVERY_OPERATION: Final = (
+    "reviewed_failed_start_continuity_recovery"
+)
+FAILED_START_TRUSTED_FINALLY_MODE: Final = "trusted_operator_finally"
+FAILED_START_REVIEWED_LEGACY_MODE: Final = "reviewed_legacy_preflight"
+FAILED_START_STATUS_ERROR: Final = "unclean_controller_shutdown"
+FAILED_START_REASON_SCHEDULER_EXITED: Final = (
+    "scheduler_exited_before_lane_attach"
+)
+FAILED_START_REASON_BOOTSTRAP_FAILED: Final = (
+    "state_owner_bootstrap_failed_closed"
+)
+FAILED_START_REASON_BOOTSTRAP_TIMEOUT: Final = (
+    "state_owner_bootstrap_readiness_timeout"
+)
+FAILED_START_REASON_LEGACY_UNCLASSIFIED: Final = (
+    "legacy_unclassified_pre_ready_failure"
+)
+FAILED_START_TRUSTED_RECOVERY_REASONS: Final = frozenset(
+    {
+        FAILED_START_REASON_SCHEDULER_EXITED,
+        FAILED_START_REASON_BOOTSTRAP_FAILED,
+        FAILED_START_REASON_BOOTSTRAP_TIMEOUT,
+    }
+)
+FAILED_START_RECOVERY_REASONS: Final = (
+    FAILED_START_TRUSTED_RECOVERY_REASONS
+    | {FAILED_START_REASON_LEGACY_UNCLASSIFIED}
+)
 STOPPED_SNAPSHOT_REQUIRED_SEALS: Final = (
     getattr(fcntl, "F_SEAL_SEAL", 0)
     | getattr(fcntl, "F_SEAL_SHRINK", 0)
@@ -6532,15 +6579,13 @@ def _stopped_owner_status_sha256(
     )
 
 
-def _require_stopped_controller_tree_dead(
+def _validate_stopped_controller_tree_births(
     stopped_status: Mapping[str, Any],
-) -> None:
-    """Require the exact controller, owner, and scheduler births to be dead."""
+) -> tuple[Any, Any, Any]:
+    """Parse one exact controller/owner/scheduler process tree."""
 
     from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
-        OwnerLiveness,
         ProcessBirthIdentity,
-        owner_liveness,
     )
 
     owner_identity = stopped_status.get("owner_identity")
@@ -6599,10 +6644,21 @@ def _require_stopped_controller_tree_dead(
         raise SuccessorOperatorError(
             "stopped-state controller/owner/scheduler birth relation differs"
         )
-    if any(
-        owner_liveness(birth) is not OwnerLiveness.DEAD
-        for birth in (controller, scheduler, owner)
-    ):
+    return controller, scheduler, owner
+
+
+def _require_stopped_controller_tree_dead(
+    stopped_status: Mapping[str, Any],
+) -> None:
+    """Require the exact controller, owner, and scheduler births to be dead."""
+
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        owner_liveness,
+    )
+
+    births = _validate_stopped_controller_tree_births(stopped_status)
+    if any(owner_liveness(birth) is not OwnerLiveness.DEAD for birth in births):
         raise SuccessorOperatorError(
             "stopped-state controller tree is not exactly dead"
         )
@@ -6740,6 +6796,344 @@ def _validate_unbound_stopped_controller_status(
     _require_stopped_controller_tree_dead(stopped_status)
 
 
+def _failed_start_reason_from_exception(exc: BaseException | None) -> str:
+    """Classify only the three pre-ready failures approved for continuity."""
+
+    if not isinstance(exc, SuccessorOperatorError):
+        return ""
+    message = str(exc)
+    if message == "scheduler exited before all lane daemons attached":
+        return FAILED_START_REASON_SCHEDULER_EXITED
+    if message == "lane state-owner bootstrap readiness timed out":
+        return FAILED_START_REASON_BOOTSTRAP_TIMEOUT
+    prefix = "lane state-owner bootstrap failed closed: "
+    detail = message[len(prefix) :] if message.startswith(prefix) else ""
+    if (
+        detail
+        and len(detail) <= 512
+        and all(character.isprintable() for character in detail)
+        and "\x00" not in detail
+    ):
+        return FAILED_START_REASON_BOOTSTRAP_FAILED
+    return ""
+
+
+def _validate_unbound_failed_start_controller_status(
+    failed_status: Mapping[str, Any],
+    *,
+    provenance: Mapping[str, Any],
+    require_dead: bool,
+) -> None:
+    """Validate the sole unbound pre-ready failure status shape."""
+
+    owner_identity = failed_status.get("owner_identity")
+    controller_birth = failed_status.get("controller_birth")
+    scheduler_birth = failed_status.get("scheduler_birth")
+    base_fields = {
+        "schema",
+        "lifecycle",
+        "updated_at",
+        "controller_birth",
+        "provenance_cid",
+        "owner_identity",
+        "scheduler_birth",
+        "scheduler_returncode",
+        "error",
+        "ducklake_projection",
+        "status_cid",
+    }
+    expected_fields = (
+        base_fields | {"failed_start_recovery_anchors"}
+        if "failed_start_recovery_anchors" in failed_status
+        else base_fields
+    )
+    updated_at = failed_status.get("updated_at")
+    returncode = failed_status.get("scheduler_returncode")
+    projection = failed_status.get("ducklake_projection")
+    projection_fields = {
+        "path",
+        "control_catalog_path",
+        "ducklake_catalog_path",
+        "ducklake_data_path",
+        "authoritative",
+        "read_by_scheduler",
+        "scheduling_authority",
+        "completion_authority",
+        "live_quack_endpoint",
+        "mode",
+    }
+    if (
+        set(failed_status) != expected_fields
+        or failed_status.get("schema") != CONTROLLER_STATUS_SCHEMA
+        or failed_status.get("lifecycle") != "stopped"
+        or failed_status.get("error") != FAILED_START_STATUS_ERROR
+        or type(returncode) is not int
+        or not (-255 <= returncode <= 255)
+        or type(updated_at) is not str
+        or re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z",
+            updated_at,
+        )
+        is None
+        or failed_status.get("provenance_cid")
+        != provenance.get("receipt_cid")
+        or "stopped_state_continuity_receipt_cid" in failed_status
+        or "stopped_state_continuity_status_cid" in failed_status
+        or not isinstance(owner_identity, Mapping)
+        or not isinstance(controller_birth, Mapping)
+        or not isinstance(scheduler_birth, Mapping)
+        or owner_identity.get("process_birth") != controller_birth
+        or owner_identity.get("database_uuid") != provenance.get("database_uuid")
+        or not _owner_schema_fingerprint_matches_canonical_cid(
+            owner_identity.get("schema_fingerprint"),
+            provenance.get("schema_fingerprint"),
+        )
+        or owner_identity.get("store_id")
+        != SUCCESSOR_DATABASE_RELATIVE.as_posix()
+        or owner_identity.get("secret_handle") != SECRET_HANDLE
+        or not isinstance(projection, Mapping)
+        or set(projection) != projection_fields
+        or projection.get("mode") != "separate_stopped_checkpoint"
+        or any(
+            projection.get(field) is not False
+            for field in (
+                "authoritative",
+                "read_by_scheduler",
+                "scheduling_authority",
+                "completion_authority",
+                "live_quack_endpoint",
+            )
+        )
+    ):
+        raise SuccessorOperatorError(
+            "unbound failed-start controller status differs"
+        )
+    _validate_stopped_controller_tree_births(failed_status)
+    if require_dead:
+        _require_stopped_controller_tree_dead(failed_status)
+
+
+def _failed_start_superseded_archive_path(
+    paths: Mapping[str, Path],
+    receipt: Mapping[str, Any],
+) -> Path:
+    receipt_cid = receipt.get("receipt_cid")
+    if (
+        type(receipt_cid) is not str
+        or re.fullmatch(r"b[a-z2-7]{20,200}", receipt_cid) is None
+    ):
+        raise SuccessorOperatorError(
+            "superseded restart receipt identity is malformed"
+        )
+    return paths["stopped_state_restart_admission"].with_name(
+        "superseded-stopped-state-restart-admission."
+        f"{receipt_cid}.json"
+    )
+
+
+def _validate_failed_start_superseded_admission_snapshot(
+    paths: Mapping[str, Path],
+    snapshot: Any,
+    *,
+    provenance: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    if snapshot is None:
+        return None
+    if not isinstance(snapshot, Mapping):
+        raise SuccessorOperatorError(
+            "failed-start superseded admission snapshot is malformed"
+        )
+    receipt = snapshot.get("receipt")
+    if not isinstance(receipt, Mapping):
+        raise SuccessorOperatorError(
+            "failed-start superseded admission receipt is malformed"
+        )
+    _validate_stopped_continuity_receipt_shape(
+        paths,
+        receipt,
+        provenance=provenance,
+    )
+    archive_path = _failed_start_superseded_archive_path(paths, receipt)
+    expected_sha256 = "sha256:" + hashlib.sha256(
+        _canonical_bytes(dict(receipt)) + b"\n"
+    ).hexdigest()
+    if (
+        set(snapshot) != {"receipt", "file_sha256", "archive_path"}
+        or snapshot.get("file_sha256") != expected_sha256
+        or snapshot.get("archive_path") != str(archive_path)
+    ):
+        raise SuccessorOperatorError(
+            "failed-start superseded admission snapshot differs"
+        )
+    return {
+        "receipt": dict(receipt),
+        "file_sha256": expected_sha256,
+        "archive_path": str(archive_path),
+    }
+
+
+def _capture_failed_start_superseded_admission(
+    paths: Mapping[str, Path],
+    *,
+    io_paths: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Capture consumed prior authority only as typed superseded history."""
+
+    canonical = Path(io_paths["stopped_state_continuity"])
+    admission = Path(io_paths["stopped_state_restart_admission"])
+    if os.path.lexists(canonical):
+        raise SuccessorOperatorError(
+            "failed-start publication found unconsumed restart authority"
+        )
+    if not os.path.lexists(admission):
+        return None
+    receipt = _strict_json(
+        admission,
+        expected_schema=STOPPED_STATE_CONTINUITY_SCHEMA,
+        require_private_owner=True,
+    )
+    _validate_stopped_continuity_receipt_shape(
+        paths,
+        receipt,
+        provenance=provenance,
+    )
+    archive = _failed_start_superseded_archive_path(paths, receipt)
+    bound_archive = admission.with_name(archive.name)
+    if os.path.lexists(bound_archive):
+        raise SuccessorOperatorError(
+            "failed-start superseded receipt archive already exists"
+        )
+    snapshot = {
+        "receipt": receipt,
+        "file_sha256": _sha256_regular_file(
+            admission,
+            max_bytes=MAX_JSON_BYTES,
+            noun="superseded stopped-state restart admission",
+            require_private_owner=True,
+        ),
+        "archive_path": str(archive),
+    }
+    return _validate_failed_start_superseded_admission_snapshot(
+        paths,
+        snapshot,
+        provenance=provenance,
+    )
+
+
+def _archive_failed_start_superseded_admission(
+    paths: Mapping[str, Path],
+    *,
+    io_paths: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    expected_snapshot: Mapping[str, Any] | None,
+) -> str:
+    """Move superseded custody only after its replacement status is durable."""
+
+    snapshot = _validate_failed_start_superseded_admission_snapshot(
+        paths,
+        expected_snapshot,
+        provenance=provenance,
+    )
+    state = _observe_failed_start_superseded_admission(
+        paths,
+        io_paths=io_paths,
+        provenance=provenance,
+        expected_snapshot=snapshot,
+    )
+    if state == "absent":
+        return state
+    if state == "archived":
+        return "already_archived"
+    assert snapshot is not None
+    admission = Path(io_paths["stopped_state_restart_admission"])
+    receipt = snapshot["receipt"]
+    assert isinstance(receipt, Mapping)
+    logical_archive = _failed_start_superseded_archive_path(paths, receipt)
+    archive = admission.with_name(logical_archive.name)
+    _rename_stopped_receipt_noreplace(
+        admission,
+        archive,
+        noun="superseded stopped-state restart admission archive",
+    )
+    if (
+        _strict_json(
+            archive,
+            expected_schema=STOPPED_STATE_CONTINUITY_SCHEMA,
+            require_private_owner=True,
+        )
+        != receipt
+        or _sha256_regular_file(
+            archive,
+            max_bytes=MAX_JSON_BYTES,
+            noun="archived superseded restart admission",
+            require_private_owner=True,
+        )
+        != snapshot["file_sha256"]
+    ):
+        raise SuccessorOperatorError(
+            "superseded restart admission archive changed during publication"
+        )
+    return "archived"
+
+
+def _observe_failed_start_superseded_admission(
+    paths: Mapping[str, Path],
+    *,
+    io_paths: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    expected_snapshot: Mapping[str, Any] | None,
+) -> str:
+    """Read one prior receipt from consumed or archived custody without mutation."""
+
+    snapshot = _validate_failed_start_superseded_admission_snapshot(
+        paths,
+        expected_snapshot,
+        provenance=provenance,
+    )
+    admission = Path(io_paths["stopped_state_restart_admission"])
+    if snapshot is None:
+        if os.path.lexists(admission):
+            raise SuccessorOperatorError(
+                "failed-start found an unanchored prior restart admission"
+            )
+        return "absent"
+    receipt = snapshot["receipt"]
+    assert isinstance(receipt, Mapping)
+    logical_archive = _failed_start_superseded_archive_path(paths, receipt)
+    archive = admission.with_name(logical_archive.name)
+    source_present = os.path.lexists(admission)
+    archive_present = os.path.lexists(archive)
+    if source_present and archive_present:
+        raise SuccessorOperatorError(
+            "superseded restart admission and archive coexist"
+        )
+    if not source_present and not archive_present:
+        raise SuccessorOperatorError(
+            "anchored superseded restart admission custody is unavailable"
+        )
+    observed_path = admission if source_present else archive
+    if (
+        _strict_json(
+            observed_path,
+            expected_schema=STOPPED_STATE_CONTINUITY_SCHEMA,
+            require_private_owner=True,
+        )
+        != receipt
+        or _sha256_regular_file(
+            observed_path,
+            max_bytes=MAX_JSON_BYTES,
+            noun="anchored superseded restart admission",
+            require_private_owner=True,
+        )
+        != snapshot["file_sha256"]
+    ):
+        raise SuccessorOperatorError(
+            "anchored superseded restart admission changed"
+        )
+    return "consumed" if source_present else "archived"
+
+
 def _capture_stopped_recovery_anchors(
     paths: Mapping[str, Path],
     *,
@@ -6860,6 +7254,267 @@ def _bind_stopped_recovery_anchors_status(
     return bound
 
 
+def _failed_start_recovery_reviewed_pins(
+    *,
+    failed_status: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    failed_start_reason: str,
+    final_continuity: Mapping[str, Any],
+    databases: Mapping[str, Any],
+    owner_status_sha256: str,
+    bootstrap_sha256: str,
+    superseded_restart_admission: Mapping[str, Any] | None,
+    recovery_authorization_mode: str,
+    owner_stop_receipt: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "target_generation": SUCCESSOR_STORE_GENERATION,
+        "controller_status_cid": failed_status["status_cid"],
+        "controller_status": dict(failed_status),
+        "source_provenance_cid": provenance["receipt_cid"],
+        "failed_start_reason": failed_start_reason,
+        "source_continuity": dict(final_continuity),
+        "databases": dict(databases),
+        "owner_status_sha256": owner_status_sha256,
+        "bootstrap_sha256": bootstrap_sha256,
+        "superseded_restart_admission": (
+            dict(superseded_restart_admission)
+            if superseded_restart_admission is not None
+            else None
+        ),
+        "recovery_authorization_mode": recovery_authorization_mode,
+        "owner_stop_receipt": (
+            dict(owner_stop_receipt)
+            if owner_stop_receipt is not None
+            else None
+        ),
+    }
+
+
+def _failed_start_preflight_cid(reviewed_pins: Mapping[str, Any]) -> str:
+    return _content_id(
+        {
+            "schema": FAILED_START_RECOVERY_PREFLIGHT_SCHEMA,
+            "operation": FAILED_START_RECOVERY_OPERATION,
+            "reviewed_pins": dict(reviewed_pins),
+        }
+    )
+
+
+def _validate_failed_start_owner_stop_receipt(
+    failed_status: Mapping[str, Any],
+    receipt: Any,
+) -> dict[str, Any]:
+    owner_identity = failed_status.get("owner_identity")
+    owner_server_id = (
+        str(owner_identity.get("server_id") or "")
+        if isinstance(owner_identity, Mapping)
+        else ""
+    )
+    if (
+        not isinstance(receipt, Mapping)
+        or set(receipt) != {"stopped", "server_id", "at"}
+        or receipt.get("stopped") is not True
+        or receipt.get("server_id") != owner_server_id
+        or type(receipt.get("at")) is not str
+        or re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z",
+            receipt["at"],
+        )
+        is None
+    ):
+        raise SuccessorOperatorError(
+            "failed-start owner stop receipt differs"
+        )
+    return dict(receipt)
+
+
+def _capture_failed_start_recovery_anchors(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    failed_status: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    failed_start_reason: str,
+    owner_stop: Mapping[str, Any],
+    io_paths: Mapping[str, Any],
+    lock_custody: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Seal current post-stop bytes in the trusted controller finally path."""
+
+    if failed_start_reason not in FAILED_START_TRUSTED_RECOVERY_REASONS:
+        raise SuccessorOperatorError(
+            "failed-start recovery reason is not allowlisted"
+        )
+    _validate_unbound_failed_start_controller_status(
+        failed_status,
+        provenance=provenance,
+        require_dead=False,
+    )
+    owner_stop_receipt = _validate_failed_start_owner_stop_receipt(
+        failed_status,
+        owner_stop,
+    )
+    generation_inventory = (
+        _stopped_recovery_generation_inventory(paths, lock_custody)
+        if lock_custody is not None
+        else None
+    )
+    durable_provenance = _load_lgcvf_live_raw_provenance_receipt(
+        paths,
+        _receipt_path=Path(io_paths["provenance"]),
+    )
+    if durable_provenance != dict(provenance):
+        raise SuccessorOperatorError(
+            "failed-start recovery anchor provenance changed"
+        )
+    final_continuity = _observe_candidate_runtime_continuity(
+        root,
+        require_resolved_remote=False,
+    )
+    bootstrap_path = Path(io_paths["bootstrap"])
+    _validate_stopped_projection_native_provenance(
+        paths,
+        root=root,
+        receipt=provenance,
+        final_continuity=final_continuity,
+        _bootstrap_path=bootstrap_path,
+    )
+    databases = _stopped_state_database_digests(
+        paths,
+        _database_paths=io_paths["databases"],
+    )
+    owner_status_sha256 = _stopped_owner_status_sha256(
+        paths,
+        controller_status=failed_status,
+        _status_path=Path(io_paths["owner_status"]),
+        _marker_path=Path(io_paths["owner_marker"]),
+    )
+    bootstrap_sha256 = _sha256_regular_file(
+        bootstrap_path,
+        max_bytes=MAX_JSON_BYTES,
+        noun="failed-start bootstrap receipt",
+        require_private_owner=True,
+    )
+    verification = _verify_profile(
+        Path(io_paths["databases"]["control"]),
+        read_only=True,
+    )
+    identity = _database_identity(Path(io_paths["databases"]["control"]))
+    owner_identity = failed_status["owner_identity"]
+    assert isinstance(owner_identity, Mapping)
+    if (
+        verification.get("schema_fingerprint")
+        != provenance.get("schema_fingerprint")
+        or verification.get("catalog_fingerprint")
+        != provenance.get("catalog_fingerprint")
+        or identity.get("database_uuid") != provenance.get("database_uuid")
+        or identity.get("schema_fingerprint")
+        != provenance.get("schema_fingerprint")
+        or not _owner_schema_fingerprint_matches_canonical_cid(
+            owner_identity.get("schema_fingerprint"),
+            identity.get("schema_fingerprint"),
+        )
+    ):
+        raise SuccessorOperatorError(
+            "failed-start recovery anchor database identity differs"
+        )
+    superseded = _capture_failed_start_superseded_admission(
+        paths,
+        io_paths=io_paths,
+        provenance=provenance,
+    )
+    reviewed_pins = _failed_start_recovery_reviewed_pins(
+        failed_status=failed_status,
+        provenance=provenance,
+        failed_start_reason=failed_start_reason,
+        final_continuity=final_continuity,
+        databases=databases,
+        owner_status_sha256=owner_status_sha256,
+        bootstrap_sha256=bootstrap_sha256,
+        superseded_restart_admission=superseded,
+        recovery_authorization_mode=FAILED_START_TRUSTED_FINALLY_MODE,
+        owner_stop_receipt=owner_stop_receipt,
+    )
+    anchors: dict[str, Any] = {
+        "schema": FAILED_START_RECOVERY_ANCHORS_SCHEMA,
+        "captured_at": _utc_now(),
+        "target_generation": SUCCESSOR_STORE_GENERATION,
+        "source_provenance_cid": provenance["receipt_cid"],
+        "source_controller_status_cid": failed_status["status_cid"],
+        "failed_start_reason": failed_start_reason,
+        "final_source_continuity": final_continuity,
+        "databases": databases,
+        "owner_status_sha256": owner_status_sha256,
+        "bootstrap_sha256": bootstrap_sha256,
+        "superseded_restart_admission": superseded,
+        "recovery_authorization_mode": FAILED_START_TRUSTED_FINALLY_MODE,
+        "owner_stop_receipt": owner_stop_receipt,
+        "recovery_preflight_cid": _failed_start_preflight_cid(reviewed_pins),
+    }
+    anchors["anchors_cid"] = _content_id(anchors)
+    if (
+        lock_custody is not None
+        and _stopped_recovery_generation_inventory(paths, lock_custody)
+        != generation_inventory
+    ):
+        raise SuccessorOperatorError(
+            "failed-start recovery anchor changed generation inventory"
+        )
+    if (
+        _load_lgcvf_live_raw_provenance_receipt(
+            paths,
+            _receipt_path=Path(io_paths["provenance"]),
+        )
+        != durable_provenance
+        or _stopped_state_database_digests(
+            paths,
+            _database_paths=io_paths["databases"],
+        )
+        != databases
+        or _stopped_owner_status_sha256(
+            paths,
+            controller_status=failed_status,
+            _status_path=Path(io_paths["owner_status"]),
+            _marker_path=Path(io_paths["owner_marker"]),
+        )
+        != owner_status_sha256
+        or _sha256_regular_file(
+            bootstrap_path,
+            max_bytes=MAX_JSON_BYTES,
+            noun="failed-start bootstrap receipt",
+            require_private_owner=True,
+        )
+        != bootstrap_sha256
+        or _capture_failed_start_superseded_admission(
+            paths,
+            io_paths=io_paths,
+            provenance=provenance,
+        )
+        != superseded
+        or _observe_candidate_runtime_continuity(
+            root,
+            require_resolved_remote=False,
+        )
+        != final_continuity
+    ):
+        raise SuccessorOperatorError(
+            "failed-start recovery evidence changed during anchor capture"
+        )
+    return anchors
+
+
+def _bind_failed_start_recovery_anchors_status(
+    failed_status: Mapping[str, Any],
+    anchors: Mapping[str, Any],
+) -> dict[str, Any]:
+    bound = dict(failed_status)
+    bound.pop("status_cid", None)
+    bound["failed_start_recovery_anchors"] = dict(anchors)
+    bound["status_cid"] = _content_id(bound)
+    return bound
+
+
 def _validate_stopped_continuity_receipt_shape(
     paths: Mapping[str, Path],
     receipt: Mapping[str, Any],
@@ -6895,6 +7550,10 @@ def _validate_stopped_continuity_receipt_shape(
         "receipt_cid",
     }
     issued_at = receipt.get("issued_at")
+    admission_mode = receipt.get("admission_mode")
+    expected_checkpoint = (
+        admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+    )
     databases = receipt.get("databases")
     logical_databases = _successor_state_databases(paths)
     database_shape_valid = isinstance(databases, Mapping) and set(
@@ -6916,8 +7575,11 @@ def _validate_stopped_continuity_receipt_shape(
     if (
         set(receipt) != expected_fields
         or receipt.get("schema") != STOPPED_STATE_CONTINUITY_SCHEMA
-        or receipt.get("admission_mode")
-        != STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        or admission_mode
+        not in {
+            STOPPED_STATE_CONTINUITY_ADMISSION_MODE,
+            FAILED_START_CONTINUITY_ADMISSION_MODE,
+        }
         or receipt.get("target_generation") != SUCCESSOR_STORE_GENERATION
         or receipt.get("source_provenance_cid")
         != provenance.get("receipt_cid")
@@ -6944,7 +7606,8 @@ def _validate_stopped_continuity_receipt_shape(
         or not database_shape_valid
         or receipt.get("controller_lock_held_at_issue") is not True
         or receipt.get("live_wal_absent") is not True
-        or receipt.get("requires_stopped_checkpoint") is not True
+        or receipt.get("requires_stopped_checkpoint")
+        is not expected_checkpoint
         or receipt.get("projection_only") is not False
         or receipt.get("same_generation_restart_only") is not True
         or receipt.get("restart_authority") is not True
@@ -7027,6 +7690,128 @@ def _validate_stopped_recovery_anchors(
             "durable stopped recovery anchors differ from current bytes"
         )
     return dict(anchors)
+
+
+def _validate_failed_start_recovery_anchors(
+    paths: Mapping[str, Path],
+    failed_status: Mapping[str, Any],
+    *,
+    provenance: Mapping[str, Any],
+    final_continuity: Mapping[str, Any],
+    databases: Mapping[str, Any],
+    owner_status_sha256: str,
+    bootstrap_sha256: str,
+    require_dead: bool,
+) -> dict[str, Any] | None:
+    """Replay durable failed-start anchors against current stopped bytes."""
+
+    raw_anchors = failed_status.get("failed_start_recovery_anchors")
+    if raw_anchors is None:
+        return None
+    if not isinstance(raw_anchors, Mapping):
+        raise SuccessorOperatorError(
+            "failed-start recovery anchors are malformed"
+        )
+    source_status = dict(failed_status)
+    source_status.pop("status_cid", None)
+    source_status.pop("failed_start_recovery_anchors", None)
+    source_status["status_cid"] = _content_id(source_status)
+    _validate_unbound_failed_start_controller_status(
+        source_status,
+        provenance=provenance,
+        require_dead=require_dead,
+    )
+    expected_fields = {
+        "schema",
+        "captured_at",
+        "target_generation",
+        "source_provenance_cid",
+        "source_controller_status_cid",
+        "failed_start_reason",
+        "final_source_continuity",
+        "databases",
+        "owner_status_sha256",
+        "bootstrap_sha256",
+        "superseded_restart_admission",
+        "recovery_authorization_mode",
+        "owner_stop_receipt",
+        "recovery_preflight_cid",
+        "anchors_cid",
+    }
+    captured_at = raw_anchors.get("captured_at")
+    reason = raw_anchors.get("failed_start_reason")
+    authorization_mode = raw_anchors.get("recovery_authorization_mode")
+    superseded = _validate_failed_start_superseded_admission_snapshot(
+        paths,
+        snapshot=raw_anchors.get("superseded_restart_admission"),
+        provenance=provenance,
+    )
+    owner_stop_raw = raw_anchors.get("owner_stop_receipt")
+    if authorization_mode == FAILED_START_TRUSTED_FINALLY_MODE:
+        owner_stop = _validate_failed_start_owner_stop_receipt(
+            source_status,
+            owner_stop_raw,
+        )
+    elif authorization_mode == FAILED_START_REVIEWED_LEGACY_MODE:
+        if owner_stop_raw is not None:
+            raise SuccessorOperatorError(
+                "reviewed failed-start recovery fabricated an owner receipt"
+            )
+        owner_stop = None
+    else:
+        raise SuccessorOperatorError(
+            "failed-start recovery authorization mode differs"
+        )
+    reviewed_pins = _failed_start_recovery_reviewed_pins(
+        failed_status=source_status,
+        provenance=provenance,
+        failed_start_reason=str(reason or ""),
+        final_continuity=final_continuity,
+        databases=databases,
+        owner_status_sha256=owner_status_sha256,
+        bootstrap_sha256=bootstrap_sha256,
+        superseded_restart_admission=superseded,
+        recovery_authorization_mode=authorization_mode,
+        owner_stop_receipt=owner_stop,
+    )
+    if (
+        set(raw_anchors) != expected_fields
+        or raw_anchors.get("schema") != FAILED_START_RECOVERY_ANCHORS_SCHEMA
+        or type(captured_at) is not str
+        or re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z",
+            captured_at,
+        )
+        is None
+        or raw_anchors.get("target_generation")
+        != SUCCESSOR_STORE_GENERATION
+        or raw_anchors.get("source_provenance_cid")
+        != provenance.get("receipt_cid")
+        or raw_anchors.get("source_controller_status_cid")
+        != source_status.get("status_cid")
+        or reason not in FAILED_START_RECOVERY_REASONS
+        or raw_anchors.get("final_source_continuity")
+        != dict(final_continuity)
+        or raw_anchors.get("databases") != dict(databases)
+        or raw_anchors.get("owner_status_sha256") != owner_status_sha256
+        or raw_anchors.get("bootstrap_sha256") != bootstrap_sha256
+        or raw_anchors.get("superseded_restart_admission") != superseded
+        or raw_anchors.get("owner_stop_receipt") != owner_stop
+        or raw_anchors.get("recovery_preflight_cid")
+        != _failed_start_preflight_cid(reviewed_pins)
+        or raw_anchors.get("anchors_cid")
+        != _content_id(
+            {
+                name: value
+                for name, value in raw_anchors.items()
+                if name != "anchors_cid"
+            }
+        )
+    ):
+        raise SuccessorOperatorError(
+            "durable failed-start recovery anchors differ from current bytes"
+        )
+    return dict(raw_anchors)
 
 
 def _stopped_recovery_preflight_locked(
@@ -7236,6 +8021,293 @@ def _stopped_recovery_preflight_locked(
     return report
 
 
+def _failed_start_recovery_preflight_locked(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+    provenance: Mapping[str, Any] | None = None,
+    failed_start_reason: str = "",
+    _allow_continuity_receipt: bool = False,
+    _require_dead_controller_tree: bool = True,
+) -> dict[str, Any]:
+    """Pin one stopped pre-ready failure without mutating its generation."""
+
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+    if (
+        os.path.lexists(io_paths["stopped_state_continuity"])
+        and not _allow_continuity_receipt
+    ):
+        raise SuccessorOperatorError(
+            "failed-start continuity is already published"
+        )
+    generation_inventory = _stopped_recovery_generation_inventory(
+        paths,
+        lock_custody,
+    )
+    observed_provenance = _load_lgcvf_live_raw_provenance_receipt(
+        paths,
+        _receipt_path=Path(io_paths["provenance"]),
+    )
+    if provenance is not None and observed_provenance != dict(provenance):
+        raise SuccessorOperatorError(
+            "failed-start recovery provenance changed before preflight"
+        )
+    durable_status = _strict_json(
+        Path(io_paths["controller_status"]),
+        expected_schema=CONTROLLER_STATUS_SCHEMA,
+        require_private_owner=True,
+    )
+    raw_anchors = durable_status.get("failed_start_recovery_anchors")
+    if isinstance(raw_anchors, Mapping):
+        source_status = dict(durable_status)
+        source_status.pop("status_cid", None)
+        source_status.pop("failed_start_recovery_anchors", None)
+        source_status["status_cid"] = _content_id(source_status)
+        anchored_reason = str(raw_anchors.get("failed_start_reason") or "")
+        if failed_start_reason and failed_start_reason != anchored_reason:
+            raise SuccessorOperatorError(
+                "reviewed failed-start reason differs from durable anchors"
+            )
+        selected_reason = anchored_reason
+        authorization_mode = str(
+            raw_anchors.get("recovery_authorization_mode") or ""
+        )
+        owner_stop_raw = raw_anchors.get("owner_stop_receipt")
+        sealed_continuity = raw_anchors.get("final_source_continuity")
+        if not isinstance(sealed_continuity, Mapping):
+            raise SuccessorOperatorError(
+                "failed-start anchored source continuity is malformed"
+            )
+        final_continuity = dict(sealed_continuity)
+        observed_source = _observe_stopped_projection_source_continuity(
+            root,
+            final_continuity,
+        )
+    elif raw_anchors is None:
+        source_status = durable_status
+        if failed_start_reason and (
+            failed_start_reason != FAILED_START_REASON_LEGACY_UNCLASSIFIED
+        ):
+            raise SuccessorOperatorError(
+                "unanchored legacy failed-start reason cannot be inferred"
+            )
+        selected_reason = FAILED_START_REASON_LEGACY_UNCLASSIFIED
+        authorization_mode = FAILED_START_REVIEWED_LEGACY_MODE
+        owner_stop_raw = None
+        final_continuity = _observe_candidate_runtime_continuity(
+            root,
+            require_resolved_remote=False,
+        )
+        observed_source = final_continuity
+    else:
+        raise SuccessorOperatorError(
+            "failed-start recovery anchors are malformed"
+        )
+    if selected_reason not in FAILED_START_RECOVERY_REASONS:
+        raise SuccessorOperatorError(
+            "an exact allowlisted failed-start reason is required"
+        )
+    _validate_unbound_failed_start_controller_status(
+        source_status,
+        provenance=observed_provenance,
+        require_dead=_require_dead_controller_tree,
+    )
+    databases = _stopped_state_database_digests(
+        paths,
+        _database_paths=io_paths["databases"],
+    )
+    owner_status_sha256 = _stopped_owner_status_sha256(
+        paths,
+        controller_status=source_status,
+        _status_path=Path(io_paths["owner_status"]),
+        _marker_path=Path(io_paths["owner_marker"]),
+    )
+    bootstrap_path = Path(io_paths["bootstrap"])
+    bootstrap_sha256 = _sha256_regular_file(
+        bootstrap_path,
+        max_bytes=MAX_JSON_BYTES,
+        noun="failed-start recovery bootstrap receipt",
+        require_private_owner=True,
+    )
+    _validate_stopped_projection_native_provenance(
+        paths,
+        root=root,
+        receipt=observed_provenance,
+        final_continuity=final_continuity,
+        _bootstrap_path=bootstrap_path,
+    )
+    verification = _verify_profile(
+        Path(io_paths["databases"]["control"]),
+        read_only=True,
+    )
+    identity = _database_identity(Path(io_paths["databases"]["control"]))
+    owner_identity = source_status["owner_identity"]
+    assert isinstance(owner_identity, Mapping)
+    if (
+        verification.get("schema_fingerprint")
+        != observed_provenance.get("schema_fingerprint")
+        or verification.get("catalog_fingerprint")
+        != observed_provenance.get("catalog_fingerprint")
+        or identity.get("database_uuid")
+        != observed_provenance.get("database_uuid")
+        or identity.get("schema_fingerprint")
+        != observed_provenance.get("schema_fingerprint")
+        or not _owner_schema_fingerprint_matches_canonical_cid(
+            owner_identity.get("schema_fingerprint"),
+            identity.get("schema_fingerprint"),
+        )
+    ):
+        raise SuccessorOperatorError(
+            "failed-start recovery database identity differs from provenance"
+        )
+    if raw_anchors is None:
+        superseded = _capture_failed_start_superseded_admission(
+            paths,
+            io_paths=io_paths,
+            provenance=observed_provenance,
+        )
+        owner_stop = None
+        anchors = None
+    else:
+        assert isinstance(raw_anchors, Mapping)
+        superseded = _validate_failed_start_superseded_admission_snapshot(
+            paths,
+            raw_anchors.get("superseded_restart_admission"),
+            provenance=observed_provenance,
+        )
+        _observe_failed_start_superseded_admission(
+            paths,
+            io_paths=io_paths,
+            provenance=observed_provenance,
+            expected_snapshot=superseded,
+        )
+        owner_stop = (
+            _validate_failed_start_owner_stop_receipt(
+                source_status,
+                owner_stop_raw,
+            )
+            if authorization_mode == FAILED_START_TRUSTED_FINALLY_MODE
+            else None
+        )
+        anchors = _validate_failed_start_recovery_anchors(
+            paths,
+            durable_status,
+            provenance=observed_provenance,
+            final_continuity=final_continuity,
+            databases=databases,
+            owner_status_sha256=owner_status_sha256,
+            bootstrap_sha256=bootstrap_sha256,
+            require_dead=_require_dead_controller_tree,
+        )
+    reviewed_pins = _failed_start_recovery_reviewed_pins(
+        failed_status=source_status,
+        provenance=observed_provenance,
+        failed_start_reason=selected_reason,
+        final_continuity=final_continuity,
+        databases=databases,
+        owner_status_sha256=owner_status_sha256,
+        bootstrap_sha256=bootstrap_sha256,
+        superseded_restart_admission=superseded,
+        recovery_authorization_mode=authorization_mode,
+        owner_stop_receipt=owner_stop,
+    )
+    preflight_cid = _failed_start_preflight_cid(reviewed_pins)
+    if anchors is not None and anchors.get("recovery_preflight_cid") != preflight_cid:
+        raise SuccessorOperatorError(
+            "durable failed-start preflight binding differs"
+        )
+    report: dict[str, Any] = {
+        "schema": FAILED_START_RECOVERY_PREFLIGHT_SCHEMA,
+        "operation": FAILED_START_RECOVERY_OPERATION,
+        "observed_at": _utc_now(),
+        "reviewed_pins": reviewed_pins,
+        "preflight_cid": preflight_cid,
+        "durable_failed_start_anchors_present": anchors is not None,
+        "generic_recovery_authorized": anchors is not None,
+        "legacy_explicit_review_required": anchors is None,
+        "controller_lock_held": True,
+        "live_wal_absent": True,
+        "restart_authority": False,
+        "authoritative": False,
+        "scheduling_authority": False,
+        "completion_authority": False,
+        "production_authorized": False,
+    }
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    source_changed = (
+        _observe_stopped_projection_source_continuity(
+            root,
+            final_continuity,
+            minimum_remote_head=str(observed_source["resolved_remote_head"]),
+        )
+        != observed_source
+        if anchors is not None
+        else _observe_candidate_runtime_continuity(
+            root,
+            require_resolved_remote=False,
+        )
+        != final_continuity
+    )
+    if (
+        _stopped_recovery_generation_inventory(paths, lock_custody)
+        != generation_inventory
+        or _load_lgcvf_live_raw_provenance_receipt(
+            paths,
+            _receipt_path=Path(io_paths["provenance"]),
+        )
+        != observed_provenance
+        or _strict_json(
+            Path(io_paths["controller_status"]),
+            expected_schema=CONTROLLER_STATUS_SCHEMA,
+            require_private_owner=True,
+        )
+        != durable_status
+        or _stopped_state_database_digests(
+            paths,
+            _database_paths=io_paths["databases"],
+        )
+        != databases
+        or _stopped_owner_status_sha256(
+            paths,
+            controller_status=source_status,
+            _status_path=Path(io_paths["owner_status"]),
+            _marker_path=Path(io_paths["owner_marker"]),
+        )
+        != owner_status_sha256
+        or _sha256_regular_file(
+            bootstrap_path,
+            max_bytes=MAX_JSON_BYTES,
+            noun="failed-start recovery bootstrap receipt",
+            require_private_owner=True,
+        )
+        != bootstrap_sha256
+        or (
+            _capture_failed_start_superseded_admission(
+                paths,
+                io_paths=io_paths,
+                provenance=observed_provenance,
+            )
+            != superseded
+            if anchors is None
+            else _observe_failed_start_superseded_admission(
+                paths,
+                io_paths=io_paths,
+                provenance=observed_provenance,
+                expected_snapshot=superseded,
+            )
+            not in {"absent", "consumed", "archived"}
+        )
+        or source_changed
+    ):
+        raise SuccessorOperatorError(
+            "failed-start recovery evidence changed during preflight"
+        )
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    return report
+
+
 def _write_stopped_state_continuity(
     paths: Mapping[str, Path],
     *,
@@ -7367,6 +8439,437 @@ def _write_stopped_state_continuity(
         receipt,
         replace=False,
     )
+    return receipt
+
+
+def _reviewed_failed_start_anchors_from_preflight(
+    preflight: Mapping[str, Any],
+) -> dict[str, Any]:
+    pins = preflight.get("reviewed_pins")
+    if not isinstance(pins, Mapping):
+        raise SuccessorOperatorError(
+            "reviewed failed-start preflight pins are unavailable"
+        )
+    if (
+        preflight.get("schema") != FAILED_START_RECOVERY_PREFLIGHT_SCHEMA
+        or preflight.get("operation") != FAILED_START_RECOVERY_OPERATION
+        or preflight.get("legacy_explicit_review_required") is not True
+        or pins.get("recovery_authorization_mode")
+        != FAILED_START_REVIEWED_LEGACY_MODE
+        or pins.get("owner_stop_receipt") is not None
+        or preflight.get("preflight_cid")
+        != _failed_start_preflight_cid(pins)
+    ):
+        raise SuccessorOperatorError(
+            "reviewed failed-start preflight semantics differ"
+        )
+    anchors: dict[str, Any] = {
+        "schema": FAILED_START_RECOVERY_ANCHORS_SCHEMA,
+        "captured_at": _utc_now(),
+        "target_generation": pins["target_generation"],
+        "source_provenance_cid": pins["source_provenance_cid"],
+        "source_controller_status_cid": pins["controller_status_cid"],
+        "failed_start_reason": pins["failed_start_reason"],
+        "final_source_continuity": pins["source_continuity"],
+        "databases": pins["databases"],
+        "owner_status_sha256": pins["owner_status_sha256"],
+        "bootstrap_sha256": pins["bootstrap_sha256"],
+        "superseded_restart_admission": pins[
+            "superseded_restart_admission"
+        ],
+        "recovery_authorization_mode": FAILED_START_REVIEWED_LEGACY_MODE,
+        "owner_stop_receipt": None,
+        "recovery_preflight_cid": preflight["preflight_cid"],
+    }
+    anchors["anchors_cid"] = _content_id(anchors)
+    return anchors
+
+
+def _validate_failed_start_stop_evidence(
+    receipt: Mapping[str, Any],
+    *,
+    failed_status: Mapping[str, Any],
+    anchors: Mapping[str, Any],
+) -> None:
+    evidence = receipt.get("stop_evidence")
+    if not isinstance(evidence, Mapping):
+        raise SuccessorOperatorError("failed-start stop evidence is malformed")
+    superseded = anchors.get("superseded_restart_admission")
+    superseded_receipt = (
+        superseded.get("receipt") if isinstance(superseded, Mapping) else None
+    )
+    superseded_cid = (
+        str(superseded_receipt.get("receipt_cid") or "")
+        if isinstance(superseded_receipt, Mapping)
+        else ""
+    )
+    common_valid = (
+        evidence.get("failed_start_reason")
+        == anchors.get("failed_start_reason")
+        and evidence.get("durable_failed_start_anchors_cid")
+        == anchors.get("anchors_cid")
+        and evidence.get("superseded_restart_receipt_cid")
+        == superseded_cid
+        and evidence.get("historical_owner_receipts_reconstructed") is False
+    )
+    mode = evidence.get("mode")
+    if mode == FAILED_START_LIVE_OWNER_EVIDENCE_MODE:
+        if (
+            set(evidence)
+            != {
+                "mode",
+                "failed_start_reason",
+                "owner_stop",
+                "durable_failed_start_anchors_cid",
+                "superseded_restart_receipt_cid",
+                "historical_owner_receipts_reconstructed",
+            }
+            or not common_valid
+            or anchors.get("recovery_authorization_mode")
+            != FAILED_START_TRUSTED_FINALLY_MODE
+            or evidence.get("owner_stop")
+            != _validate_failed_start_owner_stop_receipt(
+                failed_status,
+                anchors.get("owner_stop_receipt"),
+            )
+        ):
+            raise SuccessorOperatorError(
+                "trusted failed-start stop evidence differs"
+            )
+        return
+    if mode == FAILED_START_REVIEWED_EVIDENCE_MODE:
+        recovered_at = evidence.get("recovered_at")
+        if (
+            set(evidence)
+            != {
+                "mode",
+                "recovered_at",
+                "failed_start_reason",
+                "source_controller_status_cid",
+                "recovery_preflight_cid",
+                "durable_failed_start_anchors_cid",
+                "superseded_restart_receipt_cid",
+                "historical_owner_receipts_reconstructed",
+            }
+            or not common_valid
+            or anchors.get("recovery_authorization_mode")
+            != FAILED_START_REVIEWED_LEGACY_MODE
+            or anchors.get("owner_stop_receipt") is not None
+            or type(recovered_at) is not str
+            or recovered_at != receipt.get("issued_at")
+            or evidence.get("source_controller_status_cid")
+            != anchors.get("source_controller_status_cid")
+            or evidence.get("recovery_preflight_cid")
+            != anchors.get("recovery_preflight_cid")
+        ):
+            raise SuccessorOperatorError(
+                "reviewed failed-start stop evidence differs"
+            )
+        return
+    raise SuccessorOperatorError("failed-start stop evidence mode differs")
+
+
+def _build_failed_start_continuity_receipt(
+    paths: Mapping[str, Path],
+    *,
+    failed_status: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    preflight: Mapping[str, Any],
+) -> dict[str, Any]:
+    pins = preflight.get("reviewed_pins")
+    anchors = failed_status.get("failed_start_recovery_anchors")
+    if not isinstance(pins, Mapping) or not isinstance(anchors, Mapping):
+        raise SuccessorOperatorError(
+            "failed-start receipt lacks durable reviewed pins"
+        )
+    issued_at = _utc_now()
+    superseded = anchors.get("superseded_restart_admission")
+    superseded_receipt = (
+        superseded.get("receipt") if isinstance(superseded, Mapping) else None
+    )
+    superseded_cid = (
+        str(superseded_receipt.get("receipt_cid") or "")
+        if isinstance(superseded_receipt, Mapping)
+        else ""
+    )
+    authorization_mode = anchors.get("recovery_authorization_mode")
+    if authorization_mode == FAILED_START_TRUSTED_FINALLY_MODE:
+        stop_evidence: dict[str, Any] = {
+            "mode": FAILED_START_LIVE_OWNER_EVIDENCE_MODE,
+            "failed_start_reason": anchors["failed_start_reason"],
+            "owner_stop": anchors["owner_stop_receipt"],
+            "durable_failed_start_anchors_cid": anchors["anchors_cid"],
+            "superseded_restart_receipt_cid": superseded_cid,
+            "historical_owner_receipts_reconstructed": False,
+        }
+    elif authorization_mode == FAILED_START_REVIEWED_LEGACY_MODE:
+        stop_evidence = {
+            "mode": FAILED_START_REVIEWED_EVIDENCE_MODE,
+            "recovered_at": issued_at,
+            "failed_start_reason": anchors["failed_start_reason"],
+            "source_controller_status_cid": anchors[
+                "source_controller_status_cid"
+            ],
+            "recovery_preflight_cid": anchors["recovery_preflight_cid"],
+            "durable_failed_start_anchors_cid": anchors["anchors_cid"],
+            "superseded_restart_receipt_cid": superseded_cid,
+            "historical_owner_receipts_reconstructed": False,
+        }
+    else:
+        raise SuccessorOperatorError(
+            "failed-start receipt authorization mode differs"
+        )
+    receipt: dict[str, Any] = {
+        "schema": STOPPED_STATE_CONTINUITY_SCHEMA,
+        "issued_at": issued_at,
+        "admission_mode": FAILED_START_CONTINUITY_ADMISSION_MODE,
+        "target_generation": SUCCESSOR_STORE_GENERATION,
+        "source_provenance_cid": provenance["receipt_cid"],
+        "controller_status_cid": failed_status["status_cid"],
+        "stop_evidence": stop_evidence,
+        "owner_status_sha256": pins["owner_status_sha256"],
+        "final_source_continuity": pins["source_continuity"],
+        "databases": pins["databases"],
+        "controller_lock_held_at_issue": True,
+        "live_wal_absent": True,
+        "requires_stopped_checkpoint": False,
+        "projection_only": False,
+        "same_generation_restart_only": True,
+        "restart_authority": True,
+        "authoritative": False,
+        "scheduling_authority": False,
+        "completion_authority": False,
+        "read_by_scheduler": False,
+        "quack_endpoint_served": False,
+        "production_authorized": False,
+    }
+    receipt["receipt_cid"] = _content_id(receipt)
+    _validate_stopped_continuity_receipt_shape(
+        paths,
+        receipt,
+        provenance=provenance,
+        controller_status_cid=str(failed_status["status_cid"]),
+    )
+    _validate_failed_start_stop_evidence(
+        receipt,
+        failed_status=failed_status,
+        anchors=anchors,
+    )
+    return receipt
+
+
+def _complete_interrupted_failed_start_publication(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    _require_dead_controller_tree: bool = True,
+) -> dict[str, Any] | None:
+    """Bind a fully replayed failed-start receipt after an interrupted write."""
+
+    io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+    receipt = _strict_json(
+        Path(io_paths["stopped_state_continuity"]),
+        expected_schema=STOPPED_STATE_CONTINUITY_SCHEMA,
+        require_private_owner=True,
+    )
+    if receipt.get("admission_mode") != FAILED_START_CONTINUITY_ADMISSION_MODE:
+        return None
+    status = _strict_json(
+        Path(io_paths["controller_status"]),
+        expected_schema=CONTROLLER_STATUS_SCHEMA,
+        require_private_owner=True,
+    )
+    linked_receipt = status.get("stopped_state_continuity_receipt_cid")
+    linked_status = status.get("stopped_state_continuity_status_cid")
+    if linked_receipt is not None or linked_status is not None:
+        if (
+            linked_receipt == receipt.get("receipt_cid")
+            and linked_status == receipt.get("controller_status_cid")
+        ):
+            return None
+        raise SuccessorOperatorError(
+            "existing failed-start publication binding differs"
+        )
+    _validate_stopped_continuity_receipt_shape(
+        paths,
+        receipt,
+        provenance=provenance,
+        controller_status_cid=str(status.get("status_cid") or ""),
+    )
+    preflight = _failed_start_recovery_preflight_locked(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+        provenance=provenance,
+        _allow_continuity_receipt=True,
+        _require_dead_controller_tree=_require_dead_controller_tree,
+    )
+    expected = _build_failed_start_continuity_receipt(
+        paths,
+        failed_status=status,
+        provenance=provenance,
+        preflight=preflight,
+    )
+    # issued_at is the sole fresh field; replay the stored value before compare.
+    expected["issued_at"] = receipt.get("issued_at")
+    evidence = dict(expected["stop_evidence"])
+    if evidence.get("mode") == FAILED_START_REVIEWED_EVIDENCE_MODE:
+        evidence["recovered_at"] = receipt.get("issued_at")
+    expected["stop_evidence"] = evidence
+    expected["receipt_cid"] = _content_id(
+        {name: value for name, value in expected.items() if name != "receipt_cid"}
+    )
+    if expected != receipt:
+        raise SuccessorOperatorError(
+            "interrupted failed-start continuity receipt differs"
+        )
+    anchors = status.get("failed_start_recovery_anchors")
+    assert isinstance(anchors, Mapping)
+    _validate_failed_start_stop_evidence(
+        receipt,
+        failed_status=status,
+        anchors=anchors,
+    )
+    bound = _bind_stopped_state_continuity_status(status, receipt)
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    _write_status(Path(io_paths["controller_status"]), bound)
+    return receipt
+
+
+def _recover_interrupted_failed_start_continuity(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    reviewed_preflight_cid: str = "",
+    failed_start_reason: str = "",
+    _require_dead_controller_tree: bool = True,
+) -> dict[str, Any] | None:
+    """Publish only anchored current failed-start bytes as new authority."""
+
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+    if os.path.lexists(io_paths["stopped_state_continuity"]):
+        return _complete_interrupted_failed_start_publication(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+            provenance=provenance,
+            _require_dead_controller_tree=_require_dead_controller_tree,
+        )
+    status = _strict_json(
+        Path(io_paths["controller_status"]),
+        expected_schema=CONTROLLER_STATUS_SCHEMA,
+        require_private_owner=True,
+    )
+    if status.get("error") != FAILED_START_STATUS_ERROR:
+        return None
+    if any(
+        name in status
+        for name in (
+            "stopped_state_continuity_receipt_cid",
+            "stopped_state_continuity_status_cid",
+        )
+    ):
+        raise SuccessorOperatorError(
+            "failed-start status is already continuity-bound without a receipt"
+        )
+    if "failed_start_recovery_anchors" not in status:
+        preflight = _failed_start_recovery_preflight_locked(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+            provenance=provenance,
+            failed_start_reason=failed_start_reason,
+            _require_dead_controller_tree=_require_dead_controller_tree,
+        )
+        expected_cid = str(preflight["preflight_cid"])
+        if reviewed_preflight_cid != expected_cid:
+            raise SuccessorOperatorError(
+                "unanchored failed-start status requires an explicitly reviewed "
+                "failed-start recovery preflight CID"
+            )
+        pins = preflight["reviewed_pins"]
+        assert isinstance(pins, Mapping)
+        if pins.get("controller_status") != status:
+            raise SuccessorOperatorError(
+                "reviewed failed-start controller status changed"
+            )
+        anchors = _reviewed_failed_start_anchors_from_preflight(preflight)
+        status = _bind_failed_start_recovery_anchors_status(status, anchors)
+        _revalidate_generation_bound_controller_lock(paths, lock_custody)
+        _write_status(Path(io_paths["controller_status"]), status)
+        if _strict_json(
+            Path(io_paths["controller_status"]),
+            expected_schema=CONTROLLER_STATUS_SCHEMA,
+            require_private_owner=True,
+        ) != status:
+            raise SuccessorOperatorError(
+                "failed-start anchored status changed during publication"
+            )
+    preflight = _failed_start_recovery_preflight_locked(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+        provenance=provenance,
+        failed_start_reason=failed_start_reason,
+        _require_dead_controller_tree=_require_dead_controller_tree,
+    )
+    pins = preflight["reviewed_pins"]
+    assert isinstance(pins, Mapping)
+    anchors = status.get("failed_start_recovery_anchors")
+    if (
+        preflight.get("generic_recovery_authorized") is not True
+        or not isinstance(anchors, Mapping)
+        or pins.get("controller_status_cid")
+        != anchors.get("source_controller_status_cid")
+    ):
+        raise SuccessorOperatorError(
+            "failed-start durable recovery admission differs"
+        )
+    _archive_failed_start_superseded_admission(
+        paths,
+        io_paths=io_paths,
+        provenance=provenance,
+        expected_snapshot=anchors.get("superseded_restart_admission"),
+    )
+    repeated = _failed_start_recovery_preflight_locked(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+        provenance=provenance,
+        failed_start_reason=failed_start_reason,
+        _require_dead_controller_tree=_require_dead_controller_tree,
+    )
+    if repeated.get("preflight_cid") != preflight.get("preflight_cid"):
+        raise SuccessorOperatorError(
+            "failed-start evidence changed during receipt admission"
+        )
+    receipt = _build_failed_start_continuity_receipt(
+        paths,
+        failed_status=status,
+        provenance=provenance,
+        preflight=repeated,
+    )
+    _atomic_json(
+        Path(io_paths["stopped_state_continuity"]),
+        receipt,
+        replace=False,
+    )
+    completed = _complete_interrupted_failed_start_publication(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+        provenance=provenance,
+        _require_dead_controller_tree=_require_dead_controller_tree,
+    )
+    if completed != receipt:
+        raise SuccessorOperatorError(
+            "failed-start recovery publication completion differs"
+        )
     return receipt
 
 
@@ -7709,11 +9212,24 @@ def _bind_stopped_state_continuity_status(
 ) -> dict[str, Any]:
     """Cross-bind an immutable continuity receipt into the final status."""
 
+    admission_mode = continuity.get("admission_mode")
+    expected_error = (
+        ""
+        if admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        else FAILED_START_STATUS_ERROR
+        if admission_mode == FAILED_START_CONTINUITY_ADMISSION_MODE
+        else None
+    )
     if (
         stopped_status.get("status_cid")
         != continuity.get("controller_status_cid")
         or stopped_status.get("lifecycle") != "stopped"
-        or stopped_status.get("error") != ""
+        or expected_error is None
+        or stopped_status.get("error") != expected_error
+        or (
+            admission_mode == FAILED_START_CONTINUITY_ADMISSION_MODE
+            and "failed_start_recovery_anchors" not in stopped_status
+        )
         or continuity.get("receipt_cid") != _content_id(
             {
                 name: value
@@ -9069,9 +10585,18 @@ def _run_locked_successor(
         )
         stopped_restart = (
             stopped_status_probe.get("lifecycle") == "stopped"
-            and stopped_status_probe.get("error") == ""
-            and type(stopped_status_probe.get("scheduler_returncode")) is int
-            and stopped_status_probe.get("scheduler_returncode") == 0
+            and (
+                (
+                    stopped_status_probe.get("error") == ""
+                    and type(
+                        stopped_status_probe.get("scheduler_returncode")
+                    )
+                    is int
+                    and stopped_status_probe.get("scheduler_returncode") == 0
+                )
+                or stopped_status_probe.get("error")
+                == FAILED_START_STATUS_ERROR
+            )
         )
     live_launch = _prepare_lgcvf_configured_board_live_launch(
         root=root,
@@ -9145,14 +10670,46 @@ def _run_locked_successor(
         # Existing receipts remain exact-source authority: later maintenance
         # descendants require a separately reviewed stop/reseal admission.
         revalidate_runtime_generation()
-        _restore_or_retire_stopped_restart_admission(receipt_io_paths)
-        if _lock_custody is not None:
-            _recover_interrupted_stopped_state_continuity(
-                paths,
-                root=root,
-                lock_custody=_lock_custody,
-                provenance=raw_provenance,
+        recovery_status = (
+            _strict_json(
+                Path(recovery_io_paths["controller_status"]),
+                expected_schema=CONTROLLER_STATUS_SCHEMA,
+                require_private_owner=True,
             )
+            if os.path.lexists(recovery_io_paths["controller_status"])
+            else {}
+        )
+        failed_status_unbound = (
+            recovery_status.get("error") == FAILED_START_STATUS_ERROR
+            and "stopped_state_continuity_receipt_cid" not in recovery_status
+            and "stopped_state_continuity_status_cid" not in recovery_status
+        )
+        if _lock_custody is not None:
+            if failed_status_unbound:
+                _recover_interrupted_failed_start_continuity(
+                    paths,
+                    root=root,
+                    lock_custody=_lock_custody,
+                    provenance=raw_provenance,
+                )
+            else:
+                _restore_or_retire_stopped_restart_admission(receipt_io_paths)
+                if recovery_status.get("error") == FAILED_START_STATUS_ERROR:
+                    _recover_interrupted_failed_start_continuity(
+                        paths,
+                        root=root,
+                        lock_custody=_lock_custody,
+                        provenance=raw_provenance,
+                    )
+                else:
+                    _recover_interrupted_stopped_state_continuity(
+                        paths,
+                        root=root,
+                        lock_custody=_lock_custody,
+                        provenance=raw_provenance,
+                    )
+        else:
+            _restore_or_retire_stopped_restart_admission(receipt_io_paths)
         if stopped_restart and not os.path.lexists(
             recovery_io_paths["stopped_state_continuity"]
         ):
@@ -9382,6 +10939,7 @@ def _run_locked_successor(
         scheduler_birth: Any | None = None
         stop_requested = False
         clean_runtime_shutdown = False
+        ready_status_published = False
         prior_handlers: dict[int, Any] = {}
 
         def request_stop(_signum: int, _frame: Any) -> None:
@@ -9468,6 +11026,7 @@ def _run_locked_successor(
             )
             revalidate_runtime_generation()
             _write_status(paths["controller_status"], ready_status, token=token)
+            ready_status_published = True
             started = time.monotonic()
             pump_error = ""
             while scheduler.poll() is None and not stop_requested:
@@ -9512,6 +11071,7 @@ def _run_locked_successor(
                 )
             clean_runtime_shutdown = True
         finally:
+            active_runtime_failure = sys.exc_info()[1]
             for signum, handler in prior_handlers.items():
                 signal.signal(signum, handler)
             if (
@@ -9573,13 +11133,90 @@ def _run_locked_successor(
                 error=stopped_error,
                 projection_root=paths["projection_root"],
             )
-            if stopped_error:
+            failed_start_reason = (
+                _failed_start_reason_from_exception(active_runtime_failure)
+                if not ready_status_published
+                else ""
+            )
+            eligible_failed_start = (
+                stopped_error == FAILED_START_STATUS_ERROR
+                and failed_start_reason in FAILED_START_TRUSTED_RECOVERY_REASONS
+                and not ready_status_published
+                and not credential_leak
+                and stop_receipt.get("stopped") is True
+                and scheduler_birth is not None
+                and type(scheduler_returncode) is int
+                and _lock_custody is not None
+            )
+            if stopped_error and not eligible_failed_start:
                 revalidate_runtime_generation()
                 _write_status(
                     Path(recovery_io_paths["controller_status"]),
                     stopped,
                     token=token,
                 )
+            elif eligible_failed_start:
+                anchored_status_written = False
+                try:
+                    _restore_lgcvf_stopped_candidate_import_boundary(
+                        root=root,
+                        sealed_import_roots=sealed_import_roots,
+                    )
+                    failed_anchors = _capture_failed_start_recovery_anchors(
+                        paths,
+                        root=root,
+                        failed_status=stopped,
+                        provenance=provenance,
+                        failed_start_reason=failed_start_reason,
+                        owner_stop=stop_receipt,
+                        io_paths=recovery_io_paths,
+                        lock_custody=_lock_custody,
+                    )
+                    stopped = _bind_failed_start_recovery_anchors_status(
+                        stopped,
+                        failed_anchors,
+                    )
+                    # Prior consumed authority remains untouched until this
+                    # current-byte anchor is durable and has been reread.
+                    revalidate_runtime_generation()
+                    _write_status(
+                        Path(recovery_io_paths["controller_status"]),
+                        stopped,
+                        token=token,
+                    )
+                    if _strict_json(
+                        Path(recovery_io_paths["controller_status"]),
+                        expected_schema=CONTROLLER_STATUS_SCHEMA,
+                        require_private_owner=True,
+                    ) != stopped:
+                        raise SuccessorOperatorError(
+                            "failed-start durable anchor status changed"
+                        )
+                    anchored_status_written = True
+                    assert _lock_custody is not None
+                    failed_continuity = (
+                        _recover_interrupted_failed_start_continuity(
+                            paths,
+                            root=root,
+                            lock_custody=_lock_custody,
+                            provenance=provenance,
+                            failed_start_reason=failed_start_reason,
+                            _require_dead_controller_tree=False,
+                        )
+                    )
+                    if not isinstance(failed_continuity, Mapping):
+                        raise SuccessorOperatorError(
+                            "failed-start finally did not publish continuity"
+                        )
+                except BaseException:
+                    if not anchored_status_written:
+                        revalidate_runtime_generation()
+                        _write_status(
+                            Path(recovery_io_paths["controller_status"]),
+                            stopped,
+                            token=token,
+                        )
+                    raise
             else:
                 _restore_lgcvf_stopped_candidate_import_boundary(
                     root=root,
@@ -10128,6 +11765,7 @@ def _load_projection_source_continuity(
     bound_databases: Mapping[str, Path] | None = None
     pinned_generation_inventory: tuple[tuple[Any, ...], ...] | None = None
     pinned_bootstrap_sha256 = ""
+    failed_superseded_snapshot: Mapping[str, Any] | None = None
     if pinned_generation:
         assert lock_custody is not None
         if sealed_projection:
@@ -10248,10 +11886,17 @@ def _load_projection_source_continuity(
         "quack_endpoint_served",
         "production_authorized",
     )
+    admission_mode = receipt.get("admission_mode")
+    expected_checkpoint = (
+        admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+    )
     if (
         set(receipt) != expected_fields
-        or receipt.get("admission_mode")
-        != STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        or admission_mode
+        not in {
+            STOPPED_STATE_CONTINUITY_ADMISSION_MODE,
+            FAILED_START_CONTINUITY_ADMISSION_MODE,
+        }
         or receipt.get("target_generation") != SUCCESSOR_STORE_GENERATION
         or receipt.get("source_provenance_cid") != provenance.get("receipt_cid")
         or type(receipt.get("issued_at")) is not str
@@ -10262,7 +11907,8 @@ def _load_projection_source_continuity(
         is None
         or receipt.get("controller_lock_held_at_issue") is not True
         or receipt.get("live_wal_absent") is not True
-        or receipt.get("requires_stopped_checkpoint") is not True
+        or receipt.get("requires_stopped_checkpoint")
+        is not expected_checkpoint
         or receipt.get("projection_only") is not False
         or receipt.get("same_generation_restart_only") is not True
         or receipt.get("restart_authority") is not True
@@ -10287,6 +11933,12 @@ def _load_projection_source_continuity(
         final_continuity=final_continuity,
         _bootstrap_path=bootstrap_receipt_path,
     )
+    observed_bootstrap_sha256 = _sha256_regular_file(
+        bootstrap_receipt_path,
+        max_bytes=MAX_JSON_BYTES,
+        noun="stopped-state bootstrap receipt",
+        require_private_owner=True,
+    )
 
     status = _strict_json(
         controller_status_path,
@@ -10305,15 +11957,27 @@ def _load_projection_source_continuity(
     owner_identity = anchor_status.get("owner_identity")
     controller_birth_raw = anchor_status.get("controller_birth")
     scheduler_birth_raw = anchor_status.get("scheduler_birth")
+    expected_error = (
+        ""
+        if admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        else FAILED_START_STATUS_ERROR
+    )
+    returncode_valid = (
+        type(anchor_status.get("scheduler_returncode")) is int
+        and (
+            anchor_status.get("scheduler_returncode") == 0
+            if admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+            else -255 <= anchor_status.get("scheduler_returncode") <= 255
+        )
+    )
     if (
         linked_receipt_cid != receipt.get("receipt_cid")
         or linked_status_cid != receipt.get("controller_status_cid")
         or anchor_status.get("status_cid") != linked_status_cid
         or anchor_status.get("lifecycle") != "stopped"
-        or anchor_status.get("error") != ""
+        or anchor_status.get("error") != expected_error
         or anchor_status.get("provenance_cid") != provenance.get("receipt_cid")
-        or type(anchor_status.get("scheduler_returncode")) is not int
-        or anchor_status.get("scheduler_returncode") != 0
+        or not returncode_valid
         or not isinstance(owner_identity, Mapping)
         or not isinstance(controller_birth_raw, Mapping)
         or not isinstance(scheduler_birth_raw, Mapping)
@@ -10329,17 +11993,27 @@ def _load_projection_source_continuity(
         raise SuccessorOperatorError(
             "stopped-state controller status binding differs"
         )
-    _validate_unbound_stopped_controller_status(
-        anchor_status,
-        provenance=provenance,
-    )
+    if admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE:
+        _validate_unbound_stopped_controller_status(
+            anchor_status,
+            provenance=provenance,
+        )
+    else:
+        _validate_unbound_failed_start_controller_status(
+            anchor_status,
+            provenance=provenance,
+            require_dead=True,
+        )
 
     stop_evidence = receipt.get("stop_evidence")
     owner_server_id = str(owner_identity.get("server_id") or "")
     if not isinstance(stop_evidence, Mapping):
         raise SuccessorOperatorError("stopped-state owner evidence differs")
     evidence_mode = stop_evidence.get("mode")
-    if evidence_mode == STOPPED_STATE_LIVE_OWNER_EVIDENCE_MODE:
+    if (
+        admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        and evidence_mode == STOPPED_STATE_LIVE_OWNER_EVIDENCE_MODE
+    ):
         checkpoint = stop_evidence.get("owner_checkpoint")
         stopped = stop_evidence.get("owner_stop")
         if (
@@ -10365,7 +12039,10 @@ def _load_projection_source_continuity(
             or stopped.get("server_id") != owner_server_id
         ):
             raise SuccessorOperatorError("stopped-state owner evidence differs")
-    elif evidence_mode == STOPPED_STATE_RECOVERED_EVIDENCE_MODE:
+    elif (
+        admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        and evidence_mode == STOPPED_STATE_RECOVERED_EVIDENCE_MODE
+    ):
         recovered_at = stop_evidence.get("recovered_at")
         anchors = anchor_status.get("stopped_recovery_anchors")
         anchor_cid = (
@@ -10410,7 +12087,7 @@ def _load_projection_source_continuity(
             raise SuccessorOperatorError(
                 "recovered stopped-state evidence differs"
             )
-    else:
+    elif admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE:
         raise SuccessorOperatorError("stopped-state owner evidence mode differs")
     observed_owner_status_sha256 = _stopped_owner_status_sha256(
         paths,
@@ -10440,21 +12117,55 @@ def _load_projection_source_continuity(
         or dict(databases) != observed_databases
     ):
         raise SuccessorOperatorError("stopped-state database binding differs")
-    anchors = _validate_stopped_recovery_anchors(
-        anchor_status,
-        provenance=provenance,
-        final_continuity=final_continuity,
-        databases=observed_databases,
-        owner_status_sha256=observed_owner_status_sha256,
-    )
+    if admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE:
+        anchors = _validate_stopped_recovery_anchors(
+            anchor_status,
+            provenance=provenance,
+            final_continuity=final_continuity,
+            databases=observed_databases,
+            owner_status_sha256=observed_owner_status_sha256,
+        )
+    else:
+        anchors = _validate_failed_start_recovery_anchors(
+            paths,
+            anchor_status,
+            provenance=provenance,
+            final_continuity=final_continuity,
+            databases=observed_databases,
+            owner_status_sha256=observed_owner_status_sha256,
+            bootstrap_sha256=observed_bootstrap_sha256,
+            require_dead=True,
+        )
+        if anchors is None:
+            raise SuccessorOperatorError(
+                "failed-start receipt lacks durable current-byte anchors"
+            )
+        _validate_failed_start_stop_evidence(
+            receipt,
+            failed_status=anchor_status,
+            anchors=anchors,
+        )
+        failed_superseded_snapshot = anchors.get(
+            "superseded_restart_admission"
+        )
+        _observe_failed_start_superseded_admission(
+            paths,
+            io_paths=_stopped_recovery_io_paths(paths, lock_custody),
+            provenance=provenance,
+            expected_snapshot=failed_superseded_snapshot,
+        )
     if (
-        evidence_mode == STOPPED_STATE_LIVE_OWNER_EVIDENCE_MODE
+        admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        and evidence_mode == STOPPED_STATE_LIVE_OWNER_EVIDENCE_MODE
         and anchors is None
     ):
         raise SuccessorOperatorError(
             "live-owner stopped receipt lacks durable recovery anchors"
         )
-    if evidence_mode == STOPPED_STATE_RECOVERED_EVIDENCE_MODE:
+    if (
+        admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        and evidence_mode == STOPPED_STATE_RECOVERED_EVIDENCE_MODE
+    ):
         reviewed_pins = {
             "target_generation": SUCCESSOR_STORE_GENERATION,
             "controller_status_cid": anchor_status["status_cid"],
@@ -10569,6 +12280,23 @@ def _load_projection_source_continuity(
                 _marker_path=owner_marker_path,
             )
             != observed_owner_status_sha256
+            or (
+                admission_mode == FAILED_START_CONTINUITY_ADMISSION_MODE
+                and _observe_failed_start_superseded_admission(
+                    paths,
+                    io_paths=_stopped_recovery_io_paths(
+                        paths,
+                        lock_custody,
+                    ),
+                    provenance=provenance,
+                    expected_snapshot=failed_superseded_snapshot,
+                )
+                != (
+                    "absent"
+                    if failed_superseded_snapshot is None
+                    else "archived"
+                )
+            )
         ):
             raise SuccessorOperatorError(
                 "pinned stopped-state evidence changed during admission"
@@ -10589,7 +12317,7 @@ def _load_projection_source_continuity(
         "controller_status": status,
         "databases": observed_databases,
         "observed_continuity": observed_continuity,
-        "admission_mode": STOPPED_STATE_CONTINUITY_ADMISSION_MODE,
+        "admission_mode": admission_mode,
     }
 
 
@@ -10611,7 +12339,10 @@ def _load_stopped_restart_admission(
     receipt = admitted.get("receipt")
     if (
         admitted.get("admission_mode")
-        != STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        not in {
+            STOPPED_STATE_CONTINUITY_ADMISSION_MODE,
+            FAILED_START_CONTINUITY_ADMISSION_MODE,
+        }
         or not isinstance(receipt, Mapping)
         or receipt.get("restart_authority") is not True
         or receipt.get("same_generation_restart_only") is not True
@@ -10701,7 +12432,11 @@ def projection_preflight(
             and snapshot_capability.get("available") is True
             and not running
             and source_admitted
-            and source_admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+            and source_admission_mode
+            in {
+                STOPPED_STATE_CONTINUITY_ADMISSION_MODE,
+                FAILED_START_CONTINUITY_ADMISSION_MODE,
+            }
             and not projection_receipt_present
             and not projection_root_present
         ),
@@ -10862,6 +12597,97 @@ def recover_stopped_continuity(
             )
         return {
             "schema": STOPPED_RECOVERY_RESULT_SCHEMA,
+            "recovered": True,
+            "preflight_cid": reviewed,
+            "stopped_state_continuity_receipt_cid": receipt["receipt_cid"],
+            "controller_status_cid": receipt["controller_status_cid"],
+            "target_generation": SUCCESSOR_STORE_GENERATION,
+            "restart_authority": True,
+            "authoritative": False,
+            "scheduling_authority": False,
+            "completion_authority": False,
+            "production_authorized": False,
+        }
+
+
+def failed_start_recovery_preflight(root: Path = ROOT) -> dict[str, Any]:
+    """Report current failed-start pins without creating restart authority."""
+
+    paths = _paths(root)
+    with _exclusive_projection_checkpoint(
+        paths,
+        _read_only_existing_lock=True,
+    ) as lock_custody:
+        io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+        if os.path.lexists(io_paths["stopped_state_continuity"]):
+            raise SuccessorOperatorError(
+                "failed-start continuity is already published"
+            )
+        provenance = _load_lgcvf_live_raw_provenance_receipt(
+            paths,
+            _receipt_path=Path(io_paths["provenance"]),
+        )
+        return _failed_start_recovery_preflight_locked(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+            provenance=provenance,
+        )
+
+
+def recover_failed_start_continuity(
+    root: Path = ROOT,
+    *,
+    reviewed_preflight_cid: str,
+) -> dict[str, Any]:
+    """Publish new current-byte authority after explicit legacy review."""
+
+    reviewed = str(reviewed_preflight_cid or "").strip()
+    if not reviewed:
+        raise SuccessorOperatorError(
+            "reviewed failed-start recovery preflight CID is required"
+        )
+    paths = _paths(root)
+    with _exclusive_projection_checkpoint(paths) as lock_custody:
+        io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+        provenance = _load_lgcvf_live_raw_provenance_receipt(
+            paths,
+            _receipt_path=Path(io_paths["provenance"]),
+        )
+        if not os.path.lexists(io_paths["stopped_state_continuity"]):
+            preflight = _failed_start_recovery_preflight_locked(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+                provenance=provenance,
+            )
+            if preflight.get("preflight_cid") != reviewed:
+                raise SuccessorOperatorError(
+                    "reviewed failed-start recovery preflight CID differs"
+                )
+        receipt = _recover_interrupted_failed_start_continuity(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+            provenance=provenance,
+            reviewed_preflight_cid=reviewed,
+            failed_start_reason=FAILED_START_REASON_LEGACY_UNCLASSIFIED,
+        )
+        if not isinstance(receipt, Mapping):
+            raise SuccessorOperatorError(
+                "reviewed failed-start recovery did not publish continuity"
+            )
+        evidence = receipt.get("stop_evidence")
+        if (
+            not isinstance(evidence, Mapping)
+            or evidence.get("mode") != FAILED_START_REVIEWED_EVIDENCE_MODE
+            or evidence.get("recovery_preflight_cid") != reviewed
+        ):
+            raise SuccessorOperatorError(
+                "reviewed failed-start recovery result binding differs"
+            )
+        return {
+            "schema": FAILED_START_RECOVERY_RESULT_SCHEMA,
             "recovered": True,
             "preflight_cid": reviewed,
             "stopped_state_continuity_receipt_cid": receipt["receipt_cid"],
@@ -11201,21 +13027,47 @@ def _project_ducklake_once_locked(
         raise SuccessorOperatorError(
             "refusing to reuse residual DuckLake projection root"
         )
-    _restore_or_retire_stopped_restart_admission(receipt_io_paths)
     _revalidate_generation_bound_controller_lock(paths, lock_custody)
-    if not os.path.lexists(
-        recovery_io_paths["stopped_state_continuity"]
-    ) and os.path.lexists(recovery_io_paths["controller_status"]):
+    if os.path.lexists(recovery_io_paths["controller_status"]):
         raw_provenance = _load_lgcvf_live_raw_provenance_receipt(
             paths,
             _receipt_path=Path(recovery_io_paths["provenance"]),
         )
-        _recover_interrupted_stopped_state_continuity(
-            paths,
-            root=root,
-            lock_custody=lock_custody,
-            provenance=raw_provenance,
+        recovery_status = _strict_json(
+            Path(recovery_io_paths["controller_status"]),
+            expected_schema=CONTROLLER_STATUS_SCHEMA,
+            require_private_owner=True,
         )
+        failed_unbound = (
+            recovery_status.get("error") == FAILED_START_STATUS_ERROR
+            and "stopped_state_continuity_receipt_cid" not in recovery_status
+            and "stopped_state_continuity_status_cid" not in recovery_status
+        )
+        if failed_unbound:
+            _recover_interrupted_failed_start_continuity(
+                paths,
+                root=root,
+                lock_custody=lock_custody,
+                provenance=raw_provenance,
+            )
+        else:
+            _restore_or_retire_stopped_restart_admission(receipt_io_paths)
+            if recovery_status.get("error") == FAILED_START_STATUS_ERROR:
+                _recover_interrupted_failed_start_continuity(
+                    paths,
+                    root=root,
+                    lock_custody=lock_custody,
+                    provenance=raw_provenance,
+                )
+            elif not os.path.lexists(
+                recovery_io_paths["stopped_state_continuity"]
+            ):
+                _recover_interrupted_stopped_state_continuity(
+                    paths,
+                    root=root,
+                    lock_custody=lock_custody,
+                    provenance=raw_provenance,
+                )
     with _sealed_stopped_database_snapshots(paths, lock_custody) as snapshots:
         continuity = _load_projection_source_continuity(
             paths,
@@ -11225,7 +13077,10 @@ def _project_ducklake_once_locked(
         )
         if (
             continuity.get("admission_mode")
-            != STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+            not in {
+                STOPPED_STATE_CONTINUITY_ADMISSION_MODE,
+                FAILED_START_CONTINUITY_ADMISSION_MODE,
+            }
         ):
             raise SuccessorOperatorError(
                 "DuckLake projection lost typed stopped-state continuity"
@@ -11453,6 +13308,11 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("stopped-recovery-preflight")
     recover = subparsers.add_parser("recover-stopped-continuity")
     recover.add_argument("--reviewed-preflight-cid", required=True)
+    subparsers.add_parser("failed-start-recovery-preflight")
+    recover_failed = subparsers.add_parser(
+        "recover-failed-start-continuity"
+    )
+    recover_failed.add_argument("--reviewed-preflight-cid", required=True)
     subparsers.add_parser("projection-preflight")
     subparsers.add_parser("projection-once")
     return parser
@@ -11494,6 +13354,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = stopped_recovery_preflight(root)
         elif args.command == "recover-stopped-continuity":
             result = recover_stopped_continuity(
+                root,
+                reviewed_preflight_cid=str(args.reviewed_preflight_cid),
+            )
+        elif args.command == "failed-start-recovery-preflight":
+            result = failed_start_recovery_preflight(root)
+        elif args.command == "recover-failed-start-continuity":
+            result = recover_failed_start_continuity(
                 root,
                 reviewed_preflight_cid=str(args.reviewed_preflight_cid),
             )
