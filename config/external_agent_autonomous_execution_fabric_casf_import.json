@@ -7,11 +7,11 @@
   "eaaef_import_overrides": {
     "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": "e2ee7656c1508f847aee738c5aeccf37b0b73701",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "31c918fb5173c992f008ac818810207a97e6a5f9",
-    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "d764defe53d687cbec3761e3cbd367ed277f6889"
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "5c0758e7c7f837e9fe0cd87ce98d834e0547d58f"
   },
   "fresh_signed_plan_r2_authority_required": true,
   "import_mode": "typed_code_only",
-  "manifest_cid": "sha256:af52bf6d6a8ab01df37600933535eb4b6e02c0fc21272b6115c66ae13fa74c31",
+  "manifest_cid": "sha256:4b76556ba00c04da85d78a664de3947b33d17d32799356feac52a1051c9a2358",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-casf-import-manifest@1",
   "sealed_predecessor": "22f657a07ed699ef90466fbdf6a61f908f776c54",
   "sealed_predecessor_tree": "99ddd30a0c653800659d92dd9b47c7c0971f3bf2",
