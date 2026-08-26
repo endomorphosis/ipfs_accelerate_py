@@ -2625,18 +2625,25 @@ def test_projection_query_uses_sealed_bytes_and_rejects_path_swap_restore(
     def open_projection(
         root: Path,
         projection_root: Path,
-        *,
-        logical_projection_root: Path,
     ) -> Plane:
         assert root == tmp_path
         assert str(projection_root).startswith("/proc/self/fd/")
-        assert logical_projection_root == paths["projection_root"]
         return Plane()
 
     monkeypatch.setattr(
         operator,
         "_open_projection_plane",
         open_projection,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_bind_projection_logical_paths",
+        lambda *args, **kwargs: {"aggregate": {"task_count": 1}},
+    )
+    monkeypatch.setattr(
+        operator,
+        "_validate_projection_root_outputs",
+        lambda *args, **kwargs: None,
     )
 
     with operator._exclusive_projection_checkpoint(paths) as lock_custody:
@@ -2757,7 +2764,7 @@ def test_projection_extension_policy_is_load_only_and_never_installs(
         "open_board_control_plane",
         open_projection,
     )
-    projection_root = tmp_path / "projection"
+    projection_root = Path("/proc/self/fd/97")
     assert operator._open_projection_plane(tmp_path, projection_root) is sentinel
     assert observed == {
         "repo_root": tmp_path,
@@ -2785,57 +2792,78 @@ def test_projection_extension_policy_is_load_only_and_never_installs(
     )
 
 
-def test_projection_plane_pins_catalog_but_attaches_logical_lake_paths(
+def test_projection_plane_pins_all_writes_and_reopens_from_logical_paths(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources import (
         board_control_plane as board_module,
     )
 
     operator = _operator()
-    observed: list[tuple[object, ...]] = []
-
-    def original_attach(connection: object, root: Path) -> str:
-        observed.append(("attach", connection, root))
-        return "attached"
-
-    fake_globals: dict[str, object] = {
-        "Path": Path,
-        "_attach_ducklake": original_attach,
-    }
-    exec(
-        "def fake_open(repo_root, *, root=None, timeout_seconds=30.0, "
-        "allow_extension_install=None):\n"
-        "    exact_root = Path(root)\n"
-        "    return {\n"
-        "        'repo_root': repo_root,\n"
-        "        'storage_root': exact_root,\n"
-        "        'allow_extension_install': allow_extension_install,\n"
-        "        'attach': _attach_ducklake('connection', exact_root),\n"
-        "    }\n",
-        fake_globals,
-    )
-    fake_open = fake_globals["fake_open"]
-    monkeypatch.setattr(board_module, "open_board_control_plane", fake_open)
-    monkeypatch.setattr(board_module, "_attach_ducklake", original_attach)
-    descriptor_root = Path("/proc/self/fd/97")
     logical_root = tmp_path / "run-v39" / "ducklake-board-projection"
-
-    result = operator._open_projection_plane(
-        tmp_path,
-        descriptor_root,
-        logical_projection_root=logical_root,
+    logical_root.mkdir(mode=0o700, parents=True)
+    descriptor = os.open(logical_root, os.O_RDONLY | os.O_DIRECTORY)
+    descriptor_root = Path(f"/proc/self/fd/{descriptor}")
+    board_namespace = (
+        "logic-governed-compositional-verification-fabric-history-shadow-v1"
     )
+    tasks = [
+        {
+            "task_id": "LGCVF-080",
+            "status": "todo",
+            "title": "descriptor-bound projection",
+            "depends_on": [],
+            "body": {},
+        }
+    ]
+    try:
+        with operator._open_projection_plane(tmp_path, descriptor_root) as plane:
+            assert plane.backend == "ducklake+quack"
+            assert plane.ducklake_attached is True
+            registration = plane.register_board(
+                board_namespace,
+                source_path="stopped-checkpoint",
+                source_kind="duckdb-stopped-checkpoint-observation",
+                merge_target_branch=(
+                    "agent/logic-governed-compositional-verification-fabric-v1"
+                ),
+                tasks=tasks,
+            )
+            binding = operator._bind_projection_logical_paths(
+                plane,
+                descriptor_root=descriptor_root,
+                logical_root=logical_root,
+                board_namespace=registration["board_namespace"],
+            )
+            assert binding["aggregate"]["board_count"] == 1
+            assert binding["aggregate"]["ducklake_attached"] is True
+            assert binding["logical_board_database"] == str(
+                board_module.board_database_path(
+                    logical_root,
+                    registration["board_namespace"],
+                )
+            )
+    finally:
+        os.close(descriptor)
 
-    assert result == {
-        "repo_root": tmp_path,
-        "storage_root": descriptor_root,
-        "allow_extension_install": False,
-        "attach": "attached",
-    }
-    assert observed == [("attach", "connection", logical_root)]
-    assert board_module._attach_ducklake is original_attach
+    with board_module.open_board_control_plane(
+        tmp_path,
+        root=logical_root,
+        allow_extension_install=False,
+    ) as reopened:
+        aggregate = reopened.aggregate_boards()
+        boards = reopened.list_boards()
+        assert reopened.backend == "ducklake+quack"
+        assert reopened.ducklake_attached is True
+        assert aggregate["board_count"] == 1
+        assert aggregate["ducklake_attached"] is True
+        assert len(boards) == 1
+        assert boards[0]["duckdb_path"] == str(
+            board_module.board_database_path(
+                logical_root,
+                registration["board_namespace"],
+            )
+        )
 
 
 def test_lgcvf_route_sealer_uses_one_temporary_exact_population_grant(

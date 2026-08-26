@@ -8614,7 +8614,13 @@ def _revalidate_projection_root(
 
 def _validate_projection_root_outputs(
     projection_custody: Mapping[str, Any],
+    *,
+    board_namespace: str,
 ) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
+        board_database_path,
+    )
+
     descriptor = int(projection_custody["descriptor"])
     expected = {
         "control.duckdb": "file",
@@ -8641,67 +8647,160 @@ def _validate_projection_root_outputs(
             raise SuccessorOperatorError(
                 "DuckLake projection output inventory differs"
             )
+    for wal_name in ("control.duckdb.wal", "lake.ducklake.wal"):
+        try:
+            os.stat(wal_name, dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise SuccessorOperatorError(
+                "DuckLake projection WAL custody cannot be inspected"
+            ) from exc
+        else:
+            raise SuccessorOperatorError("DuckLake projection retained a live WAL")
+
+    relative_board = board_database_path(Path(), board_namespace)
+    if (
+        relative_board.is_absolute()
+        or len(relative_board.parts) != 2
+        or relative_board.parts[0] != "boards"
+    ):
+        raise SuccessorOperatorError("DuckLake projection board path differs")
+    boards_descriptor = -1
+    try:
+        boards_descriptor = os.open(
+            "boards",
+            os.O_RDONLY
+            | os.O_DIRECTORY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=descriptor,
+        )
+        boards_metadata = os.fstat(boards_descriptor)
+        board_metadata = os.stat(
+            relative_board.name,
+            dir_fd=boards_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            not stat.S_ISDIR(boards_metadata.st_mode)
+            or boards_metadata.st_uid != os.geteuid()
+            or not stat.S_ISREG(board_metadata.st_mode)
+            or board_metadata.st_uid != os.geteuid()
+            or board_metadata.st_nlink != 1
+            or board_metadata.st_size <= 0
+        ):
+            raise SuccessorOperatorError(
+                "DuckLake projection board output custody differs"
+            )
+        try:
+            os.stat(
+                relative_board.name + ".wal",
+                dir_fd=boards_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            pass
+        else:
+            raise SuccessorOperatorError("DuckLake projection retained a live WAL")
+    except SuccessorOperatorError:
+        raise
+    except OSError as exc:
+        raise SuccessorOperatorError(
+            "DuckLake projection board output inventory differs"
+        ) from exc
+    finally:
+        if boards_descriptor >= 0:
+            os.close(boards_descriptor)
 
 
 def _open_projection_plane(
     root: Path,
     projection_root: Path,
-    *,
-    logical_projection_root: Path | None = None,
 ) -> Any:
-    """Open pinned storage while persisting only logical DuckLake paths."""
+    """Open every projection output through one pinned directory."""
 
     from ipfs_accelerate_py.agent_supervisor.task_sources import (
         board_control_plane as board_module,
     )
 
-    if logical_projection_root is None:
-        return board_module.open_board_control_plane(
-            root,
-            root=projection_root,
-            allow_extension_install=False,
-        )
-    descriptor_match = re.fullmatch(
-        r"/proc/self/fd/([1-9][0-9]*)",
-        str(projection_root),
-    )
-    if (
-        descriptor_match is None
-        or not logical_projection_root.is_absolute()
-        or board_module.open_board_control_plane.__closure__ is not None
-    ):
-        raise SuccessorOperatorError(
-            "DuckLake pinned/logical projection binding is unavailable"
-        )
-    exact_descriptor_root = str(projection_root)
-    exact_logical_root = Path(logical_projection_root)
-    original_attach = board_module._attach_ducklake
-
-    def attach_logical_ducklake(connection: Any, observed_root: Path) -> str:
-        if str(observed_root) != exact_descriptor_root:
-            raise SuccessorOperatorError(
-                "DuckLake control catalog escaped its pinned root"
-            )
-        return original_attach(connection, exact_logical_root)
-
-    opener = board_module.open_board_control_plane
-    isolated_globals = dict(opener.__globals__)
-    isolated_globals["_attach_ducklake"] = attach_logical_ducklake
-    isolated_opener = types.FunctionType(
-        opener.__code__,
-        isolated_globals,
-        name=opener.__name__,
-        argdefs=opener.__defaults__,
-        closure=None,
-    )
-    isolated_opener.__kwdefaults__ = (
-        dict(opener.__kwdefaults__) if opener.__kwdefaults__ else None
-    )
-    return isolated_opener(
+    if re.fullmatch(r"/proc/self/fd/([1-9][0-9]*)", str(projection_root)) is None:
+        raise SuccessorOperatorError("DuckLake projection storage is not pinned")
+    return board_module.open_board_control_plane(
         root,
         root=projection_root,
         allow_extension_install=False,
     )
+
+
+def _bind_projection_logical_paths(
+    plane: Any,
+    *,
+    descriptor_root: Path,
+    logical_root: Path,
+    board_namespace: str,
+) -> dict[str, Any]:
+    """Relocate only durable path values after all projection I/O is pinned."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
+        board_database_path,
+    )
+
+    if (
+        re.fullmatch(r"/proc/self/fd/([1-9][0-9]*)", str(descriptor_root)) is None
+        or not logical_root.is_absolute()
+        or str(getattr(plane, "root", "")) != str(descriptor_root)
+        or getattr(plane, "ducklake_attached", False) is not True
+    ):
+        raise SuccessorOperatorError(
+            "DuckLake projection logical-path binding is unavailable"
+        )
+    physical_board = board_database_path(descriptor_root, board_namespace)
+    logical_board = board_database_path(logical_root, board_namespace)
+    connection = plane._conn()
+    changed = connection.execute(
+        "UPDATE board_catalog SET duckdb_path = ? "
+        "WHERE board_namespace = ? AND duckdb_path = ? "
+        "RETURNING duckdb_path",
+        [str(logical_board), board_namespace, str(physical_board)],
+    ).fetchall()
+    if len(changed) != 1 or str(changed[0][0]) != str(logical_board):
+        raise SuccessorOperatorError(
+            "DuckLake projection board logical path differs"
+        )
+
+    aggregate = plane.aggregate_boards()
+    if aggregate.get("ducklake_attached") is not True:
+        raise SuccessorOperatorError(
+            "DuckLake projection could not persist the logical board path"
+        )
+    projected = connection.execute(
+        "SELECT duckdb_path FROM lake.board_catalog "
+        "WHERE board_namespace = ?",
+        [board_namespace],
+    ).fetchall()
+    if len(projected) != 1 or str(projected[0][0]) != str(logical_board):
+        raise SuccessorOperatorError(
+            "DuckLake projection shadow board logical path differs"
+        )
+
+    physical_data = (descriptor_root / "lake-data").as_posix().rstrip("/") + "/"
+    logical_data = (logical_root / "lake-data").as_posix().rstrip("/") + "/"
+    relocated = connection.execute(
+        "UPDATE __ducklake_metadata_lake.ducklake_metadata SET value = ? "
+        "WHERE key = 'data_path' AND value = ? "
+        "AND scope IS NULL AND scope_id IS NULL RETURNING value",
+        [logical_data, physical_data],
+    ).fetchall()
+    if len(relocated) != 1 or str(relocated[0][0]) != logical_data:
+        raise SuccessorOperatorError(
+            "DuckLake projection data logical path differs"
+        )
+    return {
+        "aggregate": aggregate,
+        "logical_board_database": str(logical_board),
+        "logical_data_path": logical_data,
+    }
 
 
 def _project_ducklake_once_locked(
@@ -8714,11 +8813,31 @@ def _project_ducklake_once_locked(
     capability = _extension_preflight()
     if capability.get("available") is not True:
         raise SuccessorOperatorError("DuckLake projection preflight is not valid")
-    if os.path.lexists(paths["projection_receipt"]):
+    bound_projection_receipt = _generation_bound_runtime_path(
+        paths,
+        lock_custody,
+        paths["projection_receipt"],
+    )
+    if os.path.lexists(bound_projection_receipt):
         raise SuccessorOperatorError(
             "refusing to overwrite DuckLake projection receipt"
         )
-    if os.path.lexists(paths["projection_root"]):
+    generation = paths["controller_lock"].parent
+    if paths["projection_root"].parent != generation:
+        raise SuccessorOperatorError("DuckLake projection escaped its generation")
+    try:
+        os.stat(
+            paths["projection_root"].name,
+            dir_fd=int(lock_custody["generation_descriptor"]),
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise SuccessorOperatorError(
+            "DuckLake projection root residue cannot be inspected"
+        ) from exc
+    else:
         raise SuccessorOperatorError(
             "refusing to reuse residual DuckLake projection root"
         )
@@ -8785,10 +8904,12 @@ def _project_ducklake_once_locked(
             )
         projection_custody = _claim_projection_root(paths, lock_custody)
         try:
+            descriptor_projection_root = Path(
+                str(projection_custody["descriptor_path"])
+            )
             with _open_projection_plane(
                 root,
-                Path(str(projection_custody["descriptor_path"])),
-                logical_projection_root=paths["projection_root"],
+                descriptor_projection_root,
             ) as plane:
                 registration = plane.register_board(
                     "logic-governed-compositional-verification-fabric-history-shadow-v1",
@@ -8806,7 +8927,6 @@ def _project_ducklake_once_locked(
                     },
                     tasks=tasks,
                 )
-                aggregate = plane.aggregate_boards()
                 if (
                     plane.backend != "ducklake+quack"
                     or not plane.ducklake_attached
@@ -8814,6 +8934,13 @@ def _project_ducklake_once_locked(
                     raise SuccessorOperatorError(
                         "physical BoardControlPlane did not admit DuckLake + Quack"
                     )
+                logical_paths = _bind_projection_logical_paths(
+                    plane,
+                    descriptor_root=descriptor_projection_root,
+                    logical_root=paths["projection_root"],
+                    board_namespace=registration["board_namespace"],
+                )
+                aggregate = logical_paths["aggregate"]
                 backend = plane.backend
                 extensions = {
                     "quack_loaded": plane.quack_loaded,
@@ -8825,7 +8952,10 @@ def _project_ducklake_once_locked(
                 lock_custody,
                 projection_custody,
             )
-            _validate_projection_root_outputs(projection_custody)
+            _validate_projection_root_outputs(
+                projection_custody,
+                board_namespace=registration["board_namespace"],
+            )
             if (
                 _validate_stopped_database_snapshots(
                     paths,
@@ -8902,6 +9032,10 @@ def _project_ducklake_once_locked(
                 paths,
                 lock_custody,
                 projection_custody,
+            )
+            _validate_projection_root_outputs(
+                projection_custody,
+                board_namespace=registration["board_namespace"],
             )
             if (
                 _validate_stopped_database_snapshots(
