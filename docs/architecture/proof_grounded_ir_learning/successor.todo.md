@@ -281,7 +281,7 @@ evidence.
 
 ## PGIR-206 Re-run R1-R6 on the superseding freeze
 
-- Status: todo
+- Status: completed
 - Completion: supervisor-evidence
 - Is schedulable: true
 - Priority: P0
