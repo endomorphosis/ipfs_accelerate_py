@@ -3025,6 +3025,28 @@ class PlanBoundProcessBirthError(RuntimeError):
         self.all_trees_fenced = bool(all_trees_fenced)
 
 
+class UnadmittedSupervisorProcessBirthError(ProcessIdentityMismatch):
+    """A legacy child remained live after process-birth admission failed."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        process: subprocess.Popen[bytes],
+        profile: LifecycleProfile,
+        track_name: str,
+        marker_path: Path,
+        marker_published: bool,
+    ) -> None:
+        super().__init__(message)
+        self.process = process
+        self.profile = profile
+        self.track_name = str(track_name)
+        self.marker_path = Path(marker_path)
+        self.marker_published = bool(marker_published)
+        self.all_trees_fenced = False
+
+
 def utc_run_stamp() -> str:
     """Return a UTC run stamp suitable for log/pid filenames."""
 
@@ -5487,9 +5509,33 @@ def start_track(
             ProcessIdentityMismatch,
         ) as exc:
             fenced = _reap_uncaptured_owned_popen(process)
-            raise ProcessIdentityMismatch(
+            detail = (
                 "legacy supervisor process birth capture failed "
                 f"(direct_child_fenced={str(fenced).lower()})"
+            )
+            if fenced:
+                raise ProcessIdentityMismatch(detail) from exc
+            setattr(
+                process,
+                "_agent_supervisor_birth_admission_failed",
+                True,
+            )
+            marker_published = False
+            try:
+                resolved.supervisor_pid_path.write_text(
+                    f"{process.pid}\n",
+                    encoding="utf-8",
+                )
+                marker_published = True
+            except OSError:
+                pass
+            raise UnadmittedSupervisorProcessBirthError(
+                detail,
+                process=process,
+                profile=profile,
+                track_name=resolved.name,
+                marker_path=resolved.supervisor_pid_path,
+                marker_published=marker_published,
             ) from exc
         setattr(
             process,
@@ -6665,6 +6711,18 @@ def stop_tracks(
         # monkeypatched implementation still cannot retire a live PID marker.
         if process is not None and process.poll() is None:
             fenced = False
+        if process is not None and bool(
+            getattr(
+                process,
+                "_agent_supervisor_birth_admission_failed",
+                False,
+            )
+        ):
+            fenced = False
+            _emit(
+                output,
+                f"process birth admission remained incomplete for {track.name}",
+            )
         resolved = track.resolve(repo_root) if process is not None else None
         daemon_pid: int | None = None
         daemon_marker_present = False
@@ -8019,6 +8077,17 @@ def run_supervisor_tracks(
             _emit(output, "terminal board drain observed; fencing supervisors")
         else:
             _emit(output, "completed requested run window")
+    except UnadmittedSupervisorProcessBirthError as exc:
+        processes[exc.track_name] = exc.process
+        blocked = str(exc)
+        _emit(
+            output,
+            (
+                f"blocked: {blocked} pid={exc.process.pid} "
+                f"marker_published={str(exc.marker_published).lower()} "
+                "all_trees_fenced=false"
+            ),
+        )
     except PlanBoundProcessBirthError as exc:
         blocked = str(exc)
         _emit(

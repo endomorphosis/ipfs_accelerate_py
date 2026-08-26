@@ -54,6 +54,17 @@ class _ReapableProcess:
         return 0
 
 
+class _UnreapableProcess(_ReapableProcess):
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def wait(self, *, timeout: float) -> int:
+        raise subprocess.TimeoutExpired(cmd=("wrapper",), timeout=timeout)
+
+
 class _ManagedProcess:
     def __init__(
         self,
@@ -288,6 +299,54 @@ def test_legacy_start_track_reaps_unadmitted_birth_before_pid_publication(
     assert process.terminated is True
     assert process.killed is False
     assert not track.supervisor_pid_path.exists()
+
+
+def test_runner_preserves_unreaped_unadmitted_wrapper_as_incomplete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wrapper = tmp_path / "wrapper.py"
+    wrapper.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    track = runner.SupervisorTrack(
+        name="lane-0",
+        script_path=wrapper,
+        log_path=tmp_path / "lane-0.log",
+        supervisor_pid_path=tmp_path / "lane-0.pid",
+        daemon_pid_path=tmp_path / "lane-0-daemon.pid",
+    )
+    process = _UnreapableProcess()
+    messages: list[str] = []
+    monkeypatch.setattr(
+        runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+
+    def fail_capture(
+        _process: subprocess.Popen[bytes],
+        _profile: runner.LifecycleProfile,
+    ) -> runner.ProcessIdentity:
+        raise runner.ProcessIdentityMismatch("deterministic admission failure")
+
+    monkeypatch.setattr(runner, "_capture_owned_popen_birth", fail_capture)
+
+    result = runner.run_supervisor_tracks(
+        (track,),
+        repo_root=tmp_path,
+        common_args=(),
+        duration_seconds=0.01,
+        output=messages.append,
+    )
+
+    assert process.terminated is True
+    assert process.killed is True
+    assert process.poll() is None
+    assert result["completed"] is False
+    assert result["all_trees_fenced"] is False
+    assert result["stopped_count"] == 0
+    assert track.supervisor_pid_path.read_text(encoding="utf-8") == "424242\n"
+    assert any("marker_published=true" in item for item in messages)
+    assert any("process birth admission remained incomplete" in item for item in messages)
 
 
 @pytest.mark.parametrize(
