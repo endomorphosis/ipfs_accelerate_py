@@ -106,6 +106,9 @@ STOPPED_STATE_CONTINUITY_RELATIVE: Final = (
 STOPPED_STATE_RESTART_ADMISSION_RELATIVE: Final = (
     SUCCESSOR_RUN_RELATIVE / "evidence" / "stopped-state-restart-admission.json"
 )
+ABANDONED_OWNER_RECOVERY_EVIDENCE_RELATIVE: Final = (
+    SUCCESSOR_RUN_RELATIVE / "evidence"
+)
 MATERIALIZER_RELATIVE: Final = Path(
     "scripts/materialize_logic_governed_compositional_verification_fabric_control_plane.py"
 )
@@ -280,6 +283,25 @@ FAILED_START_SOURCE_MAINTENANCE_RESULT_SCHEMA: Final = (
 FAILED_START_SOURCE_MAINTENANCE_OPERATION: Final = (
     "reviewed_failed_start_source_maintenance_reseal"
 )
+ABANDONED_OWNER_RECOVERY_PREFLIGHT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-abandoned-owner-recovery-preflight@1"
+)
+ABANDONED_OWNER_RECOVERY_RESULT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-abandoned-owner-recovery-result@1"
+)
+ABANDONED_OWNER_RECOVERY_STATUS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-abandoned-owner-recovery-status@1"
+)
+ABANDONED_OWNER_RECOVERY_INTENT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-abandoned-owner-recovery-intent@1"
+)
+ABANDONED_OWNER_RECOVERY_OPERATION: Final = (
+    "reviewed_abandoned_owner_checkpoint_recovery"
+)
 FAILED_START_TRUSTED_FINALLY_MODE: Final = "trusted_operator_finally"
 FAILED_START_REVIEWED_LEGACY_MODE: Final = "reviewed_legacy_preflight"
 FAILED_START_STATUS_ERROR: Final = "unclean_controller_shutdown"
@@ -295,11 +317,17 @@ FAILED_START_REASON_BOOTSTRAP_TIMEOUT: Final = (
 FAILED_START_REASON_LEGACY_UNCLASSIFIED: Final = (
     "legacy_unclassified_pre_ready_failure"
 )
+FAILED_START_REASON_ABANDONED_OWNER_RECOVERED: Final = (
+    "abandoned_pre_ready_owner_recovered"
+)
+FAILED_START_REASON_OPERATOR_STOP: Final = "operator_stop_before_lane_attach"
 FAILED_START_TRUSTED_RECOVERY_REASONS: Final = frozenset(
     {
         FAILED_START_REASON_SCHEDULER_EXITED,
         FAILED_START_REASON_BOOTSTRAP_FAILED,
         FAILED_START_REASON_BOOTSTRAP_TIMEOUT,
+        FAILED_START_REASON_ABANDONED_OWNER_RECOVERED,
+        FAILED_START_REASON_OPERATOR_STOP,
     }
 )
 FAILED_START_RECOVERY_REASONS: Final = (
@@ -1331,6 +1359,9 @@ def _paths(root: Path = ROOT) -> dict[str, Path]:
         ),
         "stopped_state_restart_admission": _contained(
             root, STOPPED_STATE_RESTART_ADMISSION_RELATIVE
+        ),
+        "abandoned_owner_recovery_evidence": _contained(
+            root, ABANDONED_OWNER_RECOVERY_EVIDENCE_RELATIVE
         ),
     }
     socket_identity = hashlib.sha256(
@@ -6647,8 +6678,38 @@ def _validate_stopped_controller_tree_births(
         return parsed_birth
 
     controller = exact_birth(raw_controller, noun="controller")
-    scheduler = exact_birth(raw_scheduler, noun="scheduler")
     owner = exact_birth(raw_owner, noun="owner")
+    recovery = stopped_status.get("abandoned_owner_recovery")
+    if recovery is not None:
+        if (
+            not isinstance(recovery, Mapping)
+            or set(recovery)
+            != {
+                "schema",
+                "preflight_cid",
+                "abandoned_owner_server_id",
+                "scheduling_attempted",
+            }
+            or recovery.get("schema")
+            != ABANDONED_OWNER_RECOVERY_STATUS_SCHEMA
+            or type(recovery.get("preflight_cid")) is not str
+            or re.fullmatch(
+                r"b[a-z2-7]{20,200}",
+                str(recovery.get("preflight_cid") or ""),
+            )
+            is None
+            or type(recovery.get("abandoned_owner_server_id")) is not str
+            or not str(recovery.get("abandoned_owner_server_id") or "")
+            or recovery.get("scheduling_attempted") is not False
+            or raw_owner != raw_controller
+            or raw_scheduler != {}
+        ):
+            raise SuccessorOperatorError(
+                "stopped-state abandoned owner recovery binding differs"
+            )
+        return controller, owner, owner
+
+    scheduler = exact_birth(raw_scheduler, noun="scheduler")
     if (
         raw_owner != raw_controller
         or raw_scheduler == raw_controller
@@ -6820,6 +6881,8 @@ def _failed_start_reason_from_exception(exc: BaseException | None) -> str:
         return FAILED_START_REASON_SCHEDULER_EXITED
     if message == "lane state-owner bootstrap readiness timed out":
         return FAILED_START_REASON_BOOTSTRAP_TIMEOUT
+    if message == "controller stop requested before all lane daemons attached":
+        return FAILED_START_REASON_OPERATOR_STOP
     prefix = "lane state-owner bootstrap failed closed: "
     detail = message[len(prefix) :] if message.startswith(prefix) else ""
     if (
@@ -6856,11 +6919,13 @@ def _validate_unbound_failed_start_controller_status(
         "ducklake_projection",
         "status_cid",
     }
-    expected_fields = (
-        base_fields | {"failed_start_recovery_anchors"}
-        if "failed_start_recovery_anchors" in failed_status
-        else base_fields
-    )
+    expected_fields = set(base_fields)
+    for optional_field in (
+        "failed_start_recovery_anchors",
+        "abandoned_owner_recovery",
+    ):
+        if optional_field in failed_status:
+            expected_fields.add(optional_field)
     updated_at = failed_status.get("updated_at")
     returncode = failed_status.get("scheduler_returncode")
     projection = failed_status.get("ducklake_projection")
@@ -9689,6 +9754,16 @@ def run_successor(
                 "another successor controller owns the lock"
             ) from exc
         _revalidate_generation_bound_controller_lock(paths, lock_custody)
+        recovered = _automatically_recover_abandoned_owner_locked(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+        )
+        if recovered is not None:
+            raise SuccessorOperatorError(
+                "abandoned state owner recovered; restart the successor "
+                "controller against the new continuity receipt"
+            )
         result = _run_locked_successor(
             config_path,
             root=root,
@@ -10624,6 +10699,12 @@ def _run_locked_successor(
     bootstrap_channel: socket.socket | None = None
     bootstrap_broker: _LgcvfStateOwnerBootstrapBroker | None = None
     previous_extension_environment: dict[str, str | None] = {}
+    stop_requested = False
+    prior_handlers: dict[int, Any] = {}
+
+    def request_stop(_signum: int, _frame: Any) -> None:
+        nonlocal stop_requested
+        stop_requested = True
 
     def stop_owner() -> Mapping[str, Any]:
         nonlocal server
@@ -10650,6 +10731,11 @@ def _run_locked_successor(
                 pass
 
     try:
+        # Receipt custody and owner startup begin before lane bootstrap.  Install
+        # cooperative handlers first so an operator stop cannot bypass the
+        # checkpoint/owner-stop/continuity finally path during that window.
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            prior_handlers[signum] = signal.signal(signum, request_stop)
         launch_home = Path(live_launch["launch_home"])
         extension_environment = {
             "HOME": str(launch_home),
@@ -10958,14 +11044,8 @@ def _run_locked_successor(
         os.chmod(paths["controller_log"], 0o600)
         scheduler: subprocess.Popen[Any] | None = None
         scheduler_birth: Any | None = None
-        stop_requested = False
         clean_runtime_shutdown = False
         ready_status_published = False
-        prior_handlers: dict[int, Any] = {}
-
-        def request_stop(_signum: int, _frame: Any) -> None:
-            nonlocal stop_requested
-            stop_requested = True
 
         try:
             scheduler = subprocess.Popen(
@@ -11009,6 +11089,10 @@ def _run_locked_successor(
             stable_since = 0.0
             while True:
                 revalidate_runtime_generation()
+                if stop_requested:
+                    raise SuccessorOperatorError(
+                        "controller stop requested before all lane daemons attached"
+                    )
                 if scheduler.poll() is not None:
                     raise SuccessorOperatorError(
                         "scheduler exited before all lane daemons attached"
@@ -11035,8 +11119,6 @@ def _run_locked_successor(
                     break
                 server.service_mutation_inbox(max_requests=32)
                 time.sleep(0.01)
-            for signum in (signal.SIGINT, signal.SIGTERM):
-                prior_handlers[signum] = signal.signal(signum, request_stop)
             ready_status = _status_payload(
                 lifecycle="ready",
                 controller_birth=controller_birth.to_dict(),
@@ -11093,8 +11175,6 @@ def _run_locked_successor(
             clean_runtime_shutdown = True
         finally:
             active_runtime_failure = sys.exc_info()[1]
-            for signum, handler in prior_handlers.items():
-                signal.signal(signum, handler)
             if (
                 scheduler is not None
                 and scheduler.poll() is None
@@ -11314,6 +11394,8 @@ def _run_locked_successor(
             else:
                 os.environ[name] = previous
         _close_lgcvf_configured_board_live_launch(live_launch)
+        for signum, handler in prior_handlers.items():
+            signal.signal(signum, handler)
 
 
 def controller_status(root: Path = ROOT) -> dict[str, Any]:
@@ -13027,6 +13109,869 @@ def project_ducklake_once(root: Path = ROOT) -> dict[str, Any]:
         )
 
 
+def _private_regular_stat_pin(path: Path, *, noun: str) -> dict[str, Any]:
+    """Bind one private regular recovery surface without exporting its bytes."""
+
+    try:
+        metadata = os.lstat(path)
+    except OSError as exc:
+        raise SuccessorOperatorError(f"{noun} is unavailable") from exc
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+        or metadata.st_nlink != 1
+    ):
+        raise SuccessorOperatorError(f"{noun} custody is unsafe")
+    return {
+        "path": str(path),
+        "device": int(metadata.st_dev),
+        "inode": int(metadata.st_ino),
+        "mode": stat.S_IMODE(metadata.st_mode),
+        "links": int(metadata.st_nlink),
+        "size": int(metadata.st_size),
+        "mtime_ns": int(metadata.st_mtime_ns),
+        "ctime_ns": int(metadata.st_ctime_ns),
+    }
+
+
+def _require_abandoned_owner_lock_free(database: Path) -> dict[str, Any]:
+    """Prove the stale owner's flock is free without creating or replacing it."""
+
+    lock_path = database.with_name(f".{database.name}.state-owner.lock")
+    pin = _private_regular_stat_pin(
+        lock_path,
+        noun="abandoned state-owner lock",
+    )
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+        os, "O_NOFOLLOW", 0
+    )
+    try:
+        descriptor = os.open(lock_path, flags)
+    except OSError as exc:
+        raise SuccessorOperatorError(
+            "abandoned state-owner lock is unreadable"
+        ) from exc
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise SuccessorOperatorError(
+                "abandoned state-owner lock is still held"
+            ) from exc
+        finally:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            except OSError:
+                pass
+    finally:
+        os.close(descriptor)
+    if _private_regular_stat_pin(
+        lock_path,
+        noun="abandoned state-owner lock",
+    ) != pin:
+        raise SuccessorOperatorError(
+            "abandoned state-owner lock changed during liveness proof"
+        )
+    return pin
+
+
+def _abandoned_owner_wal_pins(
+    paths: Mapping[str, Path],
+    *,
+    database_paths: Mapping[str, Path],
+) -> dict[str, dict[str, Any]]:
+    """Describe, but never read or remove, WALs left by the dead owner tree."""
+
+    logical = _successor_state_databases(paths)
+    if set(database_paths) != set(logical):
+        raise SuccessorOperatorError(
+            "abandoned owner database path custody is incomplete"
+        )
+    pins: dict[str, dict[str, Any]] = {}
+    for name, database in logical.items():
+        actual = Path(database_paths[name])
+        wal = actual.with_name(actual.name + ".wal")
+        if not os.path.lexists(wal):
+            continue
+        pin = _private_regular_stat_pin(
+            wal,
+            noun=f"abandoned {name} database WAL",
+        )
+        pin["path"] = str(database.with_name(database.name + ".wal"))
+        pins[name] = pin
+    return pins
+
+
+def _abandoned_owner_source_observation(
+    root: Path,
+    sealed: Mapping[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Admit an exact source automatically or one reviewed descendant."""
+
+    try:
+        observed = _observe_stopped_projection_source_continuity(root, sealed)
+    except SuccessorOperatorError as exc:
+        if str(exc) != "stopped-state final source continuity differs":
+            raise
+        observed = _observe_failed_start_source_maintenance_descendant(
+            root,
+            sealed,
+        )
+        return "reviewed_descendant", observed
+    return "exact_source", observed
+
+
+def _abandoned_owner_recovery_preflight_locked(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+    provenance: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Pin an owner crash that occurred after restart custody was consumed."""
+
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        OwnerMarker,
+    )
+
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+    generation_inventory = _stopped_recovery_generation_inventory(
+        paths,
+        lock_custody,
+    )
+    reviewed_inventory = [
+        list(item)
+        for item in generation_inventory
+        if item[0] != paths["controller_lock"].name
+    ]
+    observed_provenance = _load_lgcvf_live_raw_provenance_receipt(
+        paths,
+        _receipt_path=Path(io_paths["provenance"]),
+    )
+    if provenance is not None and observed_provenance != dict(provenance):
+        raise SuccessorOperatorError(
+            "abandoned owner recovery provenance changed"
+        )
+    canonical = Path(io_paths["stopped_state_continuity"])
+    admission = Path(io_paths["stopped_state_restart_admission"])
+    canonical_present = os.path.lexists(canonical)
+    admission_present = os.path.lexists(admission)
+    if canonical_present is admission_present:
+        raise SuccessorOperatorError(
+            "abandoned owner recovery requires exactly one restart receipt"
+        )
+    receipt_path = canonical if canonical_present else admission
+    receipt_custody = "published" if canonical_present else "consumed"
+    receipt = _strict_json(
+        receipt_path,
+        expected_schema=STOPPED_STATE_CONTINUITY_SCHEMA,
+        require_private_owner=True,
+    )
+    _validate_stopped_continuity_receipt_shape(
+        paths,
+        receipt,
+        provenance=observed_provenance,
+    )
+    status = _strict_json(
+        Path(io_paths["controller_status"]),
+        expected_schema=CONTROLLER_STATUS_SCHEMA,
+        require_private_owner=True,
+    )
+    source_status = dict(status)
+    source_status.pop("status_cid", None)
+    linked_receipt_cid = source_status.pop(
+        "stopped_state_continuity_receipt_cid",
+        None,
+    )
+    linked_status_cid = source_status.pop(
+        "stopped_state_continuity_status_cid",
+        None,
+    )
+    source_status["status_cid"] = _content_id(source_status)
+    if (
+        linked_receipt_cid != receipt.get("receipt_cid")
+        or linked_status_cid != receipt.get("controller_status_cid")
+        or source_status["status_cid"] != linked_status_cid
+    ):
+        raise SuccessorOperatorError(
+            "abandoned owner restart receipt/status binding differs"
+        )
+    if source_status.get("error") == FAILED_START_STATUS_ERROR:
+        _validate_unbound_failed_start_controller_status(
+            source_status,
+            provenance=observed_provenance,
+            require_dead=True,
+        )
+    elif source_status.get("error") == "":
+        _validate_unbound_stopped_controller_status(
+            source_status,
+            provenance=observed_provenance,
+        )
+    else:
+        raise SuccessorOperatorError(
+            "abandoned owner source status is not restart authority"
+        )
+
+    sealed_source = receipt.get("final_source_continuity")
+    if not isinstance(sealed_source, Mapping):
+        raise SuccessorOperatorError(
+            "abandoned owner source continuity is malformed"
+        )
+    source_mode, observed_source = _abandoned_owner_source_observation(
+        root,
+        sealed_source,
+    )
+
+    owner_status_path = Path(io_paths["owner_status"])
+    owner_status = _strict_json(
+        owner_status_path,
+        expected_schema=QUACK_STATE_SERVER_STATUS_SCHEMA,
+        require_private_owner=True,
+        verify_content_identity=False,
+    )
+    stale_identity = owner_status.get("identity")
+    stale_birth_raw = (
+        stale_identity.get("process_birth")
+        if isinstance(stale_identity, Mapping)
+        else None
+    )
+    try:
+        stale_birth = ProcessBirthIdentity.from_dict(stale_birth_raw)
+    except (TypeError, ValueError) as exc:
+        raise SuccessorOperatorError(
+            "abandoned owner process birth is malformed"
+        ) from exc
+    expected_marker_path = Path(io_paths["owner_marker"])
+    if (
+        not isinstance(stale_identity, Mapping)
+        or stale_birth.to_dict() != stale_birth_raw
+        or stale_identity.get("status") != "ready"
+        or owner_status.get("lifecycle") != "ready"
+        or owner_status.get("database_path")
+        != str(paths["successor_database"])
+        or owner_status.get("state_dir") != str(paths["owner_state"])
+        or owner_status.get("store_id")
+        != SUCCESSOR_DATABASE_RELATIVE.as_posix()
+        or owner_status.get("secret_handle") != SECRET_HANDLE
+        or owner_status.get("owner_marker_path")
+        != str(paths["successor_database"].with_name(
+            ".control.duckdb.state-owner.json"
+        ))
+        or owner_liveness(stale_birth) is not OwnerLiveness.DEAD
+    ):
+        raise SuccessorOperatorError(
+            "abandoned owner ready projection is not exactly dead"
+        )
+
+    marker_payload = _strict_json(
+        expected_marker_path,
+        require_private_owner=True,
+        verify_content_identity=False,
+    )
+    try:
+        marker = OwnerMarker.from_dict(marker_payload)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SuccessorOperatorError(
+            "abandoned owner marker is malformed"
+        ) from exc
+    if (
+        marker.to_dict() != marker_payload
+        or marker.server_id != stale_identity.get("server_id")
+        or marker.process_birth != stale_birth
+        or marker.database_path != str(paths["successor_database"])
+        or owner_liveness(marker.process_birth) is not OwnerLiveness.DEAD
+    ):
+        raise SuccessorOperatorError(
+            "abandoned owner marker binding differs"
+        )
+    marker_pin = _private_regular_stat_pin(
+        expected_marker_path,
+        noun="abandoned state-owner marker",
+    )
+    marker_pin["sha256"] = _sha256_regular_file(
+        expected_marker_path,
+        max_bytes=MAX_JSON_BYTES,
+        noun="abandoned state-owner marker",
+        require_private_owner=True,
+    )
+    owner_lock_pin = _require_abandoned_owner_lock_free(
+        paths["successor_database"]
+    )
+    wal_pins = _abandoned_owner_wal_pins(
+        paths,
+        database_paths=io_paths["databases"],
+    )
+    pins: dict[str, Any] = {
+        "target_generation": SUCCESSOR_STORE_GENERATION,
+        "source_provenance_cid": observed_provenance["receipt_cid"],
+        "receipt_custody": receipt_custody,
+        "stopped_state_continuity_receipt_cid": receipt["receipt_cid"],
+        "stopped_controller_status_cid": status["status_cid"],
+        "source_status_cid": source_status["status_cid"],
+        "source_mode": source_mode,
+        "source_continuity": observed_source,
+        "abandoned_owner_identity": dict(stale_identity),
+        "owner_status_sha256": _sha256_regular_file(
+            owner_status_path,
+            max_bytes=MAX_JSON_BYTES,
+            noun="abandoned owner status",
+            require_private_owner=True,
+        ),
+        "owner_marker": marker_pin,
+        "owner_lock": owner_lock_pin,
+        "wal_surfaces": wal_pins,
+        # Opening mutable controller custody may legitimately update only the
+        # lock inode metadata between read-only review and execution.  Every
+        # state/evidence surface remains pinned here and below.
+        "generation_inventory": reviewed_inventory,
+    }
+    preflight_cid = _content_id(
+        {
+            "schema": ABANDONED_OWNER_RECOVERY_PREFLIGHT_SCHEMA,
+            "operation": ABANDONED_OWNER_RECOVERY_OPERATION,
+            "reviewed_pins": pins,
+        }
+    )
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    if (
+        _stopped_recovery_generation_inventory(paths, lock_custody)
+        != generation_inventory
+        or _load_lgcvf_live_raw_provenance_receipt(
+            paths,
+            _receipt_path=Path(io_paths["provenance"]),
+        )
+        != observed_provenance
+        or _strict_json(
+            receipt_path,
+            expected_schema=STOPPED_STATE_CONTINUITY_SCHEMA,
+            require_private_owner=True,
+        )
+        != receipt
+        or _strict_json(
+            Path(io_paths["controller_status"]),
+            expected_schema=CONTROLLER_STATUS_SCHEMA,
+            require_private_owner=True,
+        )
+        != status
+        or _sha256_regular_file(
+            owner_status_path,
+            max_bytes=MAX_JSON_BYTES,
+            noun="abandoned owner status",
+            require_private_owner=True,
+        )
+        != pins["owner_status_sha256"]
+        or _private_regular_stat_pin(
+            expected_marker_path,
+            noun="abandoned state-owner marker",
+        )
+        != {name: value for name, value in marker_pin.items() if name != "sha256"}
+        or _abandoned_owner_wal_pins(
+            paths,
+            database_paths=io_paths["databases"],
+        )
+        != wal_pins
+    ):
+        raise SuccessorOperatorError(
+            "abandoned owner recovery evidence changed during preflight"
+        )
+    return {
+        "schema": ABANDONED_OWNER_RECOVERY_PREFLIGHT_SCHEMA,
+        "operation": ABANDONED_OWNER_RECOVERY_OPERATION,
+        "observed_at": _utc_now(),
+        "reviewed_pins": pins,
+        "preflight_cid": preflight_cid,
+        "automatic_same_source_recovery": source_mode == "exact_source",
+        "controller_lock_held": True,
+        "owner_lock_held": False,
+        "restart_authority": False,
+        "authoritative": False,
+        "scheduling_authority": False,
+        "completion_authority": False,
+        "production_authorized": False,
+    }
+
+
+def abandoned_owner_recovery_preflight(root: Path = ROOT) -> dict[str, Any]:
+    """Report exact dead-owner/WAL recovery pins without changing custody."""
+
+    paths = _paths(root)
+    with _exclusive_projection_checkpoint(
+        paths,
+        _read_only_existing_lock=True,
+    ) as lock_custody:
+        return _abandoned_owner_recovery_preflight_locked(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+        )
+
+
+def _abandoned_owner_recovery_intent_path(
+    paths: Mapping[str, Path],
+    preflight_cid: str,
+) -> Path:
+    reviewed = str(preflight_cid or "").strip()
+    if re.fullmatch(r"b[a-z2-7]{20,200}", reviewed) is None:
+        raise SuccessorOperatorError(
+            "abandoned owner recovery preflight CID is malformed"
+        )
+    evidence = Path(paths["abandoned_owner_recovery_evidence"])
+    return evidence / f"abandoned-owner-recovery-intent.{reviewed}.json"
+
+
+def _write_abandoned_owner_recovery_intent(
+    paths: Mapping[str, Path],
+    *,
+    preflight: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist reviewed pins before any restart receipt or owner mutation."""
+
+    reviewed = str(preflight.get("preflight_cid") or "")
+    intent_path = _abandoned_owner_recovery_intent_path(paths, reviewed)
+    intent: dict[str, Any] = {
+        "schema": ABANDONED_OWNER_RECOVERY_INTENT_SCHEMA,
+        "issued_at": _utc_now(),
+        "operation": ABANDONED_OWNER_RECOVERY_OPERATION,
+        "preflight_cid": reviewed,
+        "reviewed_pins": dict(preflight.get("reviewed_pins") or {}),
+        "automatic_same_source_recovery": (
+            preflight.get("automatic_same_source_recovery") is True
+        ),
+        "authoritative": False,
+        "scheduling_authority": False,
+        "completion_authority": False,
+        "production_authorized": False,
+    }
+    intent["intent_cid"] = _content_id(intent)
+    if os.path.lexists(intent_path):
+        existing = _strict_json(
+            intent_path,
+            expected_schema=ABANDONED_OWNER_RECOVERY_INTENT_SCHEMA,
+            require_private_owner=True,
+        )
+        repeated = dict(intent)
+        repeated["issued_at"] = existing.get("issued_at")
+        repeated["intent_cid"] = _content_id(
+            {name: value for name, value in repeated.items() if name != "intent_cid"}
+        )
+        if existing != repeated:
+            raise SuccessorOperatorError(
+                "abandoned owner recovery intent differs"
+            )
+        return existing
+    _atomic_json(intent_path, intent, replace=False)
+    if _strict_json(
+        intent_path,
+        expected_schema=ABANDONED_OWNER_RECOVERY_INTENT_SCHEMA,
+        require_private_owner=True,
+    ) != intent:
+        raise SuccessorOperatorError(
+            "abandoned owner recovery intent changed during publication"
+        )
+    return intent
+
+
+def _recover_abandoned_owner_continuity_locked(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+    reviewed_preflight_cid: str,
+    _automatic: bool = False,
+) -> dict[str, Any]:
+    """Replay/checkpoint a dead READY owner, then publish current-byte authority."""
+
+    reviewed = str(reviewed_preflight_cid or "").strip()
+    if not reviewed:
+        raise SuccessorOperatorError(
+            "reviewed abandoned owner recovery preflight CID is required"
+        )
+    preflight = _abandoned_owner_recovery_preflight_locked(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+    )
+    if preflight.get("preflight_cid") != reviewed:
+        raise SuccessorOperatorError(
+            "reviewed abandoned owner recovery preflight CID differs"
+        )
+    if _automatic and preflight.get("automatic_same_source_recovery") is not True:
+        raise SuccessorOperatorError(
+            "abandoned owner source maintenance requires reviewed recovery"
+        )
+    pins = preflight.get("reviewed_pins")
+    if not isinstance(pins, Mapping):
+        raise SuccessorOperatorError(
+            "abandoned owner recovery reviewed pins are malformed"
+        )
+    intent = _write_abandoned_owner_recovery_intent(
+        paths,
+        preflight=preflight,
+    )
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+    receipt_paths = _stopped_receipt_io_view(paths, io_paths)
+    provenance = _load_lgcvf_live_raw_provenance_receipt(
+        paths,
+        _receipt_path=Path(io_paths["provenance"]),
+    )
+    config_path = _contained(root, DEFAULT_SUCCESSOR_CONFIG_RELATIVE)
+    live_launch: Mapping[str, Any] | None = None
+    server: Any | None = None
+    identity: Any | None = None
+    owner_checkpoint: Mapping[str, Any] = {}
+    owner_stop: Mapping[str, Any] = {}
+    token = ""
+    previous_environment: dict[str, str | None] = {}
+    try:
+        # Seal and validate all current source/native bytes before consuming the
+        # prior restart receipt.  This has no database or owner effect.
+        live_launch = _prepare_lgcvf_configured_board_live_launch(
+            root=root,
+            config_path=config_path,
+            provenance=provenance,
+            stopped_restart=True,
+        )
+        if live_launch.get("continuity") != pins.get("source_continuity"):
+            raise SuccessorOperatorError(
+                "abandoned owner recovery source changed after review"
+            )
+        launch_home = Path(str(live_launch["launch_home"]))
+        extension_environment = {
+            "HOME": str(launch_home),
+            "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME": str(launch_home),
+            "XDG_CACHE_HOME": str(launch_home / ".cache" / "xdg"),
+            "CUDA_CACHE_PATH": str(launch_home / ".cache" / "cuda"),
+            "CUDA_CACHE_DISABLE": "1",
+            BOARD_EXTENSION_INSTALL_POLICY_ENV: (
+                BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
+            ),
+            STORE_GENERATION_ENV: SUCCESSOR_STORE_GENERATION,
+        }
+        previous_environment.update(
+            {name: os.environ.get(name) for name in extension_environment}
+        )
+        forbidden_loader_environment = {
+            name
+            for name in os.environ
+            if name.startswith("LD_") or name == "GLIBC_TUNABLES"
+        }
+        if forbidden_loader_environment:
+            raise SuccessorOperatorError(
+                "LGCVF recovery owner inherited ambient loader authority"
+            )
+        os.environ.update(extension_environment)
+        from ipfs_accelerate_py.llm_router import (
+            preload_agent_supervisor_native_dependency,
+        )
+
+        preload_agent_supervisor_native_dependency(live_launch["native_launch"])
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            current_process_birth,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+            configured_board_launch_plan,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+            establish_state_authority_process_boundary,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+            build_server,
+        )
+
+        board = live_launch["board"]
+        program = live_launch["program"]
+        rendered = configured_board_launch_plan(
+            board,
+            implement=False,
+            detach=False,
+            duration_seconds=1.0,
+        ).get("environment")
+        if not isinstance(rendered, Mapping):
+            raise SuccessorOperatorError(
+                "abandoned owner recovery database program is unavailable"
+            )
+        owner_program_json = str(
+            rendered.get(DATABASE_PROGRAM_JSON_ENV) or ""
+        ).strip()
+        if not owner_program_json:
+            raise SuccessorOperatorError(
+                "abandoned owner recovery database program is unavailable"
+            )
+        previous_environment[DATABASE_PROGRAM_JSON_ENV] = os.environ.get(
+            DATABASE_PROGRAM_JSON_ENV
+        )
+        os.environ[DATABASE_PROGRAM_JSON_ENV] = owner_program_json
+        establish_state_authority_process_boundary()
+        paths["owner_state"].mkdir(mode=0o700, parents=True, exist_ok=True)
+        _prepare_private_owner_socket(paths["owner_socket"])
+        controller_birth = current_process_birth()
+        server = build_server(
+            database_path=paths["successor_database"],
+            state_dir=paths["owner_state"],
+            host=str(live_launch["host"]),
+            port=int(live_launch["port"]),
+            repository_id="repository:lgcvf-quack-successor",
+            store_id=program.store_id,
+            secret_handle=program.endpoint_secret_handle,
+            migrate=datasets_profile_migration,
+            typed_command_socket_path=paths["owner_socket"],
+            allow_legacy_board_unstall=False,
+        )
+        if pins.get("receipt_custody") == "published":
+            if not _claim_stopped_state_restart_admission(
+                receipt_paths,
+                expected_restart=True,
+                expected_receipt_cid=str(
+                    pins["stopped_state_continuity_receipt_cid"]
+                ),
+                expected_controller_status_cid=str(
+                    pins["stopped_controller_status_cid"]
+                ),
+            ):
+                raise SuccessorOperatorError(
+                    "abandoned owner recovery receipt was not claimed"
+                )
+        elif not os.path.lexists(io_paths["stopped_state_restart_admission"]):
+            raise SuccessorOperatorError(
+                "abandoned owner recovery consumed receipt is unavailable"
+            )
+        _revalidate_generation_bound_controller_lock(paths, lock_custody)
+        identity = server.start()
+        if (
+            identity.listen_uri != program.quack_endpoint
+            or identity.store_id != program.store_id
+            or identity.database_uuid != provenance.get("database_uuid")
+            or not _owner_schema_fingerprint_matches_canonical_cid(
+                identity.schema_fingerprint,
+                provenance.get("schema_fingerprint"),
+            )
+            or server.typed_command_socket_path() != paths["owner_socket"]
+            or server.status().get("legacy_board_unstall_enabled") is not False
+        ):
+            raise SuccessorOperatorError(
+                "recovery owner identity differs from the stopped generation"
+            )
+        if server._vault is None:
+            raise SuccessorOperatorError(
+                "recovery owner token vault is unavailable"
+            )
+        token = server._vault.resolve(identity.secret_handle)
+        owner_checkpoint = server.checkpoint()
+        owner_stop = server.stop()
+        server = None
+        if (
+            owner_checkpoint.get("checkpointed") is not True
+            or owner_checkpoint.get("server_id") != identity.server_id
+            or owner_stop.get("stopped") is not True
+            or owner_stop.get("server_id") != identity.server_id
+        ):
+            raise SuccessorOperatorError(
+                "abandoned owner checkpoint/stop evidence differs"
+            )
+        credential_leak = bool(
+            tuple(paths["owner_state"].glob("*.quack-token"))
+        )
+        for surface in (
+            Path(io_paths["controller_status"]),
+            Path(io_paths["owner_status"]),
+        ):
+            credential_leak = credential_leak or _regular_file_contains(
+                surface,
+                token.encode("ascii"),
+            )
+        if credential_leak:
+            raise SuccessorOperatorError(
+                "raw recovery-owner credential reached a persistent surface"
+            )
+
+        failed = _status_payload(
+            lifecycle="stopped",
+            controller_birth=controller_birth.to_dict(),
+            provenance_cid=str(provenance["receipt_cid"]),
+            owner_identity=identity.to_dict(),
+            scheduler_birth={},
+            scheduler_returncode=0,
+            error=FAILED_START_STATUS_ERROR,
+            projection_root=paths["projection_root"],
+        )
+        failed.pop("status_cid", None)
+        abandoned_identity = pins.get("abandoned_owner_identity")
+        abandoned_server_id = (
+            str(abandoned_identity.get("server_id") or "")
+            if isinstance(abandoned_identity, Mapping)
+            else ""
+        )
+        failed["abandoned_owner_recovery"] = {
+            "schema": ABANDONED_OWNER_RECOVERY_STATUS_SCHEMA,
+            "preflight_cid": reviewed,
+            "abandoned_owner_server_id": abandoned_server_id,
+            "scheduling_attempted": False,
+        }
+        failed["status_cid"] = _content_id(failed)
+        _validate_unbound_failed_start_controller_status(
+            failed,
+            provenance=provenance,
+            require_dead=False,
+        )
+        anchors = _capture_failed_start_recovery_anchors(
+            paths,
+            root=root,
+            failed_status=failed,
+            provenance=provenance,
+            failed_start_reason=(
+                FAILED_START_REASON_ABANDONED_OWNER_RECOVERED
+            ),
+            owner_stop=owner_stop,
+            io_paths=io_paths,
+            lock_custody=lock_custody,
+        )
+        anchored = _bind_failed_start_recovery_anchors_status(
+            failed,
+            anchors,
+        )
+        _revalidate_generation_bound_controller_lock(paths, lock_custody)
+        _write_status(
+            Path(io_paths["controller_status"]),
+            anchored,
+            token=token,
+        )
+        continuity = _recover_interrupted_failed_start_continuity(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+            provenance=provenance,
+            failed_start_reason=(
+                FAILED_START_REASON_ABANDONED_OWNER_RECOVERED
+            ),
+            _require_dead_controller_tree=False,
+        )
+        if not isinstance(continuity, Mapping):
+            raise SuccessorOperatorError(
+                "abandoned owner recovery did not publish continuity"
+            )
+        final_status = _strict_json(
+            Path(io_paths["controller_status"]),
+            expected_schema=CONTROLLER_STATUS_SCHEMA,
+            require_private_owner=True,
+        )
+        token = ""
+        return {
+            "schema": ABANDONED_OWNER_RECOVERY_RESULT_SCHEMA,
+            "recovered": True,
+            "repeated": False,
+            "preflight_cid": reviewed,
+            "intent_cid": intent["intent_cid"],
+            "abandoned_owner_server_id": abandoned_server_id,
+            "recovery_owner_server_id": identity.server_id,
+            "stopped_state_continuity_receipt_cid": continuity["receipt_cid"],
+            "controller_status_cid": final_status["status_cid"],
+            "target_generation": SUCCESSOR_STORE_GENERATION,
+            "restart_authority": True,
+            "authoritative": False,
+            "scheduling_authority": False,
+            "completion_authority": False,
+            "production_authorized": False,
+        }
+    finally:
+        if server is not None:
+            try:
+                server.stop()
+            except Exception as cleanup_exc:  # noqa: BLE001
+                sys.stderr.write(
+                    "LGCVF abandoned recovery owner stop failed: "
+                    f"{type(cleanup_exc).__name__}\n"
+                )
+        for name, previous in previous_environment.items():
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
+        _close_lgcvf_configured_board_live_launch(live_launch)
+
+
+def recover_abandoned_owner_continuity(
+    root: Path = ROOT,
+    *,
+    reviewed_preflight_cid: str,
+) -> dict[str, Any]:
+    """Run the separately reviewed owner-only WAL/checkpoint recovery."""
+
+    paths = _paths(root)
+    with _exclusive_projection_checkpoint(paths) as lock_custody:
+        return _recover_abandoned_owner_continuity_locked(
+            paths,
+            root=root,
+            lock_custody=lock_custody,
+            reviewed_preflight_cid=reviewed_preflight_cid,
+        )
+
+
+def _automatically_recover_abandoned_owner_locked(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    lock_custody: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Repair only an exact-source dead READY owner before normal launch."""
+
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    io_paths = _stopped_recovery_io_paths(paths, lock_custody)
+    receipt_surfaces = (
+        Path(io_paths["stopped_state_continuity"]),
+        Path(io_paths["stopped_state_restart_admission"]),
+    )
+    if sum(os.path.lexists(path) for path in receipt_surfaces) != 1:
+        return None
+    owner_status_path = Path(io_paths["owner_status"])
+    owner_marker_path = Path(io_paths["owner_marker"])
+    if not os.path.lexists(owner_status_path):
+        return None
+    owner_status = _strict_json(
+        owner_status_path,
+        expected_schema=QUACK_STATE_SERVER_STATUS_SCHEMA,
+        require_private_owner=True,
+        verify_content_identity=False,
+    )
+    owner_identity = owner_status.get("identity")
+    looks_abandoned = (
+        os.path.lexists(owner_marker_path)
+        or owner_status.get("lifecycle") == "ready"
+        or (
+            isinstance(owner_identity, Mapping)
+            and owner_identity.get("status") == "ready"
+        )
+    )
+    if not looks_abandoned:
+        return None
+    preflight = _abandoned_owner_recovery_preflight_locked(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+    )
+    if preflight.get("automatic_same_source_recovery") is not True:
+        raise SuccessorOperatorError(
+            "abandoned state owner requires reviewed source-maintenance "
+            "recovery; run abandoned-owner-recovery-preflight and use "
+            f"preflight CID {preflight['preflight_cid']}"
+        )
+    return _recover_abandoned_owner_continuity_locked(
+        paths,
+        root=root,
+        lock_custody=lock_custody,
+        reviewed_preflight_cid=str(preflight["preflight_cid"]),
+        _automatic=True,
+    )
+
+
 def stopped_recovery_preflight(root: Path = ROOT) -> dict[str, Any]:
     """Report exact legacy recovery pins without publishing authority."""
 
@@ -14056,6 +15001,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "reseal-failed-start-source-maintenance"
     )
     reseal_failed.add_argument("--reviewed-preflight-cid", required=True)
+    subparsers.add_parser("abandoned-owner-recovery-preflight")
+    recover_abandoned = subparsers.add_parser(
+        "recover-abandoned-owner-continuity"
+    )
+    recover_abandoned.add_argument("--reviewed-preflight-cid", required=True)
     subparsers.add_parser("projection-preflight")
     subparsers.add_parser("projection-once")
     return parser
@@ -14111,6 +15061,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = failed_start_source_maintenance_preflight(root)
         elif args.command == "reseal-failed-start-source-maintenance":
             result = reseal_failed_start_source_maintenance(
+                root,
+                reviewed_preflight_cid=str(args.reviewed_preflight_cid),
+            )
+        elif args.command == "abandoned-owner-recovery-preflight":
+            result = abandoned_owner_recovery_preflight(root)
+        elif args.command == "recover-abandoned-owner-continuity":
+            result = recover_abandoned_owner_continuity(
                 root,
                 reviewed_preflight_cid=str(args.reviewed_preflight_cid),
             )

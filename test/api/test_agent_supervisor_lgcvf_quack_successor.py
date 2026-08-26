@@ -1114,6 +1114,11 @@ def test_live_launch_verifies_provenance_before_import_retarget(
     continuity = {"current_head": "a" * 40, "current_tree": "b" * 40}
     native_launch = object()
     capsule_pin = object()
+    prior_signal_handlers = {
+        signal.SIGINT: object(),
+        signal.SIGTERM: object(),
+    }
+    signal_installations = 0
 
     class Capsule:
         descriptor = 991
@@ -1206,6 +1211,17 @@ def test_live_launch_verifies_provenance_before_import_retarget(
         assert kwargs == {"root": tmp_path, "archive_path": "/proc/self/fd/991"}
         raise RetargetReached
 
+    def set_signal(signum: int, handler: object) -> object:
+        nonlocal signal_installations
+        name = signal.Signals(signum).name
+        if signal_installations < len(prior_signal_handlers):
+            events.append(f"install_{name}")
+            signal_installations += 1
+            return prior_signal_handlers[signum]
+        assert handler is prior_signal_handlers[signum]
+        events.append(f"restore_{name}")
+        return handler
+
     monkeypatch.setattr(
         operator,
         "_load_lgcvf_live_raw_provenance_receipt",
@@ -1244,6 +1260,7 @@ def test_live_launch_verifies_provenance_before_import_retarget(
         retarget,
     )
     monkeypatch.setattr(operator.zipfile, "ZipFile", SealedArchive)
+    monkeypatch.setattr(operator.signal, "signal", set_signal)
     monkeypatch.setattr(
         operator,
         "_close_lgcvf_configured_board_live_launch",
@@ -1266,6 +1283,8 @@ def test_live_launch_verifies_provenance_before_import_retarget(
     assert events == [
         "raw",
         "prepare",
+        "install_SIGINT",
+        "install_SIGTERM",
         "native",
         "provenance",
         "post_provenance_preload",
@@ -1274,6 +1293,8 @@ def test_live_launch_verifies_provenance_before_import_retarget(
         "final_continuity",
         "retarget",
         "cleanup",
+        "restore_SIGINT",
+        "restore_SIGTERM",
     ]
 
 
@@ -3313,6 +3334,332 @@ def _published_failed_start_source_maintenance_fixture(
     )
     monkeypatch.setattr(operator, "_git_quiet", lambda *args, **kwargs: None)
     return paths, provenance, published, descendant
+
+
+def _abandoned_owner_fixture(
+    operator: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[dict[str, Path], dict[str, object], dict[str, object]]:
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        ProcessBirthIdentity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        OwnerMarker,
+    )
+
+    paths, provenance, receipt = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    owner_status_path = (
+        paths["owner_state"] / "quack-state-server.status.json"
+    )
+    owner_status = operator._strict_json(
+        owner_status_path,
+        verify_content_identity=False,
+    )
+    stale_birth = ProcessBirthIdentity(
+        pid=2_000_000_003,
+        start_time_ticks=19,
+        boot_id="test-stopped-continuity",
+        parent_pid=1,
+    )
+    stale_identity = {
+        **owner_status["identity"],
+        "server_id": "server:test-abandoned-owner",
+        "process_birth": stale_birth.to_dict(),
+        "status": "ready",
+    }
+    owner_status["lifecycle"] = "ready"
+    owner_status["identity"] = stale_identity
+    operator._atomic_json(owner_status_path, owner_status, replace=True)
+    marker = OwnerMarker(
+        server_id=str(stale_identity["server_id"]),
+        process_birth=stale_birth,
+        database_path=str(paths["successor_database"]),
+        started_at="2026-08-26T12:00:00Z",
+        fence_token="test-abandoned-owner-fence",
+        generation=2,
+    )
+    marker_path = paths["successor_database"].with_name(
+        ".control.duckdb.state-owner.json"
+    )
+    operator._atomic_json(marker_path, marker.to_dict(), replace=False)
+    owner_lock = paths["successor_database"].with_name(
+        ".control.duckdb.state-owner.lock"
+    )
+    owner_lock.touch(mode=0o600)
+    owner_lock.chmod(0o600)
+    wal = paths["successor_database"].with_name(
+        paths["successor_database"].name + ".wal"
+    )
+    wal.write_bytes(b"test-abandoned-owner-wal")
+    wal.chmod(0o600)
+    return paths, provenance, receipt
+
+
+def test_abandoned_owner_preflight_is_stable_and_non_mutating(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, receipt = _abandoned_owner_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    generation = paths["controller_lock"].parent
+    before = {
+        path.name: path.read_bytes()
+        for path in generation.rglob("*")
+        if path.is_file()
+    }
+
+    first = operator.abandoned_owner_recovery_preflight(tmp_path)
+    second = operator.abandoned_owner_recovery_preflight(tmp_path)
+
+    assert first["schema"] == (
+        operator.ABANDONED_OWNER_RECOVERY_PREFLIGHT_SCHEMA
+    )
+    assert first["preflight_cid"] == second["preflight_cid"]
+    assert first["reviewed_pins"] == second["reviewed_pins"]
+    assert first["automatic_same_source_recovery"] is True
+    assert first["reviewed_pins"][
+        "stopped_state_continuity_receipt_cid"
+    ] == receipt["receipt_cid"]
+    assert first["reviewed_pins"]["wal_surfaces"].keys() == {"control"}
+    assert first["restart_authority"] is False
+    assert {
+        path.name: path.read_bytes()
+        for path in generation.rglob("*")
+        if path.is_file()
+    } == before
+
+
+def test_exact_source_abandoned_owner_is_recovered_before_normal_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _receipt = _abandoned_owner_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    reviewed = operator.abandoned_owner_recovery_preflight(tmp_path)
+    calls: list[dict[str, object]] = []
+
+    def recover(
+        observed_paths: dict[str, Path],
+        **kwargs: object,
+    ) -> dict[str, object]:
+        assert observed_paths == paths
+        calls.append(dict(kwargs))
+        return {"recovered": True}
+
+    monkeypatch.setattr(
+        operator,
+        "_recover_abandoned_owner_continuity_locked",
+        recover,
+    )
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = operator._automatically_recover_abandoned_owner_locked(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+        )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert result == {"recovered": True}
+    assert calls == [
+        {
+            "root": tmp_path,
+            "lock_custody": custody,
+            "reviewed_preflight_cid": reviewed["preflight_cid"],
+            "_automatic": True,
+        }
+    ]
+
+
+def test_reviewed_abandoned_owner_replays_wal_and_publishes_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler as scheduler_module
+    import ipfs_accelerate_py.agent_supervisor.runtime.process_security as security_module
+    import ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server as server_module
+    from ipfs_accelerate_py import llm_router
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        current_process_birth,
+    )
+
+    operator = _operator()
+    paths, provenance, prior = _abandoned_owner_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    preflight = operator.abandoned_owner_recovery_preflight(tmp_path)
+    prior_status = operator._strict_json(paths["controller_status"])
+    prior_owner = prior_status["owner_identity"]
+    process_birth = current_process_birth().to_dict()
+
+    class FakeIdentity:
+        server_id = "server:test-recovery-owner"
+        listen_uri = "quack:127.0.0.1:24701"
+        store_id = operator.SUCCESSOR_DATABASE_RELATIVE.as_posix()
+        database_uuid = provenance["database_uuid"]
+        schema_fingerprint = prior_owner["schema_fingerprint"]
+        secret_handle = operator.SECRET_HANDLE
+
+        def to_dict(self) -> dict[str, object]:
+            return {
+                **prior_owner,
+                "server_id": self.server_id,
+                "listen_uri": self.listen_uri,
+                "process_birth": process_birth,
+                "status": "ready",
+            }
+
+    identity = FakeIdentity()
+
+    class FakeVault:
+        def resolve(self, _handle: str) -> str:
+            return "fixture-recovery-token-never-persisted"
+
+    class FakeServer:
+        _vault = FakeVault()
+
+        def typed_command_socket_path(self) -> Path:
+            return paths["owner_socket"]
+
+        def start(self) -> FakeIdentity:
+            marker = paths["successor_database"].with_name(
+                ".control.duckdb.state-owner.json"
+            )
+            marker.unlink()
+            return identity
+
+        def status(self) -> dict[str, object]:
+            return {"legacy_board_unstall_enabled": False}
+
+        def checkpoint(self) -> dict[str, object]:
+            wal = paths["successor_database"].with_name(
+                paths["successor_database"].name + ".wal"
+            )
+            wal.unlink()
+            return {
+                "checkpointed": True,
+                "server_id": identity.server_id,
+                "database_path": str(paths["successor_database"]),
+                "at": "2026-08-26T12:01:00Z",
+            }
+
+        def stop(self) -> dict[str, object]:
+            operator._atomic_json(
+                paths["owner_state"] / "quack-state-server.status.json",
+                {
+                    "schema": operator.QUACK_STATE_SERVER_STATUS_SCHEMA,
+                    "lifecycle": "stopped",
+                    "database_path": str(paths["successor_database"]),
+                    "state_dir": str(paths["owner_state"]),
+                    "store_id": operator.SUCCESSOR_DATABASE_RELATIVE.as_posix(),
+                    "secret_handle": operator.SECRET_HANDLE,
+                    "owner_marker_path": str(
+                        paths["successor_database"].with_name(
+                            ".control.duckdb.state-owner.json"
+                        )
+                    ),
+                    "identity": {**identity.to_dict(), "status": "stopped"},
+                },
+                replace=True,
+            )
+            return {
+                "stopped": True,
+                "server_id": identity.server_id,
+                "at": "2026-08-26T12:01:01Z",
+            }
+
+    program = SimpleNamespace(
+        quack_endpoint=identity.listen_uri,
+        store_id=identity.store_id,
+        endpoint_secret_handle=identity.secret_handle,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_prepare_lgcvf_configured_board_live_launch",
+        lambda **_kwargs: {
+            "continuity": preflight["reviewed_pins"]["source_continuity"],
+            "launch_home": str(tmp_path / "recovery-home"),
+            "native_launch": object(),
+            "board": object(),
+            "program": program,
+            "host": "127.0.0.1",
+            "port": 24701,
+        },
+    )
+    monkeypatch.setattr(
+        operator,
+        "_close_lgcvf_configured_board_live_launch",
+        lambda _launch: None,
+    )
+    monkeypatch.setattr(operator, "_prepare_private_owner_socket", lambda _path: None)
+    monkeypatch.setattr(llm_router, "preload_agent_supervisor_native_dependency", lambda _launch: None)
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_launch_plan",
+        lambda *_args, **_kwargs: {
+            "environment": {operator.DATABASE_PROGRAM_JSON_ENV: "{}"}
+        },
+    )
+    monkeypatch.setattr(
+        security_module,
+        "establish_state_authority_process_boundary",
+        lambda: None,
+    )
+    monkeypatch.setattr(server_module, "build_server", lambda **_kwargs: FakeServer())
+    for name in tuple(os.environ):
+        if name.startswith("LD_") or name == "GLIBC_TUNABLES":
+            monkeypatch.delenv(name)
+
+    result = operator.recover_abandoned_owner_continuity(
+        tmp_path,
+        reviewed_preflight_cid=str(preflight["preflight_cid"]),
+    )
+
+    receipt = operator._strict_json(paths["stopped_state_continuity"])
+    status = operator._strict_json(paths["controller_status"])
+    anchors = status["failed_start_recovery_anchors"]
+    assert result["schema"] == operator.ABANDONED_OWNER_RECOVERY_RESULT_SCHEMA
+    assert result["restart_authority"] is True
+    assert receipt["receipt_cid"] != prior["receipt_cid"]
+    assert receipt["final_source_continuity"] == (
+        preflight["reviewed_pins"]["source_continuity"]
+    )
+    assert receipt["stop_evidence"]["failed_start_reason"] == (
+        operator.FAILED_START_REASON_ABANDONED_OWNER_RECOVERED
+    )
+    assert status["abandoned_owner_recovery"]["scheduling_attempted"] is False
+    expected_prior = {
+        key: value
+        for key, value in prior.items()
+        if key != "test_restart_calls"
+    }
+    assert anchors["superseded_restart_admission"]["receipt"] == expected_prior
+    assert not paths["stopped_state_restart_admission"].exists()
+    assert not paths["successor_database"].with_name(
+        ".control.duckdb.state-owner.json"
+    ).exists()
+    assert not paths["successor_database"].with_name(
+        paths["successor_database"].name + ".wal"
+    ).exists()
 
 
 def test_failed_start_source_maintenance_reseals_reviewed_descendant(
