@@ -25,13 +25,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Final, Protocol
 
-EAAEF_RECONCILIATION_OWNER_INTERFACE: Final = "EAAEFTypedReconciliationOwner@1"
-EAAEF_OWNER_QUALIFICATION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/eaaef-typed-owner-qualification@1"
+EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE: Final = (
+    "EAAEFBootstrapReconciliationOwner@1"
 )
-DATABASE_TASK_SOURCE_INTERFACE: Final = "DatabaseTaskSource@1"
-PLAN_R2_REMOTE_RUNTIME_QUALIFICATION_STATUS: Final = (
-    "source_complete_external_signed_channel_required"
+EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-owner-qualification@1"
 )
 PLAN_R2_REMOTE_RUNTIME_PRODUCTION_BLOCKERS: Final = (
     "external_plan_r2_remote_owner_capability_absent",
@@ -536,7 +534,10 @@ class EAAEFCASFBootstrapRegistry:
 class CASFBootstrapEAAEFTypedReconciliationOwner:
     """Executable guarded bootstrap prefix; every later effect fails closed."""
 
-    INTERFACE: ClassVar[str] = EAAEF_RECONCILIATION_OWNER_INTERFACE
+    INTERFACE: ClassVar[str] = EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+    BOOTSTRAP_INTERFACE: ClassVar[str] = (
+        EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+    )
 
     def __init__(
         self,
@@ -563,31 +564,35 @@ class CASFBootstrapEAAEFTypedReconciliationOwner:
         ):
             raise EAAEFCASFBootstrapOwnerError("CASF bootstrap binding is invalid")
 
-    def reconciliation_qualification(self) -> Mapping[str, Any]:
+    def bootstrap_reconciliation_qualification(self) -> Mapping[str, Any]:
         from ..runtime.eaaef_reconciliation_lifecycle import _cid
 
-        blockers = list(EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS)
-        if self._persistent_quack_handoff_bound:
-            blockers.remove("casf_quack_exclusive_owner_lifecycle_not_bound")
+        bootstrap_blockers = (
+            []
+            if self._persistent_quack_handoff_bound
+            else ["casf_quack_exclusive_owner_lifecycle_not_bound"]
+        )
         value: dict[str, Any] = {
-            "schema": EAAEF_OWNER_QUALIFICATION_SCHEMA,
-            "interface": EAAEF_RECONCILIATION_OWNER_INTERFACE,
+            "schema": EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA,
+            "interface": EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
             "source_forest_root": self._source_forest_root,
+            "materialization_operation": (
+                "materialize_offline_22_plus_94_then_start_owner"
+            ),
             "bootstrap_materialization_mode": "offline_before_exclusive_owner_start",
             "bootstrap_materialization_before_owner_start": True,
             "offline_population_includes_execution_contracts": True,
             "direct_database_mutation_after_owner_start": False,
-            "typed_task_source_interface": DATABASE_TASK_SOURCE_INTERFACE,
-            "plan_r2_repository_interface": "",
-            "plan_r2_remote_gateway_interface": "",
-            "plan_r2_wire_channel_interface": "",
-            "plan_r2_remote_runtime_qualification_status": (
-                PLAN_R2_REMOTE_RUNTIME_QUALIFICATION_STATUS
+            "exclusive_owner_lifecycle_interface": (
+                EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE
             ),
-            "plan_r2_remote_runtime_blockers": blockers,
-            "status_operation": "unavailable",
-            "stop_tracks_operation": "unavailable",
-            "launch_modes": [],
+            "exclusive_owner_lifecycle_qualification_status": (
+                EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS
+                if self._persistent_quack_handoff_bound
+                else "persistent_quack_handoff_not_bound"
+            ),
+            "bootstrap_owner_ready": self._persistent_quack_handoff_bound,
+            "bootstrap_owner_blockers": bootstrap_blockers,
             "database_authority_crossing_allowed": False,
             "filesystem_path_authority_crossing_allowed": False,
             "transport_token_authority_crossing_allowed": False,
@@ -879,7 +884,7 @@ class CASFBootstrapEAAEFTypedReconciliationOwner:
 
         value: dict[str, Any] = {
             "schema": reconciliation.EAAEF_OFFLINE_POPULATION_RECEIPT_SCHEMA,
-            "interface": EAAEF_RECONCILIATION_OWNER_INTERFACE,
+            "interface": EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
             "request_cid": request["request_cid"],
             "generation_id": request["generation_id"],
             "source_forest_root": population.source_forest_root,
@@ -1156,6 +1161,8 @@ __all__ = [
     "EAAEFCASFBootstrapOwnerGuard",
     "EAAEFCASFBootstrapOwnerLifecycle",
     "EAAEFCASFBootstrapRegistry",
+    "EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA",
+    "EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE",
     "EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS",
     "EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE",
     "EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE",
