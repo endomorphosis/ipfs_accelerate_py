@@ -86486,6 +86486,7 @@ from ..task_sources.typed_state_owner import (
     TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
     TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
+    TYPED_RETRYING_RECEIPT_OPERATIONS,
     _validated_database_strict_resume_rejection_receipt,
     typed_database_strict_resume_rejection_receipt_id,
 )
@@ -87054,28 +87055,7 @@ _DATABASE_GENERIC_PORTAL_RETRY_FIELDS = frozenset(
 )
 _DATABASE_CONTROL_ATTEMPT_OPERATIONS_BY_STATUS = {
     "in_progress": frozenset({"database_claim"}),
-    "retrying": frozenset(
-        {
-            "database_portal_retry",
-            "database_portal_validation_retry",
-            "database_portal_validation_retry_recovery",
-            "database_portal_capacity_retry",
-            "database_portal_protected_preservation_retry",
-            "database_portal_protected_preservation_retry_recovery",
-            (
-                "database_portal_protected_preservation_"
-                "reconciliation_retry_recovery"
-            ),
-            "database_portal_superseded_consumed_attempt_recovery",
-            "database_portal_post_merge_declared_output_recovery",
-            "database_post_merge_declared_outputs_repair_recovery",
-            "database_post_merge_declared_outputs_requalification_recovery",
-            (
-                "database_post_merge_declared_outputs_"
-                "callback_integration_recovery"
-            ),
-        }
-    ),
+    "retrying": TYPED_RETRYING_RECEIPT_OPERATIONS,
     "blocked": frozenset(
         {
             "database_portal_terminal_failure",
@@ -106269,6 +106249,45 @@ class DatabaseImplementationDaemon:
                     "retry control receipt changed its execution-route lineage"
                 )
 
+        retry_operation = (
+            "database_portal_protected_preservation_retry_recovery"
+            if blocked_recovery
+            and protected_preservation_evidence is not None
+            else "database_portal_capacity_retry"
+            if capacity_retry_evidence is not None
+            else "database_portal_protected_preservation_retry"
+            if protected_preservation_evidence is not None
+            else "database_portal_landed_completion_revalidation"
+            if landed_completion_recovery_evidence is not None
+            else "database_portal_validation_retry_successor_recovery"
+            if validation_retry_successor_evidence is not None
+            else "database_portal_protected_path_retry_recovery"
+            if protected_path_recovery_evidence is not None
+            else "database_portal_external_protected_checkout_retry_recovery"
+            if external_protected_checkout_recovery_evidence is not None
+            else "database_portal_inflight_process_retry_recovery"
+            if inflight_process_recovery_evidence is not None
+            else "database_portal_validation_retry_seed_conflict_retry_recovery"
+            if validation_retry_seed_conflict_recovery_evidence is not None
+            else "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            if leftover_wait_deferral_budget_recovery_evidence is not None
+            else "database_portal_pooled_worktree_create_retry_recovery"
+            if pooled_worktree_create_recovery_evidence is not None
+            else "database_portal_inflight_deferral_unstall"
+            if inflight_deferral_unstall_evidence is not None
+            else "database_portal_validation_retry_recovery"
+            if blocked_recovery
+            else "database_portal_validation_retry"
+            if validation_retry_evidence is not None
+            else "database_portal_retry"
+        )
+        if retry_operation not in TYPED_RETRYING_RECEIPT_OPERATIONS:
+            # Keep a future writer/reader vocabulary drift from persisting a
+            # retrying control row that every sealed lane rejects on restart.
+            raise DatabaseImplementationAuthorityError(
+                "retry control operation is absent from typed admission"
+            )
+
         def retry_control_receipt(
             *,
             retry_not_before_ms: int,
@@ -106284,38 +106303,7 @@ class DatabaseImplementationDaemon:
                 else dict(queue_receipt)
             )
             return {
-                "operation": (
-                    "database_portal_protected_preservation_retry_recovery"
-                    if blocked_recovery
-                    and protected_preservation_evidence is not None
-                    else "database_portal_capacity_retry"
-                    if capacity_retry_evidence is not None
-                    else "database_portal_protected_preservation_retry"
-                    if protected_preservation_evidence is not None
-                    else "database_portal_landed_completion_revalidation"
-                    if landed_completion_recovery_evidence is not None
-                    else "database_portal_validation_retry_successor_recovery"
-                    if validation_retry_successor_evidence is not None
-                    else "database_portal_protected_path_retry_recovery"
-                    if protected_path_recovery_evidence is not None
-                    else "database_portal_external_protected_checkout_retry_recovery"
-                    if external_protected_checkout_recovery_evidence is not None
-                    else "database_portal_inflight_process_retry_recovery"
-                    if inflight_process_recovery_evidence is not None
-                    else "database_portal_validation_retry_seed_conflict_retry_recovery"
-                    if validation_retry_seed_conflict_recovery_evidence is not None
-                    else "database_portal_leftover_wait_deferral_budget_retry_recovery"
-                    if leftover_wait_deferral_budget_recovery_evidence is not None
-                    else "database_portal_pooled_worktree_create_retry_recovery"
-                    if pooled_worktree_create_recovery_evidence is not None
-                    else "database_portal_inflight_deferral_unstall"
-                    if inflight_deferral_unstall_evidence is not None
-                    else "database_portal_validation_retry_recovery"
-                    if blocked_recovery
-                    else "database_portal_validation_retry"
-                    if validation_retry_evidence is not None
-                    else "database_portal_retry"
-                ),
+                "operation": retry_operation,
                 "attempt_id": attempt.attempt_id,
                 "claim_id": attempt.claim_id,
                 "lease_id": attempt.lease_id,

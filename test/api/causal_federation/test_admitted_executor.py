@@ -78,11 +78,14 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_polic
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
     TypedDatabaseTaskSource,
+    daemon_required_owner_command_operations,
+    daemon_required_owner_operations,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
@@ -1791,6 +1794,26 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                     expected_process_instance_id=identity.process_birth_id,
                     bootstrap_credentials=bootstrap_credentials,
                 )
+        overbroad_command_grant = dict(exact_grant)
+        overbroad_command_grant["allowed_command_operations"] = [
+            *exact_grant["allowed_command_operations"],
+            "federation.create",
+        ]
+        with monkeypatch.context() as overbroad_command_capability:
+            overbroad_command_capability.setattr(
+                connection,
+                "grant",
+                overbroad_command_grant,
+            )
+            with pytest.raises(
+                TaskSourceIntegrityError,
+                match="exact Quack authority",
+            ):
+                adapter.require_quack_authority_binding(
+                    expected_endpoint=identity.listen_uri,
+                    expected_process_instance_id=identity.process_birth_id,
+                    bootstrap_credentials=bootstrap_credentials,
+                )
         with monkeypatch.context() as closed_transport:
             closed_transport.setattr(connection, "_closed", True)
             with pytest.raises(
@@ -3039,6 +3062,425 @@ def test_real_typed_owner_starts_exact_four_virgin_transfer_lanes(
             daemon.close()
         if refreshed_adapter is not None:
             refreshed_adapter.close()
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
+@pytest.mark.parametrize(
+    "historic_liveness",
+    (
+        OwnerLiveness.DEAD,
+        OwnerLiveness.ALIVE,
+        OwnerLiveness.UNKNOWN,
+    ),
+    ids=("dead-repair", "live-fail-closed", "unknown-fail-closed"),
+)
+def test_legacy_unstall_claim_repair_is_automatic_closed_and_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    historic_liveness: OwnerLiveness,
+) -> None:
+    database = tmp_path / "typed-legacy-unstall-recovery.duckdb"
+    client_id = "database-implementation-daemon:typed-legacy-unstall"
+    old_pid = 987_654_322
+    old_start = 19
+    old_boot = "boot:typed-legacy-unstall"
+    old_parent = 1
+    old_attestation = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-claim-process@1"
+        ),
+        "grant_id": "owner-grant:legacy-unstall-process",
+        "client_id": client_id,
+        "process_birth_id": _process_birth_content_id(
+            old_pid,
+            old_start,
+            old_boot,
+            old_parent,
+        ),
+        "pid": old_pid,
+        "uid": os.getuid(),
+        "start_time_ticks": old_start,
+        "boot_id": old_boot,
+        "parent_pid": old_parent,
+    }
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-legacy-unstall",
+            "plan_root_cid": "plan:typed-legacy-unstall",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-legacy-unstall",
+                    "goal_alias": "CASF-G-TYPED-LEGACY-UNSTALL",
+                    "title": "Typed legacy unstall recovery",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": "task:legacy-unstall-reservation",
+                    "task_id": "CASF-LEGACY-UNSTALL-RESERVATION",
+                    "goal_cid": "goal:typed-legacy-unstall",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:legacy-unstall-admission",
+                    "task_id": "CASF-LEGACY-UNSTALL-ADMISSION",
+                    "goal_cid": "goal:typed-legacy-unstall",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:legacy-unstall-older-cooldown",
+                    "task_id": "CASF-LEGACY-UNSTALL-OLDER-COOLDOWN",
+                    "goal_cid": "goal:typed-legacy-unstall",
+                    "status": "ready",
+                },
+            ],
+        }
+    )
+    initial_tasks = source.list_tasks(limit=10).tasks
+    route_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=source.snapshot(),
+        tasks=initial_tasks,
+        execution_modes={
+            task.task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE
+            for task in initial_tasks
+        },
+    )
+    poisoned: dict[str, TaskRecord] = {}
+    retained_receipts: dict[str, Mapping[str, Any]] = {}
+    older_cooldown_task: TaskRecord | None = None
+    older_cooldown_receipt: Mapping[str, Any] | None = None
+    for task in initial_tasks:
+        route = route_policy.binding_for_task(task).to_dict()
+        reservation = {
+            "operation": "database_claim",
+            "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+            "claim_process_attestation": old_attestation,
+            "claim_id": f"claim:{task.task_alias}:1",
+            "attempt_id": f"attempt:{task.task_alias}:1",
+            "attempt_number": 1,
+            "lease_id": f"lease:{task.task_alias}:1",
+            "owner_session_id": "session:typed-legacy-unstall",
+            "fencing_token": 1,
+            "fence_epoch": 1,
+            "claimed_from_revision": int(task.revision),
+            "execution_route_binding": route,
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": int(route["task_revision"]),
+        }
+        source.compare_and_set_status(
+            task,
+            int(task.revision),
+            "in_progress",
+            reservation,
+        )
+        claimed = source.get(task.task_cid)
+        assert claimed is not None
+        if task.task_alias.endswith("OLDER-COOLDOWN"):
+            older_cooldown_task = claimed
+            older_cooldown_receipt = reservation
+            continue
+        retained: Mapping[str, Any] = reservation
+        if task.task_alias.endswith("ADMISSION"):
+            admission = {
+                **reservation,
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": int(claimed.revision),
+                "attempt_execution_phase": "claimed",
+                "attempt_execution_revision": 1,
+            }
+            source.compare_and_set_status(
+                claimed,
+                int(claimed.revision),
+                # The legacy local fixture treats a same-status receipt
+                # replacement as a no-op.  Use a distinct running status so
+                # its revision lineage matches the typed owner's admitted
+                # in_progress -> in_progress CAS before startup unstall.
+                "running",
+                admission,
+            )
+            claimed = source.get(task.task_cid)
+            assert claimed is not None
+            retained = admission
+        source.compare_and_set_status(
+            claimed,
+            int(claimed.revision),
+            "retrying",
+            retained,
+        )
+        poisoned_task = source.get(task.task_cid)
+        assert poisoned_task is not None
+        poisoned[task.task_alias] = poisoned_task
+        retained_receipts[task.task_alias] = retained
+    source.close()
+
+    assert older_cooldown_task is not None
+    assert older_cooldown_receipt is not None
+    seed_server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-legacy-unstall-seed-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-legacy-unstall-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+        allow_legacy_board_unstall=False,
+    )
+    seed_identity = seed_server.start()
+    seed_token, seed_grant = seed_server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=seed_identity.process_birth_id,
+        allowed_operations=daemon_required_owner_operations(),
+        allowed_command_operations=(
+            daemon_required_owner_command_operations()
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(seed_server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, seed_token)
+    seed_client = QuackStateClient(
+        owner_id=client_id,
+        store_id=seed_identity.store_id,
+        process_birth_id=seed_identity.process_birth_id,
+    )
+    try:
+        seed_client.attach(
+            seed_identity.listen_uri,
+            server_id=seed_identity.server_id,
+        )
+        seeded = seed_client.record_task_retry_cooldown(
+            task_cid=older_cooldown_task.task_cid,
+            expected_task_revision=older_cooldown_task.revision,
+            expected_task_status="in_progress",
+            attempt_id=str(older_cooldown_receipt["attempt_id"]),
+            claim_id=str(older_cooldown_receipt["claim_id"]),
+            lease_id=str(older_cooldown_receipt["lease_id"]),
+            owner_session_id=str(
+                older_cooldown_receipt["owner_session_id"]
+            ),
+            attempt_number=1,
+            fencing_token=1,
+            fence_epoch=1,
+            delay_ms=100,
+            reason="database_portal_retry:older-attempt",
+            now_ms=1_000,
+        )
+        assert seeded.accepted and seeded.changed
+    finally:
+        seed_client.close()
+        seed_server.revoke_typed_client_grant(seed_grant.grant_id)
+        seed_server.stop()
+
+    source = DatabaseTaskSource(database)
+    older = source.get(older_cooldown_task.task_cid)
+    assert older is not None and older.status == "in_progress"
+    attempt_two_receipt = {
+        **dict(older_cooldown_receipt),
+        "claim_id": "claim:legacy-unstall-older-cooldown:2",
+        "attempt_id": "attempt:legacy-unstall-older-cooldown:2",
+        "attempt_number": 2,
+        "lease_id": "lease:legacy-unstall-older-cooldown:2",
+        "fencing_token": 2,
+        "claimed_from_revision": int(older.revision),
+    }
+    source.compare_and_set_status(
+        older,
+        int(older.revision),
+        "running",
+        attempt_two_receipt,
+    )
+    attempt_two = source.get(older.task_cid)
+    assert attempt_two is not None
+    source.compare_and_set_status(
+        attempt_two,
+        int(attempt_two.revision),
+        "retrying",
+        attempt_two_receipt,
+    )
+    poisoned_older = source.get(older.task_cid)
+    assert poisoned_older is not None
+    poisoned[poisoned_older.task_alias] = poisoned_older
+    retained_receipts[poisoned_older.task_alias] = attempt_two_receipt
+    source.close()
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-legacy-unstall-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-legacy-unstall-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: historic_liveness,
+    )
+    identity = server.start()
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=daemon_required_owner_operations(),
+        allowed_command_operations=(
+            daemon_required_owner_command_operations()
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+            clock_ms=lambda: 2_000,
+        )
+        bootstrap_credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
+        binding = adapter.require_quack_authority_binding(
+            expected_endpoint=identity.listen_uri,
+            expected_process_instance_id=identity.process_birth_id,
+            bootstrap_credentials=bootstrap_credentials,
+        )
+        assert binding["route_policy_id"] == route_policy.policy_id
+        candidate = poisoned["CASF-LEGACY-UNSTALL-RESERVATION"]
+        candidate_receipt = dict(
+            candidate.body["completion_receipt"]
+        )
+        wrong_offset_receipt = {
+            **candidate_receipt,
+            "claimed_from_revision": (
+                int(candidate_receipt["claimed_from_revision"]) + 1
+            ),
+        }
+        wrong_offset = replace(
+            candidate,
+            body={
+                **dict(candidate.body),
+                "completion_receipt": wrong_offset_receipt,
+            },
+        )
+        assert adapter._legacy_unstall_claim_candidate(wrong_offset) is None
+        forged_attestation = {
+            **dict(candidate_receipt["claim_process_attestation"]),
+            "process_birth_id": "birth:" + "0" * 32,
+        }
+        forged = replace(
+            candidate,
+            body={
+                **dict(candidate.body),
+                "completion_receipt": {
+                    **candidate_receipt,
+                    "claim_process_attestation": forged_attestation,
+                },
+            },
+        )
+        assert adapter._legacy_unstall_claim_candidate(forged) is None
+        if historic_liveness is not OwnerLiveness.DEAD:
+            generation_before = client.load_generation()
+            with pytest.raises(
+                TaskSourceIntegrityError,
+                match="retrying task has no typed cooldown receipt",
+            ):
+                adapter.ready_tasks(limit=10)
+            assert client.load_generation().revision == (
+                generation_before.revision
+            )
+            for task_alias, prior in poisoned.items():
+                assert adapter.get(task_alias) == prior
+                prior_cooldown = adapter._retry_cooldown_row(
+                    prior.task_cid
+                )
+                if task_alias.endswith("OLDER-COOLDOWN"):
+                    assert prior_cooldown is not None
+                    assert prior_cooldown["attempt"] == 1
+                    assert prior_cooldown["revision"] == 1
+                else:
+                    assert prior_cooldown is None
+            return
+
+        reservation_alias = "CASF-LEGACY-UNSTALL-RESERVATION"
+        assert adapter._legacy_unstall_claim_candidate(
+            poisoned["CASF-LEGACY-UNSTALL-ADMISSION"]
+        ) is not None
+        reservation_task = poisoned[reservation_alias]
+        original_body = dict(reservation_task.body)
+        original_receipt = retained_receipts[reservation_alias]
+        first = client.recover_legacy_unstalled_claim(
+            task_cid=reservation_task.task_cid,
+            expected_task_revision=reservation_task.revision,
+            task_body=original_body,
+            claim_receipt=original_receipt,
+            now_ms=2_000,
+        )
+        replay = client.recover_legacy_unstalled_claim(
+            task_cid=reservation_task.task_cid,
+            expected_task_revision=reservation_task.revision,
+            task_body=original_body,
+            claim_receipt=original_receipt,
+            now_ms=2_000,
+        )
+        assert first.accepted and first.changed
+        assert replay.accepted and not replay.changed
+        assert replay.result_digest == first.result_digest
+
+        ready = adapter.ready_tasks(limit=10)
+        assert {task.task_alias for task in ready.tasks} == set(poisoned)
+        for task_alias, prior in poisoned.items():
+            repaired = adapter.get(task_alias)
+            assert repaired is not None
+            assert repaired.status == "retrying"
+            assert repaired.revision == prior.revision + 1
+            receipt = repaired.body["completion_receipt"]
+            assert receipt["schema"] == (
+                TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA
+            )
+            assert receipt["operation"] == (
+                TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+            )
+            assert receipt["recovered_claim_operation"] == (
+                "database_attempt_admitted"
+                if task_alias.endswith("ADMISSION")
+                else "database_claim"
+            )
+            cooldown = adapter._retry_cooldown_row(repaired.task_cid)
+            assert cooldown is not None
+            expected_attempt = (
+                2 if task_alias.endswith("OLDER-COOLDOWN") else 1
+            )
+            expected_queue_revision = (
+                2 if task_alias.endswith("OLDER-COOLDOWN") else 1
+            )
+            assert cooldown["attempt"] == expected_attempt
+            assert cooldown["revision"] == expected_queue_revision
+            assert cooldown["extension"]["expected_task_revision"] == (
+                prior.revision
+            )
+    finally:
         if adapter is not None:
             adapter.close()
         else:

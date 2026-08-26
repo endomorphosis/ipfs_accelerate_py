@@ -26,6 +26,7 @@ from .control_plane_contracts import (
     canonical_json_bytes,
     content_identity,
 )
+from .control_plane_transactions import TransactionError
 from .database_task_source import (
     DATABASE_TASK_SOURCE_SCHEMA,
     TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
@@ -43,7 +44,12 @@ from .database_task_source import (
     CASResult as DatabaseCASResult,
 )
 from .intent_repository import IntentReceipt, QueueEntry
-from .quack_state_client import ClientSession, QuackStateClient, TransportMode
+from .quack_state_client import (
+    ClientSession,
+    QuackClientError,
+    QuackStateClient,
+    TransportMode,
+)
 from .state_owner_bootstrap import StateOwnerBootstrapCredentials
 from .task_execution_route_policy import (
     TaskExecutionRouteBinding,
@@ -55,12 +61,15 @@ from .typed_state_owner import (
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
     TYPED_TASK_STATUS_VOCABULARY,
     TypedStateOwnerConnection,
     TypedStateOwnerError,
+    _validated_legacy_unstall_claim_receipt,
     _validated_database_strict_resume_rejection_receipt,
     _validated_stored_retry_cooldown,
 )
@@ -122,14 +131,34 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "executor_insert_validation_evidence",
     }
 )
+# The canonical causal operator remains sealed to this predecessor profile.
+# LGCVF derives the extended profile below from the public helper.  Authority
+# binding admits exactly these two complete sets; arbitrary subsets, supersets,
+# and mixed profiles remain invalid.
+_DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "task.status.cas",
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+            "task.claim.reservation.recover",
+            "task.validation.record.passed",
+            "task.validation.record.nonpassing",
+        }
+    )
+)
 _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
-        "task.status.cas",
-        "task.status.cas.receipt",
-        "task.retry.cooldown.record",
-        "task.claim.reservation.recover",
-        "task.validation.record.passed",
-        "task.validation.record.nonpassing",
+        *_DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
+        TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+    }
+)
+_DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
+    frozenset[frozenset[str]]
+] = frozenset(
+    {
+        _DAEMON_PREDECESSOR_OWNER_COMMAND_OPERATIONS,
+        _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS,
     }
 )
 
@@ -450,7 +479,7 @@ class TypedDatabaseTaskSource:
             or grant.get("process_birth_id") != process_instance_id
             or grant_operations != _DAEMON_REQUIRED_OWNER_OPERATIONS
             or grant_command_operations
-            != _DAEMON_REQUIRED_OWNER_COMMAND_OPERATIONS
+            not in _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES
             or str(grant.get("tenant_id") or "").strip()
             or str(grant.get("federation_id") or "").strip()
             or not isinstance(grant_entity_scopes, Mapping)
@@ -623,6 +652,108 @@ class TypedDatabaseTaskSource:
             return None
         return self._validated_retry_cooldown_row(rows[0], task_cid=task)
 
+    @staticmethod
+    def _legacy_unstall_claim_candidate(
+        task: TaskRecord,
+    ) -> Mapping[str, Any] | None:
+        """Return only the exact retained claim signature legacy unstall made."""
+
+        if task.status != "retrying":
+            return None
+        body = task.body if isinstance(task.body, Mapping) else {}
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping) or receipt.get("operation") not in {
+            "database_claim",
+            "database_attempt_admitted",
+        }:
+            return None
+        try:
+            _validated_legacy_unstall_claim_receipt(
+                receipt,
+                task_cid=task.task_cid,
+                expected_task_revision=task.revision,
+            )
+        except TypedStateOwnerError:
+            return None
+        return MappingProxyType(dict(receipt))
+
+    def _raise_unrepaired_retrying_integrity_error(
+        self,
+        task: TaskRecord,
+        cooldowns: Mapping[str, Mapping[str, Any]],
+    ) -> None:
+        """Surface the ordinary strict reader error for a rejected repair."""
+
+        cooldown = cooldowns.get(task.task_cid)
+        if cooldown is None:
+            raise TaskSourceIntegrityError(
+                "retrying task has no typed cooldown receipt"
+            )
+        self._validate_retrying_cooldown_binding(task, cooldown)
+        raise TaskSourceIntegrityError(
+            "retrying legacy unstall claim unexpectedly passed strict binding"
+        )
+
+    def _repair_legacy_unstalled_records(
+        self,
+        records: Sequence[tuple[TaskRecord, Mapping[str, Any]]],
+        cooldowns: Mapping[str, Mapping[str, Any]],
+    ) -> bool:
+        """Repair all exact candidates, or fail closed through normal checks."""
+
+        candidates = tuple(
+            (record, receipt)
+            for record, _identity in records
+            if (
+                receipt := self._legacy_unstall_claim_candidate(record)
+            )
+            is not None
+        )
+        if not candidates:
+            return False
+        selected_now = self._clock_ms()
+        if (
+            isinstance(selected_now, bool)
+            or not isinstance(selected_now, int)
+            or selected_now < 0
+        ):
+            raise TaskSourceIntegrityError("typed task-source clock is invalid")
+        for record, receipt in candidates:
+            try:
+                result = self._client.recover_legacy_unstalled_claim(
+                    task_cid=record.task_cid,
+                    expected_task_revision=record.revision,
+                    task_body=record.body,
+                    claim_receipt=receipt,
+                    now_ms=selected_now,
+                )
+            except (QuackClientError, TransactionError):
+                current = self.get_task(record.task_cid)
+                current_receipt = (
+                    current.body.get("completion_receipt")
+                    if current is not None
+                    and isinstance(current.body, Mapping)
+                    else None
+                )
+                if (
+                    current is not None
+                    and current.status == "retrying"
+                    and current.revision > record.revision
+                    and isinstance(current_receipt, Mapping)
+                    and current_receipt.get("schema")
+                    == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA
+                    and current_receipt.get("operation")
+                    == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+                ):
+                    return True
+                self._raise_unrepaired_retrying_integrity_error(
+                    record,
+                    cooldowns,
+                )
+            if not result.accepted:
+                return True
+        return True
+
     def _stable_ready_material(
         self,
     ) -> tuple[
@@ -677,6 +808,11 @@ class TypedDatabaseTaskSource:
                     raise TaskSourceIntegrityError(
                         "retry cooldown projection contains a foreign task"
                     )
+                if self._repair_legacy_unstalled_records(
+                    records,
+                    cooldowns,
+                ):
+                    continue
                 for record, _identity in records:
                     if record.status == "retrying":
                         cooldown = cooldowns.get(record.task_cid)
@@ -1257,6 +1393,87 @@ class TypedDatabaseTaskSource:
         return IntentReceipt(
             event_id=str(result.result_digest or content_identity(dict(details))),
             event_type="TASK_DEAD_CLAIM_RESERVATION_RECOVERED",
+            global_sequence=0,
+            recorded_at="typed-state-owner",
+            subject_id=prior.task_cid,
+            revision=int(updated.revision),
+            changed=bool(result.changed),
+            details=details,
+        )
+
+    def recover_legacy_unstalled_claim(
+        self,
+        task_cid_or_alias: str,
+        *,
+        expected_task_revision: int,
+        now_ms: int | None = None,
+    ) -> IntentReceipt:
+        """Repair one exact retrying claim left by legacy startup unstall."""
+
+        prior = self.get(task_cid_or_alias)
+        if prior is None:
+            raise KeyError(str(task_cid_or_alias))
+        if (
+            prior.status != "retrying"
+            or isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or prior.revision != expected_task_revision
+        ):
+            raise TaskSourceConflictError(
+                "legacy unstall recovery task revision is stale"
+            )
+        claim_receipt = self._legacy_unstall_claim_candidate(prior)
+        if claim_receipt is None:
+            raise TaskSourceIntegrityError(
+                "legacy unstall recovery task has no exact retained claim"
+            )
+        selected_now = self._clock_ms() if now_ms is None else now_ms
+        if (
+            isinstance(selected_now, bool)
+            or not isinstance(selected_now, int)
+            or selected_now < 0
+        ):
+            raise TaskSourceIntegrityError("typed task-source clock is invalid")
+        result = self._client.recover_legacy_unstalled_claim(
+            task_cid=prior.task_cid,
+            expected_task_revision=expected_task_revision,
+            task_body=prior.body,
+            claim_receipt=claim_receipt,
+            now_ms=selected_now,
+        )
+        if not result.accepted:
+            raise TaskSourceConflictError(
+                str(
+                    result.result.get("error")
+                    or "legacy unstall recovery was not accepted"
+                )
+            )
+        updated = self.get(prior.task_cid)
+        row = self._retry_cooldown_row(prior.task_cid)
+        if updated is None or updated.status != "retrying" or row is None:
+            raise TaskSourceIntegrityError(
+                "legacy unstall recovery post-state is incomplete"
+            )
+        self._validate_retrying_cooldown_binding(updated, row)
+        receipt = updated.body.get("completion_receipt")
+        if (
+            not isinstance(receipt, Mapping)
+            or receipt.get("operation")
+            != TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+            or receipt.get("schema")
+            != TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA
+            or receipt.get("attempt_number")
+            != claim_receipt.get("attempt_number")
+        ):
+            raise TaskSourceIntegrityError(
+                "legacy unstall recovery receipt is inconsistent"
+            )
+        details = MappingProxyType(dict(result.result))
+        return IntentReceipt(
+            event_id=str(
+                result.result_digest or content_identity(dict(details))
+            ),
+            event_type="TASK_LEGACY_UNSTALL_CLAIM_RECOVERED",
             global_sequence=0,
             recorded_at="typed-state-owner",
             subject_id=prior.task_cid,

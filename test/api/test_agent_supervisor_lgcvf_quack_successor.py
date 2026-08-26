@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import fcntl
 import hashlib
 import importlib.util
@@ -5257,6 +5258,115 @@ def test_projection_extension_policy_is_load_only_and_never_installs(
         == board_control_plane_module.BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
         == operator.BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
     )
+    assert environment[operator.LEGACY_BOARD_UNSTALL_POLICY_ENV] == "disabled"
+
+
+def test_lgcvf_successor_owner_disables_legacy_board_unstall() -> None:
+    tree = ast.parse(OPERATOR_PATH.read_text(encoding="utf-8"))
+    launch = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_run_locked_successor"
+    )
+    calls = [
+        node
+        for node in ast.walk(launch)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "build_server"
+    ]
+    assert len(calls) == 1
+    policy = next(
+        keyword.value
+        for keyword in calls[0].keywords
+        if keyword.arg == "allow_legacy_board_unstall"
+    )
+    assert isinstance(policy, ast.Constant) and policy.value is False
+
+
+def test_typed_retry_writer_and_reader_share_one_closed_vocabulary() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskRecord,
+        TaskSourceIntegrityError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_RETRYING_RECEIPT_OPERATIONS,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        _DATABASE_CONTROL_ATTEMPT_OPERATIONS_BY_STATUS,
+    )
+
+    assert (
+        _DATABASE_CONTROL_ATTEMPT_OPERATIONS_BY_STATUS["retrying"]
+        is TYPED_RETRYING_RECEIPT_OPERATIONS
+    )
+    assert {
+        "database_portal_capacity_retry",
+        "database_portal_landed_completion_revalidation",
+        "database_portal_protected_preservation_retry",
+        "database_portal_protected_preservation_retry_recovery",
+        "database_portal_validation_retry_successor_recovery",
+    }.issubset(TYPED_RETRYING_RECEIPT_OPERATIONS)
+
+    identity = {
+        "attempt_id": "attempt:typed-retry-vocabulary",
+        "claim_id": "claim:typed-retry-vocabulary",
+        "lease_id": "lease:typed-retry-vocabulary",
+        "owner_session_id": "session:typed-retry-vocabulary",
+        "attempt_number": 2,
+        "fencing_token": 7,
+        "fence_epoch": 5,
+    }
+    revision = 9
+    queue_reason = "database_portal_retry:vocabulary"
+    retry_not_before_ms = 12_345
+    cooldown = {
+        "extension": {
+            **identity,
+            "expected_task_revision": revision - 1,
+            "reason": queue_reason,
+            "delay_ms": 0,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+    }
+
+    def retrying_task(operation: str) -> TaskRecord:
+        return TaskRecord(
+            task_cid="task:typed-retry-vocabulary",
+            task_alias="TYPED-RETRY-VOCABULARY",
+            goal_cid="goal:typed-retry-vocabulary",
+            ordinal=1,
+            status="retrying",
+            revision=revision,
+            body={
+                "completion_receipt": {
+                    "operation": operation,
+                    **identity,
+                    "queue_reason": queue_reason,
+                    "backoff_ms": 0,
+                    "retry_not_before_ms": retry_not_before_ms,
+                    "control_expected_revision": revision - 1,
+                }
+            },
+        )
+
+    for operation in TYPED_RETRYING_RECEIPT_OPERATIONS:
+        TypedDatabaseTaskSource._validate_retrying_cooldown_binding(
+            retrying_task(operation),
+            cooldown,
+        )
+    with pytest.raises(
+        TaskSourceIntegrityError,
+        match="not an admitted retry transition",
+    ):
+        TypedDatabaseTaskSource._validate_retrying_cooldown_binding(
+            retrying_task("database_claim"),
+            cooldown,
+        )
 
 
 def test_projection_plane_pins_all_writes_and_reopens_from_logical_paths(

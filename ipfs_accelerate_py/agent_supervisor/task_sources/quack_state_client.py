@@ -81,10 +81,15 @@ from .typed_state_owner import (
     TYPED_DATABASE_CLAIM_RECOVERY_REASON,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON,
+    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
+    _legacy_unstall_recovery_receipt,
     _process_birth_content_id,
     _process_runtime_facts,
+    _validated_legacy_unstall_claim_receipt,
     _validated_stored_retry_cooldown,
     open_typed_state_owner_connection,
 )
@@ -2346,6 +2351,298 @@ class QuackStateClient:
                 "attempt_number": values["attempt_number"],
                 "task_revision": expected + 1,
                 "queue_revision": 1,
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "historic_liveness": "dead",
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_recovery)
+
+    def recover_legacy_unstalled_claim(
+        self,
+        *,
+        task_cid: str,
+        expected_task_revision: int,
+        task_body: Mapping[str, Any],
+        claim_receipt: Mapping[str, Any],
+        now_ms: int | None = None,
+    ) -> CASResult:
+        """Repair one retrying row poisoned by legacy startup unstall."""
+
+        task = str(task_cid or "").strip()
+        if (
+            not task
+            or isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 2
+        ):
+            raise QuackClientError(
+                "legacy unstall recovery task revision is invalid"
+            )
+        body = dict(task_body)
+        prior_receipt = dict(claim_receipt)
+        if body.get("completion_receipt") != prior_receipt:
+            raise QuackClientError(
+                "legacy unstall recovery requires the exact retained claim"
+            )
+        try:
+            legacy = _validated_legacy_unstall_claim_receipt(
+                prior_receipt,
+                task_cid=task,
+                expected_task_revision=expected_task_revision,
+            )
+        except TypedStateOwnerError as exc:
+            raise QuackClientError(
+                "legacy unstall recovery claim lineage is invalid"
+            ) from exc
+        exact_identity = dict(legacy["identity"])
+        reason = TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON
+        started_at_ms = int(time.time() * 1_000) if now_ms is None else now_ms
+        if (
+            isinstance(started_at_ms, bool)
+            or not isinstance(started_at_ms, int)
+            or started_at_ms < 0
+        ):
+            raise QuackClientError(
+                "legacy unstall recovery now_ms is invalid"
+            )
+
+        prior_rows = self.execute(
+            "executor_retry_cooldown_by_task",
+            {"task_cid": task},
+        )
+        if len(prior_rows) > 1:
+            raise QuackClientError(
+                "legacy unstall recovery cooldown identity is ambiguous"
+            )
+        prior_queue: dict[str, Any] = {}
+        if prior_rows:
+            try:
+                prior_queue = _validated_stored_retry_cooldown(
+                    prior_rows[0],
+                    task_cid=task,
+                )
+            except TypedStateOwnerError as exc:
+                raise QuackClientError(
+                    "legacy unstall recovery prior cooldown is malformed"
+                ) from exc
+        expected_queue_revision = -1
+        expected_queue_attempt = 0
+        if prior_queue:
+            prior_attempt = int(prior_queue["attempt"])
+            current_attempt = int(exact_identity["attempt_number"])
+            prior_extension = dict(prior_queue["extension"])
+            if prior_attempt == current_attempt:
+                replay_identity = {
+                    "task_cid": task,
+                    "expected_task_revision": expected_task_revision,
+                    **exact_identity,
+                    "delay_ms": 0,
+                    "selection_penalty": 0,
+                    "consecutive_failures": current_attempt,
+                    "reason": reason,
+                }
+                if any(
+                    prior_extension.get(name) != expected
+                    for name, expected in replay_identity.items()
+                ):
+                    raise QuackClientError(
+                        "legacy unstall recovery same-attempt cooldown differs"
+                    )
+                try:
+                    started_at_ms = int(prior_extension["started_at_ms"])
+                    expected_queue_revision = int(
+                        prior_extension["expected_queue_revision"]
+                    )
+                    expected_queue_attempt = int(
+                        prior_extension["expected_queue_attempt"]
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise QuackClientError(
+                        "legacy unstall recovery replay cooldown is malformed"
+                    ) from exc
+            elif prior_attempt < current_attempt:
+                expected_queue_revision = int(prior_queue["revision"])
+                expected_queue_attempt = prior_attempt
+            else:
+                raise QuackClientError(
+                    "legacy unstall recovery refuses a newer cooldown"
+                )
+
+        current_attestation = dict(self.claim_process_attestation())
+        recovery_receipt = _legacy_unstall_recovery_receipt(
+            prior_receipt,
+            task_cid=task,
+            expected_task_revision=expected_task_revision,
+            recovery_process_attestation=current_attestation,
+            retry_not_before_ms=started_at_ms,
+        )
+        body["completion_receipt"] = recovery_receipt
+        body_json = canonical_json_bytes(body).decode("utf-8")
+        extension = {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": task,
+            "expected_task_revision": expected_task_revision,
+            **exact_identity,
+            "delay_ms": 0,
+            "started_at_ms": started_at_ms,
+            "retry_not_before_ms": started_at_ms,
+            "selection_penalty": 0,
+            "consecutive_failures": exact_identity["attempt_number"],
+            "reason": reason,
+            "expected_queue_revision": expected_queue_revision,
+            "expected_queue_attempt": expected_queue_attempt,
+        }
+        extension_json = canonical_json_bytes(extension).decode("utf-8")
+        resolution_cid = content_identity(
+            {
+                "typed_retry_cooldown": extension,
+                "started_at_ms": started_at_ms,
+            }
+        )
+        parameters = {
+            **extension,
+            "operation": TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+            "expected_task_status": "retrying",
+            "resolution_cid": resolution_cid,
+            "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "extension_json": extension_json,
+            "status": "retrying",
+        }
+        command_digest = hashlib.sha256(
+            canonical_json_bytes(parameters)
+        ).hexdigest()
+        session = self._require_session()
+        live = self.load_generation()
+        command = StateCommand(
+            command_id=f"cmd:legacy-unstall-recovery:{command_digest}",
+            command_kind=CommandKind.CLAIM,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=(
+                f"executor-legacy-unstall-recovery:{command_digest}"
+            ),
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters=parameters,
+        )
+
+        def apply_recovery(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            observed_result = txn.execute_named_operation(
+                "executor_retry_cooldown_by_task",
+                (values["task_cid"],),
+            )
+            observed_rows = _fetch_all(observed_result)
+            if len(observed_rows) > 1:
+                raise OptimisticConflictError(
+                    "legacy unstall recovery cooldown became ambiguous"
+                )
+            observed = (
+                _row_mapping(
+                    _result_columns(observed_result),
+                    observed_rows[0],
+                )
+                if observed_rows
+                else {}
+            )
+            expected_revision = int(values["expected_queue_revision"])
+            expected_attempt = int(values["expected_queue_attempt"])
+            if (
+                (expected_revision == -1 and observed)
+                or (expected_revision >= 0 and not observed)
+                or (
+                    observed
+                    and (
+                        int(observed.get("revision") or -1)
+                        != expected_revision
+                        or int(observed.get("attempt") or -1)
+                        != expected_attempt
+                        or str(observed.get("extension_schema") or "")
+                        != TYPED_RETRY_COOLDOWN_SCHEMA
+                    )
+                )
+            ):
+                raise OptimisticConflictError(
+                    "legacy unstall recovery expected cooldown is stale"
+                )
+            new_queue_revision = (
+                1 if expected_revision == -1 else expected_revision + 1
+            )
+            common_values = (
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                new_queue_revision,
+                values["extension_schema"],
+                values["extension_json"],
+            )
+            if expected_revision == -1:
+                queue_operation = "executor_insert_retry_cooldown"
+                queue_parameters = (
+                    values["task_cid"],
+                    *common_values,
+                    -1,
+                )
+            else:
+                queue_operation = "executor_update_retry_cooldown"
+                queue_parameters = (
+                    *common_values,
+                    values["task_cid"],
+                    expected_revision,
+                    expected_attempt,
+                    values["attempt_number"],
+                    TYPED_RETRY_COOLDOWN_SCHEMA,
+                )
+            queue_result = txn.execute_named_operation(
+                queue_operation,
+                queue_parameters,
+            )
+            if _fetch_one(queue_result) is None:
+                raise OptimisticConflictError(
+                    "legacy unstall recovery cooldown CAS failed"
+                )
+            task_revision = int(values["expected_task_revision"])
+            task_result = txn.execute_named_operation(
+                "executor_cas_task_status_receipt",
+                (
+                    "retrying",
+                    task_revision + 1,
+                    self._clock(),
+                    body_json,
+                    values["task_cid"],
+                    task_revision,
+                ),
+            )
+            if _fetch_one(task_result) is None:
+                raise OptimisticConflictError(
+                    "legacy unstall recovery task CAS failed"
+                )
+            return {
+                "schema": TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+                "operation": TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+                "task_cid": values["task_cid"],
+                "attempt_id": values["attempt_id"],
+                "attempt_number": values["attempt_number"],
+                "recovered_claim_operation": legacy["operation"],
+                "task_revision": task_revision + 1,
+                "queue_revision": new_queue_revision,
                 "retry_not_before_ms": values["retry_not_before_ms"],
                 "historic_liveness": "dead",
                 "store_revision_before": generation.revision,

@@ -83,6 +83,16 @@ TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: Final = (
 TYPED_DATABASE_CLAIM_RECOVERY_REASON: Final = (
     "database_claim_lost_sidecar_dead_process"
 )
+TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-legacy-unstall-recovery@1"
+)
+TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: Final = (
+    "task.claim.legacy_unstall.recover"
+)
+TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON: Final = (
+    "database_claim_legacy_unstall_dead_process"
+)
 TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "typed-database-strict-resume-rejection@1"
@@ -98,14 +108,29 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_portal_retry",
         "database_portal_validation_retry",
         "database_portal_validation_retry_recovery",
+        "database_portal_validation_retry_successor_recovery",
+        "database_portal_capacity_retry",
+        "database_portal_protected_preservation_retry",
+        "database_portal_protected_preservation_retry_recovery",
+        (
+            "database_portal_protected_preservation_"
+            "reconciliation_retry_recovery"
+        ),
+        "database_portal_landed_completion_revalidation",
         "database_portal_protected_path_retry_recovery",
         "database_portal_external_protected_checkout_retry_recovery",
         "database_portal_inflight_process_retry_recovery",
         "database_portal_validation_retry_seed_conflict_retry_recovery",
         "database_portal_leftover_wait_deferral_budget_retry_recovery",
         "database_portal_pooled_worktree_create_retry_recovery",
+        "database_portal_superseded_consumed_attempt_recovery",
+        "database_portal_post_merge_declared_output_recovery",
         "database_post_merge_declared_outputs_repair_recovery",
         "database_post_merge_declared_outputs_requalification_recovery",
+        (
+            "database_post_merge_declared_outputs_"
+            "callback_integration_recovery"
+        ),
         "database_portal_inflight_deferral_unstall",
         TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     }
@@ -932,6 +957,154 @@ def _validated_database_claim_process_attestation(
     return attestation
 
 
+def _validated_legacy_unstall_claim_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    task_cid: str,
+    expected_task_revision: int,
+) -> dict[str, Any]:
+    """Prove the exact receipt/revision signature left by legacy unstall."""
+
+    task = str(task_cid or "").strip()
+    revision = expected_task_revision
+    if (
+        not task
+        or isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or revision < 2
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall claim revision is invalid"
+        )
+    values = dict(receipt)
+    identity = _validated_database_claim_identity(values)
+    historic_attestation = (
+        _validated_database_claim_process_attestation(values)
+    )
+    try:
+        route = TaskExecutionRouteBinding.from_dict(
+            values.get("execution_route_binding")
+        ).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall claim has no exact execution route"
+        ) from exc
+    operation = values.get("operation")
+    phase_schema = values.get("claim_phase_schema")
+    claimed_from_revision = values.get("claimed_from_revision")
+    if operation == "database_claim":
+        phase_matches = bool(
+            phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            and _strict_scalar_equal(
+                claimed_from_revision,
+                revision - 2,
+            )
+        )
+        admitted_from_revision: int | None = None
+    elif operation == "database_attempt_admitted":
+        admitted_from_revision = values.get("admitted_from_revision")
+        phase_matches = bool(
+            phase_schema == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            and revision >= 3
+            and _strict_scalar_equal(
+                claimed_from_revision,
+                revision - 3,
+            )
+            and _strict_scalar_equal(
+                admitted_from_revision,
+                revision - 2,
+            )
+            and values.get("attempt_execution_phase") == "claimed"
+            and _strict_scalar_equal(
+                values.get("attempt_execution_revision"),
+                1,
+            )
+        )
+    else:
+        admitted_from_revision = None
+        phase_matches = False
+    if (
+        not phase_matches
+        or dict(values.get("execution_route_binding") or {}) != route
+        or route["task_cid"] != task
+        or values.get("execution_route_policy_id") != route["policy_id"]
+        or not _strict_scalar_equal(
+            values.get("execution_route_origin_revision"),
+            route["task_revision"],
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall claim differs from its exact revision lineage"
+        )
+    return {
+        "receipt": values,
+        "identity": identity,
+        "historic_attestation": historic_attestation,
+        "execution_route": route,
+        "operation": operation,
+        "phase_schema": phase_schema,
+        "claimed_from_revision": int(claimed_from_revision),
+        "admitted_from_revision": (
+            int(admitted_from_revision)
+            if admitted_from_revision is not None
+            else None
+        ),
+    }
+
+
+def _legacy_unstall_recovery_receipt(
+    prior_receipt: Mapping[str, Any],
+    *,
+    task_cid: str,
+    expected_task_revision: int,
+    recovery_process_attestation: Mapping[str, Any],
+    retry_not_before_ms: int,
+) -> dict[str, Any]:
+    """Derive the only durable receipt admitted for legacy unstall repair."""
+
+    legacy = _validated_legacy_unstall_claim_receipt(
+        prior_receipt,
+        task_cid=task_cid,
+        expected_task_revision=expected_task_revision,
+    )
+    recovered_claim_cid = content_identity(
+        {"typed_database_legacy_unstall_claim": dict(prior_receipt)}
+    )
+    receipt = {
+        "schema": TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_SCHEMA,
+        "operation": TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+        **dict(legacy["identity"]),
+        "recovered_claim_operation": legacy["operation"],
+        "recovered_claim_phase_schema": legacy["phase_schema"],
+        "recovered_claimed_from_revision": legacy[
+            "claimed_from_revision"
+        ],
+        "recovered_claim_receipt_cid": recovered_claim_cid,
+        "recovered_claim_process_attestation": dict(
+            legacy["historic_attestation"]
+        ),
+        "recovery_process_attestation": dict(
+            recovery_process_attestation
+        ),
+        "recovered_from_revision": expected_task_revision,
+        "legacy_unstall_revision": expected_task_revision,
+        "queue_reason": TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON,
+        "backoff_ms": 0,
+        "retry_not_before_ms": retry_not_before_ms,
+        "control_expected_revision": expected_task_revision,
+        "execution_route_binding": dict(legacy["execution_route"]),
+        "execution_route_policy_id": legacy["execution_route"]["policy_id"],
+        "execution_route_origin_revision": int(
+            legacy["execution_route"]["task_revision"]
+        ),
+    }
+    if legacy["admitted_from_revision"] is not None:
+        receipt["recovered_admitted_from_revision"] = legacy[
+            "admitted_from_revision"
+        ]
+    return receipt
+
+
 def _validated_retry_cooldown_parameters(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1190,6 +1363,67 @@ def _validated_dead_claim_recovery_parameters(
     }
 
 
+def _validated_legacy_unstall_recovery_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed repair for one legacy startup-unstalled claim."""
+
+    parameters = dict(value)
+    if set(parameters) != {
+        "schema",
+        "operation",
+        "task_cid",
+        "expected_task_revision",
+        "expected_task_status",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "delay_ms",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "selection_penalty",
+        "consecutive_failures",
+        "reason",
+        "resolution_cid",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "extension_schema",
+        "extension_json",
+        "status",
+    }:
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall recovery command differs from its closed schema"
+        )
+    if (
+        parameters.get("operation")
+        != TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND
+        or parameters.get("status") != "retrying"
+        or parameters.get("expected_task_status") != "retrying"
+        or parameters.get("delay_ms") != 0
+        or parameters.get("selection_penalty") != 0
+        or parameters.get("reason")
+        != TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_REASON
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "legacy unstall recovery is outside its closed transition"
+        )
+    cooldown_parameters = {
+        name: member
+        for name, member in parameters.items()
+        if name != "status"
+    }
+    cooldown_parameters["operation"] = "task.retry.cooldown.record"
+    _validated_retry_cooldown_parameters(cooldown_parameters)
+    return {
+        **parameters,
+        "cooldown_parameters": cooldown_parameters,
+    }
+
+
 def _validated_retry_mutation_parameters(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1198,6 +1432,15 @@ def _validated_retry_mutation_parameters(
     if value.get("operation") == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
         return dict(
             _validated_dead_claim_recovery_parameters(value)[
+                "cooldown_parameters"
+            ]
+        )
+    if (
+        value.get("operation")
+        == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND
+    ):
+        return dict(
+            _validated_legacy_unstall_recovery_parameters(value)[
                 "cooldown_parameters"
             ]
         )
@@ -1210,6 +1453,20 @@ def _dead_claim_recovery_command_digest(
     """Bind deterministic replay to the complete atomic recovery payload."""
 
     validated = _validated_dead_claim_recovery_parameters(parameters)
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name not in {"body", "cooldown_parameters"}
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+def _legacy_unstall_recovery_command_digest(
+    parameters: Mapping[str, Any],
+) -> str:
+    """Bind replay identity to the complete legacy-unstall repair."""
+
+    validated = _validated_legacy_unstall_recovery_parameters(parameters)
     material = {
         name: member
         for name, member in validated.items()
@@ -1575,6 +1832,13 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_insert_retry_cooldown",
             }
         ),
+        TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: frozenset(
+            {
+                "executor_cas_task_status_receipt",
+                "executor_insert_retry_cooldown",
+                "executor_update_retry_cooldown",
+            }
+        ),
         "task.validation.record.passed": frozenset(
             {
                 "executor_insert_validation_run",
@@ -1598,6 +1862,7 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
         "task.status.cas.receipt",
         "task.retry.cooldown.record",
         TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+        TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
     }
@@ -1672,6 +1937,9 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                 _COMMAND_MUTATION_CATALOG[
                     TYPED_DATABASE_CLAIM_RECOVERY_COMMAND
                 ]
+            ),
+            TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: frozenset(
+                {"executor_cas_task_status_receipt"}
             ),
             "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
                 "task.validation.record.passed"
@@ -2916,6 +3184,20 @@ class TypedStateOwnerGateway:
                                         normalized_body_json
                                     )
                                     parameters = tuple(normalized_parameters)
+                            elif (
+                                semantic_authority.get("operation")
+                                == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND
+                                and operation.name
+                                == "executor_cas_task_status_receipt"
+                            ):
+                                body_index = operation.parameter_names.index(
+                                    "body_json"
+                                )
+                                normalized_parameters = list(parameters)
+                                normalized_parameters[body_index] = str(
+                                    semantic_authority["body_json"]
+                                )
+                                parameters = tuple(normalized_parameters)
                             self._authorize_mutation(
                                 command,
                                 operation,
@@ -3358,6 +3640,7 @@ class TypedStateOwnerGateway:
             "task.status.cas": "claim",
             "task.status.cas.receipt": "claim",
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: "claim",
+            TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: "claim",
         }.get(operation, "append")
         if command.command_kind.value != expected_kind:
             raise TypedStateOwnerAuthorizationError(
@@ -3382,6 +3665,20 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "dead claim recovery replay identity differs from its parameters"
+                )
+        if operation == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND:
+            digest = _legacy_unstall_recovery_command_digest(
+                command.parameters
+            )
+            if (
+                command.command_id
+                != f"cmd:legacy-unstall-recovery:{digest}"
+                or command.idempotency_key
+                != f"executor-legacy-unstall-recovery:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery replay identity differs from "
+                    "its parameters"
                 )
         if operation in {"task.status.cas", "task.status.cas.receipt"}:
             requested_status = command.parameters.get("status")
@@ -3793,6 +4090,177 @@ class TypedStateOwnerGateway:
                 "expected_revision": values["expected_task_revision"],
                 "body_json": expected_body_json,
                 "cooldown_parameters": values,
+                "recovery_receipt": recovery_receipt,
+                "historic_liveness": liveness.value,
+            }
+        if operation == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND:
+            recovery = _validated_legacy_unstall_recovery_parameters(
+                command.parameters
+            )
+            values = dict(recovery["cooldown_parameters"])
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery task authority is absent or "
+                    "ambiguous"
+                )
+            task_row = task_rows[0]
+            if (
+                str(task_row[0] or "").strip().lower() != "retrying"
+                or type(task_row[1]) is not int
+                or int(task_row[1]) != values["expected_task_revision"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery task revision is stale"
+                )
+            try:
+                prior_body = json.loads(str(task_row[2] or "{}"))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery prior task body is malformed"
+                ) from exc
+            prior_receipt = (
+                prior_body.get("completion_receipt")
+                if isinstance(prior_body, Mapping)
+                else None
+            )
+            if not isinstance(prior_receipt, Mapping):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery has no typed claim receipt"
+                )
+            legacy = _validated_legacy_unstall_claim_receipt(
+                prior_receipt,
+                task_cid=values["task_cid"],
+                expected_task_revision=values["expected_task_revision"],
+            )
+            exact_identity = {
+                "claim_id": values["claim_id"],
+                "attempt_id": values["attempt_id"],
+                "attempt_number": values["attempt_number"],
+                "lease_id": values["lease_id"],
+                "owner_session_id": values["owner_session_id"],
+                "fencing_token": values["fencing_token"],
+                "fence_epoch": values["fence_epoch"],
+            }
+            historic_attestation = dict(legacy["historic_attestation"])
+            if (
+                any(
+                    not _strict_scalar_equal(
+                        legacy["identity"].get(name), expected
+                    )
+                    for name, expected in exact_identity.items()
+                )
+                or historic_attestation["client_id"] != grant.client_id
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery claim differs from its exact "
+                    "authority"
+                )
+            current_attestation = _claim_process_attestation(grant)
+            if (
+                historic_attestation["process_birth_id"]
+                == current_attestation["process_birth_id"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery cannot replace its current "
+                    "process birth"
+                )
+            historic_birth = ProcessBirthIdentity(
+                pid=int(historic_attestation["pid"]),
+                start_time_ticks=int(
+                    historic_attestation["start_time_ticks"]
+                ),
+                boot_id=str(historic_attestation["boot_id"]),
+                parent_pid=int(historic_attestation["parent_pid"]),
+            )
+            try:
+                liveness = OwnerLiveness(
+                    self._owner_liveness_probe(historic_birth)
+                )
+            except BaseException:
+                liveness = OwnerLiveness.UNKNOWN
+            if liveness is not OwnerLiveness.DEAD:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery requires a provably dead "
+                    "historic process"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(queue_rows) > 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery cooldown authority is ambiguous"
+                )
+            prior_queue: dict[str, Any] = {}
+            if queue_rows:
+                validated_prior = _validated_stored_retry_cooldown(
+                    queue_rows[0],
+                    task_cid=values["task_cid"],
+                )
+                prior_queue = {
+                    **validated_prior,
+                    "claim_id": validated_prior["claim_cid"],
+                    "attempt_number": validated_prior["attempt"],
+                }
+            if (
+                (values["expected_queue_revision"] == -1 and prior_queue)
+                or (
+                    values["expected_queue_revision"] >= 0
+                    and not prior_queue
+                )
+                or (
+                    prior_queue
+                    and (
+                        prior_queue["revision"]
+                        != values["expected_queue_revision"]
+                        or prior_queue["attempt_number"]
+                        != values["expected_queue_attempt"]
+                        or prior_queue["attempt_number"]
+                        >= values["attempt_number"]
+                    )
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery expected cooldown authority is "
+                    "stale"
+                )
+            recovery_receipt = _legacy_unstall_recovery_receipt(
+                prior_receipt,
+                task_cid=values["task_cid"],
+                expected_task_revision=values["expected_task_revision"],
+                recovery_process_attestation=current_attestation,
+                retry_not_before_ms=values["retry_not_before_ms"],
+            )
+            expected_body = dict(prior_body)
+            expected_body["completion_receipt"] = recovery_receipt
+            expected_body_json = canonical_json_bytes(expected_body).decode(
+                "utf-8"
+            )
+            if len(expected_body_json.encode("utf-8")) > MAX_BODY_BYTES:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery task body exceeds its byte bound"
+                )
+            return {
+                "operation": operation,
+                "task_cid": values["task_cid"],
+                "expected_revision": values["expected_task_revision"],
+                "body_json": expected_body_json,
+                "cooldown_parameters": values,
+                "prior_queue": prior_queue,
                 "recovery_receipt": recovery_receipt,
                 "historic_liveness": liveness.value,
             }
@@ -5077,7 +5545,10 @@ class TypedStateOwnerGateway:
             if (
                 semantic_authority
                 and semantic_authority.get("operation")
-                == "task.database.claim.phase"
+                in {
+                    "task.database.claim.phase",
+                    TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND,
+                }
             ):
                 expected_body_json = semantic_authority.get("body_json")
             expected = {
@@ -5409,6 +5880,103 @@ class TypedStateOwnerGateway:
             if observed_queue != expected_queue:
                 raise TypedStateOwnerAuthorizationError(
                     "dead claim recovery cooldown post-state differs"
+                )
+            return
+
+        if operation == TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND:
+            values = dict(authority["cooldown_parameters"])
+            prior_queue = dict(authority.get("prior_queue") or {})
+            expected_revision = int(authority["expected_revision"])
+            expected_mutation = (
+                "executor_update_retry_cooldown"
+                if prior_queue
+                else "executor_insert_retry_cooldown"
+            )
+            alternate = (
+                "executor_insert_retry_cooldown"
+                if prior_queue
+                else "executor_update_retry_cooldown"
+            )
+            one(expected_mutation)
+            if by_name.get(alternate):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery contains both cooldown mutation "
+                    "roles"
+                )
+            exact(
+                one("executor_cas_task_status_receipt"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "retrying",
+                    "body_json": authority["body_json"],
+                },
+            )
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            observed_task = (
+                tuple(task_rows[0][index] for index in range(3))
+                if len(task_rows) == 1
+                else ()
+            )
+            if observed_task != (
+                "retrying",
+                expected_revision + 1,
+                authority["body_json"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery task post-state differs"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            expected_queue_revision = (
+                int(prior_queue["revision"]) + 1 if prior_queue else 1
+            )
+            expected_queue = (
+                values["task_cid"],
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                expected_queue_revision,
+                TYPED_RETRY_COOLDOWN_SCHEMA,
+                values["extension_json"],
+            )
+            observed_queue = (
+                tuple(
+                    queue_rows[0][index]
+                    for index in range(len(expected_queue))
+                )
+                if len(queue_rows) == 1
+                else ()
+            )
+            if observed_queue != expected_queue:
+                raise TypedStateOwnerAuthorizationError(
+                    "legacy unstall recovery cooldown post-state differs"
                 )
             return
 

@@ -126,6 +126,9 @@ NATIVE_RESUME_PROVENANCE_BINDING_ERROR: Final = (
     "native-resume provenance binding differs"
 )
 SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v39"
+LEGACY_BOARD_UNSTALL_POLICY_ENV: Final = (
+    "IPFS_ACCELERATE_AGENT_LEGACY_BOARD_UNSTALL_POLICY"
+)
 INTERNAL_CLIENT_GRANT_TTL_SECONDS: Final = 86_400.0
 INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS: Final = 43_200.0
 STATE_OWNER_BOOTSTRAP_CLIENT_TIMEOUT_SECONDS: Final = 1.0
@@ -9571,6 +9574,7 @@ def _child_environment(
         identity.schema_revision
     )
     environment["IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT"] = str(root)
+    environment[LEGACY_BOARD_UNSTALL_POLICY_ENV] = "disabled"
     environment[BOARD_EXTENSION_INSTALL_POLICY_ENV] = (
         BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
     )
@@ -10871,6 +10875,7 @@ def _run_locked_successor(
             secret_handle=program.endpoint_secret_handle,
             migrate=datasets_profile_migration,
             typed_command_socket_path=paths["owner_socket"],
+            allow_legacy_board_unstall=False,
         )
         if server.typed_command_socket_path() != paths["owner_socket"]:
             raise SuccessorOperatorError("owner did not retain its short socket path")
@@ -10919,11 +10924,16 @@ def _run_locked_successor(
         token_path = paths["owner_state"] / (
             identity.secret_handle.replace(":", "_").replace("/", "_") + ".quack-token"
         )
-        if token_path.exists() or token.encode("ascii") in _canonical_bytes(
-            server.status()
+        owner_status = server.status()
+        if (
+            token_path.exists()
+            or token.encode("ascii") in _canonical_bytes(owner_status)
+            or owner_status.get("legacy_board_unstall_enabled") is not False
         ):
             stop_owner()
-            raise SuccessorOperatorError("owner published its Quack attach token")
+            raise SuccessorOperatorError(
+                "owner credential or typed unstall policy is unsafe"
+            )
         execution_route_policy = _seal_lgcvf_execution_route_policy(
             server=server,
             program=program,
