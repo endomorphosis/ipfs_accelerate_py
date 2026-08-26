@@ -8,6 +8,7 @@ never treat self-signed or unsigned material as admitted authority.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -27,6 +28,7 @@ from cryptography.hazmat.primitives.serialization import (
     Encoding,
     NoEncryption,
     PrivateFormat,
+    load_der_private_key,
 )
 from ipfs_accelerate_py.agent_supervisor.control.eaaef_provider_authority import (
     EAAEF_PROVIDER_LEGACY_PROFILE_DIR,
@@ -89,6 +91,9 @@ APPROVED_IMPORT_ROOT: Final = Path(
 )
 LANE_COUNT: Final = 5
 PRINCIPAL_ROLES: Final = ("worker", "provider", "quack_owner")
+RUNTIME_PRINCIPAL_LOGICAL_DIR: Final = (
+    Path(EAAEF_LOGICAL_AUTHORITY_PREFIX) / "runtime-principals"
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 CAMPAIGN = ROOT / "docs/architecture/external_agent_autonomous_execution_fabric"
@@ -161,6 +166,28 @@ def source_addressed_child_receipt_logical_path(
         final_dir=Path(EAAEF_LOGICAL_AUTHORITY_PREFIX) / "host-admission",
         source_head=source_head,
         task_id=task_id,
+    )
+
+
+def source_addressed_early_frontier_observation_logical_path(
+    *,
+    source_head: str,
+    observation_cid: str,
+) -> Path:
+    """Return a create-once path for a non-authoritative early observation."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", str(source_head or "")) is None:
+        raise ValueError("early-frontier observation source commit is invalid")
+    if not _full_sha256(observation_cid):
+        raise ValueError("early-frontier observation CID is invalid")
+    return (
+        Path(EAAEF_LOGICAL_AUTHORITY_PREFIX)
+        / "host-admission"
+        / "observations"
+        / (
+            f"early-frontier--{source_head}--"
+            f"{observation_cid.removeprefix('sha256:')}.json"
+        )
     )
 
 
@@ -252,7 +279,6 @@ ROUTE_AUTHORITY_DIR = (
     / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
     / "authority"
 )
-AUTHORITY_DIR = ROUTE_AUTHORITY_DIR / "runtime-principals"
 PROVIDER_AUTHORIZATION_GLOB = "provider-route-authorization-*.json"
 LAUNCHER = ROOT / (
     "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
@@ -336,9 +362,41 @@ EARLY_FRONTIER_TASK_IDS: Final[tuple[str, ...]] = (
 EARLY_FRONTIER_LAUNCH_PLAN_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-launch-plan@2"
 )
+EARLY_FRONTIER_OBSERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-early-frontier-observation@1"
+)
+EARLY_FRONTIER_OBSERVATION_SCOPE: Final = "early_frontier_180_183"
+EARLY_FRONTIER_OBSERVATION_DB_BINDING_BLOCKER: Final = (
+    "immutable_early_frontier_observation_requires_separate_casf_owner_db_binding"
+)
 EARLY_FRONTIER_PREFLIGHT_BLOCKER: Final = (
     "eaaef_early_frontier_lifecycle_preflight_blocked"
 )
+
+_EARLY_FRONTIER_OBSERVATION_DECISIONS: Final[dict[str, frozenset[str]]] = {
+    "EAAEF-180": frozenset({"inventory"}),
+    "EAAEF-181": frozenset({"bound_unadmitted"}),
+    "EAAEF-182": frozenset({"admitted", "typed_missing"}),
+    "EAAEF-183": frozenset({"admitted", "typed_missing"}),
+}
+
+
+def _early_frontier_decision_sets(
+    decisions: Mapping[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Derive typed-missing and later owner-transaction eligibility."""
+
+    typed_missing = [
+        task_id
+        for task_id in EARLY_FRONTIER_TASK_IDS
+        if decisions.get(task_id) == "typed_missing"
+    ]
+    owner_eligible = [
+        task_id
+        for task_id in EARLY_FRONTIER_TASK_IDS
+        if decisions.get(task_id) == _ACCEPTED_TASK_DECISIONS[task_id]
+    ]
+    return typed_missing, owner_eligible
 
 _ACCEPTED_TASK_DECISIONS: Final[dict[str, str]] = {
     "EAAEF-180": "inventory",
@@ -1053,26 +1111,33 @@ def verify_current_admission_bundle_receipt(
     return verification
 
 
-def eaaef_checkout_has_only_generated_receipt_drift(
+def _eaaef_checkout_has_only_declared_staging_drift(
     repo_root: str | Path,
+    *,
+    allowed: Sequence[Path],
 ) -> bool:
-    """Allow only the exact generated host-receipt staging paths to differ."""
+    """Reject every checkout change except exact repository-relative paths."""
 
     root = Path(repo_root).absolute()
-    receipt_relative = Path(
-        "docs/architecture/external_agent_autonomous_execution_fabric/"
-        "receipts/host_admission"
-    )
-    allowed = tuple(receipt_relative / name for name in RECEIPT_FILES.values()) + (
-        receipt_relative / "admission_bundle.signatures.json",
-    )
+    if not allowed or any(
+        path.is_absolute() or ".." in path.parts or path == Path(".")
+        for path in allowed
+    ):
+        return False
+    if len(set(allowed)) != len(allowed):
+        return False
     pathspecs = [
         ".",
-        *(
-            ":(top,exclude,literal)" + path.as_posix()
-            for path in allowed
-        ),
+        *(":(top,exclude,literal)" + path.as_posix() for path in allowed),
     ]
+    git_environment = {
+        "PATH": "/usr/bin:/bin",
+        "LC_ALL": "C",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
     try:
         completed = subprocess.run(
             [
@@ -1093,14 +1158,7 @@ def eaaef_checkout_has_only_generated_receipt_drift(
             capture_output=True,
             text=True,
             timeout=30,
-            env={
-                "PATH": "/usr/bin:/bin",
-                "LC_ALL": "C",
-                "GIT_CONFIG_NOSYSTEM": "1",
-                "GIT_CONFIG_GLOBAL": "/dev/null",
-                "GIT_OPTIONAL_LOCKS": "0",
-                "GIT_TERMINAL_PROMPT": "0",
-            },
+            env=git_environment,
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -1125,14 +1183,7 @@ def eaaef_checkout_has_only_generated_receipt_drift(
             capture_output=True,
             text=True,
             timeout=30,
-            env={
-                "PATH": "/usr/bin:/bin",
-                "LC_ALL": "C",
-                "GIT_CONFIG_NOSYSTEM": "1",
-                "GIT_CONFIG_GLOBAL": "/dev/null",
-                "GIT_OPTIONAL_LOCKS": "0",
-                "GIT_TERMINAL_PROMPT": "0",
-            },
+            env=git_environment,
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -1140,11 +1191,47 @@ def eaaef_checkout_has_only_generated_receipt_drift(
         return False
     # ``git status`` deliberately omits worktree differences hidden by
     # assume-unchanged or skip-worktree.  Neither index flag is admissible at
-    # a source-authority boundary.
+    # a source-addressed evidence boundary.
     entries = (entry for entry in index.stdout.split("\0") if entry)
     return not any(
         entry[0].islower() or entry.startswith("S ")
         for entry in entries
+    )
+
+
+def eaaef_checkout_has_only_generated_receipt_drift(
+    repo_root: str | Path,
+) -> bool:
+    """Allow only every declared generated host-receipt staging path."""
+
+    receipt_relative = Path(
+        "docs/architecture/external_agent_autonomous_execution_fabric/"
+        "receipts/host_admission"
+    )
+    allowed = tuple(receipt_relative / name for name in RECEIPT_FILES.values()) + (
+        receipt_relative / "admission_bundle.signatures.json",
+    )
+    return _eaaef_checkout_has_only_declared_staging_drift(
+        repo_root,
+        allowed=allowed,
+    )
+
+
+def eaaef_checkout_has_only_early_frontier_receipt_drift(
+    repo_root: str | Path,
+) -> bool:
+    """Allow drift only in the four declared EAAEF-180..183 staging files."""
+
+    receipt_relative = Path(
+        "docs/architecture/external_agent_autonomous_execution_fabric/"
+        "receipts/host_admission"
+    )
+    return _eaaef_checkout_has_only_declared_staging_drift(
+        repo_root,
+        allowed=tuple(
+            receipt_relative / RECEIPT_FILES[task_id]
+            for task_id in EARLY_FRONTIER_TASK_IDS
+        ),
     )
 
 
@@ -1419,7 +1506,14 @@ def closing_task_ids(text: str) -> list[str]:
 
 def _git(*args: str) -> str:
     return subprocess.check_output(
-        ["/usr/bin/git", *args],
+        [
+            "/usr/bin/git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            *args,
+        ],
         cwd=ROOT,
         text=True,
         env={
@@ -1473,6 +1567,507 @@ def _base_receipt(
         {key: value for key, value in payload.items() if key != "receipt_cid"}
     )
     return payload
+
+
+def _require_current_early_frontier_source_identity(
+    expected: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Return a clean committed identity or fail before evidence publication."""
+
+    if not eaaef_checkout_has_only_early_frontier_receipt_drift(ROOT):
+        raise RuntimeError(
+            "early-frontier observation checkout has non-staging source drift"
+        )
+    identity = _source_identity()
+    required = {
+        "source_head": r"[0-9a-f]{40}",
+        "source_tree": r"[0-9a-f]{40}",
+        "board_cid": r"sha256:[0-9a-f]{64}",
+    }
+    if any(
+        re.fullmatch(pattern, str(identity.get(field) or "")) is None
+        for field, pattern in required.items()
+    ) or not str(identity.get("board_namespace") or ""):
+        raise RuntimeError("early-frontier observation source identity is invalid")
+    try:
+        board = json.loads(BOARD_PATH.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("early-frontier observation board is unavailable") from exc
+    if not isinstance(board, dict):
+        raise RuntimeError("early-frontier observation board is not an object")
+    board_body = {key: value for key, value in board.items() if key != "board_cid"}
+    if (
+        board.get("board_cid") != cid(board_body)
+        or identity["board_cid"] != board.get("board_cid")
+        or identity["board_namespace"] != board.get("board_namespace")
+    ):
+        raise RuntimeError("early-frontier observation board identity is invalid")
+    current = {key: str(value) for key, value in identity.items()}
+    if expected is not None:
+        requested = {
+            key: str(expected.get(key) or "")
+            for key in ("source_head", "source_tree", "board_namespace", "board_cid")
+        }
+        if requested != current:
+            raise RuntimeError(
+                "early-frontier observation source or board changed during capture"
+            )
+    return current
+
+
+def _early_frontier_child_receipt_blockers(
+    *,
+    task_id: str,
+    receipt: object,
+    source_identity: Mapping[str, str],
+) -> list[str]:
+    blockers: list[str] = []
+    if not isinstance(receipt, Mapping):
+        return [f"{task_id} early-frontier child is not an object"]
+    payload = dict(receipt)
+    if set(payload) != {
+        "schema",
+        "task_id",
+        "receipt_name",
+        "decision",
+        "process_started",
+        "supervisor_process_started",
+        "self_signed",
+        "independent_signatures",
+        "source_head",
+        "source_tree",
+        "board_namespace",
+        "board_cid",
+        "evidence",
+        "receipt_cid",
+    }:
+        blockers.append(f"{task_id} early-frontier child fields differ")
+    if payload.get("schema") != RECEIPT_SCHEMA:
+        blockers.append(f"{task_id} early-frontier child schema differs")
+    if payload.get("task_id") != task_id:
+        blockers.append(f"{task_id} early-frontier child task identity differs")
+    if payload.get("receipt_name") != RECEIPT_FILES[task_id]:
+        blockers.append(f"{task_id} early-frontier child filename differs")
+    body = {key: value for key, value in payload.items() if key != "receipt_cid"}
+    try:
+        json.dumps(body, allow_nan=False, ensure_ascii=False)
+        expected_receipt_cid = cid(body)
+    except (TypeError, ValueError):
+        expected_receipt_cid = ""
+        blockers.append(f"{task_id} early-frontier child is not canonical JSON")
+    if payload.get("receipt_cid") != expected_receipt_cid:
+        blockers.append(f"{task_id} early-frontier child CID differs")
+    for field in ("source_head", "source_tree", "board_namespace", "board_cid"):
+        if payload.get(field) != source_identity.get(field):
+            blockers.append(f"{task_id} early-frontier child {field} differs")
+    for field in ("process_started", "supervisor_process_started", "self_signed"):
+        if payload.get(field) is not False:
+            blockers.append(
+                f"{task_id} early-frontier child launch-separation field {field} differs"
+            )
+    if payload.get("independent_signatures") != []:
+        blockers.append(
+            f"{task_id} early-frontier child must not claim independent signatures"
+        )
+    decision = str(payload.get("decision") or "")
+    if decision not in _EARLY_FRONTIER_OBSERVATION_DECISIONS[task_id]:
+        blockers.append(f"{task_id} early-frontier child decision is unsupported")
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, Mapping):
+        blockers.append(f"{task_id} early-frontier child evidence is not an object")
+    elif task_id == "EAAEF-180" and evidence.get("launch_plan_allowed") is not False:
+        blockers.append("EAAEF-180 early-frontier launch plan is not a typed no-go")
+    return blockers
+
+
+def build_early_frontier_observation(
+    receipts: Mapping[str, Mapping[str, Any]],
+    *,
+    source_identity: Mapping[str, str],
+) -> dict[str, Any]:
+    """Build one atomic observation; it grants no task or live authority."""
+
+    if set(receipts) != set(EARLY_FRONTIER_TASK_IDS):
+        raise ValueError("early-frontier observation must contain exactly EAAEF-180..183")
+    identity = {
+        key: str(source_identity.get(key) or "")
+        for key in ("source_head", "source_tree", "board_namespace", "board_cid")
+    }
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", identity["source_head"]) is None
+        or re.fullmatch(r"[0-9a-f]{40}", identity["source_tree"]) is None
+        or not identity["board_namespace"]
+        or not _full_sha256(identity["board_cid"])
+    ):
+        raise ValueError("early-frontier observation source identity is invalid")
+    children = {
+        task_id: dict(receipts[task_id]) for task_id in EARLY_FRONTIER_TASK_IDS
+    }
+    try:
+        json.dumps(children, allow_nan=False, ensure_ascii=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "early-frontier observation children are not canonical JSON"
+        ) from exc
+    blockers = [
+        blocker
+        for task_id in EARLY_FRONTIER_TASK_IDS
+        for blocker in _early_frontier_child_receipt_blockers(
+            task_id=task_id,
+            receipt=children[task_id],
+            source_identity=identity,
+        )
+    ]
+    if blockers:
+        raise ValueError("; ".join(blockers))
+    child_receipt_cids = {
+        task_id: str(children[task_id]["receipt_cid"])
+        for task_id in EARLY_FRONTIER_TASK_IDS
+    }
+    child_decisions = {
+        task_id: str(children[task_id]["decision"])
+        for task_id in EARLY_FRONTIER_TASK_IDS
+    }
+    typed_missing, owner_eligible = _early_frontier_decision_sets(child_decisions)
+    observation: dict[str, Any] = {
+        "schema": EARLY_FRONTIER_OBSERVATION_SCHEMA,
+        "scope": EARLY_FRONTIER_OBSERVATION_SCOPE,
+        "observation_kind": "typed_no_go",
+        "observation_only": True,
+        "decision": "no_go",
+        **identity,
+        "task_ids": list(EARLY_FRONTIER_TASK_IDS),
+        "child_decisions": child_decisions,
+        "child_receipt_cids": child_receipt_cids,
+        "typed_missing_task_ids": typed_missing,
+        "direct_completion_eligible_task_ids": [],
+        "casf_owner_transaction_eligible_task_ids": owner_eligible,
+        "receipts": children,
+        "process_started": False,
+        "supervisor_process_started": False,
+        "configured_board_launch": False,
+        "provider_invoked": False,
+        "admission_authority": False,
+        "live_admission_allowed": False,
+        "live_launch_allowed": False,
+        "eaaef_191_authority": False,
+        "direct_task_completion_allowed": False,
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": EARLY_FRONTIER_OBSERVATION_DB_BINDING_BLOCKER,
+    }
+    observation["observation_cid"] = cid(observation)
+    return observation
+
+
+def verify_early_frontier_observation(
+    observation: object,
+    *,
+    expected_source_identity: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Verify an observation while returning only fail-closed authority flags."""
+
+    blockers: list[str] = []
+    if not isinstance(observation, Mapping):
+        blockers.append("early-frontier observation is not an object")
+        payload: dict[str, Any] = {}
+    else:
+        payload = dict(observation)
+    expected_fields = {
+        "schema",
+        "scope",
+        "observation_kind",
+        "observation_only",
+        "decision",
+        "source_head",
+        "source_tree",
+        "board_namespace",
+        "board_cid",
+        "task_ids",
+        "child_decisions",
+        "child_receipt_cids",
+        "typed_missing_task_ids",
+        "direct_completion_eligible_task_ids",
+        "casf_owner_transaction_eligible_task_ids",
+        "receipts",
+        "process_started",
+        "supervisor_process_started",
+        "configured_board_launch",
+        "provider_invoked",
+        "admission_authority",
+        "live_admission_allowed",
+        "live_launch_allowed",
+        "eaaef_191_authority",
+        "direct_task_completion_allowed",
+        "direct_database_binding_allowed",
+        "casf_owner_binding_required",
+        "database_binding_blocker",
+        "observation_cid",
+    }
+    if set(payload) != expected_fields:
+        blockers.append("early-frontier observation fields differ")
+    if payload.get("schema") != EARLY_FRONTIER_OBSERVATION_SCHEMA:
+        blockers.append("early-frontier observation schema differs")
+    if payload.get("scope") != EARLY_FRONTIER_OBSERVATION_SCOPE:
+        blockers.append("early-frontier observation scope differs")
+    if payload.get("observation_kind") != "typed_no_go" or payload.get(
+        "decision"
+    ) != "no_go":
+        blockers.append("early-frontier observation is not a typed no-go")
+    if payload.get("observation_only") is not True:
+        blockers.append("early-frontier observation-only marker differs")
+    if payload.get("task_ids") != list(EARLY_FRONTIER_TASK_IDS):
+        blockers.append("early-frontier observation task population differs")
+    source_identity = {
+        key: str(payload.get(key) or "")
+        for key in ("source_head", "source_tree", "board_namespace", "board_cid")
+    }
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", source_identity["source_head"]) is None
+        or re.fullmatch(r"[0-9a-f]{40}", source_identity["source_tree"]) is None
+        or not source_identity["board_namespace"]
+        or not _full_sha256(source_identity["board_cid"])
+    ):
+        blockers.append("early-frontier observation source identity is invalid")
+    if expected_source_identity is not None:
+        expected = {
+            key: str(expected_source_identity.get(key) or "")
+            for key in ("source_head", "source_tree", "board_namespace", "board_cid")
+        }
+        if source_identity != expected:
+            blockers.append("early-frontier observation is stale for the current source")
+    receipts = payload.get("receipts")
+    child_decisions = payload.get("child_decisions")
+    child_cids = payload.get("child_receipt_cids")
+    if not isinstance(receipts, Mapping) or set(receipts) != set(
+        EARLY_FRONTIER_TASK_IDS
+    ):
+        blockers.append("early-frontier observation child population differs")
+        receipt_values: Mapping[str, Any] = {}
+    else:
+        receipt_values = receipts
+    if not isinstance(child_decisions, Mapping) or set(child_decisions) != set(
+        EARLY_FRONTIER_TASK_IDS
+    ):
+        blockers.append("early-frontier observation child decision population differs")
+        child_decision_values: Mapping[str, Any] = {}
+    else:
+        child_decision_values = child_decisions
+    typed_missing, owner_eligible = _early_frontier_decision_sets(
+        child_decision_values
+    )
+    if payload.get("typed_missing_task_ids") != typed_missing:
+        blockers.append("early-frontier typed-missing task population differs")
+    if payload.get("direct_completion_eligible_task_ids") != []:
+        blockers.append("early-frontier direct completion population is not empty")
+    if payload.get("casf_owner_transaction_eligible_task_ids") != owner_eligible:
+        blockers.append("early-frontier CASF-owner task population differs")
+    if not isinstance(child_cids, Mapping) or set(child_cids) != set(
+        EARLY_FRONTIER_TASK_IDS
+    ):
+        blockers.append("early-frontier observation child CID population differs")
+        child_cid_values: Mapping[str, Any] = {}
+    else:
+        child_cid_values = child_cids
+    for task_id in EARLY_FRONTIER_TASK_IDS:
+        child = receipt_values.get(task_id)
+        blockers.extend(
+            _early_frontier_child_receipt_blockers(
+                task_id=task_id,
+                receipt=child,
+                source_identity=source_identity,
+            )
+        )
+        if isinstance(child, Mapping) and child_cid_values.get(task_id) != child.get(
+            "receipt_cid"
+        ):
+            blockers.append(f"{task_id} early-frontier child CID binding differs")
+        if isinstance(child, Mapping) and child_decision_values.get(
+            task_id
+        ) != child.get("decision"):
+            blockers.append(
+                f"{task_id} early-frontier child decision binding differs"
+            )
+    false_fields = (
+        "process_started",
+        "supervisor_process_started",
+        "configured_board_launch",
+        "provider_invoked",
+        "admission_authority",
+        "live_admission_allowed",
+        "live_launch_allowed",
+        "eaaef_191_authority",
+        "direct_task_completion_allowed",
+        "direct_database_binding_allowed",
+    )
+    if any(payload.get(field) is not False for field in false_fields):
+        blockers.append("early-frontier observation authority separation differs")
+    if payload.get("casf_owner_binding_required") is not True:
+        blockers.append("early-frontier observation CASF-owner boundary differs")
+    if (
+        payload.get("database_binding_blocker")
+        != EARLY_FRONTIER_OBSERVATION_DB_BINDING_BLOCKER
+    ):
+        blockers.append("early-frontier observation database boundary differs")
+    body = {key: value for key, value in payload.items() if key != "observation_cid"}
+    try:
+        json.dumps(body, allow_nan=False, ensure_ascii=False)
+        expected_observation_cid = cid(body)
+    except (TypeError, ValueError):
+        expected_observation_cid = ""
+        blockers.append("early-frontier observation is not canonical JSON")
+    if payload.get("observation_cid") != expected_observation_cid:
+        blockers.append("early-frontier observation CID differs")
+    valid = not blockers
+    return {
+        "valid": valid,
+        "decision": "no_go",
+        "observation_cid": str(payload.get("observation_cid") or ""),
+        "blockers": list(dict.fromkeys(blockers)),
+        "observation_only": True,
+        "admission_authority": False,
+        "live_launch_allowed": False,
+        "live_admission_allowed": False,
+        "eaaef_191_authority": False,
+        "direct_task_completion_allowed": False,
+        "typed_missing_task_ids": typed_missing if valid else [],
+        "direct_completion_eligible_task_ids": [],
+        "casf_owner_transaction_eligible_task_ids": (
+            owner_eligible if valid else []
+        ),
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": EARLY_FRONTIER_OBSERVATION_DB_BINDING_BLOCKER,
+    }
+
+
+def publish_early_frontier_observation(
+    receipts: Mapping[str, Mapping[str, Any]],
+    *,
+    expected_source_identity: Mapping[str, str] | None = None,
+    authority_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Atomically publish and revalidate one current, non-authoritative capture."""
+
+    identity_before = _require_current_early_frontier_source_identity(
+        expected_source_identity
+    )
+    observation = build_early_frontier_observation(
+        receipts,
+        source_identity=identity_before,
+    )
+    observation_cid = str(observation["observation_cid"])
+    logical_path = source_addressed_early_frontier_observation_logical_path(
+        source_head=identity_before["source_head"],
+        observation_cid=observation_cid,
+    )
+    try:
+        registry = EAAEFAuthorityRegistry(
+            repo_root=ROOT,
+            authority_root=authority_root,
+        )
+        with registry.ceremony():
+            _require_current_early_frontier_source_identity(identity_before)
+            try:
+                registry.read_json(logical_path)
+            except EAAEFAuthorityNotFound:
+                created = True
+            else:
+                created = False
+            registry.publish_json(logical_path, observation)
+            persisted = registry.read_json(logical_path)
+            verification = verify_early_frontier_observation(
+                persisted,
+                expected_source_identity=identity_before,
+            )
+            if persisted != observation or verification["valid"] is not True:
+                raise EAAEFAuthorityRegistryError(
+                    "persisted early-frontier observation failed exact readback"
+                )
+            _require_current_early_frontier_source_identity(identity_before)
+    except EAAEFAuthorityRegistryError as exc:
+        raise RuntimeError(
+            f"early-frontier observation registry rejected publication: {exc}"
+        ) from exc
+    _require_current_early_frontier_source_identity(identity_before)
+    return {
+        "schema": EARLY_FRONTIER_OBSERVATION_SCHEMA,
+        "scope": EARLY_FRONTIER_OBSERVATION_SCOPE,
+        "published": True,
+        "created": created,
+        "logical_path": logical_path.as_posix(),
+        "observation_cid": observation_cid,
+        "child_receipt_cids": dict(observation["child_receipt_cids"]),
+        "typed_missing_task_ids": list(observation["typed_missing_task_ids"]),
+        "direct_completion_eligible_task_ids": [],
+        "casf_owner_transaction_eligible_task_ids": list(
+            observation["casf_owner_transaction_eligible_task_ids"]
+        ),
+        "decisions": {
+            task_id: str(observation["receipts"][task_id]["decision"])
+            for task_id in EARLY_FRONTIER_TASK_IDS
+        },
+        **identity_before,
+        "decision": "no_go",
+        "process_started": False,
+        "supervisor_process_started": False,
+        "configured_board_launch": False,
+        "provider_invoked": False,
+        "observation_only": True,
+        "admission_authority": False,
+        "live_admission_allowed": False,
+        "live_launch_allowed": False,
+        "eaaef_191_authority": False,
+        "direct_task_completion_allowed": False,
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": EARLY_FRONTIER_OBSERVATION_DB_BINDING_BLOCKER,
+    }
+
+
+def load_current_early_frontier_observation(
+    *,
+    source_head: str,
+    observation_cid: str,
+    authority_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Reload one exact observation after restart and prove it is still current."""
+
+    identity_before = _require_current_early_frontier_source_identity()
+    if source_head != identity_before["source_head"]:
+        raise RuntimeError("early-frontier observation source is not current")
+    logical_path = source_addressed_early_frontier_observation_logical_path(
+        source_head=source_head,
+        observation_cid=observation_cid,
+    )
+    try:
+        registry = EAAEFAuthorityRegistry(
+            repo_root=ROOT,
+            authority_root=authority_root,
+        )
+        persisted = registry.read_json(logical_path)
+    except EAAEFAuthorityRegistryError as exc:
+        raise RuntimeError(
+            f"early-frontier observation registry rejected readback: {exc}"
+        ) from exc
+    verification = verify_early_frontier_observation(
+        persisted,
+        expected_source_identity=identity_before,
+    )
+    if (
+        verification["valid"] is not True
+        or verification["observation_cid"] != observation_cid
+    ):
+        raise RuntimeError(
+            "current early-frontier observation failed immutable verification: "
+            + json.dumps(verification["blockers"], sort_keys=True)
+        )
+    _require_current_early_frontier_source_identity(identity_before)
+    return {
+        "logical_path": logical_path.as_posix(),
+        "observation": persisted,
+        **verification,
+    }
 
 
 def _bootstrap_admission_capture(
@@ -1616,45 +2211,150 @@ def load_isolated_launch_plan(*, timeout_seconds: int = 180) -> dict[str, Any]:
     return plan
 
 
-def bind_runtime_principals() -> dict[str, Any]:
-    """Create or reuse three distinct did:key identities. Private keys stay local."""
+def runtime_principal_secret_logical_path(role: str) -> Path:
+    """Return the reviewed logical identifier for one owner-private secret."""
 
-    AUTHORITY_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(AUTHORITY_DIR, stat.S_IRWXU)
-    principals: list[dict[str, str]] = []
-    for role in PRINCIPAL_ROLES:
-        secret_path = AUTHORITY_DIR / f"{role}.json"
-        if secret_path.is_file():
-            secret = json.loads(secret_path.read_text(encoding="utf-8"))
-            did = str(secret.get("did") or "")
-        else:
-            key = Ed25519PrivateKey.generate()
-            did = ed25519_did_key(key.public_key())
-            secret = {
-                "schema": PRINCIPAL_STORE_SCHEMA,
-                "role": role,
-                "did": did,
-                "private_key_pkcs8_der_b64": __import__("base64").b64encode(
-                    key.private_bytes(
-                        Encoding.DER,
-                        PrivateFormat.PKCS8,
-                        NoEncryption(),
-                    )
-                ).decode("ascii"),
-            }
-            secret_path.write_text(
-                json.dumps(secret, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
+    if role not in PRINCIPAL_ROLES:
+        raise ValueError("runtime principal role is invalid")
+    return RUNTIME_PRINCIPAL_LOGICAL_DIR / f"{role}.json"
+
+
+def _validated_runtime_principal_secret(
+    payload: object,
+    *,
+    expected_role: str,
+) -> tuple[Ed25519PrivateKey, str]:
+    """Decode and bind one exact PKCS8 key to its role and did:key identity."""
+
+    if not isinstance(payload, Mapping):
+        raise ValueError("runtime principal secret is not an object")
+    secret = dict(payload)
+    if set(secret) != {
+        "schema",
+        "role",
+        "did",
+        "private_key_pkcs8_der_b64",
+    }:
+        raise ValueError("runtime principal secret fields differ")
+    if secret.get("schema") != PRINCIPAL_STORE_SCHEMA:
+        raise ValueError("runtime principal secret schema differs")
+    if secret.get("role") != expected_role:
+        raise ValueError("runtime principal secret role differs")
+    encoded = secret.get("private_key_pkcs8_der_b64")
+    if not isinstance(encoded, str) or not encoded:
+        raise ValueError("runtime principal secret PKCS8 encoding is invalid")
+    try:
+        der = base64.b64decode(encoded, validate=True)
+        key = load_der_private_key(der, password=None)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("runtime principal secret PKCS8 key is invalid") from exc
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ValueError("runtime principal secret key is not Ed25519")
+    canonical_der = key.private_bytes(
+        Encoding.DER,
+        PrivateFormat.PKCS8,
+        NoEncryption(),
+    )
+    if canonical_der != der:
+        raise ValueError("runtime principal secret PKCS8 encoding is noncanonical")
+    did = secret.get("did")
+    if not isinstance(did, str) or did != ed25519_did_key(key.public_key()):
+        raise ValueError("runtime principal secret DID does not match its key")
+    return key, did
+
+
+def _new_runtime_principal_secret(role: str) -> dict[str, str]:
+    key = Ed25519PrivateKey.generate()
+    return {
+        "schema": PRINCIPAL_STORE_SCHEMA,
+        "role": role,
+        "did": ed25519_did_key(key.public_key()),
+        "private_key_pkcs8_der_b64": base64.b64encode(
+            key.private_bytes(
+                Encoding.DER,
+                PrivateFormat.PKCS8,
+                NoEncryption(),
             )
-            os.chmod(secret_path, stat.S_IRUSR | stat.S_IWUSR)
-        principals.append({"role": role, "did": did, "admitted_authority": False})
-    dids = [item["did"] for item in principals]
-    if len(set(dids)) != 3 or any(not item.startswith("did:key:z") for item in dids):
-        raise RuntimeError("runtime principals are not three distinct did:key identities")
+        ).decode("ascii"),
+    }
+
+
+def bind_runtime_principals(
+    *,
+    authority_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Create or recover three owner-private, checkout-independent identities."""
+
+    try:
+        registry = EAAEFAuthorityRegistry(
+            repo_root=ROOT,
+            authority_root=authority_root,
+        )
+        with registry.ceremony():
+            secrets: dict[str, dict[str, Any]] = {}
+            missing: list[str] = []
+            # Validate every existing secret before creating any missing one.
+            # A forged or damaged registry therefore cannot cause partial
+            # recovery effects or silently rotate a principal.
+            for role in PRINCIPAL_ROLES:
+                logical_path = runtime_principal_secret_logical_path(role)
+                try:
+                    secret = registry.read_json(logical_path)
+                except EAAEFAuthorityNotFound:
+                    missing.append(role)
+                    continue
+                _validated_runtime_principal_secret(secret, expected_role=role)
+                secrets[role] = secret
+
+            candidates = {
+                role: _new_runtime_principal_secret(role) for role in missing
+            }
+            all_dids = [
+                str(secret["did"])
+                for secret in (*secrets.values(), *candidates.values())
+            ]
+            if len(all_dids) != len(PRINCIPAL_ROLES) or len(set(all_dids)) != len(
+                PRINCIPAL_ROLES
+            ):
+                raise ValueError(
+                    "runtime principals are not three distinct did:key identities"
+                )
+
+            for role in missing:
+                logical_path = runtime_principal_secret_logical_path(role)
+                candidate = candidates[role]
+                registry.publish_json(logical_path, candidate)
+                persisted = registry.read_json(logical_path)
+                _validated_runtime_principal_secret(
+                    persisted,
+                    expected_role=role,
+                )
+                if persisted != candidate:
+                    raise EAAEFAuthorityRegistryError(
+                        "runtime principal failed exact registry readback"
+                    )
+                secrets[role] = persisted
+    except (EAAEFAuthorityRegistryError, OSError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"runtime principal registry rejected binding: {exc}"
+        ) from exc
+
+    principals = [
+        {
+            "role": role,
+            "did": str(secrets[role]["did"]),
+            "admitted_authority": False,
+        }
+        for role in PRINCIPAL_ROLES
+    ]
     return {
         "principals": principals,
         "secret_material_exported": False,
-        "secret_store": str(AUTHORITY_DIR.relative_to(ROOT)),
+        "secret_store": RUNTIME_PRINCIPAL_LOGICAL_DIR.as_posix(),
+        "secret_store_kind": "owner_private_authority_registry",
+        "secret_store_is_logical_identifier": True,
+        "physical_secret_paths_exposed": False,
+        "legacy_principal_import_attempted": False,
         "admitted_authority": False,
     }
 
@@ -4129,6 +4829,25 @@ def collect_early_frontier_and_write(*, timeout_seconds: int = 180) -> dict[str,
         "configured_board_launch": False,
         "live_launch_allowed": False,
     }
+
+
+def collect_early_frontier_and_publish_observation(
+    *,
+    timeout_seconds: int = 180,
+    authority_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Collect in memory and publish one observation without writing staging."""
+
+    identity_before = _require_current_early_frontier_source_identity()
+    receipts = collect_early_frontier_host_admission_receipts(
+        timeout_seconds=timeout_seconds
+    )
+    _require_current_early_frontier_source_identity(identity_before)
+    return publish_early_frontier_observation(
+        receipts,
+        expected_source_identity=identity_before,
+        authority_root=authority_root,
+    )
 
 
 def collect_and_write(*, timeout_seconds: int = 180) -> dict[str, Any]:
