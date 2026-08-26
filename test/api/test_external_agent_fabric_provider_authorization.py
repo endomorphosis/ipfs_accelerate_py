@@ -248,6 +248,34 @@ def _write_eaaef_authorization(repo: Path, tmp_path: Path) -> tuple[str, str]:
     return source_head, source_tree
 
 
+def _add_umask_0002_worktree(repo: Path, destination: Path) -> Path:
+    created = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'umask 0002; exec git worktree add --detach "$1" HEAD',
+            "eaaef-route-worktree",
+            str(destination),
+        ],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert created.returncode == 0, created.stderr
+    return destination
+
+
+def _eaaef_signed_paths(repo: Path, source_tree: str) -> tuple[Path, Path, Path]:
+    artifact = repo / routes.eaaef_agent_route_authorization_path(source_tree)
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    return (
+        artifact,
+        repo / payload["lifecycle_root_pin_path"],
+        repo / payload["reviewer"]["witness_path"],
+    )
+
+
 def test_signed_eaaef_grok46_route_loads_without_changing_legacy_route(
     tmp_path: Path,
 ) -> None:
@@ -278,6 +306,214 @@ def test_signed_eaaef_grok46_route_loads_without_changing_legacy_route(
     assert legacy.route_id == routes._LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID
     assert legacy.primary_model_id == "grok-4.5"
     assert legacy.fallback_reasoning_effort == "medium"
+
+
+def test_signed_eaaef_route_loads_from_real_umask_0002_worktree_without_chmod(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _source_head, source_tree = _write_eaaef_authorization(repo, tmp_path)
+    worktree = _add_umask_0002_worktree(
+        repo,
+        tmp_path / "umask-0002-worktree",
+    )
+    signed_paths = _eaaef_signed_paths(worktree, source_tree)
+
+    assert all(path.stat().st_mode & 0o777 == 0o664 for path in signed_paths)
+
+    authorization = routes.load_agent_implementation_route_authorization(
+        repo_root=worktree,
+        artifact_path=routes.eaaef_agent_route_authorization_path(source_tree),
+        board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
+    )
+
+    assert authorization.source_tree == source_tree
+    assert all(path.stat().st_mode & 0o777 == 0o664 for path in signed_paths)
+    assert _git(worktree, "status", "--porcelain") == ""
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("dirty", "world_writable", "symlink", "hardlink"),
+)
+def test_source_addressed_eaaef_route_still_rejects_untrusted_worktree_inputs(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _source_head, source_tree = _write_eaaef_authorization(repo, tmp_path)
+    worktree = _add_umask_0002_worktree(
+        repo,
+        tmp_path / f"{mutation}-worktree",
+    )
+    artifact, _root_pin, _witness = _eaaef_signed_paths(worktree, source_tree)
+
+    if mutation == "dirty":
+        # Trailing JSON whitespace preserves the signed payload but not the
+        # exact Git blob, so the repository binding must still reject it.
+        artifact.write_bytes(artifact.read_bytes() + b"\n")
+    elif mutation == "world_writable":
+        artifact.chmod(0o666)
+    else:
+        saved = artifact.with_suffix(".saved")
+        artifact.rename(saved)
+        if mutation == "symlink":
+            artifact.symlink_to(saved.name)
+        else:
+            artifact.hardlink_to(saved)
+
+    with pytest.raises(ValueError):
+        routes.load_agent_implementation_route_authorization(
+            repo_root=worktree,
+            artifact_path=routes.eaaef_agent_route_authorization_path(
+                source_tree
+            ),
+            board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
+        )
+
+
+def test_source_addressed_eaaef_route_rejects_inter_read_artifact_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _source_head, source_tree = _write_eaaef_authorization(repo, tmp_path)
+    worktree = _add_umask_0002_worktree(
+        repo,
+        tmp_path / "artifact-race-worktree",
+    )
+    artifact, _root_pin, _witness = _eaaef_signed_paths(worktree, source_tree)
+    real_read = routes._agent_read_stable_file
+    artifact_reads = 0
+
+    def racing_read(path: Path, **kwargs: object) -> bytes:
+        nonlocal artifact_reads
+        if Path(path) == artifact:
+            artifact_reads += 1
+            if artifact_reads == 2:
+                artifact.write_bytes(artifact.read_bytes() + b"\n")
+        return real_read(path, **kwargs)
+
+    monkeypatch.setattr(routes, "_agent_read_stable_file", racing_read)
+
+    with pytest.raises(ValueError, match="not bound to this descendant tree"):
+        routes.load_agent_implementation_route_authorization(
+            repo_root=worktree,
+            artifact_path=routes.eaaef_agent_route_authorization_path(
+                source_tree
+            ),
+            board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
+        )
+
+    assert artifact_reads == 2
+
+
+def test_source_addressed_eaaef_route_rejects_head_drift_during_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _source_head, source_tree = _write_eaaef_authorization(repo, tmp_path)
+    worktree = _add_umask_0002_worktree(
+        repo,
+        tmp_path / "head-race-worktree",
+    )
+    real_git_output = routes._agent_git_output
+    head_reads = 0
+
+    def drifting_git_output(
+        root: Path,
+        arguments: tuple[str, ...],
+        **kwargs: object,
+    ) -> bytes:
+        nonlocal head_reads
+        if tuple(arguments) == ("rev-parse", "--verify", "HEAD^{commit}"):
+            head_reads += 1
+            if head_reads == 2:
+                (worktree / "head-drift.txt").write_text(
+                    "drift\n",
+                    encoding="utf-8",
+                )
+                _git(worktree, "add", "head-drift.txt")
+                _git(worktree, "commit", "-m", "move head during validation")
+        return real_git_output(root, arguments, **kwargs)
+
+    monkeypatch.setattr(routes, "_agent_git_output", drifting_git_output)
+
+    with pytest.raises(ValueError, match="not bound to this descendant tree"):
+        routes.load_agent_implementation_route_authorization(
+            repo_root=worktree,
+            artifact_path=routes.eaaef_agent_route_authorization_path(
+                source_tree
+            ),
+            board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
+        )
+
+    assert head_reads == 2
+
+
+@pytest.mark.parametrize("signed_path_index", (0, 1, 2))
+def test_source_addressed_eaaef_route_requires_nonexecutable_git_blobs(
+    tmp_path: Path,
+    signed_path_index: int,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _source_head, source_tree = _write_eaaef_authorization(repo, tmp_path)
+    signed_path = _eaaef_signed_paths(repo, source_tree)[signed_path_index]
+    signed_path.chmod(0o500)
+    relative = signed_path.relative_to(repo).as_posix()
+    _git(repo, "add", relative)
+    _git(repo, "commit", "-m", "make signed authority executable")
+
+    assert _git(repo, "ls-tree", "HEAD", "--", relative).startswith(
+        "100755 blob "
+    )
+    with pytest.raises(ValueError, match="not bound to this descendant tree"):
+        routes.load_agent_implementation_route_authorization(
+            repo_root=repo,
+            artifact_path=routes.eaaef_agent_route_authorization_path(
+                source_tree
+            ),
+            board_namespace=routes._EAAEF_AGENT_ROUTE_BOARD_NAMESPACE,
+        )
+
+
+@pytest.mark.parametrize(
+    ("board_namespace", "artifact_path"),
+    (
+        (
+            routes._V3_AGENT_ROUTE_BOARD_NAMESPACE,
+            routes._V3_AGENT_ROUTE_AUTHORIZATION_PATH,
+        ),
+        (
+            routes._VGO_AGENT_ROUTE_BOARD_NAMESPACE,
+            routes._VGO_AGENT_ROUTE_AUTHORIZATION_PATH,
+        ),
+    ),
+)
+def test_fixed_path_route_authority_remains_strictly_non_group_writable(
+    tmp_path: Path,
+    board_namespace: str,
+    artifact_path: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    candidate = repo / artifact_path
+    candidate.parent.mkdir(parents=True)
+    candidate.write_text("{}", encoding="utf-8")
+    candidate.chmod(0o660)
+
+    with pytest.raises(ValueError, match="not immutable enough"):
+        routes.load_agent_implementation_route_authorization(
+            repo_root=repo,
+            artifact_path=artifact_path,
+            board_namespace=board_namespace,
+        )
 
 
 def test_eaaef_capacity_rejects_primary_model_drift(

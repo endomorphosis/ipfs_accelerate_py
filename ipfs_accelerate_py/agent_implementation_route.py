@@ -5533,7 +5533,11 @@ def load_agent_implementation_route_authorization(
         ) from exc
     if candidate != unresolved_candidate or not candidate.is_relative_to(root):
         raise ValueError("agent route authorization artifact is unavailable")
-    raw = _agent_read_stable_file(candidate, maximum_bytes=128 * 1024)
+    raw = _agent_read_stable_file(
+        candidate,
+        maximum_bytes=128 * 1024,
+        allow_group_writable=route_policy.source_addressed,
+    )
     digest = "sha256:" + hashlib.sha256(raw).hexdigest()
     expected_digest = str(expected_sha256 or "").strip()
     if expected_digest and (
@@ -5829,6 +5833,7 @@ def load_agent_implementation_route_authorization(
     root_pin_raw = _agent_read_stable_file(
         root_pin_candidate,
         maximum_bytes=32 * 1024,
+        allow_group_writable=route_policy.source_addressed,
     )
     if (
         "sha256:" + hashlib.sha256(root_pin_raw).hexdigest()
@@ -5905,6 +5910,7 @@ def load_agent_implementation_route_authorization(
     witness_raw = _agent_read_stable_file(
         witness_candidate,
         maximum_bytes=128 * 1024,
+        allow_group_writable=route_policy.source_addressed,
     )
     if (
         "sha256:" + hashlib.sha256(witness_raw).hexdigest()
@@ -6084,14 +6090,17 @@ def load_agent_implementation_route_authorization(
         final_raw = _agent_read_stable_file(
             unresolved_candidate,
             maximum_bytes=128 * 1024,
+            allow_group_writable=route_policy.source_addressed,
         )
         final_witness_raw = _agent_read_stable_file(
             unresolved_witness,
             maximum_bytes=128 * 1024,
+            allow_group_writable=route_policy.source_addressed,
         )
         final_root_pin_raw = _agent_read_stable_file(
             unresolved_root_pin,
             maximum_bytes=32 * 1024,
+            allow_group_writable=route_policy.source_addressed,
         )
     except (OSError, ValueError) as exc:
         raise ValueError(
@@ -6101,20 +6110,36 @@ def load_agent_implementation_route_authorization(
         top_level != root
         or re.fullmatch(r"[0-9a-f]{40}", current_head) is None
         or re.fullmatch(
-            rb"100(?:644|755) blob [0-9a-f]{40}\t" + re.escape(relative.encode()),
+            (
+                rb"100644"
+                if route_policy.source_addressed
+                else rb"100(?:644|755)"
+            )
+            + rb" blob [0-9a-f]{40}\t"
+            + re.escape(relative.encode()),
             head_tree_entry,
         )
         is None
         or head_artifact != raw
         or re.fullmatch(
-            rb"100(?:644|755) blob [0-9a-f]{40}\t"
+            (
+                rb"100644"
+                if route_policy.source_addressed
+                else rb"100(?:644|755)"
+            )
+            + rb" blob [0-9a-f]{40}\t"
             + re.escape(reviewer_witness_path.encode()),
             head_witness_entry,
         )
         is None
         or head_witness != witness_raw
         or re.fullmatch(
-            rb"100(?:644|755) blob [0-9a-f]{40}\t"
+            (
+                rb"100644"
+                if route_policy.source_addressed
+                else rb"100(?:644|755)"
+            )
+            + rb" blob [0-9a-f]{40}\t"
             + re.escape(lifecycle_root_pin_path.encode()),
             head_root_pin_entry,
         )
