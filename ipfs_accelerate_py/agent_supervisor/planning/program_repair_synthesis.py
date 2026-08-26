@@ -21,6 +21,12 @@ provenance are checked, extraction is cost-bounded and replayable, and
 independent equivalence/effect checks gate a proved receipt. Features that
 this path cannot discharge (solver-semantic side conditions, kernel
 equivalence, an external egg runtime) are recorded as unavailable.
+
+CEGIS mode refines the reviewed operator grammar from independently obtained
+unsat cores, failed assumptions, and validated interpolants. Unvalidated
+interpolants fail closed. Candidates that add undeclared imports, files,
+dependencies, authority, effects, or behavior are rejected before the
+originating verifier runs.
 """
 
 from __future__ import annotations
@@ -46,7 +52,7 @@ from ..proof.counterexample_guided_tactician import (
     RefinementCandidate,
     run_counterexample_guided_loop,
 )
-from ..proof.formal_counterexamples import FormalCounterexample
+from ..proof.formal_counterexamples import CounterexampleKind, FormalCounterexample
 from ..proof.formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
@@ -71,6 +77,7 @@ from .repair_operator_registry import (
     UnknownRepairOperatorError,
     build_default_repair_operator_registry,
     cegis_restricted_operator_kinds,
+    cegis_tags_mention_operator,
     normalize_repair_operator_kind,
 )
 
@@ -344,6 +351,7 @@ class ProgramRepairReason(str, Enum):
     EQUALITY_EXTRACTION = "equality_extraction_completed"
     UNVALIDATED_INTERPOLANT = "interpolant_not_independently_validated"
     UNDECLARED_EFFECT = "undeclared_effect_or_security_change"
+    UNDECLARED_BEHAVIOR = "undeclared_behavior"
     COUNTEREVIDENCE_RESTRICTED = "operator_restricted_by_counterevidence"
 
 
@@ -3185,6 +3193,108 @@ class ResidualHybridRepairService:
 
 
 _CEGIS_FORBIDDEN_PARAMETER_KEYS: Final[frozenset[str]] = CEGIS_FORBIDDEN_PARAMETER_KEYS
+_CEGIS_FORBIDDEN_REASON: Final[Mapping[str, ProgramRepairReason]] = MappingProxyType(
+    {
+        "extra_imports": ProgramRepairReason.EXTRA_IMPORT,
+        "undeclared_imports": ProgramRepairReason.EXTRA_IMPORT,
+        "new_imports": ProgramRepairReason.EXTRA_IMPORT,
+        "extra_paths": ProgramRepairReason.EXTRA_FILE,
+        "extra_files": ProgramRepairReason.EXTRA_FILE,
+        "files_added": ProgramRepairReason.EXTRA_FILE,
+        "undeclared_files": ProgramRepairReason.EXTRA_FILE,
+        "new_files": ProgramRepairReason.EXTRA_FILE,
+        "extra_dependencies": ProgramRepairReason.EXTRA_DEPENDENCY,
+        "undeclared_dependencies": ProgramRepairReason.EXTRA_DEPENDENCY,
+        "new_dependencies": ProgramRepairReason.EXTRA_DEPENDENCY,
+        "write_authority": ProgramRepairReason.AUTHORITY_CLAIM,
+        "authority": ProgramRepairReason.AUTHORITY_CLAIM,
+        "grants_write_authority": ProgramRepairReason.AUTHORITY_CLAIM,
+        "semantic_authority": ProgramRepairReason.AUTHORITY_CLAIM,
+        "network": ProgramRepairReason.UNDECLARED_EFFECT,
+        "undeclared_effects": ProgramRepairReason.UNDECLARED_EFFECT,
+        "extra_behavior": ProgramRepairReason.UNDECLARED_BEHAVIOR,
+        "undeclared_behavior": ProgramRepairReason.UNDECLARED_BEHAVIOR,
+    }
+)
+
+
+def _cegis_forbidden_parameter_reason(value: Any) -> str | None:
+    """Return a reason code if *value* smuggles an undeclared CEGIS surface."""
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            norm = str(key).casefold().replace("-", "_")
+            if norm in _CEGIS_FORBIDDEN_PARAMETER_KEYS and item not in (
+                None,
+                False,
+                (),
+                [],
+                "",
+                {},
+            ):
+                reason = _CEGIS_FORBIDDEN_REASON.get(
+                    norm, ProgramRepairReason.UNDECLARED_EFFECT
+                )
+                return reason.value
+            nested = _cegis_forbidden_parameter_reason(item)
+            if nested is not None:
+                return nested
+    elif isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray, memoryview)
+    ):
+        for item in value:
+            nested = _cegis_forbidden_parameter_reason(item)
+            if nested is not None:
+                return nested
+    return None
+
+
+def _unsat_core_tags_from_counterexample(counterexample: Any) -> tuple[str, ...]:
+    """Extract public unsat-core refs from a witness without widening scope."""
+
+    kind: Any = None
+    payload: Mapping[str, Any] | None = None
+    if isinstance(counterexample, FormalCounterexample):
+        kind = counterexample.kind
+        payload = counterexample.payload
+    elif isinstance(counterexample, Mapping):
+        kind = counterexample.get("kind")
+        raw_payload = counterexample.get("payload")
+        payload = raw_payload if isinstance(raw_payload, Mapping) else None
+    kind_value = str(getattr(kind, "value", kind) or "")
+    if kind_value not in {
+        CounterexampleKind.SMT_UNSAT_CORE.value,
+        CounterexampleKind.UNSAT_CORE.value,
+        "unsat_core",
+    }:
+        return ()
+    sources: list[Any] = []
+    if isinstance(payload, Mapping):
+        sources.append(payload)
+    if isinstance(counterexample, Mapping):
+        sources.append(counterexample)
+    tags: list[str] = []
+    for source in sources:
+        if not isinstance(source, Mapping):
+            continue
+        for key in (
+            "core",
+            "unsat_core",
+            "unsat-core",
+            "unsatisfiable_core",
+            "core_ids",
+            "core_refs",
+            "clause_ids",
+            "conflicting_assumptions",
+        ):
+            raw = source.get(key)
+            if isinstance(raw, str) and raw.strip():
+                tags.append(raw.strip())
+            elif isinstance(raw, Sequence) and not isinstance(
+                raw, (str, bytes, bytearray)
+            ):
+                tags.extend(str(item).strip() for item in raw if str(item).strip())
+    return tuple(dict.fromkeys(tags))
 
 
 @dataclass(frozen=True)
@@ -3234,11 +3344,15 @@ class ProgramRepairCounterevidence:
         )
 
     def evidence_tags(self) -> tuple[str, ...]:
-        return (
-            self.unsat_core_refs
-            + self.failed_assumption_refs
-            + self.interpolant_refs
-        )
+        """Refs that may refine operator search.
+
+        Unvalidated interpolants are omitted so they cannot steer synthesis.
+        """
+
+        tags = self.unsat_core_refs + self.failed_assumption_refs
+        if self.interpolants_independently_validated:
+            tags = tags + self.interpolant_refs
+        return tags
 
 
 @dataclass(frozen=True)
@@ -4127,31 +4241,62 @@ class ProgramRepairSynthesizer:
 
     # -- CEGIS ------------------------------------------------------------
 
+    def _reviewed_cegis_operator_kinds(
+        self, requested: Sequence[str]
+    ) -> tuple[str, ...]:
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in requested:
+            try:
+                kind = normalize_repair_operator_kind(item).value
+            except (UnknownRepairOperatorError, Exception):
+                continue
+            if kind not in seen:
+                seen.add(kind)
+                out.append(kind)
+        return tuple(out)
+
+    def _counterevidence_tags(
+        self, request: ProgramRepairRequest
+    ) -> tuple[str, ...]:
+        tags: list[str] = []
+        evidence = request.counterevidence
+        if evidence is not None:
+            tags.extend(evidence.evidence_tags())
+        tags.extend(_unsat_core_tags_from_counterexample(request.counterexample))
+        return tuple(dict.fromkeys(tag for tag in tags if str(tag).strip()))
+
     def _admitted_cegis_operator_kinds(
         self, request: ProgramRepairRequest
     ) -> tuple[str, ...] | None:
-        requested = tuple(request.operator_kinds)
+        requested = self._reviewed_cegis_operator_kinds(request.operator_kinds)
         evidence = request.counterevidence
-        if evidence is None:
-            return requested
-        if evidence.interpolant_refs and not evidence.interpolants_independently_validated:
+        if evidence is not None and (
+            evidence.interpolant_refs
+            and not evidence.interpolants_independently_validated
+        ):
             return None
-        tags = evidence.evidence_tags()
-        if tags:
-            matched = tuple(
-                kind
-                for kind in requested
-                if any(kind in tag for tag in tags)
-            )
-            requested = matched
-        restricted = evidence.effect_refs + evidence.security_refs
+        explicit_tags = evidence.evidence_tags() if evidence is not None else ()
+        tags = self._counterevidence_tags(request)
+        mentioned = tuple(
+            kind
+            for kind in requested
+            if cegis_tags_mention_operator(tags, kind)
+        )
+        if explicit_tags:
+            requested = mentioned
+        elif mentioned:
+            requested = mentioned
+        restricted = ()
+        if evidence is not None:
+            restricted = evidence.effect_refs + evidence.security_refs
         if restricted:
             sensitive = cegis_restricted_operator_kinds(self._registry)
             requested = tuple(
                 kind
                 for kind in requested
                 if kind not in sensitive
-                or any(kind in tag for tag in restricted)
+                or cegis_tags_mention_operator(restricted, kind)
             )
         return requested
 
@@ -4164,21 +4309,14 @@ class ProgramRepairSynthesizer:
         if not isinstance(parameters, Mapping):
             return ProgramRepairReason.MALFORMED_INPUT.value
         operator_kind = str(parameters.get("operator_kind") or "").strip()
-        if admitted_kinds and operator_kind and operator_kind not in admitted_kinds:
-            return ProgramRepairReason.COUNTEREVIDENCE_RESTRICTED.value
-        for key in _CEGIS_FORBIDDEN_PARAMETER_KEYS:
-            value = parameters.get(key)
-            if value not in (None, False, (), [], ""):
-                if key in {"extra_imports"}:
-                    return ProgramRepairReason.EXTRA_IMPORT.value
-                if key in {"extra_paths", "extra_files", "files_added"}:
-                    return ProgramRepairReason.EXTRA_FILE.value
-                if key in {"extra_dependencies"}:
-                    return ProgramRepairReason.EXTRA_DEPENDENCY.value
-                if key in {"write_authority", "authority"}:
-                    return ProgramRepairReason.AUTHORITY_CLAIM.value
-                return ProgramRepairReason.UNDECLARED_EFFECT.value
-        return None
+        if operator_kind:
+            try:
+                operator_kind = normalize_repair_operator_kind(operator_kind).value
+            except (UnknownRepairOperatorError, Exception):
+                return ProgramRepairReason.OPERATOR_NOT_REVIEWED.value
+            if admitted_kinds and operator_kind not in admitted_kinds:
+                return ProgramRepairReason.COUNTEREVIDENCE_RESTRICTED.value
+        return _cegis_forbidden_parameter_reason(parameters)
 
     def _synthesize_cegis(self, request: ProgramRepairRequest) -> ProgramRepairReceipt:
         if request.counterexample is None:
@@ -4262,13 +4400,12 @@ class ProgramRepairSynthesizer:
                 return inner_validate(candidate, context)
 
         refine = request.cegis_refine
+        tags = self._counterevidence_tags(request)
         if refine is None and admitted_kinds:
 
             def refine(witness: FormalCounterexample, context: Mapping[str, Any]):
                 del witness
                 out: list[RefinementCandidate] = []
-                evidence = request.counterevidence
-                tags = evidence.evidence_tags() if evidence is not None else ()
                 for index, kind in enumerate(
                     admitted_kinds[: budget.max_candidates_per_iteration]
                 ):
@@ -4314,6 +4451,8 @@ class ProgramRepairSynthesizer:
                     "target_paths": list(request.target_paths),
                     "operator_kinds": list(admitted_kinds),
                     "requested_operator_kinds": list(request.operator_kinds),
+                    "counterevidence_tags": list(tags),
+                    "admitted_operator_kinds": list(admitted_kinds),
                 },
             )
         except (CegisValidationError, ContractValidationError) as exc:
@@ -4334,12 +4473,18 @@ class ProgramRepairSynthesizer:
         selected: ProgramRepairCandidate | None = None
         if result.selected_candidate is not None:
             sc = result.selected_candidate
+            operator_kind = str(
+                (sc.parameters or {}).get("operator_kind") or sc.kind.value
+            )
+            operator_id = ""
+            try:
+                operator_id = self._registry.get(operator_kind).operator_id
+            except (UnknownRepairOperatorError, Exception):
+                operator_id = ""
             selected = ProgramRepairCandidate(
                 candidate_id=sc.candidate_id,
-                operator_kind=str(
-                    (sc.parameters or {}).get("operator_kind") or sc.kind.value
-                ),
-                operator_id="",
+                operator_kind=operator_kind,
+                operator_id=operator_id,
                 path=request.target_paths[0],
                 mode=ProgramRepairMode.CEGIS,
                 obligation_refs=request.obligation_refs,
