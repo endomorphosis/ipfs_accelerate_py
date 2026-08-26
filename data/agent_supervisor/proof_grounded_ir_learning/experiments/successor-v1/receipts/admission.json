@@ -1,0 +1,59 @@
+{
+  "admitted": false,
+  "authorizes_execution": false,
+  "campaign_cid": "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+  "checked_gates": [
+    {
+      "gate_id": "rights",
+      "passed": false
+    },
+    {
+      "gate_id": "corpus",
+      "passed": false
+    },
+    {
+      "gate_id": "holdouts",
+      "passed": false
+    },
+    {
+      "gate_id": "tokenizer",
+      "passed": false
+    },
+    {
+      "gate_id": "current_baseline",
+      "passed": false
+    },
+    {
+      "gate_id": "integrated_evidence",
+      "passed": false
+    },
+    {
+      "gate_id": "portability",
+      "passed": false
+    }
+  ],
+  "decision": "rejected",
+  "execution_status": "not_run",
+  "input_plan_admission_receipt_cid": "baguqeeranh57nf23krpy5qwgrivpnp2z7o2a5gcdzulvm73ekbb6upk6rwda",
+  "reason_codes": [
+    "no_rights_admitted_training_rows",
+    "corpus_not_materialized",
+    "required_holdouts_insufficient",
+    "tokenizer_not_admitted",
+    "historical_semantic_baseline_not_currently_qualified",
+    "integrated_evidence_does_not_authorize_execution",
+    "portability_no_go"
+  ],
+  "receipt_cid": "baguqeeraqyqjwwkt3jmr2b2hnwpwafhwndre4fkd7gcck5rvwzcyfh22shia",
+  "receipt_sha256": "sha256:86209b5953da591d07476d9f6014f668e24e1543f984257635b645829f5a91d0",
+  "schema": "PGIRExperimentAdmissionReceipt@2",
+  "task_binding": {
+    "current_task_cid": "baguqeerafze3wxxiomo4rhuxaguuk35d4tj4lrp2jtuj6jcinxnokczuctca",
+    "current_task_key": "task/v1/2e49bb5ee8731dc89e9701a9456fa3e4d3c5c5fa4ce89f24486ddae50b3414c4",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "controlled-comparisons-v2",
+    "task_id": "PGIR-206",
+    "title": "Re-run R1-R6 on the superseding freeze"
+  }
+}
