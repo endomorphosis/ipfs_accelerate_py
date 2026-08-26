@@ -75,6 +75,7 @@ from .control_plane_transactions import (
 from .database_task_source import TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
 from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
+    COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
     TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
@@ -86,7 +87,9 @@ from .typed_state_owner import (
     _process_birth_content_id,
     _process_runtime_facts,
     _validated_stored_retry_cooldown,
+    completion_progress_request,
     open_typed_state_owner_connection,
+    validate_completion_progress_snapshot,
 )
 
 QUACK_STATE_CLIENT_INTERFACE: Final = "QuackStateClient@1"
@@ -478,6 +481,19 @@ def _default_templates() -> dict[str, StatementTemplate]:
                 "Exact full-fidelity task projection for an admitted executor"
             ),
         ),
+        "executor_task_revision_history_page": StatementTemplate(
+            name="executor_task_revision_history_page",
+            sql=(
+                "SELECT r.task_cid, r.revision, r.status, r.body_json "
+                "FROM task_revisions AS r WHERE r.task_cid = ? "
+                "ORDER BY r.revision ASC LIMIT ? OFFSET ?"
+            ),
+            parameter_names=("task_cid", "limit", "offset"),
+            kind=StatementKind.QUERY,
+            description=(
+                "Bounded canonical task revision history for an admitted executor"
+            ),
+        ),
         "executor_control_snapshot": StatementTemplate(
             name="executor_control_snapshot",
             sql=(
@@ -734,6 +750,25 @@ def _default_templates() -> dict[str, StatementTemplate]:
             kind=StatementKind.MUTATION,
             description=(
                 "CAS task status while retaining its authoritative transition receipt"
+            ),
+        ),
+        "executor_insert_task_revision": StatementTemplate(
+            name="executor_insert_task_revision",
+            sql=(
+                "INSERT INTO task_revisions (task_cid, revision, status, "
+                "body_json, recorded_at) VALUES (?, ?, ?, ?, ?) "
+                "RETURNING revision"
+            ),
+            parameter_names=(
+                "task_cid",
+                "revision",
+                "status",
+                "body_json",
+                "recorded_at",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Append the exact task lifecycle revision written by a receipt CAS"
             ),
         ),
         "insert_goal": StatementTemplate(
@@ -1053,6 +1088,53 @@ def _reject_protected_typed_deferral_reopen(
         raise QuackClientError(
             "protected typed-deferral task cannot be reopened by generic CAS"
         )
+
+
+def _require_expected_control_receipt(
+    txn: StateTransaction,
+    *,
+    task_cid: str,
+    expected_control_receipt: Mapping[str, Any],
+) -> None:
+    """Fence an embedded receipt CAS to the exact current control receipt."""
+
+    result = txn.execute_named_operation("select_task_by_cid", (task_cid,))
+    row = _fetch_one(result)
+    if row is None:
+        raise OptimisticConflictError("task control receipt CAS task is absent")
+    current = _row_mapping(
+        (
+            "task_cid",
+            "task_alias",
+            "goal_cid",
+            "status",
+            "revision",
+            "ordinal",
+            "body_json",
+        ),
+        row,
+    )
+    try:
+        prior_body = json.loads(str(current.get("body_json") or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise QuackClientError("task control receipt body is malformed") from exc
+    prior_receipt = (
+        prior_body.get("completion_receipt")
+        if isinstance(prior_body, Mapping)
+        else None
+    )
+    try:
+        receipts_match = (
+            isinstance(prior_receipt, Mapping)
+            and canonical_json_bytes(dict(prior_receipt))
+            == canonical_json_bytes(dict(expected_control_receipt))
+        )
+    except (TypeError, ValueError) as exc:
+        raise QuackClientError(
+            "task control receipt is outside the canonical contract"
+        ) from exc
+    if not receipts_match:
+        raise OptimisticConflictError("task control receipt CAS is stale")
 
 
 class _ConnectionAdapter:
@@ -1739,6 +1821,96 @@ class QuackStateClient:
             self._store_generation = generation
             return generation
 
+    def completion_progress_snapshot(
+        self,
+        task_cids: Sequence[str],
+    ) -> Mapping[str, Any]:
+        """Read exact completion progress through Quack with no local fallback."""
+
+        with self._lock:
+            adapter = self._require_adapter()
+            session = self._require_session()
+            if session.transport_mode is not TransportMode.QUACK:
+                raise QuackClientError(
+                    "completion progress requires the typed Quack owner transport"
+                )
+            raw = adapter.raw
+            operation = getattr(raw, "completion_progress_snapshot", None)
+            supports = bool(
+                getattr(raw, "supports_completion_progress_snapshot", False)
+            )
+            grant = getattr(raw, "grant", None)
+            allowed_operations = (
+                grant.get("allowed_operations")
+                if isinstance(grant, Mapping)
+                else ()
+            )
+            if (
+                not callable(operation)
+                or not supports
+                or COMPLETION_PROGRESS_SNAPSHOT_OPERATION not in allowed_operations
+            ):
+                raise QuackClientError(
+                    "typed Quack owner does not admit completion progress"
+                )
+            owner_identity = getattr(raw, "identity", None)
+            if not isinstance(owner_identity, Mapping):
+                raise QuackClientIdentityError(
+                    "completion progress owner identity is unavailable"
+                )
+            request = completion_progress_request(owner_identity, task_cids)
+            try:
+                snapshot = operation(task_cids)
+            except (OSError, TypedStateOwnerError) as exc:
+                raise QuackClientTransportError(
+                    "typed completion progress request failed "
+                    f"({type(exc).__name__})"
+                ) from exc
+            try:
+                validated = validate_completion_progress_snapshot(
+                    snapshot,
+                    request=request,
+                )
+                response_owner = validated["owner_identity"]
+                generation = StoreGeneration.from_dict(
+                    validated["store_generation"]
+                )
+            except QuackClientError:
+                raise
+            except Exception as exc:
+                raise QuackClientIdentityError(
+                    "typed completion progress response failed validation"
+                ) from exc
+            store_identity = session.store_identity
+            if (
+                response_owner["server_id"] != session.server_id
+                or response_owner["store_id"] != session.store_id
+                or response_owner["generation"] != session.generation
+                or response_owner["fence_epoch"] != session.fence_epoch
+                or store_identity is None
+                or response_owner["database_uuid"]
+                != store_identity.database_uuid
+                or response_owner["process_birth_id"]
+                != store_identity.server_birth_id
+                or generation.schema_revision != store_identity.schema_revision
+            ):
+                raise QuackClientIdentityError(
+                    "typed completion progress identity differs from the attached session"
+                )
+            previous = self._store_generation
+            if previous is not None and (
+                generation.store_id != previous.store_id
+                or generation.database_uuid != previous.database_uuid
+                or generation.generation != previous.generation
+                or generation.fence_epoch != previous.fence_epoch
+                or generation.revision < previous.revision
+            ):
+                raise QuackClientIdentityError(
+                    "typed completion progress generation regressed or changed"
+                )
+            self._store_generation = generation
+            return validated
+
     def transaction(
         self,
         *,
@@ -1956,14 +2128,26 @@ class QuackStateClient:
         idempotency_key: str,
         command_id: str | None = None,
         body: Mapping[str, Any] | None = None,
+        expected_control_receipt: Mapping[str, Any] | None = None,
     ) -> CASResult:
         """Convenience CAS for task status using the closed template set."""
 
+        if expected_control_receipt is not None and (
+            not isinstance(expected_control_receipt, Mapping) or body is None
+        ):
+            raise QuackClientError(
+                "expected control receipt requires a receipt-bearing status CAS"
+            )
         session = self._require_session()
         live = self.load_generation()
         body_json = (
             canonical_json_bytes(dict(body)).decode("utf-8")
             if body is not None
+            else ""
+        )
+        expected_control_receipt_json = (
+            canonical_json_bytes(dict(expected_control_receipt)).decode("utf-8")
+            if expected_control_receipt is not None
             else ""
         )
         operation = "task.status.cas.receipt" if body is not None else "task.status.cas"
@@ -1988,6 +2172,15 @@ class QuackStateClient:
                 "expected_task_revision": expected_task_revision,
                 "status": new_status,
                 **({"body_json": body_json} if body is not None else {}),
+                **(
+                    {
+                        "expected_control_receipt_json": (
+                            expected_control_receipt_json
+                        )
+                    }
+                    if expected_control_receipt is not None
+                    else {}
+                ),
             },
         )
         if body is None:
@@ -2009,12 +2202,32 @@ class QuackStateClient:
                     task_cid=str(parameters["task_cid"]),
                     requested_status=str(parameters["status"]),
                 )
+                expected_receipt_json = parameters.get(
+                    "expected_control_receipt_json"
+                )
+                if isinstance(expected_receipt_json, str):
+                    try:
+                        expected_receipt = json.loads(expected_receipt_json)
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        raise QuackClientError(
+                            "expected task control receipt is malformed"
+                        ) from exc
+                    if not isinstance(expected_receipt, Mapping):
+                        raise QuackClientError(
+                            "expected task control receipt is not a mapping"
+                        )
+                    _require_expected_control_receipt(
+                        txn,
+                        task_cid=str(parameters["task_cid"]),
+                        expected_control_receipt=expected_receipt,
+                    )
+            recorded_at = self._clock()
             result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",
                 (
                     str(parameters["status"]),
                     expected + 1,
-                    self._clock(),
+                    recorded_at,
                     str(parameters["body_json"]),
                     str(parameters["task_cid"]),
                     expected,
@@ -2024,6 +2237,25 @@ class QuackStateClient:
             if row is None:
                 raise OptimisticConflictError(
                     "task status receipt CAS failed",
+                    details={
+                        "task_cid": str(parameters["task_cid"]),
+                        "expected_task_revision": expected,
+                    },
+                )
+            history_result = txn.execute_named_operation(
+                "executor_insert_task_revision",
+                (
+                    str(parameters["task_cid"]),
+                    expected + 1,
+                    str(parameters["status"]),
+                    str(parameters["body_json"]),
+                    recorded_at,
+                ),
+            )
+            history_row = _fetch_one(history_result)
+            if history_row is None or int(history_row[0]) != expected + 1:
+                raise OptimisticConflictError(
+                    "task revision history append failed",
                     details={
                         "task_cid": str(parameters["task_cid"]),
                         "expected_task_revision": expected,
@@ -2323,12 +2555,13 @@ class QuackStateClient:
                     "dead claim recovery cooldown absence CAS failed"
                 )
             expected = int(values["expected_task_revision"])
+            recorded_at = self._clock()
             task_result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",
                 (
                     "retrying",
                     expected + 1,
-                    self._clock(),
+                    recorded_at,
                     values["body_json"],
                     values["task_cid"],
                     expected,
@@ -2337,6 +2570,21 @@ class QuackStateClient:
             if _fetch_one(task_result) is None:
                 raise OptimisticConflictError(
                     "dead claim recovery task CAS failed"
+                )
+            history_result = txn.execute_named_operation(
+                "executor_insert_task_revision",
+                (
+                    values["task_cid"],
+                    expected + 1,
+                    "retrying",
+                    values["body_json"],
+                    recorded_at,
+                ),
+            )
+            history_row = _fetch_one(history_result)
+            if history_row is None or int(history_row[0]) != expected + 1:
+                raise OptimisticConflictError(
+                    "dead claim recovery history append failed"
                 )
             return {
                 "schema": TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,

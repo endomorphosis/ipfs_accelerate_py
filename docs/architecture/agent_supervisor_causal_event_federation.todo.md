@@ -6,6 +6,12 @@ DuckDB is authoritative transactional operational state only behind the exclusiv
 
 The protected scheduling projection records all CASF tasks as `todo`, with CASF-000 as the sole dependency-ready task. Current-tree implementation and test observations do not complete a task: every final result identity remains pending until the declared producer emits a canonical current-tree receipt and the post-merge gates accept it. Transactional materialization must preserve this zero-completion projection. Bootstrap admission remains one lane and one logical worker. The server-owned typed wait implementation may be exercised as a bounded bootstrap capability, but CASF-010 itself is not accepted and federation-wide event-driven execution remains unqualified until CASF-021. High concurrency, multi-supervisor operation, parallel execution, causal coordination, production readiness, and DuckLake promotion remain unavailable.
 
+## Bootstrap projection versus live progress
+
+The per-task `Status` fields below remain the sealed bootstrap input. For a live generation, run `python3 scripts/run_agent_supervisor_causal_event_federation.py status`; the sole typed Quack owner observes the exact task population and normalized receipts in one MVCC snapshot. When `progress_export.available` is true, the command atomically refreshes the non-authoritative `data/agent_supervisor/causal_event_federation/evidence/bootstrap-operator/progress-current.json` manifest, which binds immutable report-CID-named JSON and Markdown artifacts. Those reports separate operational state, current-revision receipt-backed completion, missing completion evidence, and program qualification. After the owner stops, the last manifest is historical evidence and `status` reports the authority as unavailable; neither the manifest nor its artifacts may be replayed into this board.
+
+Current-tree source reconciliation found implementation surfaces for 44/44 tasks, all 118 declared output paths, and all 44 declared validation routes. Those are source-presence observations, not normalized completion receipts. Runtime progress is publishable only when `status` reports `progress_export.available: true`; a live snapshot paired with an export failure makes the command fail nonzero.
+
 ## Parallel waves
 
 ```text

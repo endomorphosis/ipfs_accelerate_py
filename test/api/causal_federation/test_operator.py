@@ -588,6 +588,184 @@ def test_receipts_are_private_content_addressed_and_tamper_evident(
         operator._verify_receipt(tampered, kind="status")
 
 
+def test_operational_completion_progress_uses_exact_sealed_task_cids(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        StoreGeneration,
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        COMPLETION_EVIDENCE_SCHEMA,
+        INTENT_COMPLETION_PROJECTION_SCHEMA,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_COMPLETION_PROGRESS_SNAPSHOT_SCHEMA,
+        completion_progress_request,
+    )
+
+    operator = _operator()
+    aliases = list(operator.CASF_TASK_ALIASES)
+    task_cids = {
+        alias: f"task:casf:{ordinal:03d}"
+        for ordinal, alias in enumerate(aliases)
+    }
+    dependencies = {alias: [] for alias in aliases}
+    dependencies["CASF-001"] = ["CASF-000"]
+    portfolio = {
+        "portfolio_cid": "baportfolio",
+        "task_cids_by_alias": task_cids,
+        "dependencies_by_alias": dependencies,
+    }
+    sensitive_sentinel = "provider-secret-must-remain-ephemeral"
+    control_receipt = {
+        "validation": "passed",
+        "authority": "independent",
+        "provider_payload": sensitive_sentinel,
+    }
+    evidence_digests = ["baevidence"]
+    evidence_digest = content_identity(
+        {
+            "task_cid": task_cids["CASF-000"],
+            "revision": 2,
+            "receipt": control_receipt,
+            "evidence_digests": evidence_digests,
+        }
+    )
+    receipt_cid = content_identity(
+        {
+            "namespace": "completion-receipt",
+            "task_cid": task_cids["CASF-000"],
+            "revision": 2,
+            "evidence_digest": evidence_digest,
+        }
+    )
+    states = [
+        {
+            "task_cid": task_cids[alias],
+            "status": (
+                "completed"
+                if alias == "CASF-000"
+                else "todo"
+                if alias == "CASF-001"
+                else "blocked"
+            ),
+            "revision": 2 if alias == "CASF-000" else 0,
+        }
+        for alias in aliases
+    ]
+    projection_material = {
+        "schema": INTENT_COMPLETION_PROJECTION_SCHEMA,
+        "event_watermark": 17,
+        "task_states": sorted(states, key=lambda item: item["task_cid"]),
+        "completion_receipts": [
+            {
+                "receipt_cid": receipt_cid,
+                "task_cid": task_cids["CASF-000"],
+                "goal_cid": "goal:casf",
+                "attempt_id": "",
+                "claim_cid": "",
+                "fencing_token": 0,
+                "completed_at": "2026-08-26T00:00:00Z",
+                "validation_run_id": "",
+                "evidence_digest": evidence_digest,
+                "body": {
+                    "schema": COMPLETION_EVIDENCE_SCHEMA,
+                    "receipt": control_receipt,
+                    "evidence_digests": evidence_digests,
+                    "revision": 2,
+                },
+            }
+        ],
+    }
+    owner_identity = {
+        "server_id": "server:casf-progress-test",
+        "process_birth_id": "birth:casf-progress-test",
+        "store_id": "control.duckdb",
+        "database_uuid": "123e4567-e89b-12d3-a456-426614174000",
+        "generation": 1,
+        "fence_epoch": 1,
+    }
+    request = completion_progress_request(owner_identity, tuple(task_cids.values()))
+    generation = StoreGeneration(
+        store_id="control.duckdb",
+        generation=1,
+        schema_revision=1,
+        fence_epoch=1,
+        revision=17,
+        database_uuid=owner_identity["database_uuid"],
+        birth_id=owner_identity["process_birth_id"],
+    ).to_dict()
+    owner_snapshot_material = {
+        "schema": TYPED_COMPLETION_PROGRESS_SNAPSHOT_SCHEMA,
+        "request_cid": request["request_cid"],
+        "owner_identity": owner_identity,
+        "store_generation": generation,
+        "completion_projection": {
+            **projection_material,
+            "projection_cid": content_identity(projection_material),
+        },
+    }
+    owner_snapshot = {
+        **owner_snapshot_material,
+        "snapshot_cid": content_identity(owner_snapshot_material),
+    }
+
+    progress = operator._operational_completion_progress(
+        owner_snapshot,
+        portfolio,
+    )
+
+    assert progress["task_statuses"]["CASF-000"] == "completed"
+    assert progress["ready_task_ids"] == ["CASF-001"]
+    assert progress["current_normalized_receipt_task_ids"] == ["CASF-000"]
+    assert progress["program_completion_qualified"] is False
+    assert "owner_snapshot" not in progress
+    assert sensitive_sentinel not in json.dumps(progress, sort_keys=True)
+
+    monkeypatch.setattr(operator, "ROOT", tmp_path)
+    export = operator._persist_campaign_progress(
+        {
+            "progress_manifest": tmp_path / "evidence" / "progress-current.json",
+        },
+        portfolio=portfolio,
+        owner_snapshot=owner_snapshot,
+        classification={
+            "classification": "completion_unqualified",
+            "reason_codes": ["fixed_point_completion_receipt_unavailable"],
+        },
+    )
+    manifest = json.loads(
+        (tmp_path / "evidence" / "progress-current.json").read_text()
+    )
+    exported = json.loads(
+        (tmp_path / manifest["artifacts"]["json"]["path"]).read_text()
+    )
+    markdown = (tmp_path / manifest["artifacts"]["markdown"]["path"]).read_text()
+    assert export["available"] is True
+    assert export["authoritative"] is False
+    assert export["report_cid"] == manifest["report_cid"] == exported["report_cid"]
+    assert export["manifest_cid"] == manifest["manifest_cid"]
+    assert exported["operational_state"]["task_count"] == 44
+    assert exported[
+        "current_revision_normalized_receipt_backed_completions"
+    ]["count"] == 1
+    assert exported["program_qualification"]["qualified"] is False
+    assert "NON-AUTHORITATIVE PROGRESS EXPORT" in markdown
+    assert sensitive_sentinel not in json.dumps(manifest, sort_keys=True)
+    assert sensitive_sentinel not in json.dumps(exported, sort_keys=True)
+    assert sensitive_sentinel not in markdown
+
+    missing = dict(owner_snapshot)
+    missing["completion_projection"] = {
+        **owner_snapshot["completion_projection"],
+        "task_states": owner_snapshot["completion_projection"]["task_states"][:-1],
+    }
+    with pytest.raises(operator.OperatorError, match="sealed task population"):
+        operator._operational_completion_progress(missing, portfolio)
+
+
 def test_owner_argv_and_environment_exclude_raw_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -884,6 +1062,38 @@ def test_cli_keeps_plan_health_and_coordinator_transport_requirements_distinct()
         operator._parser().parse_args(
             ["status", "--require-healthy", "--require-coordinator-ready"]
         )
+
+
+def test_plain_status_fails_if_live_authority_cannot_publish_progress(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    operator = _operator()
+    base = {
+        "task_authority": {"available": True},
+        "progress_export": {
+            "available": False,
+            "reason_code": "campaign_progress_export_failed",
+        },
+        "healthy": True,
+        "coordinator_ready": True,
+    }
+    monkeypatch.setattr(operator, "status", lambda _path: dict(base))
+
+    for arguments in (
+        ["status"],
+        ["status", "--require-healthy"],
+        ["status", "--require-coordinator-ready"],
+    ):
+        assert operator.main(arguments) == 1
+        emitted = json.loads(capsys.readouterr().out)
+        assert emitted["progress_export"]["available"] is False
+
+    base["task_authority"] = {
+        "available": False,
+        "reason_code": "owner_not_alive",
+    }
+    assert operator.main(["status"]) == 0
 
 
 @pytest.mark.parametrize(

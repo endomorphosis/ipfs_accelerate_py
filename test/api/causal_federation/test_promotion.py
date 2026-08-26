@@ -707,7 +707,7 @@ def test_task_transplant_is_rejected_and_partial_receipts_bind_no_task() -> None
     assert "missing:casf_033_full_qualification_identity_binding" in decision.blockers
 
 
-def test_fixed_point_cid_omission_cannot_admit_changed_evidence_refs() -> None:
+def test_fixed_point_cid_rejects_transplanted_evidence_refs() -> None:
     identity = _identity()
     original = _fixed_point(identity)
     transplanted = dict(original)
@@ -733,9 +733,9 @@ def test_fixed_point_cid_omission_cannot_admit_changed_evidence_refs() -> None:
     original_assessment = _assessment(original_decision, EvidenceSlot.FIXED_POINT)
     transplanted_assessment = _assessment(transplanted_decision, EvidenceSlot.FIXED_POINT)
     assert original_assessment.status is ArtifactStatus.NONAUTHORITATIVE
-    assert transplanted_assessment.status is ArtifactStatus.NONAUTHORITATIVE
+    assert transplanted_assessment.status is ArtifactStatus.INVALID
     assert original_assessment.artifact_id != transplanted_assessment.artifact_id
-    assert "missing:casf_030_accepted_producer_provenance" in transplanted_assessment.blockers
+    assert transplanted_assessment.blockers == ("invalid:casf_030_fixed_point",)
 
 
 @pytest.mark.parametrize(

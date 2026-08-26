@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     CommandKind,
     CommandOutcome,
@@ -35,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts im
     StateAuthorityClass,
     StateCommand,
     StoreGeneration,
+    content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -48,8 +48,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions
     IdempotencyConflictError,
     OptimisticConflictError,
     RetryPolicy,
-    StateTransaction,
     StaleGenerationError,
+    StateTransaction,
     TransactionConflictKind,
     TransactionError,
     classify_exception,
@@ -72,6 +72,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import 
     TransportMode,
     open_embedded_client,
     resolve_endpoint,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
+    TYPED_COMPLETION_PROGRESS_SNAPSHOT_SCHEMA,
+    TypedOwnerResult,
+    completion_progress_request,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -664,6 +670,223 @@ def test_identity_mismatch_on_attach(tmp_path: Path) -> None:
     client = QuackStateClient(owner_id="owner:id", expected_identity=expected)
     with pytest.raises(QuackClientIdentityError):
         client.attach(db, mode=TransportMode.EMBEDDED, seed_generation=False)
+
+
+def test_completion_progress_is_quack_only_and_rejects_tampered_cids(
+    tmp_path: Path,
+) -> None:
+    def _completion_receipt(
+        *,
+        control_receipt: dict[str, Any],
+        completed_at: str,
+        evidence_digests: list[str],
+        revision: int = 2,
+    ) -> dict[str, Any]:
+        evidence_digest = content_identity(
+            {
+                "task_cid": "task:cid:001",
+                "revision": revision,
+                "receipt": control_receipt,
+                "evidence_digests": evidence_digests,
+            }
+        )
+        receipt_cid = content_identity(
+            {
+                "namespace": "completion-receipt",
+                "task_cid": "task:cid:001",
+                "revision": revision,
+                "evidence_digest": evidence_digest,
+            }
+        )
+        return {
+            "receipt_cid": receipt_cid,
+            "task_cid": "task:cid:001",
+            "goal_cid": "goal:cid:001",
+            "attempt_id": "attempt:001",
+            "claim_cid": "claim:001",
+            "fencing_token": 7,
+            "completed_at": completed_at,
+            "validation_run_id": "validation:001",
+            "evidence_digest": evidence_digest,
+            "body": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "intent-completion-evidence@1"
+                ),
+                "receipt": control_receipt,
+                "evidence_digests": evidence_digests,
+                "revision": revision,
+            },
+        }
+
+    class _CompletionOwner:
+        identity = {
+            "server_id": "server:progress-test",
+            "process_birth_id": "birth:server-1",
+            "store_id": "control.duckdb",
+            "database_uuid": _UUID,
+            "generation": 1,
+            "fence_epoch": 1,
+        }
+        session_id = "session:progress-test"
+        grant = {"allowed_operations": [COMPLETION_PROGRESS_SNAPSHOT_OPERATION]}
+        supports_completion_progress_snapshot = True
+
+        def __init__(self) -> None:
+            self.tamper = ""
+
+        def execute_operation(self, operation: str, _parameters: Any = None):
+            if operation == "load_store_generation":
+                return TypedOwnerResult(
+                    (
+                        "generation",
+                        "schema_revision",
+                        "fence_epoch",
+                        "revision",
+                        "database_uuid",
+                        "birth_id",
+                    ),
+                    ((1, 1, 1, 3, _UUID, "birth:server-1"),),
+                    -1,
+                )
+            if operation == "whoami_metadata":
+                return TypedOwnerResult(
+                    ("key", "value"),
+                    (
+                        ("database_uuid", _UUID),
+                        ("schema_version", "1"),
+                        ("schema_fingerprint", _DIGEST),
+                    ),
+                    -1,
+                )
+            raise AssertionError(operation)
+
+        def completion_progress_snapshot(self, task_cids: Any):
+            request = completion_progress_request(self.identity, task_cids)
+            receipts = [
+                _completion_receipt(
+                    control_receipt={"outcome": "passed"},
+                    completed_at="2026-08-26T12:00:00Z",
+                    evidence_digests=["sha256:" + ("1a" * 32)],
+                )
+            ]
+            if self.tamper == "nested_evidence":
+                body = receipts[0]["body"]
+                assert isinstance(body, dict)
+                evidence_digests = body["evidence_digests"]
+                assert isinstance(evidence_digests, list)
+                evidence_digests.append("sha256:" + ("2b" * 32))
+            elif self.tamper == "body_schema":
+                body = receipts[0]["body"]
+                assert isinstance(body, dict)
+                body["schema"] = "forged@2"
+            elif self.tamper == "revision_type":
+                body = receipts[0]["body"]
+                assert isinstance(body, dict)
+                body["revision"] = "2"
+            elif self.tamper == "evidence_list_type":
+                body = receipts[0]["body"]
+                assert isinstance(body, dict)
+                body["evidence_digests"] = "sha256:" + ("1a" * 32)
+            elif self.tamper == "receipt_cid":
+                receipts[0]["receipt_cid"] = "baforged"
+            elif self.tamper == "stale_revision":
+                receipts[0] = _completion_receipt(
+                    control_receipt={"outcome": "historical"},
+                    completed_at="2026-08-26T11:00:00Z",
+                    evidence_digests=["sha256:" + ("4d" * 32)],
+                    revision=1,
+                )
+            elif self.tamper == "duplicate_task_revision":
+                receipts.append(
+                    _completion_receipt(
+                        control_receipt={"outcome": "passed-again"},
+                        completed_at="2026-08-26T12:00:01Z",
+                        evidence_digests=["sha256:" + ("3c" * 32)],
+                    )
+                )
+            projection_material = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "intent-completion-projection@1"
+                ),
+                "event_watermark": 7,
+                "task_states": [
+                    {
+                        "task_cid": "task:cid:001",
+                        "status": "completed",
+                        "revision": 2,
+                    }
+                ],
+                "completion_receipts": receipts,
+            }
+            projection = {
+                **projection_material,
+                "projection_cid": content_identity(projection_material),
+            }
+            generation = StoreGeneration(
+                store_id="control.duckdb",
+                generation=1,
+                schema_revision=1,
+                fence_epoch=1,
+                revision=3,
+                database_uuid=_UUID,
+                birth_id="birth:server-1",
+            ).to_dict()
+            snapshot_material = {
+                "schema": TYPED_COMPLETION_PROGRESS_SNAPSHOT_SCHEMA,
+                "request_cid": request["request_cid"],
+                "owner_identity": dict(self.identity),
+                "store_generation": generation,
+                "completion_projection": projection,
+            }
+            snapshot = {
+                **snapshot_material,
+                "snapshot_cid": content_identity(snapshot_material),
+            }
+            if self.tamper == "outer_snapshot_cid":
+                snapshot["snapshot_cid"] = "baforged"
+            return snapshot
+
+        @staticmethod
+        def close() -> None:
+            return None
+
+    owner = _CompletionOwner()
+    client = QuackStateClient(
+        owner_id="owner:progress-test",
+        store_id="control.duckdb",
+        connection_factory=lambda _endpoint: owner,
+    )
+    try:
+        client.attach("quack:127.0.0.1:7777")
+        snapshot = client.completion_progress_snapshot(["task:cid:001"])
+        assert snapshot["completion_projection"]["event_watermark"] == 7
+        assert snapshot["snapshot_cid"].startswith("b")
+
+        for tamper in (
+            "outer_snapshot_cid",
+            "nested_evidence",
+            "body_schema",
+            "revision_type",
+            "evidence_list_type",
+            "receipt_cid",
+            "stale_revision",
+            "duplicate_task_revision",
+        ):
+            owner.tamper = tamper
+            with pytest.raises(QuackClientIdentityError):
+                client.completion_progress_snapshot(["task:cid:001"])
+    finally:
+        client.close()
+
+    db = tmp_path / "embedded.duckdb"
+    _install(db)
+    _seed_generation(db)
+    _seed_goal_and_tasks(db, count=1)
+    with _client(db) as embedded:
+        with pytest.raises(QuackClientError, match="typed Quack owner"):
+            embedded.completion_progress_snapshot(["task:cid:001"])
 
 
 def test_retry_policy_jitter_is_bounded() -> None:

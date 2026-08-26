@@ -933,16 +933,9 @@ def _assess_fixed_point(
         evidence_refs = _exact_list(
             data["evidence_refs"], "CASF-030 evidence_refs", maximum=MAX_CAPABILITIES
         )
-        receipt = FixedPointReceipt(
-            world_snapshot_ref=data["world_snapshot_ref"],
-            event_watermark=data["event_watermark"],
-            outstanding_required_work=data["outstanding_required_work"],
-            fencing_epoch=data["fencing_epoch"],
-            outcome=data["outcome"],
-            evidence_refs=tuple(evidence_refs),
-        )
-        if data["receipt_id"] != receipt.cid:
-            raise PromotionGateError("CASF-030 receipt identity mismatches")
+        if evidence_refs != data["evidence_refs"]:
+            raise PromotionGateError("CASF-030 evidence references are not canonical")
+        receipt = FixedPointReceipt.from_dict(data)
         if (
             receipt.world_snapshot_ref != identity.world_snapshot_ref
             or receipt.event_watermark != identity.event_watermark

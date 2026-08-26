@@ -1433,11 +1433,20 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
             "attempt_execution_phase": "claimed",
             "attempt_execution_revision": 1,
         }
+        with pytest.raises(TaskSourceConflictError, match="control receipt CAS"):
+            adapter.compare_and_set_status(
+                claimed.task.task_cid,
+                claimed.task.revision,
+                "in_progress",
+                admitted_receipt,
+                expected_control_receipt={**claim_receipt, "fencing_token": 2},
+            )
         claimed = adapter.compare_and_set_status(
             claimed.task.task_cid,
             claimed.task.revision,
             "in_progress",
             admitted_receipt,
+            expected_control_receipt=claim_receipt,
         )
         assert claimed.task.body["completion_receipt"]["operation"] == (
             "database_attempt_admitted"
@@ -1461,6 +1470,51 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
         )
         assert completed.task.status == "completed"
         assert adapter.snapshot().terminal is True
+        history = adapter.task_revision_history_projection("CASF-TYPED")
+        assert history["task_cid"] == ready.task_cid
+        assert history["revisions"] == [
+            {
+                "revision": 1,
+                "status": "ready",
+                "body": dict(ready.body),
+            },
+            {
+                "revision": 2,
+                "status": "in_progress",
+                "body": dict(claimed.task.body)
+                | {"completion_receipt": claim_receipt},
+            },
+            {
+                "revision": 3,
+                "status": "in_progress",
+                "body": dict(claimed.task.body),
+            },
+            {
+                "revision": 4,
+                "status": "completed",
+                "body": dict(completed.task.body),
+            },
+        ]
+        history_material = dict(history)
+        projection_cid = history_material.pop("projection_cid")
+        assert projection_cid == content_identity(history_material)
+        with pytest.raises(KeyError):
+            adapter.task_revision_history_projection("CASF-TYPED-UNKNOWN")
+        invalid_history_queries = (
+            {"task_cid": "x" * 1_025, "limit": 1, "offset": 0},
+            {"task_cid": ready.task_cid, "limit": True, "offset": 0},
+            {"task_cid": ready.task_cid, "limit": 0, "offset": 0},
+            {"task_cid": ready.task_cid, "limit": 25, "offset": 0},
+            {"task_cid": ready.task_cid, "limit": 1, "offset": True},
+            {"task_cid": ready.task_cid, "limit": 1, "offset": -1},
+            {"task_cid": ready.task_cid, "limit": 1, "offset": 10_001},
+        )
+        for parameters in invalid_history_queries:
+            with pytest.raises(QuackClientError):
+                client.execute(
+                    "executor_task_revision_history_page",
+                    parameters,
+                )
 
         with pytest.raises(TypedStateOwnerAuthorizationError):
             TypedStateOwnerConnection(
@@ -4035,6 +4089,22 @@ def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
         "task_identity",
         "task_alias",
     )
+    assert catalog[
+        "executor_task_revision_history_page"
+    ].parameter_names == (
+        "task_cid",
+        "limit",
+        "offset",
+    )
+    assert catalog["executor_task_revision_history_page"].mutation is False
+    assert catalog["executor_insert_task_revision"].parameter_names == (
+        "task_cid",
+        "revision",
+        "status",
+        "body_json",
+        "recorded_at",
+    )
+    assert catalog["executor_insert_task_revision"].mutation is True
     assert catalog["executor_control_snapshot"].parameter_names == ()
     assert catalog["executor_control_snapshot"].mutation is False
     assert catalog["executor_retry_cooldown_by_task"].parameter_names == (
