@@ -1973,6 +1973,85 @@ REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_NON_SUCCESS: Final = (
     "reduced validation, database mutation, contention, or validation failure "
     "is rejected before owner acquisition."
 )
+REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-process-census-disappearance-transition@1"
+)
+REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD: Final = (
+    "a432e5e2efd203f738af1e0e95dfb8edba53715b"
+)
+REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_process_tree_fencing.py",
+)
+REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS: Final = (
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "py_compile",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+        "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "test/api/test_agent_supervisor_process_tree_fencing.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_process_tree_fencing.py",
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "-m",
+        "pytest",
+        "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k",
+        (
+            "aseh_scheduler_group_fence_survives_leader_exit or "
+            "aseh_forced_owner_group_escalation_reaps_term_ignoring_tree or "
+            "aseh_r18_process_census_disappearance or "
+            "repair_process_census_disappearance_transition or "
+            "delegates_r18_before_suffix_admission"
+        ),
+    ),
+    (
+        ASEH_RECEIPT_VALIDATION_PYTHON,
+        "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+        "--check-all",
+        "--json",
+    ),
+    (
+        "/usr/bin/git",
+        "diff",
+        "--check",
+        REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD,
+        "HEAD",
+        "--",
+    ),
+)
+REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to "
+    "continue fixing the existing canonical supervisor so ordinary Linux "
+    "process disappearance cannot falsely block its strict preflight fence "
+    "or create a second DuckDB/Quack state writer"
+)
+REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SUCCESS: Final = (
+    "The exact R17 child preserves the immutable R1-R17 chain, treats only "
+    "per-PID procfs ENOENT and ESRCH as proven disappearance, keeps every "
+    "other census error unavailable, and passes the typed process-tree and "
+    "historical sealed group-fence gates without database mutation."
+)
+REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_NON_SUCCESS: Final = (
+    "Any different R17 parent, changed sibling, rewritten R17 receipt, "
+    "ignored EACCES, EIO, malformed or unknown procfs observation, stale-"
+    "birth admission, surviving process-group member, reduced validation, "
+    "database mutation, contention, or validation failure is rejected before "
+    "owner acquisition."
+)
 ASEH_R13_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     REPAIR_TRANSITION_SCHEMA,
     REPAIR_FOLLOWUP_TRANSITION_SCHEMA,
@@ -2008,6 +2087,10 @@ ASEH_R16_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
 ASEH_R17_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
     *ASEH_R16_REPAIR_TRANSITION_CHAIN_SCHEMAS,
     REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA,
+)
+ASEH_R18_REPAIR_TRANSITION_CHAIN_SCHEMAS: Final = (
+    *ASEH_R17_REPAIR_TRANSITION_CHAIN_SCHEMAS,
+    REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA,
 )
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
@@ -2105,6 +2188,9 @@ REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_RECEIPT_FIELDS: Final 
 )
 REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_RECEIPT_FIELDS
+)
+REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
@@ -3116,6 +3202,42 @@ def _repair_provider_execution_identity_transition_receipt_id(
     return receipt_id
 
 
+def _repair_process_census_disappearance_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-18 process-census receipt."""
+
+    witness = payload.get("candidate_authorization_witness")
+    if (
+        payload.get("schema")
+        != REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 18
+        or payload.get("terminal_success_criteria")
+        != REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SUCCESS
+        or payload.get("terminal_non_success_criteria")
+        != REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_NON_SUCCESS
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+        or payload.get("sealed_validation_executor_contract")
+        != _r18_sealed_receipt_validation_executor_contract()
+        or not isinstance(witness, Mapping)
+    ):
+        raise OperatorError(
+            "bootstrap repair process-census-disappearance schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair process-census-disappearance CID is invalid"
+        )
+    return receipt_id
+
+
 def _repair_provider_cleanup_fence_known_baseline_receipt_id(
     payload: object,
 ) -> str:
@@ -3319,11 +3441,15 @@ def _receipt_validation_matrices() -> tuple[Sequence[Sequence[str]], ...]:
     r17 = globals().get(
         "REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS"
     )
+    r18 = globals().get(
+        "REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS"
+    )
     return (
         *_r14_receipt_validation_matrices(),
         *((r15,) if isinstance(r15, Sequence) else ()),
         *((r16,) if isinstance(r16, Sequence) else ()),
         *((r17,) if isinstance(r17, Sequence) else ()),
+        *((r18,) if isinstance(r18, Sequence) else ()),
     )
 
 
@@ -3705,6 +3831,71 @@ def _r17_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
     return contract
 
 
+ASEH_R17_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID: Final = (
+    "sha256:d100bf13a06021c1ce3337ce697dc8c82c014a3a93e96932ee42476f0a47863f"
+)
+
+
+def _r18_sealed_receipt_validation_executor_contract() -> dict[str, Any]:
+    """Extend immutable R17 with the exact process-census repair matrix."""
+
+    parent = _r17_sealed_receipt_validation_executor_contract()
+    parent_cid = _identity(parent)
+    if (
+        parent_cid
+        != ASEH_R17_SEALED_RECEIPT_VALIDATION_EXECUTOR_CONTRACT_CID
+    ):
+        raise OperatorError("historical R17 validation contract drifted")
+    matrix = REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS
+    sealed_python_commands = [
+        command
+        for command in matrix
+        if _parse_receipt_validation_python_command(
+            command,
+            require_known=False,
+        )
+        is not None
+    ]
+    executor_bindings = [
+        {
+            "argv_sha256": _identity(list(command)),
+            "executor_class": _r18_validation_executor_class(command),
+        }
+        for command in matrix
+    ]
+    contract = dict(parent)
+    contract.update(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "aseh-r18-validation-executor@1"
+            ),
+            "parent_executor_contract_cid": parent_cid,
+            "policy_revision": 18,
+            "admitted_validation_argv_digests": sorted(
+                _identity(list(command)) for command in matrix
+            ),
+            "admitted_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "admitted_sealed_python_argv_digests": sorted(
+                _identity(list(command))
+                for command in sealed_python_commands
+            ),
+            "argv_executor_class_bindings": sorted(
+                executor_bindings,
+                key=lambda item: str(item["argv_sha256"]),
+            ),
+            "scope": (
+                "r18_authorization_preflight_and_materialized_launch_"
+                "admission_only"
+            ),
+        }
+    )
+    return contract
+
+
 def _r16_production_lifecycle_live_command() -> tuple[str, ...]:
     """Return the one R16 argv requiring the production lifecycle owner."""
 
@@ -3785,6 +3976,27 @@ def _r17_validation_executor_class(command: Sequence[str]) -> str:
     return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
 
 
+def _r18_validation_executor_class(command: Sequence[str]) -> str:
+    """Classify one exact R18 argv without broadening prior matrices."""
+
+    declared = tuple(command)
+    matrix = tuple(
+        tuple(item)
+        for item in REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS
+    )
+    if declared not in matrix:
+        raise OperatorError("command is not in the R18 validation matrix")
+    if (
+        _parse_receipt_validation_python_command(
+            declared,
+            require_known=False,
+        )
+        is not None
+    ):
+        return ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    return ASEH_R16_DETERMINISTIC_DIRECT_EXECUTOR_CLASS
+
+
 def _admit_sealed_receipt_validation_executor_contract(
     executor_contract: Mapping[str, Any] | None,
     *,
@@ -3821,13 +4033,18 @@ def _admit_sealed_receipt_validation_executor_contract(
         return r15
     r16 = _r16_sealed_receipt_validation_executor_contract()
     r17 = _r17_sealed_receipt_validation_executor_contract()
-    if supplied not in (r16, r17):
+    r18 = _r18_sealed_receipt_validation_executor_contract()
+    if supplied not in (r16, r17, r18):
         raise OperatorError("sealed validation executor contract is unknown")
     if (
         (
-            _r17_validation_executor_class(command)
-            if supplied == r17
-            else _r16_validation_executor_class(command)
+            _r18_validation_executor_class(command)
+            if supplied == r18
+            else (
+                _r17_validation_executor_class(command)
+                if supplied == r17
+                else _r16_validation_executor_class(command)
+            )
         )
         != ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
     ):
@@ -8594,6 +8811,39 @@ def _admit_exact_r17_transition_chain(
     return chain
 
 
+def _admit_exact_r18_transition_chain(
+    value: object,
+) -> list[Mapping[str, Any]]:
+    """Admit the complete ordered and adjacent-linked R1-R18 chain."""
+
+    if not isinstance(value, list) or len(value) != len(
+        ASEH_R18_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        raise OperatorError("R18 repair transition chain differs")
+    chain: list[Mapping[str, Any]] = []
+    for index, (item, expected_schema) in enumerate(
+        zip(value, ASEH_R18_REPAIR_TRANSITION_CHAIN_SCHEMAS, strict=True)
+    ):
+        expected_revision = None if index == 0 else index + 1
+        if (
+            not isinstance(item, Mapping)
+            or item.get("schema") != expected_schema
+            or item.get("transition_revision") != expected_revision
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(item.get("receipt_cid") or ""),
+            )
+            is None
+        ):
+            raise OperatorError("R18 repair transition chain differs")
+        if index > 0 and item.get("previous_receipt_cid") != chain[-1].get(
+            "receipt_cid"
+        ):
+            raise OperatorError("R18 repair transition chain differs")
+        chain.append(item)
+    return chain
+
+
 def _assert_exact_run_launch_admission(
     admission: Mapping[str, Any],
     *,
@@ -8786,6 +9036,35 @@ def _assert_exact_run_launch_admission(
             raise OperatorError(
                 "current R17 candidate lacks its exact admitted validation seal"
             )
+    elif parents == [
+        REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+    ]:
+        transition = admission.get("repair_transition")
+        chain = _admit_exact_r18_transition_chain(
+            admission.get("repair_transition_chain")
+        )
+        r17_admitted = chain[-2]
+        active_admitted = chain[-1]
+        if (
+            not isinstance(transition, Mapping)
+            or transition.get("schema")
+            != REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA
+            or transition.get("repair_head") != candidate_head
+            or transition.get("repair_tree") != candidate_tree
+            or r17_admitted.get("repair_head")
+            != REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+            or active_admitted.get("repair_head") != candidate_head
+            or active_admitted.get("repair_tree") != candidate_tree
+            or active_admitted.get("previous_receipt_cid")
+            != r17_admitted.get("receipt_cid")
+            or transition.get("previous_receipt_cid")
+            != r17_admitted.get("receipt_cid")
+            or active_admitted.get("receipt_cid")
+            != transition.get("receipt_cid")
+        ):
+            raise OperatorError(
+                "current R18 candidate lacks its exact admitted validation seal"
+            )
 
 
 def _r11_validation_environment(checkout: Path) -> dict[str, str]:
@@ -8938,6 +9217,17 @@ def _r17_validation_working_tree_scope(command: Sequence[str]) -> str:
     if (
         tuple(command)
         == REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS[-2]
+    ):
+        return "candidate_authorization_worktree"
+    return "immutable_candidate_checkout"
+
+
+def _r18_validation_working_tree_scope(command: Sequence[str]) -> str:
+    """Keep the branch-aware R18 board check on the witnessed launch tree."""
+
+    if (
+        tuple(command)
+        == REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS[-2]
     ):
         return "candidate_authorization_worktree"
     return "immutable_candidate_checkout"
@@ -10073,25 +10363,38 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
     authorization_witness: Mapping[str, str],
     _revision: int = 16,
 ) -> list[dict[str, Any]]:
-    """Run the bounded R16/R17 repair matrix against committed bytes."""
+    """Run the bounded R16-R18 repair matrix against committed bytes."""
 
-    if _revision not in {16, 17}:
+    if _revision not in {16, 17, 18}:
         raise OperatorError("repair validation revision is invalid")
     revision_label = f"R{_revision}"
     if _ASEH_RECEIPT_VALIDATION_EXECUTOR is None:
         raise OperatorError(
             f"{revision_label} sealed validation executor is unavailable"
         )
-    matrix = (
-        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
-        if _revision == 17
-        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
-    )
-    executor_contract_value = (
-        _r17_sealed_receipt_validation_executor_contract()
-        if _revision == 17
-        else _r16_sealed_receipt_validation_executor_contract()
-    )
+    if _revision == 18:
+        matrix = REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r18_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r18_validation_working_tree_scope
+        executor_class_for = _r18_validation_executor_class
+    elif _revision == 17:
+        matrix = REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r17_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r17_validation_working_tree_scope
+        executor_class_for = _r17_validation_executor_class
+    else:
+        matrix = (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r16_sealed_receipt_validation_executor_contract()
+        )
+        scope_for = _r16_validation_working_tree_scope
+        executor_class_for = _r16_validation_executor_class
     witness = dict(authorization_witness)
     _assert_candidate_authorization_witness(
         witness,
@@ -10118,11 +10421,7 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
                 candidate_head=candidate_head,
                 candidate_tree=candidate_tree,
             )
-            working_tree_scope = (
-                _r17_validation_working_tree_scope(command)
-                if _revision == 17
-                else _r16_validation_working_tree_scope(command)
-            )
+            working_tree_scope = scope_for(command)
             python_validation = (
                 _parse_receipt_validation_python_command(
                     command,
@@ -10130,11 +10429,7 @@ def _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
                 )
                 is not None
             )
-            executor_class = (
-                _r17_validation_executor_class(command)
-                if _revision == 17
-                else _r16_validation_executor_class(command)
-            )
+            executor_class = executor_class_for(command)
             executor_contract = (
                 executor_contract_value
                 if python_validation
@@ -10350,6 +10645,22 @@ def _run_repair_provider_execution_identity_transition_validations(
         candidate_tree=candidate_tree,
         authorization_witness=authorization_witness,
         _revision=17,
+    )
+
+
+def _run_repair_process_census_disappearance_transition_validations(
+    *,
+    candidate_head: str,
+    candidate_tree: str,
+    authorization_witness: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Run the bounded R18 suffix through the existing typed executors."""
+
+    return _run_repair_docker_create_readiness_vendor_resolver_transition_validations(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+        authorization_witness=authorization_witness,
+        _revision=18,
     )
 
 
@@ -10623,6 +10934,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-provider-execution-identity-transition.json"
+    )
+    result["repair_process_census_disappearance_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-process-census-disappearance-transition.json"
     )
     result["repair_transition_authorization_lock"] = (
         result["evidence"]
@@ -12555,6 +12871,24 @@ def _validate_repair_provider_execution_identity_transition(
         previous_receipt=previous_receipt,
         rerun_validations=rerun_validations,
         _revision=17,
+    )
+
+
+def _validate_repair_process_census_disappearance_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 18 chained to the immutable R17 receipt."""
+
+    return _validate_repair_docker_create_readiness_vendor_resolver_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=rerun_validations,
+        _revision=18,
     )
 
 
@@ -15238,58 +15572,92 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
     rerun_validations: bool,
     _revision: int = 16,
 ) -> dict[str, Any]:
-    """Admit the immutable R16 transition or its exact R17 child."""
+    """Admit one immutable transition in the exact R16-R18 suffix."""
 
-    if _revision not in {16, 17}:
+    if _revision not in {16, 17, 18}:
         raise OperatorError("repair receipt revision is invalid")
-    is_r17 = _revision == 17
     revision_label = f"R{_revision}"
-    receipt_id = (
-        _repair_provider_execution_identity_transition_receipt_id(receipt)
-        if is_r17
-        else _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
-            receipt
+    if _revision == 18:
+        receipt_id = (
+            _repair_process_census_disappearance_transition_receipt_id(
+                receipt
+            )
         )
-    )
-    previous_receipt_id = (
-        _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
-            previous_receipt
+        previous_receipt_id = (
+            _repair_provider_execution_identity_transition_receipt_id(
+                previous_receipt
+            )
         )
-        if is_r17
-        else _repair_sealed_owner_module_registration_transition_receipt_id(
-            previous_receipt
+        base_head_value = (
+            REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
         )
-    )
-    base_head_value = (
-        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
-        if is_r17
-        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
-    )
-    changed_paths_value = (
-        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS
-        if is_r17
-        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
-    )
-    authority_value = (
-        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_AUTHORITY
-        if is_r17
-        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
-    )
-    commands = (
-        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
-        if is_r17
-        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
-    )
-    executor_contract_value = (
-        _r17_sealed_receipt_validation_executor_contract()
-        if is_r17
-        else _r16_sealed_receipt_validation_executor_contract()
-    )
-    schema_value = (
-        REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
-        if is_r17
-        else REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
-    )
+        changed_paths_value = (
+            REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_AUTHORITY
+        )
+        commands = REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r18_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA
+        executor_class_for = _r18_validation_executor_class
+        scope_for = _r18_validation_working_tree_scope
+    elif _revision == 17:
+        receipt_id = (
+            _repair_provider_execution_identity_transition_receipt_id(
+                receipt
+            )
+        )
+        previous_receipt_id = (
+            _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+        changed_paths_value = (
+            REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_AUTHORITY
+        commands = REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+        executor_contract_value = (
+            _r17_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
+        executor_class_for = _r17_validation_executor_class
+        scope_for = _r17_validation_working_tree_scope
+    else:
+        receipt_id = (
+            _repair_docker_create_readiness_vendor_resolver_transition_receipt_id(
+                receipt
+            )
+        )
+        previous_receipt_id = (
+            _repair_sealed_owner_module_registration_transition_receipt_id(
+                previous_receipt
+            )
+        )
+        base_head_value = (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+        )
+        changed_paths_value = (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+        )
+        authority_value = (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
+        )
+        commands = (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+        )
+        executor_contract_value = (
+            _r16_sealed_receipt_validation_executor_contract()
+        )
+        schema_value = (
+            REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+        )
+        executor_class_for = _r16_validation_executor_class
+        scope_for = _r16_validation_working_tree_scope
     witness = receipt.get("candidate_authorization_witness")
     if (
         receipt.get("stable_identity")
@@ -15433,11 +15801,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
             }
             or stored.get("declared_argv") != list(command)
             or stored.get("executor_class")
-            != (
-                _r17_validation_executor_class(command)
-                if is_r17
-                else _r16_validation_executor_class(command)
-            )
+            != executor_class_for(command)
             or stored.get("candidate_head") != repair
             or stored.get("candidate_tree") != repair_tree
             or stored.get("environment_identity")
@@ -15447,11 +15811,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 checkout=Path("/sealed-checkout"),
             )
             or stored.get("working_tree_scope")
-            != (
-                _r17_validation_working_tree_scope(command)
-                if is_r17
-                else _r16_validation_working_tree_scope(command)
-            )
+            != scope_for(command)
             or type(stored.get("executed_returncode")) is not int
             or not isinstance(stored.get("executed_argv"), list)
             or not all(
@@ -15462,11 +15822,7 @@ def _validate_repair_docker_create_readiness_vendor_resolver_transition(
                 "bootstrap repair Docker-create-readiness/vendor-resolver "
                 "validation differs"
             )
-        executor_class = (
-            _r17_validation_executor_class(command)
-            if is_r17
-            else _r16_validation_executor_class(command)
-        )
+        executor_class = executor_class_for(command)
         if executor_class == ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS:
             if (
                 stored.get("declared_command_executed") is not True
@@ -17068,11 +17424,27 @@ def _authorize_repair_provider_execution_identity_transition_if_applicable(
             str(transition["repair_head"]),
             head,
         )
+        expected_chain = [*prior_chain, receipt]
+        r18_authorization = (
+            _authorize_repair_process_census_disappearance_transition_if_applicable(
+                board=board,
+                config=config,
+                paths=paths,
+                bootstrap=bootstrap,
+                bootstrap_id=bootstrap_id,
+                head=head,
+                previous_receipt=receipt,
+                previous_transition=transition,
+                prior_receipt_chain=expected_chain,
+                authorization_directory_fd=authorization_directory_fd,
+            )
+        )
+        if r18_authorization is not None:
+            return r18_authorization
         current_admission = _admit_materialized_launch(board, config, paths)
         admitted_repair = current_admission.get("repair_transition")
         admitted_chain = current_admission.get("repair_transition_chain")
         admitted_continuity = current_admission.get("canonical_continuity")
-        expected_chain = [*prior_chain, receipt]
         exact_chain = _admit_exact_r17_transition_chain(admitted_chain)
         if (
             not isinstance(admitted_repair, Mapping)
@@ -17197,6 +17569,197 @@ def _authorize_repair_provider_execution_identity_transition_if_applicable(
         expected_head=head,
         expected_tree=candidate_tree,
         boundary="after R17 receipt publication",
+    )
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "repair_transition_receipt": receipt,
+        "repair_transition_chain": [*prior_chain, receipt],
+        "runtime_source_head": head,
+    }
+
+
+def _authorize_repair_process_census_disappearance_transition_if_applicable(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+    bootstrap_id: str,
+    head: str,
+    previous_receipt: Mapping[str, Any],
+    previous_transition: Mapping[str, Any],
+    prior_receipt_chain: Sequence[Mapping[str, Any]],
+    authorization_directory_fd: int,
+) -> dict[str, Any] | None:
+    """Authorize one bounded R18 child after the admitted R17 chain."""
+
+    r18_path = paths.get(
+        "repair_process_census_disappearance_transition_receipt"
+    )
+    if not isinstance(r18_path, Path):
+        return None
+    prior_chain = list(prior_receipt_chain)
+    if (
+        len(prior_chain) != 17
+        or prior_chain[-1].get("receipt_cid")
+        != previous_transition.get("receipt_cid")
+        or previous_transition.get("repair_head")
+        != REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError(
+            "bootstrap repair process-census-disappearance prior chain differs"
+        )
+    if r18_path.is_file():
+        receipt = _secure_runtime_json(
+            r18_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        transition = (
+            _validate_repair_process_census_disappearance_transition(
+                receipt,
+                bootstrap=bootstrap,
+                previous_receipt=previous_receipt,
+                rerun_validations=receipt.get("repair_head") == head,
+            )
+        )
+        _git(
+            "merge-base",
+            "--is-ancestor",
+            str(transition["repair_head"]),
+            head,
+        )
+        current_admission = _admit_materialized_launch(board, config, paths)
+        admitted_repair = current_admission.get("repair_transition")
+        admitted_chain = current_admission.get("repair_transition_chain")
+        admitted_continuity = current_admission.get("canonical_continuity")
+        expected_chain = [*prior_chain, receipt]
+        exact_chain = _admit_exact_r18_transition_chain(admitted_chain)
+        if (
+            not isinstance(admitted_repair, Mapping)
+            or admitted_repair.get("schema")
+            != REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA
+            or admitted_repair.get("repair_head")
+            != transition.get("repair_head")
+            or admitted_repair.get("receipt_cid")
+            != transition.get("receipt_cid")
+            or [item.get("receipt_cid") for item in exact_chain]
+            != [item.get("receipt_cid") for item in expected_chain]
+            or not isinstance(admitted_continuity, Mapping)
+            or "provider_execution_identity_to_process_census_disappearance"
+            not in admitted_continuity
+        ):
+            raise OperatorError(
+                "current admission does not retain the process-census-"
+                "disappearance repair transition"
+            )
+        return {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": expected_chain,
+            "current_admission_cid": current_admission["admission_cid"],
+            "runtime_source_head": current_admission[
+                "runtime_source_head"
+            ],
+        }
+    parents = _git("show", "-s", "--format=%P", head).split()
+    base_head = REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+    if parents != [base_head]:
+        return None
+    if _git_changed_paths(base_head, head) != (
+        REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError(
+            "bootstrap repair process-census-disappearance changed-path set "
+            "differs"
+        )
+    candidate_tree = _git("rev-parse", f"{head}^{{tree}}")
+    authorization_witness = _candidate_authorization_witness(
+        expected_head=head,
+        expected_tree=candidate_tree,
+    )
+    validation_results = (
+        _run_repair_process_census_disappearance_transition_validations(
+            candidate_head=head,
+            candidate_tree=candidate_tree,
+            authorization_witness=authorization_witness,
+        )
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R18 validation before receipt publication",
+    )
+    receipt = {
+        "schema": REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R18"
+        ),
+        "program_id": PROGRAM,
+        "transition_revision": 18,
+        "bootstrap_receipt_id": bootstrap_id,
+        "previous_receipt_cid": previous_transition["receipt_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": base_head,
+        "base_tree": _git("rev-parse", f"{base_head}^{{tree}}"),
+        "repair_head": head,
+        "repair_tree": candidate_tree,
+        "changed_paths": list(
+            REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": _git_patch_digest(base_head, head),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R17"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_AUTHORITY
+        ),
+        "validation_results": validation_results,
+        "candidate_authorization_witness": dict(authorization_witness),
+        "sealed_validation_executor_contract": (
+            _r18_sealed_receipt_validation_executor_contract()
+        ),
+        "terminal_success_criteria": (
+            REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SUCCESS
+        ),
+        "terminal_non_success_criteria": (
+            REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_NON_SUCCESS
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _validate_repair_process_census_disappearance_transition(
+        receipt,
+        bootstrap=bootstrap,
+        previous_receipt=previous_receipt,
+        rerun_validations=False,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="immediately before R18 receipt publication",
+    )
+    _atomic_json_create(
+        r18_path,
+        receipt,
+        authority_directory_fd=authorization_directory_fd,
+    )
+    _assert_candidate_authorization_witness(
+        authorization_witness,
+        expected_head=head,
+        expected_tree=candidate_tree,
+        boundary="after R18 receipt publication",
     )
     return {
         "schema": OPERATOR_SCHEMA,
@@ -19628,6 +20191,9 @@ def _admit_materialized_launch(
             provider_execution_identity_transition: (
                 dict[str, Any] | None
             ) = None
+            process_census_disappearance_transition: (
+                dict[str, Any] | None
+            ) = None
             cleanup_fence_receipt: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             sealed_owner_receipt: dict[str, Any] | None = None
@@ -19636,6 +20202,7 @@ def _admit_materialized_launch(
             r15_receipt: dict[str, Any] | None = None
             r16_receipt: dict[str, Any] | None = None
             r17_receipt: dict[str, Any] | None = None
+            r18_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
             )
@@ -20250,6 +20817,55 @@ def _admit_materialized_launch(
                                                                         active_transition = (
                                                                             provider_execution_identity_transition
                                                                         )
+                                                                        r18_path = paths.get(
+                                                                            "repair_process_census_disappearance_transition_receipt"
+                                                                        )
+                                                                        if (
+                                                                            isinstance(
+                                                                                r18_path,
+                                                                                Path,
+                                                                            )
+                                                                            and r18_path.is_file()
+                                                                        ):
+                                                                            r18_receipt = (
+                                                                                _secure_runtime_json(
+                                                                                    r18_path,
+                                                                                    max_bytes=(
+                                                                                        STATUS_RECEIPT_MAX_BYTES
+                                                                                    ),
+                                                                                )
+                                                                            )
+                                                                            process_census_disappearance_transition = (
+                                                                                _validate_repair_process_census_disappearance_transition(
+                                                                                    r18_receipt,
+                                                                                    bootstrap=bootstrap,
+                                                                                    previous_receipt=(
+                                                                                        r17_receipt
+                                                                                    ),
+                                                                                    rerun_validations=(
+                                                                                        r18_receipt.get(
+                                                                                            "repair_head"
+                                                                                        )
+                                                                                        == population[
+                                                                                            "source_head"
+                                                                                        ]
+                                                                                    ),
+                                                                                )
+                                                                            )
+                                                                            if (
+                                                                                process_census_disappearance_transition[
+                                                                                    "base_head"
+                                                                                ]
+                                                                                != provider_execution_identity_transition[
+                                                                                    "repair_head"
+                                                                                ]
+                                                                            ):
+                                                                                raise OperatorError(
+                                                                                    "process-census-disappearance repair does not extend revision 17"
+                                                                                )
+                                                                            active_transition = (
+                                                                                process_census_disappearance_transition
+                                                                            )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -20317,6 +20933,10 @@ def _admit_materialized_launch(
                 repair_transition_chain.append(
                     provider_execution_identity_transition
                 )
+            if process_census_disappearance_transition is not None:
+                repair_transition_chain.append(
+                    process_census_disappearance_transition
+                )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -20382,6 +21002,10 @@ def _admit_materialized_launch(
                 continuity[
                     "docker_create_readiness_vendor_resolver_to_provider_execution_identity"
                 ] = provider_execution_identity_transition
+            if process_census_disappearance_transition is not None:
+                continuity[
+                    "provider_execution_identity_to_process_census_disappearance"
+                ] = process_census_disappearance_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,

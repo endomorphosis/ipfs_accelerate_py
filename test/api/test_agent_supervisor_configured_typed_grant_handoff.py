@@ -6147,6 +6147,57 @@ def test_aseh_r17_provider_execution_identity_versions_executor_policy(
     )
 
 
+def test_aseh_r18_process_census_disappearance_versions_executor_policy(
+) -> None:
+    r17 = aseh_operator._r17_sealed_receipt_validation_executor_contract()
+    r18 = aseh_operator._r18_sealed_receipt_validation_executor_contract()
+    matrix = (
+        aseh_operator
+        .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS
+    )
+    assert r18["parent_executor_contract_cid"] == aseh_operator._identity(r17)
+    assert r18["policy_revision"] == 18
+    assert r18["admitted_validation_argv_digests"] == sorted(
+        aseh_operator._identity(list(command)) for command in matrix
+    )
+    assert r18["argv_executor_class_bindings"] == sorted(
+        (
+            {
+                "argv_sha256": aseh_operator._identity(list(command)),
+                "executor_class": (
+                    aseh_operator._r18_validation_executor_class(command)
+                ),
+            }
+            for command in matrix
+        ),
+        key=lambda item: item["argv_sha256"],
+    )
+    assert len(
+        {
+            item["argv_sha256"]
+            for item in r18["argv_executor_class_bindings"]
+        }
+    ) == len(matrix)
+    sealed_r18_only = next(
+        command
+        for command in matrix
+        if aseh_operator._r18_validation_executor_class(command)
+        == aseh_operator.ASEH_R16_SEALED_SUBREAPER_EXECUTOR_CLASS
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="R17"):
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r17,
+            declared=sealed_r18_only,
+        )
+    assert (
+        aseh_operator._admit_sealed_receipt_validation_executor_contract(
+            r18,
+            declared=sealed_r18_only,
+        )
+        == r18
+    )
+
+
 def test_aseh_r16_docker_create_readiness_vendor_resolver_rejects_malformed_live_evidence(
 ) -> None:
     live = aseh_operator._r16_production_lifecycle_live_command()
@@ -7594,6 +7645,24 @@ def test_aseh_r17_provider_execution_identity_routes_only_board_check_to_launch_
     )
 
 
+def test_aseh_r18_process_census_disappearance_routes_only_board_check_to_launch_tree(
+) -> None:
+    commands = (
+        aseh_operator
+        .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS
+    )
+    scopes = [
+        aseh_operator._r18_validation_working_tree_scope(command)
+        for command in commands
+    ]
+    assert scopes[-2] == "candidate_authorization_worktree"
+    assert all(
+        scope == "immutable_candidate_checkout"
+        for index, scope in enumerate(scopes)
+        if index != len(scopes) - 2
+    )
+
+
 def test_aseh_r17_provider_execution_identity_rejects_unsealed_validation_before_effect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -7614,6 +7683,32 @@ def test_aseh_r17_provider_execution_identity_rejects_unsealed_validation_before
         match="R17 sealed validation executor is unavailable",
     ):
         aseh_operator._run_repair_provider_execution_identity_transition_validations(
+            candidate_head="a" * 40,
+            candidate_tree="b" * 40,
+            authorization_witness={},
+        )
+
+
+def test_aseh_r18_process_census_disappearance_rejects_unsealed_validation_before_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unsealed validation command executed"
+        ),
+    )
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="R18 sealed validation executor is unavailable",
+    ):
+        aseh_operator._run_repair_process_census_disappearance_transition_validations(
             candidate_head="a" * 40,
             candidate_tree="b" * 40,
             authorization_witness={},
@@ -7810,6 +7905,71 @@ def test_aseh_repair_provider_execution_identity_transition_requires_exact_chain
     broken = [dict(item) for item in chain]
     broken[-1]["previous_receipt_cid"] = "sha256:" + ("f" * 64)
     with pytest.raises(aseh_operator.OperatorError, match="R17"):
+        aseh_operator._assert_exact_run_launch_admission(
+            {**admission, "repair_transition_chain": broken},
+            candidate_head=candidate_head,
+            candidate_tree=candidate_tree,
+        )
+
+
+def test_aseh_repair_process_census_disappearance_transition_requires_exact_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R18_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": "sha256:" + f"{index + 1:064x}",
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+
+    assert aseh_operator._admit_exact_r18_transition_chain(chain) == chain
+    with pytest.raises(aseh_operator.OperatorError, match="R18"):
+        aseh_operator._admit_exact_r18_transition_chain(chain[:-1])
+    swapped = [dict(item) for item in chain]
+    swapped[-2], swapped[-1] = swapped[-1], swapped[-2]
+    with pytest.raises(aseh_operator.OperatorError, match="R18"):
+        aseh_operator._admit_exact_r18_transition_chain(swapped)
+
+    candidate_head = "c" * 40
+    candidate_tree = "d" * 40
+    chain[-2]["repair_head"] = (
+        aseh_operator.REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+    )
+    chain[-1].update(
+        {
+            "repair_head": candidate_head,
+            "repair_tree": candidate_tree,
+        }
+    )
+    transition = dict(chain[-1])
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+        ),
+    )
+    admission = {
+        "runtime_source_head": candidate_head,
+        "runtime_repository_tree_id": candidate_tree,
+        "repair_transition": transition,
+        "repair_transition_chain": chain,
+    }
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    )
+    broken = [dict(item) for item in chain]
+    broken[-1]["previous_receipt_cid"] = "sha256:" + ("f" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R18"):
         aseh_operator._assert_exact_run_launch_admission(
             {**admission, "repair_transition_chain": broken},
             candidate_head=candidate_head,
@@ -8179,6 +8339,260 @@ def test_aseh_repair_provider_execution_identity_transition_publication_is_fence
     ]
 
 
+def test_aseh_repair_process_census_disappearance_transition_publication_is_fenced_and_create_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt_path = tmp_path / "repair-r18.json"
+    candidate_head = "a" * 40
+    candidate_tree = "b" * 40
+    previous_cid = "sha256:" + ("c" * 64)
+    previous_receipt = {
+        "transition_revision": 17,
+        "receipt_cid": previous_cid,
+    }
+    previous_transition = {
+        "schema": (
+            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
+        ),
+        "transition_revision": 17,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+        ),
+        "receipt_cid": previous_cid,
+    }
+    prior_chain = [
+        {"receipt_cid": "sha256:" + f"{index + 1:064x}"}
+        for index in range(16)
+    ] + [{"receipt_cid": previous_cid}]
+    witness = {"candidate": "exact"}
+    validation_results = [{"revision": 18, "outcome": "validated"}]
+    bootstrap = {
+        "plan_root_cid": "plan:r18",
+        "repository_tree_id": "tree:bootstrap",
+    }
+    ordering: list[str] = []
+    published_payloads: list[dict[str, object]] = []
+
+    def git(*args: str) -> str:
+        if args[:3] == ("show", "-s", "--format=%P"):
+            return (
+                aseh_operator
+                .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+            )
+        if args[:1] == ("rev-parse",):
+            return candidate_tree
+        raise AssertionError(args)
+
+    monkeypatch.setattr(aseh_operator, "_git", git)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_changed_paths",
+        lambda *_args: (
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_CHANGED_PATHS
+        ),
+    )
+
+    def authorization_witness(**kwargs: object) -> dict[str, str]:
+        assert kwargs == {
+            "expected_head": candidate_head,
+            "expected_tree": candidate_tree,
+        }
+        return witness
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        authorization_witness,
+    )
+
+    def run_validations(**kwargs: object) -> list[dict[str, object]]:
+        assert kwargs == {
+            "candidate_head": candidate_head,
+            "candidate_tree": candidate_tree,
+            "authorization_witness": witness,
+        }
+        ordering.append("validate_r18")
+        return validation_results
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_process_census_disappearance_transition_validations",
+        run_validations,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_run_repair_provider_execution_identity_transition_validations",
+        lambda **_kwargs: pytest.fail("R17 validation runner was used"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git_patch_digest",
+        lambda base, head: (
+            "sha256:" + ("d" * 64)
+            if (
+                base
+                == aseh_operator
+                .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+                and head == candidate_head
+            )
+            else pytest.fail("R18 patch digest identity differs")
+        ),
+    )
+
+    def validate_receipt(
+        receipt: object,
+        *,
+        bootstrap: object,
+        previous_receipt: object,
+        rerun_validations: bool,
+    ) -> dict[str, object]:
+        assert isinstance(receipt, dict)
+        assert bootstrap == {
+            "plan_root_cid": "plan:r18",
+            "repository_tree_id": "tree:bootstrap",
+        }
+        assert previous_receipt == {
+            "transition_revision": 17,
+            "receipt_cid": previous_cid,
+        }
+        assert rerun_validations is False
+        assert receipt["schema"] == (
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA
+        )
+        assert receipt["transition_revision"] == 18
+        assert receipt["previous_receipt_cid"] == previous_cid
+        assert receipt["base_head"] == (
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+        )
+        assert receipt["repair_head"] == candidate_head
+        assert receipt["repair_tree"] == candidate_tree
+        assert receipt["changed_paths"] == list(
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_CHANGED_PATHS
+        )
+        assert receipt["dependencies"] == [
+            "ASEH-BOOTSTRAP-002@ASEH-PLAN-R17"
+        ]
+        assert receipt["validation_results"] == validation_results
+        assert receipt["candidate_authorization_witness"] == witness
+        assert receipt["sealed_validation_executor_contract"] == (
+            aseh_operator._r18_sealed_receipt_validation_executor_contract()
+        )
+        assert receipt["database_mutated"] is False
+        ordering.append("admit_r18_receipt")
+        return receipt
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_process_census_disappearance_transition",
+        validate_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_provider_execution_identity_transition",
+        lambda *_args, **_kwargs: pytest.fail("R17 receipt validator was used"),
+    )
+
+    def assert_witness(observed: object, **kwargs: object) -> None:
+        assert observed == witness
+        assert kwargs["expected_head"] == candidate_head
+        assert kwargs["expected_tree"] == candidate_tree
+        ordering.append(str(kwargs["boundary"]))
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        assert_witness,
+    )
+    create_only_publish = aseh_operator._atomic_json_create
+    authority_directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0),
+    )
+
+    def publish(
+        path: Path,
+        payload: object,
+        *,
+        authority_directory_fd: int,
+    ) -> None:
+        assert path == receipt_path
+        assert authority_directory_fd == expected_authority_directory_fd
+        assert isinstance(payload, dict)
+        assert not path.exists()
+        ordering.append("create_only_publish")
+        published_payloads.append(dict(payload))
+        create_only_publish(
+            path,
+            payload,
+            authority_directory_fd=authority_directory_fd,
+        )
+
+    expected_authority_directory_fd = authority_directory_fd
+    monkeypatch.setattr(aseh_operator, "_atomic_json_create", publish)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "database admission ran before R18 receipt publication"
+        ),
+    )
+    try:
+        result = (
+            aseh_operator
+            ._authorize_repair_process_census_disappearance_transition_if_applicable(
+                board=object(),
+                config={},
+                paths={
+                    "repair_process_census_disappearance_transition_receipt": (
+                        receipt_path
+                    )
+                },
+                bootstrap=bootstrap,
+                bootstrap_id="sha256:" + ("e" * 64),
+                head=candidate_head,
+                previous_receipt=previous_receipt,
+                previous_transition=previous_transition,
+                prior_receipt_chain=prior_chain,
+                authorization_directory_fd=authority_directory_fd,
+            )
+        )
+    finally:
+        os.close(authority_directory_fd)
+
+    assert result is not None
+    receipt = result["repair_transition_receipt"]
+    assert result["idempotent_replay"] is False
+    assert len(result["repair_transition_chain"]) == 18
+    assert receipt["transition_revision"] == 18
+    assert receipt["previous_receipt_cid"] == previous_cid
+    assert receipt["database_mutated"] is False
+    assert published_payloads == [receipt]
+    assert aseh_operator._secure_runtime_json(
+        receipt_path,
+        max_bytes=aseh_operator.STATUS_RECEIPT_MAX_BYTES,
+    ) == receipt
+    original = receipt_path.read_bytes()
+    replacement = dict(receipt)
+    replacement["receipt_cid"] = "sha256:" + ("f" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="already exists"):
+        create_only_publish(receipt_path, replacement)
+    assert receipt_path.read_bytes() == original
+    assert ordering == [
+        "validate_r18",
+        "after R18 validation before receipt publication",
+        "admit_r18_receipt",
+        "immediately before R18 receipt publication",
+        "create_only_publish",
+        "after R18 receipt publication",
+    ]
+
+
 def test_aseh_repair_sealed_receipt_validation_delegates_r15_before_suffix_admission(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -8398,6 +8812,83 @@ def test_aseh_repair_docker_create_readiness_vendor_resolver_delegates_r17_befor
                 "repair_head": (
                     aseh_operator
                     .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+                ),
+                "receipt_cid": previous_cid,
+            },
+            prior_receipt_chain=prior_chain,
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
+
+
+def test_aseh_repair_provider_execution_identity_delegates_r18_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r17_path = tmp_path / "repair-r17.json"
+    r17_path.touch()
+    previous_cid = "sha256:" + ("a" * 64)
+    r17_cid = "sha256:" + ("b" * 64)
+    r17_receipt = {"repair_head": "c" * 40, "receipt_cid": r17_cid}
+    r17_transition = {
+        "repair_head": (
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+        ),
+        "receipt_cid": r17_cid,
+    }
+    prior_chain = [
+        {"receipt_cid": "sha256:" + f"{index + 1:064x}"}
+        for index in range(15)
+    ] + [{"receipt_cid": previous_cid}]
+    sentinel = {"delegated": "r18"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r17_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_provider_execution_identity_transition",
+        lambda *_args, **_kwargs: r17_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_process_census_disappearance_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if len(kwargs["prior_receipt_chain"]) == 17
+            else pytest.fail("R17 did not delegate the full chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R17 suffix admission ran before R18 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_provider_execution_identity_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_provider_execution_identity_transition_receipt": (
+                    r17_path
+                )
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="d" * 40,
+            previous_receipt={"receipt_cid": previous_cid},
+            previous_transition={
+                "repair_head": (
+                    aseh_operator
+                    .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
                 ),
                 "receipt_cid": previous_cid,
             },
@@ -9359,8 +9850,12 @@ def test_aseh_repair_sealed_owner_module_registration_transition_is_closed_and_c
         )
 
 
-@pytest.mark.parametrize("transition_revision", [16, 17], ids=["r16", "r17"])
-def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chained_with_repair_docker_create_readiness_vendor_resolver_transition(
+@pytest.mark.parametrize(
+    "transition_revision",
+    [16, 17, 18],
+    ids=["r16", "r17", "r18"],
+)
+def test_aseh_repair_process_census_disappearance_transition_is_closed_and_chained_with_repair_provider_execution_identity_transition_and_repair_docker_create_readiness_vendor_resolver_transition(
     transition_revision: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -9382,15 +9877,27 @@ def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chaine
         "branch_reflog_digest": "sha256:" + ("6" * 64),
     }
     is_r17 = transition_revision == 17
+    is_r18 = transition_revision == 18
     executor_contract = (
-        aseh_operator._r17_sealed_receipt_validation_executor_contract()
-        if is_r17
-        else aseh_operator._r16_sealed_receipt_validation_executor_contract()
+        aseh_operator._r18_sealed_receipt_validation_executor_contract()
+        if is_r18
+        else (
+            aseh_operator._r17_sealed_receipt_validation_executor_contract()
+            if is_r17
+            else aseh_operator._r16_sealed_receipt_validation_executor_contract()
+        )
     )
     commands = (
-        aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
-        if is_r17
-        else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+        aseh_operator
+        .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_VALIDATIONS
+        if is_r18
+        else (
+            aseh_operator
+            .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_VALIDATIONS
+            if is_r17
+            else aseh_operator
+            .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_VALIDATIONS
+        )
     )
     validations = []
     for command in commands:
@@ -9404,9 +9911,13 @@ def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chaine
             )
         )
         executor_class = (
-            aseh_operator._r17_validation_executor_class(command)
-            if is_r17
-            else aseh_operator._r16_validation_executor_class(command)
+            aseh_operator._r18_validation_executor_class(command)
+            if is_r18
+            else (
+                aseh_operator._r17_validation_executor_class(command)
+                if is_r17
+                else aseh_operator._r16_validation_executor_class(command)
+            )
         )
         declared_command_executed = True
         executed_argv = list(command)
@@ -9450,10 +9961,15 @@ def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chaine
                 "candidate_tree": repair_tree,
                 "environment_identity": environment_identity,
                 "working_tree_scope": (
-                    aseh_operator._r17_validation_working_tree_scope(command)
-                    if is_r17
-                    else aseh_operator._r16_validation_working_tree_scope(
-                        command
+                    aseh_operator._r18_validation_working_tree_scope(command)
+                    if is_r18
+                    else (
+                        aseh_operator
+                        ._r17_validation_working_tree_scope(command)
+                        if is_r17
+                        else aseh_operator._r16_validation_working_tree_scope(
+                            command
+                        )
                     )
                 ),
                 "executed_returncode": executed_returncode,
@@ -9486,9 +10002,16 @@ def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chaine
     }
     receipt = {
         "schema": (
-            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
-            if is_r17
-            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA
+            if is_r18
+            else (
+                aseh_operator
+                .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SCHEMA
+                if is_r17
+                else aseh_operator
+                .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SCHEMA
+            )
         ),
         "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
         "stable_identity": (
@@ -9503,17 +10026,31 @@ def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chaine
         "plan_root_cid": bootstrap["plan_root_cid"],
         "repository_tree_id": bootstrap["repository_tree_id"],
         "base_head": (
-            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
-            if is_r17
-            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_BASE_HEAD
+            if is_r18
+            else (
+                aseh_operator
+                .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_BASE_HEAD
+                if is_r17
+                else aseh_operator
+                .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_BASE_HEAD
+            )
         ),
         "base_tree": base_tree,
         "repair_head": repair_head,
         "repair_tree": repair_tree,
         "changed_paths": list(
-            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS
-            if is_r17
-            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_CHANGED_PATHS
+            if is_r18
+            else (
+                aseh_operator
+                .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_CHANGED_PATHS
+                if is_r17
+                else aseh_operator
+                .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_CHANGED_PATHS
+            )
         ),
         "patch_digest": patch_digest,
         "dependencies": [
@@ -9522,22 +10059,43 @@ def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chaine
         "owning_repository": "ipfs_accelerate_py",
         "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
         "authority_requirement": (
-            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_AUTHORITY
-            if is_r17
-            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_AUTHORITY
+            if is_r18
+            else (
+                aseh_operator
+                .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_AUTHORITY
+                if is_r17
+                else aseh_operator
+                .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_AUTHORITY
+            )
         ),
         "validation_results": validations,
         "candidate_authorization_witness": witness,
         "sealed_validation_executor_contract": executor_contract,
         "terminal_success_criteria": (
-            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SUCCESS
-            if is_r17
-            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SUCCESS
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SUCCESS
+            if is_r18
+            else (
+                aseh_operator
+                .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_SUCCESS
+                if is_r17
+                else aseh_operator
+                .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_SUCCESS
+            )
         ),
         "terminal_non_success_criteria": (
-            aseh_operator.REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_NON_SUCCESS
-            if is_r17
-            else aseh_operator.REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_NON_SUCCESS
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_NON_SUCCESS
+            if is_r18
+            else (
+                aseh_operator
+                .REPAIR_PROVIDER_EXECUTION_IDENTITY_TRANSITION_NON_SUCCESS
+                if is_r17
+                else aseh_operator
+                .REPAIR_DOCKER_CREATE_READINESS_VENDOR_RESOLVER_TRANSITION_NON_SUCCESS
+            )
         ),
         "semantic_corpus_changed": False,
         "database_mutated": False,
@@ -9573,9 +10131,13 @@ def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chaine
         lambda *_args: patch_digest,
     )
     previous_receipt_id_function = (
-        "_repair_docker_create_readiness_vendor_resolver_transition_receipt_id"
-        if is_r17
-        else "_repair_sealed_owner_module_registration_transition_receipt_id"
+        "_repair_provider_execution_identity_transition_receipt_id"
+        if is_r18
+        else (
+            "_repair_docker_create_readiness_vendor_resolver_transition_receipt_id"
+            if is_r17
+            else "_repair_sealed_owner_module_registration_transition_receipt_id"
+        )
     )
     monkeypatch.setattr(
         aseh_operator,
@@ -9589,9 +10151,16 @@ def test_aseh_repair_provider_execution_identity_transition_is_closed_and_chaine
     )
 
     validate_transition = (
-        aseh_operator._validate_repair_provider_execution_identity_transition
-        if is_r17
-        else aseh_operator._validate_repair_docker_create_readiness_vendor_resolver_transition
+        aseh_operator
+        ._validate_repair_process_census_disappearance_transition
+        if is_r18
+        else (
+            aseh_operator
+            ._validate_repair_provider_execution_identity_transition
+            if is_r17
+            else aseh_operator
+            ._validate_repair_docker_create_readiness_vendor_resolver_transition
+        )
     )
     admitted = validate_transition(
         receipt,
@@ -12198,10 +12767,10 @@ def test_aseh_sealed_owner_rechecks_candidate_before_owner_start(
 
 @pytest.mark.parametrize(
     "active_revision",
-    [15, 16, 17],
-    ids=["r15", "r16", "r17"],
+    [15, 16, 17, 18],
+    ids=["r15", "r16", "r17", "r18"],
 )
-def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execution_identity_are_active_admission_bases(
+def test_aseh_r18_process_census_disappearance_and_aseh_r17_provider_execution_identity_and_aseh_r16_docker_create_readiness_vendor_resolver_are_active_admission_bases(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     active_revision: int,
@@ -12226,6 +12795,7 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execu
         tmp_path / "repair-r16.json"
     )
     provider_execution_identity_path = tmp_path / "repair-r17.json"
+    process_census_disappearance_path = tmp_path / "repair-r18.json"
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
@@ -12251,6 +12821,8 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execu
         docker_create_readiness_vendor_resolver_path.touch()
     if active_revision >= 17:
         provider_execution_identity_path.touch()
+    if active_revision >= 18:
+        process_census_disappearance_path.touch()
     paths = {
         "bootstrap_receipt": bootstrap_path,
         "repair_transition_receipt": repair_path,
@@ -12295,6 +12867,9 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execu
         ),
         "repair_provider_execution_identity_transition_receipt": (
             provider_execution_identity_path
+        ),
+        "repair_process_census_disappearance_transition_receipt": (
+            process_census_disappearance_path
         ),
         "database": database_path,
     }
@@ -12349,10 +12924,12 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execu
     )
     r16_head = "e" * 40
     r17_head = "f" * 40
+    r18_head = "a" * 40
     active_head = {
         15: r15_head,
         16: r16_head,
         17: r17_head,
+        18: r18_head,
     }[active_revision]
     population = {
         "source_head": active_head,
@@ -12484,6 +13061,16 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execu
         "transition_revision": 17,
         "receipt_cid": "receipt:r17",
     }
+    r18 = {
+        "schema": (
+            aseh_operator
+            .REPAIR_PROCESS_CENSUS_DISAPPEARANCE_TRANSITION_SCHEMA
+        ),
+        "base_head": r17_head,
+        "repair_head": r18_head,
+        "transition_revision": 18,
+        "receipt_cid": "receipt:r18",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
@@ -12508,6 +13095,8 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execu
         }
     if active_revision >= 17:
         payloads[provider_execution_identity_path] = {"revision": 17}
+    if active_revision >= 18:
+        payloads[process_census_disappearance_path] = {"revision": 18}
     suffix_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
@@ -12610,6 +13199,11 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execu
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_validate_repair_process_census_disappearance_transition",
+        lambda *_args, **_kwargs: r18,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_read_continuity_state",
         lambda *_args, **_kwargs: (
             {"projection_cid": "projection:current", "event_cursor": 79},
@@ -12648,7 +13242,12 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execu
         object(), {}, paths
     )
 
-    expected_active = {15: r15, 16: r16, 17: r17}[active_revision]
+    expected_active = {
+        15: r15,
+        16: r16,
+        17: r17,
+        18: r18,
+    }[active_revision]
     assert admission["repair_transition"] == expected_active
     assert [
         item.get("transition_revision", 1)
@@ -12710,6 +13309,15 @@ def test_aseh_r16_docker_create_readiness_vendor_resolver_and_r17_provider_execu
     else:
         assert (
             "docker_create_readiness_vendor_resolver_to_provider_execution_identity"
+            not in admission["canonical_continuity"]
+        )
+    if active_revision >= 18:
+        assert admission["canonical_continuity"][
+            "provider_execution_identity_to_process_census_disappearance"
+        ] == r18
+    else:
+        assert (
+            "provider_execution_identity_to_process_census_disappearance"
             not in admission["canonical_continuity"]
         )
 
