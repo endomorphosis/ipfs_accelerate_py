@@ -325,6 +325,128 @@ def _ceremony_inputs(
     }
 
 
+def _fully_signed_noncanonical_frontier_bundle(
+    population: lifecycle.CompiledEAAEFPopulation,
+    ceremony: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    canonical_statement = ceremony["stage_one"]["unsigned_plan_r2_statement"]
+    singleton_frontier = [canonical_statement["frontier_task_cids"][0]]
+    derived_fields = {
+        "schema",
+        "statement_cid",
+        "population_cid",
+        "plan_root_cid",
+        "task_population_cid",
+        "dependency_population_cid",
+        "protected_tasks_root_cid",
+        "frontier_cid",
+        "authority",
+    }
+    statement_arguments = {
+        key: value
+        for key, value in canonical_statement.items()
+        if key not in derived_fields
+    }
+    statement_arguments["frontier_task_cids"] = singleton_frontier
+    statement_arguments["delta_cid"] = lifecycle._cid(
+        {
+            "schema": "EAAEFFreshPlanR2Delta@1",
+            "before_plan_cid": population.plan_r1_cid,
+            "after_plan_cid": canonical_statement["new_plan"]["plan_cid"],
+            "population_cid": population.population_cid,
+            "frontier_task_cids": singleton_frontier,
+        }
+    )
+    statement = lifecycle.prepare_plan_r2_transition_authorization(
+        **statement_arguments
+    )
+    identities = ceremony["identities"]
+    keys = ceremony["keys"]
+    trust_roots = ceremony["trust_roots"]
+    operator_payload = lifecycle.prepare_plan_r2_transition_approval(
+        statement,
+        role="independent_operator",
+        identity_did=identities["operator"],
+        issued_at_ms=100_500,
+        expires_at_ms=250_000,
+    )
+    security_payload = lifecycle.prepare_plan_r2_transition_approval(
+        statement,
+        role="independent_security_reviewer",
+        identity_did=identities["security"],
+        issued_at_ms=100_500,
+        expires_at_ms=250_000,
+    )
+    operator = lifecycle.seal_plan_r2_transition_approval(
+        statement,
+        operator_payload,
+        signature=_ceremony_signature(keys["operator"], operator_payload),
+    )
+    security = lifecycle.seal_plan_r2_transition_approval(
+        statement,
+        security_payload,
+        signature=_ceremony_signature(keys["security"], security_payload),
+    )
+    authorization = lifecycle.assemble_plan_r2_transition_authorization(
+        statement,
+        operator_approval=operator,
+        security_approval=security,
+        trusted_operator_dids=trust_roots["operator_dids"],
+        trusted_security_reviewer_dids=trust_roots["security_reviewer_dids"],
+        now_ms=110_000,
+    )
+    capability_payload = lifecycle.plan_r2_operational_capability_signing_payload(
+        statement,
+        reviewer_identity_did=identities["capability"],
+        issued_at_ms=100_500,
+        expires_at_ms=250_000,
+    )
+    capability = lifecycle.seal_plan_r2_operational_capability(
+        capability_payload,
+        reviewer_signature=_ceremony_signature(
+            keys["capability"], capability_payload
+        ),
+    )
+    remote_payload = lifecycle._remote_owner_signing_payload_from_signed_authority(
+        authorization=authorization,
+        capability=capability,
+        remote_reviewer_identity_did=identities["remote"],
+        authorized_principal_identity_did=identities["authorized_principal"],
+        independent_approver_identity_did=identities["independent_approver"],
+        request_channel_id="fresh-plan-r2-request-channel",
+        response_channel_id="fresh-plan-r2-response-channel",
+        issued_at_ms=105_000,
+        expires_at_ms=200_000,
+        issuance_nonce="fresh-plan-r2-remote-nonce",
+    )
+    remote_capability = dict(
+        lifecycle.seal_plan_r2_remote_owner_capability(
+            remote_payload,
+            reviewer_signature=_ceremony_signature(keys["remote"], remote_payload),
+        )
+    )
+    lifecycle.verify_plan_r2_remote_owner_admission(
+        remote_capability,
+        plan_r2_operational_capability=capability,
+        authorization=authorization,
+        trusted_remote_reviewer_dids=trust_roots["remote_reviewer_dids"],
+        trusted_plan_r2_capability_reviewer_dids=trust_roots[
+            "plan_r2_capability_reviewer_dids"
+        ],
+        trusted_operator_dids=trust_roots["operator_dids"],
+        trusted_security_reviewer_dids=trust_roots["security_reviewer_dids"],
+        now_ms=110_000,
+    )
+    return (
+        lifecycle.assemble_fresh_authority_bundle(
+            authorization=authorization,
+            plan_r2_operational_capability=capability,
+            plan_r2_remote_owner_capability=remote_capability,
+        ),
+        statement,
+    )
+
+
 def _qualification(source_forest_root: str) -> dict[str, Any]:
     value = {
         "schema": lifecycle.EAAEF_OWNER_QUALIFICATION_SCHEMA,
@@ -920,6 +1042,8 @@ def test_keyless_stage_two_and_finalize_verify_the_full_fresh_authority(
     )
     bundle = lifecycle.finalize_fresh_plan_r2_signing_request(
         population=population,
+        bootstrap_snapshot=ceremony["snapshot"],
+        stage_one_request=ceremony["stage_one"],
         stage_two_request=stage_two,
         trust_roots=ceremony["trust_roots"],
         remote_reviewer_signature=remote_signature,
@@ -937,6 +1061,33 @@ def test_keyless_stage_two_and_finalize_verify_the_full_fresh_authority(
         now_ms=110_000,
     )
     assert verified.signed_bundle() == bundle
+
+
+def test_fresh_authority_rejects_fully_signed_noncanonical_singleton_frontier(
+    repo_root: Path,
+) -> None:
+    population = _population(repo_root)
+    ceremony = _ceremony_inputs(population)
+    bundle, statement = _fully_signed_noncanonical_frontier_bundle(
+        population,
+        ceremony,
+    )
+
+    canonical_frontier = ceremony["stage_one"]["unsigned_plan_r2_statement"][
+        "frontier_task_cids"
+    ]
+    assert len(canonical_frontier) == 4
+    assert statement["frontier_task_cids"] == [canonical_frontier[0]]
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="frontier or population commitments are noncanonical",
+    ):
+        lifecycle.verify_fresh_authority_bundle(
+            bundle,
+            population=population,
+            trust_roots=ceremony["trust_roots"],
+            now_ms=110_000,
+        )
 
 
 def test_keyless_ceremony_rejects_stale_tampered_and_role_reused_inputs(
@@ -985,6 +1136,8 @@ def test_keyless_ceremony_rejects_stale_tampered_and_role_reused_inputs(
     ):
         lifecycle.finalize_fresh_plan_r2_signing_request(
             population=population,
+            bootstrap_snapshot=ceremony["snapshot"],
+            stage_one_request=ceremony["stage_one"],
             stage_two_request=tampered_stage_two,
             trust_roots=ceremony["trust_roots"],
             remote_reviewer_signature="invalid",
@@ -1001,6 +1154,8 @@ def test_keyless_ceremony_rejects_stale_tampered_and_role_reused_inputs(
     ):
         lifecycle.finalize_fresh_plan_r2_signing_request(
             population=population,
+            bootstrap_snapshot=ceremony["snapshot"],
+            stage_one_request=ceremony["stage_one"],
             stage_two_request=relabeled_stage_two,
             trust_roots=ceremony["trust_roots"],
             remote_reviewer_signature="invalid",
@@ -1017,6 +1172,8 @@ def test_keyless_ceremony_rejects_stale_tampered_and_role_reused_inputs(
     ):
         lifecycle.finalize_fresh_plan_r2_signing_request(
             population=population,
+            bootstrap_snapshot=ceremony["snapshot"],
+            stage_one_request=ceremony["stage_one"],
             stage_two_request=stage_two,
             trust_roots=ceremony["trust_roots"],
             remote_reviewer_signature=wrong_remote_signature,
@@ -1138,8 +1295,12 @@ def test_keyless_ceremony_cli_is_print_only_and_never_resolves_an_owner(
             "--state-root",
             str(tmp_path / "unused-state"),
             "signing-finalize",
+            "--stage-one-request",
+            str(paths["stage_one"]),
             "--stage-two-request",
             str(paths["stage_two"]),
+            "--bootstrap-snapshot",
+            str(paths["snapshot"]),
             "--trust-roots",
             str(paths["trust"]),
             "--remote-reviewer-signature",
