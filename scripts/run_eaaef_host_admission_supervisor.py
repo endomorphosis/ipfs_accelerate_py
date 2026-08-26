@@ -7,6 +7,9 @@ mounts. Held Plan-R2 tasks stay blocked. Live multi-supervisor launch remains a
 separate fail-closed gate. The explicit ``--immutable-observation`` scope only
 publishes source-addressed no-go evidence and never opens the control/task
 DuckDB; its EAAEF-182 capability probe may use an isolated in-memory connection.
+The explicit ``--immutable-full-observation`` scope extends one explicitly
+selected current early observation across EAAEF-180..191 using static public
+evidence only; it also bypasses the control database, owner lease, and status.
 """
 
 from __future__ import annotations
@@ -49,6 +52,7 @@ A_AUTO = {f"EAAEF-{number:03d}" for number in range(0, 10)}
 HOST_AUTO = S_AUTO | A_AUTO | {"EAAEF-191"}
 EARLY_FRONTIER = frozenset({"EAAEF-180", "EAAEF-181", "EAAEF-182", "EAAEF-183"})
 EARLY_FRONTIER_ORDER = ("EAAEF-180", "EAAEF-181", "EAAEF-182", "EAAEF-183")
+HOST_ADMISSION_ORDER = tuple(f"EAAEF-{number}" for number in range(180, 192))
 BOOTSTRAP = HOST_AUTO
 ADMIT_WAIT_STATUS = {
     "EAAEF-180": "waiting_current_blocker_inventory",
@@ -111,6 +115,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     scope.add_argument(
+        "--immutable-full-observation",
+        dest="scope",
+        action="store_const",
+        const="immutable_full_observation",
+        default=argparse.SUPPRESS,
+        help=(
+            "publish a full immutable EAAEF-180 through EAAEF-191 no-go "
+            "observation without opening the control/task DuckDB"
+        ),
+    )
+    scope.add_argument(
         "--full-bootstrap",
         dest="scope",
         action="store_const",
@@ -118,7 +133,29 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=argparse.SUPPRESS,
         help="explicitly collect and advance the complete S/A bootstrap",
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--early-observation-cid",
+        default=argparse.SUPPRESS,
+        help=(
+            "exact current early-frontier observation CID required by "
+            "--immutable-full-observation"
+        ),
+    )
+    args = parser.parse_args(argv)
+    parsed_scope = str(getattr(args, "scope", "early_frontier"))
+    early_cid = str(getattr(args, "early_observation_cid", "") or "")
+    if parsed_scope == "immutable_full_observation":
+        if not _full_sha256_cid(early_cid):
+            parser.error(
+                "--immutable-full-observation requires a valid "
+                "--early-observation-cid"
+            )
+    elif early_cid:
+        parser.error(
+            "--early-observation-cid is valid only with "
+            "--immutable-full-observation"
+        )
+    return args
 
 
 def _ensure_repository_importable() -> None:
@@ -308,6 +345,19 @@ def _collect_immutable_observation() -> dict[str, Any]:
     return collect_early_frontier_and_publish_observation()
 
 
+def _collect_immutable_host_admission_observation(
+    early_observation_cid: str,
+) -> dict[str, Any]:
+    _ensure_repository_importable()
+    from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+        collect_host_admission_and_publish_observation,
+    )
+
+    return collect_host_admission_and_publish_observation(
+        early_frontier_observation_cid=early_observation_cid
+    )
+
+
 def _full_sha256_cid(value: object) -> bool:
     text = str(value or "")
     return (
@@ -457,6 +507,176 @@ def _validated_early_frontier_collection(
         != owner_eligible
     ):
         raise RuntimeError("early-frontier collection completion boundary differs")
+    return collection
+
+
+def _validated_host_admission_observation_collection(
+    collection: object,
+    *,
+    expected_identity: dict[str, str],
+    expected_early_observation_cid: str,
+) -> dict[str, Any]:
+    """Accept only the exact full S-frontier immutable no-go result."""
+
+    _ensure_repository_importable()
+    from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+        HOST_ADMISSION_OBSERVATION_DB_BINDING_BLOCKER,
+        HOST_ADMISSION_OBSERVATION_SCHEMA,
+        HOST_ADMISSION_OBSERVATION_SCOPE,
+        source_addressed_early_frontier_observation_logical_path,
+        source_addressed_host_admission_observation_logical_path,
+    )
+
+    if not isinstance(collection, dict):
+        raise RuntimeError("host-admission observation collection is not an object")
+    expected_fields = {
+        "schema",
+        "scope",
+        "published",
+        "created",
+        "logical_path",
+        "observation_cid",
+        "early_frontier_observation_cid",
+        "early_frontier_observation_logical_path",
+        "child_receipt_cids",
+        "typed_missing_task_ids",
+        "no_go_task_ids",
+        "direct_completion_eligible_task_ids",
+        "casf_owner_transaction_eligible_task_ids",
+        "decisions",
+        "source_head",
+        "source_tree",
+        "board_namespace",
+        "board_cid",
+        "decision",
+        "process_started",
+        "supervisor_process_started",
+        "configured_board_launch",
+        "provider_invoked",
+        "staging_receipts_written",
+        "control_database_opened",
+        "database_state_observed",
+        "observation_only",
+        "admission_authority",
+        "live_admission_allowed",
+        "live_launch_allowed",
+        "eaaef_191_authority",
+        "direct_task_completion_allowed",
+        "direct_database_binding_allowed",
+        "casf_owner_binding_required",
+        "database_binding_blocker",
+    }
+    if set(collection) != expected_fields:
+        raise RuntimeError("host-admission observation collection fields differ")
+    if (
+        collection.get("schema") != HOST_ADMISSION_OBSERVATION_SCHEMA
+        or collection.get("scope") != HOST_ADMISSION_OBSERVATION_SCOPE
+        or collection.get("published") is not True
+        or type(collection.get("created")) is not bool
+        or collection.get("decision") != "no_go"
+        or collection.get("observation_only") is not True
+    ):
+        raise RuntimeError("host-admission observation collection identity differs")
+    current_identity = {
+        field: str(collection.get(field) or "")
+        for field in ("source_head", "source_tree", "board_namespace", "board_cid")
+    }
+    if current_identity != expected_identity:
+        raise RuntimeError("host-admission observation source or board differs")
+    false_fields = (
+        "process_started",
+        "supervisor_process_started",
+        "configured_board_launch",
+        "provider_invoked",
+        "staging_receipts_written",
+        "control_database_opened",
+        "database_state_observed",
+        "admission_authority",
+        "live_admission_allowed",
+        "live_launch_allowed",
+        "eaaef_191_authority",
+        "direct_task_completion_allowed",
+        "direct_database_binding_allowed",
+    )
+    if any(collection.get(field) is not False for field in false_fields):
+        raise RuntimeError("host-admission observation widened authority")
+    if (
+        collection.get("early_frontier_observation_cid")
+        != expected_early_observation_cid
+        or collection.get("early_frontier_observation_logical_path")
+        != source_addressed_early_frontier_observation_logical_path(
+            source_head=expected_identity["source_head"],
+            observation_cid=expected_early_observation_cid,
+        ).as_posix()
+    ):
+        raise RuntimeError("host-admission observation early parent differs")
+    if (
+        collection.get("casf_owner_binding_required") is not True
+        or collection.get("database_binding_blocker")
+        != HOST_ADMISSION_OBSERVATION_DB_BINDING_BLOCKER
+    ):
+        raise RuntimeError("host-admission observation CASF-owner boundary differs")
+    observation_cid = collection.get("observation_cid")
+    if not _full_sha256_cid(observation_cid):
+        raise RuntimeError("host-admission observation CID is invalid")
+    expected_logical_path = (
+        source_addressed_host_admission_observation_logical_path(
+            source_head=expected_identity["source_head"],
+            observation_cid=str(observation_cid),
+        ).as_posix()
+    )
+    if collection.get("logical_path") != expected_logical_path:
+        raise RuntimeError("host-admission observation logical path differs")
+    decisions = collection.get("decisions")
+    child_cids = collection.get("child_receipt_cids")
+    if (
+        not isinstance(decisions, dict)
+        or tuple(decisions) != HOST_ADMISSION_ORDER
+        or not isinstance(child_cids, dict)
+        or tuple(child_cids) != HOST_ADMISSION_ORDER
+        or any(
+            not _full_sha256_cid(child_cids[task_id])
+            for task_id in HOST_ADMISSION_ORDER
+        )
+    ):
+        raise RuntimeError("host-admission observation child bindings differ")
+    allowed_decisions = {
+        "EAAEF-180": {"inventory"},
+        "EAAEF-181": {"bound_unadmitted"},
+        "EAAEF-182": {"admitted", "typed_missing"},
+        "EAAEF-183": {"admitted", "typed_missing"},
+        **{f"EAAEF-{number}": {"typed_missing"} for number in range(184, 191)},
+        "EAAEF-191": {"no_go"},
+    }
+    if any(
+        decisions[task_id] not in allowed_decisions[task_id]
+        for task_id in HOST_ADMISSION_ORDER
+    ):
+        raise RuntimeError("host-admission observation child decision differs")
+    typed_missing = [
+        task_id
+        for task_id in HOST_ADMISSION_ORDER
+        if decisions[task_id] == "typed_missing"
+    ]
+    accepted = {
+        "EAAEF-180": "inventory",
+        "EAAEF-181": "bound_unadmitted",
+        "EAAEF-182": "admitted",
+        "EAAEF-183": "admitted",
+    }
+    owner_eligible = [
+        task_id
+        for task_id in EARLY_FRONTIER_ORDER
+        if decisions[task_id] == accepted[task_id]
+    ]
+    if (
+        collection.get("typed_missing_task_ids") != typed_missing
+        or collection.get("no_go_task_ids") != ["EAAEF-191"]
+        or collection.get("direct_completion_eligible_task_ids") != []
+        or collection.get("casf_owner_transaction_eligible_task_ids")
+        != owner_eligible
+    ):
+        raise RuntimeError("host-admission observation completion boundary differs")
     return collection
 
 
@@ -908,13 +1128,86 @@ def _reopen_invalid_host_admission_tasks(
     return reopened
 
 
-def run_once(*, scope: str = "early_frontier") -> dict:
+def run_once(
+    *,
+    scope: str = "early_frontier",
+    early_observation_cid: str | None = None,
+) -> dict:
     if scope not in {
         "early_frontier",
         "immutable_observation",
+        "immutable_full_observation",
         "full_bootstrap",
     }:
         raise ValueError("EAAEF host-admission scope is invalid")
+    selected_early_cid = str(early_observation_cid or "")
+    if scope == "immutable_full_observation":
+        if not _full_sha256_cid(selected_early_cid):
+            raise ValueError(
+                "immutable full observation requires an exact early observation CID"
+            )
+        expected_identity = _current_host_admission_identity()
+        collection = _collect_immutable_host_admission_observation(
+            selected_early_cid
+        )
+        collection = _validated_host_admission_observation_collection(
+            collection,
+            expected_identity=expected_identity,
+            expected_early_observation_cid=selected_early_cid,
+        )
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "eaaef-host-admission-supervisor@1"
+            ),
+            "execution_scope": scope,
+            "process_started": False,
+            "configured_board_launch": False,
+            "live_multi_supervisor": False,
+            "provider_invoked": False,
+            "expected_receipt_identity": expected_identity,
+            "collection": collection["decisions"],
+            "immutable_full_observation": {
+                "logical_path": collection["logical_path"],
+                "observation_cid": collection["observation_cid"],
+                "early_frontier_observation_cid": collection[
+                    "early_frontier_observation_cid"
+                ],
+                "early_frontier_observation_logical_path": collection[
+                    "early_frontier_observation_logical_path"
+                ],
+                "child_receipt_cids": collection["child_receipt_cids"],
+                "typed_missing_task_ids": collection["typed_missing_task_ids"],
+                "no_go_task_ids": collection["no_go_task_ids"],
+                "direct_completion_eligible_task_ids": [],
+                "casf_owner_transaction_eligible_task_ids": collection[
+                    "casf_owner_transaction_eligible_task_ids"
+                ],
+            },
+            "control_database_path_resolved": False,
+            "control_database_owner_lease_acquired": False,
+            "control_database_opened": False,
+            "in_memory_duckdb_capability_probe_may_open": False,
+            "owner_contention_strategy": (
+                "authority_registry_create_once_without_control_plane_lease"
+            ),
+            "staging_receipts_written": False,
+            "database_state_observed": False,
+            "direct_database_binding_allowed": False,
+            "casf_owner_binding_required": True,
+            "database_binding_blocker": collection["database_binding_blocker"],
+            "completed": [],
+            "ready_before": [],
+            "ready_after": [],
+            "blocked_held": [],
+            "task_count": None,
+            "status_counts": {},
+            "updated_at": int(time.time()),
+        }
+    if selected_early_cid:
+        raise ValueError(
+            "early observation CID is valid only for immutable full observation"
+        )
     early_frontier = scope == "early_frontier"
     immutable_observation = scope == "immutable_observation"
     target_tasks = (
@@ -1065,7 +1358,14 @@ def run_once(*, scope: str = "early_frontier") -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    payload = run_once(scope=str(getattr(args, "scope", "early_frontier")))
+    scope = str(getattr(args, "scope", "early_frontier"))
+    if scope == "immutable_full_observation":
+        payload = run_once(
+            scope=scope,
+            early_observation_cid=str(args.early_observation_cid),
+        )
+    else:
+        payload = run_once(scope=scope)
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
 

@@ -39,6 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.control.eaaef_provider_authority import
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     LocalProfileError,
     ed25519_did_key,
+    ed25519_public_key_from_did,
     load_local_profile,
 )
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
@@ -186,6 +187,28 @@ def source_addressed_early_frontier_observation_logical_path(
         / "observations"
         / (
             f"early-frontier--{source_head}--"
+            f"{observation_cid.removeprefix('sha256:')}.json"
+        )
+    )
+
+
+def source_addressed_host_admission_observation_logical_path(
+    *,
+    source_head: str,
+    observation_cid: str,
+) -> Path:
+    """Return a create-once path for one full host-admission no-go capture."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", str(source_head or "")) is None:
+        raise ValueError("host-admission observation source commit is invalid")
+    if not _full_sha256(observation_cid):
+        raise ValueError("host-admission observation CID is invalid")
+    return (
+        Path(EAAEF_LOGICAL_AUTHORITY_PREFIX)
+        / "host-admission"
+        / "observations"
+        / (
+            f"full-host-admission--{source_head}--"
             f"{observation_cid.removeprefix('sha256:')}.json"
         )
     )
@@ -369,6 +392,17 @@ EARLY_FRONTIER_OBSERVATION_SCOPE: Final = "early_frontier_180_183"
 EARLY_FRONTIER_OBSERVATION_DB_BINDING_BLOCKER: Final = (
     "immutable_early_frontier_observation_requires_separate_casf_owner_db_binding"
 )
+HOST_ADMISSION_OBSERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-full-host-admission-observation@1"
+)
+HOST_ADMISSION_OBSERVATION_SCOPE: Final = "full_host_admission_180_191"
+HOST_ADMISSION_OBSERVATION_TASK_IDS: Final[tuple[str, ...]] = tuple(RECEIPT_FILES)
+HOST_ADMISSION_OBSERVATION_DB_BINDING_BLOCKER: Final = (
+    "immutable_full_host_admission_observation_requires_separate_casf_owner_db_binding"
+)
+HOST_ADMISSION_OBSERVATION_DIAGNOSTIC_BLOCKER: Final = (
+    "full_observation_lacks_self_contained_public_proof_and_requires_casf_owner_reverification"
+)
 EARLY_FRONTIER_PREFLIGHT_BLOCKER: Final = (
     "eaaef_early_frontier_lifecycle_preflight_blocked"
 )
@@ -378,6 +412,15 @@ _EARLY_FRONTIER_OBSERVATION_DECISIONS: Final[dict[str, frozenset[str]]] = {
     "EAAEF-181": frozenset({"bound_unadmitted"}),
     "EAAEF-182": frozenset({"admitted", "typed_missing"}),
     "EAAEF-183": frozenset({"admitted", "typed_missing"}),
+}
+
+_HOST_ADMISSION_OBSERVATION_DECISIONS: Final[dict[str, frozenset[str]]] = {
+    "EAAEF-180": frozenset({"inventory"}),
+    "EAAEF-181": frozenset({"bound_unadmitted"}),
+    "EAAEF-182": frozenset({"admitted", "typed_missing"}),
+    "EAAEF-183": frozenset({"admitted", "typed_missing"}),
+    **{f"EAAEF-{number}": frozenset({"typed_missing"}) for number in range(184, 191)},
+    "EAAEF-191": frozenset({"no_go"}),
 }
 
 
@@ -1235,6 +1278,24 @@ def eaaef_checkout_has_only_early_frontier_receipt_drift(
     )
 
 
+def eaaef_checkout_has_only_host_admission_receipt_drift(
+    repo_root: str | Path,
+) -> bool:
+    """Allow drift only in the twelve declared host-admission staging files."""
+
+    receipt_relative = Path(
+        "docs/architecture/external_agent_autonomous_execution_fabric/"
+        "receipts/host_admission"
+    )
+    return _eaaef_checkout_has_only_declared_staging_drift(
+        repo_root,
+        allowed=tuple(
+            receipt_relative / RECEIPT_FILES[task_id]
+            for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+        ),
+    )
+
+
 def _git_directories(repo_root: Path) -> tuple[Path, Path]:
     """Resolve one non-linked worktree Git directory and its common directory."""
 
@@ -1615,6 +1676,52 @@ def _require_current_early_frontier_source_identity(
     return current
 
 
+def _require_current_host_admission_observation_source_identity(
+    expected: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Return the exact clean source identity for a full no-go capture."""
+
+    if not eaaef_checkout_has_only_host_admission_receipt_drift(ROOT):
+        raise RuntimeError(
+            "host-admission observation checkout has non-staging source drift"
+        )
+    identity = _source_identity()
+    required = {
+        "source_head": r"[0-9a-f]{40}",
+        "source_tree": r"[0-9a-f]{40}",
+        "board_cid": r"sha256:[0-9a-f]{64}",
+    }
+    if any(
+        re.fullmatch(pattern, str(identity.get(field) or "")) is None
+        for field, pattern in required.items()
+    ) or not str(identity.get("board_namespace") or ""):
+        raise RuntimeError("host-admission observation source identity is invalid")
+    try:
+        board = json.loads(BOARD_PATH.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("host-admission observation board is unavailable") from exc
+    if not isinstance(board, dict):
+        raise RuntimeError("host-admission observation board is not an object")
+    board_body = {key: value for key, value in board.items() if key != "board_cid"}
+    if (
+        board.get("board_cid") != cid(board_body)
+        or identity["board_cid"] != board.get("board_cid")
+        or identity["board_namespace"] != board.get("board_namespace")
+    ):
+        raise RuntimeError("host-admission observation board identity is invalid")
+    current = {key: str(value) for key, value in identity.items()}
+    if expected is not None:
+        requested = {
+            key: str(expected.get(key) or "")
+            for key in ("source_head", "source_tree", "board_namespace", "board_cid")
+        }
+        if requested != current:
+            raise RuntimeError(
+                "host-admission observation source or board changed during capture"
+            )
+    return current
+
+
 def _early_frontier_child_receipt_blockers(
     *,
     task_id: str,
@@ -1677,6 +1784,214 @@ def _early_frontier_child_receipt_blockers(
         blockers.append(f"{task_id} early-frontier child evidence is not an object")
     elif task_id == "EAAEF-180" and evidence.get("launch_plan_allowed") is not False:
         blockers.append("EAAEF-180 early-frontier launch plan is not a typed no-go")
+    return blockers
+
+
+def _public_runtime_principals_from_early_observation(
+    early_observation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Recover only the reviewed public principal binding from EAAEF-181."""
+
+    receipts = early_observation.get("receipts")
+    receipt = receipts.get("EAAEF-181") if isinstance(receipts, Mapping) else None
+    evidence = receipt.get("evidence") if isinstance(receipt, Mapping) else None
+    expected_fields = {
+        "principals",
+        "secret_material_exported",
+        "secret_store",
+        "secret_store_kind",
+        "secret_store_is_logical_identifier",
+        "physical_secret_paths_exposed",
+        "legacy_principal_import_attempted",
+        "admitted_authority",
+    }
+    if not isinstance(evidence, Mapping) or set(evidence) != expected_fields:
+        raise ValueError("early observation public principal binding fields differ")
+    principals = evidence.get("principals")
+    if not isinstance(principals, list) or len(principals) != len(PRINCIPAL_ROLES):
+        raise ValueError("early observation public principal population differs")
+    public: list[dict[str, Any]] = []
+    dids: list[str] = []
+    for expected_role, item in zip(PRINCIPAL_ROLES, principals, strict=True):
+        if not isinstance(item, Mapping) or set(item) != {
+            "role",
+            "did",
+            "admitted_authority",
+        }:
+            raise ValueError("early observation public principal fields differ")
+        did = str(item.get("did") or "")
+        if item.get("role") != expected_role or item.get("admitted_authority") is not False:
+            raise ValueError("early observation public principal role differs")
+        try:
+            ed25519_public_key_from_did(did)
+        except (LocalProfileError, LocalProfileTampered) as exc:
+            raise ValueError("early observation public principal DID is invalid") from exc
+        dids.append(did)
+        public.append(dict(item))
+    if len(set(dids)) != len(PRINCIPAL_ROLES):
+        raise ValueError("early observation public principals are not distinct")
+    if (
+        evidence.get("secret_material_exported") is not False
+        or evidence.get("secret_store") != RUNTIME_PRINCIPAL_LOGICAL_DIR.as_posix()
+        or evidence.get("secret_store_kind") != "owner_private_authority_registry"
+        or evidence.get("secret_store_is_logical_identifier") is not True
+        or evidence.get("physical_secret_paths_exposed") is not False
+        or evidence.get("legacy_principal_import_attempted") is not False
+        or evidence.get("admitted_authority") is not False
+    ):
+        raise ValueError("early observation public principal secrecy boundary differs")
+    return {**dict(evidence), "principals": public}
+
+
+def _host_admission_observation_child_receipt_blockers(
+    *,
+    task_id: str,
+    receipt: object,
+    source_identity: Mapping[str, str],
+    expected_child_receipt_cids: Mapping[str, str],
+) -> list[str]:
+    """Validate one child of a full immutable no-go observation."""
+
+    blockers: list[str] = []
+    if task_id not in _HOST_ADMISSION_OBSERVATION_DECISIONS:
+        return [f"{task_id} host-admission observation child is unsupported"]
+    if not isinstance(receipt, Mapping):
+        return [f"{task_id} host-admission observation child is not an object"]
+    payload = dict(receipt)
+    if set(payload) != {
+        "schema",
+        "task_id",
+        "receipt_name",
+        "decision",
+        "process_started",
+        "supervisor_process_started",
+        "self_signed",
+        "independent_signatures",
+        "source_head",
+        "source_tree",
+        "board_namespace",
+        "board_cid",
+        "evidence",
+        "receipt_cid",
+    }:
+        blockers.append(f"{task_id} host-admission observation child fields differ")
+    expected_schema = BUNDLE_SCHEMA if task_id == "EAAEF-191" else RECEIPT_SCHEMA
+    if payload.get("schema") != expected_schema:
+        blockers.append(f"{task_id} host-admission observation child schema differs")
+    if payload.get("task_id") != task_id:
+        blockers.append(
+            f"{task_id} host-admission observation child task identity differs"
+        )
+    if payload.get("receipt_name") != RECEIPT_FILES[task_id]:
+        blockers.append(f"{task_id} host-admission observation child filename differs")
+    body = {key: value for key, value in payload.items() if key != "receipt_cid"}
+    try:
+        json.dumps(body, allow_nan=False, ensure_ascii=False)
+        expected_receipt_cid = cid(body)
+    except (TypeError, ValueError):
+        expected_receipt_cid = ""
+        blockers.append(
+            f"{task_id} host-admission observation child is not canonical JSON"
+        )
+    if payload.get("receipt_cid") != expected_receipt_cid:
+        blockers.append(f"{task_id} host-admission observation child CID differs")
+    for field in ("source_head", "source_tree", "board_namespace", "board_cid"):
+        if payload.get(field) != source_identity.get(field):
+            blockers.append(
+                f"{task_id} host-admission observation child {field} differs"
+            )
+    for field in ("process_started", "supervisor_process_started", "self_signed"):
+        if payload.get(field) is not False:
+            blockers.append(
+                f"{task_id} host-admission observation child "
+                f"launch-separation field {field} differs"
+            )
+    if payload.get("independent_signatures") != []:
+        blockers.append(
+            f"{task_id} host-admission observation child must not claim "
+            "independent signatures"
+        )
+    decision = str(payload.get("decision") or "")
+    if decision not in _HOST_ADMISSION_OBSERVATION_DECISIONS[task_id]:
+        blockers.append(
+            f"{task_id} host-admission observation child decision is unsupported"
+        )
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, Mapping):
+        blockers.append(
+            f"{task_id} host-admission observation child evidence is not an object"
+        )
+    elif task_id == "EAAEF-180" and evidence.get("launch_plan_allowed") is not False:
+        blockers.append("EAAEF-180 host-admission launch plan is not a typed no-go")
+    elif task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS[4:-1]:
+        expected_diagnostic_fields = {
+            "artifact",
+            "decision",
+            "reason",
+            "independent_signature_present",
+            "self_signed_rejected",
+            "source_only_factory_authority",
+            "configured_board_launch",
+            "diagnostic_only",
+            "diagnostic_candidate_decision",
+            "diagnostic_candidate_evidence_cid",
+            "diagnostic_candidate_artifact_cid",
+            "self_contained_public_proof_embedded",
+            "casf_owner_reverification_required",
+        }
+        diagnostic_artifact_cid = str(
+            evidence.get("diagnostic_candidate_artifact_cid") or ""
+        )
+        if (
+            set(evidence) != expected_diagnostic_fields
+            or evidence.get("decision") != "typed_missing"
+            or evidence.get("reason")
+            != HOST_ADMISSION_OBSERVATION_DIAGNOSTIC_BLOCKER
+            or not str(evidence.get("artifact") or "")
+            or evidence.get("independent_signature_present") is not False
+            or evidence.get("self_signed_rejected") is not True
+            or evidence.get("source_only_factory_authority") is not False
+            or evidence.get("configured_board_launch") is not False
+            or evidence.get("diagnostic_only") is not True
+            or evidence.get("diagnostic_candidate_decision")
+            not in {"admitted", "typed_missing"}
+            or not _full_sha256(evidence.get("diagnostic_candidate_evidence_cid"))
+            or (
+                diagnostic_artifact_cid
+                and not _full_sha256(diagnostic_artifact_cid)
+            )
+            or evidence.get("self_contained_public_proof_embedded") is not False
+            or evidence.get("casf_owner_reverification_required") is not True
+        ):
+            blockers.append(
+                f"{task_id} host-admission observation diagnostic boundary differs"
+            )
+    elif task_id == "EAAEF-191":
+        observed_child_cids = evidence.get("child_receipt_cids")
+        if not isinstance(observed_child_cids, Mapping) or dict(
+            observed_child_cids
+        ) != dict(expected_child_receipt_cids):
+            blockers.append("EAAEF-191 observation child receipt identities differ")
+        if (
+            evidence.get("launch_plan_allowed") is not False
+            or evidence.get("prospective_supervisor_signature_rejected") is not True
+            or evidence.get("independent_signature_present") is not False
+            or evidence.get("observation_only") is not True
+            or evidence.get("final_bundle_published") is not False
+            or evidence.get("eaaef_191_authority") is not False
+            or any(
+                str(evidence.get(field) or "")
+                for field in (
+                    "independent_operator_signature",
+                    "independent_security_reviewer_signature",
+                    "operator_did",
+                    "security_reviewer_did",
+                )
+            )
+        ):
+            blockers.append(
+                "EAAEF-191 observation child authority separation differs"
+            )
     return blockers
 
 
@@ -2063,6 +2378,565 @@ def load_current_early_frontier_observation(
             + json.dumps(verification["blockers"], sort_keys=True)
         )
     _require_current_early_frontier_source_identity(identity_before)
+    return {
+        "logical_path": logical_path.as_posix(),
+        "observation": persisted,
+        **verification,
+    }
+
+
+def _host_admission_observation_decision_sets(
+    decisions: Mapping[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Derive typed-missing and later owner-transaction eligibility."""
+
+    typed_missing = [
+        task_id
+        for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+        if decisions.get(task_id) == "typed_missing"
+    ]
+    owner_eligible = [
+        task_id
+        for task_id in EARLY_FRONTIER_TASK_IDS
+        if decisions.get(task_id) == _ACCEPTED_TASK_DECISIONS[task_id]
+    ]
+    return typed_missing, owner_eligible
+
+
+def build_host_admission_observation(
+    receipts: Mapping[str, Mapping[str, Any]],
+    *,
+    source_identity: Mapping[str, str],
+    early_frontier_observation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build one full S-frontier observation extending an exact early parent."""
+
+    if set(receipts) != set(HOST_ADMISSION_OBSERVATION_TASK_IDS):
+        raise ValueError(
+            "host-admission observation must contain exactly EAAEF-180..191"
+        )
+    identity = {
+        key: str(source_identity.get(key) or "")
+        for key in ("source_head", "source_tree", "board_namespace", "board_cid")
+    }
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", identity["source_head"]) is None
+        or re.fullmatch(r"[0-9a-f]{40}", identity["source_tree"]) is None
+        or not identity["board_namespace"]
+        or not _full_sha256(identity["board_cid"])
+    ):
+        raise ValueError("host-admission observation source identity is invalid")
+    children = {
+        task_id: dict(receipts[task_id])
+        for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+    }
+    try:
+        json.dumps(children, allow_nan=False, ensure_ascii=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "host-admission observation children are not canonical JSON"
+        ) from exc
+    parent = dict(early_frontier_observation)
+    parent_verification = verify_early_frontier_observation(
+        parent,
+        expected_source_identity=identity,
+    )
+    if parent_verification["valid"] is not True:
+        raise ValueError(
+            "host-admission early parent is invalid: "
+            + json.dumps(parent_verification["blockers"], sort_keys=True)
+        )
+    rebuilt_parent = build_early_frontier_observation(
+        {
+            task_id: children[task_id]
+            for task_id in EARLY_FRONTIER_TASK_IDS
+        },
+        source_identity=identity,
+    )
+    if rebuilt_parent != parent:
+        raise ValueError("host-admission early parent child binding differs")
+    _public_runtime_principals_from_early_observation(parent)
+    early_frontier_observation_cid = str(parent["observation_cid"])
+    early_frontier_observation_logical_path = (
+        source_addressed_early_frontier_observation_logical_path(
+            source_head=identity["source_head"],
+            observation_cid=early_frontier_observation_cid,
+        ).as_posix()
+    )
+    child_receipt_cids = {
+        task_id: str(children[task_id].get("receipt_cid") or "")
+        for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+    }
+    child_decisions = {
+        task_id: str(children[task_id].get("decision") or "")
+        for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+    }
+    bundle_child_cids = {
+        task_id: child_receipt_cids[task_id]
+        for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+        if task_id != "EAAEF-191"
+    }
+    blockers = [
+        blocker
+        for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+        for blocker in _host_admission_observation_child_receipt_blockers(
+            task_id=task_id,
+            receipt=children[task_id],
+            source_identity=identity,
+            expected_child_receipt_cids=bundle_child_cids,
+        )
+    ]
+    if blockers:
+        raise ValueError("; ".join(blockers))
+    typed_missing, owner_eligible = _host_admission_observation_decision_sets(
+        child_decisions
+    )
+    observation: dict[str, Any] = {
+        "schema": HOST_ADMISSION_OBSERVATION_SCHEMA,
+        "scope": HOST_ADMISSION_OBSERVATION_SCOPE,
+        "observation_kind": "typed_no_go",
+        "observation_only": True,
+        "decision": "no_go",
+        **identity,
+        "early_frontier_observation_cid": early_frontier_observation_cid,
+        "early_frontier_observation_logical_path": (
+            early_frontier_observation_logical_path
+        ),
+        "task_ids": list(HOST_ADMISSION_OBSERVATION_TASK_IDS),
+        "child_decisions": child_decisions,
+        "child_receipt_cids": child_receipt_cids,
+        "typed_missing_task_ids": typed_missing,
+        "no_go_task_ids": ["EAAEF-191"],
+        "direct_completion_eligible_task_ids": [],
+        "casf_owner_transaction_eligible_task_ids": owner_eligible,
+        "receipts": children,
+        "process_started": False,
+        "supervisor_process_started": False,
+        "configured_board_launch": False,
+        "provider_invoked": False,
+        "staging_receipts_written": False,
+        "control_database_opened": False,
+        "database_state_observed": False,
+        "admission_authority": False,
+        "live_admission_allowed": False,
+        "live_launch_allowed": False,
+        "eaaef_191_authority": False,
+        "direct_task_completion_allowed": False,
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": (
+            HOST_ADMISSION_OBSERVATION_DB_BINDING_BLOCKER
+        ),
+    }
+    observation["observation_cid"] = cid(observation)
+    return observation
+
+
+def verify_host_admission_observation(
+    observation: object,
+    *,
+    expected_source_identity: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Verify a full observation while returning only fail-closed flags."""
+
+    blockers: list[str] = []
+    payload = dict(observation) if isinstance(observation, Mapping) else {}
+    if not isinstance(observation, Mapping):
+        blockers.append("host-admission observation is not an object")
+    expected_fields = {
+        "schema",
+        "scope",
+        "observation_kind",
+        "observation_only",
+        "decision",
+        "source_head",
+        "source_tree",
+        "board_namespace",
+        "board_cid",
+        "early_frontier_observation_cid",
+        "early_frontier_observation_logical_path",
+        "task_ids",
+        "child_decisions",
+        "child_receipt_cids",
+        "typed_missing_task_ids",
+        "no_go_task_ids",
+        "direct_completion_eligible_task_ids",
+        "casf_owner_transaction_eligible_task_ids",
+        "receipts",
+        "process_started",
+        "supervisor_process_started",
+        "configured_board_launch",
+        "provider_invoked",
+        "staging_receipts_written",
+        "control_database_opened",
+        "database_state_observed",
+        "admission_authority",
+        "live_admission_allowed",
+        "live_launch_allowed",
+        "eaaef_191_authority",
+        "direct_task_completion_allowed",
+        "direct_database_binding_allowed",
+        "casf_owner_binding_required",
+        "database_binding_blocker",
+        "observation_cid",
+    }
+    if set(payload) != expected_fields:
+        blockers.append("host-admission observation fields differ")
+    if payload.get("schema") != HOST_ADMISSION_OBSERVATION_SCHEMA:
+        blockers.append("host-admission observation schema differs")
+    if payload.get("scope") != HOST_ADMISSION_OBSERVATION_SCOPE:
+        blockers.append("host-admission observation scope differs")
+    if (
+        payload.get("observation_kind") != "typed_no_go"
+        or payload.get("decision") != "no_go"
+        or payload.get("observation_only") is not True
+    ):
+        blockers.append("host-admission observation is not an observation-only no-go")
+    if payload.get("task_ids") != list(HOST_ADMISSION_OBSERVATION_TASK_IDS):
+        blockers.append("host-admission observation task population differs")
+    source_identity = {
+        key: str(payload.get(key) or "")
+        for key in ("source_head", "source_tree", "board_namespace", "board_cid")
+    }
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", source_identity["source_head"]) is None
+        or re.fullmatch(r"[0-9a-f]{40}", source_identity["source_tree"]) is None
+        or not source_identity["board_namespace"]
+        or not _full_sha256(source_identity["board_cid"])
+    ):
+        blockers.append("host-admission observation source identity is invalid")
+    if expected_source_identity is not None:
+        expected = {
+            key: str(expected_source_identity.get(key) or "")
+            for key in ("source_head", "source_tree", "board_namespace", "board_cid")
+        }
+        if source_identity != expected:
+            blockers.append("host-admission observation is stale for the current source")
+    receipts = payload.get("receipts")
+    child_decisions = payload.get("child_decisions")
+    child_cids = payload.get("child_receipt_cids")
+    task_set = set(HOST_ADMISSION_OBSERVATION_TASK_IDS)
+    receipt_values = receipts if isinstance(receipts, Mapping) else {}
+    decision_values = child_decisions if isinstance(child_decisions, Mapping) else {}
+    cid_values = child_cids if isinstance(child_cids, Mapping) else {}
+    if not isinstance(receipts, Mapping) or set(receipts) != task_set:
+        blockers.append("host-admission observation child population differs")
+    if not isinstance(child_decisions, Mapping) or set(child_decisions) != task_set:
+        blockers.append("host-admission observation child decisions differ")
+    if not isinstance(child_cids, Mapping) or set(child_cids) != task_set:
+        blockers.append("host-admission observation child CID population differs")
+    try:
+        rebuilt_parent = build_early_frontier_observation(
+            {
+                task_id: dict(receipt_values[task_id])
+                for task_id in EARLY_FRONTIER_TASK_IDS
+            },
+            source_identity=source_identity,
+        )
+        _public_runtime_principals_from_early_observation(rebuilt_parent)
+    except (KeyError, TypeError, ValueError) as exc:
+        rebuilt_parent = {}
+        blockers.append(f"host-admission early parent is invalid: {exc}")
+    expected_parent_cid = str(rebuilt_parent.get("observation_cid") or "")
+    if payload.get("early_frontier_observation_cid") != expected_parent_cid:
+        blockers.append("host-admission early parent CID binding differs")
+    try:
+        expected_parent_path = (
+            source_addressed_early_frontier_observation_logical_path(
+                source_head=source_identity["source_head"],
+                observation_cid=expected_parent_cid,
+            ).as_posix()
+        )
+    except ValueError:
+        expected_parent_path = ""
+    if payload.get("early_frontier_observation_logical_path") != expected_parent_path:
+        blockers.append("host-admission early parent path binding differs")
+    typed_missing, owner_eligible = _host_admission_observation_decision_sets(
+        decision_values
+    )
+    if payload.get("typed_missing_task_ids") != typed_missing:
+        blockers.append("host-admission typed-missing task population differs")
+    if payload.get("no_go_task_ids") != ["EAAEF-191"]:
+        blockers.append("host-admission no-go task population differs")
+    if payload.get("direct_completion_eligible_task_ids") != []:
+        blockers.append("host-admission direct completion population is not empty")
+    if payload.get("casf_owner_transaction_eligible_task_ids") != owner_eligible:
+        blockers.append("host-admission CASF-owner task population differs")
+    bundle_child_cids = {
+        task_id: str(cid_values.get(task_id) or "")
+        for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+        if task_id != "EAAEF-191"
+    }
+    for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS:
+        child = receipt_values.get(task_id)
+        blockers.extend(
+            _host_admission_observation_child_receipt_blockers(
+                task_id=task_id,
+                receipt=child,
+                source_identity=source_identity,
+                expected_child_receipt_cids=bundle_child_cids,
+            )
+        )
+        if isinstance(child, Mapping) and cid_values.get(task_id) != child.get(
+            "receipt_cid"
+        ):
+            blockers.append(
+                f"{task_id} host-admission observation child CID binding differs"
+            )
+        if isinstance(child, Mapping) and decision_values.get(
+            task_id
+        ) != child.get("decision"):
+            blockers.append(
+                f"{task_id} host-admission observation child decision binding differs"
+            )
+    false_fields = (
+        "process_started",
+        "supervisor_process_started",
+        "configured_board_launch",
+        "provider_invoked",
+        "staging_receipts_written",
+        "control_database_opened",
+        "database_state_observed",
+        "admission_authority",
+        "live_admission_allowed",
+        "live_launch_allowed",
+        "eaaef_191_authority",
+        "direct_task_completion_allowed",
+        "direct_database_binding_allowed",
+    )
+    if any(payload.get(field) is not False for field in false_fields):
+        blockers.append("host-admission observation authority separation differs")
+    if payload.get("casf_owner_binding_required") is not True:
+        blockers.append("host-admission observation CASF-owner boundary differs")
+    if (
+        payload.get("database_binding_blocker")
+        != HOST_ADMISSION_OBSERVATION_DB_BINDING_BLOCKER
+    ):
+        blockers.append("host-admission observation database boundary differs")
+    body = {key: value for key, value in payload.items() if key != "observation_cid"}
+    try:
+        json.dumps(body, allow_nan=False, ensure_ascii=False)
+        expected_observation_cid = cid(body)
+    except (TypeError, ValueError):
+        expected_observation_cid = ""
+        blockers.append("host-admission observation is not canonical JSON")
+    if payload.get("observation_cid") != expected_observation_cid:
+        blockers.append("host-admission observation CID differs")
+    valid = not blockers
+    return {
+        "valid": valid,
+        "decision": "no_go",
+        "observation_cid": str(payload.get("observation_cid") or ""),
+        "blockers": list(dict.fromkeys(blockers)),
+        "observation_only": True,
+        "admission_authority": False,
+        "live_launch_allowed": False,
+        "live_admission_allowed": False,
+        "eaaef_191_authority": False,
+        "direct_task_completion_allowed": False,
+        "typed_missing_task_ids": typed_missing if valid else [],
+        "no_go_task_ids": ["EAAEF-191"] if valid else [],
+        "direct_completion_eligible_task_ids": [],
+        "casf_owner_transaction_eligible_task_ids": (
+            owner_eligible if valid else []
+        ),
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": (
+            HOST_ADMISSION_OBSERVATION_DB_BINDING_BLOCKER
+        ),
+    }
+
+
+def publish_host_admission_observation(
+    *,
+    early_frontier_observation_cid: str,
+    expected_source_identity: Mapping[str, str] | None = None,
+    authority_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Create once and revalidate a full, explicitly non-authoritative capture."""
+
+    identity_before = _require_current_host_admission_observation_source_identity(
+        expected_source_identity
+    )
+    if not _full_sha256(early_frontier_observation_cid):
+        raise ValueError("host-admission early parent CID is invalid")
+    loaded_parent = load_current_early_frontier_observation(
+        source_head=identity_before["source_head"],
+        observation_cid=early_frontier_observation_cid,
+        authority_root=authority_root,
+    )
+    parent = loaded_parent.get("observation")
+    if not isinstance(parent, Mapping):
+        raise RuntimeError("host-admission early parent is unavailable")
+    receipts = _collect_host_admission_observation_receipts(
+        parent=parent,
+        source_identity=identity_before,
+    )
+    _require_current_host_admission_observation_source_identity(identity_before)
+    observation = build_host_admission_observation(
+        receipts,
+        source_identity=identity_before,
+        early_frontier_observation=parent,
+    )
+    observation_cid = str(observation["observation_cid"])
+    logical_path = source_addressed_host_admission_observation_logical_path(
+        source_head=identity_before["source_head"],
+        observation_cid=observation_cid,
+    )
+    parent_logical_path = source_addressed_early_frontier_observation_logical_path(
+        source_head=identity_before["source_head"],
+        observation_cid=early_frontier_observation_cid,
+    )
+    try:
+        registry = EAAEFAuthorityRegistry(
+            repo_root=ROOT,
+            authority_root=authority_root,
+        )
+        with registry.ceremony():
+            _require_current_host_admission_observation_source_identity(
+                identity_before
+            )
+            if registry.read_json(parent_logical_path) != parent:
+                raise EAAEFAuthorityRegistryError(
+                    "host-admission early parent changed before publication"
+                )
+            try:
+                registry.read_json(logical_path)
+            except EAAEFAuthorityNotFound:
+                created = True
+            else:
+                created = False
+            registry.publish_json(logical_path, observation)
+            persisted = registry.read_json(logical_path)
+            verification = verify_host_admission_observation(
+                persisted,
+                expected_source_identity=identity_before,
+            )
+            if persisted != observation or verification["valid"] is not True:
+                raise EAAEFAuthorityRegistryError(
+                    "persisted host-admission observation failed exact readback"
+                )
+            _require_current_host_admission_observation_source_identity(
+                identity_before
+            )
+    except EAAEFAuthorityRegistryError as exc:
+        raise RuntimeError(
+            f"host-admission observation registry rejected publication: {exc}"
+        ) from exc
+    _require_current_host_admission_observation_source_identity(identity_before)
+    return {
+        "schema": HOST_ADMISSION_OBSERVATION_SCHEMA,
+        "scope": HOST_ADMISSION_OBSERVATION_SCOPE,
+        "published": True,
+        "created": created,
+        "logical_path": logical_path.as_posix(),
+        "observation_cid": observation_cid,
+        "early_frontier_observation_cid": observation[
+            "early_frontier_observation_cid"
+        ],
+        "early_frontier_observation_logical_path": observation[
+            "early_frontier_observation_logical_path"
+        ],
+        "child_receipt_cids": dict(observation["child_receipt_cids"]),
+        "typed_missing_task_ids": list(observation["typed_missing_task_ids"]),
+        "no_go_task_ids": list(observation["no_go_task_ids"]),
+        "direct_completion_eligible_task_ids": [],
+        "casf_owner_transaction_eligible_task_ids": list(
+            observation["casf_owner_transaction_eligible_task_ids"]
+        ),
+        "decisions": {
+            task_id: str(observation["receipts"][task_id]["decision"])
+            for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+        },
+        **identity_before,
+        "decision": "no_go",
+        "process_started": False,
+        "supervisor_process_started": False,
+        "configured_board_launch": False,
+        "provider_invoked": False,
+        "staging_receipts_written": False,
+        "control_database_opened": False,
+        "database_state_observed": False,
+        "observation_only": True,
+        "admission_authority": False,
+        "live_admission_allowed": False,
+        "live_launch_allowed": False,
+        "eaaef_191_authority": False,
+        "direct_task_completion_allowed": False,
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": (
+            HOST_ADMISSION_OBSERVATION_DB_BINDING_BLOCKER
+        ),
+    }
+
+
+def load_current_host_admission_observation(
+    *,
+    source_head: str,
+    observation_cid: str,
+    authority_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Reload one full observation and prove it remains current and immutable."""
+
+    identity_before = _require_current_host_admission_observation_source_identity()
+    if source_head != identity_before["source_head"]:
+        raise RuntimeError("host-admission observation source is not current")
+    logical_path = source_addressed_host_admission_observation_logical_path(
+        source_head=source_head,
+        observation_cid=observation_cid,
+    )
+    try:
+        registry = EAAEFAuthorityRegistry(
+            repo_root=ROOT,
+            authority_root=authority_root,
+        )
+        persisted = registry.read_json(logical_path)
+    except EAAEFAuthorityRegistryError as exc:
+        raise RuntimeError(
+            f"host-admission observation registry rejected readback: {exc}"
+        ) from exc
+    verification = verify_host_admission_observation(
+        persisted,
+        expected_source_identity=identity_before,
+    )
+    if (
+        verification["valid"] is not True
+        or verification["observation_cid"] != observation_cid
+    ):
+        raise RuntimeError(
+            "current host-admission observation failed immutable verification: "
+            + json.dumps(verification["blockers"], sort_keys=True)
+        )
+    parent_cid = str(persisted.get("early_frontier_observation_cid") or "")
+    parent_readback = load_current_early_frontier_observation(
+        source_head=identity_before["source_head"],
+        observation_cid=parent_cid,
+        authority_root=authority_root,
+    )
+    parent_observation = parent_readback.get("observation")
+    receipts = persisted.get("receipts")
+    if not isinstance(parent_observation, Mapping) or not isinstance(
+        receipts, Mapping
+    ):
+        raise RuntimeError("current host-admission early parent is unavailable")
+    rebuilt_parent = build_early_frontier_observation(
+        {
+            task_id: dict(receipts[task_id])
+            for task_id in EARLY_FRONTIER_TASK_IDS
+        },
+        source_identity=identity_before,
+    )
+    if (
+        rebuilt_parent != dict(parent_observation)
+        or parent_readback.get("logical_path")
+        != persisted.get("early_frontier_observation_logical_path")
+    ):
+        raise RuntimeError(
+            "current host-admission observation early parent binding differs"
+        )
+    _require_current_host_admission_observation_source_identity(identity_before)
     return {
         "logical_path": logical_path.as_posix(),
         "observation": persisted,
@@ -4485,6 +5359,477 @@ def _typed_missing_artifact(
     return evidence
 
 
+def _load_observation_artifact_json(path: Path) -> tuple[dict[str, Any] | None, str]:
+    """Read one bounded, stable, no-follow JSON artifact without side effects."""
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        return None, f"artifact is unavailable: {type(exc).__name__}"
+    try:
+        before = os.fstat(descriptor)
+        linked_before = os.stat(path, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_size <= 0
+            or before.st_size > 16 * 1024 * 1024
+            or (before.st_dev, before.st_ino)
+            != (linked_before.st_dev, linked_before.st_ino)
+        ):
+            return None, "artifact is not a bounded regular file"
+        raw = bytearray()
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            raw.extend(chunk)
+        after = os.fstat(descriptor)
+        linked_after = os.stat(path, follow_symlinks=False)
+        stable = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if (
+            tuple(getattr(before, field) for field in stable)
+            != tuple(getattr(after, field) for field in stable)
+            or tuple(getattr(after, field) for field in stable)
+            != tuple(getattr(linked_after, field) for field in stable)
+        ):
+            return None, "artifact changed while read"
+        decoded = json.loads(bytes(raw).decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return None, f"artifact is unreadable: {type(exc).__name__}"
+    finally:
+        os.close(descriptor)
+    if not isinstance(decoded, dict):
+        return None, "artifact is not an object"
+    return decoded, ""
+
+
+def _probe_public_observation_artifact(
+    *,
+    path: Path,
+    schema: str,
+    artifact: str,
+    source_identity: Mapping[str, str],
+    extra: Mapping[str, Any],
+    required: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Verify only current, statically trusted public evidence for an observation."""
+
+    payload, read_error = _load_observation_artifact_json(path)
+    if payload is None:
+        return None, _typed_missing_artifact(
+            artifact=artifact,
+            reason=read_error,
+            extra=extra,
+        )
+    signature = str(payload.get("signature") or "")
+    signer_did = str(
+        payload.get("signer_did") or payload.get("signer_identity_did") or ""
+    )
+    unsigned = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"signature", "artifact_cid"}
+    }
+    signature_valid = False
+    trusted = set(TRUSTED_OPERATOR_DIDS + TRUSTED_SECURITY_REVIEWER_DIDS)
+    if signer_did in trusted:
+        try:
+            verify_did_key_signature(
+                identity_did=signer_did,
+                payload=unsigned,
+                signature=signature,
+            )
+        except (LocalProfileTampered, TypeError, ValueError):
+            pass
+        else:
+            signature_valid = True
+    if (
+        payload.get("schema") != schema
+        or not signature_valid
+        or payload.get("artifact_cid") != cid({**unsigned, "signature": signature})
+        or payload.get("source_head") != source_identity.get("source_head")
+        or payload.get("source_tree") != source_identity.get("source_tree")
+        or payload.get("supervisor_signed") is not False
+        or payload.get("configured_board_launch") is not False
+        or any(payload.get(key) != value for key, value in required.items())
+    ):
+        return payload, _typed_missing_artifact(
+            artifact=artifact,
+            reason=(
+                f"{artifact} failed public-only current-source verification"
+            ),
+            extra=extra,
+        )
+    evidence = {
+        "artifact": artifact,
+        "decision": "admitted",
+        "independent_signature_present": True,
+        "self_signed_rejected": True,
+        "source_only_factory_authority": False,
+        "supervisor_signed": False,
+        "configured_board_launch": False,
+        "artifact_path": str(path.relative_to(ROOT)),
+        "artifact_cid": str(payload.get("artifact_cid") or ""),
+        "signer_did": signer_did,
+        "source_head": str(source_identity["source_head"]),
+        "source_tree": str(source_identity["source_tree"]),
+        **dict(extra),
+    }
+    evidence["decision"] = "admitted"
+    return payload, evidence
+
+
+def probe_worker_image_for_observation(
+    *,
+    source_identity: Mapping[str, str],
+) -> dict[str, Any]:
+    """Verify EAAEF-185 without Docker or private reviewer-key access."""
+
+    extra = {
+        "required_worker_slots": LANE_COUNT,
+        "live_dispatch_claimed": False,
+        "configured_board_launch": False,
+        "supervisor_signed": False,
+        "docker_socket_mounted": False,
+    }
+    payload, evidence = _probe_public_observation_artifact(
+        path=WORKER_IMAGE_ARTIFACT,
+        schema=HOST_WORKER_IMAGE_SCHEMA,
+        artifact="task_capable_worker_image_and_sbom",
+        source_identity=source_identity,
+        extra=extra,
+        required={
+            "live_dispatch_claimed": False,
+            "docker_socket_mounted": False,
+        },
+    )
+    slots = payload.get("slot_identities") if payload is not None else None
+    digest = str(payload.get("image_digest") or "") if payload is not None else ""
+    if evidence["decision"] != "admitted":
+        return evidence
+    if (
+        not digest.startswith("sha256:")
+        or len(digest) != 71
+        or not isinstance(slots, list)
+        or len(slots) != LANE_COUNT
+        or len({json.dumps(item, sort_keys=True) for item in slots}) != LANE_COUNT
+    ):
+        return _typed_missing_artifact(
+            artifact="task_capable_worker_image_and_sbom",
+            reason="worker image observation structure is invalid",
+            extra=extra,
+        )
+    evidence.update(
+        {
+            "image_digest": digest,
+            "sbom_digest": str(payload.get("sbom_digest") or ""),
+            "slot_identities": [
+                str(item.get("slot_cid") or "")
+                for item in slots
+                if isinstance(item, Mapping)
+            ],
+            "engine_endpoint": str(payload.get("engine_endpoint") or ""),
+        }
+    )
+    return evidence
+
+
+def probe_container_profile_for_observation(
+    *,
+    source_identity: Mapping[str, str],
+    worker_image: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify EAAEF-186 without Docker or private reviewer-key access."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.worker_container_execution_profile import (
+        EAAEF_WORKER_CONTAINER_EXECUTION_PROFILE_SCHEMA_V2,
+        EAAEF_WORKER_CONTAINER_EXECUTION_PROFILE_SIGNER_ROLE_V2,
+    )
+    from ipfs_accelerate_py.agent_supervisor.validation.external_agent_fabric_bootstrap import (
+        EAAEF_WORKER_CONTAINER_PROFILE_SCHEMA_V2,
+    )
+
+    extra = {"configured_board_launch": False, "live_dispatch_claimed": False}
+    if worker_image.get("decision") != "admitted":
+        return _typed_missing_artifact(
+            artifact="container_execution_profile_v2",
+            reason="current worker image observation is not admitted",
+            extra=extra,
+        )
+    payload, evidence = _probe_public_observation_artifact(
+        path=CONTAINER_PROFILE_ARTIFACT,
+        schema=EAAEF_WORKER_CONTAINER_EXECUTION_PROFILE_SCHEMA_V2,
+        artifact="container_execution_profile_v2",
+        source_identity=source_identity,
+        extra=extra,
+        required={
+            "signer_role": EAAEF_WORKER_CONTAINER_EXECUTION_PROFILE_SIGNER_ROLE_V2,
+        },
+    )
+    profile = payload.get("profile") if payload is not None else None
+    if evidence["decision"] != "admitted":
+        return evidence
+    if (
+        not isinstance(profile, Mapping)
+        or profile.get("schema") != EAAEF_WORKER_CONTAINER_PROFILE_SCHEMA_V2
+        or profile.get("nonroot_user") != "65532:65532"
+        or profile.get("read_only_base") is not True
+        or profile.get("cap_drop") != ["ALL"]
+        or profile.get("docker_socket_mounted") is not False
+        or profile.get("rootless") is not True
+        or payload.get("qualified_worker_image_digest")
+        != worker_image.get("image_digest")
+    ):
+        return _typed_missing_artifact(
+            artifact="container_execution_profile_v2",
+            reason="container profile observation structure is invalid",
+            extra=extra,
+        )
+    evidence.update(
+        {
+            "schema": str(payload.get("schema") or ""),
+            "profile_schema": str(profile.get("schema") or ""),
+            "profile_cid": str(profile.get("profile_cid") or ""),
+            "image_digest": str(payload.get("qualified_worker_image_digest") or ""),
+            "engine_endpoint": str(payload.get("engine_endpoint") or ""),
+            "nonroot_user": "65532:65532",
+            "read_only_base": True,
+            "cap_drop": ["ALL"],
+        }
+    )
+    return evidence
+
+
+def probe_worker_network_for_observation(
+    *,
+    source_identity: Mapping[str, str],
+    principals: Mapping[str, Any],
+    container_profile: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify EAAEF-187 from public evidence without secret-principal access."""
+
+    worker_did = str(principals["principals"][0]["did"])
+    provider_did = str(principals["principals"][1]["did"])
+    extra = {
+        "required_lanes": LANE_COUNT,
+        "worker_did": worker_did,
+        "provider_did": provider_did,
+        "child_propagation_status": "admitted",
+        "configured_board_launch": False,
+    }
+    if container_profile.get("decision") != "admitted":
+        return _typed_missing_artifact(
+            artifact="worker_network_authorizations",
+            reason="current container profile observation is not admitted",
+            extra=extra,
+        )
+    payload, evidence = _probe_public_observation_artifact(
+        path=WORKER_NETWORK_ARTIFACT,
+        schema=HOST_WORKER_NETWORK_LANES_SCHEMA,
+        artifact="worker_network_authorizations",
+        source_identity=source_identity,
+        extra=extra,
+        required={
+            "worker_principal_did": worker_did,
+            "provider_principal_did": provider_did,
+            "docker_network_internal": True,
+            "connect_only": True,
+            "connect_port": 443,
+            "create_start_restart_reverification_required": True,
+            "child_propagation_status": "admitted",
+            "live_dispatch_claimed": False,
+        },
+    )
+    lanes = payload.get("lanes") if payload is not None else None
+    lane_ids = [
+        str(item.get("lane_id") or "")
+        for item in lanes or ()
+        if isinstance(item, Mapping)
+    ]
+    if evidence["decision"] != "admitted":
+        return evidence
+    if (
+        not isinstance(lanes, list)
+        or len(lanes) != LANE_COUNT
+        or len(set(lane_ids)) != LANE_COUNT
+        or any(
+            not isinstance(item, Mapping)
+            or item.get("worker_principal_did") != worker_did
+            or item.get("provider_principal_did") != provider_did
+            or item.get("docker_network_internal") is not True
+            or item.get("connect_only") is not True
+            or item.get("create_start_restart_reverification_required") is not True
+            for item in lanes
+        )
+    ):
+        return _typed_missing_artifact(
+            artifact="worker_network_authorizations",
+            reason="worker network observation structure is invalid",
+            extra=extra,
+        )
+    evidence.update(
+        {
+            "lane_ids": lane_ids,
+            "docker_network_internal": True,
+            "connect_only_443": True,
+            "create_start_restart_reverification_required": True,
+            "live_dispatch_claimed": False,
+        }
+    )
+    return evidence
+
+
+def probe_command_fabric_for_observation(
+    *,
+    source_identity: Mapping[str, str],
+    worker_network: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Keep EAAEF-188 typed-missing without opening command-fabric sockets."""
+
+    extra = {
+        "child_adapter_status": "admitted",
+        "implemented_unqualified_fail_closed_admitted": False,
+        "configured_board_launch": False,
+    }
+    if worker_network.get("decision") != "admitted":
+        return _typed_missing_artifact(
+            artifact="signed_command_fabric_endpoints",
+            reason="current worker network observation is not admitted",
+            extra=extra,
+        )
+    payload, evidence = _probe_public_observation_artifact(
+        path=COMMAND_FABRIC_ARTIFACT,
+        schema=HOST_COMMAND_FABRIC_SCHEMA,
+        artifact="signed_command_fabric_endpoints",
+        source_identity=source_identity,
+        extra=extra,
+        required={
+            "child_adapter_status": "admitted",
+            "implemented_unqualified_fail_closed_admitted": False,
+            "live_dispatch_claimed": False,
+            "transport_kind": "private_unix_length_prefixed_json",
+        },
+    )
+    if evidence["decision"] != "admitted":
+        return evidence
+    return _typed_missing_artifact(
+        artifact="signed_command_fabric_endpoints",
+        reason=(
+            "authenticated command-fabric session proof cannot be established "
+            "by an observation-only static verifier"
+        ),
+        extra={
+            **extra,
+            "candidate_artifact_cid": str(payload.get("artifact_cid") or ""),
+        },
+    )
+
+
+def probe_native_lane_for_observation(
+    *,
+    source_identity: Mapping[str, str],
+    command_fabric: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify EAAEF-189 without sockets, extension loading, or private keys."""
+
+    extra = {"configured_board_launch": False}
+    if command_fabric.get("decision") != "admitted":
+        return _typed_missing_artifact(
+            artifact="native_lane_dispatcher_artifacts",
+            reason="current command-fabric observation is not admitted",
+            extra=extra,
+        )
+    payload, evidence = _probe_public_observation_artifact(
+        path=NATIVE_LANE_ARTIFACT,
+        schema=HOST_NATIVE_LANE_SCHEMA,
+        artifact="native_lane_dispatcher_artifacts",
+        source_identity=source_identity,
+        extra=extra,
+        required={
+            "native_dependency_admission": "AgentSupervisorNativeDependencyAdmission@1",
+            "lane_authority": "EAAEFBootstrapLaneAuthority@2",
+            "dispatcher_factory": "EAAEFContainerDispatcherFactoryQualification@1",
+            "source_only_factory_authority": False,
+            "live_dispatch_claimed": False,
+            "command_fabric_artifact_cid": command_fabric.get("artifact_cid"),
+        },
+    )
+    if evidence["decision"] == "admitted" and payload is not None:
+        evidence.update(
+            {
+                "native_dependency_admission": payload.get(
+                    "native_dependency_admission"
+                ),
+                "lane_authority": payload.get("lane_authority"),
+                "dispatcher_factory": payload.get("dispatcher_factory"),
+                "quack_extension_sha256": payload.get("quack_extension_sha256"),
+                "live_dispatch_claimed": False,
+            }
+        )
+    return evidence
+
+
+def probe_plan_r2_for_observation(
+    *,
+    source_identity: Mapping[str, str],
+    native_lane: Mapping[str, Any],
+    principals: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify EAAEF-190 without process-remote channel access or private keys."""
+
+    extra = {"r1_evidence_promotes_r2": False, "configured_board_launch": False}
+    if native_lane.get("decision") != "admitted":
+        return _typed_missing_artifact(
+            artifact="plan_r2_remote_owner",
+            reason="current native-lane observation is not admitted",
+            extra=extra,
+        )
+    payload, evidence = _probe_public_observation_artifact(
+        path=PLAN_R2_ARTIFACT,
+        schema=HOST_PLAN_R2_SCHEMA,
+        artifact="plan_r2_remote_owner",
+        source_identity=source_identity,
+        extra=extra,
+        required={
+            "interface": "PlanR2ProcessRemoteOwnerCapability@1",
+            "r1_evidence_promotes_r2": False,
+            "r1_operations_allowed": False,
+            "live_dispatch_claimed": False,
+            "native_lane_artifact_cid": native_lane.get("artifact_cid"),
+            "owner_principal_did": principals["principals"][2]["did"],
+        },
+    )
+    operations = list(payload.get("allowed_operations") or ()) if payload else []
+    if evidence["decision"] != "admitted":
+        return evidence
+    if operations != ["plan_r2.prepare", "plan_r2.apply", "plan_r2.observe"]:
+        return _typed_missing_artifact(
+            artifact="plan_r2_remote_owner",
+            reason="plan-r2 observation operations differ",
+            extra=extra,
+        )
+    evidence.update(
+        {
+            "allowed_operations": operations,
+            "request_channel_id": payload.get("request_channel_id"),
+            "response_channel_id": payload.get("response_channel_id"),
+            "live_dispatch_claimed": False,
+        }
+    )
+    return evidence
+
+
 def collect_early_frontier_host_admission_receipts(
     *,
     timeout_seconds: int = 180,
@@ -4846,6 +6191,153 @@ def collect_early_frontier_and_publish_observation(
     return publish_early_frontier_observation(
         receipts,
         expected_source_identity=identity_before,
+        authority_root=authority_root,
+    )
+
+
+def _collect_host_admission_observation_receipts(
+    *,
+    parent: Mapping[str, Any],
+    source_identity: Mapping[str, str],
+) -> dict[str, dict[str, Any]]:
+    """Build the full capture from one verified parent and static public probes."""
+
+    identity_before = dict(source_identity)
+    principals = _public_runtime_principals_from_early_observation(parent)
+    parent_receipts = parent.get("receipts")
+    if not isinstance(parent_receipts, Mapping):
+        raise RuntimeError("full observation early parent receipts are unavailable")
+
+    provider_authorization = probe_provider_authorization()
+    provider_authorization["bound_provider_did"] = principals["principals"][1][
+        "did"
+    ]
+    worker_image = probe_worker_image_for_observation(
+        source_identity=identity_before,
+    )
+    container_profile = probe_container_profile_for_observation(
+        source_identity=identity_before,
+        worker_image=worker_image,
+    )
+    worker_network = probe_worker_network_for_observation(
+        source_identity=identity_before,
+        principals=principals,
+        container_profile=container_profile,
+    )
+    command_fabric = probe_command_fabric_for_observation(
+        source_identity=identity_before,
+        worker_network=worker_network,
+    )
+    native_lane = probe_native_lane_for_observation(
+        source_identity=identity_before,
+        command_fabric=command_fabric,
+    )
+    plan_r2 = probe_plan_r2_for_observation(
+        source_identity=identity_before,
+        native_lane=native_lane,
+        principals=principals,
+    )
+    candidate_evidence_by_task = {
+        "EAAEF-184": provider_authorization,
+        "EAAEF-185": worker_image,
+        "EAAEF-186": container_profile,
+        "EAAEF-187": worker_network,
+        "EAAEF-188": command_fabric,
+        "EAAEF-189": native_lane,
+        "EAAEF-190": plan_r2,
+    }
+    evidence_by_task = {
+        task_id: _typed_missing_artifact(
+            artifact=str(candidate.get("artifact") or task_id),
+            reason=HOST_ADMISSION_OBSERVATION_DIAGNOSTIC_BLOCKER,
+            extra={
+                "configured_board_launch": False,
+                "diagnostic_only": True,
+                "diagnostic_candidate_decision": str(
+                    candidate.get("decision") or "typed_missing"
+                ),
+                "diagnostic_candidate_evidence_cid": cid(dict(candidate)),
+                "diagnostic_candidate_artifact_cid": str(
+                    candidate.get("artifact_cid") or ""
+                ),
+                "self_contained_public_proof_embedded": False,
+                "casf_owner_reverification_required": True,
+            },
+        )
+        for task_id, candidate in candidate_evidence_by_task.items()
+    }
+    receipts: dict[str, dict[str, Any]] = {
+        task_id: dict(parent_receipts[task_id])
+        for task_id in EARLY_FRONTIER_TASK_IDS
+    }
+    receipts.update(
+        {
+            task_id: _base_receipt(
+                task_id,
+                decision=str(evidence.get("decision") or "typed_missing"),
+                evidence=evidence,
+                source_identity=identity_before,
+            )
+            for task_id, evidence in evidence_by_task.items()
+        }
+    )
+    child_receipt_cids = {
+        task_id: str(receipts[task_id]["receipt_cid"])
+        for task_id in HOST_ADMISSION_OBSERVATION_TASK_IDS
+        if task_id != "EAAEF-191"
+    }
+    inventory_evidence = receipts["EAAEF-180"].get("evidence")
+    inventory = inventory_evidence if isinstance(inventory_evidence, Mapping) else {}
+    statement = inventory.get("bootstrap_admission_statement")
+    bootstrap_cid = (
+        str(statement.get("statement_cid") or "")
+        if isinstance(statement, Mapping)
+        else ""
+    )
+    open_host_gates = [
+        str(item.get("blocker") or "")
+        for item in inventory.get("items") or ()
+        if isinstance(item, Mapping)
+        and item.get("class") == "host_gated_external_authority"
+        and str(item.get("blocker") or "")
+    ]
+    receipts["EAAEF-191"] = _base_receipt(
+        "EAAEF-191",
+        decision="no_go",
+        evidence={
+            "child_receipt_cids": child_receipt_cids,
+            "launch_plan_allowed": False,
+            "bootstrap_admission_statement_cid": bootstrap_cid or None,
+            "materialization_receipt_cid": str(
+                inventory.get("materialization_receipt_cid") or ""
+            ),
+            "independent_operator_signature": "",
+            "independent_security_reviewer_signature": "",
+            "operator_did": "",
+            "security_reviewer_did": "",
+            "independent_signature_present": False,
+            "prospective_supervisor_signature_rejected": True,
+            "inventory_open_host_gated": open_host_gates,
+            "observation_only": True,
+            "final_bundle_published": False,
+            "eaaef_191_authority": False,
+        },
+        source_identity=identity_before,
+    )
+    return receipts
+
+
+def collect_host_admission_and_publish_observation(
+    *,
+    early_frontier_observation_cid: str,
+    authority_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Publish a current full observation without runtime or staging effects."""
+
+    if not _full_sha256(early_frontier_observation_cid):
+        raise ValueError("full observation early-frontier CID is invalid")
+    return publish_host_admission_observation(
+        early_frontier_observation_cid=early_frontier_observation_cid,
         authority_root=authority_root,
     )
 
