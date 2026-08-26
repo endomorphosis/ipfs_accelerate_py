@@ -1,0 +1,62 @@
+{
+  "acceptance_cid": "baguqeeram562re6snweb5nuinwprb4ehccvkin7kpylihktizlirsss7pllq",
+  "argv": [
+    "/usr/bin/python3.12",
+    "-S",
+    "scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py",
+    "--network"
+  ],
+  "baseline": {
+    "nested_gitlink": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+    "nested_tree": "7169c2a67929044a02350bc26d0a51c853a4981b",
+    "outer_commit": "20ef9e48d59b505b04e6236a9a31aaba287c36fd",
+    "outer_tree": "dcc71e6806dc12d32b0ae5f7655a60572c40ec30"
+  },
+  "cwd": ".",
+  "ended_at_utc": "2026-08-26T05:11:43.445221+00:00",
+  "environment": {
+    "executable": "/usr/bin/python3.12",
+    "no_site": true,
+    "path": "/usr/bin:/bin",
+    "pythonpath": "/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages"
+  },
+  "exit_code": 0,
+  "mode": "network",
+  "note": "Fresh run at the PGIR-205 baseline; it does not circularly name the PGIR-211 completion commit as RESULT(PGIR-211).",
+  "pgir_205_execution_authorized": false,
+  "result_identity": "RESULT(PGIR-211)",
+  "run_cid": "baguqeerajzm5jdegqw6ihv3kbyggz4vxxeo6yqi6j4oxwdkeob6vqf2ve3aa",
+  "run_sha256": "sha256:4e59d48c8685bc83d76a0e0c6cf2b7b91dec411e4f1d7b0d44707d58175526c0",
+  "schema": "proof-grounded-ir-learning/pgir-211-baseline-verifier-run@1",
+  "started_at_utc": "2026-08-26T05:09:33.963325+00:00",
+  "stderr_empty": true,
+  "stderr_raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+  "stderr_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_size_bytes": 0,
+  "stdout": {
+    "acceptance_cid": "baguqeeram562re6snweb5nuinwprb4ehccvkin7kpylihktizlirsss7pllq",
+    "completion_authoritative": false,
+    "component_verified": true,
+    "decision": "permanent_no_go",
+    "live_network": {
+      "matched": 21,
+      "receipt_replay_used_as_substitute": false,
+      "requested": 21,
+      "transport": "curl --disable HTTPS exact-revision GET under exact minimal environment"
+    },
+    "pgir_205_execution_authorized": false,
+    "verified": true
+  },
+  "stdout_raw_cid": "bafkreiei4h2z27ycedbebfwlgsk6pdof7r7zqx6uozsrek5sp7iyfdjeim",
+  "stdout_sha256": "sha256:88e1f59d7f0220c24096cb3495e78dc5fc7f985fd47665122bb27fd1828d2443",
+  "stdout_size_bytes": 398,
+  "task_id": "PGIR-205",
+  "verifier_source": {
+    "git_blob": "712be25b94e24cfa2e53a02140bb1885210103c5",
+    "path": "scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py",
+    "raw_cid": "bafkreidu6n2fiblftquo6jezxv6yedl34a4ssf6g2yn56cjtyetcidccii",
+    "revision": "20ef9e48d59b505b04e6236a9a31aaba287c36fd",
+    "sha256": "sha256:74f3745405659c28ef2499bd7d820d7be0392917c6d61bdf0933c126240c4242",
+    "size_bytes": 197030
+  }
+}

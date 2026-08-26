@@ -1,0 +1,130 @@
+{
+  "admitted": false,
+  "authorizes_execution": false,
+  "candidate_graph_id": "baguqeeramn3kinfzy5aaxdturzuokmbvvgsyhxlu6rffgahez4ityj77e42q",
+  "candidate_plan_id": "baguqeeraukisqjimylkyns2gr7af5imn4pmkv45gnja52c5vug4shc7lj7sq",
+  "checked_assumption_ids": [
+    "assumption:all-required-identities-resolved",
+    "assumption:training-corpus-admitted"
+  ],
+  "checked_dependency_ids": [
+    "dependency:PGIR-206",
+    "dependency:PGIR-207"
+  ],
+  "checked_validation_ids": [
+    "validation:current-baseline",
+    "validation:integrated-evidence",
+    "validation:lineage-leakage",
+    "validation:portability",
+    "validation:referential-integrity",
+    "validation:rights-admission",
+    "validation:tokenizer-admission"
+  ],
+  "closure_id": "",
+  "compiler_version": 1,
+  "counterexamples": [],
+  "cve_security_evidence_ids": [],
+  "generated_formula_ids": [],
+  "generated_formulas_are_proofs": false,
+  "intent_result_id": "",
+  "legal_permission_ids": [],
+  "legal_result_ids": [],
+  "local_replan_action_ids": [
+    "replan:admit-rights-qualified-corpus",
+    "replan:complete-required-holdouts",
+    "replan:publish-or-document-portability-no-go",
+    "replan:qualify-current-semantic-baseline",
+    "replan:supersede-campaign-freeze-root"
+  ],
+  "permissions_are_grants": false,
+  "proof_result_ids": [],
+  "reason_codes": [
+    "assumption_unresolved",
+    "validation_failed"
+  ],
+  "receipt_id": "baguqeeranh57nf23krpy5qwgrivpnp2z7o2a5gcdzulvm73ekbb6upk6rwda",
+  "rejection_reasons": [
+    {
+      "action_id": "",
+      "code": "assumption_unresolved",
+      "dependency_id": "",
+      "details": {
+        "quarantined_source_count": 7173,
+        "training_admitted_rows": 0
+      },
+      "domain": "assumption",
+      "effect_id": "",
+      "message": "No source row has rights authority for learned training under this freeze.",
+      "obligation_id": "",
+      "rejection_id": "baguqeeraehyqqmilruoenm5miol4wn57zpf2goaeqo4uvp6avh3oag6awpma",
+      "schema": "ipfs_accelerate_py/agent-supervisor/plan-admission-rejection@1",
+      "source_ids": [
+        "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+        "baguqeerav4mx4d6smnpejeqs3i3mayqmlimpdwaeqmz7prpdpgphp2i5srwq"
+      ]
+    },
+    {
+      "action_id": "",
+      "code": "validation_failed",
+      "dependency_id": "",
+      "details": {
+        "failed_gates": [
+          "corpus",
+          "current_baseline",
+          "holdouts",
+          "integrated_evidence",
+          "portability",
+          "rights",
+          "tokenizer"
+        ],
+        "insufficient_holdouts": [
+          "compiler",
+          "cross_reference",
+          "domain",
+          "exception",
+          "length",
+          "lineage",
+          "notation",
+          "premise",
+          "proof_library",
+          "publication",
+          "rare_operator",
+          "time",
+          "type"
+        ],
+        "portability_status": "portability_no_go",
+        "semantic_baseline_currently_qualified": false
+      },
+      "domain": "validation",
+      "effect_id": "",
+      "message": "Rights, corpus, holdout, tokenizer, current-baseline, integrated-evidence, and portability gates are not all passed.",
+      "obligation_id": "",
+      "rejection_id": "baguqeerasuieidtw4uhb6u2s4ojvlk7ismxc5slzwy7lr7xyocnaok6qrwoq",
+      "schema": "ipfs_accelerate_py/agent-supervisor/plan-admission-rejection@1",
+      "source_ids": [
+        "baguqeera456gtyfkktybzrjbujmp2mqy6i2bins372xgdsgvaahdcvpxy7aq",
+        "baguqeeradpx7df7p3fxzcaurrrlx7rhxjuo4nr2w4lrehmqplzilq675r2qa",
+        "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q"
+      ]
+    }
+  ],
+  "repository_tree_id": "dcc71e6806dc12d32b0ae5f7655a60572c40ec30",
+  "request_id": "baguqeeradblwvi4jqw6kabhe3lyjg4jexlzqvd76chztwlqlyummuxmprdqq",
+  "requirement_id": "287667496524558776121661391058779883318",
+  "schema": "ipfs_accelerate_py/agent-supervisor/plan-admission-receipt@1",
+  "security_decision_ids": [],
+  "security_grant_ids": [],
+  "semantic_roots": {
+    "campaign": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+    "compiler": "baguqeerarxul7wfpbcka6lzwbe6afembjteohwfdps6mjh7pntg7xlz7ywta",
+    "corpus": "baguqeera5mphxryqluiqps6ciehcjs6twc6hrltfwdtpy47wtkkg7ifqwvwa",
+    "decompiler": "baguqeeracirjnyp5plk7uobfwoj2bol3hgqhnr6a4k7geipnex3drntqrnxq",
+    "examples": "baguqeerapld5wgxakz4mnw4fd237durw4mice7rtmieqkqqzsxbqunlermrq",
+    "policy": "baguqeerar7fn7elcpmd4q7lm3kjyezxkrocnucx7m2pxmgysji3x73rx5zdq",
+    "schema": "baguqeeraj2jmxcqbtesbxxjcbbg2ced2o46woub6wsanfbdccelyjmzc6nra",
+    "source": "baguqeerambigsx5yot5dasfs2rqwj2vu7vnkqlg2jbd2evn6f6b5vkfwuv4q",
+    "split": "baguqeera456gtyfkktybzrjbujmp2mqy6i2bins372xgdsgvaahdcvpxy7aq",
+    "tokenizer_policy": "baguqeeradpx7df7p3fxzcaurrrlx7rhxjuo4nr2w4lrehmqplzilq675r2qa"
+  },
+  "verdict": "rejected"
+}

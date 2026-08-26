@@ -1,0 +1,64 @@
+{
+  "all_integrity_checks_passed": true,
+  "authorizes_execution": false,
+  "campaign_decision": "no_go",
+  "campaign_input_root_cid": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+  "checks": [
+    {
+      "check_id": "previous-root-cid",
+      "evidence": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+      "status": "passed"
+    },
+    {
+      "check_id": "canonical-root-identity",
+      "evidence": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+      "status": "passed"
+    },
+    {
+      "check_id": "pgir-211-result",
+      "evidence": "baguqeeram562re6snweb5nuinwprb4ehccvkin7kpylihktizlirsss7pllq",
+      "status": "passed"
+    },
+    {
+      "check_id": "pgir-211-later-forest",
+      "evidence": "20ef9e48d59b505b04e6236a9a31aaba287c36fd",
+      "status": "passed"
+    },
+    {
+      "check_id": "fresh-pgir-211-verifier-run",
+      "evidence": "baguqeerajzm5jdegqw6ihv3kbyggz4vxxeo6yqi6j4oxwdkeob6vqf2ve3aa",
+      "status": "passed"
+    },
+    {
+      "check_id": "rights-corpus-holdout-tokenizer-baseline-integrated-portability-gates",
+      "evidence": "all seven gates evaluated; none authorize learned execution",
+      "status": "passed"
+    },
+    {
+      "check_id": "portability-documented-no-go",
+      "evidence": "baguqeera2ua47f7yht3oijt5vg4nzjsgnd7d75w5tdfw52fg6hj6v4tbmqfa",
+      "status": "passed"
+    },
+    {
+      "check_id": "descendant-task-revisions",
+      "evidence": "baguqeeraukisqjimylkyns2gr7af5imn4pmkv45gnja52c5vug4shc7lj7sq",
+      "status": "passed"
+    },
+    {
+      "check_id": "supervisor-plan-admission",
+      "evidence": "baguqeeranh57nf23krpy5qwgrivpnp2z7o2a5gcdzulvm73ekbb6upk6rwda",
+      "status": "passed"
+    },
+    {
+      "check_id": "fail-closed-lease-barrier",
+      "evidence": "no-go root revises 2 descendants with zero lease-eligible tasks",
+      "status": "passed"
+    }
+  ],
+  "plan_admission_receipt_id": "baguqeeranh57nf23krpy5qwgrivpnp2z7o2a5gcdzulvm73ekbb6upk6rwda",
+  "receipt_cid": "baguqeeraxjwl7huyq2d5py3itpji5epx5om5a65f53vathq3jcmkfvxrr5sa",
+  "revision_set_cid": "baguqeeraukisqjimylkyns2gr7af5imn4pmkv45gnja52c5vug4shc7lj7sq",
+  "schema": "PGIRFreezeVerificationReceipt@1",
+  "verification_verdict": "verified",
+  "verifier_interface": "pgir-successor-freeze-independent-verifier/v1"
+}

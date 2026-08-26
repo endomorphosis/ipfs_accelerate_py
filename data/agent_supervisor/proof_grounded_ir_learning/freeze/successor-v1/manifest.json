@@ -1,0 +1,69 @@
+{
+  "artifact_count": 10,
+  "artifacts": {
+    "README.md": {
+      "raw_cid": "bafkreigqvgbggd6brtggl74rae3lhefampvtsccvnqy3fatpyqe6rcvsia",
+      "sha256": "sha256:d0a982630fc18ccc65ff910136b390a063eb3908556c31b2826fc409e88ab240",
+      "size_bytes": 3473
+    },
+    "build_campaign_freeze.py": {
+      "raw_cid": "bafkreibtwxuhlfesx4lrylxpty3yyenpj3c4haudcbcux22ylnktapc2ue",
+      "sha256": "sha256:33b5e8759492bf171c2eef9e378c11af4ec5c3828310454beb585b55303c5aa1",
+      "size_bytes": 72911
+    },
+    "campaign_input_root.json": {
+      "raw_cid": "bafkreicqyvgpe5oeo6hxoo5pltf5jqqgwpghbctukcuvqqu3jnttupwbra",
+      "sha256": "sha256:50c54cf275c4778f773baf5ccbd4c206b3cc708a7450a958429b4b673a3ec188",
+      "size_bytes": 39134
+    },
+    "descendant_task_revisions.json": {
+      "raw_cid": "bafkreidewtepsxr24bg57562b2qpz5yvfuyljr2g36ilndcehv77jtkk6q",
+      "sha256": "sha256:64b4c8f95e3ae04ddff7da0ea0fcf7152d30b4c746df90b68c443d7ff4cd4af4",
+      "size_bytes": 3975
+    },
+    "ir_campaign_input_root.schema.json": {
+      "raw_cid": "bafkreidvuforex2wnuuo6tvttlfrycnbfpnj3avoynbq4ganbiyzkprcdy",
+      "sha256": "sha256:75a15d125f566d28ef4eb39acb1c09a12bda9d82aec3430e180d0a31953e221e",
+      "size_bytes": 22108
+    },
+    "pgir_211_baseline_verifier_run.json": {
+      "raw_cid": "bafkreicuto2ticet2ho5qqfd2wfpcqd3sxulxeflp5yhsp77k5gzzlpuni",
+      "sha256": "sha256:549bb5340893d1ddd840a3d58af1407b95e8bb90ab7f70793fff574d9cadf46a",
+      "size_bytes": 2774
+    },
+    "plan_admission_receipt.json": {
+      "raw_cid": "bafkreihaahn3h5i7buawlommyylkjbywcehoesvta2mr5e3dwhxgmmefbm",
+      "sha256": "sha256:e001dbb3f51f0d0165b98cc616a48716110ee24ab306991e9363b1ee6630850b",
+      "size_bytes": 4855
+    },
+    "portability_receipt.json": {
+      "raw_cid": "bafkreiaei2fe4ddjgnikkk7sqtj2wodybjbusddtljdkdod6llpkbuybtq",
+      "sha256": "sha256:04468a4e0c693350a52bf284d3ab38780a43490c735a46a1b87e5adea0d3019c",
+      "size_bytes": 1828
+    },
+    "verification_receipt.json": {
+      "raw_cid": "bafkreiasgqpy76ooq4wuuksbqgpytmdrjxgd2y5qiasxfzd5n3ezglv37e",
+      "sha256": "sha256:12341f8ff9ce872d4a2a41819f89b0714dcc3d63b0402572e47d6ec9932ebbf9",
+      "size_bytes": 2326
+    },
+    "verify_campaign_freeze.py": {
+      "raw_cid": "bafkreie6i2i4pbk3wqgnephfmds32weimli4yiybsafv3n4u6qyybs26ve",
+      "sha256": "sha256:9e4691c7855bb40cd23ce560e5bd588862d1cc2301900b5db794f43180cb5ea9",
+      "size_bytes": 90942
+    }
+  },
+  "campaign_input_root_cid": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+  "decision": "no_go",
+  "descendant_execution_authorized": false,
+  "immutability": "supersede_never_overwrite",
+  "manifest_cid": "baguqeeraw4k4u62ddeg2cvpn6qjqn3nwd2mdzrczc373zgtt67hbkgkrlbaq",
+  "pgir_211_acceptance_cid": "baguqeeram562re6snweb5nuinwprb4ehccvkin7kpylihktizlirsss7pllq",
+  "pgir_211_verifier_run_cid": "baguqeerajzm5jdegqw6ihv3kbyggz4vxxeo6yqi6j4oxwdkeob6vqf2ve3aa",
+  "plan_admission_receipt_id": "baguqeeranh57nf23krpy5qwgrivpnp2z7o2a5gcdzulvm73ekbb6upk6rwda",
+  "portability_receipt_cid": "baguqeera2ua47f7yht3oijt5vg4nzjsgnd7d75w5tdfw52fg6hj6v4tbmqfa",
+  "previous_root_cid": "baguqeerarkgpz4xl663tlpfpiajjtxlya3b576lqzg5yd7nrthqgs2rm6v2q",
+  "revision_set_cid": "baguqeeraukisqjimylkyns2gr7af5imn4pmkv45gnja52c5vug4shc7lj7sq",
+  "schema": "PGIRSuccessorFreezeBundleManifest@1",
+  "task_id": "PGIR-205",
+  "verification_receipt_cid": "baguqeeraxjwl7huyq2d5py3itpji5epx5om5a65f53vathq3jcmkfvxrr5sa"
+}
