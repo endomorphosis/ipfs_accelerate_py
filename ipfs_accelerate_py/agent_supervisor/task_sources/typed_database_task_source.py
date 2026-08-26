@@ -123,6 +123,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "txn_record_idempotency",
         "txn_cas_task_status",
         "executor_cas_task_status_receipt",
+        "executor_insert_completion_receipt",
         "executor_insert_task_revision",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
@@ -1305,12 +1306,14 @@ class TypedDatabaseTaskSource:
         digest = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
         result = self._client.cas_task_status(
             task_cid=prior.task_cid,
+            goal_cid=prior.goal_cid,
             expected_task_revision=expected_revision,
             new_status=requested_status,
             idempotency_key=f"executor-cas:{digest}",
             command_id=f"executor-cas:{digest}",
             body=merged_body,
             expected_control_receipt=expected_control_receipt,
+            evidence_digests=evidence_digests,
         )
         if not result.accepted:
             raise TaskSourceConflictError(
@@ -1321,13 +1324,23 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError("task disappeared after status CAS")
         if updated.status != requested_status:
             raise TaskSourceIntegrityError("task status CAS returned inconsistent state")
+        completion_receipt_cid = str(
+            result.result.get("completion_receipt_cid") or ""
+        )
+        if (
+            requested_status in _COMPLETED_STATUSES
+            and not completion_receipt_cid
+        ):
+            raise TaskSourceIntegrityError(
+                "completed task status CAS returned no normalized completion receipt"
+            )
         return DatabaseCASResult(
             task=updated,
             previous_status=prior.status,
             revision=updated.revision,
             event_cursor=self.snapshot().event_cursor,
             changed=bool(result.changed),
-            receipt_cid=str(result.result_digest or ""),
+            receipt_cid=completion_receipt_cid or str(result.result_digest or ""),
         )
 
     cas_status = compare_and_set_status

@@ -82,7 +82,9 @@ SECRET_HANDLE_PREFIXES: Final[tuple[str, ...]] = (
 _LARGE_STATE_COMMAND_TEXT_FIELDS: Final[TypingMapping[str, frozenset[str]]] = (
     MappingProxyType(
         {
-            "task.status.cas.receipt": frozenset({"body_json"}),
+            "task.status.cas.receipt": frozenset(
+                {"body_json", "evidence_digests_json"}
+            ),
             "task.claim.reservation.recover": frozenset({"body_json"}),
             "task.validation.record.passed": frozenset(
                 {

@@ -86,6 +86,8 @@ from .typed_state_owner import (
     TypedStateOwnerError,
     _process_birth_content_id,
     _process_runtime_facts,
+    _strict_scalar_equal,
+    _validated_database_claim_process_attestation,
     _validated_stored_retry_cooldown,
     completion_progress_request,
     open_typed_state_owner_connection,
@@ -124,6 +126,15 @@ _PROTECTED_REOPENED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
         "in_progress",
         "running",
     }
+)
+_COMPLETED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {"completed", "skipped", "complete", "done"}
+)
+_COMPLETION_EVIDENCE_ID_RE: Final = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$"
+)
+_TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1"
 )
 _SAFE_IDENTIFIER_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PLACEHOLDER_RE: Final = re.compile(r"\?")
@@ -769,6 +780,33 @@ def _default_templates() -> dict[str, StatementTemplate]:
             kind=StatementKind.MUTATION,
             description=(
                 "Append the exact task lifecycle revision written by a receipt CAS"
+            ),
+        ),
+        "executor_insert_completion_receipt": StatementTemplate(
+            name="executor_insert_completion_receipt",
+            sql=(
+                "INSERT INTO completion_receipts ("
+                "receipt_cid, task_cid, goal_cid, attempt_id, claim_cid, "
+                "fencing_token, completed_at, validation_run_id, "
+                "evidence_digest, body_json"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "RETURNING receipt_cid"
+            ),
+            parameter_names=(
+                "receipt_cid",
+                "task_cid",
+                "goal_cid",
+                "attempt_id",
+                "claim_cid",
+                "fencing_token",
+                "completed_at",
+                "validation_run_id",
+                "evidence_digest",
+                "body_json",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Insert the normalized evidence receipt for a completed task revision"
             ),
         ),
         "insert_goal": StatementTemplate(
@@ -2123,28 +2161,75 @@ class QuackStateClient:
         self,
         *,
         task_cid: str,
+        goal_cid: str | None = None,
         expected_task_revision: int,
         new_status: str,
         idempotency_key: str,
         command_id: str | None = None,
         body: Mapping[str, Any] | None = None,
         expected_control_receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
     ) -> CASResult:
         """Convenience CAS for task status using the closed template set."""
 
+        requested_status = str(new_status or "").strip().lower()
+        completing = body is not None and requested_status in _COMPLETED_TASK_STATUSES
+        if requested_status in _COMPLETED_TASK_STATUSES and body is None:
+            raise QuackClientError(
+                "completed task status requires a receipt-bearing status CAS"
+            )
         if expected_control_receipt is not None and (
             not isinstance(expected_control_receipt, Mapping) or body is None
         ):
             raise QuackClientError(
                 "expected control receipt requires a receipt-bearing status CAS"
             )
-        session = self._require_session()
-        live = self.load_generation()
         body_json = (
             canonical_json_bytes(dict(body)).decode("utf-8")
             if body is not None
             else ""
         )
+        body_snapshot = json.loads(body_json) if body_json else {}
+        supplied_control_receipt = (
+            body_snapshot.get("completion_receipt")
+            if isinstance(body_snapshot, Mapping)
+            else None
+        )
+        if (
+            completing
+            and isinstance(supplied_control_receipt, Mapping)
+            and supplied_control_receipt.get("operation") == "database_complete"
+            and expected_control_receipt is None
+        ):
+            raise QuackClientError(
+                "database completion requires the expected admitted control receipt"
+            )
+        normalized_goal_cid = str(goal_cid or "").strip()
+        raw_evidence_digests = evidence_digests or ()
+        if isinstance(raw_evidence_digests, (str, bytes, bytearray)):
+            raise QuackClientError("completion evidence_digests must be a sequence")
+        normalized_evidence_digests = tuple(
+            str(item).strip() for item in raw_evidence_digests
+        )
+        if (
+            len(normalized_evidence_digests) > MAX_PAGE_LIMIT
+            or any(
+                not item or _COMPLETION_EVIDENCE_ID_RE.fullmatch(item) is None
+                for item in normalized_evidence_digests
+            )
+            or len(set(normalized_evidence_digests))
+            != len(normalized_evidence_digests)
+        ):
+            raise QuackClientError(
+                "completion evidence_digests are invalid, duplicate, or out of bounds"
+            )
+        if completing and not normalized_goal_cid:
+            raise QuackClientError("completed task status CAS requires goal_cid")
+        evidence_digests_json = canonical_json_bytes(
+            list(normalized_evidence_digests)
+        ).decode("utf-8")
+        session = self._require_session()
+        live = self.load_generation()
         expected_control_receipt_json = (
             canonical_json_bytes(dict(expected_control_receipt)).decode("utf-8")
             if expected_control_receipt is not None
@@ -2170,8 +2255,16 @@ class QuackStateClient:
                 "operation": operation,
                 "task_cid": task_cid,
                 "expected_task_revision": expected_task_revision,
-                "status": new_status,
+                "status": requested_status,
                 **({"body_json": body_json} if body is not None else {}),
+                **(
+                    {
+                        "goal_cid": normalized_goal_cid,
+                        "evidence_digests_json": evidence_digests_json,
+                    }
+                    if completing
+                    else {}
+                ),
                 **(
                     {
                         "expected_control_receipt_json": (
@@ -2193,6 +2286,18 @@ class QuackStateClient:
         ) -> Mapping[str, Any]:
             parameters = dict(active.parameters)
             expected = int(parameters["expected_task_revision"])
+            completing_status = str(parameters["status"]) in _COMPLETED_TASK_STATUSES
+            try:
+                next_body = json.loads(str(parameters["body_json"]))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise QuackClientError(
+                    "task status receipt body is malformed"
+                ) from exc
+            control_receipt = (
+                next_body.get("completion_receipt")
+                if isinstance(next_body, Mapping)
+                else None
+            )
             # The remote typed owner performs this semantic check at its
             # transaction boundary.  Embedded mode has no separate owner, so
             # enforce the same closed reopen policy inside this transaction.
@@ -2221,6 +2326,146 @@ class QuackStateClient:
                         task_cid=str(parameters["task_cid"]),
                         expected_control_receipt=expected_receipt,
                     )
+                if completing_status:
+                    from .intent_repository import missing_current_evidence_on
+
+                    task_authority_rows = txn._connection.execute(  # noqa: SLF001
+                        "SELECT goal_cid, status, body_json FROM tasks "
+                        "WHERE task_cid = ? AND revision = ? LIMIT 2",
+                        [str(parameters["task_cid"]), expected],
+                    ).fetchall()
+                    if (
+                        len(task_authority_rows) != 1
+                        or str(task_authority_rows[0][0])
+                        != str(parameters["goal_cid"])
+                    ):
+                        raise QuackClientError(
+                            "completion task revision or goal authority is stale"
+                        )
+                    prior_status = str(task_authority_rows[0][1] or "").lower()
+                    try:
+                        prior_body = json.loads(
+                            str(task_authority_rows[0][2] or "{}")
+                        )
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        raise QuackClientError(
+                            "completion prior task body is malformed"
+                        ) from exc
+                    receipt_map = (
+                        dict(control_receipt)
+                        if isinstance(control_receipt, Mapping)
+                        else {}
+                    )
+                    if receipt_map.get("operation") == "database_complete":
+                        identity_fields = (
+                            "attempt_id",
+                            "claim_id",
+                            "lease_id",
+                            "owner_session_id",
+                            "fencing_token",
+                            "fence_epoch",
+                        )
+                        prior_receipt = (
+                            prior_body.get("completion_receipt")
+                            if isinstance(prior_body, Mapping)
+                            else None
+                        )
+                        if prior_status in _COMPLETED_TASK_STATUSES:
+                            if (
+                                not isinstance(prior_receipt, Mapping)
+                                or canonical_json_bytes(dict(prior_receipt))
+                                != canonical_json_bytes(receipt_map)
+                            ):
+                                raise QuackClientError(
+                                    "same-status completion repair changed its "
+                                    "control receipt"
+                                )
+                            admission_rows = txn._connection.execute(  # noqa: SLF001
+                                "SELECT status, body_json FROM task_revisions "
+                                "WHERE task_cid = ? AND revision = ? LIMIT 2",
+                                [str(parameters["task_cid"]), expected - 1],
+                            ).fetchall()
+                            try:
+                                admission_body = (
+                                    json.loads(str(admission_rows[0][1]))
+                                    if len(admission_rows) == 1
+                                    else None
+                                )
+                            except (
+                                TypeError,
+                                ValueError,
+                                json.JSONDecodeError,
+                            ) as exc:
+                                raise QuackClientError(
+                                    "completion repair admitted task body is malformed"
+                                ) from exc
+                            admission_receipt = (
+                                admission_body.get("completion_receipt")
+                                if isinstance(admission_body, Mapping)
+                                else None
+                            )
+                            if (
+                                len(admission_rows) != 1
+                                or str(admission_rows[0][0] or "").lower()
+                                != "in_progress"
+                                or not isinstance(admission_receipt, Mapping)
+                                or admission_receipt.get("operation")
+                                != "database_attempt_admitted"
+                                or admission_receipt.get("claim_phase_schema")
+                                != _TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                                or any(
+                                    not _strict_scalar_equal(
+                                        receipt_map.get(field),
+                                        admission_receipt.get(field),
+                                    )
+                                    for field in identity_fields
+                                )
+                            ):
+                                raise QuackClientError(
+                                    "same-status completion repair has no bound "
+                                    "admitted predecessor"
+                                )
+                            _validated_database_claim_process_attestation(
+                                admission_receipt
+                            )
+                        if prior_status not in _COMPLETED_TASK_STATUSES:
+                            if (
+                                prior_status != "in_progress"
+                                or not isinstance(prior_receipt, Mapping)
+                                or prior_receipt.get("operation")
+                                != "database_attempt_admitted"
+                                or prior_receipt.get("claim_phase_schema")
+                                != _TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                                or any(
+                                    not _strict_scalar_equal(
+                                        receipt_map.get(field),
+                                        prior_receipt.get(field),
+                                    )
+                                    for field in identity_fields
+                                )
+                            ):
+                                raise QuackClientError(
+                                    "database completion differs from its admitted claim"
+                                )
+                        if (
+                            not normalized_evidence_digests
+                            or receipt_map.get("evidence_digest")
+                            not in normalized_evidence_digests
+                        ):
+                            raise QuackClientError(
+                                "database completion receipt is not bound to its evidence"
+                            )
+                    missing_evidence = missing_current_evidence_on(
+                        txn._connection,  # noqa: SLF001 - same trusted transaction.
+                        str(parameters["task_cid"]),
+                        evidence_digests=normalized_evidence_digests,
+                        now_ms=int(time.time() * 1_000),
+                    )
+                    if missing_evidence:
+                        raise QuackClientError(
+                            "completion refused without current required evidence: "
+                            + ", ".join(missing_evidence)
+                        )
             recorded_at = self._clock()
             result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",
@@ -2261,6 +2506,67 @@ class QuackStateClient:
                         "expected_task_revision": expected,
                     },
                 )
+            completion_receipt_cid = ""
+            completion_evidence_digest = ""
+            if completing_status:
+                from .intent_repository import COMPLETION_EVIDENCE_SCHEMA
+
+                if not isinstance(control_receipt, Mapping):
+                    raise QuackClientError(
+                        "completed task status CAS requires a control receipt"
+                    )
+                receipt_map = dict(control_receipt)
+                completion_evidence_digest = content_identity(
+                    {
+                        "task_cid": str(parameters["task_cid"]),
+                        "revision": expected + 1,
+                        "receipt": receipt_map,
+                        "evidence_digests": list(normalized_evidence_digests),
+                    }
+                )
+                completion_receipt_cid = content_identity(
+                    {
+                        "namespace": "completion-receipt",
+                        "task_cid": str(parameters["task_cid"]),
+                        "revision": expected + 1,
+                        "evidence_digest": completion_evidence_digest,
+                    }
+                )
+                completion_body_json = canonical_json_bytes(
+                    {
+                        "schema": COMPLETION_EVIDENCE_SCHEMA,
+                        "receipt": receipt_map,
+                        "evidence_digests": list(normalized_evidence_digests),
+                        "revision": expected + 1,
+                    }
+                ).decode("utf-8")
+                completion_result = txn.execute_named_operation(
+                    "executor_insert_completion_receipt",
+                    (
+                        completion_receipt_cid,
+                        str(parameters["task_cid"]),
+                        str(parameters["goal_cid"]),
+                        "",
+                        "",
+                        0,
+                        recorded_at,
+                        "",
+                        completion_evidence_digest,
+                        completion_body_json,
+                    ),
+                )
+                completion_row = _fetch_one(completion_result)
+                if (
+                    completion_row is None
+                    or str(completion_row[0]) != completion_receipt_cid
+                ):
+                    raise OptimisticConflictError(
+                        "completion receipt append failed",
+                        details={
+                            "task_cid": str(parameters["task_cid"]),
+                            "expected_task_revision": expected,
+                        },
+                    )
             return {
                 "task_cid": str(parameters["task_cid"]),
                 "status": str(parameters["status"]),
@@ -2268,6 +2574,8 @@ class QuackStateClient:
                 "store_revision_before": generation.revision,
                 "command_id": active.command_id,
                 "receipt_persisted": True,
+                "completion_receipt_cid": completion_receipt_cid,
+                "completion_evidence_digest": completion_evidence_digest,
             }
 
         return self.submit_command(command, apply=apply_receipt)

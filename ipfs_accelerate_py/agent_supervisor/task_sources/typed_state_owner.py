@@ -182,6 +182,10 @@ TYPED_TASK_STATUS_VOCABULARY: Final[frozenset[str]] = frozenset(
         "rejected",
     }
 )
+_COMPLETED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {"completed", "complete", "done", "skipped"}
+)
+_MAX_COMPLETION_EVIDENCE_DIGESTS: Final = 512
 STATUS_BOOTSTRAP_CLIENT_ID: Final = "casf-bootstrap-operator:typed-status"
 STATUS_BOOTSTRAP_GRANT_TTL_SECONDS: Final = 60.0
 STATUS_BOOTSTRAP_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
@@ -1095,6 +1099,46 @@ def _closed_canonical_json_object(
     if canonical != value:
         raise TypedStateOwnerAuthorizationError(f"{noun} is not canonical")
     return parsed, canonical
+
+
+def _closed_completion_evidence_digests(value: Any) -> tuple[str, ...]:
+    """Decode the exact canonical evidence-reference array for completion."""
+
+    if (
+        type(value) is not str
+        or not value
+        or len(value.encode("utf-8")) > _MAX_EXECUTOR_TASK_BODY_JSON_BYTES
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "completion evidence_digests_json is malformed"
+        )
+    try:
+        parsed = json.loads(value)
+        canonical = canonical_json_bytes(parsed).decode("utf-8")
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "completion evidence_digests_json is malformed"
+        ) from exc
+    if (
+        type(parsed) is not list
+        or len(parsed) > _MAX_COMPLETION_EVIDENCE_DIGESTS
+        or canonical != value
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "completion evidence_digests_json is outside its closed bound"
+        )
+    evidence_digests = tuple(
+        _completion_progress_identity(
+            item,
+            noun="completion evidence digest reference",
+        )
+        for item in parsed
+    )
+    if len(set(evidence_digests)) != len(evidence_digests):
+        raise TypedStateOwnerAuthorizationError(
+            "completion evidence digest references are duplicate"
+        )
+    return evidence_digests
 
 
 def _validated_database_claim_identity(
@@ -2060,6 +2104,7 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
         "task.status.cas.receipt": frozenset(
             {
                 "executor_cas_task_status_receipt",
+                "executor_insert_completion_receipt",
                 "executor_insert_task_revision",
             }
         ),
@@ -2166,9 +2211,12 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
             ),
             "event.acknowledge": _COMMAND_MUTATION_CATALOG["event.acknowledge"],
             "task.status.cas": frozenset({"txn_cas_task_status"}),
-            "task.status.cas.receipt": _COMMAND_MUTATION_CATALOG[
-                "task.status.cas.receipt"
-            ],
+            "task.status.cas.receipt": frozenset(
+                {
+                    "executor_cas_task_status_receipt",
+                    "executor_insert_task_revision",
+                }
+            ),
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: (
                 _COMMAND_MUTATION_CATALOG[
                     TYPED_DATABASE_CLAIM_RECOVERY_COMMAND
@@ -3917,22 +3965,55 @@ class TypedStateOwnerGateway:
                     "body_json",
                 }
                 supplied_receipt_fields = frozenset(command.parameters)
-                if supplied_receipt_fields not in {
-                    frozenset(required_receipt_fields),
+                requested_status = command.parameters.get("status")
+                completion_fields = (
+                    {"goal_cid", "evidence_digests_json"}
+                    if requested_status in _COMPLETED_TASK_STATUSES
+                    else set()
+                )
+                admitted_fields = {
+                    frozenset({*required_receipt_fields, *completion_fields}),
                     frozenset(
                         {
                             *required_receipt_fields,
+                            *completion_fields,
                             "expected_control_receipt_json",
                         }
                     ),
-                }:
+                }
+                if supplied_receipt_fields not in admitted_fields:
                     raise TypedStateOwnerAuthorizationError(
                         "task status receipt command differs from its closed schema"
                     )
-                _closed_canonical_json_object(
+                receipt_body, _ = _closed_canonical_json_object(
                     command.parameters.get("body_json"),
                     noun="task status receipt body",
                 )
+                if requested_status in _COMPLETED_TASK_STATUSES:
+                    _completion_progress_identity(
+                        command.parameters.get("goal_cid"),
+                        noun="completion goal_cid",
+                    )
+                    _closed_completion_evidence_digests(
+                        command.parameters.get("evidence_digests_json")
+                    )
+                    if not isinstance(
+                        receipt_body.get("completion_receipt"), Mapping
+                    ) or not receipt_body.get("completion_receipt"):
+                        raise TypedStateOwnerAuthorizationError(
+                            "completed task status CAS requires a control receipt"
+                        )
+                    if (
+                        grant.client_id.startswith(
+                            "database-implementation-daemon:"
+                        )
+                        and "expected_control_receipt_json"
+                        not in command.parameters
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "database completion requires the expected admitted "
+                            "control receipt"
+                        )
             requested_status = command.parameters.get("status")
             if (
                 not isinstance(requested_status, str)
@@ -3950,6 +4031,13 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "typed executor in-progress transition requires a claim receipt"
+                )
+            if (
+                operation == "task.status.cas"
+                and requested_status in _COMPLETED_TASK_STATUSES
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "completed task status requires a receipt-bearing status CAS"
                 )
         if operation in _FEDERATION_COMMANDS:
             for field in ("tenant_id", "federation_id"):
@@ -4790,6 +4878,228 @@ class TypedStateOwnerGateway:
                     "claim_phase_schema": phase_schema,
                     "claim_identity": next_identity,
                     "claim_process_attestation": next_attestation,
+                }
+            requested_status = str(
+                command.parameters.get("status") or ""
+            ).strip().lower()
+            if requested_status in _COMPLETED_TASK_STATUSES:
+                task_cid = str(command.parameters.get("task_cid") or "").strip()
+                expected_revision = command.parameters.get(
+                    "expected_task_revision"
+                )
+                task_rows = self._connection.execute(
+                    """
+                    SELECT goal_cid, status, revision, body_json FROM tasks
+                    WHERE task_cid = ? LIMIT 2
+                    """,
+                    [task_cid],
+                ).fetchall()
+                if len(task_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "completion task authority is absent or ambiguous"
+                    )
+                task_row = task_rows[0]
+                goal_cid = str(task_row[0] or "")
+                prior_status = str(task_row[1] or "").strip().lower()
+                if (
+                    type(expected_revision) is not int
+                    or expected_revision < 0
+                    or int(task_row[2]) != expected_revision
+                    or command.parameters.get("goal_cid") != goal_cid
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "completion task revision or goal authority is stale"
+                    )
+                prior_body, _ = _closed_canonical_json_object(
+                    task_row[3],
+                    noun="completion prior task body",
+                )
+                control_receipt = next_body.get("completion_receipt")
+                if not isinstance(control_receipt, Mapping) or not control_receipt:
+                    raise TypedStateOwnerAuthorizationError(
+                        "completion control receipt is unavailable"
+                    )
+                receipt_map = dict(control_receipt)
+                if (
+                    grant.client_id.startswith("database-implementation-daemon:")
+                    and receipt_map.get("operation") != "database_complete"
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database completion receipt operation differs"
+                    )
+                prior_receipt = prior_body.get("completion_receipt")
+                typed_database_completion = grant.client_id.startswith(
+                    "database-implementation-daemon:"
+                )
+                completion_identity_names = (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+                if (
+                    typed_database_completion
+                    and prior_status not in _COMPLETED_TASK_STATUSES
+                ):
+                    if (
+                        prior_status != "in_progress"
+                        or not isinstance(prior_receipt, Mapping)
+                        or prior_receipt.get("operation")
+                        != "database_attempt_admitted"
+                        or prior_receipt.get("claim_phase_schema")
+                        != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "database completion has no admitted claim authority"
+                        )
+                    prior_identity = _validated_database_claim_identity(
+                        prior_receipt
+                    )
+                    _require_database_claim_process_attestation(
+                        prior_receipt,
+                        grant=grant,
+                    )
+                    if any(
+                        not _strict_scalar_equal(
+                            receipt_map.get(name), prior_identity[name]
+                        )
+                        for name in completion_identity_names
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "database completion differs from its admitted claim"
+                        )
+                if (
+                    typed_database_completion
+                    and prior_status in _COMPLETED_TASK_STATUSES
+                ):
+                    admission_rows = self._connection.execute(
+                        """
+                        SELECT status, body_json FROM task_revisions
+                        WHERE task_cid = ? AND revision = ? LIMIT 2
+                        """,
+                        [task_cid, expected_revision - 1],
+                    ).fetchall()
+                    if len(admission_rows) != 1:
+                        raise TypedStateOwnerAuthorizationError(
+                            "same-status completion repair has no unique prior revision"
+                        )
+                    admission_body, _ = _closed_canonical_json_object(
+                        admission_rows[0][1],
+                        noun="completion repair admitted task body",
+                    )
+                    admission_receipt = admission_body.get(
+                        "completion_receipt"
+                    )
+                    if (
+                        str(admission_rows[0][0] or "").strip().lower()
+                        != "in_progress"
+                        or not isinstance(admission_receipt, Mapping)
+                        or admission_receipt.get("operation")
+                        != "database_attempt_admitted"
+                        or admission_receipt.get("claim_phase_schema")
+                        != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "same-status completion repair has no admitted predecessor"
+                        )
+                    admission_identity = _validated_database_claim_identity(
+                        admission_receipt
+                    )
+                    _validated_database_claim_process_attestation(
+                        admission_receipt
+                    )
+                    if any(
+                        not _strict_scalar_equal(
+                            receipt_map.get(name), admission_identity[name]
+                        )
+                        for name in completion_identity_names
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "same-status completion repair differs from its "
+                            "admitted predecessor"
+                        )
+                if (
+                    prior_status in _COMPLETED_TASK_STATUSES
+                    and (
+                        not isinstance(prior_receipt, Mapping)
+                        or canonical_json_bytes(dict(prior_receipt))
+                        != canonical_json_bytes(receipt_map)
+                    )
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "same-status completion repair changed its control receipt"
+                    )
+                evidence_digests = _closed_completion_evidence_digests(
+                    command.parameters.get("evidence_digests_json")
+                )
+                if (
+                    typed_database_completion
+                    and (
+                        not evidence_digests
+                        or receipt_map.get("evidence_digest")
+                        not in evidence_digests
+                    )
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "database completion receipt is not bound to its evidence"
+                    )
+                from .intent_repository import (
+                    COMPLETION_EVIDENCE_SCHEMA,
+                    missing_current_evidence_on,
+                )
+
+                missing_evidence = missing_current_evidence_on(
+                    self._connection,
+                    task_cid,
+                    evidence_digests=evidence_digests,
+                    now_ms=int(time.time() * 1_000),
+                )
+                if missing_evidence:
+                    raise TypedStateOwnerAuthorizationError(
+                        "completion refused without current required evidence: "
+                        + ", ".join(missing_evidence)
+                    )
+                revision = expected_revision + 1
+                evidence_digest = content_identity(
+                    {
+                        "task_cid": task_cid,
+                        "revision": revision,
+                        "receipt": receipt_map,
+                        "evidence_digests": list(evidence_digests),
+                    }
+                )
+                receipt_cid = content_identity(
+                    {
+                        "namespace": "completion-receipt",
+                        "task_cid": task_cid,
+                        "revision": revision,
+                        "evidence_digest": evidence_digest,
+                    }
+                )
+                completion_body_json = canonical_json_bytes(
+                    {
+                        "schema": COMPLETION_EVIDENCE_SCHEMA,
+                        "receipt": receipt_map,
+                        "evidence_digests": list(evidence_digests),
+                        "revision": revision,
+                    }
+                ).decode("utf-8")
+                return {
+                    "operation": "task.database.completion",
+                    "task_cid": task_cid,
+                    "goal_cid": goal_cid,
+                    "status": requested_status,
+                    "prior_status": prior_status,
+                    "expected_revision": expected_revision,
+                    "revision": revision,
+                    "body_json": str(command.parameters["body_json"]),
+                    "receipt": receipt_map,
+                    "evidence_digests": list(evidence_digests),
+                    "evidence_digest": evidence_digest,
+                    "receipt_cid": receipt_cid,
+                    "completion_body_json": completion_body_json,
                 }
         if operation == "task.retry.cooldown.record":
             parameters = _validated_retry_cooldown_parameters(command.parameters)
@@ -5674,6 +5984,95 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "task revision history mutation is not bound to its receipt CAS"
                 )
+        elif name == "executor_insert_completion_receipt":
+            expected_task_revision = command.parameters.get(
+                "expected_task_revision"
+            )
+            requested_status = command.parameters.get("status")
+            if (
+                requested_status not in _COMPLETED_TASK_STATUSES
+                or type(expected_task_revision) is not int
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "completion receipt mutation is outside a completed status CAS"
+                )
+            body, _ = _closed_canonical_json_object(
+                command.parameters.get("body_json"),
+                noun="completion task status body",
+            )
+            control_receipt = body.get("completion_receipt")
+            if not isinstance(control_receipt, Mapping) or not control_receipt:
+                raise TypedStateOwnerAuthorizationError(
+                    "completion receipt mutation has no control receipt"
+                )
+            evidence_digests = _closed_completion_evidence_digests(
+                command.parameters.get("evidence_digests_json")
+            )
+            revision = expected_task_revision + 1
+            evidence_digest = content_identity(
+                {
+                    "task_cid": command.parameters.get("task_cid"),
+                    "revision": revision,
+                    "receipt": dict(control_receipt),
+                    "evidence_digests": list(evidence_digests),
+                }
+            )
+            receipt_cid = content_identity(
+                {
+                    "namespace": "completion-receipt",
+                    "task_cid": command.parameters.get("task_cid"),
+                    "revision": revision,
+                    "evidence_digest": evidence_digest,
+                }
+            )
+            from .intent_repository import COMPLETION_EVIDENCE_SCHEMA
+
+            expected = {
+                "receipt_cid": receipt_cid,
+                "task_cid": command.parameters.get("task_cid"),
+                "goal_cid": command.parameters.get("goal_cid"),
+                "attempt_id": "",
+                "claim_cid": "",
+                "fencing_token": 0,
+                "validation_run_id": "",
+                "evidence_digest": evidence_digest,
+                "body_json": canonical_json_bytes(
+                    {
+                        "schema": COMPLETION_EVIDENCE_SCHEMA,
+                        "receipt": dict(control_receipt),
+                        "evidence_digests": list(evidence_digests),
+                        "revision": revision,
+                    }
+                ).decode("utf-8"),
+            }
+            if any(
+                not _strict_scalar_equal(bound.get(field), value)
+                for field, value in expected.items()
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "completion receipt mutation differs from the admitted command"
+                )
+            status_mutations = [
+                item
+                for role, item in manifest
+                if role == "executor_cas_task_status_receipt"
+            ]
+            history_mutations = [
+                item
+                for role, item in manifest
+                if role == "executor_insert_task_revision"
+            ]
+            if (
+                len(status_mutations) != 1
+                or len(history_mutations) != 1
+                or bound.get("completed_at")
+                != status_mutations[0].get("updated_at")
+                or bound.get("completed_at")
+                != history_mutations[0].get("recorded_at")
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "completion receipt timestamp is not bound to its task revision"
+                )
         elif name == "executor_insert_validation_run":
             expected = {
                 "run_id": command.parameters.get("run_id"),
@@ -5936,10 +6335,41 @@ class TypedStateOwnerGateway:
                 for name, bound in manifest
                 if name == "executor_insert_task_revision"
             ]
+            completion_receipts = [
+                bound
+                for name, bound in manifest
+                if name == "executor_insert_completion_receipt"
+            ]
             if len(receipts) != 1 or len(histories) != 1:
                 raise TypedStateOwnerAuthorizationError(
                     "receipt CAS requires exactly one task revision history mutation"
                 )
+            if command_operation == "task.status.cas.receipt":
+                completing = (
+                    command.parameters.get("status")
+                    in _COMPLETED_TASK_STATUSES
+                )
+                expected_completion_count = 1 if completing else 0
+                if len(completion_receipts) != expected_completion_count:
+                    raise TypedStateOwnerAuthorizationError(
+                        "task status CAS completion receipt mutation count differs"
+                    )
+                if completing:
+                    receipt_position = names.index(
+                        "executor_cas_task_status_receipt"
+                    )
+                    history_position = names.index(
+                        "executor_insert_task_revision"
+                    )
+                    completion_position = names.index(
+                        "executor_insert_completion_receipt"
+                    )
+                    if not (
+                        receipt_position < history_position < completion_position
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "completion receipt mutation order differs"
+                        )
             receipt = receipts[0]
             history = histories[0]
             expected_history = {
@@ -6072,6 +6502,125 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "semantic mutation differs from owner-resolved authority"
                 )
+
+        if operation == "task.database.completion":
+            status_mutation = one("executor_cas_task_status_receipt")
+            history_mutation = one("executor_insert_task_revision")
+            completion_mutation = one("executor_insert_completion_receipt")
+            exact(
+                status_mutation,
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": authority["expected_revision"],
+                    "new_revision": authority["revision"],
+                    "status": authority["status"],
+                    "body_json": authority["body_json"],
+                },
+            )
+            exact(
+                history_mutation,
+                {
+                    "task_cid": authority["task_cid"],
+                    "revision": authority["revision"],
+                    "status": authority["status"],
+                    "body_json": authority["body_json"],
+                    "recorded_at": status_mutation.get("updated_at"),
+                },
+            )
+            exact(
+                completion_mutation,
+                {
+                    "receipt_cid": authority["receipt_cid"],
+                    "task_cid": authority["task_cid"],
+                    "goal_cid": authority["goal_cid"],
+                    "attempt_id": "",
+                    "claim_cid": "",
+                    "fencing_token": 0,
+                    "completed_at": status_mutation.get("updated_at"),
+                    "validation_run_id": "",
+                    "evidence_digest": authority["evidence_digest"],
+                    "body_json": authority["completion_body_json"],
+                },
+            )
+            task_rows = self._connection.execute(
+                """
+                SELECT goal_cid, status, revision, body_json, updated_at FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "completion task post-state is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            task_body, task_body_json = _closed_canonical_json_object(
+                task_row[3],
+                noun="completion task post-state body",
+            )
+            observed_receipt = task_body.get("completion_receipt")
+            if (
+                tuple(task_row[index] for index in (0, 1, 2, 4))
+                != (
+                    authority["goal_cid"],
+                    authority["status"],
+                    authority["revision"],
+                    status_mutation.get("updated_at"),
+                )
+                or task_body_json != authority["body_json"]
+                or not isinstance(observed_receipt, Mapping)
+                or canonical_json_bytes(dict(observed_receipt))
+                != canonical_json_bytes(dict(authority["receipt"]))
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "completion task post-state differs from owner authority"
+                )
+            receipt_rows = self._connection.execute(
+                """
+                SELECT receipt_cid, task_cid, goal_cid, attempt_id, claim_cid,
+                       fencing_token, completed_at, validation_run_id,
+                       evidence_digest, body_json
+                FROM completion_receipts WHERE task_cid = ?
+                ORDER BY receipt_cid
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            expected_receipt_row = (
+                authority["receipt_cid"],
+                authority["task_cid"],
+                authority["goal_cid"],
+                "",
+                "",
+                0,
+                status_mutation.get("updated_at"),
+                "",
+                authority["evidence_digest"],
+                authority["completion_body_json"],
+            )
+            matching_rows = [
+                tuple(row[index] for index in range(10))
+                for row in receipt_rows
+                if str(row[0]) == authority["receipt_cid"]
+            ]
+            current_revision_rows: list[tuple[Any, ...]] = []
+            for row in receipt_rows:
+                body, _ = _closed_canonical_json_object(
+                    row[9],
+                    noun="completion receipt post-state body",
+                )
+                if body.get("revision") == authority["revision"]:
+                    current_revision_rows.append(
+                        tuple(row[index] for index in range(10))
+                    )
+            if (
+                matching_rows != [expected_receipt_row]
+                or len(current_revision_rows) != 1
+                or current_revision_rows[0] != expected_receipt_row
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "completion receipt post-state differs from owner authority"
+                )
+            return
 
         if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
             values = dict(authority["cooldown_parameters"])

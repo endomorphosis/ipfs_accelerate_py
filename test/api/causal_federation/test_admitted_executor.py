@@ -47,11 +47,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
-    EAAEF_OPERATIONAL_PROFILE_ID,
-)
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
+    EAAEF_OPERATIONAL_PROFILE_ID,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
     QuackClientError,
@@ -1461,11 +1461,27 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
             body={"status": "passed"},
         )
         assert validation.changed is True
+        completion_receipt = {
+            "operation": "database_complete",
+            "evidence_digest": evidence_digest,
+            **{
+                name: admitted_receipt[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+        }
         completed = adapter.compare_and_set_status(
             claimed.task.task_cid,
             claimed.task.revision,
             "completed",
-            {"operation": "database_complete", "evidence_digest": evidence_digest},
+            completion_receipt,
+            expected_control_receipt=admitted_receipt,
             evidence_digests=[evidence_digest],
         )
         assert completed.task.status == "completed"

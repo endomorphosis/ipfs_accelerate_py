@@ -34,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts im
     StateAuthorityClass,
     StateCommand,
     StoreGeneration,
+    canonical_json_bytes,
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
@@ -378,6 +379,155 @@ def test_embedded_body_cas_rejects_protected_blocked_reopen(
         rows = client.execute("select_task_by_cid", {"task_cid": task_cid})
         assert rows[0]["status"] == "blocked"
         assert int(rows[0]["revision"]) == 0
+
+
+def test_embedded_completion_rejects_unbound_goal_atomically(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    task_cid = _seed_goal_and_tasks(db, count=1)[0]
+
+    with _client(db) as client:
+        with pytest.raises(
+            TransactionError,
+            match="completion task revision or goal authority is stale",
+        ):
+            client.cas_task_status(
+                task_cid=task_cid,
+                goal_cid="goal:forged",
+                expected_task_revision=0,
+                new_status="completed",
+                idempotency_key="idem:forged-completion-goal",
+                body={
+                    "completion_receipt": {
+                        "operation": "generic_complete",
+                    }
+                },
+            )
+
+        rows = client.execute("select_task_by_cid", {"task_cid": task_cid})
+        assert rows[0]["status"] == "ready"
+        assert int(rows[0]["revision"]) == 0
+    with open_duckdb_connection(db) as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = ?",
+                [task_cid],
+            ).fetchone()[0]
+            == 0
+        )
+
+
+@pytest.mark.parametrize(
+    ("gate", "expected_error"),
+    [
+        (
+            "admission-schema-mismatch",
+            "database completion differs from its admitted claim",
+        ),
+        (
+            "same-status-receipt-replacement",
+            "same-status completion repair changed its control receipt",
+        ),
+    ],
+)
+def test_embedded_database_completion_rechecks_prior_control_authority_atomically(
+    tmp_path: Path,
+    gate: str,
+    expected_error: str,
+) -> None:
+    """Embedded completion enforces the same prior-receipt rules as the owner."""
+
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    task_cid = _seed_goal_and_tasks(db, count=1)[0]
+    evidence_digest = "sha256:" + ("ab" * 32)
+    shared_identity = {
+        "attempt_id": "attempt:embedded-completion",
+        "claim_id": "claim:embedded-completion",
+        "lease_id": "lease:embedded-completion",
+        "owner_session_id": "session:embedded-completion",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+    }
+    if gate == "admission-schema-mismatch":
+        prior_status = "in_progress"
+        prior_receipt = {
+            "operation": "database_attempt_admitted",
+            "claim_phase_schema": "forged-admission-schema",
+            **shared_identity,
+        }
+        next_receipt = {
+            "operation": "database_complete",
+            "evidence_digest": evidence_digest,
+            **shared_identity,
+        }
+    else:
+        prior_status = "completed"
+        prior_receipt = {
+            "operation": "database_complete",
+            "evidence_digest": evidence_digest,
+            **shared_identity,
+        }
+        next_receipt = {
+            **prior_receipt,
+            "claim_id": "claim:replacement",
+        }
+    prior_body_json = canonical_json_bytes(
+        {"completion_receipt": prior_receipt}
+    ).decode("utf-8")
+    with open_duckdb_connection(db) as connection:
+        connection.execute(
+            "UPDATE tasks SET status = ?, body_json = ? WHERE task_cid = ?",
+            [prior_status, prior_body_json, task_cid],
+        )
+
+    with _client(db) as client:
+        task_before = client.execute(
+            "select_task_by_cid", {"task_cid": task_cid}
+        )
+        generation_before = client.load_generation()
+
+        with pytest.raises(TransactionError, match=expected_error):
+            client.cas_task_status(
+                task_cid=task_cid,
+                goal_cid="goal:root",
+                expected_task_revision=0,
+                new_status="completed",
+                idempotency_key=f"idem:embedded-completion:{gate}",
+                body={"completion_receipt": next_receipt},
+                expected_control_receipt=prior_receipt,
+                evidence_digests=[evidence_digest],
+            )
+
+        assert client.execute(
+            "select_task_by_cid", {"task_cid": task_cid}
+        ) == task_before
+        assert client.load_generation().content_id == generation_before.content_id
+
+    with open_duckdb_connection(db) as connection:
+        persisted = connection.execute(
+            "SELECT status, revision, body_json FROM tasks WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone()
+        assert persisted is not None
+        assert tuple(persisted[index] for index in range(3)) == (
+            prior_status,
+            0,
+            prior_body_json,
+        )
+        assert connection.execute(
+            "SELECT COUNT(*) FROM task_revisions WHERE task_cid = ?", [task_cid]
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = ?", [task_cid]
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM idempotency_records"
+        ).fetchone()[0] == 0
 
 
 def test_optimistic_conflict_and_retry(tmp_path: Path) -> None:

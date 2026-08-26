@@ -142,6 +142,7 @@ EXECUTOR_OWNER_TRANSACTION_OPERATIONS: Final = frozenset(
         "txn_record_idempotency",
         "txn_cas_task_status",
         "executor_cas_task_status_receipt",
+        "executor_insert_completion_receipt",
         "executor_insert_task_revision",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
