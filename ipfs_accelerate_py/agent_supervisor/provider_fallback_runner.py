@@ -88,7 +88,7 @@ class _ProviderExecution:
 
 @dataclass
 class _ProviderBoundaryRuntime:
-    """Prepared child-only filesystem boundary for one route invocation."""
+    """Prepared child environment and optional boundary for one invocation."""
 
     command_prefix: tuple[str, ...]
     environment: dict[str, str]
@@ -253,7 +253,7 @@ def _prepare_provider_boundary_runtime(
     *,
     workspace: Path,
 ) -> _ProviderBoundaryRuntime:
-    """Prepare a private HOME and inherited child-only Landlock prefix."""
+    """Prepare private provider state and an optional Landlock prefix."""
 
     protected_text = str(
         os.environ.get(PROVIDER_PROTECTED_STATE_ROOT_ENV) or ""
@@ -271,7 +271,31 @@ def _prepare_provider_boundary_runtime(
     child_environment[PROOF_REUSE_STATE_ROOT_ENV] = ""
     child_environment[PROVIDER_PROTECTED_STATE_ROOT_ENV] = ""
     if not state_root_text:
-        return _ProviderBoundaryRuntime((), child_environment, None)
+        # The ordinary LGCVF route has no proof-reuse filesystem boundary,
+        # but its daemon HOME is still an immutable qualification directory.
+        # Grok 1.0.x treats GROK_HOME as the authoritative profile directory,
+        # so give it a writable invocation-private copy of the admitted auth
+        # file without changing HOME/XDG or Codex's inherited profile.
+        temporary_home = tempfile.TemporaryDirectory(
+            prefix="ipfs-accelerate-provider-grok-home-"
+        )
+        private_home = Path(temporary_home.name).resolve(strict=True)
+        private_home.chmod(0o700)
+        try:
+            grok_profile = _project_private_grok_auth(private_home)
+        except Exception:
+            temporary_home.cleanup()
+            raise
+        if grok_profile is None:
+            temporary_home.cleanup()
+            return _ProviderBoundaryRuntime((), child_environment, None)
+        child_environment["GROK_HOME"] = str(grok_profile)
+        return _ProviderBoundaryRuntime(
+            (),
+            child_environment,
+            None,
+            temporary_home,
+        )
 
     original_home_text = str(os.environ.get("HOME") or "").strip()
     if not original_home_text:
