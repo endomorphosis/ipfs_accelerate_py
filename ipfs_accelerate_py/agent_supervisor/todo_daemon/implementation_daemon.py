@@ -118154,7 +118154,22 @@ def _lgcvf_daemon_diagnostic_site(exc: BaseException) -> str:
                 else ""
             )
             line = traceback.tb_lineno
-            if (
+            sealed_self_namespace = (
+                namespace.get("_lgcvf_daemon_diagnostic_site")
+                is _lgcvf_daemon_diagnostic_site
+                and namespace.get("_emit_lgcvf_daemon_diagnostic")
+                is _emit_lgcvf_daemon_diagnostic
+            )
+            if sealed_self_namespace and type(line) is int and 0 < line <= 1_000_000:
+                module_name = (
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                    "implementation_daemon"
+                )
+                module_digest = hashlib.sha256(
+                    module_name.encode("ascii")
+                ).hexdigest()[:12]
+                trusted_site = f"implementation_daemon:{line}:{module_digest}"
+            elif (
                 type(module_name) is str
                 and len(module_name) <= 256
                 and module_name.isascii()

@@ -11408,6 +11408,35 @@ def test_lgcvf_daemon_diagnostic_is_bounded_staged_and_secret_free(capfd):
     assert len(captured.err.encode("ascii")) <= 160
 
 
+def test_lgcvf_daemon_diagnostic_sites_exec_namespace_not_in_sys_modules(
+    capfd,
+    monkeypatch,
+):
+    sentinel = "must-not-cross-lgcvf-exec-namespace"
+    monkeypatch.delitem(
+        sys.modules,
+        implementation_daemon_module.__name__,
+    )
+
+    with pytest.raises(ValueError, match=sentinel):
+        implementation_daemon_module._lgcvf_daemon_call(
+            "runtime_pass",
+            lambda: (_ for _ in ()).throw(ValueError(sentinel)),
+        )
+
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    prefix = (
+        "lgcvf-daemon-diagnostic@1 "
+        "phase=runtime_pass type=ValueError site=implementation_daemon:"
+    )
+    assert captured.err.startswith(prefix)
+    line, module_digest = captured.err.removeprefix(prefix).rstrip("\n").split(":")
+    assert int(line) > 0
+    assert len(module_digest) == 12
+    assert sentinel not in captured.err
+
+
 def test_lgcvf_daemon_diagnostic_collapses_untrusted_metadata(capfd):
     sentinel = "must-not-cross-lgcvf-daemon-metadata"
 
