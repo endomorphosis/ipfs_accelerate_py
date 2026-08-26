@@ -52396,6 +52396,20 @@ class PortalImplementationDaemon:
         if result.get("auto_rescue") and result.get("auto_rescue_terminal"):
             return result
 
+        # Capture the narrowly bound replay exception while the trusted live
+        # ProposalValidationResult is still present.  Failure sanitization
+        # deliberately removes that non-JSON object before planning, but a
+        # same-attempt revalidation may need to admit the identical proposal
+        # again after staging or materializing its already-declared outputs.
+        same_attempt_replayable_proposal_ids = (
+            self._same_attempt_replayable_proposal_ids(
+                result,
+                task_id=task.task_id,
+                repository_tree_id=baseline_ref,
+                seed_proposal_ids=replayable_consumed_proposal_ids,
+            )
+        )
+
         stage_used = False
         materialize_used = False
         strip_helpers_used = False
@@ -52544,15 +52558,18 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
                     replayable_consumed_proposal_ids=(
-                        self._same_attempt_replayable_proposal_ids(
-                            result,
-                            task_id=task.task_id,
-                            repository_tree_id=baseline_ref,
-                            seed_proposal_ids=(
-                                replayable_consumed_proposal_ids
-                            ),
-                        )
+                        same_attempt_replayable_proposal_ids
                     ),
+                )
+                same_attempt_replayable_proposal_ids = (
+                    self._same_attempt_replayable_proposal_ids(
+                        revalidated,
+                        task_id=task.task_id,
+                        repository_tree_id=baseline_ref,
+                        seed_proposal_ids=(
+                            same_attempt_replayable_proposal_ids
+                        ),
+                    )
                 )
                 proposal_validation = revalidated.get("proposal_validation")
                 revalidated = self._apply_implementation_failure_review(
@@ -52620,9 +52637,19 @@ class PortalImplementationDaemon:
                     state=state,
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
-                    replayable_consumed_proposal_ids=tuple(
-                        replayable_consumed_proposal_ids
+                    replayable_consumed_proposal_ids=(
+                        same_attempt_replayable_proposal_ids
                     ),
+                )
+                same_attempt_replayable_proposal_ids = (
+                    self._same_attempt_replayable_proposal_ids(
+                        revalidated,
+                        task_id=task.task_id,
+                        repository_tree_id=baseline_ref,
+                        seed_proposal_ids=(
+                            same_attempt_replayable_proposal_ids
+                        ),
+                    )
                 )
                 proposal_validation = revalidated.get("proposal_validation")
                 revalidated = self._apply_implementation_failure_review(
@@ -52686,15 +52713,18 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
                     replayable_consumed_proposal_ids=(
-                        self._same_attempt_replayable_proposal_ids(
-                            result,
-                            task_id=task.task_id,
-                            repository_tree_id=baseline_ref,
-                            seed_proposal_ids=(
-                                replayable_consumed_proposal_ids
-                            ),
-                        )
+                        same_attempt_replayable_proposal_ids
                     ),
+                )
+                same_attempt_replayable_proposal_ids = (
+                    self._same_attempt_replayable_proposal_ids(
+                        revalidated,
+                        task_id=task.task_id,
+                        repository_tree_id=baseline_ref,
+                        seed_proposal_ids=(
+                            same_attempt_replayable_proposal_ids
+                        ),
+                    )
                 )
                 proposal_validation = revalidated.get("proposal_validation")
                 revalidated = self._apply_implementation_failure_review(
@@ -52818,15 +52848,18 @@ class PortalImplementationDaemon:
                     baseline_ref=baseline_ref,
                     proposal_validation=None,
                     replayable_consumed_proposal_ids=(
-                        self._same_attempt_replayable_proposal_ids(
-                            result,
-                            task_id=task.task_id,
-                            repository_tree_id=baseline_ref,
-                            seed_proposal_ids=(
-                                replayable_consumed_proposal_ids
-                            ),
-                        )
+                        same_attempt_replayable_proposal_ids
                     ),
+                )
+                same_attempt_replayable_proposal_ids = (
+                    self._same_attempt_replayable_proposal_ids(
+                        revalidated,
+                        task_id=task.task_id,
+                        repository_tree_id=baseline_ref,
+                        seed_proposal_ids=(
+                            same_attempt_replayable_proposal_ids
+                        ),
+                    )
                 )
                 proposal_validation = revalidated.get("proposal_validation")
                 revalidated = self._apply_implementation_failure_review(
