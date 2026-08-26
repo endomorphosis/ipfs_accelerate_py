@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import inspect
 import json
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
     ed25519_did_key,
 )
@@ -240,6 +242,87 @@ def _bootstrap_snapshot(
     }
     value["snapshot_cid"] = lifecycle._cid(value)
     return value
+
+
+def _ceremony_key(fill: int) -> Ed25519PrivateKey:
+    return Ed25519PrivateKey.from_private_bytes(bytes([fill]) * 32)
+
+
+def _ceremony_signature(
+    key: Ed25519PrivateKey,
+    payload: Mapping[str, Any],
+) -> str:
+    return base64.b64encode(
+        key.sign(lifecycle._canonical_bytes(dict(payload)))
+    ).decode("ascii")
+
+
+def _ceremony_inputs(
+    population: lifecycle.CompiledEAAEFPopulation,
+) -> dict[str, Any]:
+    keys = {
+        "operator": _ceremony_key(11),
+        "security": _ceremony_key(12),
+        "capability": _ceremony_key(13),
+        "remote": _ceremony_key(14),
+        "authorized_principal": _ceremony_key(15),
+        "independent_approver": _ceremony_key(16),
+    }
+    identities = {
+        role: ed25519_did_key(key.public_key()) for role, key in keys.items()
+    }
+    snapshot = _bootstrap_snapshot(population)
+    stage_one = lifecycle.build_fresh_plan_r2_signing_request_projection(
+        population=population,
+        bootstrap_snapshot=snapshot,
+        operator_identity_did=identities["operator"],
+        security_reviewer_identity_did=identities["security"],
+        capability_reviewer_identity_did=identities["capability"],
+        issued_at_ms=100_500,
+        expires_at_ms=250_000,
+    )
+    payloads = stage_one["signing_payloads"]
+    trust_roots = {
+        "schema": lifecycle.EAAEF_FRESH_TRUST_SCHEMA,
+        "remote_reviewer_dids": [identities["remote"]],
+        "plan_r2_capability_reviewer_dids": [identities["capability"]],
+        "operator_dids": [identities["operator"]],
+        "security_reviewer_dids": [identities["security"]],
+    }
+    trust_roots["trust_bundle_cid"] = lifecycle._cid(trust_roots)
+    stage_two_arguments = {
+        "population": population,
+        "bootstrap_snapshot": snapshot,
+        "stage_one_request": stage_one,
+        "trust_roots": trust_roots,
+        "operator_signature": _ceremony_signature(
+            keys["operator"], payloads["independent_operator"]
+        ),
+        "security_reviewer_signature": _ceremony_signature(
+            keys["security"], payloads["independent_security_reviewer"]
+        ),
+        "capability_reviewer_signature": _ceremony_signature(
+            keys["capability"],
+            payloads["independent_plan_r2_capability_reviewer"],
+        ),
+        "remote_reviewer_identity_did": identities["remote"],
+        "authorized_principal_identity_did": identities["authorized_principal"],
+        "independent_approver_identity_did": identities["independent_approver"],
+        "request_channel_id": "fresh-plan-r2-request-channel",
+        "response_channel_id": "fresh-plan-r2-response-channel",
+        "remote_issued_at_ms": 105_000,
+        "remote_expires_at_ms": 200_000,
+        "remote_issuance_nonce": "fresh-plan-r2-remote-nonce",
+        "now_ms": 110_000,
+    }
+    return {
+        "keys": keys,
+        "identities": identities,
+        "snapshot": snapshot,
+        "stage_one": stage_one,
+        "trust_roots": trust_roots,
+        "stage_two_arguments": stage_two_arguments,
+    }
 
 
 def _qualification(source_forest_root: str) -> dict[str, Any]:
@@ -803,6 +886,283 @@ def test_signing_request_rejects_malformed_dids_before_any_payload_is_emitted(
     assert output["authority_mutated"] is False
     assert output["provider_process_started"] is False
     assert not (tmp_path / "unused-state").exists()
+
+
+def test_keyless_stage_two_and_finalize_verify_the_full_fresh_authority(
+    repo_root: Path,
+) -> None:
+    population = _population(repo_root)
+    ceremony = _ceremony_inputs(population)
+    stage_two = lifecycle.build_fresh_plan_r2_stage_two_signing_request(
+        **ceremony["stage_two_arguments"]
+    )
+
+    assert stage_two["schema"] == (
+        lifecycle.EAAEF_PLAN_R2_REMOTE_OWNER_SIGNING_REQUEST_SCHEMA
+    )
+    assert stage_two["request_cid"] == lifecycle._cid(
+        {key: value for key, value in stage_two.items() if key != "request_cid"}
+    )
+    assert stage_two["stage_one_request_cid"] == ceremony["stage_one"][
+        "request_cid"
+    ]
+    assert stage_two["external_signatures_verified"] is True
+    assert stage_two["authority_valid"] is False
+    assert stage_two["launch_allowed"] is False
+    assert stage_two["signing_key_read"] is False
+    assert stage_two["signature_created"] is False
+    assert stage_two["authority_mutated"] is False
+    assert stage_two["provider_process_started"] is False
+
+    remote_signature = _ceremony_signature(
+        ceremony["keys"]["remote"],
+        stage_two["remote_owner_signing_payload"],
+    )
+    bundle = lifecycle.finalize_fresh_plan_r2_signing_request(
+        population=population,
+        stage_two_request=stage_two,
+        trust_roots=ceremony["trust_roots"],
+        remote_reviewer_signature=remote_signature,
+        now_ms=110_000,
+    )
+
+    assert bundle["schema"] == lifecycle.EAAEF_FRESH_AUTHORITY_SCHEMA
+    assert bundle["authority_bundle_cid"] == lifecycle._cid(
+        {key: value for key, value in bundle.items() if key != "authority_bundle_cid"}
+    )
+    verified = lifecycle.verify_fresh_authority_bundle(
+        bundle,
+        population=population,
+        trust_roots=ceremony["trust_roots"],
+        now_ms=110_000,
+    )
+    assert verified.signed_bundle() == bundle
+
+
+def test_keyless_ceremony_rejects_stale_tampered_and_role_reused_inputs(
+    repo_root: Path,
+) -> None:
+    population = _population(repo_root)
+    ceremony = _ceremony_inputs(population)
+    stale_stage_one = json.loads(json.dumps(ceremony["stage_one"]))
+    stale_stage_one["source_head"] = "9" * 40
+    stale_stage_one.pop("request_cid")
+    stale_stage_one["request_cid"] = lifecycle._cid(stale_stage_one)
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="differs from the current source",
+    ):
+        lifecycle.build_fresh_plan_r2_stage_two_signing_request(
+            **{
+                **ceremony["stage_two_arguments"],
+                "stage_one_request": stale_stage_one,
+            }
+        )
+
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="seven distinct decoded did:key roles",
+    ):
+        lifecycle.build_fresh_plan_r2_stage_two_signing_request(
+            **{
+                **ceremony["stage_two_arguments"],
+                "authorized_principal_identity_did": ceremony["identities"][
+                    "operator"
+                ],
+            }
+        )
+
+    stage_two = lifecycle.build_fresh_plan_r2_stage_two_signing_request(
+        **ceremony["stage_two_arguments"]
+    )
+    tampered_stage_two = json.loads(json.dumps(stage_two))
+    tampered_stage_two["remote_owner_signing_payload"]["request_channel_id"] = (
+        "tampered-channel"
+    )
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="self-address differs",
+    ):
+        lifecycle.finalize_fresh_plan_r2_signing_request(
+            population=population,
+            stage_two_request=tampered_stage_two,
+            trust_roots=ceremony["trust_roots"],
+            remote_reviewer_signature="invalid",
+            now_ms=110_000,
+        )
+
+    relabeled_stage_two = json.loads(json.dumps(stage_two))
+    relabeled_stage_two["stage_one_request_cid"] = "sha256:" + "f" * 64
+    relabeled_stage_two.pop("request_cid")
+    relabeled_stage_two["request_cid"] = lifecycle._cid(relabeled_stage_two)
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="relabels its stage-one provenance",
+    ):
+        lifecycle.finalize_fresh_plan_r2_signing_request(
+            population=population,
+            stage_two_request=relabeled_stage_two,
+            trust_roots=ceremony["trust_roots"],
+            remote_reviewer_signature="invalid",
+            now_ms=110_000,
+        )
+
+    wrong_remote_signature = _ceremony_signature(
+        ceremony["keys"]["capability"],
+        stage_two["remote_owner_signing_payload"],
+    )
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="signed authority chain was rejected",
+    ):
+        lifecycle.finalize_fresh_plan_r2_signing_request(
+            population=population,
+            stage_two_request=stage_two,
+            trust_roots=ceremony["trust_roots"],
+            remote_reviewer_signature=wrong_remote_signature,
+            now_ms=110_000,
+        )
+
+
+def test_keyless_ceremony_cli_is_print_only_and_never_resolves_an_owner(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    population = _population(repo_root)
+    ceremony = _ceremony_inputs(population)
+    paths = {
+        "snapshot": tmp_path / "bootstrap-snapshot.json",
+        "stage_one": tmp_path / "stage-one.json",
+        "trust": tmp_path / "trust-roots.json",
+        "stage_two": tmp_path / "stage-two.json",
+    }
+    for name, value in (
+        ("snapshot", ceremony["snapshot"]),
+        ("stage_one", ceremony["stage_one"]),
+        ("trust", ceremony["trust_roots"]),
+    ):
+        paths[name].write_text(json.dumps(value, sort_keys=True), encoding="ascii")
+
+    monkeypatch.setattr(
+        lifecycle,
+        "inspect_current_repository_forest",
+        lambda _root: _sealed_forest(),
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "_require_production_source_policy",
+        lambda _root, *, forest: {"source_forest_root": forest["source_forest_root"]},
+    )
+
+    def forbidden_effect(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("keyless signing ceremony crossed its effect boundary")
+
+    for name in (
+        "resolve_production_reconciliation_owner",
+        "resolve_bootstrap_reconciliation_owner",
+        "_authority_from_args",
+        "load_fresh_authority_artifacts",
+        "preflight_reconciliation",
+        "prepare_fresh_generation",
+        "materialize_fresh_generation",
+        "launch_reconciliation_supervisor",
+        "reconciliation_status",
+        "stop_reconciliation_generation",
+        "ReconciliationStateStore",
+    ):
+        monkeypatch.setattr(lifecycle, name, forbidden_effect)
+
+    before_stage_two = set(tmp_path.iterdir())
+    stage_two_exit = lifecycle.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--state-root",
+            str(tmp_path / "unused-state"),
+            "signing-stage-two",
+            "--stage-one-request",
+            str(paths["stage_one"]),
+            "--bootstrap-snapshot",
+            str(paths["snapshot"]),
+            "--trust-roots",
+            str(paths["trust"]),
+            "--operator-signature",
+            ceremony["stage_two_arguments"]["operator_signature"],
+            "--security-reviewer-signature",
+            ceremony["stage_two_arguments"]["security_reviewer_signature"],
+            "--plan-r2-capability-reviewer-signature",
+            ceremony["stage_two_arguments"]["capability_reviewer_signature"],
+            "--remote-reviewer-identity-did",
+            ceremony["identities"]["remote"],
+            "--authorized-principal-identity-did",
+            ceremony["identities"]["authorized_principal"],
+            "--independent-approver-identity-did",
+            ceremony["identities"]["independent_approver"],
+            "--request-channel-id",
+            "fresh-plan-r2-request-channel",
+            "--response-channel-id",
+            "fresh-plan-r2-response-channel",
+            "--remote-issued-at-ms",
+            "105000",
+            "--remote-expires-at-ms",
+            "200000",
+            "--remote-issuance-nonce",
+            "fresh-plan-r2-remote-nonce",
+            "--now-ms",
+            "110000",
+        ]
+    )
+    stage_two = json.loads(capsys.readouterr().out)
+
+    assert stage_two_exit == 0
+    assert stage_two["schema"] == (
+        lifecycle.EAAEF_PLAN_R2_REMOTE_OWNER_SIGNING_REQUEST_SCHEMA
+    )
+    assert set(tmp_path.iterdir()) == before_stage_two
+    assert not (tmp_path / "unused-state").exists()
+
+    paths["stage_two"].write_text(
+        json.dumps(stage_two, sort_keys=True), encoding="ascii"
+    )
+    remote_signature = _ceremony_signature(
+        ceremony["keys"]["remote"],
+        stage_two["remote_owner_signing_payload"],
+    )
+    before_finalize = set(tmp_path.iterdir())
+    finalize_exit = lifecycle.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--state-root",
+            str(tmp_path / "unused-state"),
+            "signing-finalize",
+            "--stage-two-request",
+            str(paths["stage_two"]),
+            "--trust-roots",
+            str(paths["trust"]),
+            "--remote-reviewer-signature",
+            remote_signature,
+            "--now-ms",
+            "110000",
+        ]
+    )
+    bundle = json.loads(capsys.readouterr().out)
+
+    assert finalize_exit == 0
+    assert bundle["schema"] == lifecycle.EAAEF_FRESH_AUTHORITY_SCHEMA
+    assert set(tmp_path.iterdir()) == before_finalize
+    assert not (tmp_path / "unused-state").exists()
+    ceremony_source = inspect.getsource(
+        lifecycle.build_fresh_plan_r2_stage_two_signing_request
+    )
+    ceremony_source += inspect.getsource(
+        lifecycle.finalize_fresh_plan_r2_signing_request
+    )
+    ceremony_source += inspect.getsource(lifecycle.main)
+    assert "Ed25519PrivateKey" not in ceremony_source
+    assert ".sign(" not in ceremony_source
 
 
 def test_stale_forest_and_bootstrap_bindings_fail_closed(
