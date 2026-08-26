@@ -742,6 +742,31 @@ def test_controller_lock_is_held_before_locked_admission(
     assert entered is False
 
 
+def test_generation_bound_controller_lock_rejects_run_directory_replacement(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    generation = paths["controller_lock"].parent
+    generation.mkdir(mode=0o700, parents=True)
+    displaced = generation.with_name(generation.name + ".displaced")
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="generation/controller lock binding changed",
+    ):
+        with operator._exclusive_projection_checkpoint(paths):
+            generation.rename(displaced)
+            generation.mkdir(mode=0o700)
+            replacement_lock = generation / paths["controller_lock"].name
+            replacement_lock.touch(mode=0o600)
+
+    assert displaced.is_dir()
+    assert generation.is_dir()
+    assert (displaced / paths["controller_lock"].name).is_file()
+    assert (generation / paths["controller_lock"].name).is_file()
+
+
 def test_live_launch_verifies_provenance_before_import_retarget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1453,6 +1478,1233 @@ def test_owner_socket_and_ducklake_projection_are_physically_separate(
     assert preflight["completion_authority"] is False
     assert preflight["read_by_scheduler"] is False
     assert preflight["requires_stopped_checkpoint"] is True
+    assert preflight["restart_authority"] is False
+    assert preflight["source_admission_mode"] == ""
+    assert preflight["stopped_state_continuity_receipt_cid"] == ""
+    assert preflight["projection_root_present"] is False
+    assert preflight["projection_receipt_present"] is False
+
+
+def _stopped_state_continuity_fixture(
+    operator: ModuleType,
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[dict[str, Path], dict[str, object], dict[str, object]]:
+    from ipfs_accelerate_py.agent_supervisor.merge import worktree_lifecycle
+
+    paths = operator._paths(root)
+    databases = operator._successor_state_databases(paths)
+    paths["successor_database"].parent.mkdir(mode=0o700, parents=True)
+    for name, database in databases.items():
+        database.write_bytes(f"stopped-{name}\n".encode())
+        database.chmod(0o600)
+
+    provenance: dict[str, object] = {
+        "receipt_cid": "b" + ("a" * 60),
+        "database_uuid": "database:test-stopped-continuity",
+        "schema_fingerprint": "schema:test-stopped-continuity",
+        "catalog_fingerprint": "catalog:test-stopped-continuity",
+    }
+    restart_calls = 0
+
+    def reject_mutated_restart(*args: object, **kwargs: object) -> object:
+        nonlocal restart_calls
+        restart_calls += 1
+        raise operator.SuccessorOperatorError(
+            operator.NATIVE_RESUME_LIVE_CONTINUITY_REQUIRED_ERROR
+        )
+
+    monkeypatch.setattr(operator, "_load_provenance", reject_mutated_restart)
+    monkeypatch.setattr(
+        operator,
+        "_load_lgcvf_live_raw_provenance_receipt",
+        lambda _paths, **_kwargs: provenance,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_verify_profile",
+        lambda _database, **_kwargs: {
+            "schema_fingerprint": provenance["schema_fingerprint"],
+            "catalog_fingerprint": provenance["catalog_fingerprint"],
+        },
+    )
+    monkeypatch.setattr(
+        operator,
+        "_database_identity",
+        lambda _database: {"database_uuid": provenance["database_uuid"]},
+    )
+    monkeypatch.setattr(
+        worktree_lifecycle,
+        "owner_liveness",
+        lambda _birth: OwnerLiveness.DEAD,
+    )
+    birth = ProcessBirthIdentity(
+        pid=2_000_000_001,
+        start_time_ticks=17,
+        boot_id="test-stopped-continuity",
+        parent_pid=1,
+    ).to_dict()
+    owner_identity = {
+        "server_id": "server:test-stopped-continuity",
+        "store_id": operator.SUCCESSOR_DATABASE_RELATIVE.as_posix(),
+        "database_uuid": provenance["database_uuid"],
+        "schema_fingerprint": provenance["schema_fingerprint"],
+        "secret_handle": operator.SECRET_HANDLE,
+        "process_birth": birth,
+    }
+    stopped = operator._status_payload(
+        lifecycle="stopped",
+        controller_birth=birth,
+        provenance_cid=str(provenance["receipt_cid"]),
+        owner_identity=owner_identity,
+        scheduler_birth=birth,
+        scheduler_returncode=0,
+        projection_root=paths["projection_root"],
+    )
+    operator._write_status(paths["controller_status"], stopped)
+    final_source_continuity = {
+        "approved_branch": operator.APPROVED_BOARD_BRANCH,
+        "resolved_remote_head": "f" * 40,
+        "current_head": "f" * 40,
+        "current_tree": "e" * 40,
+        "candidate_worktree_clean": True,
+        "datasets_head": "d" * 40,
+        "datasets_tree": "c" * 40,
+        "datasets_worktree_clean": True,
+        "python_bytecode_quarantine": {"enabled": True},
+        "superproject_runtime_inventory": {"tracked_object_count": 1},
+        "datasets_runtime_inventory": {"tracked_object_count": 1},
+    }
+    monkeypatch.setattr(
+        operator,
+        "_candidate_runtime_continuity",
+        lambda _root: final_source_continuity,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda _root, *, require_resolved_remote: final_source_continuity,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_validate_stopped_projection_native_provenance",
+        lambda *args, **kwargs: None,
+    )
+    continuity = operator._write_stopped_state_continuity(
+        paths,
+        root=root,
+        stopped_status=stopped,
+        provenance=provenance,
+        owner_checkpoint={
+            "checkpointed": True,
+            "server_id": owner_identity["server_id"],
+            "database_path": str(paths["successor_database"]),
+            "at": "2026-08-26T00:00:00Z",
+        },
+        owner_stop={
+            "stopped": True,
+            "server_id": owner_identity["server_id"],
+            "at": "2026-08-26T00:00:01Z",
+        },
+    )
+    bound_status = operator._bind_stopped_state_continuity_status(
+        stopped, continuity
+    )
+    operator._write_status(paths["controller_status"], bound_status)
+    continuity["test_restart_calls"] = lambda: restart_calls
+    return paths, provenance, continuity
+
+
+def test_projection_only_stopped_continuity_does_not_weaken_restart_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+
+    admitted = operator._load_projection_source_continuity(paths, root=tmp_path)
+
+    assert admitted["admission_mode"] == (
+        operator.STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+    )
+    assert admitted["receipt"]["receipt_cid"] == continuity["receipt_cid"]
+    assert admitted["receipt"]["restart_authority"] is False
+    assert continuity["test_restart_calls"]() == 1
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="restart requires an unimplemented live-continuity receipt",
+    ):
+        operator._load_provenance(paths, root=tmp_path)
+
+
+def test_stopped_projection_profile_and_identity_use_one_sealed_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    observed: list[tuple[str, str, int | None]] = []
+    observed_receipts: dict[str, Path] = {}
+    original_strict_json = operator._strict_json
+
+    def raw_provenance(
+        _paths: dict[str, Path],
+        *,
+        _receipt_path: Path | None = None,
+    ) -> dict[str, object]:
+        assert _receipt_path is not None
+        observed_receipts["provenance"] = _receipt_path
+        return provenance
+
+    def strict_json(path: Path, **kwargs: object) -> dict[str, object]:
+        schema = kwargs.get("expected_schema")
+        if schema == operator.STOPPED_STATE_CONTINUITY_SCHEMA:
+            observed_receipts["continuity"] = path
+        elif schema == operator.CONTROLLER_STATUS_SCHEMA:
+            observed_receipts["status"] = path
+        return original_strict_json(path, **kwargs)
+
+    def validate_native(*args: object, **kwargs: object) -> None:
+        bootstrap_path = kwargs.get("_bootstrap_path")
+        assert isinstance(bootstrap_path, Path)
+        observed_receipts["bootstrap"] = bootstrap_path
+
+    monkeypatch.setattr(
+        operator,
+        "_load_lgcvf_live_raw_provenance_receipt",
+        raw_provenance,
+    )
+    monkeypatch.setattr(operator, "_strict_json", strict_json)
+    monkeypatch.setattr(
+        operator,
+        "_validate_stopped_projection_native_provenance",
+        validate_native,
+    )
+
+    def verify_profile(
+        path: Path,
+        *,
+        sealed_descriptor: int | None = None,
+    ) -> dict[str, object]:
+        observed.append(("profile", str(path), sealed_descriptor))
+        assert sealed_descriptor is not None
+        assert str(path) == f"/proc/self/fd/{sealed_descriptor}"
+        return {
+            "valid": True,
+            "schema_fingerprint": provenance["schema_fingerprint"],
+            "catalog_fingerprint": provenance["catalog_fingerprint"],
+        }
+
+    def database_identity(path: Path) -> dict[str, object]:
+        observed.append(("identity", str(path), None))
+        return {"database_uuid": provenance["database_uuid"]}
+
+    monkeypatch.setattr(operator, "_verify_profile", verify_profile)
+    monkeypatch.setattr(operator, "_database_identity", database_identity)
+
+    with operator._exclusive_projection_checkpoint(paths) as lock_custody:
+        with operator._sealed_stopped_database_snapshots(
+            paths, lock_custody
+        ) as snapshots:
+            control = snapshots["control"]
+            admitted = operator._load_projection_source_continuity(
+                paths,
+                root=tmp_path,
+                stopped_database_snapshots=snapshots,
+                lock_custody=lock_custody,
+            )
+            snapshot_path = str(control["snapshot_path"])
+            snapshot_descriptor = int(control["snapshot_descriptor"])
+            assert observed == [
+                ("profile", snapshot_path, snapshot_descriptor),
+                ("identity", snapshot_path, None),
+            ]
+            assert admitted["databases"] == operator._validate_stopped_database_snapshots(
+                paths, lock_custody, snapshots
+            )
+            generation_prefix = (
+                f"/proc/self/fd/{int(lock_custody['generation_descriptor'])}/"
+            )
+            assert set(observed_receipts) == {
+                "provenance",
+                "continuity",
+                "status",
+                "bootstrap",
+            }
+            assert all(
+                str(path).startswith(generation_prefix)
+                for path in observed_receipts.values()
+            )
+            assert (
+                fcntl.fcntl(snapshot_descriptor, fcntl.F_GET_SEALS)
+                & operator.STOPPED_SNAPSHOT_REQUIRED_SEALS
+                == operator.STOPPED_SNAPSHOT_REQUIRED_SEALS
+            )
+            with pytest.raises(OSError):
+                os.pwrite(snapshot_descriptor, b"tamper", 0)
+
+
+def test_canonical_profile_verifier_reads_sealed_descriptor_without_sidecar(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    _seed_datasets_profile(paths["successor_database"])
+    generation = paths["controller_lock"].parent
+    generation.chmod(0o700)
+    paths["successor_database"].chmod(0o600)
+    source_bytes = paths["successor_database"].read_bytes()
+    for name, database in operator._successor_state_databases(paths).items():
+        if name != "control":
+            database.write_bytes(source_bytes)
+            database.chmod(0o600)
+    hidden_before = {entry.name for entry in generation.iterdir() if entry.name.startswith(".")}
+
+    with operator._exclusive_projection_checkpoint(paths) as lock_custody:
+        with operator._sealed_stopped_database_snapshots(
+            paths, lock_custody
+        ) as snapshots:
+            control = snapshots["control"]
+            descriptor = int(control["snapshot_descriptor"])
+            snapshot_path = Path(str(control["snapshot_path"]))
+            verification = operator._verify_profile(
+                snapshot_path,
+                sealed_descriptor=descriptor,
+            )
+            identity = operator._database_identity(snapshot_path)
+
+    assert verification["valid"] is True
+    assert identity["database_uuid"]
+    assert {
+        entry.name for entry in generation.iterdir() if entry.name.startswith(".")
+    } == hidden_before
+
+
+def test_projection_preflight_requires_exact_stopped_mode_without_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    monkeypatch.setattr(
+        operator,
+        "_extension_preflight",
+        lambda: {"available": True},
+    )
+
+    preflight = operator.projection_preflight(tmp_path)
+
+    assert preflight["valid"] is True
+    assert preflight["source_admitted"] is True
+    assert preflight["source_admission_mode"] == (
+        operator.STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+    )
+    assert preflight["stopped_state_continuity_receipt_cid"] == (
+        continuity["receipt_cid"]
+    )
+    assert preflight["projection_root_present"] is False
+    assert preflight["projection_receipt_present"] is False
+    assert not os.path.lexists(paths["projection_root"])
+    assert not os.path.lexists(paths["projection_receipt"])
+
+
+@pytest.mark.parametrize("residue", ("root", "receipt"))
+def test_projection_preflight_rejects_stopped_mode_with_projection_residue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    residue: str,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    monkeypatch.setattr(
+        operator,
+        "_extension_preflight",
+        lambda: {"available": True},
+    )
+    if residue == "root":
+        paths["projection_root"].mkdir(mode=0o700, parents=True)
+    else:
+        paths["projection_receipt"].write_text(
+            "preserved residue\n",
+            encoding="utf-8",
+        )
+        paths["projection_receipt"].chmod(0o600)
+
+    preflight = operator.projection_preflight(tmp_path)
+
+    assert preflight["valid"] is False
+    assert preflight["source_admitted"] is True
+    assert preflight["source_admission_mode"] == (
+        operator.STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+    )
+    assert preflight["projection_root_present"] is (residue == "root")
+    assert preflight["projection_receipt_present"] is (residue == "receipt")
+
+
+def test_projection_stopped_continuity_admits_exact_advanced_board_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    final_continuity = continuity["final_source_continuity"]
+    observed: dict[str, object] = {}
+
+    def advanced_head(*args: object, **kwargs: object) -> object:
+        raise operator.SuccessorOperatorError(
+            operator.NATIVE_RESUME_PROVENANCE_BINDING_ERROR
+        )
+
+    def validate(
+        observed_paths: dict[str, Path],
+        *,
+        root: Path,
+        receipt: dict[str, object],
+        final_continuity: dict[str, object],
+        _bootstrap_path: Path | None = None,
+    ) -> None:
+        observed.update(
+            {
+                "paths": observed_paths,
+                "root": root,
+                "receipt": receipt,
+                "final_continuity": final_continuity,
+            }
+        )
+
+    monkeypatch.setattr(operator, "_load_provenance", advanced_head)
+    monkeypatch.setattr(
+        operator, "_validate_stopped_projection_native_provenance", validate
+    )
+
+    admitted = operator._load_projection_source_continuity(paths, root=tmp_path)
+
+    assert admitted["admission_mode"] == (
+        operator.STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+    )
+    assert admitted["provenance"] == provenance
+    assert observed == {
+        "paths": paths,
+        "root": tmp_path,
+        "receipt": provenance,
+        "final_continuity": final_continuity,
+    }
+
+
+def test_stopped_continuity_observer_allows_clean_local_head_ahead_of_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    nested = tmp_path / "ipfs_datasets_py"
+    nested.mkdir(mode=0o700)
+    quarantine = tmp_path.parent / f"{tmp_path.name}-pycache"
+    quarantine.mkdir(mode=0o700)
+    remote_head = "1" * 40
+    final_head = "2" * 40
+    final_tree = "3" * 40
+    datasets_head = "4" * 40
+    datasets_tree = "5" * 40
+    ancestry: list[tuple[Path, tuple[str, ...]]] = []
+
+    monkeypatch.setattr(operator, "_AMBIENT_PYTHONPATH", frozenset())
+    monkeypatch.setattr(
+        operator,
+        "_RUNTIME_PYCACHE",
+        SimpleNamespace(name=str(quarantine)),
+    )
+    monkeypatch.setattr(
+        operator.sys,
+        "path",
+        [str(tmp_path), str(nested)],
+    )
+    monkeypatch.setattr(operator.sys, "pycache_prefix", str(quarantine))
+
+    def git_text(
+        repository: Path,
+        arguments: tuple[str, ...],
+        *,
+        noun: str,
+    ) -> str:
+        if repository == nested:
+            if arguments == ("rev-parse", "HEAD"):
+                return datasets_head
+            if arguments == ("rev-parse", "HEAD^{tree}"):
+                return datasets_tree
+            if arguments[0] == "status":
+                return ""
+        if arguments == ("symbolic-ref", "--short", "HEAD"):
+            return operator.APPROVED_BOARD_BRANCH
+        if arguments == ("rev-parse", "HEAD"):
+            return final_head
+        if arguments == ("rev-parse", "HEAD^{tree}"):
+            return final_tree
+        if arguments[0] == "status":
+            return ""
+        if arguments[0] == "ls-tree":
+            return f"160000 commit {datasets_head}\tipfs_datasets_py"
+        if arguments == ("rev-parse", operator.APPROVED_REMOTE_BRANCH_REF):
+            return remote_head
+        raise AssertionError((repository, arguments, noun))
+
+    monkeypatch.setattr(operator, "_git_text", git_text)
+    monkeypatch.setattr(
+        operator,
+        "_git_quiet",
+        lambda repository, arguments, *, noun: ancestry.append(
+            (repository, arguments)
+        ),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_tracked_runtime_inventory",
+        lambda *args, **kwargs: {
+            "tracked_object_count": 1,
+            "tracked_inventory_root": "sha256:" + ("a" * 64),
+        },
+    )
+
+    observed = operator._observe_candidate_runtime_continuity(
+        tmp_path,
+        require_resolved_remote=False,
+    )
+
+    assert observed["resolved_remote_head"] == remote_head
+    assert observed["current_head"] == final_head
+    assert ancestry == [
+        (
+            tmp_path,
+            ("merge-base", "--is-ancestor", remote_head, final_head),
+        )
+    ]
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="not the resolved remote branch",
+    ):
+        operator._candidate_runtime_continuity(tmp_path)
+
+
+def test_stopped_projection_continuity_allows_remote_catch_up_to_current_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    recorded_remote = "1" * 40
+    current_head = "3" * 40
+    sealed = {
+        "approved_branch": operator.APPROVED_BOARD_BRANCH,
+        "resolved_remote_head": recorded_remote,
+        "current_head": current_head,
+        "current_tree": "4" * 40,
+        "candidate_worktree_clean": True,
+        "datasets_head": "5" * 40,
+        "datasets_tree": "6" * 40,
+        "datasets_worktree_clean": True,
+        "superproject_runtime_inventory": {"root": "sealed"},
+        "datasets_runtime_inventory": {"root": "sealed"},
+    }
+    observed = {**sealed, "resolved_remote_head": current_head}
+    ancestry: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda root, *, require_resolved_remote: dict(observed),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_git_quiet",
+        lambda root, arguments, *, noun: ancestry.append(arguments),
+    )
+
+    admitted = operator._observe_stopped_projection_source_continuity(
+        tmp_path,
+        sealed,
+    )
+
+    assert admitted == observed
+    assert ancestry == [
+        ("merge-base", "--is-ancestor", recorded_remote, current_head)
+    ]
+
+    observed["current_tree"] = "9" * 40
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="final source continuity differs",
+    ):
+        operator._observe_stopped_projection_source_continuity(
+            tmp_path,
+            sealed,
+        )
+
+
+@pytest.mark.parametrize("movement", ("beyond", "divergent"))
+def test_stopped_projection_continuity_rejects_remote_outside_current_ancestry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    movement: str,
+) -> None:
+    operator = _operator()
+    recorded_remote = "1" * 40
+    current_head = "3" * 40
+    observed_remote = "7" * 40
+    sealed = {
+        "resolved_remote_head": recorded_remote,
+        "current_head": current_head,
+        "current_tree": "4" * 40,
+    }
+    observed = {**sealed, "resolved_remote_head": observed_remote}
+    ancestry = (
+        {(recorded_remote, observed_remote)} if movement == "beyond" else set()
+    )
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda root, *, require_resolved_remote: dict(observed),
+    )
+
+    def git_quiet(
+        root: Path,
+        arguments: tuple[str, ...],
+        *,
+        noun: str,
+    ) -> None:
+        edge = (arguments[-2], arguments[-1])
+        calls.append(edge)
+        if edge not in ancestry:
+            raise operator.SuccessorOperatorError("test ancestry rejection")
+
+    monkeypatch.setattr(operator, "_git_quiet", git_quiet)
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="test ancestry rejection",
+    ):
+        operator._observe_stopped_projection_source_continuity(
+            tmp_path,
+            sealed,
+        )
+
+    if movement == "beyond":
+        assert calls == [
+            (recorded_remote, observed_remote),
+            (observed_remote, current_head),
+        ]
+    else:
+        assert calls == [(recorded_remote, observed_remote)]
+
+
+def test_stopped_projection_native_provenance_requires_advanced_head_ancestry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    initial_head = "1" * 40
+    initial_tree = "2" * 40
+    initial_datasets_head = "3" * 40
+    initial_datasets_tree = "4" * 40
+    final_head = "5" * 40
+    final_datasets_head = "6" * 40
+    config_raw = b'{"reviewed":"candidate"}\n'
+    ready_task_ids = ["LGCVF-051", "LGCVF-060", "LGCVF-070", "LGCVF-080"]
+    initial_projection = {
+        "task_count": len(operator.LGCVF_TASK_ALIASES),
+        "completed_task_ids": list(operator.CONSTRUCTION_COMPLETED_TASK_IDS),
+        "ready_task_ids": ready_task_ids,
+        "blocked_task_ids": list(operator.BLOCKED_TASK_IDS),
+        "terminal_task_id": "LGCVF-124",
+        "goal_count": 14,
+        "root_goal_id": "LGCVF-G000",
+    }
+    config = {"initial_projection": initial_projection}
+    cid = "b" + ("a" * 60)
+    sha = "sha256:" + ("a" * 64)
+    initial_statuses = {
+        alias: (
+            "completed"
+            if alias in operator.CONSTRUCTION_COMPLETED_TASK_IDS
+            else "blocked"
+            if alias in operator.BLOCKED_TASK_IDS
+            else "todo"
+        )
+        for alias in operator.LGCVF_TASK_ALIASES
+    }
+    materialized_projection = {
+        "task_count": len(operator.LGCVF_TASK_ALIASES),
+        "completed_count": len(operator.CONSTRUCTION_COMPLETED_TASK_IDS),
+        "todo_count": (
+            len(operator.LGCVF_TASK_ALIASES)
+            - len(operator.CONSTRUCTION_COMPLETED_TASK_IDS)
+            - len(operator.BLOCKED_TASK_IDS)
+        ),
+        "blocked_count": len(operator.BLOCKED_TASK_IDS),
+        "completed_task_ids": list(operator.CONSTRUCTION_COMPLETED_TASK_IDS),
+        "ready_task_ids": ready_task_ids,
+        "blocked_task_ids": list(operator.BLOCKED_TASK_IDS),
+    }
+    materialized_projection["projection_root"] = operator._content_id(
+        materialized_projection
+    )
+    provenance: dict[str, object] = {
+        "schema": operator.PROVENANCE_SCHEMA,
+        "issued_at": "2026-08-26T00:00:00Z",
+        "admission_mode": operator.NATIVE_RESUME_ADMISSION_MODE,
+        "source_generation": operator.NATIVE_RESUME_SOURCE_GENERATION,
+        "target_generation": operator.SUCCESSOR_STORE_GENERATION,
+        "source_database": "",
+        "target_database": str(paths["successor_database"]),
+        "source_head": initial_head,
+        "source_tree": initial_tree,
+        "source_forest_root": cid,
+        "datasets_head": initial_datasets_head,
+        "datasets_tree": initial_datasets_tree,
+        "candidate_config_path": (
+            operator.DEFAULT_SUCCESSOR_CONFIG_RELATIVE.as_posix()
+        ),
+        "candidate_config_sha256": (
+            "sha256:" + hashlib.sha256(config_raw).hexdigest()
+        ),
+        "population_root": cid,
+        "plan_root_cid": cid,
+        "initial_projection": initial_projection,
+        "materialized_projection": materialized_projection,
+        "bootstrap_receipt_cid": cid,
+        "bootstrap_verification_root": cid,
+        "target_initial_sha256": sha,
+        "target_coordination_initial_sha256": sha,
+        "target_execution_initial_sha256": sha,
+        "database_uuid": "database:test-advanced-head",
+        "schema_fingerprint": cid,
+        "catalog_fingerprint": cid,
+        "initial_projection_reset": True,
+        "continuity_completion_records_imported": False,
+        "source_database_statuses_read": False,
+        "source_database_completion_records_imported": False,
+        "quack_required_after_publish": True,
+        "direct_multi_process_duckdb_permitted": False,
+        "ducklake_projection_authoritative": False,
+        "restart_requires_live_continuity_receipt": True,
+        "live_continuity_receipt_implemented": False,
+        "candidate_authored_validation": True,
+        "validation_self_authority": False,
+        "validation_completion_authoritative": False,
+        "network_isolation_enforced": True,
+        "model_provider_route": "none",
+        "task_implementation_complete": False,
+        "test_qualification_complete": False,
+        "objective_complete": False,
+        "release_qualified": False,
+        "authoritative_for_release": False,
+        "production_authorized": False,
+        "receipt_cid": cid,
+    }
+    final_continuity = {
+        "approved_branch": operator.APPROVED_BOARD_BRANCH,
+        "resolved_remote_head": final_head,
+        "current_head": final_head,
+        "current_tree": "7" * 40,
+        "candidate_worktree_clean": True,
+        "datasets_head": final_datasets_head,
+        "datasets_tree": "8" * 40,
+        "datasets_worktree_clean": True,
+    }
+    bootstrap = {
+        "receipt_cid": cid,
+        "population_root": cid,
+        "plan_root_cid": cid,
+        "verification": {
+            "verification_root": cid,
+            "control": {
+                "statuses": initial_statuses,
+                "ready_task_aliases": ready_task_ids,
+            },
+        },
+    }
+    git_quiet_calls: list[tuple[Path, tuple[str, ...]]] = []
+    initial_gitlink_oid = [initial_datasets_head]
+
+    monkeypatch.setattr(
+        operator, "_load_native_resume_config", lambda _root: (config, config_raw)
+    )
+    def git_text(
+        repository: Path,
+        arguments: tuple[str, ...],
+        *,
+        noun: str,
+    ) -> str:
+        if repository == tmp_path and arguments[0] == "ls-tree":
+            return (
+                f"160000 commit {initial_gitlink_oid[0]}\t"
+                "ipfs_datasets_py"
+            )
+        return initial_tree if repository == tmp_path else initial_datasets_tree
+
+    monkeypatch.setattr(operator, "_git_text", git_text)
+
+    def git_quiet(
+        repository: Path,
+        arguments: tuple[str, ...],
+        *,
+        noun: str,
+    ) -> None:
+        git_quiet_calls.append((repository, arguments))
+
+    monkeypatch.setattr(operator, "_git_quiet", git_quiet)
+    monkeypatch.setattr(
+        operator,
+        "_target_source_continuity",
+        lambda *args, **kwargs: {
+            **final_continuity,
+            "target_source_head": initial_head,
+            "target_source_tree": initial_tree,
+        },
+    )
+    monkeypatch.setattr(operator, "_strict_json", lambda *args, **kwargs: bootstrap)
+    monkeypatch.setattr(
+        operator, "_validate_native_bootstrap_receipt", lambda *args, **kwargs: None
+    )
+
+    operator._validate_stopped_projection_native_provenance(
+        paths,
+        root=tmp_path,
+        receipt=provenance,
+        final_continuity=final_continuity,
+    )
+
+    assert (
+        tmp_path,
+        ("merge-base", "--is-ancestor", initial_head, final_head),
+    ) in git_quiet_calls
+    assert (
+        tmp_path / "ipfs_datasets_py",
+        (
+            "merge-base",
+            "--is-ancestor",
+            initial_datasets_head,
+            final_datasets_head,
+        ),
+    ) in git_quiet_calls
+
+    drifted = dict(provenance)
+    drifted["candidate_config_sha256"] = "sha256:" + ("f" * 64)
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="initial provenance binding differs",
+    ):
+        operator._validate_stopped_projection_native_provenance(
+            paths,
+            root=tmp_path,
+            receipt=drifted,
+            final_continuity=final_continuity,
+        )
+
+    initial_gitlink_oid[0] = "9" * 40
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="initial nested gitlink binding differs",
+    ):
+        operator._validate_stopped_projection_native_provenance(
+            paths,
+            root=tmp_path,
+            receipt=provenance,
+            final_continuity=final_continuity,
+        )
+    initial_gitlink_oid[0] = initial_datasets_head
+
+    drifted_projection = dict(materialized_projection)
+    drifted_projection["ready_task_ids"] = list(reversed(ready_task_ids))
+    projection_body = dict(drifted_projection)
+    projection_body.pop("projection_root")
+    drifted_projection["projection_root"] = operator._content_id(projection_body)
+    drifted = dict(provenance)
+    drifted["materialized_projection"] = drifted_projection
+    receipt_body = dict(drifted)
+    receipt_body.pop("receipt_cid")
+    drifted["receipt_cid"] = operator._content_id(receipt_body)
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="initial projection replay differs",
+    ):
+        operator._validate_stopped_projection_native_provenance(
+            paths,
+            root=tmp_path,
+            receipt=drifted,
+            final_continuity=final_continuity,
+        )
+
+
+@pytest.mark.parametrize("tamper", ("database", "wal", "receipt"))
+def test_projection_stopped_continuity_rejects_tamper_and_live_wal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+
+    if tamper == "database":
+        with paths["successor_database"].open("ab") as handle:
+            handle.write(b"tamper\n")
+    elif tamper == "wal":
+        wal = paths["successor_database"].with_name("control.duckdb.wal")
+        wal.write_bytes(b"live\n")
+        wal.chmod(0o600)
+    else:
+        raw = paths["stopped_state_continuity"].read_bytes()
+        paths["stopped_state_continuity"].write_bytes(
+            raw.replace(b'"projection_only":true', b'"projection_only":false')
+        )
+        paths["stopped_state_continuity"].chmod(0o600)
+
+    with pytest.raises(operator.SuccessorOperatorError):
+        operator._load_projection_source_continuity(paths, root=tmp_path)
+
+
+def test_projection_initial_provenance_does_not_require_stopped_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    provenance = {"receipt_cid": "b" + ("c" * 60)}
+    monkeypatch.setattr(
+        operator,
+        "_load_provenance",
+        lambda _paths, *, root: provenance,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_stopped_state_database_digests",
+        lambda _paths: {"control": {}, "coordination": {}, "execution": {}},
+    )
+
+    admitted = operator._load_projection_source_continuity(paths, root=tmp_path)
+
+    assert admitted["admission_mode"] == (
+        operator.INITIAL_PROVENANCE_PROJECTION_ADMISSION_MODE
+    )
+    assert admitted["receipt"] == {}
+    assert not paths["stopped_state_continuity"].exists()
+    monkeypatch.setattr(
+        operator,
+        "_extension_preflight",
+        lambda: {"available": True},
+    )
+
+    preflight = operator.projection_preflight(tmp_path)
+
+    assert preflight["valid"] is False
+    assert preflight["source_admitted"] is True
+    assert preflight["source_admission_mode"] == (
+        operator.INITIAL_PROVENANCE_PROJECTION_ADMISSION_MODE
+    )
+    assert preflight["projection_root_present"] is False
+    assert preflight["projection_receipt_present"] is False
+
+
+def test_projection_once_rejects_initial_provenance_without_projection_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    source_loaded = False
+    databases = operator._successor_state_databases(paths)
+    paths["controller_lock"].parent.mkdir(mode=0o700, parents=True)
+    for name, database in databases.items():
+        database.write_bytes(f"initial-{name}\n".encode())
+        database.chmod(0o600)
+    monkeypatch.setattr(
+        operator,
+        "_extension_preflight",
+        lambda: {"available": True},
+    )
+
+    def load_source(*args: object, **kwargs: object) -> object:
+        nonlocal source_loaded
+        source_loaded = True
+        return {
+            "admission_mode": (
+                operator.INITIAL_PROVENANCE_PROJECTION_ADMISSION_MODE
+            )
+        }
+
+    monkeypatch.setattr(operator, "_load_projection_source_continuity", load_source)
+
+    with operator._exclusive_projection_checkpoint(paths) as lock_custody:
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="lost typed stopped-state continuity",
+        ):
+            operator._project_ducklake_once_locked(
+                tmp_path,
+                paths=paths,
+                lock_custody=lock_custody,
+            )
+
+    assert source_loaded is True
+    assert not os.path.lexists(paths["projection_root"])
+    assert not os.path.lexists(paths["projection_receipt"])
+
+
+def test_projection_once_rejects_residual_root_without_reading_or_deleting_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    paths["projection_root"].mkdir(mode=0o700, parents=True)
+    paths["controller_lock"].parent.chmod(0o700)
+    residue = paths["projection_root"] / "foreign-residue"
+    residue.write_text("preserve for inspection\n", encoding="utf-8")
+    source_loaded = False
+
+    monkeypatch.setattr(
+        operator,
+        "_extension_preflight",
+        lambda: {"available": True},
+    )
+
+    def load_source(*args: object, **kwargs: object) -> object:
+        nonlocal source_loaded
+        source_loaded = True
+        return {}
+
+    monkeypatch.setattr(operator, "_load_projection_source_continuity", load_source)
+
+    with operator._exclusive_projection_checkpoint(paths) as lock_custody:
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="refusing to reuse residual DuckLake projection root",
+        ):
+            operator._project_ducklake_once_locked(
+                tmp_path,
+                paths=paths,
+                lock_custody=lock_custody,
+            )
+
+    assert source_loaded is False
+    assert residue.read_text(encoding="utf-8") == "preserve for inspection\n"
+    assert not os.path.lexists(paths["projection_receipt"])
+
+
+def test_projection_query_uses_sealed_bytes_and_rejects_path_swap_restore(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import duckdb
+
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    databases = operator._successor_state_databases(paths)
+    paths["controller_lock"].parent.mkdir(mode=0o700, parents=True)
+    for name, database in databases.items():
+        database.write_bytes(f"sealed-{name}\n".encode())
+        database.chmod(0o600)
+    expected_control = paths["successor_database"].read_bytes()
+    observed_query_paths: list[str] = []
+    observed_tasks: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        operator,
+        "_extension_preflight",
+        lambda: {"available": True},
+    )
+
+    def load_continuity(
+        loaded_paths: dict[str, Path],
+        *,
+        root: Path,
+        stopped_database_snapshots: dict[str, dict[str, object]],
+        lock_custody: dict[str, object],
+    ) -> dict[str, object]:
+        assert loaded_paths == paths
+        assert root == tmp_path
+        return {
+            "provenance": {"receipt_cid": "provenance:test-sealed-query"},
+            "receipt": {
+                "receipt_cid": "continuity:test-sealed-query",
+                "controller_status_cid": "status:test-sealed-query",
+            },
+            "databases": operator._validate_stopped_database_snapshots(
+                paths,
+                lock_custody,
+                stopped_database_snapshots,
+            ),
+            "admission_mode": operator.STOPPED_STATE_CONTINUITY_ADMISSION_MODE,
+        }
+
+    class QueryResult:
+        def __init__(self, rows: list[tuple[object, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return self.rows
+
+    class SourceConnection:
+        def execute(self, statement: str) -> QueryResult:
+            if "information_schema.columns" in statement:
+                return QueryResult(
+                    [
+                        ("task_alias",),
+                        ("task_cid",),
+                        ("status",),
+                        ("body_json",),
+                        ("ordinal",),
+                    ]
+                )
+            return QueryResult(
+                [
+                    (
+                        "LGCVF-080",
+                        "task:test-080",
+                        "todo",
+                        '{"title":"sealed task","depends_on":[]}',
+                        1,
+                    )
+                ]
+            )
+
+        def close(self) -> None:
+            return None
+
+    def connect(database: str, *, read_only: bool) -> SourceConnection:
+        assert read_only is True
+        observed_query_paths.append(database)
+        assert database.startswith("/proc/self/fd/")
+        displaced = paths["successor_database"].with_name("control.displaced")
+        paths["successor_database"].rename(displaced)
+        paths["successor_database"].write_bytes(b"foreign-control\n")
+        paths["successor_database"].chmod(0o600)
+        assert Path(database).read_bytes() == expected_control
+        paths["successor_database"].unlink()
+        displaced.rename(paths["successor_database"])
+        return SourceConnection()
+
+    class Plane:
+        backend = "ducklake+quack"
+        quack_loaded = True
+        ducklake_loaded = True
+        ducklake_attached = True
+
+        def __enter__(self) -> Plane:
+            paths["projection_root"].joinpath("control.duckdb").write_bytes(b"c")
+            paths["projection_root"].joinpath("lake.ducklake").write_bytes(b"l")
+            paths["projection_root"].joinpath("lake-data").mkdir(mode=0o700)
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def register_board(self, _namespace: str, **kwargs: object) -> dict[str, str]:
+            assert kwargs["source_path"] == str(paths["successor_database"])
+            tasks = kwargs["tasks"]
+            assert isinstance(tasks, list)
+            observed_tasks.extend(tasks)
+            return {"board_namespace": "board:test-sealed-query"}
+
+        def aggregate_boards(self) -> dict[str, int]:
+            return {"task_count": 1}
+
+    monkeypatch.setattr(operator, "_load_projection_source_continuity", load_continuity)
+    monkeypatch.setattr(duckdb, "connect", connect)
+
+    def open_projection(
+        root: Path,
+        projection_root: Path,
+        *,
+        logical_projection_root: Path,
+    ) -> Plane:
+        assert root == tmp_path
+        assert str(projection_root).startswith("/proc/self/fd/")
+        assert logical_projection_root == paths["projection_root"]
+        return Plane()
+
+    monkeypatch.setattr(
+        operator,
+        "_open_projection_plane",
+        open_projection,
+    )
+
+    with operator._exclusive_projection_checkpoint(paths) as lock_custody:
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="snapshot changed",
+        ):
+            operator._project_ducklake_once_locked(
+                tmp_path,
+                paths=paths,
+                lock_custody=lock_custody,
+            )
+
+    assert len(observed_query_paths) == 1
+    assert observed_tasks[0]["task_id"] == "LGCVF-080"
+    assert paths["successor_database"].read_bytes() == expected_control
+    assert not os.path.lexists(paths["projection_receipt"])
+
+
+def test_projection_root_claim_rejects_raced_symlink_without_following_it(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    paths["controller_lock"].parent.mkdir(mode=0o700, parents=True)
+    foreign = tmp_path / "foreign-projection"
+    foreign.mkdir(mode=0o700)
+
+    with operator._exclusive_projection_checkpoint(paths) as lock_custody:
+        assert not os.path.lexists(paths["projection_root"])
+        paths["projection_root"].symlink_to(foreign, target_is_directory=True)
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="refusing to reuse residual DuckLake projection root",
+        ):
+            operator._claim_projection_root(paths, lock_custody)
+
+    assert paths["projection_root"].is_symlink()
+    assert foreign.is_dir()
+
+
+def test_projection_stopped_continuity_rejects_foreign_provenance_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    raw_read = False
+
+    def foreign_failure(*args: object, **kwargs: object) -> object:
+        raise operator.SuccessorOperatorError("foreign provenance failure")
+
+    def raw_provenance(_paths: dict[str, Path]) -> object:
+        nonlocal raw_read
+        raw_read = True
+        return {}
+
+    monkeypatch.setattr(operator, "_load_provenance", foreign_failure)
+    monkeypatch.setattr(
+        operator, "_load_lgcvf_live_raw_provenance_receipt", raw_provenance
+    )
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="foreign provenance failure",
+    ):
+        operator._load_projection_source_continuity(paths, root=tmp_path)
+    assert raw_read is False
 
 
 def test_projection_extension_policy_is_load_only_and_never_installs(
@@ -1531,6 +2783,59 @@ def test_projection_extension_policy_is_load_only_and_never_installs(
         == board_control_plane_module.BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
         == operator.BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
     )
+
+
+def test_projection_plane_pins_catalog_but_attaches_logical_lake_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        board_control_plane as board_module,
+    )
+
+    operator = _operator()
+    observed: list[tuple[object, ...]] = []
+
+    def original_attach(connection: object, root: Path) -> str:
+        observed.append(("attach", connection, root))
+        return "attached"
+
+    fake_globals: dict[str, object] = {
+        "Path": Path,
+        "_attach_ducklake": original_attach,
+    }
+    exec(
+        "def fake_open(repo_root, *, root=None, timeout_seconds=30.0, "
+        "allow_extension_install=None):\n"
+        "    exact_root = Path(root)\n"
+        "    return {\n"
+        "        'repo_root': repo_root,\n"
+        "        'storage_root': exact_root,\n"
+        "        'allow_extension_install': allow_extension_install,\n"
+        "        'attach': _attach_ducklake('connection', exact_root),\n"
+        "    }\n",
+        fake_globals,
+    )
+    fake_open = fake_globals["fake_open"]
+    monkeypatch.setattr(board_module, "open_board_control_plane", fake_open)
+    monkeypatch.setattr(board_module, "_attach_ducklake", original_attach)
+    descriptor_root = Path("/proc/self/fd/97")
+    logical_root = tmp_path / "run-v39" / "ducklake-board-projection"
+
+    result = operator._open_projection_plane(
+        tmp_path,
+        descriptor_root,
+        logical_projection_root=logical_root,
+    )
+
+    assert result == {
+        "repo_root": tmp_path,
+        "storage_root": descriptor_root,
+        "allow_extension_install": False,
+        "attach": "attached",
+    }
+    assert observed == [("attach", "connection", logical_root)]
+    assert board_module._attach_ducklake is original_attach
 
 
 def test_lgcvf_route_sealer_uses_one_temporary_exact_population_grant(

@@ -50,6 +50,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import uuid
 import zipfile
 from collections.abc import Mapping, Sequence
@@ -97,6 +98,9 @@ PROJECTION_ROOT_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "ducklake-board-proje
 PROJECTION_RECEIPT_RELATIVE: Final = (
     SUCCESSOR_RUN_RELATIVE / "evidence" / "ducklake-board-projection.json"
 )
+STOPPED_STATE_CONTINUITY_RELATIVE: Final = (
+    SUCCESSOR_RUN_RELATIVE / "evidence" / "stopped-state-continuity.json"
+)
 MATERIALIZER_RELATIVE: Final = Path(
     "scripts/materialize_logic_governed_compositional_verification_fabric_control_plane.py"
 )
@@ -109,6 +113,13 @@ PROVENANCE_SCHEMA: Final = (
 )
 NATIVE_RESUME_ADMISSION_MODE: Final = "tracked_candidate_initial_projection_reset"
 NATIVE_RESUME_SOURCE_GENERATION: Final = "lgcvf-tracked-candidate-projection"
+NATIVE_RESUME_LIVE_CONTINUITY_REQUIRED_ERROR: Final = (
+    "native-resume state changed after initial admission; restart requires an "
+    "unimplemented live-continuity receipt"
+)
+NATIVE_RESUME_PROVENANCE_BINDING_ERROR: Final = (
+    "native-resume provenance binding differs"
+)
 SUCCESSOR_STORE_GENERATION: Final = "lgcvf-run-v39"
 INTERNAL_CLIENT_GRANT_TTL_SECONDS: Final = 86_400.0
 INTERNAL_CLIENT_GRANT_RENEWAL_SECONDS: Final = 43_200.0
@@ -198,8 +209,22 @@ CONTROLLER_STATUS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/lgcvf-quack-successor-status@1"
 )
 PROJECTION_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-ducklake-board-projection@1"
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-ducklake-board-projection@2"
 )
+STOPPED_STATE_CONTINUITY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-stopped-state-continuity@1"
+)
+STOPPED_STATE_CONTINUITY_ADMISSION_MODE: Final = (
+    "typed_stopped_state_continuity"
+)
+STOPPED_SNAPSHOT_REQUIRED_SEALS: Final = (
+    getattr(fcntl, "F_SEAL_SEAL", 0)
+    | getattr(fcntl, "F_SEAL_SHRINK", 0)
+    | getattr(fcntl, "F_SEAL_GROW", 0)
+    | getattr(fcntl, "F_SEAL_WRITE", 0)
+)
+STOPPED_SNAPSHOT_AGGREGATE_MAX_BYTES: Final = 512 * 1024 * 1024
+INITIAL_PROVENANCE_PROJECTION_ADMISSION_MODE: Final = "initial_provenance"
 TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 TOKEN_FILE_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE"
 DATABASE_PROGRAM_JSON_ENV: Final = "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"
@@ -1211,6 +1236,9 @@ def _paths(root: Path = ROOT) -> dict[str, Path]:
         "controller_log": _contained(root, CONTROLLER_LOG_RELATIVE),
         "projection_root": _contained(root, PROJECTION_ROOT_RELATIVE),
         "projection_receipt": _contained(root, PROJECTION_RECEIPT_RELATIVE),
+        "stopped_state_continuity": _contained(
+            root, STOPPED_STATE_CONTINUITY_RELATIVE
+        ),
     }
     socket_identity = hashlib.sha256(
         _canonical_bytes(
@@ -1473,6 +1501,169 @@ def _open_private_lock(path: Path) -> Any:
         raise
 
 
+def _inode_identity(metadata: os.stat_result) -> tuple[int, int]:
+    return (int(metadata.st_dev), int(metadata.st_ino))
+
+
+def _revalidate_generation_bound_controller_lock(
+    paths: Mapping[str, Path],
+    custody: Mapping[str, Any],
+) -> None:
+    """Prove that the held lock still belongs to the named run generation."""
+
+    generation = paths["controller_lock"].parent
+    handle = custody.get("lock_handle")
+    generation_descriptor = custody.get("generation_descriptor")
+    if (
+        str(custody.get("generation_path") or "") != str(generation)
+        or not hasattr(handle, "fileno")
+        or getattr(handle, "closed", True)
+        or type(generation_descriptor) is not int
+        or generation_descriptor < 3
+    ):
+        raise SuccessorOperatorError(
+            "successor generation/controller lock custody is malformed"
+        )
+    try:
+        held_generation = os.fstat(generation_descriptor)
+        held_lock = os.fstat(handle.fileno())
+        observed_generation_descriptor = os.open(
+            generation,
+            os.O_RDONLY
+            | os.O_DIRECTORY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            named_generation = os.fstat(observed_generation_descriptor)
+        finally:
+            os.close(observed_generation_descriptor)
+        named_lock = os.stat(
+            paths["controller_lock"].name,
+            dir_fd=generation_descriptor,
+            follow_symlinks=False,
+        )
+    except (FileNotFoundError, NotADirectoryError, OSError, ValueError) as exc:
+        raise SuccessorOperatorError(
+            "successor generation/controller lock binding changed"
+        ) from exc
+    if (
+        not stat.S_ISDIR(held_generation.st_mode)
+        or held_generation.st_uid != os.geteuid()
+        or stat.S_IMODE(held_generation.st_mode) & 0o077
+        or _inode_identity(held_generation)
+        != tuple(custody.get("generation_identity") or ())
+        or _inode_identity(named_generation) != _inode_identity(held_generation)
+        or not stat.S_ISREG(held_lock.st_mode)
+        or held_lock.st_uid != os.geteuid()
+        or held_lock.st_nlink != 1
+        or stat.S_IMODE(held_lock.st_mode) & 0o077
+        or _inode_identity(held_lock) != tuple(custody.get("lock_identity") or ())
+        or _inode_identity(named_lock) != _inode_identity(held_lock)
+    ):
+        raise SuccessorOperatorError(
+            "successor generation/controller lock binding changed"
+        )
+
+
+def _open_generation_bound_controller_lock(
+    paths: Mapping[str, Path],
+) -> dict[str, Any]:
+    """Open ``controller.lock`` through a pinned run-generation directory."""
+
+    generation = paths["controller_lock"].parent
+    generation_descriptor = -1
+    lock_descriptor = -1
+    handle: Any | None = None
+    try:
+        generation_descriptor = os.open(
+            generation,
+            os.O_RDONLY
+            | os.O_DIRECTORY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        generation_metadata = os.fstat(generation_descriptor)
+        if (
+            not stat.S_ISDIR(generation_metadata.st_mode)
+            or generation_metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(generation_metadata.st_mode) & 0o077
+        ):
+            raise SuccessorOperatorError(
+                "successor generation directory custody is unsafe"
+            )
+        lock_descriptor = os.open(
+            paths["controller_lock"].name,
+            os.O_RDWR
+            | os.O_CREAT
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=generation_descriptor,
+        )
+        lock_metadata = os.fstat(lock_descriptor)
+        if (
+            not stat.S_ISREG(lock_metadata.st_mode)
+            or lock_metadata.st_uid != os.geteuid()
+            or lock_metadata.st_nlink != 1
+        ):
+            raise SuccessorOperatorError("controller lock custody is unsafe")
+        os.fchmod(lock_descriptor, 0o600)
+        handle = os.fdopen(lock_descriptor, "a+b")
+        lock_descriptor = -1
+        custody = {
+            "generation_path": str(generation),
+            "generation_descriptor": generation_descriptor,
+            "generation_identity": _inode_identity(generation_metadata),
+            "lock_handle": handle,
+            "lock_identity": _inode_identity(lock_metadata),
+        }
+        _revalidate_generation_bound_controller_lock(paths, custody)
+        return custody
+    except BaseException:
+        if handle is not None:
+            handle.close()
+        elif lock_descriptor >= 0:
+            os.close(lock_descriptor)
+        if generation_descriptor >= 0:
+            os.close(generation_descriptor)
+        raise
+
+
+def _close_generation_bound_controller_lock(custody: Mapping[str, Any]) -> None:
+    handle = custody.get("lock_handle")
+    generation_descriptor = custody.get("generation_descriptor")
+    if hasattr(handle, "close"):
+        handle.close()
+    if type(generation_descriptor) is int and generation_descriptor >= 0:
+        os.close(generation_descriptor)
+
+
+def _generation_bound_runtime_path(
+    paths: Mapping[str, Path],
+    custody: Mapping[str, Any],
+    logical_path: Path,
+) -> Path:
+    """Address one generation member through the already-pinned directory."""
+
+    _revalidate_generation_bound_controller_lock(paths, custody)
+    generation = paths["controller_lock"].parent
+    try:
+        relative = logical_path.relative_to(generation)
+    except ValueError as exc:
+        raise SuccessorOperatorError(
+            "generation-bound runtime path escaped its generation"
+        ) from exc
+    if not relative.parts:
+        raise SuccessorOperatorError(
+            "generation-bound runtime path cannot name the generation itself"
+        )
+    return (
+        Path(f"/proc/self/fd/{int(custody['generation_descriptor'])}")
+        / relative
+    )
+
+
 def _sha256_regular_file(
     path: Path,
     *,
@@ -1527,6 +1718,367 @@ def _sha256_regular_file(
     finally:
         os.close(descriptor)
     return "sha256:" + digest.hexdigest()
+
+
+def _stable_file_metadata(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_size),
+        int(metadata.st_mtime_ns),
+        int(metadata.st_ctime_ns),
+    )
+
+
+def _sha256_descriptor(
+    descriptor: int,
+    *,
+    max_bytes: int = MAX_DATABASE_BYTES,
+    noun: str,
+) -> str:
+    """Hash a pinned regular-file descriptor without changing its offset."""
+
+    try:
+        before = os.fstat(descriptor)
+    except OSError as exc:
+        raise SuccessorOperatorError(f"{noun} descriptor is unreadable") from exc
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_size <= 0
+        or before.st_size > max_bytes
+    ):
+        raise SuccessorOperatorError(f"{noun} descriptor is out of bounds")
+    digest = hashlib.sha256()
+    offset = 0
+    while offset < before.st_size:
+        try:
+            block = os.pread(
+                descriptor,
+                min(1024 * 1024, before.st_size - offset),
+                offset,
+            )
+        except OSError as exc:
+            raise SuccessorOperatorError(f"{noun} descriptor is unreadable") from exc
+        if not block:
+            raise SuccessorOperatorError(f"{noun} descriptor was truncated")
+        digest.update(block)
+        offset += len(block)
+    try:
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise SuccessorOperatorError(f"{noun} descriptor is unreadable") from exc
+    if _stable_file_metadata(before) != _stable_file_metadata(after):
+        raise SuccessorOperatorError(f"{noun} descriptor changed while hashing")
+    return "sha256:" + digest.hexdigest()
+
+
+def _require_stopped_snapshot_capability() -> None:
+    required = (
+        hasattr(os, "memfd_create")
+        and bool(getattr(os, "MFD_ALLOW_SEALING", 0))
+        and bool(getattr(fcntl, "F_ADD_SEALS", 0))
+        and bool(getattr(fcntl, "F_GET_SEALS", 0))
+        and STOPPED_SNAPSHOT_REQUIRED_SEALS != 0
+    )
+    if not required:
+        raise SuccessorOperatorError(
+            "sealed stopped-state database snapshots are unavailable"
+        )
+
+
+def _copy_stopped_database_to_sealed_memfd(
+    *,
+    name: str,
+    logical_path: Path,
+    generation_descriptor: int,
+    max_bytes: int,
+) -> dict[str, Any]:
+    """Copy one pinned stopped database into one immutable anonymous file."""
+
+    _require_stopped_snapshot_capability()
+    source_descriptor = -1
+    snapshot_descriptor = -1
+    try:
+        source_descriptor = os.open(
+            logical_path.name,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=generation_descriptor,
+        )
+        source_before = os.fstat(source_descriptor)
+        if (
+            not stat.S_ISREG(source_before.st_mode)
+            or source_before.st_size <= 0
+            or source_before.st_size > min(MAX_DATABASE_BYTES, max_bytes)
+            or source_before.st_uid != os.geteuid()
+            or source_before.st_nlink != 1
+            or stat.S_IMODE(source_before.st_mode) & 0o077
+        ):
+            raise SuccessorOperatorError(
+                f"stopped-state {name} database custody is unsafe"
+            )
+        try:
+            os.stat(
+                logical_path.name + ".wal",
+                dir_fd=generation_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            pass
+        else:
+            raise SuccessorOperatorError(
+                f"stopped-state {name} database has a live WAL"
+            )
+        snapshot_descriptor = os.memfd_create(
+            f"lgcvf-stopped-{name}.duckdb",
+            getattr(os, "MFD_CLOEXEC", 0) | getattr(os, "MFD_ALLOW_SEALING", 0),
+        )
+        remaining = int(source_before.st_size)
+        while remaining:
+            block = os.read(source_descriptor, min(1024 * 1024, remaining))
+            if not block:
+                raise SuccessorOperatorError(
+                    f"stopped-state {name} database was truncated during snapshot"
+                )
+            view = memoryview(block)
+            while view:
+                written = os.write(snapshot_descriptor, view)
+                if written <= 0:
+                    raise SuccessorOperatorError(
+                        f"stopped-state {name} snapshot write failed"
+                    )
+                view = view[written:]
+            remaining -= len(block)
+        source_after = os.fstat(source_descriptor)
+        named_source = os.stat(
+            logical_path.name,
+            dir_fd=generation_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            _stable_file_metadata(source_before)
+            != _stable_file_metadata(source_after)
+            or _stable_file_metadata(source_before)
+            != _stable_file_metadata(named_source)
+        ):
+            raise SuccessorOperatorError(
+                f"stopped-state {name} database changed during snapshot"
+            )
+        os.fchmod(snapshot_descriptor, 0o400)
+        os.fsync(snapshot_descriptor)
+        fcntl.fcntl(
+            snapshot_descriptor,
+            fcntl.F_ADD_SEALS,
+            STOPPED_SNAPSHOT_REQUIRED_SEALS,
+        )
+        observed_seals = int(
+            fcntl.fcntl(snapshot_descriptor, fcntl.F_GET_SEALS)
+        )
+        if (
+            observed_seals & STOPPED_SNAPSHOT_REQUIRED_SEALS
+            != STOPPED_SNAPSHOT_REQUIRED_SEALS
+        ):
+            raise SuccessorOperatorError(
+                f"stopped-state {name} snapshot is not immutable"
+            )
+        digest = _sha256_descriptor(
+            snapshot_descriptor,
+            noun=f"sealed stopped-state {name} snapshot",
+        )
+        return {
+            "name": name,
+            "logical_path": str(logical_path),
+            "source_descriptor": source_descriptor,
+            "source_metadata": _stable_file_metadata(source_before),
+            "snapshot_descriptor": snapshot_descriptor,
+            "snapshot_path": f"/proc/self/fd/{snapshot_descriptor}",
+            "sha256": digest,
+            "seals": observed_seals,
+        }
+    except BaseException:
+        if snapshot_descriptor >= 0:
+            os.close(snapshot_descriptor)
+        if source_descriptor >= 0:
+            os.close(source_descriptor)
+        raise
+
+
+def _validate_stopped_database_snapshots(
+    paths: Mapping[str, Path],
+    custody: Mapping[str, Any],
+    snapshots: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, str]]:
+    """Revalidate source inodes and sealed bytes, returning logical evidence."""
+
+    _revalidate_generation_bound_controller_lock(paths, custody)
+    databases = _successor_state_databases(paths)
+    if set(snapshots) != set(databases):
+        raise SuccessorOperatorError("stopped-state snapshot inventory differs")
+    generation_descriptor = int(custody["generation_descriptor"])
+    observed: dict[str, dict[str, str]] = {}
+    for name, logical_path in databases.items():
+        snapshot = snapshots[name]
+        if (
+            set(snapshot)
+            != {
+                "name",
+                "logical_path",
+                "source_descriptor",
+                "source_metadata",
+                "snapshot_descriptor",
+                "snapshot_path",
+                "sha256",
+                "seals",
+            }
+            or snapshot.get("name") != name
+            or snapshot.get("logical_path") != str(logical_path)
+        ):
+            raise SuccessorOperatorError(
+                f"stopped-state {name} snapshot binding differs"
+            )
+        source_descriptor = snapshot.get("source_descriptor")
+        snapshot_descriptor = snapshot.get("snapshot_descriptor")
+        if (
+            type(source_descriptor) is not int
+            or source_descriptor < 3
+            or type(snapshot_descriptor) is not int
+            or snapshot_descriptor < 3
+            or snapshot.get("snapshot_path")
+            != f"/proc/self/fd/{snapshot_descriptor}"
+        ):
+            raise SuccessorOperatorError(
+                f"stopped-state {name} snapshot descriptor differs"
+            )
+        try:
+            source_metadata = os.fstat(source_descriptor)
+            named_source = os.stat(
+                logical_path.name,
+                dir_fd=generation_descriptor,
+                follow_symlinks=False,
+            )
+            snapshot_metadata = os.fstat(snapshot_descriptor)
+            seals = int(fcntl.fcntl(snapshot_descriptor, fcntl.F_GET_SEALS))
+        except (OSError, TypeError, ValueError) as exc:
+            raise SuccessorOperatorError(
+                f"stopped-state {name} snapshot cannot be revalidated"
+            ) from exc
+        try:
+            os.stat(
+                logical_path.name + ".wal",
+                dir_fd=generation_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            wal_absent = True
+        except OSError as exc:
+            raise SuccessorOperatorError(
+                f"stopped-state {name} snapshot cannot be revalidated"
+            ) from exc
+        else:
+            wal_absent = False
+        if (
+            not wal_absent
+            or _stable_file_metadata(source_metadata)
+            != tuple(snapshot.get("source_metadata") or ())
+            or _stable_file_metadata(named_source)
+            != _stable_file_metadata(source_metadata)
+            or not stat.S_ISREG(snapshot_metadata.st_mode)
+            or snapshot_metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(snapshot_metadata.st_mode) != 0o400
+            or seals & STOPPED_SNAPSHOT_REQUIRED_SEALS
+            != STOPPED_SNAPSHOT_REQUIRED_SEALS
+            or seals != snapshot.get("seals")
+            or _sha256_descriptor(
+                snapshot_descriptor,
+                noun=f"sealed stopped-state {name} snapshot",
+            )
+            != snapshot.get("sha256")
+        ):
+            raise SuccessorOperatorError(
+                f"stopped-state {name} snapshot changed"
+            )
+        observed[name] = {
+            "path": str(logical_path),
+            "sha256": str(snapshot["sha256"]),
+        }
+    return observed
+
+
+@contextlib.contextmanager
+def _sealed_stopped_database_snapshots(
+    paths: Mapping[str, Path],
+    custody: Mapping[str, Any],
+) -> Any:
+    """Hold immutable copies and their exact source descriptors for one projection."""
+
+    generation = paths["controller_lock"].parent
+    databases = _successor_state_databases(paths)
+    if any(path.parent != generation for path in databases.values()):
+        raise SuccessorOperatorError("successor database escaped its generation")
+    _revalidate_generation_bound_controller_lock(paths, custody)
+    snapshots: dict[str, dict[str, Any]] = {}
+    remaining_snapshot_bytes = STOPPED_SNAPSHOT_AGGREGATE_MAX_BYTES
+    try:
+        for name, logical_path in databases.items():
+            snapshots[name] = _copy_stopped_database_to_sealed_memfd(
+                name=name,
+                logical_path=logical_path,
+                generation_descriptor=int(custody["generation_descriptor"]),
+                max_bytes=remaining_snapshot_bytes,
+            )
+            remaining_snapshot_bytes -= int(
+                snapshots[name]["source_metadata"][2]
+            )
+        _validate_stopped_database_snapshots(paths, custody, snapshots)
+        yield snapshots
+    finally:
+        for snapshot in snapshots.values():
+            for field in ("snapshot_descriptor", "source_descriptor"):
+                descriptor = snapshot.get(field)
+                if type(descriptor) is int and descriptor >= 0:
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
+
+
+def _stopped_snapshot_capacity_preflight(
+    paths: Mapping[str, Path],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "available": False,
+        "aggregate_max_bytes": STOPPED_SNAPSHOT_AGGREGATE_MAX_BYTES,
+        "source_bytes": 0,
+        "reason": "",
+    }
+    try:
+        _require_stopped_snapshot_capability()
+        total = 0
+        for name, database in _successor_state_databases(paths).items():
+            metadata = os.lstat(database)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+                or metadata.st_nlink != 1
+                or stat.S_IMODE(metadata.st_mode) & 0o077
+                or metadata.st_size <= 0
+            ):
+                raise SuccessorOperatorError(
+                    f"stopped-state {name} database custody is unsafe"
+                )
+            total += int(metadata.st_size)
+            if total > STOPPED_SNAPSHOT_AGGREGATE_MAX_BYTES:
+                raise SuccessorOperatorError(
+                    "stopped-state database snapshot aggregate exceeds its bound"
+                )
+    except (OSError, SuccessorOperatorError) as exc:
+        result["reason"] = f"{type(exc).__name__}: {exc}"
+        return result
+    result["available"] = True
+    result["source_bytes"] = total
+    return result
 
 
 def _regular_file_contains(path: Path, needle: bytes) -> bool:
@@ -1613,14 +2165,74 @@ def datasets_profile_migration(path: Path) -> Any:
     return report
 
 
-def _verify_profile(path: Path) -> dict[str, Any]:
-    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
-        load_datasets_authoritative_operational_catalog,
-        verify_datasets_authoritative_operational_schema,
+def _verify_profile(
+    path: Path,
+    *,
+    sealed_descriptor: int | None = None,
+) -> dict[str, Any]:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        control_plane_schema as schema_module,
     )
 
-    verification = verify_datasets_authoritative_operational_schema(path)
-    expected = load_datasets_authoritative_operational_catalog().fingerprint()
+    verifier = schema_module.verify_datasets_authoritative_operational_schema
+    if sealed_descriptor is not None:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            DuckDBConnection,
+            connect_duckdb_with_policy,
+        )
+
+        import duckdb
+
+        exact_path = f"/proc/self/fd/{sealed_descriptor}"
+        if (
+            type(sealed_descriptor) is not int
+            or sealed_descriptor < 3
+            or str(path) != exact_path
+            or verifier.__closure__ is not None
+        ):
+            raise SuccessorOperatorError(
+                "sealed profile verifier binding is unavailable"
+            )
+
+        def exact_snapshot_opener(
+            requested: Path | str,
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
+            if str(requested) != exact_path or args or kwargs:
+                raise SuccessorOperatorError(
+                    "sealed profile verifier requested a foreign database"
+                )
+            raw = connect_duckdb_with_policy(
+                duckdb,
+                exact_path,
+                read_only=True,
+            )
+            try:
+                wrapped = DuckDBConnection.wrap(raw)
+            except BaseException:
+                raw.close()
+                raise
+            return contextlib.closing(wrapped)
+
+        isolated_globals = dict(verifier.__globals__)
+        isolated_globals["open_duckdb_connection"] = exact_snapshot_opener
+        verifier = types.FunctionType(
+            verifier.__code__,
+            isolated_globals,
+            name=verifier.__name__,
+            argdefs=verifier.__defaults__,
+            closure=None,
+        )
+        verifier.__kwdefaults__ = (
+            dict(schema_module.verify_datasets_authoritative_operational_schema.__kwdefaults__)
+            if schema_module.verify_datasets_authoritative_operational_schema.__kwdefaults__
+            else None
+        )
+    verification = verifier(path)
+    expected = (
+        schema_module.load_datasets_authoritative_operational_catalog().fingerprint()
+    )
     if (
         verification.get("valid") is not True
         or verification.get("catalog_fingerprint") != expected
@@ -1967,7 +2579,13 @@ def _tracked_runtime_inventory(
     }
 
 
-def _candidate_runtime_continuity(root: Path) -> dict[str, Any]:
+def _observe_candidate_runtime_continuity(
+    root: Path,
+    *,
+    require_resolved_remote: bool,
+) -> dict[str, Any]:
+    """Observe one clean candidate, optionally requiring exact remote equality."""
+
     if (
         _AMBIENT_PYTHONPATH
         or sys.path[:2] != [str(root), str(root / "ipfs_datasets_py")]
@@ -2054,9 +2672,16 @@ def _candidate_runtime_continuity(root: Path) -> dict[str, Any]:
         ("rev-parse", APPROVED_REMOTE_BRANCH_REF),
         noun="resolved remote board branch",
     )
-    if current_head != remote_head:
-        raise SuccessorOperatorError(
-            "current board candidate is not the resolved remote branch"
+    if require_resolved_remote:
+        if current_head != remote_head:
+            raise SuccessorOperatorError(
+                "current board candidate is not the resolved remote branch"
+            )
+    else:
+        _git_quiet(
+            root,
+            ("merge-base", "--is-ancestor", remote_head, current_head),
+            noun="resolved remote/final stopped candidate ancestry",
         )
     superproject_inventory = _tracked_runtime_inventory(
         root,
@@ -2117,19 +2742,33 @@ def _candidate_runtime_continuity(root: Path) -> dict[str, Any]:
     }
 
 
+def _candidate_runtime_continuity(root: Path) -> dict[str, Any]:
+    """Observe the exact resolved remote candidate for live/restart admission."""
+
+    return _observe_candidate_runtime_continuity(
+        root,
+        require_resolved_remote=True,
+    )
+
+
 def _target_source_continuity(
     root: Path,
     *,
     source_head: str,
     source_tree: str,
     config: Mapping[str, Any],
-) -> dict[str, str]:
+    observed_continuity: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     if (
         re.fullmatch(r"[0-9a-f]{40}", source_head) is None
         or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
     ):
         raise SuccessorOperatorError("sealed source Git identity is malformed")
-    candidate = _candidate_runtime_continuity(root)
+    candidate = (
+        dict(observed_continuity)
+        if observed_continuity is not None
+        else _candidate_runtime_continuity(root)
+    )
     branch = str(candidate["approved_branch"])
     if config.get("merge_target_branch") != branch:
         raise SuccessorOperatorError(
@@ -3711,6 +4350,55 @@ def _native_resume_stage_config(
     return staged
 
 
+def _native_resume_materialized_projection(
+    config: Mapping[str, Any],
+    *,
+    task_ids: Sequence[str],
+    completed_task_ids: Sequence[str],
+    todo_task_ids: Sequence[str],
+    blocked_task_ids: Sequence[str],
+    ready_task_ids: Sequence[str],
+) -> dict[str, Any]:
+    """Reconstruct the one immutable initial task frontier and its CID."""
+
+    projection = config.get("initial_projection")
+    if not isinstance(projection, Mapping):
+        raise SuccessorOperatorError("native-resume initial projection is unavailable")
+    tasks = list(task_ids)
+    completed = list(completed_task_ids)
+    todo = list(todo_task_ids)
+    blocked = list(blocked_task_ids)
+    ready = list(ready_task_ids)
+    expected_completed = list(projection.get("completed_task_ids") or ())
+    expected_ready = list(projection.get("ready_task_ids") or ())
+    expected_blocked = list(projection.get("blocked_task_ids") or ())
+    expected_tasks = list(LGCVF_TASK_ALIASES)
+    terminal = set(expected_completed) | set(expected_blocked)
+    expected_todo = [alias for alias in expected_tasks if alias not in terminal]
+    if (
+        projection.get("task_count") != len(expected_tasks)
+        or tasks != expected_tasks
+        or completed != expected_completed
+        or todo != expected_todo
+        or ready != expected_ready
+        or blocked != expected_blocked
+    ):
+        raise SuccessorOperatorError(
+            "materialized native-resume authority differs from initial_projection"
+        )
+    result = {
+        "task_count": len(tasks),
+        "completed_count": len(completed),
+        "todo_count": len(todo),
+        "blocked_count": len(blocked),
+        "completed_task_ids": completed,
+        "ready_task_ids": ready,
+        "blocked_task_ids": blocked,
+    }
+    result["projection_root"] = _content_id(result)
+    return result
+
+
 def _verify_native_resume_projection(
     database: Path,
     *,
@@ -3722,44 +4410,21 @@ def _verify_native_resume_projection(
         DatabaseTaskSource,
     )
 
-    projection = config.get("initial_projection")
-    if not isinstance(projection, Mapping):
-        raise SuccessorOperatorError("native-resume initial projection is unavailable")
     with DatabaseTaskSource(database, install_schema=False) as source:
         records = list(source.list_tasks(limit=100).tasks)
         ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
-    completed = [item.task_alias for item in records if item.status == "completed"]
-    todo = [item.task_alias for item in records if item.status == "todo"]
-    blocked = [item.task_alias for item in records if item.status == "blocked"]
-    expected_completed = list(projection.get("completed_task_ids") or ())
-    expected_ready = list(projection.get("ready_task_ids") or ())
-    expected_blocked = list(projection.get("blocked_task_ids") or ())
-    expected_todo_count = (
-        int(projection.get("task_count") or 0)
-        - len(expected_completed)
-        - len(expected_blocked)
+    return _native_resume_materialized_projection(
+        config,
+        task_ids=[item.task_alias for item in records],
+        completed_task_ids=[
+            item.task_alias for item in records if item.status == "completed"
+        ],
+        todo_task_ids=[item.task_alias for item in records if item.status == "todo"],
+        blocked_task_ids=[
+            item.task_alias for item in records if item.status == "blocked"
+        ],
+        ready_task_ids=ready,
     )
-    if (
-        len(records) != projection.get("task_count")
-        or completed != expected_completed
-        or ready != expected_ready
-        or blocked != expected_blocked
-        or len(todo) != expected_todo_count
-    ):
-        raise SuccessorOperatorError(
-            "materialized native-resume authority differs from initial_projection"
-        )
-    result = {
-        "task_count": len(records),
-        "completed_count": len(completed),
-        "todo_count": len(todo),
-        "blocked_count": len(blocked),
-        "completed_task_ids": completed,
-        "ready_task_ids": ready,
-        "blocked_task_ids": blocked,
-    }
-    result["projection_root"] = _content_id(result)
-    return result
 
 
 def _validate_native_bootstrap_receipt(
@@ -4713,7 +5378,7 @@ def _load_provenance(
             )
             != source_tree
         ):
-            raise SuccessorOperatorError("native-resume provenance binding differs")
+            raise SuccessorOperatorError(NATIVE_RESUME_PROVENANCE_BINDING_ERROR)
         _git_quiet(
             root,
             (
@@ -4779,8 +5444,7 @@ def _load_provenance(
             != receipt.get("target_execution_initial_sha256")
         ):
             raise SuccessorOperatorError(
-                "native-resume state changed after initial admission; restart "
-                "requires an unimplemented live-continuity receipt"
+                NATIVE_RESUME_LIVE_CONTINUITY_REQUIRED_ERROR
             )
         projection = _verify_native_resume_projection(database, config=config)
         if projection != receipt.get("materialized_projection"):
@@ -4944,15 +5608,18 @@ def _load_provenance(
 
 def _load_lgcvf_live_raw_provenance_receipt(
     paths: Mapping[str, Path],
+    *,
+    _receipt_path: Path | None = None,
 ) -> dict[str, Any]:
     """Read the content-addressed receipt without importing the database stack."""
 
+    receipt_path = paths["provenance"] if _receipt_path is None else _receipt_path
     _require_private_directory(
-        paths["provenance"].parent,
+        receipt_path.parent,
         noun="successor evidence directory",
     )
     receipt = _strict_json(
-        paths["provenance"],
+        receipt_path,
         expected_schema=PROVENANCE_SCHEMA,
         require_private_owner=True,
     )
@@ -5115,6 +5782,164 @@ def _write_status(path: Path, payload: Mapping[str, Any], *, token: str = "") ->
     if token and token.encode("ascii") in encoded:
         raise SuccessorOperatorError("Quack token would enter controller status")
     _atomic_json(path, payload, replace=True)
+
+
+def _successor_state_databases(paths: Mapping[str, Path]) -> dict[str, Path]:
+    control = paths["successor_database"]
+    return {
+        "control": control,
+        "coordination": control.with_name("control.coordination.duckdb"),
+        "execution": control.with_name("control.execution.duckdb"),
+    }
+
+
+def _stopped_state_database_digests(
+    paths: Mapping[str, Path],
+) -> dict[str, dict[str, str]]:
+    databases = _successor_state_databases(paths)
+    observed: dict[str, dict[str, str]] = {}
+    for name, database in databases.items():
+        if os.path.lexists(database.with_name(database.name + ".wal")):
+            raise SuccessorOperatorError(
+                f"stopped-state {name} database has a live WAL"
+            )
+        observed[name] = {
+            "path": str(database),
+            "sha256": _sha256_regular_file(
+                database,
+                noun=f"stopped-state {name} database",
+                require_private_owner=True,
+            ),
+        }
+    return observed
+
+
+def _invalidate_stopped_state_continuity(paths: Mapping[str, Path]) -> None:
+    """Consume a prior clean-stop receipt before a new live admission."""
+
+    path = paths["stopped_state_continuity"]
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+        or metadata.st_nlink != 1
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state continuity receipt custody is unsafe"
+        )
+    path.unlink()
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def _write_stopped_state_continuity(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    stopped_status: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    owner_checkpoint: Mapping[str, Any],
+    owner_stop: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Publish one immutable projection-only receipt after a clean owner stop."""
+
+    durable_status = _strict_json(
+        paths["controller_status"],
+        expected_schema=CONTROLLER_STATUS_SCHEMA,
+        require_private_owner=True,
+    )
+    checkpoint = dict(owner_checkpoint)
+    stopped = dict(owner_stop)
+    owner_identity = durable_status.get("owner_identity")
+    owner_server_id = (
+        str(owner_identity.get("server_id") or "")
+        if isinstance(owner_identity, Mapping)
+        else ""
+    )
+    if (
+        durable_status != dict(stopped_status)
+        or durable_status.get("lifecycle") != "stopped"
+        or durable_status.get("error") != ""
+        or durable_status.get("provenance_cid") != provenance.get("receipt_cid")
+        or durable_status.get("scheduler_returncode") != 0
+        or set(checkpoint) != {"checkpointed", "server_id", "database_path", "at"}
+        or checkpoint.get("checkpointed") is not True
+        or checkpoint.get("server_id") != owner_server_id
+        or checkpoint.get("database_path") != str(paths["successor_database"])
+        or set(stopped) != {"stopped", "server_id", "at"}
+        or stopped.get("stopped") is not True
+        or stopped.get("server_id") != owner_server_id
+    ):
+        raise SuccessorOperatorError(
+            "clean stopped-state continuity evidence differs"
+        )
+    receipt: dict[str, Any] = {
+        "schema": STOPPED_STATE_CONTINUITY_SCHEMA,
+        "issued_at": _utc_now(),
+        "admission_mode": STOPPED_STATE_CONTINUITY_ADMISSION_MODE,
+        "target_generation": SUCCESSOR_STORE_GENERATION,
+        "source_provenance_cid": provenance["receipt_cid"],
+        "controller_status_cid": durable_status["status_cid"],
+        "owner_checkpoint": checkpoint,
+        "owner_stop": stopped,
+        "final_source_continuity": _observe_candidate_runtime_continuity(
+            root,
+            require_resolved_remote=False,
+        ),
+        "databases": _stopped_state_database_digests(paths),
+        "controller_lock_held_at_issue": True,
+        "live_wal_absent": True,
+        "requires_stopped_checkpoint": True,
+        "projection_only": True,
+        "restart_authority": False,
+        "authoritative": False,
+        "scheduling_authority": False,
+        "completion_authority": False,
+        "read_by_scheduler": False,
+        "quack_endpoint_served": False,
+        "production_authorized": False,
+    }
+    receipt["receipt_cid"] = _content_id(receipt)
+    _atomic_json(paths["stopped_state_continuity"], receipt, replace=False)
+    return receipt
+
+
+def _bind_stopped_state_continuity_status(
+    stopped_status: Mapping[str, Any],
+    continuity: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Cross-bind an immutable continuity receipt into the final status."""
+
+    if (
+        stopped_status.get("status_cid")
+        != continuity.get("controller_status_cid")
+        or stopped_status.get("lifecycle") != "stopped"
+        or stopped_status.get("error") != ""
+        or continuity.get("receipt_cid") != _content_id(
+            {
+                name: value
+                for name, value in continuity.items()
+                if name != "receipt_cid"
+            }
+        )
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state continuity/status cross-binding differs"
+        )
+    bound = dict(stopped_status)
+    bound.pop("status_cid", None)
+    bound["stopped_state_continuity_receipt_cid"] = continuity["receipt_cid"]
+    bound["stopped_state_continuity_status_cid"] = stopped_status["status_cid"]
+    bound["status_cid"] = _content_id(bound)
+    return bound
 
 
 def _token_sink(owner_state: Path) -> Path:
@@ -5532,7 +6357,8 @@ def run_successor(
     duration_seconds: float,
 ) -> int:
     paths = _paths(root)
-    lock_handle = _open_private_lock(paths["controller_lock"])
+    lock_custody = _open_generation_bound_controller_lock(paths)
+    lock_handle = lock_custody["lock_handle"]
     try:
         try:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -5540,17 +6366,22 @@ def run_successor(
             raise SuccessorOperatorError(
                 "another successor controller owns the lock"
             ) from exc
-        return _run_locked_successor(
+        _revalidate_generation_bound_controller_lock(paths, lock_custody)
+        result = _run_locked_successor(
             config_path,
             root=root,
             implement=implement,
             duration_seconds=duration_seconds,
+            _locked_paths=paths,
+            _lock_custody=lock_custody,
         )
+        _revalidate_generation_bound_controller_lock(paths, lock_custody)
+        return result
     finally:
         try:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
         finally:
-            lock_handle.close()
+            _close_generation_bound_controller_lock(lock_custody)
 
 
 def _preload_lgcvf_live_controller_dependency_closure() -> tuple[str, ...]:
@@ -6318,14 +7149,27 @@ def _run_locked_successor(
     root: Path,
     implement: bool,
     duration_seconds: float,
+    _locked_paths: Mapping[str, Path] | None = None,
+    _lock_custody: Mapping[str, Any] | None = None,
 ) -> int:
-    paths = _paths(root)
+    if (_locked_paths is None) != (_lock_custody is None):
+        raise SuccessorOperatorError(
+            "locked successor generation custody is incomplete"
+        )
+    paths = dict(_locked_paths) if _locked_paths is not None else _paths(root)
+
+    def revalidate_runtime_generation() -> None:
+        if _lock_custody is not None:
+            _revalidate_generation_bound_controller_lock(paths, _lock_custody)
+
+    revalidate_runtime_generation()
     raw_provenance = _load_lgcvf_live_raw_provenance_receipt(paths)
     live_launch = _prepare_lgcvf_configured_board_live_launch(
         root=root,
         config_path=config_path,
         provenance=raw_provenance,
     )
+    revalidate_runtime_generation()
     server: Any | None = None
     bootstrap_channel: socket.socket | None = None
     bootstrap_broker: _LgcvfStateOwnerBootstrapBroker | None = None
@@ -6530,6 +7374,12 @@ def _run_locked_successor(
         )
         if server.typed_command_socket_path() != paths["owner_socket"]:
             raise SuccessorOperatorError("owner did not retain its short socket path")
+        # Preserve the last clean-stop projection evidence through every
+        # read-only launch admission check.  Consume it only at the exact
+        # boundary where a new owner may begin mutating the generation.
+        revalidate_runtime_generation()
+        _invalidate_stopped_state_continuity(paths)
+        revalidate_runtime_generation()
         identity = server.start()
         if identity.listen_uri != program.quack_endpoint:
             stop_owner()
@@ -6575,6 +7425,7 @@ def _run_locked_successor(
         scheduler: subprocess.Popen[Any] | None = None
         scheduler_birth: Any | None = None
         stop_requested = False
+        clean_runtime_shutdown = False
         prior_handlers: dict[int, Any] = {}
 
         def request_stop(_signum: int, _frame: Any) -> None:
@@ -6622,6 +7473,7 @@ def _run_locked_successor(
             stable_signature: tuple[str, ...] = ()
             stable_since = 0.0
             while True:
+                revalidate_runtime_generation()
                 if scheduler.poll() is not None:
                     raise SuccessorOperatorError(
                         "scheduler exited before all lane daemons attached"
@@ -6658,10 +7510,12 @@ def _run_locked_successor(
                 scheduler_birth=scheduler_birth.to_dict(),
                 projection_root=paths["projection_root"],
             )
+            revalidate_runtime_generation()
             _write_status(paths["controller_status"], ready_status, token=token)
             started = time.monotonic()
             pump_error = ""
             while scheduler.poll() is None and not stop_requested:
+                revalidate_runtime_generation()
                 if (
                     bootstrap_broker is None
                     or bootstrap_broker.failure
@@ -6700,6 +7554,7 @@ def _run_locked_successor(
                 raise SuccessorOperatorError(
                     "mutation inbox pump failed: " + pump_error
                 )
+            clean_runtime_shutdown = True
         finally:
             for signum, handler in prior_handlers.items():
                 signal.signal(signum, handler)
@@ -6716,6 +7571,13 @@ def _run_locked_successor(
                 scheduler.wait(timeout=5.0)
             stop_bootstrap_broker()
             log_handle.close()
+            owner_checkpoint: Mapping[str, Any] = {}
+            checkpoint_failure: Exception | None = None
+            if clean_runtime_shutdown and server is not None:
+                try:
+                    owner_checkpoint = server.checkpoint()
+                except Exception as exc:  # noqa: BLE001 - fail closed after stop.
+                    checkpoint_failure = exc
             stop_receipt = stop_owner()
             credential_leak = bool(tuple(paths["owner_state"].glob("*.quack-token")))
             for surface in (
@@ -6727,6 +7589,22 @@ def _run_locked_successor(
                     surface,
                     token.encode("ascii"),
                 )
+            scheduler_returncode = (
+                scheduler.returncode if scheduler is not None else None
+            )
+            stopped_error = (
+                "attach_credential_persisted"
+                if credential_leak
+                else "owner_stop_failed"
+                if stop_receipt.get("stopped") is not True
+                else "owner_checkpoint_failed"
+                if checkpoint_failure is not None
+                else "unclean_controller_shutdown"
+                if not clean_runtime_shutdown
+                else "scheduler_exit_failed"
+                if scheduler_returncode != 0
+                else ""
+            )
             stopped = _status_payload(
                 lifecycle="stopped",
                 controller_birth=controller_birth.to_dict(),
@@ -6735,22 +7613,37 @@ def _run_locked_successor(
                 scheduler_birth=(
                     scheduler_birth.to_dict() if scheduler_birth is not None else {}
                 ),
-                scheduler_returncode=(
-                    scheduler.returncode if scheduler is not None else None
-                ),
-                error=(
-                    "attach_credential_persisted"
-                    if credential_leak
-                    else "" if stop_receipt.get("stopped") else "owner_stop_failed"
-                ),
+                scheduler_returncode=scheduler_returncode,
+                error=stopped_error,
                 projection_root=paths["projection_root"],
             )
+            revalidate_runtime_generation()
             _write_status(paths["controller_status"], stopped, token=token)
+            if not stopped_error:
+                continuity = _write_stopped_state_continuity(
+                    paths,
+                    root=root,
+                    stopped_status=stopped,
+                    provenance=provenance,
+                    owner_checkpoint=owner_checkpoint,
+                    owner_stop=stop_receipt,
+                )
+                bound_stopped = _bind_stopped_state_continuity_status(
+                    stopped, continuity
+                )
+                revalidate_runtime_generation()
+                _write_status(
+                    paths["controller_status"], bound_stopped, token=token
+                )
             token = ""
             if credential_leak:
                 raise SuccessorOperatorError(
                     "raw Quack attach credential reached a persistent surface"
                 )
+            if checkpoint_failure is not None:
+                raise SuccessorOperatorError(
+                    "LGCVF owner clean-stop checkpoint failed"
+                ) from checkpoint_failure
         return int(returncode)
     finally:
         try:
@@ -6893,12 +7786,622 @@ def _controller_lock_is_held(path: Path) -> bool:
         os.close(descriptor)
 
 
+def _validate_stopped_projection_native_provenance(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    receipt: Mapping[str, Any],
+    final_continuity: Mapping[str, Any],
+    _bootstrap_path: Path | None = None,
+) -> None:
+    """Replay immutable initial authority beneath an advanced clean board HEAD."""
+
+    native_fields = {
+        "schema",
+        "issued_at",
+        "admission_mode",
+        "source_generation",
+        "target_generation",
+        "source_database",
+        "target_database",
+        "source_head",
+        "source_tree",
+        "source_forest_root",
+        "datasets_head",
+        "datasets_tree",
+        "candidate_config_path",
+        "candidate_config_sha256",
+        "population_root",
+        "plan_root_cid",
+        "initial_projection",
+        "materialized_projection",
+        "bootstrap_receipt_cid",
+        "bootstrap_verification_root",
+        "target_initial_sha256",
+        "target_coordination_initial_sha256",
+        "target_execution_initial_sha256",
+        "database_uuid",
+        "schema_fingerprint",
+        "catalog_fingerprint",
+        "initial_projection_reset",
+        "continuity_completion_records_imported",
+        "source_database_statuses_read",
+        "source_database_completion_records_imported",
+        "quack_required_after_publish",
+        "direct_multi_process_duckdb_permitted",
+        "ducklake_projection_authoritative",
+        "restart_requires_live_continuity_receipt",
+        "live_continuity_receipt_implemented",
+        "candidate_authored_validation",
+        "validation_self_authority",
+        "validation_completion_authoritative",
+        "network_isolation_enforced",
+        "model_provider_route",
+        "task_implementation_complete",
+        "test_qualification_complete",
+        "objective_complete",
+        "release_qualified",
+        "authoritative_for_release",
+        "production_authorized",
+        "receipt_cid",
+    }
+
+    def content_cid(field: str) -> bool:
+        value = receipt.get(field)
+        return (
+            type(value) is str
+            and re.fullmatch(r"b[a-z2-7]{60}", value) is not None
+        )
+
+    def sha256_pin(field: str) -> bool:
+        value = receipt.get(field)
+        return (
+            type(value) is str
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
+        )
+
+    config, config_raw = _load_native_resume_config(root)
+    source_head = str(receipt.get("source_head") or "")
+    source_tree = str(receipt.get("source_tree") or "")
+    datasets_head = str(receipt.get("datasets_head") or "")
+    datasets_tree = str(receipt.get("datasets_tree") or "")
+    if (
+        set(receipt) != native_fields
+        or receipt.get("source_generation") != NATIVE_RESUME_SOURCE_GENERATION
+        or receipt.get("target_generation") != SUCCESSOR_STORE_GENERATION
+        or receipt.get("source_database") != ""
+        or receipt.get("target_database") != str(paths["successor_database"])
+        or type(receipt.get("issued_at")) is not str
+        or re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z",
+            receipt["issued_at"],
+        )
+        is None
+        or receipt.get("candidate_config_path")
+        != DEFAULT_SUCCESSOR_CONFIG_RELATIVE.as_posix()
+        or receipt.get("candidate_config_sha256")
+        != "sha256:" + hashlib.sha256(config_raw).hexdigest()
+        or receipt.get("initial_projection") != config.get("initial_projection")
+        or not content_cid("source_forest_root")
+        or not content_cid("population_root")
+        or not content_cid("plan_root_cid")
+        or not content_cid("bootstrap_receipt_cid")
+        or not content_cid("bootstrap_verification_root")
+        or not content_cid("schema_fingerprint")
+        or not content_cid("catalog_fingerprint")
+        or not content_cid("receipt_cid")
+        or not sha256_pin("target_initial_sha256")
+        or not sha256_pin("target_coordination_initial_sha256")
+        or not sha256_pin("target_execution_initial_sha256")
+        or type(receipt.get("database_uuid")) is not str
+        or not receipt.get("database_uuid")
+        or receipt.get("initial_projection_reset") is not True
+        or receipt.get("continuity_completion_records_imported") is not False
+        or receipt.get("source_database_statuses_read") is not False
+        or receipt.get("source_database_completion_records_imported") is not False
+        or receipt.get("quack_required_after_publish") is not True
+        or receipt.get("direct_multi_process_duckdb_permitted") is not False
+        or receipt.get("ducklake_projection_authoritative") is not False
+        or receipt.get("restart_requires_live_continuity_receipt") is not True
+        or receipt.get("live_continuity_receipt_implemented") is not False
+        or receipt.get("candidate_authored_validation") is not True
+        or receipt.get("validation_self_authority") is not False
+        or receipt.get("validation_completion_authoritative") is not False
+        or receipt.get("network_isolation_enforced") is not True
+        or receipt.get("model_provider_route") != "none"
+        or receipt.get("task_implementation_complete") is not False
+        or receipt.get("test_qualification_complete") is not False
+        or receipt.get("objective_complete") is not False
+        or receipt.get("release_qualified") is not False
+        or receipt.get("authoritative_for_release") is not False
+        or receipt.get("production_authorized") is not False
+        or re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+        or re.fullmatch(r"[0-9a-f]{40}", datasets_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", datasets_tree) is None
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state initial provenance binding differs"
+        )
+    if _git_text(
+        root,
+        ("show", "-s", "--format=%T", source_head),
+        noun="stopped-state initial source commit",
+    ) != source_tree:
+        raise SuccessorOperatorError(
+            "stopped-state initial source commit/tree binding differs"
+        )
+    initial_gitlink = _git_text(
+        root,
+        ("ls-tree", source_head, "--", "ipfs_datasets_py"),
+        noun="stopped-state initial nested gitlink",
+    ).split(maxsplit=3)
+    if (
+        len(initial_gitlink) != 4
+        or initial_gitlink[0] != "160000"
+        or initial_gitlink[1] != "commit"
+        or initial_gitlink[2] != datasets_head
+        or initial_gitlink[3] != "ipfs_datasets_py"
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state initial nested gitlink binding differs"
+        )
+    _git_quiet(
+        root,
+        ("merge-base", "--is-ancestor", source_head, str(final_continuity["current_head"])),
+        noun="stopped-state final source ancestry",
+    )
+    datasets = _contained(root, "ipfs_datasets_py")
+    if _git_text(
+        datasets,
+        ("show", "-s", "--format=%T", datasets_head),
+        noun="stopped-state initial nested commit",
+    ) != datasets_tree:
+        raise SuccessorOperatorError(
+            "stopped-state initial nested commit/tree binding differs"
+        )
+    _git_quiet(
+        datasets,
+        (
+            "merge-base",
+            "--is-ancestor",
+            datasets_head,
+            str(final_continuity["datasets_head"]),
+        ),
+        noun="stopped-state final nested ancestry",
+    )
+    target_continuity = _target_source_continuity(
+        root,
+        source_head=source_head,
+        source_tree=source_tree,
+        config=config,
+        observed_continuity=final_continuity,
+    )
+    if any(
+        target_continuity.get(name) != value
+        for name, value in final_continuity.items()
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state final source continuity differs"
+        )
+
+    bootstrap_path = _bootstrap_path or (
+        paths["successor_database"].parent
+        / "evidence"
+        / "bootstrap"
+        / "materialization.json"
+    )
+    bootstrap = _strict_json(
+        bootstrap_path,
+        expected_schema=BOOTSTRAP_RECEIPT_SCHEMA,
+        require_private_owner=True,
+    )
+    _validate_native_bootstrap_receipt(
+        bootstrap,
+        config=config,
+        database_paths={
+            "control": SUCCESSOR_DATABASE_RELATIVE.as_posix(),
+            "coordination": SUCCESSOR_DATABASE_RELATIVE.with_name(
+                "control.coordination.duckdb"
+            ).as_posix(),
+            "execution": SUCCESSOR_DATABASE_RELATIVE.with_name(
+                "control.execution.duckdb"
+            ).as_posix(),
+        },
+        source_head=source_head,
+        repository_tree_id="git-tree:" + source_tree,
+        population_root=str(receipt["population_root"]),
+        plan_root_cid=str(receipt["plan_root_cid"]),
+        schema_fingerprint=str(receipt["schema_fingerprint"]),
+        catalog_fingerprint=str(receipt["catalog_fingerprint"]),
+    )
+    verification = bootstrap.get("verification")
+    if (
+        not isinstance(verification, Mapping)
+        or bootstrap.get("receipt_cid") != receipt.get("bootstrap_receipt_cid")
+        or verification.get("verification_root")
+        != receipt.get("bootstrap_verification_root")
+        or bootstrap.get("population_root") != receipt.get("population_root")
+        or bootstrap.get("plan_root_cid") != receipt.get("plan_root_cid")
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state bootstrap/provenance cross-binding differs"
+        )
+    control = verification.get("control")
+    statuses = control.get("statuses") if isinstance(control, Mapping) else None
+    if not isinstance(statuses, Mapping):
+        raise SuccessorOperatorError(
+            "stopped-state bootstrap task projection differs"
+        )
+    materialized_projection = _native_resume_materialized_projection(
+        config,
+        task_ids=list(statuses),
+        completed_task_ids=[
+            alias for alias, status in statuses.items() if status == "completed"
+        ],
+        todo_task_ids=[
+            alias for alias, status in statuses.items() if status == "todo"
+        ],
+        blocked_task_ids=[
+            alias for alias, status in statuses.items() if status == "blocked"
+        ],
+        ready_task_ids=list(control.get("ready_task_aliases") or ()),
+    )
+    if receipt.get("materialized_projection") != materialized_projection:
+        raise SuccessorOperatorError(
+            "stopped-state initial projection replay differs"
+        )
+
+
+def _observe_stopped_projection_source_continuity(
+    root: Path,
+    sealed: Mapping[str, Any],
+    *,
+    minimum_remote_head: str | None = None,
+) -> dict[str, Any]:
+    """Allow only monotonic remote catch-up beneath an exact stopped source."""
+
+    observed = _observe_candidate_runtime_continuity(
+        root,
+        require_resolved_remote=False,
+    )
+    if set(observed) != set(sealed) or any(
+        observed.get(field) != value
+        for field, value in sealed.items()
+        if field != "resolved_remote_head"
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state final source continuity differs"
+        )
+    sealed_remote = str(sealed.get("resolved_remote_head") or "")
+    observed_remote = str(observed.get("resolved_remote_head") or "")
+    current_head = str(observed.get("current_head") or "")
+    minimum_remote = (
+        sealed_remote if minimum_remote_head is None else minimum_remote_head
+    )
+    if any(
+        re.fullmatch(r"[0-9a-f]{40}", value) is None
+        for value in (sealed_remote, minimum_remote, observed_remote, current_head)
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state remote continuity is malformed"
+        )
+    checked_ancestors: set[str] = set()
+    for ancestor in (sealed_remote, minimum_remote):
+        if ancestor == observed_remote or ancestor in checked_ancestors:
+            continue
+        _git_quiet(
+            root,
+            ("merge-base", "--is-ancestor", ancestor, observed_remote),
+            noun="stopped-state monotonic remote catch-up",
+        )
+        checked_ancestors.add(ancestor)
+    if observed_remote != current_head:
+        _git_quiet(
+            root,
+            ("merge-base", "--is-ancestor", observed_remote, current_head),
+            noun="stopped-state remote/current source ancestry",
+        )
+    return observed
+
+
+def _load_projection_source_continuity(
+    paths: Mapping[str, Path],
+    *,
+    root: Path,
+    stopped_database_snapshots: Mapping[str, Mapping[str, Any]] | None = None,
+    lock_custody: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Authenticate one stopped state for non-authoritative projection only."""
+
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
+
+    sealed_projection = stopped_database_snapshots is not None
+    if sealed_projection != (lock_custody is not None):
+        raise SuccessorOperatorError(
+            "stopped projection snapshot custody is incomplete"
+        )
+    provenance_receipt_path = paths["provenance"]
+    continuity_receipt_path = paths["stopped_state_continuity"]
+    controller_status_path = paths["controller_status"]
+    bootstrap_receipt_path = (
+        paths["successor_database"].parent
+        / "evidence"
+        / "bootstrap"
+        / "materialization.json"
+    )
+    if sealed_projection:
+        assert stopped_database_snapshots is not None
+        assert lock_custody is not None
+        _validate_stopped_database_snapshots(
+            paths,
+            lock_custody,
+            stopped_database_snapshots,
+        )
+        provenance_receipt_path = _generation_bound_runtime_path(
+            paths, lock_custody, provenance_receipt_path
+        )
+        continuity_receipt_path = _generation_bound_runtime_path(
+            paths, lock_custody, continuity_receipt_path
+        )
+        controller_status_path = _generation_bound_runtime_path(
+            paths, lock_custody, controller_status_path
+        )
+        bootstrap_receipt_path = _generation_bound_runtime_path(
+            paths, lock_custody, bootstrap_receipt_path
+        )
+        provenance = _load_lgcvf_live_raw_provenance_receipt(
+            paths,
+            _receipt_path=provenance_receipt_path,
+        )
+    else:
+        try:
+            provenance = _load_provenance(paths, root=root)
+        except SuccessorOperatorError as exc:
+            if str(exc) not in {
+                NATIVE_RESUME_LIVE_CONTINUITY_REQUIRED_ERROR,
+                NATIVE_RESUME_PROVENANCE_BINDING_ERROR,
+            }:
+                raise
+            # These are the only two expected consequences of successful owner
+            # mutations: changed stores, or a clean board HEAD advanced by admitted
+            # merges.  The projection-only path below independently replays the
+            # immutable initial provenance and binds the exact final continuity.
+            provenance = _load_lgcvf_live_raw_provenance_receipt(paths)
+        else:
+            return {
+                "provenance": provenance,
+                "receipt": {},
+                "databases": _stopped_state_database_digests(paths),
+                "admission_mode": INITIAL_PROVENANCE_PROJECTION_ADMISSION_MODE,
+            }
+    receipt = _strict_json(
+        continuity_receipt_path,
+        expected_schema=STOPPED_STATE_CONTINUITY_SCHEMA,
+        require_private_owner=True,
+    )
+    expected_fields = {
+        "schema",
+        "issued_at",
+        "admission_mode",
+        "target_generation",
+        "source_provenance_cid",
+        "controller_status_cid",
+        "owner_checkpoint",
+        "owner_stop",
+        "final_source_continuity",
+        "databases",
+        "controller_lock_held_at_issue",
+        "live_wal_absent",
+        "requires_stopped_checkpoint",
+        "projection_only",
+        "restart_authority",
+        "authoritative",
+        "scheduling_authority",
+        "completion_authority",
+        "read_by_scheduler",
+        "quack_endpoint_served",
+        "production_authorized",
+        "receipt_cid",
+    }
+    false_authority_fields = (
+        "authoritative",
+        "scheduling_authority",
+        "completion_authority",
+        "read_by_scheduler",
+        "quack_endpoint_served",
+        "production_authorized",
+        "restart_authority",
+    )
+    if (
+        set(receipt) != expected_fields
+        or receipt.get("admission_mode")
+        != STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        or receipt.get("target_generation") != SUCCESSOR_STORE_GENERATION
+        or receipt.get("source_provenance_cid") != provenance.get("receipt_cid")
+        or type(receipt.get("issued_at")) is not str
+        or re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z",
+            receipt["issued_at"],
+        )
+        is None
+        or receipt.get("controller_lock_held_at_issue") is not True
+        or receipt.get("live_wal_absent") is not True
+        or receipt.get("requires_stopped_checkpoint") is not True
+        or receipt.get("projection_only") is not True
+        or any(receipt.get(field) is not False for field in false_authority_fields)
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state continuity semantics differ"
+        )
+    final_continuity = receipt.get("final_source_continuity")
+    if not isinstance(final_continuity, Mapping):
+        raise SuccessorOperatorError(
+            "stopped-state final source continuity differs"
+        )
+    observed_continuity = _observe_stopped_projection_source_continuity(
+        root,
+        final_continuity,
+    )
+    _validate_stopped_projection_native_provenance(
+        paths,
+        root=root,
+        receipt=provenance,
+        final_continuity=final_continuity,
+        _bootstrap_path=bootstrap_receipt_path,
+    )
+
+    status = _strict_json(
+        controller_status_path,
+        expected_schema=CONTROLLER_STATUS_SCHEMA,
+        require_private_owner=True,
+    )
+    anchor_status = dict(status)
+    anchor_status.pop("status_cid", None)
+    linked_receipt_cid = anchor_status.pop(
+        "stopped_state_continuity_receipt_cid", None
+    )
+    linked_status_cid = anchor_status.pop(
+        "stopped_state_continuity_status_cid", None
+    )
+    anchor_status["status_cid"] = _content_id(anchor_status)
+    owner_identity = anchor_status.get("owner_identity")
+    controller_birth_raw = anchor_status.get("controller_birth")
+    scheduler_birth_raw = anchor_status.get("scheduler_birth")
+    if (
+        linked_receipt_cid != receipt.get("receipt_cid")
+        or linked_status_cid != receipt.get("controller_status_cid")
+        or anchor_status.get("status_cid") != linked_status_cid
+        or anchor_status.get("lifecycle") != "stopped"
+        or anchor_status.get("error") != ""
+        or anchor_status.get("provenance_cid") != provenance.get("receipt_cid")
+        or anchor_status.get("scheduler_returncode") != 0
+        or not isinstance(owner_identity, Mapping)
+        or not isinstance(controller_birth_raw, Mapping)
+        or not isinstance(scheduler_birth_raw, Mapping)
+        or owner_identity.get("process_birth") != controller_birth_raw
+        or owner_identity.get("database_uuid") != provenance.get("database_uuid")
+        or owner_identity.get("schema_fingerprint")
+        != provenance.get("schema_fingerprint")
+        or owner_identity.get("store_id") != SUCCESSOR_DATABASE_RELATIVE.as_posix()
+        or owner_identity.get("secret_handle") != SECRET_HANDLE
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state controller status binding differs"
+        )
+    try:
+        controller_birth = ProcessBirthIdentity.from_dict(controller_birth_raw)
+        scheduler_birth = ProcessBirthIdentity.from_dict(scheduler_birth_raw)
+    except (TypeError, ValueError) as exc:
+        raise SuccessorOperatorError(
+            "stopped-state process birth binding is malformed"
+        ) from exc
+    if (
+        owner_liveness(controller_birth) is not OwnerLiveness.DEAD
+        or owner_liveness(scheduler_birth) is not OwnerLiveness.DEAD
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state controller tree is not exactly dead"
+        )
+
+    checkpoint = receipt.get("owner_checkpoint")
+    stopped = receipt.get("owner_stop")
+    owner_server_id = str(owner_identity.get("server_id") or "")
+    if (
+        not isinstance(checkpoint, Mapping)
+        or set(checkpoint) != {"checkpointed", "server_id", "database_path", "at"}
+        or checkpoint.get("checkpointed") is not True
+        or checkpoint.get("server_id") != owner_server_id
+        or checkpoint.get("database_path") != str(paths["successor_database"])
+        or not isinstance(stopped, Mapping)
+        or set(stopped) != {"stopped", "server_id", "at"}
+        or stopped.get("stopped") is not True
+        or stopped.get("server_id") != owner_server_id
+    ):
+        raise SuccessorOperatorError("stopped-state owner evidence differs")
+
+    databases = receipt.get("databases")
+    observed_databases = (
+        _validate_stopped_database_snapshots(
+            paths,
+            lock_custody,
+            stopped_database_snapshots,
+        )
+        if sealed_projection
+        else _stopped_state_database_digests(paths)
+    )
+    if (
+        not isinstance(databases, Mapping)
+        or set(databases) != {"control", "coordination", "execution"}
+        or dict(databases) != observed_databases
+    ):
+        raise SuccessorOperatorError("stopped-state database binding differs")
+    if sealed_projection:
+        assert stopped_database_snapshots is not None
+        control_snapshot = stopped_database_snapshots["control"]
+        snapshot_descriptor = int(control_snapshot["snapshot_descriptor"])
+        identity_path = Path(str(control_snapshot["snapshot_path"]))
+        verification = _verify_profile(
+            identity_path,
+            sealed_descriptor=snapshot_descriptor,
+        )
+        database_identity = _database_identity(identity_path)
+    else:
+        verification = _verify_profile(paths["successor_database"])
+        database_identity = _database_identity(paths["successor_database"])
+    if (
+        verification.get("schema_fingerprint")
+        != provenance.get("schema_fingerprint")
+        or verification.get("catalog_fingerprint")
+        != provenance.get("catalog_fingerprint")
+        or database_identity.get("database_uuid")
+        != provenance.get("database_uuid")
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state database identity differs from provenance"
+        )
+    _observe_stopped_projection_source_continuity(
+        root,
+        final_continuity,
+        minimum_remote_head=str(observed_continuity["resolved_remote_head"]),
+    )
+    if sealed_projection and (
+        _validate_stopped_database_snapshots(
+            paths,
+            lock_custody,
+            stopped_database_snapshots,
+        )
+        != observed_databases
+    ):
+        raise SuccessorOperatorError(
+            "stopped-state database snapshot changed during admission"
+        )
+    return {
+        "provenance": provenance,
+        "receipt": receipt,
+        "databases": observed_databases,
+        "admission_mode": STOPPED_STATE_CONTINUITY_ADMISSION_MODE,
+    }
+
+
 def projection_preflight(
     root: Path = ROOT,
     *,
     _checkpoint_lock_held: bool = False,
+    _locked_paths: Mapping[str, Path] | None = None,
+    _lock_custody: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    paths = _paths(root)
+    if (_locked_paths is None) != (_lock_custody is None):
+        raise SuccessorOperatorError(
+            "projection preflight generation custody is incomplete"
+        )
+    paths = dict(_locked_paths) if _locked_paths is not None else _paths(root)
+    if _lock_custody is not None:
+        _revalidate_generation_bound_controller_lock(paths, _lock_custody)
     lock_held = (
         True
         if _checkpoint_lock_held
@@ -6910,20 +8413,42 @@ def projection_preflight(
     except SuccessorOperatorError:
         pass
     capability = _extension_preflight()
+    snapshot_capability = _stopped_snapshot_capacity_preflight(paths)
     source_admitted = False
     source_error = ""
+    source_admission_mode = ""
+    stopped_state_continuity_receipt_cid = ""
+    stopped_controller_status_cid = ""
     if not running:
         try:
-            _load_provenance(paths, root=root)
+            continuity = _load_projection_source_continuity(paths, root=root)
+            receipt = continuity["receipt"]
             source_admitted = True
+            source_admission_mode = str(continuity["admission_mode"])
+            stopped_state_continuity_receipt_cid = str(
+                receipt.get("receipt_cid") or ""
+            )
+            stopped_controller_status_cid = str(
+                receipt.get("controller_status_cid") or ""
+            )
         except (OSError, RuntimeError, ValueError) as exc:
             source_error = f"{type(exc).__name__}: {exc}"
+    projection_receipt_present = os.path.lexists(paths["projection_receipt"])
+    projection_root_present = os.path.lexists(paths["projection_root"])
     return {
         "schema": PROJECTION_RECEIPT_SCHEMA,
         "valid": (
-            capability.get("available") is True and not running and source_admitted
+            capability.get("available") is True
+            and snapshot_capability.get("available") is True
+            and not running
+            and source_admitted
+            and source_admission_mode == STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+            and not projection_receipt_present
+            and not projection_root_present
         ),
         "projection_root": str(paths["projection_root"]),
+        "projection_root_present": projection_root_present,
+        "projection_receipt_present": projection_receipt_present,
         "control_catalog_path": str(paths["projection_root"] / "control.duckdb"),
         "ducklake_catalog_path": str(paths["projection_root"] / "lake.ducklake"),
         "ducklake_data_path": str(paths["projection_root"] / "lake-data"),
@@ -6932,11 +8457,21 @@ def projection_preflight(
         "controller_lock_held": lock_held,
         "source_database_present": paths["successor_database"].is_file(),
         "provenance_receipt_present": paths["provenance"].is_file(),
+        "stopped_state_continuity_receipt_present": paths[
+            "stopped_state_continuity"
+        ].is_file(),
         "source_admitted": source_admitted,
+        "source_admission_mode": source_admission_mode,
+        "stopped_state_continuity_receipt_cid": (
+            stopped_state_continuity_receipt_cid
+        ),
+        "stopped_controller_status_cid": stopped_controller_status_cid,
         "source_error": source_error,
         "requires_stopped_checkpoint": True,
         "capability": capability,
+        "sealed_snapshot_capability": snapshot_capability,
         "authoritative": False,
+        "restart_authority": False,
         "scheduling_authority": False,
         "completion_authority": False,
         "read_by_scheduler": False,
@@ -6953,8 +8488,8 @@ def projection_preflight(
 def _exclusive_projection_checkpoint(paths: Mapping[str, Path]) -> Any:
     """Hold the controller lock so an owner cannot race a direct checkpoint."""
 
-    lock_path = paths["controller_lock"]
-    handle = _open_private_lock(lock_path)
+    custody = _open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
     try:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -6962,139 +8497,426 @@ def _exclusive_projection_checkpoint(paths: Mapping[str, Path]) -> Any:
             raise SuccessorOperatorError(
                 "LGCVF owner is active; refusing direct DuckLake checkpoint"
             ) from exc
-        yield
+        _revalidate_generation_bound_controller_lock(paths, custody)
+        yield custody
+        _revalidate_generation_bound_controller_lock(paths, custody)
     finally:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         finally:
-            handle.close()
+            _close_generation_bound_controller_lock(custody)
 
 
 def project_ducklake_once(root: Path = ROOT) -> dict[str, Any]:
     paths = _paths(root)
-    with _exclusive_projection_checkpoint(paths):
-        return _project_ducklake_once_locked(root)
+    with _exclusive_projection_checkpoint(paths) as lock_custody:
+        return _project_ducklake_once_locked(
+            root,
+            paths=paths,
+            lock_custody=lock_custody,
+        )
 
 
-def _open_projection_plane(root: Path, projection_root: Path) -> Any:
-    """Open the stopped projection with a strict local LOAD-only policy."""
+def _claim_projection_root(
+    paths: Mapping[str, Path],
+    lock_custody: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Atomically create and pin the one non-authoritative projection root."""
 
-    from ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane import (
-        open_board_control_plane,
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    projection_root = paths["projection_root"]
+    generation = paths["controller_lock"].parent
+    if projection_root.parent != generation:
+        raise SuccessorOperatorError("DuckLake projection escaped its generation")
+    generation_descriptor = int(lock_custody["generation_descriptor"])
+    try:
+        os.mkdir(projection_root.name, mode=0o700, dir_fd=generation_descriptor)
+    except FileExistsError as exc:
+        raise SuccessorOperatorError(
+            "refusing to reuse residual DuckLake projection root"
+        ) from exc
+    except OSError as exc:
+        raise SuccessorOperatorError(
+            "DuckLake projection root could not be claimed"
+        ) from exc
+    projection_descriptor = -1
+    try:
+        projection_descriptor = os.open(
+            projection_root.name,
+            os.O_RDONLY
+            | os.O_DIRECTORY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=generation_descriptor,
+        )
+        metadata = os.fstat(projection_descriptor)
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+        ):
+            raise SuccessorOperatorError(
+                "DuckLake projection root custody is unsafe"
+            )
+        custody = {
+            "descriptor": projection_descriptor,
+            "identity": _inode_identity(metadata),
+            "logical_path": str(projection_root),
+            "descriptor_path": f"/proc/self/fd/{projection_descriptor}",
+        }
+        _revalidate_projection_root(paths, lock_custody, custody)
+        return custody
+    except BaseException:
+        if projection_descriptor >= 0:
+            os.close(projection_descriptor)
+        raise
+
+
+def _revalidate_projection_root(
+    paths: Mapping[str, Path],
+    lock_custody: Mapping[str, Any],
+    projection_custody: Mapping[str, Any],
+) -> None:
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    descriptor = projection_custody.get("descriptor")
+    if (
+        type(descriptor) is not int
+        or descriptor < 3
+        or projection_custody.get("logical_path")
+        != str(paths["projection_root"])
+        or projection_custody.get("descriptor_path")
+        != f"/proc/self/fd/{descriptor}"
+    ):
+        raise SuccessorOperatorError("DuckLake projection root binding differs")
+    try:
+        held = os.fstat(descriptor)
+        named = os.stat(
+            paths["projection_root"].name,
+            dir_fd=int(lock_custody["generation_descriptor"]),
+            follow_symlinks=False,
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        raise SuccessorOperatorError(
+            "DuckLake projection root binding changed"
+        ) from exc
+    if (
+        not stat.S_ISDIR(held.st_mode)
+        or held.st_uid != os.geteuid()
+        or stat.S_IMODE(held.st_mode) != 0o700
+        or _inode_identity(held)
+        != tuple(projection_custody.get("identity") or ())
+        or _inode_identity(named) != _inode_identity(held)
+    ):
+        raise SuccessorOperatorError(
+            "DuckLake projection root binding changed"
+        )
+
+
+def _validate_projection_root_outputs(
+    projection_custody: Mapping[str, Any],
+) -> None:
+    descriptor = int(projection_custody["descriptor"])
+    expected = {
+        "control.duckdb": "file",
+        "lake.ducklake": "file",
+        "lake-data": "directory",
+    }
+    for name, kind in expected.items():
+        try:
+            metadata = os.stat(
+                name,
+                dir_fd=descriptor,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise SuccessorOperatorError(
+                "DuckLake projection output inventory differs"
+            ) from exc
+        if (
+            metadata.st_uid != os.geteuid()
+            or (kind == "file" and not stat.S_ISREG(metadata.st_mode))
+            or (kind == "file" and metadata.st_size <= 0)
+            or (kind == "directory" and not stat.S_ISDIR(metadata.st_mode))
+        ):
+            raise SuccessorOperatorError(
+                "DuckLake projection output inventory differs"
+            )
+
+
+def _open_projection_plane(
+    root: Path,
+    projection_root: Path,
+    *,
+    logical_projection_root: Path | None = None,
+) -> Any:
+    """Open pinned storage while persisting only logical DuckLake paths."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        board_control_plane as board_module,
     )
 
-    return open_board_control_plane(
+    if logical_projection_root is None:
+        return board_module.open_board_control_plane(
+            root,
+            root=projection_root,
+            allow_extension_install=False,
+        )
+    descriptor_match = re.fullmatch(
+        r"/proc/self/fd/([1-9][0-9]*)",
+        str(projection_root),
+    )
+    if (
+        descriptor_match is None
+        or not logical_projection_root.is_absolute()
+        or board_module.open_board_control_plane.__closure__ is not None
+    ):
+        raise SuccessorOperatorError(
+            "DuckLake pinned/logical projection binding is unavailable"
+        )
+    exact_descriptor_root = str(projection_root)
+    exact_logical_root = Path(logical_projection_root)
+    original_attach = board_module._attach_ducklake
+
+    def attach_logical_ducklake(connection: Any, observed_root: Path) -> str:
+        if str(observed_root) != exact_descriptor_root:
+            raise SuccessorOperatorError(
+                "DuckLake control catalog escaped its pinned root"
+            )
+        return original_attach(connection, exact_logical_root)
+
+    opener = board_module.open_board_control_plane
+    isolated_globals = dict(opener.__globals__)
+    isolated_globals["_attach_ducklake"] = attach_logical_ducklake
+    isolated_opener = types.FunctionType(
+        opener.__code__,
+        isolated_globals,
+        name=opener.__name__,
+        argdefs=opener.__defaults__,
+        closure=None,
+    )
+    isolated_opener.__kwdefaults__ = (
+        dict(opener.__kwdefaults__) if opener.__kwdefaults__ else None
+    )
+    return isolated_opener(
         root,
         root=projection_root,
         allow_extension_install=False,
     )
 
 
-def _project_ducklake_once_locked(root: Path) -> dict[str, Any]:
-    paths = _paths(root)
-    preflight = projection_preflight(root, _checkpoint_lock_held=True)
-    if preflight.get("valid") is not True:
+def _project_ducklake_once_locked(
+    root: Path,
+    *,
+    paths: Mapping[str, Path],
+    lock_custody: Mapping[str, Any],
+) -> dict[str, Any]:
+    _revalidate_generation_bound_controller_lock(paths, lock_custody)
+    capability = _extension_preflight()
+    if capability.get("available") is not True:
         raise SuccessorOperatorError("DuckLake projection preflight is not valid")
-    if paths["projection_receipt"].exists():
+    if os.path.lexists(paths["projection_receipt"]):
         raise SuccessorOperatorError(
             "refusing to overwrite DuckLake projection receipt"
         )
-    provenance = _load_provenance(paths, root=root)
-    source_digest = _sha256_regular_file(
-        paths["successor_database"],
-        noun="successor control database",
-        require_private_owner=True,
-    )
-    import duckdb
+    if os.path.lexists(paths["projection_root"]):
+        raise SuccessorOperatorError(
+            "refusing to reuse residual DuckLake projection root"
+        )
+    with _sealed_stopped_database_snapshots(paths, lock_custody) as snapshots:
+        continuity = _load_projection_source_continuity(
+            paths,
+            root=root,
+            stopped_database_snapshots=snapshots,
+            lock_custody=lock_custody,
+        )
+        if (
+            continuity.get("admission_mode")
+            != STOPPED_STATE_CONTINUITY_ADMISSION_MODE
+        ):
+            raise SuccessorOperatorError(
+                "DuckLake projection lost typed stopped-state continuity"
+            )
+        provenance = continuity["provenance"]
+        stopped_state = continuity["receipt"]
+        stopped_databases = continuity["databases"]
+        source_digest = stopped_databases["control"]["sha256"]
+        control_snapshot = snapshots["control"]
+        source_path = str(control_snapshot["snapshot_path"])
+        import duckdb
 
-    source = duckdb.connect(str(paths["successor_database"]), read_only=True)
-    try:
-        columns = tuple(
-            str(item[0])
-            for item in source.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = 'tasks' ORDER BY ordinal_position"
-            ).fetchall()
-        )
-        rows = source.execute(
-            "SELECT * FROM tasks ORDER BY ordinal, task_cid"
-        ).fetchall()
-    finally:
-        source.close()
-    tasks: list[dict[str, Any]] = []
-    for row in rows:
-        record = {columns[index]: row[index] for index in range(len(columns))}
-        body: dict[str, Any] = {}
+        source = duckdb.connect(source_path, read_only=True)
         try:
-            parsed = json.loads(str(record.get("body_json") or "{}"))
-            if isinstance(parsed, dict):
-                body = parsed
-        except json.JSONDecodeError:
-            pass
-        tasks.append(
-            {
-                "task_id": str(
-                    record.get("task_alias") or record.get("task_cid") or ""
-                ),
-                "status": str(record.get("status") or ""),
-                "title": str(body.get("title") or ""),
-                "depends_on": body.get("depends_on") or [],
-                "body": body,
+            columns = tuple(
+                str(item[0])
+                for item in source.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'tasks' ORDER BY ordinal_position"
+                ).fetchall()
+            )
+            rows = source.execute(
+                "SELECT * FROM tasks ORDER BY ordinal, task_cid"
+            ).fetchall()
+        finally:
+            source.close()
+        tasks: list[dict[str, Any]] = []
+        for row in rows:
+            record = {
+                columns[index]: row[index] for index in range(len(columns))
             }
-        )
-    with _open_projection_plane(root, paths["projection_root"]) as plane:
-        registration = plane.register_board(
-            "logic-governed-compositional-verification-fabric-history-shadow-v1",
-            source_path=str(paths["successor_database"]),
-            source_kind="duckdb-stopped-checkpoint-observation",
-            merge_target_branch="agent/logic-governed-compositional-verification-fabric-v1",
-            extra={
+            body: dict[str, Any] = {}
+            try:
+                parsed = json.loads(str(record.get("body_json") or "{}"))
+                if isinstance(parsed, dict):
+                    body = parsed
+            except json.JSONDecodeError:
+                pass
+            tasks.append(
+                {
+                    "task_id": str(
+                        record.get("task_alias")
+                        or record.get("task_cid")
+                        or ""
+                    ),
+                    "status": str(record.get("status") or ""),
+                    "title": str(body.get("title") or ""),
+                    "depends_on": body.get("depends_on") or [],
+                    "body": body,
+                }
+            )
+        projection_custody = _claim_projection_root(paths, lock_custody)
+        try:
+            with _open_projection_plane(
+                root,
+                Path(str(projection_custody["descriptor_path"])),
+                logical_projection_root=paths["projection_root"],
+            ) as plane:
+                registration = plane.register_board(
+                    "logic-governed-compositional-verification-fabric-history-shadow-v1",
+                    source_path=str(paths["successor_database"]),
+                    source_kind="duckdb-stopped-checkpoint-observation",
+                    merge_target_branch=(
+                        "agent/logic-governed-compositional-verification-fabric-v1"
+                    ),
+                    extra={
+                        "authoritative": False,
+                        "restart_authority": False,
+                        "scheduling_authority": False,
+                        "completion_authority": False,
+                        "source_provenance_cid": provenance["receipt_cid"],
+                    },
+                    tasks=tasks,
+                )
+                aggregate = plane.aggregate_boards()
+                if (
+                    plane.backend != "ducklake+quack"
+                    or not plane.ducklake_attached
+                ):
+                    raise SuccessorOperatorError(
+                        "physical BoardControlPlane did not admit DuckLake + Quack"
+                    )
+                backend = plane.backend
+                extensions = {
+                    "quack_loaded": plane.quack_loaded,
+                    "ducklake_loaded": plane.ducklake_loaded,
+                    "ducklake_attached": plane.ducklake_attached,
+                }
+            _revalidate_projection_root(
+                paths,
+                lock_custody,
+                projection_custody,
+            )
+            _validate_projection_root_outputs(projection_custody)
+            if (
+                _validate_stopped_database_snapshots(
+                    paths,
+                    lock_custody,
+                    snapshots,
+                )
+                != stopped_databases
+            ):
+                raise SuccessorOperatorError(
+                    "projection source changed during checkpoint"
+                )
+            receipt = {
+                "schema": PROJECTION_RECEIPT_SCHEMA,
+                "issued_at": _utc_now(),
+                "projection_root": str(paths["projection_root"]),
+                "control_catalog_path": str(
+                    paths["projection_root"] / "control.duckdb"
+                ),
+                "ducklake_catalog_path": str(
+                    paths["projection_root"] / "lake.ducklake"
+                ),
+                "ducklake_data_path": str(
+                    paths["projection_root"] / "lake-data"
+                ),
+                "source_database": str(paths["successor_database"]),
+                "source_sha256": source_digest,
+                "source_provenance_cid": provenance["receipt_cid"],
+                "source_admission_mode": continuity["admission_mode"],
+                "source_stopped_state_continuity_receipt_cid": str(
+                    stopped_state.get("receipt_cid") or ""
+                ),
+                "source_stopped_controller_status_cid": str(
+                    stopped_state.get("controller_status_cid") or ""
+                ),
+                "board_namespace": registration["board_namespace"],
+                "task_count": len(tasks),
+                "backend": backend,
+                "extensions": extensions,
+                "aggregate": aggregate,
                 "authoritative": False,
                 "scheduling_authority": False,
                 "completion_authority": False,
-                "source_provenance_cid": provenance["receipt_cid"],
-            },
-            tasks=tasks,
-        )
-        aggregate = plane.aggregate_boards()
-        if plane.backend != "ducklake+quack" or not plane.ducklake_attached:
-            raise SuccessorOperatorError(
-                "physical BoardControlPlane did not admit DuckLake + Quack"
+                "read_by_scheduler": False,
+                "quack_endpoint_served": False,
+                "requires_stopped_checkpoint": True,
+                "production_authorized": False,
+                "restart_authority": False,
+            }
+            receipt["receipt_cid"] = _content_id(receipt)
+            receipt_relative = paths["projection_receipt"].relative_to(
+                paths["controller_lock"].parent
             )
-        backend = plane.backend
-        extensions = {
-            "quack_loaded": plane.quack_loaded,
-            "ducklake_loaded": plane.ducklake_loaded,
-            "ducklake_attached": plane.ducklake_attached,
-        }
-    if _sha256_regular_file(paths["successor_database"]) != source_digest:
-        raise SuccessorOperatorError("projection source changed during checkpoint")
-    receipt = {
-        "schema": PROJECTION_RECEIPT_SCHEMA,
-        "issued_at": _utc_now(),
-        "projection_root": str(paths["projection_root"]),
-        "control_catalog_path": str(paths["projection_root"] / "control.duckdb"),
-        "ducklake_catalog_path": str(paths["projection_root"] / "lake.ducklake"),
-        "ducklake_data_path": str(paths["projection_root"] / "lake-data"),
-        "source_database": str(paths["successor_database"]),
-        "source_sha256": source_digest,
-        "source_provenance_cid": provenance["receipt_cid"],
-        "board_namespace": registration["board_namespace"],
-        "task_count": len(tasks),
-        "backend": backend,
-        "extensions": extensions,
-        "aggregate": aggregate,
-        "authoritative": False,
-        "scheduling_authority": False,
-        "completion_authority": False,
-        "read_by_scheduler": False,
-        "quack_endpoint_served": False,
-        "requires_stopped_checkpoint": True,
-        "production_authorized": False,
-    }
-    receipt["receipt_cid"] = _content_id(receipt)
-    _atomic_json(paths["projection_receipt"], receipt, replace=False)
-    return receipt
+            bound_receipt_path = (
+                Path(
+                    f"/proc/self/fd/{int(lock_custody['generation_descriptor'])}"
+                )
+                / receipt_relative
+            )
+            _atomic_json(bound_receipt_path, receipt, replace=False)
+            _revalidate_projection_root(
+                paths,
+                lock_custody,
+                projection_custody,
+            )
+            if _strict_json(
+                bound_receipt_path,
+                expected_schema=PROJECTION_RECEIPT_SCHEMA,
+                require_private_owner=True,
+            ) != receipt:
+                raise SuccessorOperatorError(
+                    "DuckLake projection receipt binding differs"
+                )
+            _revalidate_projection_root(
+                paths,
+                lock_custody,
+                projection_custody,
+            )
+            if (
+                _validate_stopped_database_snapshots(
+                    paths,
+                    lock_custody,
+                    snapshots,
+                )
+                != stopped_databases
+            ):
+                raise SuccessorOperatorError(
+                    "projection source changed during receipt publication"
+                )
+            return receipt
+        finally:
+            os.close(int(projection_custody["descriptor"]))
 
 
 def _build_parser() -> argparse.ArgumentParser:
