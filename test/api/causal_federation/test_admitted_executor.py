@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -47,6 +47,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
+    TaskSourceTransitionError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
@@ -87,6 +88,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     _validated_database_strict_resume_rejection_receipt,
     build_control_plane_operation_catalog,
     typed_database_strict_resume_rejection_receipt_id,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalBridgeError,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_CLAIMED,
@@ -1457,11 +1461,50 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
             body={"status": "passed"},
         )
         assert validation.changed is True
+        forged_expected_receipt = {
+            **admitted_receipt,
+            "fencing_token": True,
+        }
+        forged_body = dict(claimed.task.body)
+        forged_body["completion_receipt"] = {
+            "operation": "database_complete",
+            "evidence_digest": evidence_digest,
+        }
+        forged_result = client.cas_task_status(
+            task_cid=claimed.task.task_cid,
+            expected_task_revision=claimed.task.revision,
+            new_status="completed",
+            idempotency_key="executor-cas:forged-control-receipt",
+            body=forged_body,
+            expected_control_receipt=forged_expected_receipt,
+        )
+        assert forged_result.accepted is False
+        assert forged_result.changed is False
+        unchanged = adapter.get(claimed.task.task_cid)
+        assert unchanged is not None
+        assert unchanged.revision == claimed.task.revision
+        assert unchanged.body == claimed.task.body
+        with pytest.raises(
+            TaskSourceConflictError,
+            match="task control receipt CAS is stale",
+        ):
+            adapter.compare_and_set_status(
+                claimed.task.task_cid,
+                claimed.task.revision,
+                "completed",
+                {
+                    "operation": "database_complete",
+                    "evidence_digest": evidence_digest,
+                },
+                expected_control_receipt=forged_expected_receipt,
+                evidence_digests=[evidence_digest],
+            )
         completed = adapter.compare_and_set_status(
             claimed.task.task_cid,
             claimed.task.revision,
             "completed",
             {"operation": "database_complete", "evidence_digest": evidence_digest},
+            expected_control_receipt=admitted_receipt,
             evidence_digests=[evidence_digest],
         )
         assert completed.task.status == "completed"
@@ -1527,6 +1570,18 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             ],
             "tasks": [
                 {
+                    "task_cid": "task:typed-admitted-completion",
+                    "task_id": "CASF-TYPED-ADMITTED-COMPLETION",
+                    "goal_cid": "goal:typed-claim-barrier",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:typed-admitted-terminal",
+                    "task_id": "CASF-TYPED-ADMITTED-TERMINAL",
+                    "goal_cid": "goal:typed-claim-barrier",
+                    "status": "ready",
+                },
+                {
                     "task_cid": "task:typed-claim-barrier",
                     "task_id": "CASF-TYPED-CLAIM-BARRIER",
                     "goal_cid": "goal:typed-claim-barrier",
@@ -1579,6 +1634,12 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         unsealed = TypedDatabaseTaskSource(client, owns_client=False)
         route_policy = unsealed.seal_execution_route_policy(
             {
+                "CASF-TYPED-ADMITTED-COMPLETION": (
+                    DETERMINISTIC_ONLY_EXECUTION_MODE
+                ),
+                "CASF-TYPED-ADMITTED-TERMINAL": (
+                    DETERMINISTIC_ONLY_EXECUTION_MODE
+                ),
                 "CASF-TYPED-CLAIM-BARRIER": (
                     DETERMINISTIC_ONLY_EXECUTION_MODE
                 )
@@ -1738,6 +1799,8 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             lane: str,
             *,
             max_task_attempts: int = 4,
+            provider_fn: Callable[[DatabaseTaskAttempt], Mapping[str, Any]]
+            | None = None,
         ) -> DatabaseImplementationDaemon:
             return DatabaseImplementationDaemon(
                 database_path=database,
@@ -1758,10 +1821,14 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                 lease_ms=5_000,
                 max_task_attempts=max_task_attempts,
                 clock_ms=lambda: clock["now_ms"],
-                provider_fn=lambda _attempt: {
-                    "status": "ok",
-                    "accepted": True,
-                },
+                provider_fn=(
+                    provider_fn
+                    if provider_fn is not None
+                    else lambda _attempt: {
+                        "status": "ok",
+                        "accepted": True,
+                    }
+                ),
                 effect_fn=lambda _attempt, _provider: {"status": "applied"},
                 validation_fn=lambda _attempt, _effect: {
                     "outcome": "passed",
@@ -1793,7 +1860,15 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             )
         alternate_unsealed = TypedDatabaseTaskSource(client, owns_client=False)
         alternate_policy = alternate_unsealed.seal_execution_route_policy(
-            {"CASF-TYPED-CLAIM-BARRIER": GROK_CODEX_EXECUTION_MODE}
+            {
+                "CASF-TYPED-ADMITTED-COMPLETION": (
+                    DETERMINISTIC_ONLY_EXECUTION_MODE
+                ),
+                "CASF-TYPED-ADMITTED-TERMINAL": (
+                    DETERMINISTIC_ONLY_EXECUTION_MODE
+                ),
+                "CASF-TYPED-CLAIM-BARRIER": GROK_CODEX_EXECUTION_MODE,
+            }
         )
         alternate_unsealed.close()
         alternate_adapter = TypedDatabaseTaskSource(
@@ -1830,6 +1905,96 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
                 state_owner_bootstrap_credentials=alternate_credentials,
             )
         alternate_adapter.close()
+
+        daemon = open_lane("typed-admitted-completion")
+        completion_attempt = daemon.claim_next()
+        assert completion_attempt is not None
+        daemon._require_typed_attempt_admission(completion_attempt)
+        admitted_completion_task = adapter.get(
+            "CASF-TYPED-ADMITTED-COMPLETION"
+        )
+        assert admitted_completion_task is not None
+        admitted_completion_receipt = admitted_completion_task.body[
+            "completion_receipt"
+        ]
+        assert admitted_completion_receipt["operation"] == (
+            "database_attempt_admitted"
+        )
+        generation_before_admission_replay = client.load_generation()
+        compare_and_set_status = adapter.compare_and_set_status
+        replay_calls = {"count": 0}
+
+        def replay_after_lost_admission_response(
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
+            replay_calls["count"] += 1
+            if replay_calls["count"] == 1:
+                raise TaskSourceTransitionError(
+                    "transition_invalid after admitted response loss"
+                )
+            return compare_and_set_status(*args, **kwargs)
+
+        with monkeypatch.context() as lost_response:
+            lost_response.setattr(
+                adapter,
+                "compare_and_set_status",
+                replay_after_lost_admission_response,
+            )
+            admission_replay = daemon._cas_task_status_database(
+                admitted_completion_task.task_cid,
+                expected_revision=admitted_completion_task.revision - 1,
+                new_status="in_progress",
+                receipt=admitted_completion_receipt,
+            )
+        assert replay_calls["count"] == 2
+        assert admission_replay.changed is False
+        assert admission_replay.revision == admitted_completion_task.revision
+        assert adapter.get(admitted_completion_task.task_cid) == (
+            admitted_completion_task
+        )
+        assert client.load_generation() == generation_before_admission_replay
+        completed_result = daemon.resume_attempt(completion_attempt)
+        assert completed_result["status"] == "succeeded"
+        completed_task = adapter.get("CASF-TYPED-ADMITTED-COMPLETION")
+        assert completed_task is not None
+        assert completed_task.status == "completed"
+        completed_receipt = completed_task.body["completion_receipt"]
+        assert completed_receipt["operation"] == "database_complete"
+        assert completed_receipt["attempt_id"] == completion_attempt.attempt_id
+        daemon.close()
+        daemon = None
+
+        def terminal_provider(
+            _attempt: DatabaseTaskAttempt,
+        ) -> Mapping[str, Any]:
+            raise DatabasePortalBridgeError("portal_provider_failed")
+
+        daemon = open_lane(
+            "typed-admitted-terminal",
+            provider_fn=terminal_provider,
+        )
+        terminal_attempt = daemon.claim_next()
+        assert terminal_attempt is not None
+        terminal_result = daemon._resume_attempt_without_process_crash(
+            terminal_attempt
+        )
+        assert terminal_result["status"] == "failed"
+        assert terminal_result["portal_terminal_failure"] is True
+        terminal_task = adapter.get("CASF-TYPED-ADMITTED-TERMINAL")
+        assert terminal_task is not None
+        assert terminal_task.status == "blocked"
+        terminal_receipt = terminal_task.body["completion_receipt"]
+        assert terminal_receipt["operation"] == "database_portal_terminal_failure"
+        assert terminal_receipt["attempt_id"] == terminal_attempt.attempt_id
+        terminal_attempt = daemon.get_attempt(terminal_attempt.attempt_id)
+        assert terminal_attempt is not None
+        assert daemon._persist_terminal_portal_failure(
+            terminal_attempt,
+            reason="portal_provider_failed",
+        )["changed"] is False
+        daemon.close()
+        daemon = None
 
         daemon = open_lane("initial")
         promote = daemon._promote_typed_attempt_admission

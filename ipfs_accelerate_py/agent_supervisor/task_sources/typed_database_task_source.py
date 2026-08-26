@@ -114,6 +114,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "executor_task_projection_page",
         "executor_control_snapshot",
         "executor_task_projection_by_identity",
+        "select_task_by_cid",
         "executor_task_revision_history_by_cid",
         "executor_retry_cooldown_by_task",
         "executor_retry_cooldown_page",
@@ -1174,6 +1175,7 @@ class TypedDatabaseTaskSource:
         status: str,
         receipt: Mapping[str, Any] | None = None,
         *,
+        expected_control_receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
     ) -> DatabaseCASResult:
         prior = self.get_task(task_cid_or_alias)
@@ -1187,6 +1189,23 @@ class TypedDatabaseTaskSource:
             raise TaskSourceConflictError("expected task revision is invalid")
         if prior.revision != expected_revision:
             raise TaskSourceConflictError("task revision CAS failed")
+        receipt_snapshot = dict(receipt) if receipt is not None else None
+        if expected_control_receipt is not None and not isinstance(
+            expected_control_receipt, Mapping
+        ):
+            raise TaskSourceConflictError("task control receipt CAS is stale")
+        expected_control_receipt_snapshot = (
+            dict(expected_control_receipt)
+            if expected_control_receipt is not None
+            else None
+        )
+        prior_control_receipt = prior.body.get("completion_receipt")
+        if expected_control_receipt_snapshot is not None and (
+            not isinstance(prior_control_receipt, Mapping)
+            or canonical_json_bytes(dict(prior_control_receipt))
+            != canonical_json_bytes(expected_control_receipt_snapshot)
+        ):
+            raise TaskSourceConflictError("task control receipt CAS is stale")
         requested_status = str(status or "").strip().lower()
         if requested_status not in TYPED_TASK_STATUS_VOCABULARY:
             raise TaskSourceIntegrityError(
@@ -1204,15 +1223,32 @@ class TypedDatabaseTaskSource:
                 "protected typed-deferral task cannot be reopened by generic CAS"
             )
         merged_body = dict(prior.body)
-        if receipt is not None:
-            merged_body["completion_receipt"] = dict(receipt)
+        if receipt_snapshot is not None:
+            merged_body["completion_receipt"] = receipt_snapshot
+        if (
+            prior.status == requested_status
+            and canonical_json_bytes(merged_body)
+            == canonical_json_bytes(dict(prior.body))
+        ):
+            return DatabaseCASResult(
+                task=prior,
+                previous_status=prior.status,
+                revision=prior.revision,
+                event_cursor=self.snapshot().event_cursor,
+                changed=False,
+                receipt_cid="",
+            )
         material = {
             "task_cid": prior.task_cid,
             "expected_revision": expected_revision,
             "status": requested_status,
-            "receipt": dict(receipt or {}),
+            "receipt": dict(receipt_snapshot or {}),
             "evidence_digests": list(evidence_digests or ()),
         }
+        if expected_control_receipt_snapshot is not None:
+            material["expected_control_receipt"] = (
+                expected_control_receipt_snapshot
+            )
         digest = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
         result = self._client.cas_task_status(
             task_cid=prior.task_cid,
@@ -1221,6 +1257,7 @@ class TypedDatabaseTaskSource:
             idempotency_key=f"executor-cas:{digest}",
             command_id=f"executor-cas:{digest}",
             body=merged_body,
+            expected_control_receipt=expected_control_receipt_snapshot,
         )
         if not result.accepted:
             raise TaskSourceConflictError(

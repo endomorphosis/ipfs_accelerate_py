@@ -1090,6 +1090,58 @@ def _reject_protected_typed_deferral_reopen(
         )
 
 
+def _require_expected_control_receipt(
+    txn: StateTransaction,
+    *,
+    task_cid: str,
+    expected_control_receipt_json: str,
+) -> None:
+    """Bind a receipt transition to the exact current control receipt."""
+
+    try:
+        expected = json.loads(expected_control_receipt_json)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise QuackClientError("expected control receipt is malformed") from exc
+    if (
+        not isinstance(expected, Mapping)
+        or canonical_json_bytes(dict(expected)).decode("utf-8")
+        != expected_control_receipt_json
+    ):
+        raise QuackClientError("expected control receipt is not canonical")
+    result = txn.execute_named_operation("select_task_by_cid", (task_cid,))
+    row = _fetch_one(result)
+    current = _row_mapping(
+        (
+            "task_cid",
+            "task_alias",
+            "goal_cid",
+            "status",
+            "revision",
+            "ordinal",
+            "body_json",
+        ),
+        row,
+    )
+    try:
+        prior_body = json.loads(str(current.get("body_json") or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise QuackClientError("task control receipt is malformed") from exc
+    prior_receipt = (
+        prior_body.get("completion_receipt")
+        if isinstance(prior_body, Mapping)
+        else None
+    )
+    if (
+        not isinstance(prior_receipt, Mapping)
+        or canonical_json_bytes(dict(prior_receipt)).decode("utf-8")
+        != expected_control_receipt_json
+    ):
+        raise OptimisticConflictError(
+            "task control receipt CAS is stale",
+            details={"task_cid": task_cid},
+        )
+
+
 class _ConnectionAdapter:
     """Normalize DuckDBConnection / native duckdb connections for transactions."""
 
@@ -1991,14 +2043,24 @@ class QuackStateClient:
         idempotency_key: str,
         command_id: str | None = None,
         body: Mapping[str, Any] | None = None,
+        expected_control_receipt: Mapping[str, Any] | None = None,
     ) -> CASResult:
         """Convenience CAS for task status using the closed template set."""
 
         session = self._require_session()
         live = self.load_generation()
+        if expected_control_receipt is not None and body is None:
+            raise QuackClientError(
+                "expected control receipt requires a receipt-bearing status CAS"
+            )
         body_json = (
             canonical_json_bytes(dict(body)).decode("utf-8")
             if body is not None
+            else ""
+        )
+        expected_control_receipt_json = (
+            canonical_json_bytes(dict(expected_control_receipt)).decode("utf-8")
+            if expected_control_receipt is not None
             else ""
         )
         operation = "task.status.cas.receipt" if body is not None else "task.status.cas"
@@ -2023,6 +2085,15 @@ class QuackStateClient:
                 "expected_task_revision": expected_task_revision,
                 "status": new_status,
                 **({"body_json": body_json} if body is not None else {}),
+                **(
+                    {
+                        "expected_control_receipt_json": (
+                            expected_control_receipt_json
+                        )
+                    }
+                    if expected_control_receipt is not None
+                    else {}
+                ),
             },
         )
         if body is None:
@@ -2044,6 +2115,15 @@ class QuackStateClient:
                     txn,
                     task_cid=str(parameters["task_cid"]),
                     requested_status=str(parameters["status"]),
+                )
+            expected_receipt_json = str(
+                parameters.get("expected_control_receipt_json") or ""
+            )
+            if expected_receipt_json:
+                _require_expected_control_receipt(
+                    txn,
+                    task_cid=str(parameters["task_cid"]),
+                    expected_control_receipt_json=expected_receipt_json,
                 )
             result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",

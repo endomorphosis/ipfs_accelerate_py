@@ -119,6 +119,7 @@ EXECUTOR_OWNER_READ_OPERATIONS: Final = frozenset(
         "executor_task_projection_page",
         "executor_control_snapshot",
         "executor_task_projection_by_identity",
+        "select_task_by_cid",
         "executor_task_revision_history_by_cid",
         "executor_retry_cooldown_by_task",
         "executor_retry_cooldown_page",
