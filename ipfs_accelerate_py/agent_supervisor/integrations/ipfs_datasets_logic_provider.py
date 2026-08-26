@@ -3029,7 +3029,15 @@ def create_ipfs_datasets_logic_provider(
     )
 
 
+# LGCVF-102: one typed semantic service. Python, CLI, and MCP are projections
+# of this dispatcher; they do not implement operation semantics and they do
+# not register an MCP++ profile. Mutation is fail-closed to preview.
 SEMANTIC_SERVICE_INTERFACE: Final[str] = "LgcvfSemanticService@1"
+SEMANTIC_SERVICE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/lgcvf-semantic-service-receipt@1"
+)
+SEMANTIC_SERVICE_MUTATION_POLICY: Final[str] = "preview"
+SEMANTIC_SERVICE_TRANSPORTS: Final[tuple[str, ...]] = ("python", "cli", "mcp")
 SEMANTIC_SERVICE_OPERATIONS: Final[tuple[str, ...]] = (
     "capability",
     "snapshot",
@@ -3048,9 +3056,15 @@ SEMANTIC_SERVICE_OPERATIONS: Final[tuple[str, ...]] = (
     "explain",
     "replay",
 )
-_MUTATING_OPERATIONS: Final[frozenset[str]] = frozenset(
+SEMANTIC_SERVICE_MUTATING_OPERATIONS: Final[frozenset[str]] = frozenset(
     {"synthesize", "repair"}
 )
+_SEMANTIC_SERVICE_LOCK: Final = threading.Lock()
+_DEFAULT_SEMANTIC_SERVICE: LgcvfSemanticService | None = None
+
+
+class SemanticServiceError(ValueError):
+    """A semantic-service request or transport projection is invalid."""
 
 
 @dataclass(frozen=True)
@@ -3063,16 +3077,20 @@ class SemanticServiceRequest:
     def __post_init__(self) -> None:
         operation = str(self.operation or "").strip()
         if operation not in SEMANTIC_SERVICE_OPERATIONS:
-            raise ValueError(f"unsupported semantic operation: {operation}")
+            raise SemanticServiceError(f"unsupported semantic operation: {operation}")
         object.__setattr__(self, "operation", operation)
-        if not isinstance(self.payload, Mapping):
-            raise ValueError("payload must be a mapping")
-        object.__setattr__(self, "payload", dict(self.payload))
-        object.__setattr__(self, "preview", bool(self.preview))
+        object.__setattr__(
+            self, "payload", _strict_mapping(self.payload, field_name="payload")
+        )
+        object.__setattr__(self, "preview", True if self.preview is None else bool(self.preview))
         transport = str(self.transport or "python").strip().lower()
-        if transport not in {"python", "cli", "mcp"}:
-            raise ValueError("transport must be python, cli, or mcp")
+        if transport not in SEMANTIC_SERVICE_TRANSPORTS:
+            raise SemanticServiceError("transport must be python, cli, or mcp")
         object.__setattr__(self, "transport", transport)
+
+    @property
+    def mutating(self) -> bool:
+        return self.operation in SEMANTIC_SERVICE_MUTATING_OPERATIONS
 
 
 @dataclass(frozen=True)
@@ -3083,52 +3101,130 @@ class SemanticServiceReceipt:
     wrote: bool
     status: str
     result: Mapping[str, Any]
+    schema: str = SEMANTIC_SERVICE_SCHEMA
+    interface: str = SEMANTIC_SERVICE_INTERFACE
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "interface": SEMANTIC_SERVICE_INTERFACE,
+            "interface": self.interface,
             "operation": self.operation,
             "preview": self.preview,
             "result": dict(self.result),
+            "schema": self.schema,
             "status": self.status,
             "transport": self.transport,
             "wrote": self.wrote,
         }
 
 
+def _semantic_operation_kind(operation: str) -> str:
+    if operation == "capability":
+        return "discovery"
+    if operation in SEMANTIC_SERVICE_MUTATING_OPERATIONS:
+        return "mutation"
+    return "read"
+
+
+def _semantic_service_result(
+    request: SemanticServiceRequest,
+    *,
+    preview: bool,
+    wrote: bool,
+) -> dict[str, Any]:
+    payload = dict(request.payload)
+    result: dict[str, Any] = {
+        "interface": SEMANTIC_SERVICE_INTERFACE,
+        "kind": _semantic_operation_kind(request.operation),
+        "mcp_plus_plus_profile": False,
+        "mutating": request.mutating,
+        "mutation_policy": SEMANTIC_SERVICE_MUTATION_POLICY,
+        "operation": request.operation,
+        "payload": payload,
+        "payload_digest": _digest(
+            {"operation": request.operation, "payload": payload},
+            prefix="lgcvf-semantic",
+        ),
+        "payload_keys": sorted(payload),
+        "preview": preview,
+        "requested_preview": request.preview,
+        "shared_service": SEMANTIC_SERVICE_INTERFACE,
+        "transports": list(SEMANTIC_SERVICE_TRANSPORTS),
+        "wrote": wrote,
+    }
+    if request.operation == "capability":
+        result["mutating_operations"] = tuple(
+            sorted(SEMANTIC_SERVICE_MUTATING_OPERATIONS)
+        )
+        result["operations"] = list(SEMANTIC_SERVICE_OPERATIONS)
+    return result
+
+
 class LgcvfSemanticService:
     """One typed semantic service shared by Python, CLI, and MCP projections.
 
-    Wrappers perform no independent semantics. Mutation defaults to preview.
+    Wrappers perform no independent semantics. Mutation defaults to preview
+    and cannot write through this projection.
     """
 
     INTERFACE: Final[str] = SEMANTIC_SERVICE_INTERFACE
+    SCHEMA: Final[str] = SEMANTIC_SERVICE_SCHEMA
+    OPERATIONS: Final[tuple[str, ...]] = SEMANTIC_SERVICE_OPERATIONS
+    MUTATING_OPERATIONS: Final[frozenset[str]] = SEMANTIC_SERVICE_MUTATING_OPERATIONS
+    MUTATION_POLICY: Final[str] = SEMANTIC_SERVICE_MUTATION_POLICY
+    TRANSPORTS: Final[tuple[str, ...]] = SEMANTIC_SERVICE_TRANSPORTS
 
-    def invoke(self, request: SemanticServiceRequest | Mapping[str, Any]) -> SemanticServiceReceipt:
-        if isinstance(request, Mapping):
+    def invoke(
+        self, request: SemanticServiceRequest | Mapping[str, Any]
+    ) -> SemanticServiceReceipt:
+        if not isinstance(request, SemanticServiceRequest):
+            if not isinstance(request, Mapping):
+                raise SemanticServiceError("request must be a mapping or SemanticServiceRequest")
+            preview_value = request.get("preview", True)
             request = SemanticServiceRequest(
                 operation=str(request.get("operation") or ""),
                 payload=request.get("payload") or {},
-                preview=request.get("preview", True),
+                preview=True if preview_value is None else bool(preview_value),
                 transport=str(request.get("transport") or "python"),
             )
-        mutating = request.operation in _MUTATING_OPERATIONS
-        preview = True if mutating else request.preview
-        wrote = bool(mutating and not preview)
-        result = {
-            "operation": request.operation,
-            "payload_keys": sorted(request.payload),
-            "preview": preview,
-            "wrote": wrote,
-        }
+        preview = True if request.mutating else request.preview
+        wrote = False
         return SemanticServiceReceipt(
             operation=request.operation,
             transport=request.transport,
             preview=preview,
             wrote=wrote,
-            status="preview" if preview or not mutating else "applied",
-            result=result,
+            status="preview" if preview or not request.mutating else "applied",
+            result=_semantic_service_result(request, preview=preview, wrote=wrote),
         )
+
+
+def get_lgcvf_semantic_service() -> LgcvfSemanticService:
+    """Return the process-local typed semantic service shared by all transports."""
+
+    global _DEFAULT_SEMANTIC_SERVICE
+    with _SEMANTIC_SERVICE_LOCK:
+        if _DEFAULT_SEMANTIC_SERVICE is None:
+            _DEFAULT_SEMANTIC_SERVICE = LgcvfSemanticService()
+        return _DEFAULT_SEMANTIC_SERVICE
+
+
+def _invoke_semantic_service(
+    operation: str,
+    payload: Mapping[str, Any] | None = None,
+    *,
+    preview: bool = True,
+    transport: str,
+    service: LgcvfSemanticService | None = None,
+) -> dict[str, Any]:
+    dispatcher = service if service is not None else get_lgcvf_semantic_service()
+    return dispatcher.invoke(
+        SemanticServiceRequest(
+            operation=operation,
+            payload=payload or {},
+            preview=preview,
+            transport=transport,
+        )
+    ).to_dict()
 
 
 def invoke_semantic_service_python(
@@ -3136,12 +3232,11 @@ def invoke_semantic_service_python(
     payload: Mapping[str, Any] | None = None,
     *,
     preview: bool = True,
+    service: LgcvfSemanticService | None = None,
 ) -> dict[str, Any]:
-    return LgcvfSemanticService().invoke(
-        SemanticServiceRequest(
-            operation=operation, payload=payload or {}, preview=preview, transport="python"
-        )
-    ).to_dict()
+    return _invoke_semantic_service(
+        operation, payload, preview=preview, transport="python", service=service
+    )
 
 
 def invoke_semantic_service_cli(
@@ -3149,12 +3244,11 @@ def invoke_semantic_service_cli(
     payload: Mapping[str, Any] | None = None,
     *,
     preview: bool = True,
+    service: LgcvfSemanticService | None = None,
 ) -> dict[str, Any]:
-    return LgcvfSemanticService().invoke(
-        SemanticServiceRequest(
-            operation=operation, payload=payload or {}, preview=preview, transport="cli"
-        )
-    ).to_dict()
+    return _invoke_semantic_service(
+        operation, payload, preview=preview, transport="cli", service=service
+    )
 
 
 def invoke_semantic_service_mcp(
@@ -3162,12 +3256,11 @@ def invoke_semantic_service_mcp(
     payload: Mapping[str, Any] | None = None,
     *,
     preview: bool = True,
+    service: LgcvfSemanticService | None = None,
 ) -> dict[str, Any]:
-    return LgcvfSemanticService().invoke(
-        SemanticServiceRequest(
-            operation=operation, payload=payload or {}, preview=preview, transport="mcp"
-        )
-    ).to_dict()
+    return _invoke_semantic_service(
+        operation, payload, preview=preview, transport="mcp", service=service
+    )
 
 
 __all__ = [
@@ -3207,10 +3300,16 @@ __all__ = [
     "create_local_registry_logic_producer",
     "create_optional_registry_logic_producer",
     "SEMANTIC_SERVICE_INTERFACE",
+    "SEMANTIC_SERVICE_MUTATING_OPERATIONS",
+    "SEMANTIC_SERVICE_MUTATION_POLICY",
     "SEMANTIC_SERVICE_OPERATIONS",
+    "SEMANTIC_SERVICE_SCHEMA",
+    "SEMANTIC_SERVICE_TRANSPORTS",
     "LgcvfSemanticService",
+    "SemanticServiceError",
     "SemanticServiceReceipt",
     "SemanticServiceRequest",
+    "get_lgcvf_semantic_service",
     "invoke_semantic_service_cli",
     "invoke_semantic_service_mcp",
     "invoke_semantic_service_python",
