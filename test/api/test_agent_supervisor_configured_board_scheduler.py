@@ -1518,6 +1518,11 @@ def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
         return SimpleNamespace(pid=os.getpid())
 
     monkeypatch.setattr(multi_runner_module.subprocess, "Popen", capture_popen)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_capture_owned_popen_birth",
+        lambda _process, _profile: object(),
+    )
     inherited_read, inherited_write = os.pipe()
     try:
         process = multi_runner_module.start_track(
@@ -6249,11 +6254,24 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         branch_name,
         **kwargs,
     ):
+        integrated_output = subprocess.run(
+            [
+                "git",
+                "cat-file",
+                "-e",
+                f"{implementation_branch}:src/test-a.py",
+            ],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        ).returncode == 0
         if (
             wave_scenario == "crash_changed_integration_before_cleanup"
             and str(branch_name) != implementation_branch
             and str(branch_name).startswith("implementation/test-a-")
             and "-attempt-" in str(branch_name)
+            and integrated_output
             and not crash_receipt_path.exists()
         ):
             integrated_target = subprocess.run(
@@ -6578,11 +6596,9 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     "--format=%(refname:short)",
                 ).stdout.splitlines()
                 assert implementation_branch in implementation_branches
-                assert not any(
-                    branch.startswith(
-                        ("implementation/test-a-", "implementation/test-b-")
-                    )
-                    and "-attempt-" in branch
+                assert all(
+                    branch == implementation_branch
+                    or not branch.startswith("implementation/")
                     for branch in implementation_branches
                 )
             if wave_scenario == "mixed":
@@ -7853,11 +7869,9 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     "--format=%(refname:short)",
                 ).stdout.splitlines()
                 assert implementation_branch in implementation_branches
-                assert not any(
-                    branch.startswith(
-                        ("implementation/test-a-", "implementation/test-b-")
-                    )
-                    and "-attempt-" in branch
+                assert all(
+                    branch == implementation_branch
+                    or not branch.startswith("implementation/")
                     for branch in implementation_branches
                 )
                 if wave_scenario == "crash_completed_poisoned_sidecar":

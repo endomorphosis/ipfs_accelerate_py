@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
@@ -10,6 +11,10 @@ from typing import Callable, Mapping
 
 import duckdb
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
+    ed25519_did_key,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     OwnerLiveness,
 )
@@ -50,6 +55,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerConnection,
     TypedStateOwnerGateway,
     TypedStateOwnerRemoteError,
+)
+from ipfs_accelerate_py.agent_supervisor.validation import (
+    eaaef_single_owner_review_request as single_owner_review,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.plan_r2_remote_owner_admission import (
     PLAN_R2_REMOTE_OPERATIONS,
@@ -893,6 +901,161 @@ def test_plan_r2_owner_binding_is_monotonic_and_rejects_raw_resources(
     finally:
         gateway.stop()
         connection.close()
+
+
+def test_single_owner_external_review_request_remains_explicit_no_go() -> None:
+    def sha(digit: str) -> str:
+        return "sha256:" + digit * 64
+
+    owner_key = Ed25519PrivateKey.generate()
+    reviewer_key = Ed25519PrivateKey.generate()
+    wrong_key = Ed25519PrivateKey.generate()
+    owner_did = ed25519_did_key(owner_key.public_key())
+    reviewer_did = ed25519_did_key(reviewer_key.public_key())
+    bindings = {
+        "source_head": "1" * 40,
+        "source_tree": "2" * 40,
+        "source_forest_root": sha("3"),
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "management_generation_id": "eaaef-review-request-001",
+        "management_binding_cid": sha("4"),
+        "management_snapshot_bindings_cid": sha("5"),
+        "management_capsule_cid": sha("6"),
+        "broker_process_birth_cid": sha("7"),
+        "owner_start_receipt_cid": sha("8"),
+        "owner_commit_receipt_cid": sha("9"),
+        "r1_merge_admission_cid": sha("a"),
+        "r1_operational_capability_cid": sha("b"),
+        "plan_r2_authorization_cid": sha("c"),
+        "plan_r2_operational_capability_cid": sha("d"),
+        "plan_r2_remote_capability_cid": sha("e"),
+        "plan_r2_authority_bundle_cid": sha("f"),
+        "plan_r2_trust_bundle_cid": sha("0"),
+        "owner_principal_did": owner_did,
+        "shard_id": "eaaef-shard-1",
+        "store_id": "eaaef-store-1",
+        "owner_generation": 4,
+        "plan_r2_epoch": 4,
+        "fence_epoch": 4,
+        "active_plan_root_cid": sha("1"),
+        "active_plan_revision": 1,
+        "active_plan_revision_cid": sha("2"),
+        "r1_service_interface": "EAAEFTypedOwnerCommandService@1",
+        "r1_service_schema": "eaaef-r1-service@1",
+        "plan_r2_service_interface": "EAAEFPlanR2BorrowedOwnerService@1",
+        "plan_r2_service_schema": "eaaef-plan-r2-service@1",
+        "plan_r2_gateway_interface": "PlanR2OwnerGateway@1",
+        "request_channel_id": "plan-r2-request-channel-1",
+        "response_channel_id": "plan-r2-response-channel-1",
+        "maximum_wait_ms": 60_000,
+    }
+    statement = single_owner_review.prepare_eaaef_single_owner_review_request(
+        bindings,
+        reviewer_did=reviewer_did,
+        issued_at_ms=NOW_MS,
+        expires_at_ms=NOW_MS + 1_000,
+        issuance_nonce="single-owner-review-request-001",
+    )
+    assert statement["allowed"] is False
+    assert statement["production_admitted"] is False
+    assert statement["maximum_request_bytes"] == 786_432
+    assert statement["maximum_response_bytes"] == 262_144
+    assert list(statement["blockers"]) == list(
+        single_owner_review.EAAEF_SINGLE_OWNER_REVIEW_BLOCKERS
+    )
+    assert "authenticated_lifecycle_cid_preimages_absent" in statement["blockers"]
+    assert "durable_atomic_cutover_replay_journal_absent" in statement["blockers"]
+    assert isinstance(statement["blockers"], tuple)
+    assert isinstance(statement["proposed_operations"], tuple)
+
+    statement_bytes = (
+        single_owner_review.canonical_eaaef_single_owner_review_request_bytes(
+            statement
+        )
+    )
+    reviewer_signature = base64.b64encode(
+        reviewer_key.sign(statement_bytes)
+    ).decode("ascii")
+    sealed = single_owner_review.seal_eaaef_single_owner_review_request(
+        statement,
+        reviewer_signature=reviewer_signature,
+    )
+    assert sealed["request_cid"].startswith("sha256:")
+    assert sealed["production_admitted"] is False
+    assert isinstance(sealed["blockers"], tuple)
+    assert isinstance(sealed["proposed_operations"], tuple)
+    assert single_owner_review.canonical_eaaef_single_owner_review_request_bytes(
+        sealed
+    )
+    assert not hasattr(single_owner_review, "VerifiedEAAEFSingleOwnerCutover")
+    with pytest.raises(AttributeError):
+        sealed["blockers"].append("post-cid-mutation")
+
+    wrong_signature = base64.b64encode(
+        wrong_key.sign(statement_bytes)
+    ).decode("ascii")
+    with pytest.raises(
+        single_owner_review.EAAEFSingleOwnerReviewRequestError,
+        match="signature authenticity differs",
+    ):
+        single_owner_review.seal_eaaef_single_owner_review_request(
+            statement,
+            reviewer_signature=wrong_signature,
+        )
+
+    with pytest.raises(
+        single_owner_review.EAAEFSingleOwnerReviewRequestError,
+        match="reviewer is not independent",
+    ):
+        single_owner_review.prepare_eaaef_single_owner_review_request(
+            {**bindings, "owner_principal_did": reviewer_did},
+            reviewer_did=reviewer_did,
+            issued_at_ms=NOW_MS,
+            expires_at_ms=NOW_MS + 1_000,
+            issuance_nonce="single-owner-review-request-colliding-reviewer",
+        )
+
+    with pytest.raises(
+        single_owner_review.EAAEFSingleOwnerReviewRequestError,
+        match="signature syntax differs",
+    ):
+        single_owner_review.seal_eaaef_single_owner_review_request(
+            statement,
+            reviewer_signature="",
+        )
+    injected = {**bindings, "database_path": "/not/authority"}
+    with pytest.raises(
+        single_owner_review.EAAEFSingleOwnerReviewRequestError,
+        match="binding shape is not exact",
+    ):
+        single_owner_review.prepare_eaaef_single_owner_review_request(
+            injected,
+            reviewer_did=reviewer_did,
+            issued_at_ms=NOW_MS,
+            expires_at_ms=NOW_MS + 1_000,
+            issuance_nonce="single-owner-review-request-002",
+        )
+    non_string = {**bindings, "board_namespace": 123}
+    with pytest.raises(
+        single_owner_review.EAAEFSingleOwnerReviewRequestError,
+        match="bounded identity differs",
+    ):
+        single_owner_review.prepare_eaaef_single_owner_review_request(
+            non_string,
+            reviewer_did=reviewer_did,
+            issued_at_ms=NOW_MS,
+            expires_at_ms=NOW_MS + 1_000,
+            issuance_nonce="single-owner-review-request-non-string",
+        )
+    oversized = {**dict(statement), "maximum_request_bytes": 786_433}
+    with pytest.raises(
+        single_owner_review.EAAEFSingleOwnerReviewRequestError,
+        match="constants differ",
+    ):
+        single_owner_review.seal_eaaef_single_owner_review_request(
+            oversized,
+            reviewer_signature=reviewer_signature,
+        )
 
 
 @pytest.mark.parametrize(

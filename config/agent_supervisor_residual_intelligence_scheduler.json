@@ -11,9 +11,9 @@
   "accepted_plan_revision_alias": "VRIF-PLAN-R1",
   "merge_target_branch": "codex/verified-residual-intelligence-foundry-v1",
   "source_binding": {
-    "accelerator_required_ancestor": "84a056e41e48a81d4484be43840196578d6c87da",
-    "accelerator_planning_revision": "84a056e41e48a81d4484be43840196578d6c87da",
-    "accelerator_planning_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+    "accelerator_required_ancestor": "e2213857d37cc1ada87fc6ba98f406bc9ed44f90",
+    "accelerator_planning_revision": "e2213857d37cc1ada87fc6ba98f406bc9ed44f90",
+    "accelerator_planning_tree": "d8da11c65aa51d8688b166d7b8e5ab4c6069fc67",
     "accelerator_required_branch": "codex/verified-residual-intelligence-foundry-v1",
     "bootstrap_task_source": "duckdb",
     "require_clean_checkout_at_launch": true,
@@ -108,6 +108,7 @@
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/vrif_runtime_settlement.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
@@ -119,6 +120,8 @@
     "scripts/validate_agent_supervisor_residual_intelligence_board.py",
     "scripts/run_agent_supervisor_residual_intelligence.py",
     "test/api/residual_intelligence/test_board.py",
+    "test/api/residual_intelligence/test_goal_authority.py",
+    "test/api/residual_intelligence/test_runtime_settlement.py",
     "test/api/residual_intelligence/test_runtime_bootstrap.py",
     "test/api/test_agent_supervisor_quack_owner_commands.py"
   ],
@@ -131,6 +134,64 @@
     "evidence": "data/agent_supervisor/residual_intelligence_foundry/evidence",
     "quack_owner": "data/agent_supervisor/residual_intelligence_foundry/quack-owner",
     "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "runtime_settlement": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/vrif-runtime-settlement-config@1",
+    "retired_coordination_snapshots": [
+      {
+        "schema": "ipfs_accelerate_py/agent-supervisor/vrif-retired-coordination-snapshot@1",
+        "lane_index": 2,
+        "database_path": "data/agent_supervisor/residual_intelligence_foundry/state/sidecar-quarantine/20260824T025041Z/lane-2/quack-lane-control.coordination.duckdb",
+        "database_size_bytes": 13381632,
+        "database_sha256": "sha256:85ac6df174f23dfe5af9c17ad115cd83a23268ff7673f57c8b818befef5a8a50",
+        "wal_path": "data/agent_supervisor/residual_intelligence_foundry/state/sidecar-quarantine/20260824T025041Z/lane-2/quack-lane-control.coordination.duckdb.wal",
+        "wal_size_bytes": 6405,
+        "wal_sha256": "sha256:fc390563519209559a838f9ce103def6a69ead7019a9a0ea6c6478858d21d0f9",
+        "terminal_execution_attempt_ids": [
+          "attempt:148a87b2fed8470ab94b1beb6e5ff2b5",
+          "attempt:437fec04942b4bccb304370d2922fc51",
+          "attempt:8045c543ccef4b4aba9b20b86d82d9e1",
+          "attempt:8344a8f96fc3435893f6d42b086ad82b",
+          "attempt:83739fc145b9407f9948fbe5d5054702",
+          "attempt:90bec3212608462b80cf6ba86711620c",
+          "attempt:a1a35a3759b64bb7994308e953ba8b33",
+          "attempt:a9900d5a8f2f4c0a81b050b1c970f0ac",
+          "attempt:b9c34484dad3462a836949479b67b3c8",
+          "attempt:d2821c185d2b4a15b4737276c5932204",
+          "attempt:e1fa6d4147c14cfc90599cbddf4ed18b"
+        ],
+        "terminal_execution_attempt_ids_cid": "sha256:ca73a1a1a22d45ca49b822446c977377566ba88c84a8ccc5bf149456fe0382b9"
+      },
+      {
+        "schema": "ipfs_accelerate_py/agent-supervisor/vrif-retired-coordination-snapshot@1",
+        "lane_index": 3,
+        "database_path": "data/agent_supervisor/residual_intelligence_foundry/state/sidecar-quarantine/20260825T032836Z/lane-3/quack-lane-control.coordination.duckdb",
+        "database_size_bytes": 14168064,
+        "database_sha256": "sha256:a4c80f15788b46621df0fb82837aef3de621637fd473dc9bda19835de035cf58",
+        "wal_path": "data/agent_supervisor/residual_intelligence_foundry/state/sidecar-quarantine/20260825T032836Z/lane-3/quack-lane-control.coordination.duckdb.wal",
+        "wal_size_bytes": 47620,
+        "wal_sha256": "sha256:e2394f12822a2fa6fdef85fa4b4307df752b8a23c2cba54eb89c68fc10a18e12",
+        "terminal_execution_attempt_ids": [
+          "attempt:10bfff607a40484da5ff22fb1457e07a",
+          "attempt:326b847214c64f0794c5346719c132a1",
+          "attempt:65e2f79f46ef42088e85805f51044ac5",
+          "attempt:71abd97dcd864a65a18c666e35ba6d38",
+          "attempt:7a18f636d3c14e2aa1a39f34bab80bd8",
+          "attempt:844f0c50a1e14765b694c6acf03f91ca",
+          "attempt:94c8f665306e477a97de790252777e17",
+          "attempt:954fc049cbc0474f9ceb513c42839c44",
+          "attempt:9aa3674ab72b478eb7928e3e3d43d9a0",
+          "attempt:9eed2939d5ab468488f4ea294d625f80",
+          "attempt:a1ae1efe8f7e40fa9963d2f7e0789582",
+          "attempt:aa888a77345d433ca91d0fadb71f14e5",
+          "attempt:b9e42d1c427948d3b55a0c46241bc5d0",
+          "attempt:d92538db4a38498e83f645267644485d",
+          "attempt:de0a92f82f314b9fba49edfc6b359174",
+          "attempt:def048b27d8846a2922f47051ede5372"
+        ],
+        "terminal_execution_attempt_ids_cid": "sha256:42612d820a37440508878704431310b96510a0ecf04f4cb8dd054692cda19316"
+      }
+    ]
   },
   "lanes": [
     {"index": 0, "name": "vrif-lane-0", "strict_shard_remainder": 0, "initial_task_ids": ["VRIF-009"], "initial_focus": "deterministic-baselines"},

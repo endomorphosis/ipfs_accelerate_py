@@ -10,20 +10,24 @@ request.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import math
 import os
+import stat
 import tempfile
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Iterator, Mapping, Optional
 
 from ..task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBRow,
+    connect_duckdb_with_policy,
     exclusive_file_lock,
     initialize_duckdb_database,
     open_duckdb_connection,
@@ -51,6 +55,52 @@ MERGE_QUEUE_THROUGHPUT_SCHEMA = (
 )
 MERGE_TARGET_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+)
+MERGE_QUEUE_SETTLEMENT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/merge-queue-settlement@1"
+)
+FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "merge-queue-false-positive-completion-reopen@1"
+)
+_FALSE_POSITIVE_COMPLETION_RECEIPT_FIELDS = frozenset(
+    {
+        "already_merged",
+        "canonical_task_id",
+        "commit_sha",
+        "distributed_publication_admission",
+        "finished_at",
+        "integrated",
+        "merge_commit",
+        "merged",
+        "mutation_short_circuited",
+        "reason",
+        "request_id",
+        "started_at",
+        "status",
+        "target_branch",
+        "target_commit",
+        "task_id",
+    }
+)
+_FALSE_POSITIVE_COMPLETION_ADMISSION_FIELDS = frozenset(
+    {"admitted", "distributed", "request_id", "schema", "status"}
+)
+_DISTRIBUTED_LANE_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-lane-admission@1"
+)
+_FALSE_POSITIVE_COMPLETION_REOPEN_FIELDS = frozenset(
+    {
+        "schema",
+        "reason",
+        "train_receipt_id",
+        "previous_target_commit",
+        "previous_claim_generation",
+        "reopened_at",
+    }
+)
+_FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY = (
+    "false_positive_completion_reopen"
 )
 MAX_MERGE_QUEUE_DEFERRAL_SECONDS = 3600.0
 MAX_MERGE_QUEUE_RECORDED_DEFERRALS = 32
@@ -127,6 +177,48 @@ _MERGE_QUEUE_SCHEMA_SQL = """
                   ON merge_requests(status, retry_not_before, enqueued_at);
                 """
 
+_MERGE_QUEUE_SETTLEMENT_STATES = (
+    "pending",
+    "processing",
+    "completed",
+    "quarantined",
+    "cancelled",
+)
+_MERGE_QUEUE_SETTLEMENT_MAX_ACTIVE_IDS = 1024
+_MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES = 64 * 1024
+_MERGE_QUEUE_SETTLEMENT_MAX_STORE_METADATA_ROWS = 256
+_MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS = 5.0
+_MERGE_QUEUE_SETTLEMENT_COLUMNS = {
+    "agent_supervisor_store_metadata": (
+        ("key", "VARCHAR", "NO"),
+        ("value", "VARCHAR", "NO"),
+    ),
+    "merge_requests": (
+        ("request_id", "VARCHAR", "NO"),
+        ("branch_name", "VARCHAR", "NO"),
+        ("task_id", "VARCHAR", "NO"),
+        ("priority", "VARCHAR", "NO"),
+        ("lane_id", "VARCHAR", "NO"),
+        ("enqueued_at", "DOUBLE", "NO"),
+        ("attempt", "INTEGER", "NO"),
+        ("metadata_json", "VARCHAR", "NO"),
+        ("commit_sha", "VARCHAR", "NO"),
+        ("canonical_task_id", "VARCHAR", "NO"),
+        ("canonical_task_key", "VARCHAR", "NO"),
+        ("dedupe_key", "VARCHAR", "YES"),
+        ("status", "VARCHAR", "NO"),
+        ("claimed_at", "DOUBLE", "NO"),
+        ("consumer_id", "VARCHAR", "NO"),
+        ("failure_count", "INTEGER", "NO"),
+        ("failure_reason", "VARCHAR", "NO"),
+        ("claim_token", "VARCHAR", "NO"),
+        ("claim_generation", "BIGINT", "NO"),
+        ("retry_not_before", "DOUBLE", "NO"),
+        ("finished_at", "DOUBLE", "NO"),
+        ("updated_at", "DOUBLE", "NO"),
+    ),
+}
+
 
 class MergeQueueFullError(RuntimeError):
     """Raised when accepting another active request would exceed queue capacity."""
@@ -138,6 +230,659 @@ class MergeQueueFenceError(RuntimeError):
 
 class MergeQueueIntegrityError(RuntimeError):
     """Raised when durable queue identities disagree with legacy projections."""
+
+
+def _settlement_canonical_bytes(value: Mapping[str, Any] | list[Any]) -> bytes:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _settlement_content_id(value: Mapping[str, Any] | list[Any]) -> str:
+    return "sha256:" + hashlib.sha256(_settlement_canonical_bytes(value)).hexdigest()
+
+
+def _finite_nonnegative_timestamp(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        timestamp = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return timestamp if math.isfinite(timestamp) and timestamp >= 0 else None
+
+
+def _settlement_regular_file_identity(path: Path, *, label: str) -> dict[str, int]:
+    try:
+        details = path.lstat()
+    except OSError as exc:
+        raise MergeQueueIntegrityError(
+            f"merge queue settlement {label} is unavailable"
+        ) from exc
+    if not stat.S_ISREG(details.st_mode):
+        raise MergeQueueIntegrityError(
+            f"merge queue settlement {label} must be a regular file"
+        )
+    return {
+        "device": int(details.st_dev),
+        "inode": int(details.st_ino),
+        "size_bytes": int(details.st_size),
+        "modified_ns": int(details.st_mtime_ns),
+        "changed_ns": int(details.st_ctime_ns),
+    }
+
+
+def _merge_queue_settlement_lock_timeout(value: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("lock_timeout_seconds must be a finite number")
+    timeout = float(value)
+    if not math.isfinite(timeout) or timeout < 0 or timeout > 5.0:
+        raise ValueError("lock_timeout_seconds must be between 0 and 5 seconds")
+    return timeout
+
+
+@contextmanager
+def _locked_existing_merge_queue_store(
+    lock_path: Path,
+    *,
+    timeout_seconds: float,
+) -> Iterator[None]:
+    """Lock an existing queue without creating or modifying its lock file."""
+
+    expected = _settlement_regular_file_identity(lock_path, label="lock")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(lock_path, flags)
+    except OSError as exc:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement lock could not be opened"
+        ) from exc
+    acquired = False
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or int(opened.st_dev) != expected["device"]
+            or int(opened.st_ino) != expected["inode"]
+        ):
+            raise MergeQueueIntegrityError(
+                "merge queue settlement lock identity changed"
+            )
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement lock is busy"
+                    ) from None
+                time.sleep(0.01)
+        yield
+    finally:
+        if acquired:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _strict_settlement_metadata(value: str) -> dict[str, Any]:
+    def build_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError(f"duplicate metadata key: {key}")
+            result[key] = item
+        return result
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-finite JSON number: {value}")
+
+    decoded = json.loads(
+        value,
+        object_pairs_hook=build_object,
+        parse_constant=reject_constant,
+    )
+    if not isinstance(decoded, dict):
+        raise ValueError("merge request metadata must be a JSON object")
+    return decoded
+
+
+def _read_merge_queue_settlement_under_lock(
+    queue_dir: Path | str,
+    *,
+    target_repository_id: str,
+    target_branch: str,
+    max_active_ids: int = 256,
+    expected_database: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
+    """Read one content-addressed settlement while the queue lock is held.
+
+    This is the operator/goal-authority read path.  It opens only a pre-existing
+    local DuckDB store and lock file, takes one bounded read-only transaction,
+    and never constructs ``MergeQueue`` or runs queue setup/reconciliation.
+    ``settled`` is true only when no pending or processing rows exist. Every
+    active row must carry the exact repository and branch binding requested by
+    the caller; a mixed, legacy, malformed, or unreadable queue is rejected.
+    """
+
+    if (
+        not isinstance(target_repository_id, str)
+        or not target_repository_id
+        or target_repository_id != target_repository_id.strip()
+        or "\x00" in target_repository_id
+    ):
+        raise ValueError("target_repository_id must be an exact non-empty string")
+    if (
+        not isinstance(target_branch, str)
+        or not target_branch
+        or target_branch != target_branch.strip()
+        or "\x00" in target_branch
+    ):
+        raise ValueError("target_branch must be an exact non-empty string")
+    if (
+        type(max_active_ids) is not int
+        or max_active_ids < 1
+        or max_active_ids > _MERGE_QUEUE_SETTLEMENT_MAX_ACTIVE_IDS
+    ):
+        raise ValueError(
+            "max_active_ids must be an integer between 1 and "
+            f"{_MERGE_QUEUE_SETTLEMENT_MAX_ACTIVE_IDS}"
+        )
+
+    directory = Path(queue_dir)
+    try:
+        directory_details = directory.lstat()
+    except OSError as exc:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement directory is unavailable"
+        ) from exc
+    if not stat.S_ISDIR(directory_details.st_mode):
+        raise MergeQueueIntegrityError(
+            "merge queue settlement directory must be an existing real directory"
+        )
+    database_path = directory / "merge_queue.duckdb"
+    wal_path = directory / "merge_queue.duckdb.wal"
+    initial_database = _settlement_regular_file_identity(
+        database_path,
+        label="database",
+    )
+    if initial_database["size_bytes"] <= 0:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database must not be empty"
+        )
+    if wal_path.exists() or wal_path.is_symlink():
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database has an outstanding write-ahead log"
+        )
+    if expected_database is not None and dict(expected_database) != initial_database:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database identity changed before lock"
+        )
+
+    status_counts: dict[str, int] = {
+        state: 0 for state in _MERGE_QUEUE_SETTLEMENT_STATES
+    }
+    active_requests: list[dict[str, str]] = []
+    store_metadata: list[list[str]] = []
+    row_count = 0
+    max_updated_at = 0.0
+    max_claim_generation = 0
+    final_database: dict[str, int]
+    connection: Any | None = None
+    transaction_open = False
+    try:
+        def read_locked_snapshot() -> None:
+            nonlocal connection
+            nonlocal final_database
+            nonlocal max_claim_generation
+            nonlocal max_updated_at
+            nonlocal row_count
+            nonlocal transaction_open
+
+            locked_database = _settlement_regular_file_identity(
+                database_path,
+                label="database",
+            )
+            if locked_database != initial_database:
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database identity changed before read"
+                )
+            if wal_path.exists() or wal_path.is_symlink():
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database has an outstanding write-ahead log"
+                )
+            try:
+                import duckdb
+
+                connection = connect_duckdb_with_policy(
+                    duckdb,
+                    database_path,
+                    read_only=True,
+                )
+                connection.execute("BEGIN TRANSACTION")
+                transaction_open = True
+
+                table_rows = connection.execute(
+                    """
+                    SELECT table_name, table_type
+                    FROM information_schema.tables
+                    WHERE table_schema = 'main'
+                      AND table_name IN (
+                          'agent_supervisor_store_metadata',
+                          'merge_requests'
+                      )
+                    ORDER BY table_name
+                    """
+                ).fetchall()
+                expected_tables = [
+                    ("agent_supervisor_store_metadata", "BASE TABLE"),
+                    ("merge_requests", "BASE TABLE"),
+                ]
+                if [tuple(row) for row in table_rows] != expected_tables:
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement database tables are missing or malformed"
+                    )
+
+                column_rows = connection.execute(
+                    """
+                    SELECT table_name, column_name, data_type, is_nullable
+                    FROM information_schema.columns
+                    WHERE table_schema = 'main'
+                      AND table_name IN (
+                          'agent_supervisor_store_metadata',
+                          'merge_requests'
+                      )
+                    ORDER BY table_name, ordinal_position
+                    """
+                ).fetchall()
+                observed_columns: dict[str, list[tuple[str, str, str]]] = {
+                    table_name: []
+                    for table_name in _MERGE_QUEUE_SETTLEMENT_COLUMNS
+                }
+                for table_name, column_name, data_type, is_nullable in column_rows:
+                    name = str(table_name)
+                    if name not in observed_columns:
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement database columns are malformed"
+                        )
+                    observed_columns[name].append(
+                        (str(column_name), str(data_type), str(is_nullable))
+                    )
+                if any(
+                    tuple(observed_columns[table_name]) != expected
+                    for table_name, expected in _MERGE_QUEUE_SETTLEMENT_COLUMNS.items()
+                ):
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement database columns are missing or malformed"
+                    )
+
+                metadata_rows = connection.execute(
+                    """
+                    SELECT
+                        CASE WHEN octet_length(encode(key)) <= 1024 THEN key END,
+                        octet_length(encode(key)),
+                        CASE WHEN octet_length(encode(value)) <= ? THEN value END,
+                        octet_length(encode(value))
+                    FROM agent_supervisor_store_metadata
+                    ORDER BY key
+                    LIMIT ?
+                    """,
+                    (
+                        _MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES,
+                        _MERGE_QUEUE_SETTLEMENT_MAX_STORE_METADATA_ROWS + 1,
+                    ),
+                ).fetchall()
+                if len(metadata_rows) > _MERGE_QUEUE_SETTLEMENT_MAX_STORE_METADATA_ROWS:
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement store metadata exceeds the read bound"
+                    )
+                for key, key_size, value, value_size in metadata_rows:
+                    if (
+                        key is None
+                        or value is None
+                        or int(key_size) <= 0
+                        or int(key_size) > 1024
+                        or int(value_size) > _MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement store metadata is malformed"
+                        )
+                    store_metadata.append([str(key), str(value)])
+
+                status_rows = connection.execute(
+                    """
+                    SELECT
+                        CASE WHEN octet_length(encode(status)) <= 32 THEN status END,
+                        octet_length(encode(status)),
+                        count(*)
+                    FROM merge_requests
+                    GROUP BY status
+                    ORDER BY status
+                    LIMIT ?
+                    """,
+                    (len(_MERGE_QUEUE_SETTLEMENT_STATES) + 1,),
+                ).fetchall()
+                if len(status_rows) > len(_MERGE_QUEUE_SETTLEMENT_STATES):
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement contains unknown states"
+                    )
+                for status_value, status_size, count in status_rows:
+                    if (
+                        status_value is None
+                        or int(status_size) <= 0
+                        or str(status_value) not in status_counts
+                        or int(count) < 0
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement contains an unknown state"
+                        )
+                    status_counts[str(status_value)] = int(count)
+
+                summary = connection.execute(
+                    """
+                    SELECT
+                        count(*),
+                        count(DISTINCT request_id),
+                        COALESCE(max(updated_at), 0.0),
+                        COALESCE(max(claim_generation), 0)
+                    FROM merge_requests
+                    """
+                ).fetchone()
+                if summary is None:
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement summary is unavailable"
+                    )
+                row_count = int(summary[0])
+                distinct_request_ids = int(summary[1])
+                max_updated_at = float(summary[2])
+                max_claim_generation = int(summary[3])
+                if (
+                    row_count < 0
+                    or distinct_request_ids != row_count
+                    or sum(status_counts.values()) != row_count
+                    or not math.isfinite(max_updated_at)
+                    or max_updated_at < 0
+                    or max_claim_generation < 0
+                ):
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement summary is malformed"
+                    )
+
+                active_rows = connection.execute(
+                    """
+                    SELECT
+                        CASE WHEN octet_length(encode(request_id)) <= 512 THEN request_id END,
+                        octet_length(encode(request_id)),
+                        status,
+                        CASE WHEN octet_length(encode(metadata_json)) <= ?
+                             THEN metadata_json END,
+                        octet_length(encode(metadata_json))
+                    FROM merge_requests
+                    WHERE status IN ('pending', 'processing')
+                    ORDER BY request_id
+                    LIMIT ?
+                    """,
+                    (
+                        _MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES,
+                        max_active_ids + 1,
+                    ),
+                ).fetchall()
+                expected_active_count = (
+                    status_counts["pending"] + status_counts["processing"]
+                )
+                if (
+                    expected_active_count > max_active_ids
+                    or len(active_rows) != expected_active_count
+                ):
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement active request bound was exceeded"
+                    )
+                for (
+                    request_id,
+                    request_id_size,
+                    status_value,
+                    metadata_json,
+                    metadata_size,
+                ) in active_rows:
+                    if (
+                        request_id is None
+                        or int(request_id_size) <= 0
+                        or int(request_id_size) > 512
+                        or metadata_json is None
+                        or int(metadata_size) <= 0
+                        or int(metadata_size)
+                        > _MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement active request is malformed"
+                        )
+                    status_text = str(status_value)
+                    if status_text not in _ACTIVE_STATES:
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement active request state is malformed"
+                        )
+                    try:
+                        metadata = _strict_settlement_metadata(str(metadata_json))
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement active request metadata is malformed"
+                        ) from exc
+                    if (
+                        metadata.get("target_binding_schema")
+                        != MERGE_TARGET_BINDING_SCHEMA
+                        or metadata.get("target_repository_id")
+                        != target_repository_id
+                        or metadata.get("target_branch") != target_branch
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement active request target is unbound or differs"
+                        )
+                    active_requests.append(
+                        {
+                            "request_id": str(request_id),
+                            "status": status_text,
+                        }
+                    )
+
+                connection.execute("COMMIT")
+                transaction_open = False
+            except BaseException:
+                if connection is not None and transaction_open:
+                    try:
+                        connection.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    transaction_open = False
+                raise
+            finally:
+                if connection is not None:
+                    connection.close()
+                    connection = None
+
+            final_database = _settlement_regular_file_identity(
+                database_path,
+                label="database",
+            )
+            if final_database != locked_database:
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database changed during read"
+                )
+            if wal_path.exists() or wal_path.is_symlink():
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database changed during read"
+                )
+
+        read_locked_snapshot()
+    except MergeQueueIntegrityError:
+        raise
+    except Exception as exc:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement store could not be read"
+        ) from exc
+
+    store_metadata_cid = _settlement_content_id(store_metadata)
+    metadata_by_key = {key: value for key, value in store_metadata}
+    database_identity = {
+        "path": str(database_path.resolve(strict=True)),
+        **final_database,
+    }
+    snapshot = {
+        "database": database_identity,
+        "store_metadata_cid": store_metadata_cid,
+        "store_metadata_rows": len(store_metadata),
+        "store_id": metadata_by_key.get("store_id"),
+        "store_generation": metadata_by_key.get("store_generation"),
+        "row_count": row_count,
+        "max_updated_at": max_updated_at,
+        "max_claim_generation": max_claim_generation,
+        "status_counts": status_counts,
+        "active_requests": active_requests,
+    }
+    receipt: dict[str, Any] = {
+        "schema": MERGE_QUEUE_SETTLEMENT_SCHEMA,
+        "settled": not active_requests,
+        "target": {
+            "binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "repository_id": target_repository_id,
+            "branch": target_branch,
+        },
+        "database": database_identity,
+        "store": {
+            "metadata_cid": store_metadata_cid,
+            "metadata_rows": len(store_metadata),
+            "store_id": metadata_by_key.get("store_id"),
+            "generation": metadata_by_key.get("store_generation"),
+        },
+        "row_count": row_count,
+        "max_updated_at": max_updated_at,
+        "max_claim_generation": max_claim_generation,
+        "status_counts": status_counts,
+        "active_count": len(active_requests),
+        "active_request_ids": [
+            request["request_id"] for request in active_requests
+        ],
+        "snapshot_cid": _settlement_content_id(snapshot),
+    }
+    receipt["receipt_cid"] = _settlement_content_id(receipt)
+    return receipt
+
+
+@contextmanager
+def hold_merge_queue_settlement(
+    queue_dir: Path | str,
+    *,
+    target_repository_id: str,
+    target_branch: str,
+    max_active_ids: int = 256,
+    lock_timeout_seconds: float = _MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS,
+) -> Iterator[dict[str, Any]]:
+    """Yield a queue settlement receipt while retaining its writer lock.
+
+    The guard is the authorization form of the settlement API: callers may
+    perform their compare-and-swap while the yielded receipt remains protected
+    from queue writers.  The database identity is checked again before the
+    lock is released, including when the guarded operation raises.
+    """
+
+    timeout = _merge_queue_settlement_lock_timeout(lock_timeout_seconds)
+    directory = Path(queue_dir)
+    try:
+        directory_details = directory.lstat()
+    except OSError as exc:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement directory is unavailable"
+        ) from exc
+    if not stat.S_ISDIR(directory_details.st_mode):
+        raise MergeQueueIntegrityError(
+            "merge queue settlement directory must be an existing real directory"
+        )
+    database_path = directory / "merge_queue.duckdb"
+    lock_path = directory / ".merge_queue.duckdb.lock"
+    wal_path = directory / "merge_queue.duckdb.wal"
+    initial_database = _settlement_regular_file_identity(
+        database_path,
+        label="database",
+    )
+    if initial_database["size_bytes"] <= 0:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database must not be empty"
+        )
+    if wal_path.exists() or wal_path.is_symlink():
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database has an outstanding write-ahead log"
+        )
+
+    with _locked_existing_merge_queue_store(
+        lock_path,
+        timeout_seconds=timeout,
+    ):
+        receipt = _read_merge_queue_settlement_under_lock(
+            directory,
+            target_repository_id=target_repository_id,
+            target_branch=target_branch,
+            max_active_ids=max_active_ids,
+            expected_database=initial_database,
+        )
+        expected_database = {
+            key: receipt["database"][key]
+            for key in (
+                "device",
+                "inode",
+                "size_bytes",
+                "modified_ns",
+                "changed_ns",
+            )
+        }
+        try:
+            yield receipt
+        finally:
+            observed_database = _settlement_regular_file_identity(
+                database_path,
+                label="database",
+            )
+            if observed_database != expected_database:
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database changed while guarded"
+                )
+            if wal_path.exists() or wal_path.is_symlink():
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database changed while guarded"
+                )
+
+
+def read_merge_queue_settlement(
+    queue_dir: Path | str,
+    *,
+    target_repository_id: str,
+    target_branch: str,
+    max_active_ids: int = 256,
+    lock_timeout_seconds: float = _MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Return a convenience snapshot without retaining the queue guard.
+
+    Use :func:`hold_merge_queue_settlement` when a receipt authorizes a later
+    mutation; the context manager keeps the queue immutable through that
+    mutation and closes the read-to-CAS race.
+    """
+
+    with hold_merge_queue_settlement(
+        queue_dir,
+        target_repository_id=target_repository_id,
+        target_branch=target_branch,
+        max_active_ids=max_active_ids,
+        lock_timeout_seconds=lock_timeout_seconds,
+    ) as receipt:
+        return receipt
 
 
 @dataclass(frozen=True)
@@ -469,14 +1214,6 @@ class MergeQueue:
             ("cancelled", self.cancelled_dir),
         )
         with self._connect() as connection:
-            existing = connection.execute(
-                "SELECT 1 FROM merge_requests LIMIT 1"
-            ).fetchone()
-            if existing is not None:
-                # The durable index is already populated. Re-reading every
-                # stage receipt on constructor start pins the whole table
-                # again and OOMs a 256MB-capped DuckDB on a large queue.
-                return
             connection.execute("BEGIN IMMEDIATE")
             try:
                 metadata_rows = connection.execute(
@@ -704,6 +1441,10 @@ class MergeQueue:
         *,
         ignore: bool,
     ) -> None:
+        if _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY in request.metadata:
+            raise MergeQueueIntegrityError(
+                "false-positive completion reopen metadata is queue-reserved"
+            )
         if ignore:
             # INSERT OR IGNORE still appends then reverts on unique conflict.
             # DuckDB treats that revert as FATAL and abort-kills the process.
@@ -801,6 +1542,10 @@ class MergeQueue:
         if not str(task_id).strip():
             raise ValueError("task_id must not be empty")
         metadata_dict = dict(metadata or {})
+        if _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY in metadata_dict:
+            raise ValueError(
+                "false-positive completion reopen metadata is queue-reserved"
+            )
         declared_repository_id = str(
             target_repository_id
             or metadata_dict.get("target_repository_id")
@@ -982,6 +1727,23 @@ class MergeQueue:
                 "request target differs from the queue binding"
             )
 
+    @staticmethod
+    def _requires_explicit_false_positive_recovery(value: Any) -> bool:
+        """Keep queue-authored recovery rows out of generic dequeue paths."""
+
+        try:
+            metadata = (
+                json.loads(value or "{}")
+                if not isinstance(value, Mapping)
+                else value
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        return bool(
+            isinstance(metadata, Mapping)
+            and _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY in metadata
+        )
+
     def dequeue(self, consumer_id: str = "") -> Optional[MergeRequest]:
         """Atomically claim the fairest pending request for one consumer."""
 
@@ -1157,6 +1919,13 @@ class MergeQueue:
                         for row in rows
                         if self._metadata_matches_target(row["metadata_json"])
                     ]
+                rows = [
+                    row
+                    for row in rows
+                    if not self._requires_explicit_false_positive_recovery(
+                        row["metadata_json"]
+                    )
+                ]
                 if not rows:
                     connection.commit()
                     return ()
@@ -1375,6 +2144,228 @@ class MergeQueue:
         assert row is not None
         self._write_stage_receipt(self._request_from_row(row))
         self._prune_receipts(self.completed_dir, keep=50)
+
+    def reopen_false_positive_completion(
+        self,
+        request: MergeRequest,
+        *,
+        completion_receipt: Mapping[str, Any],
+    ) -> MergeRequest | None:
+        """Reopen one exactly proved false ``already_merged`` completion.
+
+        This is deliberately narrower than an operator retry.  It accepts only
+        the train receipt emitted by the metadata-only declared-output
+        shortcut, only for a target-bound completed row with no callback
+        completion contract, and records the receipt digest before returning
+        the row to ``pending``.  The caller must separately prove from Git that
+        the candidate's declared outputs are not actually present on target.
+
+        Replaying the same receipt after this transition is observation-only;
+        it never regresses a later pending, processing, quarantined, or
+        completed generation.
+        """
+
+        if not isinstance(completion_receipt, Mapping):
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt must be a mapping"
+            )
+        receipt = dict(completion_receipt)
+        receipt_fields = set(receipt)
+        content_addressed = receipt_fields == (
+            _FALSE_POSITIVE_COMPLETION_RECEIPT_FIELDS | {"receipt_id"}
+        )
+        if (
+            receipt_fields != _FALSE_POSITIVE_COMPLETION_RECEIPT_FIELDS
+            and not content_addressed
+        ):
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt has an unknown shape"
+            )
+        receipt_content = (
+            {key: value for key, value in receipt.items() if key != "receipt_id"}
+            if content_addressed
+            else receipt
+        )
+        try:
+            receipt_id = _settlement_content_id(receipt_content)
+        except (TypeError, ValueError) as exc:
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt is not canonical JSON"
+            ) from exc
+        if content_addressed and receipt.get("receipt_id") != receipt_id:
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt content identity changed"
+            )
+        admission = receipt.get("distributed_publication_admission")
+        target_commit = str(receipt.get("target_commit") or "")
+        merge_commit = str(receipt.get("merge_commit") or "")
+        started_at = receipt.get("started_at")
+        finished_at = receipt.get("finished_at")
+        started_timestamp = _finite_nonnegative_timestamp(started_at)
+        finished_timestamp = _finite_nonnegative_timestamp(finished_at)
+        timestamps_valid = bool(
+            started_timestamp is not None
+            and finished_timestamp is not None
+            and finished_timestamp >= started_timestamp
+        )
+        if (
+            receipt.get("request_id") != request.request_id
+            or receipt.get("status") != "already_merged"
+            or receipt.get("reason") != "declared_outputs_already_on_target"
+            or receipt.get("mutation_short_circuited") is not True
+            or receipt.get("already_merged") is not True
+            or receipt.get("integrated") is not True
+            or receipt.get("merged") is not False
+            or receipt.get("commit_sha") != request.commit_sha
+            or receipt.get("canonical_task_id") != request.canonical_identity
+            or receipt.get("task_id") != request.task_id
+            or receipt.get("target_branch") != request.target_branch
+            or len(target_commit) != 40
+            or any(character not in "0123456789abcdef" for character in target_commit)
+            or merge_commit != target_commit
+            or not timestamps_valid
+            or not isinstance(admission, Mapping)
+            or set(admission) != _FALSE_POSITIVE_COMPLETION_ADMISSION_FIELDS
+            or admission.get("schema") != _DISTRIBUTED_LANE_ADMISSION_SCHEMA
+            or admission.get("status") != "local"
+            or admission.get("admitted") is not True
+            or admission.get("distributed") is not False
+            or admission.get("request_id") != request.request_id
+        ):
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt does not match its request"
+            )
+        if (
+            self.require_target_binding is not True
+            or not request.has_target_binding
+            or request.target_repository_id != self.target_repository_id
+            or request.target_branch != self.target_branch
+        ):
+            raise MergeQueueIntegrityError(
+                "false-positive completion reopen requires the exact queue target"
+            )
+
+        now = self._clock()
+        if _finite_nonnegative_timestamp(now) is None:
+            raise MergeQueueIntegrityError(
+                "false-positive completion reopen clock is invalid"
+            )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request.request_id,),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            self._require_row_target(
+                row,
+                operation="reopen false-positive completion",
+                request_id=request.request_id,
+            )
+            current = self._request_from_row(row)
+            prior_reopen = current.metadata.get(
+                _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY
+            )
+            if (
+                isinstance(prior_reopen, Mapping)
+                and prior_reopen.get("train_receipt_id") == receipt_id
+            ):
+                prior_generation = prior_reopen.get("previous_claim_generation")
+                reopened_at = prior_reopen.get("reopened_at")
+                reopened_timestamp = _finite_nonnegative_timestamp(reopened_at)
+                exact_prior_reopen = bool(
+                    set(prior_reopen) == _FALSE_POSITIVE_COMPLETION_REOPEN_FIELDS
+                    and prior_reopen.get("schema")
+                    == FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA
+                    and prior_reopen.get("reason")
+                    == "declared_outputs_not_on_target"
+                    and prior_reopen.get("previous_target_commit")
+                    == target_commit
+                    and not isinstance(prior_generation, bool)
+                    and isinstance(prior_generation, int)
+                    and prior_generation == request.claim_generation
+                    and reopened_timestamp is not None
+                    and current.claim_generation >= prior_generation + 1
+                    and (
+                        current.claim_generation == prior_generation + 1
+                        or current.status
+                        in {"processing", "quarantined", "completed", "cancelled"}
+                    )
+                    and (
+                        current.claim_generation != prior_generation + 1
+                        or current.status == "pending"
+                    )
+                )
+                if not exact_prior_reopen:
+                    connection.rollback()
+                    raise MergeQueueIntegrityError(
+                        "false-positive completion reopen lineage is malformed"
+                    )
+                connection.commit()
+                return current
+            immutable_snapshot_matches = bool(
+                current.status == "completed"
+                and request.status == "completed"
+                and current.request_id == request.request_id
+                and current.branch_name == request.branch_name
+                and current.task_id == request.task_id
+                and current.commit_sha == request.commit_sha
+                and current.canonical_task_id == request.canonical_task_id
+                and current.canonical_task_key == request.canonical_task_key
+                and current.claim_generation == request.claim_generation
+                and current.metadata == request.metadata
+            )
+            if not immutable_snapshot_matches:
+                connection.rollback()
+                raise MergeQueueFenceError(
+                    "false-positive completion reopen rejected a stale row snapshot"
+                )
+            if "completion" in current.metadata:
+                connection.rollback()
+                raise MergeQueueIntegrityError(
+                    "false-positive completion reopen rejected a callback completion"
+                )
+            metadata = dict(current.metadata)
+            metadata[_FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY] = {
+                "schema": FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
+                "reason": "declared_outputs_not_on_target",
+                "train_receipt_id": receipt_id,
+                "previous_target_commit": target_commit,
+                "previous_claim_generation": int(current.claim_generation),
+                "reopened_at": now,
+            }
+            connection.execute(
+                """UPDATE merge_requests SET status='pending', metadata_json=?,
+                   claimed_at=0, consumer_id='', claim_token='',
+                   claim_generation=claim_generation + 1,
+                   retry_not_before=0, finished_at=0, updated_at=?
+                   WHERE request_id=? AND status='completed'
+                     AND claim_generation=?""",
+                (
+                    json.dumps(metadata, sort_keys=True, separators=(",", ":")),
+                    now,
+                    request.request_id,
+                    int(current.claim_generation),
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request.request_id,),
+            ).fetchone()
+            connection.commit()
+        assert row is not None
+        reopened = self._request_from_row(row)
+        if (
+            reopened.status != "pending"
+            or reopened.claim_generation != current.claim_generation + 1
+        ):
+            raise MergeQueueFenceError(
+                "false-positive completion reopen lost its completed-row fence"
+            )
+        self._write_stage_receipt(reopened)
+        return reopened
 
     def fail(
         self,
@@ -1804,13 +2795,17 @@ class MergeQueue:
         limit: int = 32,
         completion_schema: str = "",
         completion_reason: str = "",
+        canonical_task_id: str = "",
+        reopen_schema: str = "",
+        reopen_reason: str = "",
         before_request_id: str = "",
     ) -> tuple[MergeRequest, ...]:
         """Return a bounded target-bound completion snapshot.
 
         Recovery consumers may filter the nested completion contract before
-        ``LIMIT`` and paginate by the immutable time-prefixed request id.  An
-        unfiltered call preserves the historical finished-time ordering.
+        ``LIMIT`` and paginate by the immutable time-prefixed request id.  All
+        pages use that same keyset order; mutable or out-of-order completion
+        timestamps therefore cannot hide rows after the first page.
         """
 
         requested = max(0, min(int(limit), 256))
@@ -1819,6 +2814,9 @@ class MergeQueue:
         target_sql, target_parameters = self._target_binding_sql()
         schema = str(completion_schema or "")
         reason = str(completion_reason or "")
+        task_cid = str(canonical_task_id or "")
+        false_reopen_schema = str(reopen_schema or "")
+        false_reopen_reason = str(reopen_reason or "")
         cursor = str(before_request_id or "")
         completion_sql = ""
         completion_parameters: tuple[str, ...] = ()
@@ -1834,9 +2832,23 @@ class MergeQueue:
                 "'$.completion.reason') = ?"
             )
             completion_parameters += (reason,)
+        if task_cid:
+            completion_sql += " AND canonical_task_id = ?"
+            completion_parameters += (task_cid,)
+        if false_reopen_schema:
+            completion_sql += (
+                " AND json_extract_string(metadata_json, "
+                "'$.false_positive_completion_reopen.schema') = ?"
+            )
+            completion_parameters += (false_reopen_schema,)
+        if false_reopen_reason:
+            completion_sql += (
+                " AND json_extract_string(metadata_json, "
+                "'$.false_positive_completion_reopen.reason') = ?"
+            )
+            completion_parameters += (false_reopen_reason,)
         cursor_sql = " AND request_id < ?" if cursor else ""
         cursor_parameters = (cursor,) if cursor else ()
-        ordered_for_recovery = bool(schema or reason or cursor)
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM merge_requests "
@@ -1844,11 +2856,7 @@ class MergeQueue:
                 + target_sql
                 + completion_sql
                 + cursor_sql
-                + (
-                    " ORDER BY request_id DESC LIMIT ?"
-                    if ordered_for_recovery
-                    else " ORDER BY finished_at DESC, request_id DESC LIMIT ?"
-                ),
+                + " ORDER BY request_id DESC LIMIT ?",
                 (
                     *target_parameters,
                     *completion_parameters,
@@ -2413,6 +3421,7 @@ class MergeQueue:
 
 
 __all__ = [
+    "FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA",
     "MergeQueue",
     "MergeQueueFullError",
     "MergeQueueFenceError",

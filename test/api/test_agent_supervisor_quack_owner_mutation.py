@@ -2581,3 +2581,128 @@ def test_typed_database_task_source_records_process_bound_retry_cooldown(
     finally:
         source.close()
         server.stop()
+
+
+def test_typed_owner_rejects_all_protected_blocked_reopens_without_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Observable typed-deferral receipts never authorize a generic reopen."""
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-protected-reopen-owner",
+        store_id="typed-protected-reopen-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:protected-reopen",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+        ),
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim = _typed_claim_receipt(
+            source,
+            lane="protected-reopen",
+            claimed_from_revision=ready.revision,
+        )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        ).task
+        block_receipt = {
+            "operation": "database_portal_typed_deferral_budget_exhausted",
+            "retryable": False,
+            "control_expected_status": "in_progress",
+            "control_expected_revision": claimed.revision,
+            **{
+                name: claim[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+        }
+        blocked = source.compare_and_set_status(
+            claimed.task_cid,
+            claimed.revision,
+            "blocked",
+            block_receipt,
+        ).task
+        assert source.get_queue_entry(blocked.task_cid) is None
+
+        reopen_receipts = (
+            {"operation": "generic_bypass"},
+            {
+                "operation": (
+                    "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                ),
+                **{
+                    name: block_receipt[name]
+                    for name in (
+                        "attempt_id",
+                        "claim_id",
+                        "lease_id",
+                        "owner_session_id",
+                        "attempt_number",
+                        "fencing_token",
+                        "fence_epoch",
+                    )
+                },
+            },
+        )
+        for receipt in reopen_receipts:
+            with pytest.raises(
+                TaskSourceConflictError,
+                match="cannot be reopened by generic CAS",
+            ):
+                source.compare_and_set_status(
+                    blocked.task_cid,
+                    blocked.revision,
+                    "retrying",
+                    receipt,
+                )
+
+            forged_body = dict(blocked.body)
+            forged_body["completion_receipt"] = receipt
+            with pytest.raises(
+                TransactionError,
+                match="authorization_denied",
+            ):
+                source._client.cas_task_status(  # noqa: SLF001
+                    task_cid=blocked.task_cid,
+                    expected_task_revision=blocked.revision,
+                    new_status="retrying",
+                    idempotency_key=(
+                        "protected-reopen:" + str(receipt["operation"])
+                    ),
+                    body=forged_body,
+                )
+
+            observed = source.get_task(blocked.task_cid)
+            assert observed is not None
+            assert observed.status == "blocked"
+            assert observed.revision == blocked.revision
+            assert observed.body["completion_receipt"] == block_receipt
+            assert source.get_queue_entry(blocked.task_cid) is None
+    finally:
+        source.close()
+        server.stop()

@@ -29,6 +29,7 @@ from .cascade import (
     ResidualCascadeContext,
     ResidualCascadeWalk,
     effective_privacy_class,
+    parse_cascade_stage,
 )
 from .contracts import (
     ExpertDisposition,
@@ -84,7 +85,9 @@ def _stage_int_map(value: Any, name: str) -> dict[str, int]:
         raise ResidualIntelligenceError(f"{name} must be an object")
     result: dict[str, int] = {}
     for key, item in value.items():
-        stage = required_text(str(key), f"{name} key", max_bytes=64)
+        stage = parse_cascade_stage(str(key)).value
+        if stage in result:
+            raise ResidualIntelligenceError(f"{name} contains duplicate cascade stages")
         result[stage] = bounded_int(item, f"{name}.{stage}", minimum=0, maximum=1_000_000_000_000)
     return result
 
@@ -473,10 +476,10 @@ class ResidualRouteRequest:
 
 
 def _human_disposition(walk: ResidualCascadeWalk) -> ExpertDisposition:
-    rejection_reasons = {code for item in walk.hard_rejections for code in item.reason_codes}
     producing = [item for item in walk.candidates if item.stage is not CascadeStage.HUMAN_REVIEW]
     if producing:
         return ExpertDisposition.ABSTAIN
+    rejection_reasons = {code for item in walk.hard_rejections for code in item.reason_codes}
     if "ood_conservative_abstain" in rejection_reasons:
         return ExpertDisposition.OUT_OF_DISTRIBUTION
     # Remote stages record hardware_unavailable / provider_unhealthy whenever
@@ -510,7 +513,15 @@ def _human_disposition(walk: ResidualCascadeWalk) -> ExpertDisposition:
         "family_out_of_bound",
         "risk_ceiling_exceeded",
     }
-    if rejection_reasons & capability_codes and not (rejection_reasons - capability_codes - availability_only):
+    # Incidental hardware/provider codes on unoffered remote stages must not
+    # promote a safe human fallback into CAPABILITY_UNAVAILABLE.
+    offered_reasons = {
+        code
+        for item in walk.hard_rejections
+        for code in item.reason_codes
+        if not (set(item.reason_codes) & availability_only)
+    }
+    if offered_reasons & capability_codes and not (offered_reasons - capability_codes):
         return ExpertDisposition.CAPABILITY_UNAVAILABLE
     return ExpertDisposition.ABSTAIN
 
@@ -687,9 +698,31 @@ class ResidualRouteDecision:
             raise ResidualIntelligenceError("selected stage must be present in candidates")
         if CascadeStage.HUMAN_REVIEW not in {item.stage for item in self.candidates}:
             raise ResidualIntelligenceError("human fallback must remain reachable")
-        recorded = {item.stage for item in self.candidates} | {item.stage for item in self.hard_rejections}
-        if recorded != set(CASCADE_ORDER):
+        observed = tuple(item.stage for item in self.candidates) + tuple(
+            item.stage for item in self.hard_rejections
+        )
+        if len(observed) != len(CASCADE_ORDER) or set(observed) != set(CASCADE_ORDER):
             raise ResidualIntelligenceError("route decision must record every cascade stage")
+        candidate_stages = tuple(item.stage for item in self.candidates)
+        rejection_stages = tuple(item.stage for item in self.hard_rejections)
+        expected_candidates = tuple(
+            stage for stage in CASCADE_ORDER if stage in set(candidate_stages)
+        )
+        expected_rejections = tuple(
+            stage for stage in CASCADE_ORDER if stage in set(rejection_stages)
+        )
+        if candidate_stages != expected_candidates:
+            raise ResidualIntelligenceError(
+                "decision candidates must follow the admitted production order"
+            )
+        if rejection_stages != expected_rejections:
+            raise ResidualIntelligenceError(
+                "decision hard rejections must follow the admitted production order"
+            )
+        if self.selected_stage is not candidate_stages[0]:
+            raise ResidualIntelligenceError(
+                "selected stage must be the earliest surviving candidate"
+            )
 
     @property
     def decision_id(self) -> str:

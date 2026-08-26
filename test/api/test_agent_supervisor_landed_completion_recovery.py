@@ -18,10 +18,14 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     landed_completion_recovery as landed_recovery,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalAttemptPaths,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
 )
@@ -217,6 +221,7 @@ class _FreshValidationCompletingPortal:
             task_header_prefix="REC-",
         )
         assert len(tasks) == 1
+        self.portal._register_task_identities(tasks)
         task = tasks[0]
         self.observations["projection_claim_seed"] = json.loads(
             str(task.metadata["landed completion recovery"])
@@ -265,6 +270,53 @@ class _FreshValidationCompletingPortal:
         self.paths.task_projection.write_text(
             projection.replace("- Status: ready", "- Status: completed"),
             encoding="utf-8",
+        )
+        authoritative_gate = self.portal._take_issued_no_change_policy_gate(
+            validation
+        )
+        assert authoritative_gate is not None
+        current_branch = _git(self.repository, "branch", "--show-current")
+        no_change_guard = self.portal._validated_no_change_completion_guard(
+            baseline_ref=baseline,
+            current_head=baseline,
+            expected_branch=current_branch,
+            current_branch=current_branch,
+            validation_result=validation,
+            expected_task_id=task.task_id,
+            expected_task_cid=task.canonical_task_cid,
+            authoritative_no_change_policy_gate=authoritative_gate,
+        )
+        assert no_change_guard["allowed"] is True
+        self.portal._record_event(
+            "implementation_finished",
+            {
+                "task_id": self.task_alias,
+                "attempt": 1,
+                "returncode": 0,
+                "provider_dispatched": False,
+                "attempt_consumed": True,
+                "baseline_ref": baseline,
+                "implementation_commit": "",
+                "validation_result": validation,
+                "commit_result": {
+                    "committed": False,
+                    "reason": "no_changes",
+                    "no_change_guard": no_change_guard,
+                },
+                "merge_result": {
+                    "merged": False,
+                    "reason": "not_attempted",
+                },
+                "cleanup_result": {
+                    "cleaned": True,
+                    "reason": "validated_no_change_completion",
+                },
+                "board_completion": {
+                    "complete": True,
+                    "pending_merge": False,
+                    "reason": "validated_no_change_completion",
+                },
+            },
         )
         append_jsonl_event(
             self.paths.events,
@@ -325,7 +377,9 @@ def test_blocked_landed_output_completes_only_after_new_claim_validation(
                 separators=(",", ":"),
             ).encode("utf-8")
         )
-        return dict(holder["bridge"].run_provider(attempt))
+        accepted = dict(holder["bridge"].run_provider(attempt))
+        observations["accepted_provider"] = accepted
+        return accepted
 
     def effect(
         attempt: DatabaseTaskAttempt,
@@ -505,6 +559,13 @@ def test_blocked_landed_output_completes_only_after_new_claim_validation(
         assert completed is not None and completed.status == "completed"
         completion_receipt = completed.body["completion_receipt"]
         assert completion_receipt["operation"] == "database_complete"
+        portal_evidence = observations["accepted_provider"]["portal_evidence"]
+        assert (
+            portal_evidence["completion_source_event_type"]
+            == "implementation_finished"
+        )
+        assert portal_evidence["baseline_commit"] == integration
+        assert portal_evidence["implementation_commit"] == integration
         prepared = daemon.coordinator.get_prepared_task_completion(task_cid)
         assert prepared is not None
         assert prepared["attempt_id"] == target_attempt.attempt_id
@@ -698,6 +759,218 @@ def test_landed_claim_seed_requires_new_fence_and_exact_owner(
             proof,
             **{**seed_kwargs, "target_fence_epoch": 1},
         )
+
+
+def test_landed_bypass_without_terminal_implementation_is_not_completion(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    task_alias = "REC-003B"
+    task_cid = "task:cid:bypass-only"
+    _candidate, integration, target_tree, outputs = _landed_repository(
+        repository,
+        task_alias=task_alias,
+    )
+    proof = _discover_test_recovery(
+        repository,
+        task_alias=task_alias,
+        task_cid=task_cid,
+        declared_outputs=outputs,
+    )
+    assert proof is not None
+    seed = build_landed_completion_claim_seed(
+        proof,
+        target_task_cid=task_cid,
+        target_task_alias=task_alias,
+        target_attempt_id="attempt:target",
+        target_claim_id="claim:target",
+        target_owner_session_id="session:target",
+        target_attempt_number=2,
+        target_fencing_token=2,
+        target_fence_epoch=0,
+        target_lease_id="lease:target",
+        validated_target_commit=integration,
+        validated_target_tree=target_tree,
+    )
+    root = tmp_path / "bypass-only-attempt"
+    root.mkdir()
+    paths = DatabasePortalAttemptPaths(
+        root=root,
+        task_projection=root / "task-projection.md",
+        binding=root / "binding.json",
+        state=root / "state.json",
+        strategy=root / "strategy.json",
+        events=root / "events.jsonl",
+        implementation_logs=root / "logs",
+    )
+    bypass = {
+        "kind": "database_landed_completion_revalidation",
+        "claim_seed": seed,
+        "attempt": 1,
+        "eligible": True,
+        "provider_dispatched": False,
+        "reason": "declared_validation_proved_existing_contract",
+    }
+    bypass["receipt_id"] = content_identity(bypass)
+    append_jsonl_event(
+        paths.events,
+        "implementation_provider_bypassed_already_satisfied",
+        {
+            "task_id": task_alias,
+            "canonical_task_cid": task_cid,
+            **bypass,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "task_completed",
+        {
+            "task_id": task_alias,
+            "canonical_task_cid": task_cid,
+            "canonical_task_key": "task-key:bypass-only",
+        },
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="one exact implementation commit",
+    ):
+        DatabasePortalExecutionBridge._completion_event_evidence(
+            paths,
+            alias=task_alias,
+            task_cid=task_cid,
+            verified_landed_completion_claim_seed=seed,
+        )
+
+
+def test_landed_terminal_rejects_additional_conflicting_bypass(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    task_alias = "REC-003C"
+    task_cid = "task:cid:ambiguous-bypass"
+    _candidate, integration, target_tree, outputs = _landed_repository(
+        repository,
+        task_alias=task_alias,
+    )
+    proof = _discover_test_recovery(
+        repository,
+        task_alias=task_alias,
+        task_cid=task_cid,
+        declared_outputs=outputs,
+    )
+    assert proof is not None
+    seed = build_landed_completion_claim_seed(
+        proof,
+        target_task_cid=task_cid,
+        target_task_alias=task_alias,
+        target_attempt_id="attempt:target",
+        target_claim_id="claim:target",
+        target_owner_session_id="session:target",
+        target_attempt_number=2,
+        target_fencing_token=2,
+        target_fence_epoch=0,
+        target_lease_id="lease:target",
+        validated_target_commit=integration,
+        validated_target_tree=target_tree,
+    )
+    bypass = {
+        "kind": "database_landed_completion_revalidation",
+        "claim_seed": seed,
+        "attempt": 1,
+        "eligible": True,
+        "provider_dispatched": False,
+        "reason": "declared_validation_proved_existing_contract",
+    }
+    bypass["receipt_id"] = content_identity(bypass)
+    conflicting_bypass = dict(bypass)
+    conflicting_bypass["attempt"] = 2
+    conflicting_bypass.pop("receipt_id")
+    conflicting_bypass["receipt_id"] = content_identity(conflicting_bypass)
+    event_envelope = {
+        "type": "implementation_provider_bypassed_already_satisfied",
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+    }
+    terminal = {
+        "type": "implementation_finished",
+        "event_id": "sha256:" + "a" * 64,
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "attempt": 1,
+        "returncode": 0,
+        "provider_dispatched": False,
+        "attempt_consumed": True,
+        "baseline_ref": integration,
+        "implementation_commit": "",
+        "validation_result": {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "pre_dispatch_no_change": bypass,
+        },
+        "commit_result": {
+            "committed": False,
+            "reason": "no_changes",
+            "no_change_guard": {
+                "allowed": True,
+                "reasons": [],
+                "baseline_ref": integration,
+                "current_head": integration,
+            },
+        },
+        "merge_result": {"merged": False, "reason": "not_attempted"},
+        "cleanup_result": {"cleaned": True},
+        "board_completion": {
+            "complete": True,
+            "pending_merge": False,
+            "reason": "validated_no_change_completion",
+        },
+    }
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="absent or ambiguous",
+    ):
+        DatabasePortalExecutionBridge._landed_no_change_completion_source(
+            [
+                {**event_envelope, **bypass},
+                {**event_envelope, **conflicting_bypass},
+                terminal,
+            ],
+            terminal_index=2,
+            terminal=terminal,
+            alias=task_alias,
+            task_cid=task_cid,
+            verified_claim_seed=seed,
+        )
+
+    falsy_returncode = json.loads(json.dumps(terminal))
+    falsy_returncode["returncode"] = False
+    falsy_validation_returncode = json.loads(json.dumps(terminal))
+    falsy_validation_returncode["validation_result"]["returncode"] = False
+    missing_implementation_commit = json.loads(json.dumps(terminal))
+    missing_implementation_commit.pop("implementation_commit")
+    missing_guard_reasons = json.loads(json.dumps(terminal))
+    missing_guard_reasons["commit_result"]["no_change_guard"].pop("reasons")
+    for inexact_terminal in (
+        falsy_returncode,
+        falsy_validation_returncode,
+        missing_implementation_commit,
+        missing_guard_reasons,
+    ):
+        with pytest.raises(
+            DatabasePortalBridgeError,
+            match="terminal authority is invalid",
+        ):
+            DatabasePortalExecutionBridge._landed_no_change_completion_source(
+                [{**event_envelope, **bypass}, inexact_terminal],
+                terminal_index=1,
+                terminal=inexact_terminal,
+                alias=task_alias,
+                task_cid=task_cid,
+                verified_claim_seed=seed,
+            )
 
 
 def test_landed_recovery_receipt_rejects_safe_outputs_over_serialized_bound(

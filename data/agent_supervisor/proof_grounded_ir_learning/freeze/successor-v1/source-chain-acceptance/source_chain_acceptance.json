@@ -1,0 +1,109 @@
+{
+  "schema": "proof-grounded-ir-learning/successor-source-chain-acceptance/v1",
+  "task_id": "PGIR-208",
+  "result_identity": "RESULT(PGIR-208)",
+  "decision": "sealed_permanent_no_go",
+  "completion_authoritative": false,
+  "pgir_205_execution_authorized": false,
+  "source_population": {
+    "candidate_source_rows": 7173,
+    "training_admitted_rows": 0,
+    "materialized_source_rows": 0,
+    "materialized_derived_artifacts": 0,
+    "historical_derived_artifacts_observational_only": 38690
+  },
+  "holdout_policy": {
+    "hidden_test_commitment": "sha256:6a801b51b980e666b4010da9a679ad8e11a233078f988165565481b98d4b9ded",
+    "leakage_passed": true,
+    "required_holdouts": ["compiler", "cross_reference", "domain", "exception", "length", "lineage", "notation", "premise", "proof_library", "publication", "rare_operator", "time", "type"],
+    "permanent_no_go_reason": "no_rights_admitted_materialized_rows",
+    "hidden_tests_opened": false
+  },
+  "payloads": [
+    {"task_id":"PGIR-200","path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/rights_manifest.json","sha256":"sha256:20ca50484e765146e85275ca38fd122c51be7886d30ab20244796b251a92c294","raw_cid":"bafkreibazjieqttwkfdoqutvzi4p2ermkg7hrbwtbkzaerdznmsrvewcsq","size_bytes":1485},
+    {"task_id":"PGIR-200","path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/quarantine_manifest.json","sha256":"sha256:7579b5f2457b9a152f727e214f8434e026855f7076be4cd04928b2c9122a2f2a","raw_cid":"bafkreidvpg27erl3tiks64t6efhyinhae2cv64dwxzgnasjiwlerekrpfi","size_bytes":2687},
+    {"task_id":"PGIR-200","path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/source_releases.json","sha256":"sha256:8e20b7c4fb3a510e04bd6955a66fd6d809cd46b59d3e16c5fa1d7467c96ae266","raw_cid":"bafkreieoec34j6z2kehajpljkwtg7vwybhgunnm5hylml6q5ort4s2xcmy","size_bytes":13797},
+    {"task_id":"PGIR-200","path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/replay_receipt.json","sha256":"sha256:946eebdde1e624a37f9c312475e076886fc3448d4523bbcd8e61d41f4a3656fb","raw_cid":"bafkreieun3v53ypgesrx7hbrer26a5uin7bujdkfeo543dtb2qpuunsw7m","size_bytes":1778},
+    {"task_id":"PGIR-201","path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/corpus_manifest.json","sha256":"sha256:d476f0518dc746a3c3f25bc09480fecebab104a9cb9ab48b8016d397f5685f23","raw_cid":"bafkreiguo3yfddohi2r4h4s3yckib7woxkyqjkoltk2ixaaw2ol7k2c7em","size_bytes":1065},
+    {"task_id":"PGIR-201","path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/count_receipt.json","sha256":"sha256:dd627ad2eb5a0b6f731577a282afdad760376efbe7272ddae328da4a66df1aea","raw_cid":"bafkreig5mj5nf222bnxxgflxukbk7wwxma3w567he4w5vyzi3jfgnxy25i","size_bytes":796},
+    {"task_id":"PGIR-201","path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/lineage_graph.json","sha256":"sha256:27f60dbf1ed710ed842df6be3e23210ffa37f1182818083c6edbb34a6aa2f995","raw_cid":"bafkreibh6yg36hwxcdwyilpwxy7cgiip7i37cgbidaedy3w3wnfgvixzsu","size_bytes":1404},
+    {"task_id":"PGIR-201","path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/load_receipt.json","sha256":"sha256:a958147555716e5ebdd564d9949eec48b9fa5f446d31b1dfc1bab2f8e61ddab1","raw_cid":"bafkreifjlakhkvlrnzpl3vle3gkj53cixh5f6rdnggy57qn2wl4omho2we","size_bytes":1594},
+    {"task_id":"PGIR-201","path":"ipfs_datasets_py/data/ir_learning/corpora/successor-v1/corpus_root.json","sha256":"sha256:dad49081ef48583061d06ed084f7250d957836b12ae8d9d090cc5961c0c6e108","raw_cid":"bafkreig22siid32ilaygdudo2ccpojinsv4dnmjk5dm5begmlfq4brxbba","size_bytes":3026},
+    {"task_id":"PGIR-202","path":"ipfs_datasets_py/data/ir_learning/splits/successor-v1/holdout_report.json","sha256":"sha256:8e4359199614897bd48f5548b0ee8da10ce20241c90d4cd22e2a8535feb2f1fc","raw_cid":"bafkreieoinmrtfqurf55jd2vjcyo5dnbbtraeqojbvgnelrkqu275mxr7q","size_bytes":3432},
+    {"task_id":"PGIR-202","path":"ipfs_datasets_py/data/ir_learning/splits/successor-v1/leakage_report.json","sha256":"sha256:1dd1a49d6415aa2c1963fa3d31d4a51c633a245fff8bd31b857fa5d3f338de3f","raw_cid":"bafkreia52gsj2zavviwbsy72huy5jji4mm5cix77rpjrxbl7uxj7gog6h4","size_bytes":293},
+    {"task_id":"PGIR-202","path":"ipfs_datasets_py/data/ir_learning/splits/successor-v1/ir_split_manifest.json","sha256":"sha256:5b99840e76df31174c2b4deb882624ca6d773671f7fa3ba24f95b34005d8f37f","raw_cid":"bafkreic3tgca45w7geluyk2n5oecmjgknv3tm4px7i52et4vwnaalwhtp4","size_bytes":6989},
+    {"task_id":"PGIR-202","path":"ipfs_datasets_py/data/ir_learning/splits/successor-v1/replay_receipt.json","sha256":"sha256:0ee5040342a198465a20ab384bd98616193f0f37ba7abda243c5fbe3d3f8aecd","raw_cid":"bafkreiao4ucagqvbtbdfuiflhbf5tbqwde7q6n52pk62eq6f7pr5h6fozu","size_bytes":1376},
+    {"task_id":"PGIR-202","path":"ipfs_datasets_py/data/ir_learning/splits/successor-v1/split_root.json","sha256":"sha256:7e67323e939a262025a6b1e5116a59cd7e795c405206b2fbeb4a3e3c57ae921d","raw_cid":"bafkreid6m4zd5e42eyqcljvr4uiwuwonpz4vyqcsa2zpx22khy6fplusdu","size_bytes":3190}
+  ],
+  "historical_inputs": [
+    {"path":"ipfs_datasets_py/data/ir_learning/source_inventory/release_inventory.json","sha256":"sha256:29f1e54bf562cc487e5700bbe494e19d5bc43d8cd2ac6c3098dfe349ef46884e","raw_cid":"bafkreibj6hsux5lczreh4vyaxpsjjym5lpcd3dgsvrwdbgg74ne66ruijy","size_bytes":76996},
+    {"path":"ipfs_datasets_py/data/ir_learning/corpora/corpus_root.json","sha256":"sha256:c54519f43b7950a04b79167e7b61be68d358b2441b8beb810c54b1b10ab2c9dd","raw_cid":"bafkreigfium7io3zkcqew6iwpz5wdpti2nmlera3rpvycdcuwgyqvmwj3u","size_bytes":1763},
+    {"path":"ipfs_datasets_py/data/ir_learning/corpora/corpus_manifest.json","sha256":"sha256:8096af54b2691d67cbfb2a779801732467f4d0bdf8831638b5a486bbf166e17a","raw_cid":"bafkreieas2xvjmtjdvt4x6zko6mac4zem72nbppyqmldrnneq257czxbpi","size_bytes":1212482},
+    {"path":"ipfs_datasets_py/data/ir_learning/corpora/rights_manifest.json","sha256":"sha256:50b01e4f61c19a519bced50962c9f6bbcb5fe1516c05deb5d9783f0a80a22f85","raw_cid":"bafkreicqwape6yobtjizxtwvbfrmt5v3znp6culmaxpllwlyh4fibirpqu","size_bytes":144319},
+    {"path":"ipfs_datasets_py/data/ir_learning/corpora/quarantine_manifest.json","sha256":"sha256:8dd789debc9561dbc91d06185bbc372cd8cd7b1af00490766ca46a62478131d7","raw_cid":"bafkreien26e55pevmhn4shigdbn3ynzm3dgxwgxqasihm3fenjrepajr24","size_bytes":145216},
+    {"path":"ipfs_datasets_py/data/ir_learning/splits/split_root.json","sha256":"sha256:b522f15f2597ed4902f1af9b7f3aac5b855193d289369df70ccfda5ce8798f9d","raw_cid":"bafkreifvelyv6jmx5veqf4nptn7tvlc3qvizhuujg2o7odgp3jooq6mptu","size_bytes":1398},
+    {"path":"ipfs_datasets_py/data/ir_learning/splits/holdout_report.json","sha256":"sha256:3a7d05cddbe79ab952a29cb7c2bdda3dc17a85b52a6f696fa183efeae55df149","raw_cid":"bafkreib2puc43w7htk4vfiu4w7bl3wr5yf5ilnjkn5uw7imd57vokxprje","size_bytes":1170},
+    {"path":"ipfs_datasets_py/data/ir_learning/splits/leakage_report.json","sha256":"sha256:372a0e17b958824b5beb5e40cf2de9124d07b51aabd4e2c9a89efc2db19cd1e4","raw_cid":"bafkreibxfihbpokyqjfvx226idhs32isjud3kgvl2trmtke67qw3dhgr4q","size_bytes":56},
+    {"path":"data/agent_supervisor/proof_grounded_ir_learning/freeze/result.v3.json","sha256":"sha256:8baf9a5b26d7f3bf76902d702601c0b6ab9bea2d67560d4a4ce2f7266a276bfc","raw_cid":"bafkreielv6nfwjwx6o7xnebnoatadqfwvon6ullhkyguuthc64tguj3l7q","size_bytes":1575},
+    {"path":"data/agent_supervisor/proof_grounded_ir_learning/freeze/campaign_input_root.json","sha256":"sha256:1ac9703071918508dde24d9f9d39c43aec0eb346348d3ea7857985bb77cd1f97","raw_cid":"bafkreia2zfyda4mrquen3ysnt6ottrb25qhlgrruru7kpblzqw5xpti7s4","size_bytes":30096}
+  ],
+  "citation_closure": [
+    {"release_id":"justicedao/patent-legal-ir-graphrag","revision":"845669408081f1334c54519d2bb7df6bf780ccd5","response_sha256":"sha256:e1f856e556b667bcd44f93dfe861af16e5505e1e9bf405009319ec79a1e889ac","response_raw_cid":"bafkreihb7blokvvwm66nit4t37ugdlyw4vif4hu36qcqbeyz5r42d2ejvq","response_size_bytes":17243},
+    {"release_id":"justicedao/patent-legal-corpus","revision":"86c77cb650d30ee366983d1b2e25cd85e8c22e34","response_sha256":"sha256:1f95f7162d4d1bf35a4db2ee1a6e5c1d8609ddade163ed7cae38935f37d86e5c","response_raw_cid":"bafkreia7sx3rmlkndpzvutns5yng4xa5qye53lpbmpwxzlrysnptpwdolq","response_size_bytes":2920},
+    {"release_id":"justicedao/patent-legal-bm25","revision":"8d7f938a25a56a53d58d96d7f1cdde9f51eff694","response_sha256":"sha256:f2794d3f7bf91ca9a9f9280c6cdc846f5a076af1864f501269b227f378b2c5fc","response_raw_cid":"bafkreihspfgt667zdsu2t6jibrwnzbdplidwv4mgj5ibe2nse7zxrmwf7q","response_size_bytes":2049},
+    {"release_id":"justicedao/patent-legal-vectors","revision":"f215a9c115f2af1147b0fcbf2c047ec250cb54d7","response_sha256":"sha256:6219f8907bb2ff74ae79aad5471f16df7534ed4cbc7b9b0d924314bab6987c86","response_raw_cid":"bafkreidcdh4ja65s752k46nk2vdr6fw7ou2o2tf4ponq3esdcs5lngd4qy","response_size_bytes":1968},
+    {"release_id":"justicedao/patent-legal-knowledge-graph","revision":"f4ee31011dbd976b61f2f9144775ed9a12c16e62","response_sha256":"sha256:e118183a65577cfc07bc0bb1139ef6dd4f23738f46011982e98aa844affb369f","response_raw_cid":"bafkreihbdamduzkxpt6appalwejz55w5j4rxhd2gaemyf2mkvbck76zwt4","response_size_bytes":2399},
+    {"release_id":"justicedao/wetwijzer_netherlands_legal_corpus","revision":"827e9412f55cbe332f18824ff669bdbbae39005d","response_sha256":"sha256:168562b3fa7f776a10af9579da9ef70d791ea817c8495f58c08dd5bdec4015a4","response_raw_cid":"bafkreiawqvrlh6t7o5vbbl4vphnj55ynpepkqf6ijfpvrqen2w66yqavuq","response_size_bytes":4154},
+    {"release_id":"justicedao/ipfs_netherlands_laws","revision":"7fd7ba42d24c7f8f924ce69fe901f080e3ca4312","response_sha256":"sha256:1e4284ae26d94285e583459b6a7d82e952c4cea31c025fb934dd70b21351d6af","response_raw_cid":"bafkreia6ikck4jwzikc6la2ftnvh3axjklcm5iy4ajp3sng5oczbguowv4","response_size_bytes":2461},
+    {"release_id":"justicedao/ipfs_netherlands_laws_vector_index","revision":"753b523ce06de6f207365df97358f8be616c75ba","response_sha256":"sha256:a7f06aa3bc60ac11443c915ab8ba236914ae890e19dbc9ad450729626a56036d","response_raw_cid":"bafkreifh6bvkhpdavqiuiperlk4lui3jcsxisdqz3pe22rihffrguvqdnu","response_size_bytes":1831},
+    {"release_id":"justicedao/ipfs_netherlands_laws_bm25_index","revision":"10ce83f4960e8d1a83c4e86d8a15db34806c5802","response_sha256":"sha256:6bf7ba9099c7e9fa3ede7b45b67632547f0d449ffaa60ebd36f40eff2aff7d1d","response_raw_cid":"bafkreidl665jbgoh5h5d5xt3iw3hmmsup4gujh72uyhl2nxub37sv735du","response_size_bytes":1954},
+    {"release_id":"justicedao/ipfs_netherlands_laws_knowledge_graph","revision":"d10ca67e60f2d77e13d2a346d09430a973927a5e","response_sha256":"sha256:aad76f75d5c48ec7a93b6917cb6254130ee77222b6fb30e7356b326d5805ff6e","response_raw_cid":"bafkreifk25xxlvoer3d2so3jc7fwevatb3txeivw7myoonllgjwvqbp7ny","response_size_bytes":1985},
+    {"release_id":"justicedao/netherlands-laws-nl-normalized","revision":"4070ab39856db63ea6a8e0e730b3b757ae32011a","response_sha256":"sha256:effffe4abe51499cb81d318b63fbc2493ef5a5f11c6a3dadd38bbc39cc0830f3","response_raw_cid":"bafkreihp777evpsrjgolqhjrrnr7xqsjh322l4i4ni623u4lxq44ycbq6m","response_size_bytes":2301},
+    {"release_id":"justicedao/legal-ir-autoencoder-checkpoints","revision":"94ca549d102e3e31781370aec1247f91365440eb","response_sha256":"sha256:9b2d385e2daa321c57b31b5c7197da2592fba9b69ff3e784861d9b07425545ff","response_raw_cid":"bafkreie3fu4f4lnkgiofpmy3lryzpwrfsl52tnu76ptyjbq5tmduevkf74","response_size_bytes":3006},
+    {"release_id":"justicedao/ipfs_uscode","revision":"a9720a26a52251526035c2ca8cebea418965bcf9","response_sha256":"sha256:73090b933667874115af704ecc1ae291ea9eea4e75b526dfda53a4df31af331c","response_raw_cid":"bafkreidtbefzgnthq5arll3qj3gbvyur5kpouttvwutn7wstutptdlztdq","response_size_bytes":264616},
+    {"release_id":"justicedao/ipfs_state_laws","revision":"42f0546acc7c6cd55627eaf51fb820d5613b9021","response_sha256":"sha256:0f0887806fc58e052250b468916f485ce6668212e07524ded4d9dea00de41a46","response_raw_cid":"bafkreiapbcdya36frycseufunciw6sc44ztieexaousn5vgz32qa3za2iy","response_size_bytes":219146},
+    {"release_id":"justicedao/ipfs_state_admin_rules","revision":"42087d4600c497a908dce4901381b7f2dc046589","response_sha256":"sha256:f0a88e2952efdeaa6a0d886c2cc6f863649284991f1cfa26ee800ea42eb13080","response_raw_cid":"bafkreihqvchcsuxp32vgudminqwmn6ddmsjijgi7dt5cn3uab2sc5mjqqa","response_size_bytes":32533},
+    {"release_id":"justicedao/ipfs_federal_register","revision":"720668ae016cc400916dda884c9005e03618edfa","response_sha256":"sha256:4c89e51b2a6e0b7131f1c39c56aa346bac94d56a6b01650d6bca91a699dcca14","response_raw_cid":"bafkreicmrhsrwktobnytd4odtrlkundlvsknk2tlafsq226ksgtjtxgkcq","response_size_bytes":62597},
+    {"release_id":"justicedao/ipfs_court_rules","revision":"c4b34a54810561c75857f215ef6ed1d7d617c76f","response_sha256":"sha256:01c85aa78cf1ae1860ee361438a66ca42a5ea05d4b935f27e58bfb15807e18c9","response_raw_cid":"bafkreiabzbnkpdhrvymgb3rwcq4km3fefjpkaxklsnpspzml7mkya7qyze","response_size_bytes":4264},
+    {"release_id":"justicedao/ipfs_caselaw_access_project","revision":"32bb7493781dcc1245a64b59c5ad1fd6c47837f1","response_sha256":"sha256:92a99e892e08ffc0b57b3c08eee7311b76ab0478a0439a685eaef56a6ebb13f0","response_raw_cid":"bafkreiesvgpislqi77alk6z4bdxoomi3o2vqi6faiongqxvo6vvg5oyt6a","response_size_bytes":653},
+    {"release_id":"justicedao/dedup_ipfs_caselaw_access_project","revision":"70db72d98d6b5581add8d62dfe5fea923af51b43","response_sha256":"sha256:9aec115f58cebab48a424084411962e979a58d237d9058019213aedb9821c412","response_raw_cid":"bafkreie25qiv6wgoxk2iuqsaqrarsyxjpgsy2i35sbmadeqtv3nzqioeci","response_size_bytes":1153},
+    {"release_id":"justicedao/Caselaw_Access_Project_embeddings","revision":"53389cbc04d51d5fae69236906c4314058a1f559","response_sha256":"sha256:0157b6468b0448d638be702d21e0fca57a5adee0bc230dfafc01ed479996886c","response_raw_cid":"bafkreiabk63encyejdldrptqfuq6b7ffpjnn5yf4emg7v7ab5vdztfuinq","response_size_bytes":1885464},
+    {"release_id":"justicedao/american_municipal_law","revision":"ec3e4457cb9ab7192db36b0292fd35bfbdc588aa","response_sha256":"sha256:ad4cf68d43fcf6efad019782ef16d8e27c54a2fed8dca7a12dad7f7362bf20ca","response_raw_cid":"bafkreifnjt3i2q7463x22amxqlxrnwhcprkkf7wy3st2clnnp5zwfpzazi","response_size_bytes":234992}
+  ],
+  "forest": {
+    "outer_commits": [
+      {"task_id":"PGIR-200","role":"implementation","commit":"511ae84626a38dc43ed2851ca4a16c67ff1ac4ca","tree":"197b6471baea6e86c0ec049f5b8c34082d552ec4","parents":["ef3497886fc8b31cfd8f0a5ac45a8026fae0aee3"]},
+      {"task_id":"PGIR-200","role":"merge","commit":"2d5eee99c31f3649515d6ca076765f8080096af9","tree":"197b6471baea6e86c0ec049f5b8c34082d552ec4","parents":["ef3497886fc8b31cfd8f0a5ac45a8026fae0aee3","511ae84626a38dc43ed2851ca4a16c67ff1ac4ca"]},
+      {"task_id":"PGIR-200","role":"completion","commit":"1289be82793e590324bb4a830e0bd2584a70ec08","tree":"c05fd5121bd3220025212adcdad7d1bed159dd37","parents":["2d5eee99c31f3649515d6ca076765f8080096af9"]},
+      {"task_id":"PGIR-201","role":"implementation","commit":"b189f26e316d1bf6f7760bcfcef3e1d705011a6d","tree":"fbc96645c5860f17f93b249bbe97e6fa8085f5aa","parents":["1289be82793e590324bb4a830e0bd2584a70ec08"]},
+      {"task_id":"PGIR-201","role":"merge","commit":"e15127fc8e9de97cd6efa576d836ea995d301dc4","tree":"fbc96645c5860f17f93b249bbe97e6fa8085f5aa","parents":["1289be82793e590324bb4a830e0bd2584a70ec08","b189f26e316d1bf6f7760bcfcef3e1d705011a6d"]},
+      {"task_id":"PGIR-201","role":"completion","commit":"c70dbcaed6bb66eb42517bb040f2d9602ab69a66","tree":"9656c43406e8ab00f757a80fe902fe9d674f1e45","parents":["e15127fc8e9de97cd6efa576d836ea995d301dc4"]},
+      {"task_id":"PGIR-202","role":"implementation","commit":"f38fffb9b96ac06d7894ece8eb6030dc2b35bb83","tree":"e882922764c6df3a7b3101e7b1ac80563e2cf4e4","parents":["c70dbcaed6bb66eb42517bb040f2d9602ab69a66"]},
+      {"task_id":"PGIR-202","role":"merge","commit":"633411fa297bf5a315b6b7c1dccdd4c4a61626c2","tree":"e882922764c6df3a7b3101e7b1ac80563e2cf4e4","parents":["c70dbcaed6bb66eb42517bb040f2d9602ab69a66","f38fffb9b96ac06d7894ece8eb6030dc2b35bb83"]},
+      {"task_id":"PGIR-202","role":"completion","commit":"249e7fcac0d8e6e6baa0034ee4bb5b24034c74f5","tree":"be65228bcf951461ee143d8d9fdbd376233a8d16","parents":["633411fa297bf5a315b6b7c1dccdd4c4a61626c2"]}
+    ],
+    "datasets_commits": [
+      {"task_id":"PGIR-200","commit":"0566a833e795b0f0596251c2e7e8ca7d8ec27836","tree":"3a4e50166571667c2bf74e3005be91dcd12014a4","parents":["c30ccbec997868b061c4cadac38d30468c46ea2d"]},
+      {"task_id":"PGIR-201","commit":"8cc72c77736d3ff2db7cc2530e619bf09b5be027","tree":"2f315ff5aa498856b2b9bc0a8a38dfaa48e29a05","parents":["0566a833e795b0f0596251c2e7e8ca7d8ec27836"]},
+      {"task_id":"PGIR-202","commit":"8736a0023d5d3afe4d0e5b044a3e4480966a8bf7","tree":"33ff339e87858fba7ee812db16fbc8c8565716ca","parents":["8cc72c77736d3ff2db7cc2530e619bf09b5be027"]}
+    ],
+    "submodule_compare_and_swap_adjudication": {
+      "decision": "adjudicated_serial_chain",
+      "race_claim": "The PGIR-200, PGIR-201, and PGIR-202 implementations each updated the ipfs_datasets_py gitlink from the exact predecessor gitlink. Their outer merge commits preserve the same tree as the implementation commit, so no competing submodule head was admitted.",
+      "required_outer_gitlinks": [
+        {"outer_commit":"511ae84626a38dc43ed2851ca4a16c67ff1ac4ca","datasets_commit":"0566a833e795b0f0596251c2e7e8ca7d8ec27836"},
+        {"outer_commit":"b189f26e316d1bf6f7760bcfcef3e1d705011a6d","datasets_commit":"8cc72c77736d3ff2db7cc2530e619bf09b5be027"},
+        {"outer_commit":"f38fffb9b96ac06d7894ece8eb6030dc2b35bb83","datasets_commit":"8736a0023d5d3afe4d0e5b044a3e4480966a8bf7"}
+      ],
+      "rejected_outcomes": ["stale_expected_gitlink", "non_fast_forward_datasets_head", "outer_merge_tree_drift", "unbound_nested_commit"]
+    }
+  },
+  "portability_policy": {
+    "clean_recursive_checkout_required": true,
+    "success_state": "replayed",
+    "typed_blocker": "unpublished_ref_portability_blocker",
+    "blocker_effect": "PGIR-205 remains fail-closed and cannot materialize, train, or execute from this source chain."
+  },
+  "acceptance_sha256": "sha256:0d22663c6577ac4203bfcacca63df5fc77caeabbcca7123e83b9e29f662b3003",
+  "acceptance_cid": "baguqeeraburgmpdfo6weea57zlgkmppv7r34v2v3zstrepudxhrj6zrlgabq"
+}

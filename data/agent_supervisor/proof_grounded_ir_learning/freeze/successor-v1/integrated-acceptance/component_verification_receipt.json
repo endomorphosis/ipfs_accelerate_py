@@ -1,0 +1,1631 @@
+{
+  "acceptance_artifact_bound": false,
+  "capture_startup_environment": {
+    "entrypoint_directory": "data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/integrated-acceptance",
+    "executable": "/usr/bin/python3.12",
+    "forbidden_modules_loaded": [],
+    "hermetic": false,
+    "meta_path": [
+      "_frozen_importlib.BuiltinImporter",
+      "_frozen_importlib.FrozenImporter",
+      "_frozen_importlib_external.PathFinder"
+    ],
+    "no_site": true,
+    "no_user_site": true,
+    "pythonpath": "/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "shared_package_roots_are_raw_not_pth_processed": true,
+    "sys_path_tail": [
+      "/home/barberb/.local/lib/python3.12/site-packages",
+      "/usr/local/lib/python3.12/dist-packages",
+      "/usr/lib/python3/dist-packages",
+      "/usr/lib/python312.zip",
+      "/usr/lib/python3.12",
+      "/usr/lib/python3.12/lib-dynload"
+    ]
+  },
+  "component_inputs": {
+    "README.md": {
+      "path": "README.md",
+      "raw_cid": "bafkreih4n7mtz7kth3mf6prtzvoshzxtd4xbvcjvh5qkhaepdly5vyouyi",
+      "sha256": "sha256:fc6fd93cfd533ed85f3e33cd5d23e6f31f2e1a89353f60a3808f1af1dae1d4c2",
+      "size_bytes": 1540
+    },
+    "capture_evidence.py": {
+      "path": "capture_evidence.py",
+      "raw_cid": "bafkreifeh2nnbocok27n3zfbv7vyz3nm3k7wmgwihqxupu56u5wq6co64i",
+      "sha256": "sha256:a43e9ad0b84e56bedde4a1afeb8cedacdabf661ac83c2f47d3bea76d0f09dee2",
+      "size_bytes": 39835
+    },
+    "historical_closure_receipt.json": {
+      "path": "historical_closure_receipt.json",
+      "raw_cid": "bafkreifmw7wnew3uor6wfdgm5u4fjimbhpkduiy7b4yjk7s42y7ly64o2a",
+      "sha256": "sha256:acb7ecd25b74747d628ccced3854a1813bd43a231f0f30957e5cd63ebc7b8ed0",
+      "size_bytes": 92923
+    },
+    "network_receipt.json": {
+      "path": "network_receipt.json",
+      "raw_cid": "bafkreibouydmua27syvs5smoch4uxs7fq4jgybpnrusjzmvelh2mws7hfy",
+      "sha256": "sha256:2ea606ca035f962b2ec98e11f94bcbe587126c05ed8d249cb2a459f4cb4be72e",
+      "size_bytes": 5937329
+    },
+    "portability_receipt.json": {
+      "path": "portability_receipt.json",
+      "raw_cid": "bafkreigcz6gwnbzun4g5jbl2im4e737qnmvw4vbvcbjsweq2nszqmphbmy",
+      "sha256": "sha256:c2cf8d6687346f0dd4857a43384feff06b2b6e543510532b121a6cb3063ce166",
+      "size_bytes": 1565443
+    },
+    "test_receipt.json": {
+      "path": "test_receipt.json",
+      "raw_cid": "bafkreic3a753ol4pxjikhypnwe4n5sr73ew6rlywg6vn7ilff53jl3ez74",
+      "sha256": "sha256:5b07fbb72f8fba50a3e1edb138deca3fd92de8af1637aadfa1652f7695ec99ff",
+      "size_bytes": 199785
+    }
+  },
+  "component_verified": true,
+  "controlled_environment": {
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONPATH": "/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages"
+  },
+  "execution": {
+    "argv": [
+      "/usr/bin/python3.12",
+      "-S",
+      "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py",
+      "--components-pre-acceptance",
+      "--target-root",
+      "/tmp/pgir211-component-6b4i7ehj/outer"
+    ],
+    "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+    "ended_at_utc": "2026-08-26T00:11:33.023981Z",
+    "environment": {
+      "GIT_CONFIG_COUNT": "0",
+      "GIT_CONFIG_GLOBAL": "/dev/null",
+      "GIT_CONFIG_NOSYSTEM": "1",
+      "GIT_TERMINAL_PROMPT": "0",
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8",
+      "PATH": "/usr/bin:/bin",
+      "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONHASHSEED": "0",
+      "PYTHONNOUSERSITE": "1",
+      "PYTHONPATH": "/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+      "TZ": "UTC"
+    },
+    "environment_controls": {
+      "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+      "environment_mode": "exact minimal environment; no inherited variables",
+      "git": {
+        "GIT_CONFIG_COUNT": "0",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0"
+      },
+      "home_and_xdg_variables_present": false,
+      "proxy_and_credential_variables_present": false
+    },
+    "exit_code": 0,
+    "started_at_utc": "2026-08-26T00:08:51.609164Z",
+    "stderr": {
+      "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+      "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 0,
+      "utf8": ""
+    },
+    "stdout": {
+      "raw_cid": "bafkreidga3kggolm5ktaiyi2pwj47uodts6muqfoxjpbk7wipbkeb3y4py",
+      "sha256": "sha256:6606d463396ceaa604611a7d93cfd1c39cbcca40aeba5e157ec8785440ef1c7e",
+      "size_bytes": 23649,
+      "utf8": "{\"component_verified\":true,\"components\":{\"historical\":{\"campaign\":{\"binding_count\":12,\"inventories\":{\"baseline_recursive\":{\"artifact_validation_receipt_cid\":\"baguqeerapro3c5roqitkvbeg5zxkpcleeawrsnzp4jay744rzzazrq57kbva\",\"bundle_cid\":\"baguqeerar3jycpkvsx45hnfnd7u4bh37p2lkvsnl373w2b2ogaj2ixxuwhkq\",\"capability_receipt_cid\":\"baguqeerambrs2h4t34he6spelik6co6jec53vkgfnkr2remr4bnyz4bn6yia\",\"dirty_snapshot_mismatch\":{\"compiler_observations\":[{\"git_blob\":\"e4271aef7274c54716bedc84594caf15c5175b02\",\"path\":\"ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py\",\"raw_cid\":\"bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci\",\"revision\":\"9313a20a3d7281e4ee9e8efdf907795c89ff4b65\",\"sha256\":\"sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12\",\"size_bytes\":33859},{\"git_blob\":\"e4271aef7274c54716bedc84594caf15c5175b02\",\"path\":\"ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py\",\"raw_cid\":\"bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci\",\"revision\":\"b20bd9e3cfae79e8888929daf64f52b2f8a5689a\",\"sha256\":\"sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12\",\"size_bytes\":33859},{\"git_blob\":\"e4271aef7274c54716bedc84594caf15c5175b02\",\"path\":\"ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py\",\"raw_cid\":\"bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci\",\"revision\":\"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\",\"sha256\":\"sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12\",\"size_bytes\":33859}],\"declared_unsealed_snapshot_raw_cid\":\"bafkreiazl2bdiqresmibt4tjhqhgfd66utqvu4drn642rpykn36yarx6em\",\"immutable_committed_snapshot_raw_cid\":\"bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci\",\"matches\":false,\"snapshot_observations\":[{\"compiler_raw_cid\":\"bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci\",\"git_blob\":\"cc55b284fb3748b920655c67862ae9b6596479d7\",\"path\":\"ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json\",\"raw_cid\":\"bafkreicciunw2qwzjarl4bmmctpnvwr2dwyis55ps4k2i7v7qrtg5zjfda\",\"revision\":\"9313a20a3d7281e4ee9e8efdf907795c89ff4b65\",\"sha256\":\"sha256:42451b6d42d94822be058c14dedada3a1db08977af9715a47ebf84666ee52518\",\"size_bytes\":4338},{\"compiler_raw_cid\":\"bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci\",\"git_blob\":\"cc55b284fb3748b920655c67862ae9b6596479d7\",\"path\":\"ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json\",\"raw_cid\":\"bafkreicciunw2qwzjarl4bmmctpnvwr2dwyis55ps4k2i7v7qrtg5zjfda\",\"revision\":\"b20bd9e3cfae79e8888929daf64f52b2f8a5689a\",\"sha256\":\"sha256:42451b6d42d94822be058c14dedada3a1db08977af9715a47ebf84666ee52518\",\"size_bytes\":4338},{\"compiler_raw_cid\":\"bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci\",\"git_blob\":\"cc55b284fb3748b920655c67862ae9b6596479d7\",\"path\":\"ipfs_datasets_py/docs/performance_snapshots/2026-07-26_canonical_semantic_roundtrip.json\",\"raw_cid\":\"bafkreicciunw2qwzjarl4bmmctpnvwr2dwyis55ps4k2i7v7qrtg5zjfda\",\"revision\":\"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\",\"sha256\":\"sha256:42451b6d42d94822be058c14dedada3a1db08977af9715a47ebf84666ee52518\",\"size_bytes\":4338}],\"status\":\"historical_dirty_checkout_unsealed_mismatch\"},\"distinct_cid_count\":29,\"embedded_log_count\":6,\"proposal_cids\":[\"baguqeera4jz46uxax5saxk275bjptynipdhjyw4kksen445eqznk5hoqclba\",\"baguqeera4orjzamfvz5o7qotkalha4r4h2twyxnw2xwrmsuti2pieyhflasa\",\"baguqeeradttvo5ivx6rxy3upfekzdabwrkdyv5zbzrkog3bscohpagmuv4va\"],\"result_cid\":\"baguqeerabt5f2oxnlybr33a6azszdctygqthph2ww5wrk2dcqxutym4j6yjq\",\"source_binding_receipt_cids\":[\"baguqeerabbgrmhjhxu7ty5zhqlcc4uia5uwfo3ugikteqf6r3qmrokierbuq\",\"baguqeerasiihzlunix2qwifuwv6dxig3j4vy5x36ye6jsmjg5fbb5ahue7ca\"],\"source_manifest_cid\":\"baguqeerasownoxqyrppw3ft3us3yvd26ghvqnjl74nr2rw5o7sm3sjehip7a\",\"summary_cid\":\"baguqeerasr4hxpxwkhe64btsxu56moh7v7ww2a6covaavjd7qnzb4xgl5cpq\",\"supervisor_inventory_cid\":\"baguqeerablvf72zunpjvbievbspxqnc4eqgxneqjwrg5v6imr7edavovmwca\",\"task_identity_replays\":[{\"canonical_task_cid\":\"baguqeeraa3ltwmsx2hkyxhigmfkadmyfy2js7cir3jl2kticrqexsemd75rq\",\"canonical_task_key\":\"task/v1/06d73b3257d1d58b9d06615401b305c6932f8911da57a54d028c09791183ff63\",\"material\":{\"schema\":\"ipfs_accelerate_py/agent-supervisor/task-identity@1\",\"semantic\":{\"acceptance\":[\"all 1\",\"717 and 3\",\"616 commits are enumerated; directions/counts/digests reproduce; every residual dirty submodule is explicit\"],\"outputs\":[\"`data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json`\"],\"title\":\"record source history and live authority\"}},\"semantic_fingerprint\":\"06d73b3257d1d58b9d06615401b305c6932f8911da57a54d028c09791183ff63\",\"source\":{\"git_blob\":\"2d2415a29fc2fd28a649c11d0ea6dbe8fb1e839f\",\"path\":\"docs/architecture/proof_grounded_ir_learning.todo.md\",\"raw_cid\":\"bafkreihn6zzkp5qd6qad4d7tttiu4nrnujszcjvigb23s73kuggq4f44g4\",\"repository\":\"ipfs_accelerate_py\",\"revision\":\"8b42722897be2d2b88e416a40370c6a56b04bad8\",\"sha256\":\"sha256:edf672a7f603f4003e0ff39cd14e362da2659126a83075b97f6aa18d0e179c37\",\"size_bytes\":89326},\"task_id\":\"PGIR-001\"},{\"canonical_task_cid\":\"baguqeeraqps5qlahfst4tnamkjac7xxwun52ngvlike676yvldpsye5fwb3q\",\"canonical_task_key\":\"task/v1/83e5d82c072ca7c9b40c52402fdef6a37ba69aab4289effb1558df2c13a5b077\",\"material\":{\"schema\":\"ipfs_accelerate_py/agent-supervisor/task-identity@1\",\"semantic\":{\"acceptance\":[\"all 1\",\"717 and 3\",\"616 commits are enumerated; directions/counts/digests reproduce; every residual dirty submodule is explicit\"],\"outputs\":[\"data/agent_supervisor/proof_grounded_ir_learning/inventory/source_revisions/manifest.json\"],\"title\":\"record source history and live authority\"}},\"semantic_fingerprint\":\"83e5d82c072ca7c9b40c52402fdef6a37ba69aab4289effb1558df2c13a5b077\",\"source\":{\"git_blob\":\"49b030a1c0f4df62cc3e01d8d3e57382cc2aa85e\",\"path\":\"docs/architecture/proof_grounded_ir_learning.todo.md\",\"raw_cid\":\"bafkreidljpmonipl3up7fyayd6v6pce4twfjog7dhx6liushgiptwozqtm\",\"repository\":\"ipfs_accelerate_py\",\"revision\":\"52756763d98e0a1b9ef40bcf842e41f79039886c\",\"sha256\":\"sha256:6b4bd8e6a1ebdd1ff2e0181fabe7889c9d8a971be33dfcb45247321f3b3b309b\",\"size_bytes\":90978},\"task_id\":\"PGIR-001\"},{\"canonical_task_cid\":\"baguqeerac34yqkahhsfvoijyo3hbe3ff2u3o6o754367xnm6tpmzf7iqcmhq\",\"canonical_task_key\":\"task/v1/16f98828073c8b57213876ce126ca5d536ef3bfde6fdfbb59e9bd992fd10130f\",\"material\":{\"schema\":\"ipfs_accelerate_py/agent-supervisor/task-identity@1\",\"semantic\":{\"acceptance\":[\"all a1 roles have one disposition and evidence path; parallel compiler/checkpoint meanings and unresolved roles are explicit\"],\"outputs\":[\"ipfs_datasets_py/docs/architecture/proof_grounded_ir_learning/inventory/modules.json\"],\"title\":\"inventory canonical semantic implementations\"}},\"semantic_fingerprint\":\"16f98828073c8b57213876ce126ca5d536ef3bfde6fdfbb59e9bd992fd10130f\",\"source\":{\"git_blob\":\"83222f6e464139016aa6ff1d974760ee851826f5\",\"path\":\"docs/architecture/proof_grounded_ir_learning.todo.md\",\"raw_cid\":\"bafkreidhj735gsxeces4cec66gqkxj6r4bicfbfcfubxmtd3vsjm7mxlea\",\"repository\":\"ipfs_accelerate_py\",\"revision\":\"04fbb09b4a8b34e77d11bd8da6642e0978baa02c\",\"sha256\":\"sha256:674ff7d34ae41125c1105ef1a0aba7d1e0502284a22d03764c7bac92cfb2eb20\",\"size_bytes\":102946},\"task_id\":\"PGIR-002\"},{\"canonical_task_cid\":\"baguqeeras4bk5tvbfa6rtebnga6ptgb33ek6przxsmpcjsm4z3ew65kxd23a\",\"canonical_task_key\":\"task/v1/9702aecea1283d19902d303cf9983bd915e7c737931e24c99ccec96f75571eb6\",\"material\":{\"schema\":\"ipfs_accelerate_py/agent-supervisor/task-identity@1\",\"semantic\":{\"acceptance\":[\"canonical provider/proof/checker trust boundaries and absent training/promotion surfaces are explicit\"],\"outputs\":[\"docs/architecture/proof_grounded_ir_learning/inventory/supervisor.json\"],\"title\":\"inventory canonical supervisor learning infrastructure\"}},\"semantic_fingerprint\":\"9702aecea1283d19902d303cf9983bd915e7c737931e24c99ccec96f75571eb6\",\"source\":{\"git_blob\":\"83222f6e464139016aa6ff1d974760ee851826f5\",\"path\":\"docs/architecture/proof_grounded_ir_learning.todo.md\",\"raw_cid\":\"bafkreidhj735gsxeces4cec66gqkxj6r4bicfbfcfubxmtd3vsjm7mxlea\",\"repository\":\"ipfs_accelerate_py\",\"revision\":\"04fbb09b4a8b34e77d11bd8da6642e0978baa02c\",\"sha256\":\"sha256:674ff7d34ae41125c1105ef1a0aba7d1e0502284a22d03764c7bac92cfb2eb20\",\"size_bytes\":102946},\"task_id\":\"PGIR-003\"},{\"canonical_task_cid\":\"baguqeerapirjayw3xlmm3j47uh3dzcpwto7cxdit2xwbppuvz4ir7lgihl3q\",\"canonical_task_key\":\"task/v1/7a229062dbbad8cda79fa1f63c89f69bbe2b8d13d5ec17be95cf111facc83af7\",\"material\":{\"schema\":\"ipfs_accelerate_py/agent-supervisor/task-identity@1\",\"semantic\":{\"acceptance\":[\"every selected category has a result; first failed assertion and setup cause are retained; repair tasks cannot weaken gates\"],\"outputs\":[\"data/agent_supervisor/proof_grounded_ir_learning/baseline_tests/summary.json\"],\"title\":\"seal focused pre-change test evidence and repair prerequisites\"}},\"semantic_fingerprint\":\"7a229062dbbad8cda79fa1f63c89f69bbe2b8d13d5ec17be95cf111facc83af7\",\"source\":{\"git_blob\":\"4413bff53b2bd541dc7fee74c8b066b1b8e7fd0d\",\"path\":\"docs/architecture/proof_grounded_ir_learning.todo.md\",\"raw_cid\":\"bafkreibvwkh747zgyryweakcs4q3fprcmksvi7gb5pknmef6a33dujghgq\",\"repository\":\"ipfs_accelerate_py\",\"revision\":\"597a0285738c5878eed462593fd75e18715ff7f8\",\"sha256\":\"sha256:35b28ffe7f26c4716201429721b2be2262a5547cc1ebd4d610be06f63a24c734\",\"size_bytes\":102916},\"task_id\":\"PGIR-005\"}],\"test_receipt_cids\":[\"baguqeeray6vfewxu4uhzjttspwrmeshmswm3gcfqknvhpwtkvveb2ahdud4a\",\"baguqeera3exv5nz4a3h2lqoic2v3grbdm73mbpheelu73xztazpwzbnf554q\",\"baguqeera2x4rdczh5bft26uv6c7p7nhvfaxsfppiohc3tor6rih6flsz3byq\"]},\"gap_matrix_cid\":\"baguqeeraspldjlypaoamdclucjsbktrmkramzhe3kra7tip5h3e5s5zkfnia\",\"module_inventory_sha256\":\"532e1c8b60fcf77515e772368f80475d2f62ba1545490826c3baeea1b402920b\",\"pinset_repository_count\":21,\"release_inventory_sha256\":\"f58457d29289d5140bfc63596f28a4648e2bad1ea6222e7b62d22e8cf9b95bb6\",\"source_revision_manifest_cid\":\"baguqeerasownoxqyrppw3ft3us3yvd26ghvqnjl74nr2rw5o7sm3sjehip7a\",\"source_revision_result_identity\":\"sha256:86f7c07cf7b62847b81315b6529942da7647acf9922f32cf5ccef9d8bb221e9c\",\"supervisor_inventory_cid\":\"baguqeerablvf72zunpjvbievbspxqnc4eqgxneqjwrg5v6imr7edavovmwca\"},\"objective\":{\"canonical_task_cid\":\"baguqeeralbl2yjo6l5gazcmslpzqtu67un4txk3wwpjr45thh5sckwq67yhq\",\"canonical_task_key\":\"task/v1/5857ac25de5f4c0c89925bf309d3dfa3793bab76b3d31e76673f64255a1efe0f\",\"material\":{\"schema\":\"ipfs_accelerate_py/agent-supervisor/task-identity@1\",\"semantic\":{\"acceptance\":[\"full referential integrity and reproducible cids; zero training task eligible on unresolved rights/leakage/compiler identity\"],\"outputs\":[\"data/agent_supervisor/proof_grounded_ir_learning/freeze\"],\"title\":\"freeze semantic campaign inputs\"}},\"protected_unbound_path\":\"docs/architecture/proof_grounded_ir_learning.todo.md\",\"semantic_fingerprint\":\"5857ac25de5f4c0c89925bf309d3dfa3793bab76b3d31e76673f64255a1efe0f\",\"source\":{\"git_blob\":\"83222f6e464139016aa6ff1d974760ee851826f5\",\"path\":\"docs/architecture/proof_grounded_ir_learning.todo.md\",\"raw_cid\":\"bafkreidhj735gsxeces4cec66gqkxj6r4bicfbfcfubxmtd3vsjm7mxlea\",\"repository\":\"ipfs_accelerate_py\",\"revision\":\"04fbb09b4a8b34e77d11bd8da6642e0978baa02c\",\"sha256\":\"sha256:674ff7d34ae41125c1105ef1a0aba7d1e0502284a22d03764c7bac92cfb2eb20\",\"size_bytes\":102946},\"task_id\":\"PGIR-014\"},\"rebuild\":{\"derived_count\":38690,\"hidden_inputs_loaded\":false,\"materialized_source_rows\":0,\"source_count\":7173,\"source_release_count\":2,\"split_assignment_count\":7173,\"split_example_count\":7173,\"split_manifest_digest\":\"047b263b85067aa3dad6760f623c2855fbaf776d565ec9c273c49425fcc14eb4\"},\"record_occurrences\":44,\"semantics\":{\"example_contract_schema_id_count\":15,\"measured_adapter_mismatch\":{\"declared_raw_cid\":\"bafkreife5avbe5esju4frufsogvzlaew5x5qw5h4qlefvgx2qdbamqsyny\",\"matches\":false,\"observations\":[{\"git_blob\":\"0a716b4b669adf93e0df0eeacfb561317a2c87e6\",\"path\":\"ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py\",\"raw_cid\":\"bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha\",\"revision\":\"9313a20a3d7281e4ee9e8efdf907795c89ff4b65\",\"sha256\":\"sha256:b53132370e69680894285db17be810217bb7e4e26a4573f22aa248912a80dd38\",\"size_bytes\":70724},{\"git_blob\":\"0a716b4b669adf93e0df0eeacfb561317a2c87e6\",\"path\":\"ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py\",\"raw_cid\":\"bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha\",\"revision\":\"b20bd9e3cfae79e8888929daf64f52b2f8a5689a\",\"sha256\":\"sha256:b53132370e69680894285db17be810217bb7e4e26a4573f22aa248912a80dd38\",\"size_bytes\":70724},{\"git_blob\":\"0a716b4b669adf93e0df0eeacfb561317a2c87e6\",\"path\":\"ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py\",\"raw_cid\":\"bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha\",\"revision\":\"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\",\"sha256\":\"sha256:b53132370e69680894285db17be810217bb7e4e26a4573f22aa248912a80dd38\",\"size_bytes\":70724}],\"observed_raw_cid\":\"bafkreifvgezdodtjnaejikc5wf56qebbpo36jytkivz7ekvcjcisvag5ha\",\"status\":\"typed_permanent_no_go\"},\"opaque_policy_revision\":{\"field\":\"campaign.bindings.policy.policy_revision\",\"status\":\"opaque_non_authoritative_no_derivation_contract\",\"value\":\"sha256:27c8da23ef92ab263ac0c144f2414fd40bdb30aace98b88f7dd76d36db26e142\"},\"schema_id_count\":6,\"semantic_commit_count\":5,\"tokenizer_authorized\":false},\"unique_paths\":41},\"r1\":{\"capabilities\":{\"arm_identity_cid\":\"baguqeeraylvbngffosmvcvwowelspcdbbk5wom5itjvfanbzty4eioxsauhq\",\"capability_record_cids\":{\"hammer_cvc5\":\"baguqeeraduzlawq2p6dpelvkeazcrdqpu3v6xc5zgrairerwnmo6qtny6qtq\",\"lean\":\"baguqeeracwkrj7rpa57nlxawxuoypacc2zrsvsjg62mao7mhjrxi7hxlhmvq\",\"multiformats\":\"baguqeerag76b2f73qkvlzbekne3subendlqptqht2fhbvnfmse24esv5l22a\",\"python\":\"baguqeeraxjr2bybez6rjbfwu7appc56vzuu7iaophte3detxnva7iinwcpna\"},\"replacement_capabilities\":{\"git_blob\":\"2841705347a2cfb8fd0e74a74ba3c6d9425120e4\",\"path\":\"ipfs_datasets_py/workspace/benchmarks/semantic-roundtrip-compositions/replacement_capabilities.json\",\"raw_cid\":\"bafkreieqvoq57m26iyqge4hd5s6zjts2yiuzgg4ot67wwcszmhsvjolpji\",\"revision\":\"9313a20a3d7281e4ee9e8efdf907795c89ff4b65\",\"sha256\":\"sha256:90aba1dfb35e46206270e3ecbd94ce5ac229931b8e9fbf6b0a5961e554b96f4a\",\"size_bytes\":380840},\"selected_implementations\":[{\"adapter_id\":\"typed_deontic\",\"git_blob\":\"f9a936598649f5dbb737af20195dcd5a9d10a291\",\"path\":\"ipfs_datasets_py/benchmarks/semantic_roundtrip/constructors/typed_deontic.py\",\"raw_cid\":\"bafkreig2yeibug44tbffleyvju4zvo62thdqkpht3n2qn6guefkvbv7z2a\",\"revision\":\"275807f04c9e4f6a8129fab639e8378c1168981c\",\"sha256\":\"sha256:dac1101a1b9c984a5593154d399abbda99c7053cf3db7506f8d4215550d7f9d0\",\"size_bytes\":9496},{\"adapter_id\":\"source_withheld_paraphrase\",\"git_blob\":\"e7e93c5f4965e0fe42497f0b22f57635b22af173\",\"path\":\"ipfs_datasets_py/benchmarks/semantic_roundtrip/realizers/source_withheld_paraphrase.py\",\"raw_cid\":\"bafkreifrmafgdy5wajq7sepxxatwc2mnnubqt2c7kwped456vukyptfi6y\",\"revision\":\"224a4f68d98b5bfb6bcdf619f001bdf4985591ac\",\"sha256\":\"sha256:b1600a61e3b60261f911f7b82761698d6d0309e85f559e41f3bead1587cca8f6\",\"size_bytes\":9899},{\"adapter_id\":\"coordinate_runner\",\"git_blob\":\"d278c660ebbbbc064e60c9acd8572dc0637deb40\",\"path\":\"ipfs_datasets_py/benchmarks/semantic_roundtrip/replacement_matrix.py\",\"raw_cid\":\"bafkreigxa4dwxkqipox36emw7m3qyd7axxb3cqwfv4ckiniewtw5ftix6u\",\"revision\":\"2dca522faff7abe7e295f4c615ab3bf31f80dd4b\",\"sha256\":\"sha256:d707076baa087bafbf1196fb370c0fe0bdc3b142c5af04a43504b4edd2cd17f5\",\"size_bytes\":95688}]},\"case_count\":13,\"case_ids\":[\"exception_with_window\",\"legal_doc_1\",\"exec_order_1\",\"corp_policy_1\",\"construction_contract\",\"missing_temporal\",\"low_confidence_object\",\"contradictory_modality\",\"legal_doc_2\",\"privacy_act_amendment\",\"fed_reg_1\",\"dept_memo_1\",\"hr_handbook\"],\"compared_fields\":\"all compact deterministic case fields excluding only compiler.latency_seconds and decompiler.latency_seconds\",\"compiler_all_matched\":true,\"corpus_split\":{\"corpus_root\":{\"git_blob\":\"4ed0d041d0bbd101abc0a7d53f1ec6e8aabe6df5\",\"path\":\"ipfs_datasets_py/data/ir_learning/corpora/corpus_root.json\",\"raw_cid\":\"bafkreigfium7io3zkcqew6iwpz5wdpti2nmlera3rpvycdcuwgyqvmwj3u\",\"revision\":\"9313a20a3d7281e4ee9e8efdf907795c89ff4b65\",\"sha256\":\"sha256:c54519f43b7950a04b79167e7b61be68d358b2441b8beb810c54b1b10ab2c9dd\",\"size_bytes\":1763},\"lineage_graph_cid\":\"bafkreia5jirpcpummrddhczxebz554lkd7wrq4o5ynizjlgbczyzuwhakq\",\"manifest_cid\":\"bafkreiha35x7mcukzzb5x67hmykwsny5wipf5jb4do5gpsl24mxvix55n4\",\"source_contract_equivalence\":{\"current\":{\"git_blob\":\"b5ff8fc95b1c8c77a3d94ccd2d8d093ff0f8a715\",\"raw_cid\":\"bafkreibydplsze2efe2baegv2xet4bet3qu23ymkaisqbc52khddtowmzi\",\"revision\":\"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\",\"sha256\":\"sha256:381bd72c934429341010d5d5c93e0493dc29ade18a0225008bba51c639baccca\",\"size_bytes\":32159},\"current_additive_suffix\":{\"classification\":\"module_export_list_only\",\"raw_cid\":\"bafkreibhjytvqbexc2kvztq6ra2mko4q7zzetchu3tw6g6tgtqlfpujc5i\",\"sha256\":\"sha256:274e2758049716955cce1e8834c53b90fe724988f4dcede37a669c1657d122ea\",\"size_bytes\":533},\"historical\":{\"git_blob\":\"7109b47372c94f3097c2712247b4863f4b0ad438\",\"raw_cid\":\"bafkreiayt677jwhvlz3rxawpigqym25tuk53lsbn2pabmg3q65ymg7c6zu\",\"revision\":\"9313a20a3d7281e4ee9e8efdf907795c89ff4b65\",\"sha256\":\"sha256:189fbff4d8f55e771b82cf41a1866bb3a2bbb5c82dd3c0161b70f770c37c5ecd\",\"size_bytes\":31626},\"path\":\"ipfs_datasets_py/ipfs_datasets_py/logic/ir_core/source_lineage.py\",\"relevant_projection\":{\"current_without_additive_export\":{\"raw_cid\":\"bafkreiayt677jwhvlz3rxawpigqym25tuk53lsbn2pabmg3q65ymg7c6zu\",\"sha256\":\"sha256:189fbff4d8f55e771b82cf41a1866bb3a2bbb5c82dd3c0161b70f770c37c5ecd\",\"size_bytes\":31626},\"definition\":\"exact historical module bytes; current bytes after removing the bound additive __all__ suffix\",\"equal\":true,\"historical\":{\"raw_cid\":\"bafkreiayt677jwhvlz3rxawpigqym25tuk53lsbn2pabmg3q65ymg7c6zu\",\"sha256\":\"sha256:189fbff4d8f55e771b82cf41a1866bb3a2bbb5c82dd3c0161b70f770c37c5ecd\",\"size_bytes\":31626}}},\"split_manifest\":{\"git_blob\":\"558c43b6f9359c135f0c06892e2bf7a4bd2a85f2\",\"path\":\"ipfs_datasets_py/data/ir_learning/splits/ir_split_manifest.json\",\"raw_cid\":\"bafkreie6kuvenupykd6qivosywy5q6aqa575gxvyr2uetzsn4jajbpawp4\",\"revision\":\"9313a20a3d7281e4ee9e8efdf907795c89ff4b65\",\"sha256\":\"sha256:9e552a46d1f850fd0455d2c5b1d87810077fd35eb88ea849e64de24090bc167f\",\"size_bytes\":395278},\"split_root\":{\"git_blob\":\"9e767ec3ecd0ba8b80a4408d8945767caf142c3d\",\"path\":\"ipfs_datasets_py/data/ir_learning/splits/split_root.json\",\"raw_cid\":\"bafkreifvelyv6jmx5veqf4nptn7tvlc3qvizhuujg2o7odgp3jooq6mptu\",\"revision\":\"9313a20a3d7281e4ee9e8efdf907795c89ff4b65\",\"sha256\":\"sha256:b522f15f2597ed4902f1af9b7f3aac5b855193d289369df70ccfda5ce8798f9d\",\"size_bytes\":1398}},\"decompiler_all_matched\":true,\"hidden_fixture_loaded\":false,\"loaded_sources\":{\"holdout\":{\"bytes_read\":false,\"current_git_blob\":\"bb626a456605acc992b4a816fdcf22acc224005d\",\"path\":\"ipfs_datasets_py/tests/fixtures/semantic_roundtrip/holdout_cases.json\",\"r1_git_blob\":\"bb626a456605acc992b4a816fdcf22acc224005d\"},\"loaded_records\":[{\"current_git_blob\":\"6e83f40d96dc4b745162769ee78aa7f48fa6aa2f\",\"path\":\"ipfs_datasets_py/benchmarks/semantic_roundtrip/deterministic_baseline.py\",\"r1_git_blob\":\"6e83f40d96dc4b745162769ee78aa7f48fa6aa2f\",\"raw_cid\":\"bafkreifhhrhrp3sdblseysdhbuw3xtqcbz5ubu7ahbkgfdioijvmqsnbje\",\"sha256\":\"sha256:a73c4f17ee430ae44c48670d2dbbce020e7b40d3e03854628d0e426ac849a149\",\"size_bytes\":45361},{\"current_git_blob\":\"e4271aef7274c54716bedc84594caf15c5175b02\",\"path\":\"ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py\",\"r1_git_blob\":\"e4271aef7274c54716bedc84594caf15c5175b02\",\"raw_cid\":\"bafkreihkepmhrqadg7uldzbmnqdpvklwuyod55vui23dywqegj5diz4lci\",\"sha256\":\"sha256:ea23d878c00337e8b1e42c6c06faa976a61c3ef6b446b63c5a04327a34678b12\",\"size_bytes\":33859},{\"current_git_blob\":\"525cd32ebb2f832dc56a1cdaf15dfb915ac6bf0b\",\"path\":\"ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py\",\"r1_git_blob\":\"525cd32ebb2f832dc56a1cdaf15dfb915ac6bf0b\",\"raw_cid\":\"bafkreih2ju5hvcdwcni3wtxjy2dksmjp5qvo2ipofghkq73ygk2tnnkmke\",\"sha256\":\"sha256:fa4d3a7a88761351bb4ee9c686a9312fec2aed21ee298ea87f7832b536b54c51\",\"size_bytes\":12386},{\"current_git_blob\":\"52d46eed7311826f7beabc3f5ea6cead2f49a7f8\",\"path\":\"ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_roundtrip.py\",\"r1_git_blob\":\"52d46eed7311826f7beabc3f5ea6cead2f49a7f8\",\"raw_cid\":\"bafkreid2wn2of5alfxwu6oqgcl7kanjsuqgnapkdpgfglbnc3wxeyu34ny\",\"sha256\":\"sha256:7ab374e2f40b2ded4f3a0612fea03532a40cd03d43798a6585a2ddae4c537c6e\",\"size_bytes\":27010},{\"current_git_blob\":\"1bf4da481ff84ccb3554ae0dd1126dfc4cbffb6b\",\"path\":\"ipfs_datasets_py/ipfs_datasets_py/logic/legal_ir/canonical_contracts.py\",\"r1_git_blob\":\"1bf4da481ff84ccb3554ae0dd1126dfc4cbffb6b\",\"raw_cid\":\"bafkreigwn3h2ulewptnebiopjobjg2ruaopdrtg3gbcenbuxut4qv4uejm\",\"sha256\":\"sha256:d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b\",\"size_bytes\":109257},{\"current_git_blob\":\"2ee2d28d09d06f6538154045182018bd0e2826e1\",\"path\":\"ipfs_datasets_py/tests/fixtures/semantic_roundtrip/pilot_cases.json\",\"r1_git_blob\":\"2ee2d28d09d06f6538154045182018bd0e2826e1\",\"raw_cid\":\"bafkreidngtg5cojnhkmwj4coijqpoixao25hxfwdzxjpywlusrqhk3hrm4\",\"sha256\":\"sha256:6d34cdd1392d3a9964f04e4260f722e076ba7b96c3cdd2fc59749460756cf167\",\"size_bytes\":14580},{\"current_git_blob\":\"bb626a456605acc992b4a816fdcf22acc224005d\",\"path\":\"ipfs_datasets_py/tests/fixtures/semantic_roundtrip/repair_dev_cases.json\",\"r1_git_blob\":\"bb626a456605acc992b4a816fdcf22acc224005d\",\"raw_cid\":\"bafkreickaddpda2fuwh2p675vg6vw2jpliixhhrhanz2yk72hyqcol5zfu\",\"sha256\":\"sha256:4a00c6f18345a58fa7fbfda9bd5b692f5a11739e270373ac2bfa3e20272fb92d\",\"size_bytes\":20030}]}},\"retirement\":{\"decision\":\"retired\",\"file_count\":7,\"manifest_cid\":\"baguqeera5ozoenmh6thpjua23i4inzixolmrux4fp46puffyk7j55wil3xma\",\"retirement_cid\":\"baguqeeraw4nh2c7xxamku4juzt5257krzlzuaxe64vl5cuz4h4c4iwm6xdjq\"},\"successor\":{\"candidate_source_rows\":7173,\"hidden_inputs_loaded\":false,\"historical_derived_artifacts\":38690,\"in_scope_holdout_count\":13,\"materialized_derived_artifacts\":0,\"materialized_source_rows\":0,\"population_counts\":{\"dutch-law\":4999,\"patent\":2174},\"release_count\":21,\"split_assignment_count\":0,\"training_admitted_rows\":0,\"training_eligible_rows\":0}},\"network_capture\":{\"exact_revision_hashes_matched\":21,\"response_count\":21},\"portability\":{\"nested\":{\"candidate_count\":15,\"missing_count\":0,\"ref_count\":762},\"outer\":{\"candidate_count\":32,\"missing_count\":2,\"ref_count\":222},\"status\":\"portability_no_go\"},\"tests\":{\"focused_collected\":34,\"focused_passed\":34,\"supplementary_collected\":3,\"supplementary_passed\":3,\"test_results_authority\":\"observed_behavior_only\",\"toolchain_integrity_status\":\"test_toolchain_integrity_no_go\",\"toolchain_record_mismatches\":[{\"declared_hash\":\"sha256=j-MzP6VPofsu5aNDw0rkhpGH7p0glkFLMJdCeYXVdvs\",\"declared_size\":221,\"distribution\":\"huggingface-hub\",\"integrity_disposition\":\"unused_closure_record_mismatch\",\"loaded_during_tests\":false,\"observed_hash\":\"sha256=5bSIHcQgVxzWgepj7HjmFjaEoWPlLsf7U2RwIpFqMqg\",\"observed_size\":325,\"path\":\"../../../bin/hf\",\"test_relevant\":false},{\"declared_hash\":\"sha256=Ehy5jXRZap5dsyaaS-cTG67uqzdUtZlqmybCKJEIY6o\",\"declared_size\":29856,\"distribution\":\"pytest-asyncio\",\"integrity_disposition\":\"test_toolchain_integrity_no_go\",\"loaded_during_tests\":true,\"observed_hash\":\"sha256=ukfCWkoisReJHpIUlAcpxBr5NtPa-7GLQoTeiojtM3U\",\"observed_size\":38200,\"path\":\"pytest_asyncio/plugin.py\",\"test_relevant\":true}]}},\"decision\":\"permanent_no_go\",\"pgir_205_execution_authorized\":false,\"target_root_verified\":{\"nested_gitlink\":\"2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\",\"nested_tree\":\"7169c2a67929044a02350bc26d0a51c853a4981b\",\"outer_commit\":\"75791d58beeab140c2a3ebaf9789705b3e75c151\",\"outer_tree\":\"e092bc48487226229c0df5c47029c3db36004e18\"},\"verified\":false}\n"
+    }
+  },
+  "execution_source_absolute_path": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py",
+  "execution_source_location": "prospective PGIR-211 verifier/evidence from SOURCE_ROOT; all repository inputs resolved through --target-root pointing at the fresh clean immutable target checkout",
+  "isolated_target_checkout": {
+    "after": {
+      "nested_head": {
+        "argv": [
+          "/usr/bin/git",
+          "rev-parse",
+          "HEAD"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:11:33.109581Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:11:33.108454Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreicvblkcpviaufojhgj5lxzywcqxptv4f7al4sa65r6npm6cgzw3u4",
+          "sha256": "sha256:550ad427d500a15c93993d5df38b0a177cebc2fc0be481eec7cd7b3c2366dba7",
+          "size_bytes": 41,
+          "utf8": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\n"
+        }
+      },
+      "nested_status": {
+        "argv": [
+          "/usr/bin/git",
+          "status",
+          "--porcelain",
+          "--untracked-files=all"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:11:33.152867Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:11:33.111271Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        }
+      },
+      "nested_tree": {
+        "argv": [
+          "/usr/bin/git",
+          "rev-parse",
+          "HEAD^{tree}"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:11:33.111151Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:11:33.109656Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreialnz2p6cafbpiyq3ih6yhrqpzlncay5roajyieo25fbx4hc6zc4y",
+          "sha256": "sha256:0b6e74ff08050bd1886d07f60f183f2b68818ec5c04e10476ba50df8717b22e6",
+          "size_bytes": 41,
+          "utf8": "7169c2a67929044a02350bc26d0a51c853a4981b\n"
+        }
+      },
+      "outer_gitlink": {
+        "argv": [
+          "/usr/bin/git",
+          "ls-tree",
+          "HEAD",
+          "ipfs_datasets_py"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+        "ended_at_utc": "2026-08-26T00:11:33.031897Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:11:33.028707Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreigits7l4wayowlpgwcremqzxujgcqcb7y44grxhwwbyzspn5kgiz4",
+          "sha256": "sha256:c89cbebe58187596f3585123219bd12614041fe39c346e7b5838cc9edea8c8cf",
+          "size_bytes": 72,
+          "utf8": "160000 commit 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\tipfs_datasets_py\n"
+        }
+      },
+      "outer_head": {
+        "argv": [
+          "/usr/bin/git",
+          "rev-parse",
+          "HEAD"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+        "ended_at_utc": "2026-08-26T00:11:33.025510Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:11:33.024140Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreiaqsyqwjbpepupumvx7wbi5fjmewnar7kvbes7vx7yqe5whdk2vty",
+          "sha256": "sha256:1096216485e47d1f4656ffb051d2a584b3411faaa124bf5bff10276c71ab559e",
+          "size_bytes": 41,
+          "utf8": "75791d58beeab140c2a3ebaf9789705b3e75c151\n"
+        }
+      },
+      "outer_status": {
+        "argv": [
+          "/usr/bin/git",
+          "status",
+          "--porcelain",
+          "--untracked-files=all"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+        "ended_at_utc": "2026-08-26T00:11:33.108336Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:11:33.032003Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        }
+      },
+      "outer_tree": {
+        "argv": [
+          "/usr/bin/git",
+          "rev-parse",
+          "HEAD^{tree}"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+        "ended_at_utc": "2026-08-26T00:11:33.028584Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:11:33.025630Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreif5rzmjdflmcdggvrsky2ngn3z3nm65mg2fbforvenisvb6navsqm",
+          "sha256": "sha256:bd8e5891956c10cc6ac64ac69a66ef3b6b3dd61b45095d1a91a89543e682b283",
+          "size_bytes": 41,
+          "utf8": "e092bc48487226229c0df5c47029c3db36004e18\n"
+        }
+      }
+    },
+    "before": {
+      "nested_head": {
+        "argv": [
+          "/usr/bin/git",
+          "rev-parse",
+          "HEAD"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:08:51.539881Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:51.537795Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreicvblkcpviaufojhgj5lxzywcqxptv4f7al4sa65r6npm6cgzw3u4",
+          "sha256": "sha256:550ad427d500a15c93993d5df38b0a177cebc2fc0be481eec7cd7b3c2366dba7",
+          "size_bytes": 41,
+          "utf8": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\n"
+        }
+      },
+      "nested_status": {
+        "argv": [
+          "/usr/bin/git",
+          "status",
+          "--porcelain",
+          "--untracked-files=all"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:08:51.609004Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:51.542346Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        }
+      },
+      "nested_tree": {
+        "argv": [
+          "/usr/bin/git",
+          "rev-parse",
+          "HEAD^{tree}"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:08:51.542217Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:51.540007Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreialnz2p6cafbpiyq3ih6yhrqpzlncay5roajyieo25fbx4hc6zc4y",
+          "sha256": "sha256:0b6e74ff08050bd1886d07f60f183f2b68818ec5c04e10476ba50df8717b22e6",
+          "size_bytes": 41,
+          "utf8": "7169c2a67929044a02350bc26d0a51c853a4981b\n"
+        }
+      },
+      "outer_gitlink": {
+        "argv": [
+          "/usr/bin/git",
+          "ls-tree",
+          "HEAD",
+          "ipfs_datasets_py"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+        "ended_at_utc": "2026-08-26T00:08:51.066457Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:51.064587Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreigits7l4wayowlpgwcremqzxujgcqcb7y44grxhwwbyzspn5kgiz4",
+          "sha256": "sha256:c89cbebe58187596f3585123219bd12614041fe39c346e7b5838cc9edea8c8cf",
+          "size_bytes": 72,
+          "utf8": "160000 commit 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\tipfs_datasets_py\n"
+        }
+      },
+      "outer_head": {
+        "argv": [
+          "/usr/bin/git",
+          "rev-parse",
+          "HEAD"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+        "ended_at_utc": "2026-08-26T00:08:51.060057Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:51.058548Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreiaqsyqwjbpepupumvx7wbi5fjmewnar7kvbes7vx7yqe5whdk2vty",
+          "sha256": "sha256:1096216485e47d1f4656ffb051d2a584b3411faaa124bf5bff10276c71ab559e",
+          "size_bytes": 41,
+          "utf8": "75791d58beeab140c2a3ebaf9789705b3e75c151\n"
+        }
+      },
+      "outer_status": {
+        "argv": [
+          "/usr/bin/git",
+          "status",
+          "--porcelain",
+          "--untracked-files=all"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+        "ended_at_utc": "2026-08-26T00:08:51.537647Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:51.066540Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        }
+      },
+      "outer_tree": {
+        "argv": [
+          "/usr/bin/git",
+          "rev-parse",
+          "HEAD^{tree}"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+        "ended_at_utc": "2026-08-26T00:08:51.064502Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:51.060120Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreif5rzmjdflmcdggvrsky2ngn3z3nm65mg2fbforvenisvb6navsqm",
+          "sha256": "sha256:bd8e5891956c10cc6ac64ac69a66ef3b6b3dd61b45095d1a91a89543e682b283",
+          "size_bytes": 41,
+          "utf8": "e092bc48487226229c0df5c47029c3db36004e18\n"
+        }
+      }
+    },
+    "creation": {
+      "nested": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+          "worktree",
+          "add",
+          "--detach",
+          "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py",
+          "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:08:51.056538Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:49.742349Z",
+        "stderr": {
+          "raw_cid": "bafkreiejdiapfhvfmlzl7tsublkbikln4klwnqiqxjwyph4opqpg7ttd2a",
+          "sha256": "sha256:891a00f29ea562f2bfce540ad414296de29766c110ba6d879f8e7c1e6fce63d0",
+          "size_bytes": 1380,
+          "utf8": "Preparing worktree (detached HEAD 2a06dfe85)\nUpdating files:  64% (9859/15175)\rUpdating files:  65% (9864/15175)\rUpdating files:  66% (10016/15175)\rUpdating files:  67% (10168/15175)\rUpdating files:  68% (10319/15175)\rUpdating files:  69% (10471/15175)\rUpdating files:  70% (10623/15175)\rUpdating files:  71% (10775/15175)\rUpdating files:  72% (10926/15175)\rUpdating files:  73% (11078/15175)\rUpdating files:  74% (11230/15175)\rUpdating files:  75% (11382/15175)\rUpdating files:  76% (11533/15175)\rUpdating files:  77% (11685/15175)\rUpdating files:  78% (11837/15175)\rUpdating files:  79% (11989/15175)\rUpdating files:  80% (12140/15175)\rUpdating files:  81% (12292/15175)\rUpdating files:  82% (12444/15175)\rUpdating files:  83% (12596/15175)\rUpdating files:  84% (12747/15175)\rUpdating files:  85% (12899/15175)\rUpdating files:  86% (13051/15175)\rUpdating files:  87% (13203/15175)\rUpdating files:  88% (13354/15175)\rUpdating files:  89% (13506/15175)\rUpdating files:  90% (13658/15175)\rUpdating files:  91% (13810/15175)\rUpdating files:  92% (13961/15175)\rUpdating files:  93% (14113/15175)\rUpdating files:  94% (14265/15175)\rUpdating files:  95% (14417/15175)\rUpdating files:  96% (14568/15175)\rUpdating files:  97% (14720/15175)\rUpdating files:  98% (14872/15175)\rUpdating files:  99% (15024/15175)\rUpdating files: 100% (15175/15175)\rUpdating files: 100% (15175/15175), done.\n"
+        },
+        "stdout": {
+          "raw_cid": "bafkreig6tthtj6tmdi75owvakrn65eubpcx3x23ehsp2vugjv7zi3gh5yy",
+          "sha256": "sha256:de9ccf34fa6c1a3fd75aa0545bee928178afbbeb643c9faad0c9aff28d98fdc6",
+          "size_bytes": 92,
+          "utf8": "HEAD is now at 2a06dfe85 PGIR-204: Requalify or replace the historical R1 semantic baseline\n"
+        }
+      },
+      "outer": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+          "worktree",
+          "add",
+          "--detach",
+          "/tmp/pgir211-component-6b4i7ehj/outer",
+          "75791d58beeab140c2a3ebaf9789705b3e75c151"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+        "ended_at_utc": "2026-08-26T00:08:49.726417Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:44.092515Z",
+        "stderr": {
+          "raw_cid": "bafkreig3ixmj2tqwkotqocy3d4twv62ssq5sowwbdep4h24o3xfc4f76se",
+          "sha256": "sha256:db45d89d4e1653a7070b1b1f276afb52943b275ac1191fc3eb8eddca2e17fe91",
+          "size_bytes": 2503,
+          "utf8": "Preparing worktree (detached HEAD 75791d58b)\nUpdating files:  35% (5300/15087)\rUpdating files:  35% (5308/15087)\rUpdating files:  36% (5432/15087)\rUpdating files:  37% (5583/15087)\rUpdating files:  38% (5734/15087)\rUpdating files:  39% (5884/15087)\rUpdating files:  40% (6035/15087)\rUpdating files:  41% (6186/15087)\rUpdating files:  42% (6337/15087)\rUpdating files:  43% (6488/15087)\rUpdating files:  44% (6639/15087)\rUpdating files:  45% (6790/15087)\rUpdating files:  46% (6941/15087)\rUpdating files:  47% (7091/15087)\rUpdating files:  48% (7242/15087)\rUpdating files:  49% (7393/15087)\rUpdating files:  50% (7544/15087)\rUpdating files:  51% (7695/15087)\rUpdating files:  52% (7846/15087)\rUpdating files:  53% (7997/15087)\rUpdating files:  53% (8100/15087)\rUpdating files:  54% (8147/15087)\rUpdating files:  55% (8298/15087)\rUpdating files:  56% (8449/15087)\rUpdating files:  57% (8600/15087)\rUpdating files:  58% (8751/15087)\rUpdating files:  59% (8902/15087)\rUpdating files:  60% (9053/15087)\rUpdating files:  61% (9204/15087)\rUpdating files:  62% (9354/15087)\rUpdating files:  63% (9505/15087)\rUpdating files:  64% (9656/15087)\rUpdating files:  65% (9807/15087)\rUpdating files:  66% (9958/15087)\rUpdating files:  67% (10109/15087)\rUpdating files:  68% (10260/15087)\rUpdating files:  69% (10411/15087)\rUpdating files:  70% (10561/15087)\rUpdating files:  70% (10587/15087)\rUpdating files:  70% (10603/15087)\rUpdating files:  71% (10712/15087)\rUpdating files:  72% (10863/15087)\rUpdating files:  73% (11014/15087)\rUpdating files:  74% (11165/15087)\rUpdating files:  75% (11316/15087)\rUpdating files:  76% (11467/15087)\rUpdating files:  77% (11617/15087)\rUpdating files:  78% (11768/15087)\rUpdating files:  79% (11919/15087)\rUpdating files:  80% (12070/15087)\rUpdating files:  81% (12221/15087)\rUpdating files:  82% (12372/15087)\rUpdating files:  83% (12523/15087)\rUpdating files:  84% (12674/15087)\rUpdating files:  85% (12824/15087)\rUpdating files:  86% (12975/15087)\rUpdating files:  87% (13126/15087)\rUpdating files:  88% (13277/15087)\rUpdating files:  89% (13428/15087)\rUpdating files:  90% (13579/15087)\rUpdating files:  91% (13730/15087)\rUpdating files:  92% (13881/15087)\rUpdating files:  93% (14031/15087)\rUpdating files:  94% (14182/15087)\rUpdating files:  95% (14333/15087)\rUpdating files:  96% (14484/15087)\rUpdating files:  97% (14635/15087)\rUpdating files:  98% (14786/15087)\rUpdating files:  99% (14937/15087)\rUpdating files: 100% (15087/15087)\rUpdating files: 100% (15087/15087), done.\n"
+        },
+        "stdout": {
+          "raw_cid": "bafkreicjukgwd23wtw6fvs6rf4t66vs7fewp3zkyyehyx5m5i45cmhl25m",
+          "sha256": "sha256:49a28d61eb769dbc5acbd12f27ef565f292cfde558c10f8bf59d473a261d7aeb",
+          "size_bytes": 55,
+          "utf8": "HEAD is now at 75791d58b PGIR-210: mark todo completed\n"
+        }
+      }
+    },
+    "fresh": true,
+    "initialized_submodules": [
+      "ipfs_datasets_py"
+    ],
+    "nested_absence_after_preparation": {
+      "argv": [
+        "/usr/bin/test",
+        "!",
+        "-e",
+        "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py"
+      ],
+      "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+      "ended_at_utc": "2026-08-26T00:08:49.742207Z",
+      "environment": {
+        "GIT_CONFIG_COUNT": "0",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/bin:/bin",
+        "PYTHONHASHSEED": "0",
+        "TZ": "UTC"
+      },
+      "environment_controls": {
+        "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+        "environment_mode": "exact minimal environment; no inherited variables",
+        "git": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0"
+        },
+        "home_and_xdg_variables_present": false,
+        "proxy_and_credential_variables_present": false
+      },
+      "exit_code": 0,
+      "started_at_utc": "2026-08-26T00:08:49.740266Z",
+      "stderr": {
+        "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0,
+        "utf8": ""
+      },
+      "stdout": {
+        "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0,
+        "utf8": ""
+      }
+    },
+    "nested_path": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py",
+    "nested_path_preparation": {
+      "argv": [
+        "/usr/bin/rmdir",
+        "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py"
+      ],
+      "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+      "ended_at_utc": "2026-08-26T00:08:49.740136Z",
+      "environment": {
+        "GIT_CONFIG_COUNT": "0",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/bin:/bin",
+        "PYTHONHASHSEED": "0",
+        "TZ": "UTC"
+      },
+      "environment_controls": {
+        "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+        "environment_mode": "exact minimal environment; no inherited variables",
+        "git": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0"
+        },
+        "home_and_xdg_variables_present": false,
+        "proxy_and_credential_variables_present": false
+      },
+      "exit_code": 0,
+      "started_at_utc": "2026-08-26T00:08:49.737926Z",
+      "stderr": {
+        "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0,
+        "utf8": ""
+      },
+      "stdout": {
+        "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0,
+        "utf8": ""
+      }
+    },
+    "nested_path_restoration": {
+      "argv": [
+        "/usr/bin/mkdir",
+        "--",
+        "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py"
+      ],
+      "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+      "ended_at_utc": "2026-08-26T00:11:33.498048Z",
+      "environment": {
+        "GIT_CONFIG_COUNT": "0",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/bin:/bin",
+        "PYTHONHASHSEED": "0",
+        "TZ": "UTC"
+      },
+      "environment_controls": {
+        "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+        "environment_mode": "exact minimal environment; no inherited variables",
+        "git": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0"
+        },
+        "home_and_xdg_variables_present": false,
+        "proxy_and_credential_variables_present": false
+      },
+      "exit_code": 0,
+      "started_at_utc": "2026-08-26T00:11:33.496115Z",
+      "stderr": {
+        "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0,
+        "utf8": ""
+      },
+      "stdout": {
+        "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0,
+        "utf8": ""
+      }
+    },
+    "outer_status_after_nested_restoration": {
+      "argv": [
+        "/usr/bin/git",
+        "status",
+        "--porcelain",
+        "--untracked-files=all"
+      ],
+      "cwd": "/tmp/pgir211-component-6b4i7ehj/outer",
+      "ended_at_utc": "2026-08-26T00:11:33.537326Z",
+      "environment": {
+        "GIT_CONFIG_COUNT": "0",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": "/usr/bin:/bin",
+        "PYTHONHASHSEED": "0",
+        "TZ": "UTC"
+      },
+      "environment_controls": {
+        "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+        "environment_mode": "exact minimal environment; no inherited variables",
+        "git": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0"
+        },
+        "home_and_xdg_variables_present": false,
+        "proxy_and_credential_variables_present": false
+      },
+      "exit_code": 0,
+      "started_at_utc": "2026-08-26T00:11:33.498121Z",
+      "stderr": {
+        "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0,
+        "utf8": ""
+      },
+      "stdout": {
+        "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0,
+        "utf8": ""
+      }
+    },
+    "path": "/tmp/pgir211-component-6b4i7ehj/outer",
+    "precreation": {
+      "nested": {
+        "argv": [
+          "/usr/bin/test",
+          "!",
+          "-e",
+          "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj",
+        "ended_at_utc": "2026-08-26T00:08:44.092458Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:44.090741Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        }
+      },
+      "outer": {
+        "argv": [
+          "/usr/bin/test",
+          "!",
+          "-e",
+          "/tmp/pgir211-component-6b4i7ehj/outer"
+        ],
+        "cwd": "/tmp/pgir211-component-6b4i7ehj",
+        "ended_at_utc": "2026-08-26T00:08:44.090602Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:08:44.088718Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        }
+      }
+    },
+    "recursive_submodule_update": false,
+    "registration_after_creation": {
+      "nested": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+          "worktree",
+          "list",
+          "--porcelain",
+          "-z"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:08:51.058192Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "registered": true,
+        "started_at_utc": "2026-08-26T00:08:51.056686Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreia7mwsos67hckbt22olnhextokxc7zblydlckmjfpdnxd3j5ay2z4",
+          "sha256": "sha256:1f65a4e97be712833d69cb69c979b95717f215e06b129892bc6db8f69e831acf",
+          "size_bytes": 1757,
+          "utf8": "worktree /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/pgir-successor-current-supervisor/modules/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000branch refs/heads/implementation/pgir-211-23a67a5f1e8a-attempt-1-1787685173-submodule-ipfs_datasets_py\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5cc149cf91f0_db6a3b837d67/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_a447e7cf3fe5_c9bb5cc101f5/ipfs_datasets_py\u0000HEAD 8736a0023d5d3afe4d0e5b044a3e4480966a8bf7\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_acf923734b2d_bfc666dbfa92/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_dcfc05f1bf6b_c6d13ef6ef3d/ipfs_datasets_py\u0000HEAD 8736a0023d5d3afe4d0e5b044a3e4480966a8bf7\u0000detached\u0000\u0000worktree /tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000"
+        },
+        "target_path": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py"
+      },
+      "outer": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+          "worktree",
+          "list",
+          "--porcelain",
+          "-z"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+        "ended_at_utc": "2026-08-26T00:08:49.733878Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "registered": true,
+        "started_at_utc": "2026-08-26T00:08:49.726574Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreiclfl2xnburijzs4xwoapsp2lfuyhjjkuuppj33y4nc35sn4euehi",
+          "sha256": "sha256:4b2af576869142732e5ece03e4fd2cb4c1d295528f7a77bc71a2df64de12843a",
+          "size_bytes": 22873,
+          "utf8": "worktree /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate\u0000HEAD 5d79bbf8bb61e027fbda76920580cb9d4fd919c1\u0000branch refs/heads/recovery/pre-reboot-agent-supervisor-20260822\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-491d29ad20c1-0911aaee88b9\u0000HEAD e3a255e87eee1bebac1c0c50d638b6f6d5421677\u0000branch refs/heads/implementation/ips-002-27653d15b6ea-attempt-1-1786433537\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-491d29ad20c1-786a096ee7a0\u0000HEAD e3a255e87eee1bebac1c0c50d638b6f6d5421677\u0000branch refs/heads/implementation/ips-001-dae34340554e-attempt-1-1786433537\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-491d29ad20c1-83b998ab42b3\u0000HEAD e3a255e87eee1bebac1c0c50d638b6f6d5421677\u0000branch refs/heads/implementation/ips-003-0e30d24ff4e3-attempt-1-1786433537\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f67608c71f27-d675ea446ec6\u0000HEAD 46493702ae9d57d8685e592ebf3f02c319ab411c\u0000detached\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f67608c71f27-eb48498d0d14\u0000HEAD 46493702ae9d57d8685e592ebf3f02c319ab411c\u0000detached\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f67608c71f27-fe3bc60152ef\u0000HEAD 46493702ae9d57d8685e592ebf3f02c319ab411c\u0000detached\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f8d25eea8c63-4c2c6c7a9368\u0000HEAD dbed30ed6c0f698e6ac0cf2721c5f5f32ef6fde3\u0000branch refs/heads/implementation/ips-003-0bd995cf0be1-attempt-2-1786431483\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f8d25eea8c63-4fc157076ab6\u0000HEAD dbed30ed6c0f698e6ac0cf2721c5f5f32ef6fde3\u0000branch refs/heads/implementation/ips-001-e53947d103a7-attempt-2-1786431483\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f8d25eea8c63-91c025a93208\u0000HEAD dbed30ed6c0f698e6ac0cf2721c5f5f32ef6fde3\u0000branch refs/heads/implementation/ips-002-c64233ee47bb-attempt-2-1786431484\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260812T0305Z/workspace-672c212ce272-246f375bfa55\u0000HEAD a70997d918017eb918e59e7c630d54d6c6ea0109\u0000branch refs/heads/implementation/ips-003-8d98128dd5eb-attempt-1-1786501623\u0000locked IncrementalProofSealer portability recovery evidence quarantine 20260812T0305Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260812T0305Z/workspace-672c212ce272-70c76bc5607b\u0000HEAD a70997d918017eb918e59e7c630d54d6c6ea0109\u0000branch refs/heads/implementation/ips-002-ca58e065ceb6-attempt-1-1786501599\u0000locked IncrementalProofSealer portability recovery evidence quarantine 20260812T0305Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260812T0305Z/workspace-672c212ce272-7fb9627a8144\u0000HEAD a70997d918017eb918e59e7c630d54d6c6ea0109\u0000branch refs/heads/implementation/ips-001-05181d2ee35f-attempt-1-1786501398\u0000locked IncrementalProofSealer portability recovery evidence quarantine 20260812T0305Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/worktrees/agent-supervisor-prompt-entrypoints-v2-duckdb-run-registry/workspace-dac93fd2195c-459f5ef868f8\u0000HEAD 666f5233193acb04c6ee28cba2a1c13ff06224a3\u0000branch refs/heads/implementation/ase2-004-0335c13d99d1-attempt-1-1785869884\u0000locked initializing\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/worktrees/agent-supervisor-prompt-entrypoints-v2-inference-runtime/workspace-84f9cdf57629-3e07ef36c4d8\u0000HEAD 0c07c3efc3d72d0d11fded414b2fdfb156984697\u0000branch refs/heads/implementation/ase2-001-a8a890074051-attempt-1-1785870763\u0000locked initializing\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/worktrees/agent-supervisor-prompt-entrypoints-v2-public-facades/workspace-d815072d6273-15e97443e9dd\u0000HEAD dfc3e5949aec62329be6111fee8ddab16bdc3741\u0000branch refs/heads/implementation/ase2-007-bd232318be45-attempt-1-1785884715\u0000locked initializing\u0000\u0000worktree /home/barberb/lift_coding/.pcpc031-validator-candidate.9Maouo\u0000HEAD 7efbd7659308eaf4b363cacae7a175150a0f89c9\u0000branch refs/heads/codex/pcpc-031-sealed-validator-4e733c2\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1\u0000HEAD fcf3b0e34af37768c8b0e10d1b29c83982461cd0\u0000branch refs/heads/codex/agent-supervisor-autonomous-meta-controller-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_6c931b07958b_9e063fe2dc71\u0000HEAD a4c6e9b482c6f35e9283bc651b4a7372c0fd00ad\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_922ba3787f40_462f374c5b3e\u0000HEAD a257ca9bc3d234f081ecac7f09295a341b94e371\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_98414de54082_9184d4683a5a\u0000HEAD f3cf55bfdca6bcaf4ac7001b2b6485f51d73f5c2\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_a38f3d4fdbe1_6b9a3c7c6cfb\u0000HEAD 25c0e64ef4e1a3db13ad8e2f5315ac817cb11c71\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1\u0000HEAD a432e5e2efd203f738af1e0e95dfb8edba53715b\u0000branch refs/heads/agent/agent-supervisor-efficiency-and-state-hardening-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_5d0dd5f14368_0319ba517472\u0000HEAD d39614614c4b9167606de83f043b4ea76c349e0f\u0000branch refs/heads/implementation/aseh-020-07c800bd72f7-attempt-1-1787580683\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_5d0dd5f14368_21c6ed7b7ec3\u0000HEAD d39614614c4b9167606de83f043b4ea76c349e0f\u0000branch refs/heads/implementation/aseh-040-9aa05cf71eac-attempt-1-1787580589\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_5d0dd5f14368_369311dec8e6\u0000HEAD d39614614c4b9167606de83f043b4ea76c349e0f\u0000branch refs/heads/implementation/aseh-010-706da9b5cf45-attempt-1-1787580609\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_c4a7a53c3b44_0070b634499d\u0000HEAD 71dfb0c81c1b54f702abcacdbfe0c409a898db7c\u0000branch refs/heads/implementation/aseh-020-07c800bd72f7-attempt-1-1787597235\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_c4a7a53c3b44_209068c28fa9\u0000HEAD 71dfb0c81c1b54f702abcacdbfe0c409a898db7c\u0000branch refs/heads/implementation/aseh-040-9aa05cf71eac-attempt-1-1787597209\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_c4a7a53c3b44_2a99c0e1a4f1\u0000HEAD 71dfb0c81c1b54f702abcacdbfe0c409a898db7c\u0000branch refs/heads/implementation/aseh-010-706da9b5cf45-attempt-1-1787597209\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_d796a7d2da32_90a45d1ce7d7\u0000HEAD 7c03c4ded2a80d50fb72130591a521d415386c97\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_d796a7d2da32_d2941e9ab851\u0000HEAD 7c03c4ded2a80d50fb72130591a521d415386c97\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_fdc003587ab9_2097a9146a04\u0000HEAD 94c1560a5547f365af0e78d4152a04c68ab60376\u0000branch refs/heads/implementation/aseh-050-ac0987fc6440-attempt-1-1787582578\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/aseh-bootstrap-hardening-v1\u0000HEAD 4aebd473db34c4d195e72c3840f331e176535da4\u0000branch refs/heads/agent/aseh-bootstrap-hardening-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-000-candidate-review\u0000HEAD bdbc22a712b912056e5864a40d41e0846fb06d1a\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-disable-raw-unstall\u0000HEAD 7e58a9a7a775e36c0f756ddd4415d70c549d1174\u0000branch refs/heads/codex/casf-disable-raw-unstall-20260823\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration\u0000HEAD 8c3fba4e67a25bcc218b711b170031d82d00f7da\u0000branch refs/heads/codex/causal-event-supervisor-federation-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_03b3da72e329_87ec0f02cbf5\u0000HEAD 8c3fba4e67a25bcc218b711b170031d82d00f7da\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_6d2b41fe9995_7466861bddb5\u0000HEAD 79a18b54e3c362e742c53dbe7b16228ba1b5d3a0\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_7a6140690adb_1aa8fdb5d0c8\u0000HEAD c4e42dd5a66ba2727d1200bcfecd1539a13ba6c2\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_ec956e9f4523_16a6af0342fa\u0000HEAD 76c19f28b689d66aa093ba20228935970bdb69fa\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-typed-retry-cooldown\u0000HEAD 640de64d46b6bd0ec31aab312843065af0ca57b2\u0000branch refs/heads/codex/casf-typed-retry-cooldown-20260823\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-final-integration-20260825\u0000HEAD 8c3fba4e67a25bcc218b711b170031d82d00f7da\u0000branch refs/heads/integration/eaaef-final-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-frontier-execution-20260825\u0000HEAD 426a860523f29abb91fc72df7c552b874c8d4c83\u0000branch refs/heads/agent/eaaef-frontier-execution-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-source-qualification-landing-20260825\u0000HEAD f1e80a97d654045b86c8931a6316b142fce39069\u0000branch refs/heads/codex/eaaef-quack-lease-handoff-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-source-qualification-main-20260825\u0000HEAD 777ca22df45c20fd7427fc07c1a93b98bbc4b23f\u0000branch refs/heads/integration/eaaef-source-qualification-main-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric\u0000HEAD 45417221e13fcac23fbc713be32d246d0e2ceeb9\u0000branch refs/heads/archive/pre-reboot-eaaef-ignored-artifacts-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-010-b2d56dc0b512effe\u0000HEAD 31e2c26c1105dc2ca2dd6d63d1db71b52164a424\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-011-915640eaefddf258\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-013-f9660f5f63ae714a\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-021-79b25fc2954319ef\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-023-337e53f5cacca463\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_5ed47494e82a_5971d21a6bc5\u0000HEAD d13535c8278a54a6876a36fb8525e33f69a62c90\u0000branch refs/heads/rescue/worktree/implementation-eaaef-007-66dc64a0dce9-attempt-2-1787240418-01009d97a889\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_6f0984a15a7c_9f0cc3fdc503\u0000HEAD 25063c30c30fc2ebc09eb353a9f3d97f93221995\u0000branch refs/heads/rescue/worktree/implementation-eaaef-006-2a88e0ab81c1-attempt-1-1787246106-12174b172cac\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_6f0984a15a7c_aa89e6a76a81\u0000HEAD 43ac72b3e431a4d01c5c249db41f8435b0738ee7\u0000branch refs/heads/rescue/worktree/implementation-eaaef-008-325598d6648c-attempt-2-1787246016-deca6c6b5927\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_6f0984a15a7c_f6e417f81d40\u0000HEAD 8d0563a072030c2d5dcba01b81815f31ac9e56e2\u0000branch refs/heads/rescue/worktree/implementation-eaaef-006-2a88e0ab81c1-attempt-1-1787246284-42416d40e7cd\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-origin-main\u0000HEAD bbf7f68799072c2b81f7d96eac91f2df3c4b3952\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcar-origin-main-land-20260822\u0000HEAD 505351fef89d92be753246f962725acc5cb80590\u0000branch refs/heads/integration/pcar-origin-main-20260822\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcpc-supervisor-replay-20260824\u0000HEAD 5a6b070c1e87b8059f63e6e9e4b8b55830ed8191\u0000branch refs/heads/integration/pcpc-supervisor-replay-20260824\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcpc031-final-suite-audit-20260824\u0000HEAD a9db801ae0211ca5d999661b172cf3178b254b0d\u0000branch refs/heads/audit/pcpc031-final-suite-20260824\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcpc031-final-suite-integration-20260824\u0000HEAD 5a2281c4c23fe417f57f4cc53810d0efe581c76b\u0000branch refs/heads/audit/pcpc031-final-suite-integration-20260824\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor\u0000HEAD 623bb7d176031b154893daeb05df573bd73d6484\u0000branch refs/heads/agent/pgir-successor-current-supervisor-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262\u0000HEAD 10c38f56803442c224d379cedf6b0e5ca1e35147\u0000branch refs/heads/implementation/pgir-211-23a67a5f1e8a-attempt-1-1787685173\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5cc149cf91f0_db6a3b837d67\u0000HEAD 1d5c543e1f3471d273c8504390c44fc7c63ad20a\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_a447e7cf3fe5_c9bb5cc101f5\u0000HEAD c4cf42fccb58d73b9f48c7f70799165b29cfe3a9\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_acf923734b2d_bfc666dbfa92\u0000HEAD 2d5088fbac0f616fce13d2c468d3fda21ede3615\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_dcfc05f1bf6b_c6d13ef6ef3d\u0000HEAD b87bc6d28fbfefd836696f972f51ee9a677b5071\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-validation-no-site-supervisor\u0000HEAD 7effdd5c390cf86bafc40e02d7d22e9c9816c79f\u0000branch refs/heads/codex/pgir-validation-no-site-supervisor-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1\u0000HEAD 0374c408469ce2aadb1c0ea202bea4dd4c7a2bbc\u0000branch refs/heads/codex/proof-carrying-architecture-refactorer-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_07b4826f0555_ec68eb39d483\u0000HEAD 12f36c65d5fb51895cc55eca6e8176b4eab222a8\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_2c9b42f74a58_8c0488494345\u0000HEAD 0bf6ddd6c67b86a7f39159077d398f5907324f21\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_99a231320640_0fe346fbb4ee\u0000HEAD a73eed9e22384a6e907686d8652234ee4f331b4d\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_dfa579e68ebd_5b28195f0a6b\u0000HEAD 4dd8b2e7c41b05bad327a18a0971aa9cb14f28f3\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1\u0000HEAD d426d838b0ef4347522f2fe7fc72680a0438dc31\u0000branch refs/heads/codex/proof-carrying-procedure-compiler-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_3ef1a60283c0_d37678d7b0a8\u0000HEAD 56e897301118c6e743f34a4908d86ace7141cf9b\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_40a77a7564e0_529eaf1b0dde\u0000HEAD c9987d104d2344e07bbbe936d1bcaadd3df19d1b\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_4a5ad3517b8a_568c25e020dd\u0000HEAD 4e733c2aa33da459670131880b6a2fd85cf6c48c\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_c1bf81589546_36b235fcc436\u0000HEAD 1d730b7a3f708cadc1aa2a93849e4d4901df9018\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1\u0000HEAD dc0ad0a499ca8ec59341395d10b809917f9b5632\u0000branch refs/heads/codex/verified-residual-intelligence-foundry-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_0dfbca0b709e_2cdef506600b\u0000HEAD 04dccbc05d5f2b6806275128fdae356d94f2e48f\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_60826cf050ea_ce53d6bc73b7\u0000HEAD 3cf925ca62b583427c2e16843608b688901f6e6e\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_6c9b34d4a5a2_0ba345aae0bb\u0000HEAD 92eb396d782a76434efb26691709331a2294cc23\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_8ebfc470cf43_450bb6278cab\u0000HEAD d694b164cf196c2df48b45b494b3df4fdd3f3e87\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-control-plane-pool-lease-deferral\u0000HEAD f1eb42ac7867c02a8ffcd812a22892e88b09b85a\u0000branch refs/heads/codex/vrif-control-plane-pool-lease-deferral\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-cross-lane-guard\u0000HEAD a046e42b02d8f8626aab729f87548e00cbab5822\u0000branch refs/heads/codex/vrif-cross-lane-guard\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-daemon-integrate\u0000HEAD 7ff8722b44d10cb368ad07d20e9a387351a91aeb\u0000branch refs/heads/codex/vrif-daemon-integrate\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-dual-capacity-retry\u0000HEAD cfb0439a7fd2819e008343fd02323de444425b2f\u0000branch refs/heads/codex/vrif-dual-capacity-retry\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-merge-origin-main\u0000HEAD 8aa15ed1298cbabf9221a5abea31a8352e35464c\u0000branch refs/heads/codex/vrif-merge-origin-main\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-reconciliation-json-fix\u0000HEAD 259c56fbfb2432a77030c154ba5839cb2a1cc284\u0000branch refs/heads/codex/fix-reconciliation-proposal-validation-json-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-transient-recovery-deferral\u0000HEAD 8ae54e9985f44cbb086fd9224b06cad0c4fc82c0\u0000branch refs/heads/codex/vrif-transient-recovery-deferral\u0000\u0000worktree /home/barberb/lift_coding/data/agent_supervisor/swissknife_contract_assurance/parallel/lanes/lane-03/state/submodule-merge-recovery-worktrees/1c1c80f7f526b9a4-681817-1785411576090947855\u0000HEAD d3b193a6e8aae5e61fc48efd54e29f42e679cf7d\u0000detached\u0000locked initializing\u0000\u0000worktree /tmp/aseh-baseline-check\u0000HEAD 205f3b514cbdf74af67cabdfc045b008e03900c2\u0000detached\u0000\u0000worktree /tmp/pgir211-component-6b4i7ehj/outer\u0000HEAD 75791d58beeab140c2a3ebaf9789705b3e75c151\u0000detached\u0000\u0000worktree /tmp/vrif-crash-context.1f9wPi\u0000HEAD fe03d8ea8e9ca83d53c3e13621c90e43ab61e832\u0000detached\u0000\u0000worktree /tmp/vrif-foreign-retry-fix.pXetp8\u0000HEAD 1ce3bb38208585f07e7c5dc3e23a294fbf58cb02\u0000detached\u0000\u0000"
+        },
+        "target_path": "/tmp/pgir211-component-6b4i7ehj/outer"
+      }
+    },
+    "registration_after_removal": {
+      "nested": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+          "worktree",
+          "list",
+          "--porcelain",
+          "-z"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:11:33.484464Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "registered": false,
+        "started_at_utc": "2026-08-26T00:11:33.482346Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreia3okve6fgib5brw5ekvhbxn4zon5w27ks2pajtux2kprx5mwtdnu",
+          "sha256": "sha256:1b72aa4f14c80f431b748aa9c376f32e6f6dafaa5a78133a5f4a7c6fd65a636d",
+          "size_bytes": 1637,
+          "utf8": "worktree /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/pgir-successor-current-supervisor/modules/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000branch refs/heads/implementation/pgir-211-23a67a5f1e8a-attempt-1-1787685173-submodule-ipfs_datasets_py\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5cc149cf91f0_db6a3b837d67/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_a447e7cf3fe5_c9bb5cc101f5/ipfs_datasets_py\u0000HEAD 8736a0023d5d3afe4d0e5b044a3e4480966a8bf7\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_acf923734b2d_bfc666dbfa92/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_dcfc05f1bf6b_c6d13ef6ef3d/ipfs_datasets_py\u0000HEAD 8736a0023d5d3afe4d0e5b044a3e4480966a8bf7\u0000detached\u0000\u0000"
+        },
+        "target_path": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py"
+      },
+      "outer": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+          "worktree",
+          "list",
+          "--porcelain",
+          "-z"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+        "ended_at_utc": "2026-08-26T00:11:33.926890Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "registered": false,
+        "started_at_utc": "2026-08-26T00:11:33.922134Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreidf2pm36q3d7swv2bqdsfbqvlem3yu3c73yxtefpysvvu2b7li7ti",
+          "sha256": "sha256:65d3d9bf4363fcad5d060391430aac8cde29b17f78bcc857e255ad341fad1f9a",
+          "size_bytes": 22770,
+          "utf8": "worktree /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate\u0000HEAD 5d79bbf8bb61e027fbda76920580cb9d4fd919c1\u0000branch refs/heads/recovery/pre-reboot-agent-supervisor-20260822\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-491d29ad20c1-0911aaee88b9\u0000HEAD e3a255e87eee1bebac1c0c50d638b6f6d5421677\u0000branch refs/heads/implementation/ips-002-27653d15b6ea-attempt-1-1786433537\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-491d29ad20c1-786a096ee7a0\u0000HEAD e3a255e87eee1bebac1c0c50d638b6f6d5421677\u0000branch refs/heads/implementation/ips-001-dae34340554e-attempt-1-1786433537\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-491d29ad20c1-83b998ab42b3\u0000HEAD e3a255e87eee1bebac1c0c50d638b6f6d5421677\u0000branch refs/heads/implementation/ips-003-0e30d24ff4e3-attempt-1-1786433537\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f67608c71f27-d675ea446ec6\u0000HEAD 46493702ae9d57d8685e592ebf3f02c319ab411c\u0000detached\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f67608c71f27-eb48498d0d14\u0000HEAD 46493702ae9d57d8685e592ebf3f02c319ab411c\u0000detached\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f67608c71f27-fe3bc60152ef\u0000HEAD 46493702ae9d57d8685e592ebf3f02c319ab411c\u0000detached\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f8d25eea8c63-4c2c6c7a9368\u0000HEAD dbed30ed6c0f698e6ac0cf2721c5f5f32ef6fde3\u0000branch refs/heads/implementation/ips-003-0bd995cf0be1-attempt-2-1786431483\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f8d25eea8c63-4fc157076ab6\u0000HEAD dbed30ed6c0f698e6ac0cf2721c5f5f32ef6fde3\u0000branch refs/heads/implementation/ips-001-e53947d103a7-attempt-2-1786431483\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f8d25eea8c63-91c025a93208\u0000HEAD dbed30ed6c0f698e6ac0cf2721c5f5f32ef6fde3\u0000branch refs/heads/implementation/ips-002-c64233ee47bb-attempt-2-1786431484\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260812T0305Z/workspace-672c212ce272-246f375bfa55\u0000HEAD a70997d918017eb918e59e7c630d54d6c6ea0109\u0000branch refs/heads/implementation/ips-003-8d98128dd5eb-attempt-1-1786501623\u0000locked IncrementalProofSealer portability recovery evidence quarantine 20260812T0305Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260812T0305Z/workspace-672c212ce272-70c76bc5607b\u0000HEAD a70997d918017eb918e59e7c630d54d6c6ea0109\u0000branch refs/heads/implementation/ips-002-ca58e065ceb6-attempt-1-1786501599\u0000locked IncrementalProofSealer portability recovery evidence quarantine 20260812T0305Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260812T0305Z/workspace-672c212ce272-7fb9627a8144\u0000HEAD a70997d918017eb918e59e7c630d54d6c6ea0109\u0000branch refs/heads/implementation/ips-001-05181d2ee35f-attempt-1-1786501398\u0000locked IncrementalProofSealer portability recovery evidence quarantine 20260812T0305Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/worktrees/agent-supervisor-prompt-entrypoints-v2-duckdb-run-registry/workspace-dac93fd2195c-459f5ef868f8\u0000HEAD 666f5233193acb04c6ee28cba2a1c13ff06224a3\u0000branch refs/heads/implementation/ase2-004-0335c13d99d1-attempt-1-1785869884\u0000locked initializing\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/worktrees/agent-supervisor-prompt-entrypoints-v2-inference-runtime/workspace-84f9cdf57629-3e07ef36c4d8\u0000HEAD 0c07c3efc3d72d0d11fded414b2fdfb156984697\u0000branch refs/heads/implementation/ase2-001-a8a890074051-attempt-1-1785870763\u0000locked initializing\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/worktrees/agent-supervisor-prompt-entrypoints-v2-public-facades/workspace-d815072d6273-15e97443e9dd\u0000HEAD dfc3e5949aec62329be6111fee8ddab16bdc3741\u0000branch refs/heads/implementation/ase2-007-bd232318be45-attempt-1-1785884715\u0000locked initializing\u0000\u0000worktree /home/barberb/lift_coding/.pcpc031-validator-candidate.9Maouo\u0000HEAD 7efbd7659308eaf4b363cacae7a175150a0f89c9\u0000branch refs/heads/codex/pcpc-031-sealed-validator-4e733c2\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1\u0000HEAD fcf3b0e34af37768c8b0e10d1b29c83982461cd0\u0000branch refs/heads/codex/agent-supervisor-autonomous-meta-controller-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_6c931b07958b_9e063fe2dc71\u0000HEAD a4c6e9b482c6f35e9283bc651b4a7372c0fd00ad\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_922ba3787f40_462f374c5b3e\u0000HEAD a257ca9bc3d234f081ecac7f09295a341b94e371\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_98414de54082_9184d4683a5a\u0000HEAD f3cf55bfdca6bcaf4ac7001b2b6485f51d73f5c2\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_a38f3d4fdbe1_6b9a3c7c6cfb\u0000HEAD 25c0e64ef4e1a3db13ad8e2f5315ac817cb11c71\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1\u0000HEAD 8897b7c14fd2dae54feafc692ab77fc4ac75afbe\u0000branch refs/heads/agent/agent-supervisor-efficiency-and-state-hardening-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_5d0dd5f14368_0319ba517472\u0000HEAD d39614614c4b9167606de83f043b4ea76c349e0f\u0000branch refs/heads/implementation/aseh-020-07c800bd72f7-attempt-1-1787580683\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_5d0dd5f14368_21c6ed7b7ec3\u0000HEAD d39614614c4b9167606de83f043b4ea76c349e0f\u0000branch refs/heads/implementation/aseh-040-9aa05cf71eac-attempt-1-1787580589\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_5d0dd5f14368_369311dec8e6\u0000HEAD d39614614c4b9167606de83f043b4ea76c349e0f\u0000branch refs/heads/implementation/aseh-010-706da9b5cf45-attempt-1-1787580609\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_c4a7a53c3b44_0070b634499d\u0000HEAD 71dfb0c81c1b54f702abcacdbfe0c409a898db7c\u0000branch refs/heads/implementation/aseh-020-07c800bd72f7-attempt-1-1787597235\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_c4a7a53c3b44_209068c28fa9\u0000HEAD 71dfb0c81c1b54f702abcacdbfe0c409a898db7c\u0000branch refs/heads/implementation/aseh-040-9aa05cf71eac-attempt-1-1787597209\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_c4a7a53c3b44_2a99c0e1a4f1\u0000HEAD 71dfb0c81c1b54f702abcacdbfe0c409a898db7c\u0000branch refs/heads/implementation/aseh-010-706da9b5cf45-attempt-1-1787597209\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_d796a7d2da32_90a45d1ce7d7\u0000HEAD 7c03c4ded2a80d50fb72130591a521d415386c97\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_d796a7d2da32_d2941e9ab851\u0000HEAD 7c03c4ded2a80d50fb72130591a521d415386c97\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_fdc003587ab9_2097a9146a04\u0000HEAD 94c1560a5547f365af0e78d4152a04c68ab60376\u0000branch refs/heads/implementation/aseh-050-ac0987fc6440-attempt-1-1787582578\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/aseh-bootstrap-hardening-v1\u0000HEAD 4aebd473db34c4d195e72c3840f331e176535da4\u0000branch refs/heads/agent/aseh-bootstrap-hardening-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-000-candidate-review\u0000HEAD bdbc22a712b912056e5864a40d41e0846fb06d1a\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-disable-raw-unstall\u0000HEAD 7e58a9a7a775e36c0f756ddd4415d70c549d1174\u0000branch refs/heads/codex/casf-disable-raw-unstall-20260823\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration\u0000HEAD 8c3fba4e67a25bcc218b711b170031d82d00f7da\u0000branch refs/heads/codex/causal-event-supervisor-federation-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_03b3da72e329_87ec0f02cbf5\u0000HEAD 8c3fba4e67a25bcc218b711b170031d82d00f7da\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_6d2b41fe9995_7466861bddb5\u0000HEAD 79a18b54e3c362e742c53dbe7b16228ba1b5d3a0\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_7a6140690adb_1aa8fdb5d0c8\u0000HEAD c4e42dd5a66ba2727d1200bcfecd1539a13ba6c2\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_ec956e9f4523_16a6af0342fa\u0000HEAD 76c19f28b689d66aa093ba20228935970bdb69fa\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-typed-retry-cooldown\u0000HEAD 640de64d46b6bd0ec31aab312843065af0ca57b2\u0000branch refs/heads/codex/casf-typed-retry-cooldown-20260823\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-final-integration-20260825\u0000HEAD 8c3fba4e67a25bcc218b711b170031d82d00f7da\u0000branch refs/heads/integration/eaaef-final-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-frontier-execution-20260825\u0000HEAD 426a860523f29abb91fc72df7c552b874c8d4c83\u0000branch refs/heads/agent/eaaef-frontier-execution-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-source-qualification-landing-20260825\u0000HEAD f1e80a97d654045b86c8931a6316b142fce39069\u0000branch refs/heads/codex/eaaef-quack-lease-handoff-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-source-qualification-main-20260825\u0000HEAD 777ca22df45c20fd7427fc07c1a93b98bbc4b23f\u0000branch refs/heads/integration/eaaef-source-qualification-main-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric\u0000HEAD 45417221e13fcac23fbc713be32d246d0e2ceeb9\u0000branch refs/heads/archive/pre-reboot-eaaef-ignored-artifacts-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-010-b2d56dc0b512effe\u0000HEAD 31e2c26c1105dc2ca2dd6d63d1db71b52164a424\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-011-915640eaefddf258\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-013-f9660f5f63ae714a\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-021-79b25fc2954319ef\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-023-337e53f5cacca463\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_5ed47494e82a_5971d21a6bc5\u0000HEAD d13535c8278a54a6876a36fb8525e33f69a62c90\u0000branch refs/heads/rescue/worktree/implementation-eaaef-007-66dc64a0dce9-attempt-2-1787240418-01009d97a889\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_6f0984a15a7c_9f0cc3fdc503\u0000HEAD 25063c30c30fc2ebc09eb353a9f3d97f93221995\u0000branch refs/heads/rescue/worktree/implementation-eaaef-006-2a88e0ab81c1-attempt-1-1787246106-12174b172cac\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_6f0984a15a7c_aa89e6a76a81\u0000HEAD 43ac72b3e431a4d01c5c249db41f8435b0738ee7\u0000branch refs/heads/rescue/worktree/implementation-eaaef-008-325598d6648c-attempt-2-1787246016-deca6c6b5927\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_6f0984a15a7c_f6e417f81d40\u0000HEAD 8d0563a072030c2d5dcba01b81815f31ac9e56e2\u0000branch refs/heads/rescue/worktree/implementation-eaaef-006-2a88e0ab81c1-attempt-1-1787246284-42416d40e7cd\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-origin-main\u0000HEAD bbf7f68799072c2b81f7d96eac91f2df3c4b3952\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcar-origin-main-land-20260822\u0000HEAD 505351fef89d92be753246f962725acc5cb80590\u0000branch refs/heads/integration/pcar-origin-main-20260822\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcpc-supervisor-replay-20260824\u0000HEAD 5a6b070c1e87b8059f63e6e9e4b8b55830ed8191\u0000branch refs/heads/integration/pcpc-supervisor-replay-20260824\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcpc031-final-suite-audit-20260824\u0000HEAD a9db801ae0211ca5d999661b172cf3178b254b0d\u0000branch refs/heads/audit/pcpc031-final-suite-20260824\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcpc031-final-suite-integration-20260824\u0000HEAD 5a2281c4c23fe417f57f4cc53810d0efe581c76b\u0000branch refs/heads/audit/pcpc031-final-suite-integration-20260824\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor\u0000HEAD 623bb7d176031b154893daeb05df573bd73d6484\u0000branch refs/heads/agent/pgir-successor-current-supervisor-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262\u0000HEAD 10c38f56803442c224d379cedf6b0e5ca1e35147\u0000branch refs/heads/implementation/pgir-211-23a67a5f1e8a-attempt-1-1787685173\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5cc149cf91f0_db6a3b837d67\u0000HEAD 1d5c543e1f3471d273c8504390c44fc7c63ad20a\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_a447e7cf3fe5_c9bb5cc101f5\u0000HEAD c4cf42fccb58d73b9f48c7f70799165b29cfe3a9\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_acf923734b2d_bfc666dbfa92\u0000HEAD 2d5088fbac0f616fce13d2c468d3fda21ede3615\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_dcfc05f1bf6b_c6d13ef6ef3d\u0000HEAD b87bc6d28fbfefd836696f972f51ee9a677b5071\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-validation-no-site-supervisor\u0000HEAD 7effdd5c390cf86bafc40e02d7d22e9c9816c79f\u0000branch refs/heads/codex/pgir-validation-no-site-supervisor-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1\u0000HEAD 0374c408469ce2aadb1c0ea202bea4dd4c7a2bbc\u0000branch refs/heads/codex/proof-carrying-architecture-refactorer-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_07b4826f0555_ec68eb39d483\u0000HEAD 12f36c65d5fb51895cc55eca6e8176b4eab222a8\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_2c9b42f74a58_8c0488494345\u0000HEAD 0bf6ddd6c67b86a7f39159077d398f5907324f21\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_99a231320640_0fe346fbb4ee\u0000HEAD a73eed9e22384a6e907686d8652234ee4f331b4d\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_dfa579e68ebd_5b28195f0a6b\u0000HEAD 4dd8b2e7c41b05bad327a18a0971aa9cb14f28f3\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1\u0000HEAD d426d838b0ef4347522f2fe7fc72680a0438dc31\u0000branch refs/heads/codex/proof-carrying-procedure-compiler-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_3ef1a60283c0_d37678d7b0a8\u0000HEAD 56e897301118c6e743f34a4908d86ace7141cf9b\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_40a77a7564e0_529eaf1b0dde\u0000HEAD c9987d104d2344e07bbbe936d1bcaadd3df19d1b\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_4a5ad3517b8a_568c25e020dd\u0000HEAD 4e733c2aa33da459670131880b6a2fd85cf6c48c\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_c1bf81589546_36b235fcc436\u0000HEAD 1d730b7a3f708cadc1aa2a93849e4d4901df9018\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1\u0000HEAD dc0ad0a499ca8ec59341395d10b809917f9b5632\u0000branch refs/heads/codex/verified-residual-intelligence-foundry-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_0dfbca0b709e_2cdef506600b\u0000HEAD 04dccbc05d5f2b6806275128fdae356d94f2e48f\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_60826cf050ea_ce53d6bc73b7\u0000HEAD 3cf925ca62b583427c2e16843608b688901f6e6e\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_6c9b34d4a5a2_0ba345aae0bb\u0000HEAD 92eb396d782a76434efb26691709331a2294cc23\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_8ebfc470cf43_450bb6278cab\u0000HEAD d694b164cf196c2df48b45b494b3df4fdd3f3e87\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-control-plane-pool-lease-deferral\u0000HEAD f1eb42ac7867c02a8ffcd812a22892e88b09b85a\u0000branch refs/heads/codex/vrif-control-plane-pool-lease-deferral\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-cross-lane-guard\u0000HEAD a046e42b02d8f8626aab729f87548e00cbab5822\u0000branch refs/heads/codex/vrif-cross-lane-guard\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-daemon-integrate\u0000HEAD 7ff8722b44d10cb368ad07d20e9a387351a91aeb\u0000branch refs/heads/codex/vrif-daemon-integrate\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-dual-capacity-retry\u0000HEAD cfb0439a7fd2819e008343fd02323de444425b2f\u0000branch refs/heads/codex/vrif-dual-capacity-retry\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-merge-origin-main\u0000HEAD 8aa15ed1298cbabf9221a5abea31a8352e35464c\u0000branch refs/heads/codex/vrif-merge-origin-main\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-reconciliation-json-fix\u0000HEAD 259c56fbfb2432a77030c154ba5839cb2a1cc284\u0000branch refs/heads/codex/fix-reconciliation-proposal-validation-json-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-transient-recovery-deferral\u0000HEAD 8ae54e9985f44cbb086fd9224b06cad0c4fc82c0\u0000branch refs/heads/codex/vrif-transient-recovery-deferral\u0000\u0000worktree /home/barberb/lift_coding/data/agent_supervisor/swissknife_contract_assurance/parallel/lanes/lane-03/state/submodule-merge-recovery-worktrees/1c1c80f7f526b9a4-681817-1785411576090947855\u0000HEAD d3b193a6e8aae5e61fc48efd54e29f42e679cf7d\u0000detached\u0000locked initializing\u0000\u0000worktree /tmp/aseh-baseline-check\u0000HEAD 205f3b514cbdf74af67cabdfc045b008e03900c2\u0000detached\u0000\u0000worktree /tmp/vrif-crash-context.1f9wPi\u0000HEAD fe03d8ea8e9ca83d53c3e13621c90e43ab61e832\u0000detached\u0000\u0000worktree /tmp/vrif-foreign-retry-fix.pXetp8\u0000HEAD 1ce3bb38208585f07e7c5dc3e23a294fbf58cb02\u0000detached\u0000\u0000"
+        },
+        "target_path": "/tmp/pgir211-component-6b4i7ehj/outer"
+      }
+    },
+    "registration_before_removal": {
+      "nested": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+          "worktree",
+          "list",
+          "--porcelain",
+          "-z"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:11:33.154643Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "registered": true,
+        "started_at_utc": "2026-08-26T00:11:33.153043Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreia7mwsos67hckbt22olnhextokxc7zblydlckmjfpdnxd3j5ay2z4",
+          "sha256": "sha256:1f65a4e97be712833d69cb69c979b95717f215e06b129892bc6db8f69e831acf",
+          "size_bytes": 1757,
+          "utf8": "worktree /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/pgir-successor-current-supervisor/modules/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000branch refs/heads/implementation/pgir-211-23a67a5f1e8a-attempt-1-1787685173-submodule-ipfs_datasets_py\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5cc149cf91f0_db6a3b837d67/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_a447e7cf3fe5_c9bb5cc101f5/ipfs_datasets_py\u0000HEAD 8736a0023d5d3afe4d0e5b044a3e4480966a8bf7\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_acf923734b2d_bfc666dbfa92/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_dcfc05f1bf6b_c6d13ef6ef3d/ipfs_datasets_py\u0000HEAD 8736a0023d5d3afe4d0e5b044a3e4480966a8bf7\u0000detached\u0000\u0000worktree /tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py\u0000HEAD 2a06dfe8546cdde78ff6d101a94708be0e6bf6e6\u0000detached\u0000\u0000"
+        },
+        "target_path": "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py"
+      },
+      "outer": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+          "worktree",
+          "list",
+          "--porcelain",
+          "-z"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+        "ended_at_utc": "2026-08-26T00:11:33.491979Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "registered": true,
+        "started_at_utc": "2026-08-26T00:11:33.485011Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreihtaymwomfif4w3gogg4xzcuybh5fxagb66ituqbjuazpdfwfsmse",
+          "sha256": "sha256:f306196730a82f2db338c6e5f22a6027e96e0307de44e900a680cbc65b164c91",
+          "size_bytes": 22873,
+          "utf8": "worktree /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate\u0000HEAD 5d79bbf8bb61e027fbda76920580cb9d4fd919c1\u0000branch refs/heads/recovery/pre-reboot-agent-supervisor-20260822\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-491d29ad20c1-0911aaee88b9\u0000HEAD e3a255e87eee1bebac1c0c50d638b6f6d5421677\u0000branch refs/heads/implementation/ips-002-27653d15b6ea-attempt-1-1786433537\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-491d29ad20c1-786a096ee7a0\u0000HEAD e3a255e87eee1bebac1c0c50d638b6f6d5421677\u0000branch refs/heads/implementation/ips-001-dae34340554e-attempt-1-1786433537\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-491d29ad20c1-83b998ab42b3\u0000HEAD e3a255e87eee1bebac1c0c50d638b6f6d5421677\u0000branch refs/heads/implementation/ips-003-0e30d24ff4e3-attempt-1-1786433537\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f67608c71f27-d675ea446ec6\u0000HEAD 46493702ae9d57d8685e592ebf3f02c319ab411c\u0000detached\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f67608c71f27-eb48498d0d14\u0000HEAD 46493702ae9d57d8685e592ebf3f02c319ab411c\u0000detached\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f67608c71f27-fe3bc60152ef\u0000HEAD 46493702ae9d57d8685e592ebf3f02c319ab411c\u0000detached\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f8d25eea8c63-4c2c6c7a9368\u0000HEAD dbed30ed6c0f698e6ac0cf2721c5f5f32ef6fde3\u0000branch refs/heads/implementation/ips-003-0bd995cf0be1-attempt-2-1786431483\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f8d25eea8c63-4fc157076ab6\u0000HEAD dbed30ed6c0f698e6ac0cf2721c5f5f32ef6fde3\u0000branch refs/heads/implementation/ips-001-e53947d103a7-attempt-2-1786431483\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260811T2230Z/workspace-f8d25eea8c63-91c025a93208\u0000HEAD dbed30ed6c0f698e6ac0cf2721c5f5f32ef6fde3\u0000branch refs/heads/implementation/ips-002-c64233ee47bb-attempt-2-1786431484\u0000locked IncrementalProofSealer preserved pre-bootstrap attempt evidence; quarantine refs pinned 20260811T2230Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260812T0305Z/workspace-672c212ce272-246f375bfa55\u0000HEAD a70997d918017eb918e59e7c630d54d6c6ea0109\u0000branch refs/heads/implementation/ips-003-8d98128dd5eb-attempt-1-1786501623\u0000locked IncrementalProofSealer portability recovery evidence quarantine 20260812T0305Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260812T0305Z/workspace-672c212ce272-70c76bc5607b\u0000HEAD a70997d918017eb918e59e7c630d54d6c6ea0109\u0000branch refs/heads/implementation/ips-002-ca58e065ceb6-attempt-1-1786501599\u0000locked IncrementalProofSealer portability recovery evidence quarantine 20260812T0305Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/incremental-proof-sealer-v1/quarantine/worktrees/20260812T0305Z/workspace-672c212ce272-7fb9627a8144\u0000HEAD a70997d918017eb918e59e7c630d54d6c6ea0109\u0000branch refs/heads/implementation/ips-001-05181d2ee35f-attempt-1-1786501398\u0000locked IncrementalProofSealer portability recovery evidence quarantine 20260812T0305Z\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/worktrees/agent-supervisor-prompt-entrypoints-v2-duckdb-run-registry/workspace-dac93fd2195c-459f5ef868f8\u0000HEAD 666f5233193acb04c6ee28cba2a1c13ff06224a3\u0000branch refs/heads/implementation/ase2-004-0335c13d99d1-attempt-1-1785869884\u0000locked initializing\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/worktrees/agent-supervisor-prompt-entrypoints-v2-inference-runtime/workspace-84f9cdf57629-3e07ef36c4d8\u0000HEAD 0c07c3efc3d72d0d11fded414b2fdfb156984697\u0000branch refs/heads/implementation/ase2-001-a8a890074051-attempt-1-1785870763\u0000locked initializing\u0000\u0000worktree /home/barberb/.local/state/ipfs_accelerate_py/prompt-only-entrypoints-v2/scheduler-wave0-v2/worktrees/agent-supervisor-prompt-entrypoints-v2-public-facades/workspace-d815072d6273-15e97443e9dd\u0000HEAD dfc3e5949aec62329be6111fee8ddab16bdc3741\u0000branch refs/heads/implementation/ase2-007-bd232318be45-attempt-1-1785884715\u0000locked initializing\u0000\u0000worktree /home/barberb/lift_coding/.pcpc031-validator-candidate.9Maouo\u0000HEAD 7efbd7659308eaf4b363cacae7a175150a0f89c9\u0000branch refs/heads/codex/pcpc-031-sealed-validator-4e733c2\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1\u0000HEAD fcf3b0e34af37768c8b0e10d1b29c83982461cd0\u0000branch refs/heads/codex/agent-supervisor-autonomous-meta-controller-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_6c931b07958b_9e063fe2dc71\u0000HEAD a4c6e9b482c6f35e9283bc651b4a7372c0fd00ad\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_922ba3787f40_462f374c5b3e\u0000HEAD a257ca9bc3d234f081ecac7f09295a341b94e371\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_98414de54082_9184d4683a5a\u0000HEAD f3cf55bfdca6bcaf4ac7001b2b6485f51d73f5c2\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/worktrees/workspace_a38f3d4fdbe1_6b9a3c7c6cfb\u0000HEAD 25c0e64ef4e1a3db13ad8e2f5315ac817cb11c71\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1\u0000HEAD 8897b7c14fd2dae54feafc692ab77fc4ac75afbe\u0000branch refs/heads/agent/agent-supervisor-efficiency-and-state-hardening-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_5d0dd5f14368_0319ba517472\u0000HEAD d39614614c4b9167606de83f043b4ea76c349e0f\u0000branch refs/heads/implementation/aseh-020-07c800bd72f7-attempt-1-1787580683\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_5d0dd5f14368_21c6ed7b7ec3\u0000HEAD d39614614c4b9167606de83f043b4ea76c349e0f\u0000branch refs/heads/implementation/aseh-040-9aa05cf71eac-attempt-1-1787580589\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_5d0dd5f14368_369311dec8e6\u0000HEAD d39614614c4b9167606de83f043b4ea76c349e0f\u0000branch refs/heads/implementation/aseh-010-706da9b5cf45-attempt-1-1787580609\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_c4a7a53c3b44_0070b634499d\u0000HEAD 71dfb0c81c1b54f702abcacdbfe0c409a898db7c\u0000branch refs/heads/implementation/aseh-020-07c800bd72f7-attempt-1-1787597235\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_c4a7a53c3b44_209068c28fa9\u0000HEAD 71dfb0c81c1b54f702abcacdbfe0c409a898db7c\u0000branch refs/heads/implementation/aseh-040-9aa05cf71eac-attempt-1-1787597209\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_c4a7a53c3b44_2a99c0e1a4f1\u0000HEAD 71dfb0c81c1b54f702abcacdbfe0c409a898db7c\u0000branch refs/heads/implementation/aseh-010-706da9b5cf45-attempt-1-1787597209\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_d796a7d2da32_90a45d1ce7d7\u0000HEAD 7c03c4ded2a80d50fb72130591a521d415386c97\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_d796a7d2da32_d2941e9ab851\u0000HEAD 7c03c4ded2a80d50fb72130591a521d415386c97\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/agent-supervisor-efficiency-and-state-hardening-v1/data/aseh/worktrees/workspace_fdc003587ab9_2097a9146a04\u0000HEAD 94c1560a5547f365af0e78d4152a04c68ab60376\u0000branch refs/heads/implementation/aseh-050-ac0987fc6440-attempt-1-1787582578\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/aseh-bootstrap-hardening-v1\u0000HEAD 4aebd473db34c4d195e72c3840f331e176535da4\u0000branch refs/heads/agent/aseh-bootstrap-hardening-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-000-candidate-review\u0000HEAD bdbc22a712b912056e5864a40d41e0846fb06d1a\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-disable-raw-unstall\u0000HEAD 7e58a9a7a775e36c0f756ddd4415d70c549d1174\u0000branch refs/heads/codex/casf-disable-raw-unstall-20260823\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration\u0000HEAD 8c3fba4e67a25bcc218b711b170031d82d00f7da\u0000branch refs/heads/codex/causal-event-supervisor-federation-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_03b3da72e329_87ec0f02cbf5\u0000HEAD 8c3fba4e67a25bcc218b711b170031d82d00f7da\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_6d2b41fe9995_7466861bddb5\u0000HEAD 79a18b54e3c362e742c53dbe7b16228ba1b5d3a0\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_7a6140690adb_1aa8fdb5d0c8\u0000HEAD c4e42dd5a66ba2727d1200bcfecd1539a13ba6c2\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-integration/data/agent_supervisor/causal_event_federation/worktrees/workspace_ec956e9f4523_16a6af0342fa\u0000HEAD 76c19f28b689d66aa093ba20228935970bdb69fa\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/casf-typed-retry-cooldown\u0000HEAD 640de64d46b6bd0ec31aab312843065af0ca57b2\u0000branch refs/heads/codex/casf-typed-retry-cooldown-20260823\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-final-integration-20260825\u0000HEAD 8c3fba4e67a25bcc218b711b170031d82d00f7da\u0000branch refs/heads/integration/eaaef-final-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-frontier-execution-20260825\u0000HEAD 426a860523f29abb91fc72df7c552b874c8d4c83\u0000branch refs/heads/agent/eaaef-frontier-execution-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-source-qualification-landing-20260825\u0000HEAD f1e80a97d654045b86c8931a6316b142fce39069\u0000branch refs/heads/codex/eaaef-quack-lease-handoff-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/eaaef-source-qualification-main-20260825\u0000HEAD 777ca22df45c20fd7427fc07c1a93b98bbc4b23f\u0000branch refs/heads/integration/eaaef-source-qualification-main-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric\u0000HEAD 45417221e13fcac23fbc713be32d246d0e2ceeb9\u0000branch refs/heads/archive/pre-reboot-eaaef-ignored-artifacts-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-010-b2d56dc0b512effe\u0000HEAD 31e2c26c1105dc2ca2dd6d63d1db71b52164a424\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-011-915640eaefddf258\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-013-f9660f5f63ae714a\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-021-79b25fc2954319ef\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/run-v14/worktrees/eaaef-023-337e53f5cacca463\u0000HEAD 1f7f18e976a9f86cea35d25cddd05314f6701c62\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_5ed47494e82a_5971d21a6bc5\u0000HEAD d13535c8278a54a6876a36fb8525e33f69a62c90\u0000branch refs/heads/rescue/worktree/implementation-eaaef-007-66dc64a0dce9-attempt-2-1787240418-01009d97a889\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_6f0984a15a7c_9f0cc3fdc503\u0000HEAD 25063c30c30fc2ebc09eb353a9f3d97f93221995\u0000branch refs/heads/rescue/worktree/implementation-eaaef-006-2a88e0ab81c1-attempt-1-1787246106-12174b172cac\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_6f0984a15a7c_aa89e6a76a81\u0000HEAD 43ac72b3e431a4d01c5c249db41f8435b0738ee7\u0000branch refs/heads/rescue/worktree/implementation-eaaef-008-325598d6648c-attempt-2-1787246016-deca6c6b5927\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-external-agent-fabric/data/agent_supervisor/external_agent_autonomous_execution_fabric/shared-quack/worktrees/workspace_6f0984a15a7c_f6e417f81d40\u0000HEAD 8d0563a072030c2d5dcba01b81815f31ac9e56e2\u0000branch refs/heads/rescue/worktree/implementation-eaaef-006-2a88e0ab81c1-attempt-1-1787246284-42416d40e7cd\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/ipfs-accelerate-origin-main\u0000HEAD bbf7f68799072c2b81f7d96eac91f2df3c4b3952\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcar-origin-main-land-20260822\u0000HEAD 505351fef89d92be753246f962725acc5cb80590\u0000branch refs/heads/integration/pcar-origin-main-20260822\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcpc-supervisor-replay-20260824\u0000HEAD 5a6b070c1e87b8059f63e6e9e4b8b55830ed8191\u0000branch refs/heads/integration/pcpc-supervisor-replay-20260824\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcpc031-final-suite-audit-20260824\u0000HEAD a9db801ae0211ca5d999661b172cf3178b254b0d\u0000branch refs/heads/audit/pcpc031-final-suite-20260824\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pcpc031-final-suite-integration-20260824\u0000HEAD 5a2281c4c23fe417f57f4cc53810d0efe581c76b\u0000branch refs/heads/audit/pcpc031-final-suite-integration-20260824\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor\u0000HEAD 623bb7d176031b154893daeb05df573bd73d6484\u0000branch refs/heads/agent/pgir-successor-current-supervisor-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262\u0000HEAD 10c38f56803442c224d379cedf6b0e5ca1e35147\u0000branch refs/heads/implementation/pgir-211-23a67a5f1e8a-attempt-1-1787685173\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5cc149cf91f0_db6a3b837d67\u0000HEAD 1d5c543e1f3471d273c8504390c44fc7c63ad20a\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_a447e7cf3fe5_c9bb5cc101f5\u0000HEAD c4cf42fccb58d73b9f48c7f70799165b29cfe3a9\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_acf923734b2d_bfc666dbfa92\u0000HEAD 2d5088fbac0f616fce13d2c468d3fda21ede3615\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_dcfc05f1bf6b_c6d13ef6ef3d\u0000HEAD b87bc6d28fbfefd836696f972f51ee9a677b5071\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/pgir-validation-no-site-supervisor\u0000HEAD 7effdd5c390cf86bafc40e02d7d22e9c9816c79f\u0000branch refs/heads/codex/pgir-validation-no-site-supervisor-20260825\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1\u0000HEAD 0374c408469ce2aadb1c0ea202bea4dd4c7a2bbc\u0000branch refs/heads/codex/proof-carrying-architecture-refactorer-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_07b4826f0555_ec68eb39d483\u0000HEAD 12f36c65d5fb51895cc55eca6e8176b4eab222a8\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_2c9b42f74a58_8c0488494345\u0000HEAD 0bf6ddd6c67b86a7f39159077d398f5907324f21\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_99a231320640_0fe346fbb4ee\u0000HEAD a73eed9e22384a6e907686d8652234ee4f331b4d\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-architecture-refactorer-v1/data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees/workspace_dfa579e68ebd_5b28195f0a6b\u0000HEAD 4dd8b2e7c41b05bad327a18a0971aa9cb14f28f3\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1\u0000HEAD d426d838b0ef4347522f2fe7fc72680a0438dc31\u0000branch refs/heads/codex/proof-carrying-procedure-compiler-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_3ef1a60283c0_d37678d7b0a8\u0000HEAD 56e897301118c6e743f34a4908d86ace7141cf9b\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_40a77a7564e0_529eaf1b0dde\u0000HEAD c9987d104d2344e07bbbe936d1bcaadd3df19d1b\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_4a5ad3517b8a_568c25e020dd\u0000HEAD 4e733c2aa33da459670131880b6a2fd85cf6c48c\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/worktrees/workspace_c1bf81589546_36b235fcc436\u0000HEAD 1d730b7a3f708cadc1aa2a93849e4d4901df9018\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1\u0000HEAD dc0ad0a499ca8ec59341395d10b809917f9b5632\u0000branch refs/heads/codex/verified-residual-intelligence-foundry-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_0dfbca0b709e_2cdef506600b\u0000HEAD 04dccbc05d5f2b6806275128fdae356d94f2e48f\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_60826cf050ea_ce53d6bc73b7\u0000HEAD 3cf925ca62b583427c2e16843608b688901f6e6e\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_6c9b34d4a5a2_0ba345aae0bb\u0000HEAD 92eb396d782a76434efb26691709331a2294cc23\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1/data/agent_supervisor/residual_intelligence_foundry/worktrees/workspace_8ebfc470cf43_450bb6278cab\u0000HEAD d694b164cf196c2df48b45b494b3df4fdd3f3e87\u0000detached\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-control-plane-pool-lease-deferral\u0000HEAD f1eb42ac7867c02a8ffcd812a22892e88b09b85a\u0000branch refs/heads/codex/vrif-control-plane-pool-lease-deferral\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-cross-lane-guard\u0000HEAD a046e42b02d8f8626aab729f87548e00cbab5822\u0000branch refs/heads/codex/vrif-cross-lane-guard\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-daemon-integrate\u0000HEAD 7ff8722b44d10cb368ad07d20e9a387351a91aeb\u0000branch refs/heads/codex/vrif-daemon-integrate\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-dual-capacity-retry\u0000HEAD cfb0439a7fd2819e008343fd02323de444425b2f\u0000branch refs/heads/codex/vrif-dual-capacity-retry\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-merge-origin-main\u0000HEAD 8aa15ed1298cbabf9221a5abea31a8352e35464c\u0000branch refs/heads/codex/vrif-merge-origin-main\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-reconciliation-json-fix\u0000HEAD 259c56fbfb2432a77030c154ba5839cb2a1cc284\u0000branch refs/heads/codex/fix-reconciliation-proposal-validation-json-v1\u0000\u0000worktree /home/barberb/lift_coding/.worktrees/vrif-transient-recovery-deferral\u0000HEAD 8ae54e9985f44cbb086fd9224b06cad0c4fc82c0\u0000branch refs/heads/codex/vrif-transient-recovery-deferral\u0000\u0000worktree /home/barberb/lift_coding/data/agent_supervisor/swissknife_contract_assurance/parallel/lanes/lane-03/state/submodule-merge-recovery-worktrees/1c1c80f7f526b9a4-681817-1785411576090947855\u0000HEAD d3b193a6e8aae5e61fc48efd54e29f42e679cf7d\u0000detached\u0000locked initializing\u0000\u0000worktree /tmp/aseh-baseline-check\u0000HEAD 205f3b514cbdf74af67cabdfc045b008e03900c2\u0000detached\u0000\u0000worktree /tmp/pgir211-component-6b4i7ehj/outer\u0000HEAD 75791d58beeab140c2a3ebaf9789705b3e75c151\u0000detached\u0000\u0000worktree /tmp/vrif-crash-context.1f9wPi\u0000HEAD fe03d8ea8e9ca83d53c3e13621c90e43ab61e832\u0000detached\u0000\u0000worktree /tmp/vrif-foreign-retry-fix.pXetp8\u0000HEAD 1ce3bb38208585f07e7c5dc3e23a294fbf58cb02\u0000detached\u0000\u0000"
+        },
+        "target_path": "/tmp/pgir211-component-6b4i7ehj/outer"
+      }
+    },
+    "removal": {
+      "nested": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+          "worktree",
+          "remove",
+          "/tmp/pgir211-component-6b4i7ehj/outer/ipfs_datasets_py"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+        "ended_at_utc": "2026-08-26T00:11:33.482130Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:11:33.155253Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        }
+      },
+      "outer": {
+        "argv": [
+          "/usr/bin/git",
+          "-C",
+          "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+          "worktree",
+          "remove",
+          "/tmp/pgir211-component-6b4i7ehj/outer"
+        ],
+        "cwd": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262",
+        "ended_at_utc": "2026-08-26T00:11:33.921992Z",
+        "environment": {
+          "GIT_CONFIG_COUNT": "0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "GIT_TERMINAL_PROMPT": "0",
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PATH": "/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "TZ": "UTC"
+        },
+        "environment_controls": {
+          "curl_configuration": "every curl argv begins /usr/bin/curl --disable",
+          "environment_mode": "exact minimal environment; no inherited variables",
+          "git": {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0"
+          },
+          "home_and_xdg_variables_present": false,
+          "proxy_and_credential_variables_present": false
+        },
+        "exit_code": 0,
+        "started_at_utc": "2026-08-26T00:11:33.537465Z",
+        "stderr": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        },
+        "stdout": {
+          "raw_cid": "bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+          "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0,
+          "utf8": ""
+        }
+      }
+    },
+    "removed_after_capture": true,
+    "repository_forest_complete_for_task": true,
+    "source_repositories": {
+      "nested": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262/ipfs_datasets_py",
+      "outer": "/home/barberb/lift_coding/.worktrees/pgir-successor-current-supervisor/data/agent_supervisor/proof_grounded_ir_learning/successor-v1/runtime/worktrees/workspace_5b226adc52ae_05747af60262"
+    }
+  },
+  "observed_end_utc": "2026-08-26T00:11:33.940546Z",
+  "observed_start_utc": "2026-08-26T00:08:44.088441Z",
+  "pgir_205_execution_authorized": false,
+  "schema": "proof-grounded-ir-learning/integrated-component-verification/v2",
+  "sources": {
+    "capture": {
+      "containing_commit_claimed": false,
+      "path": "data/agent_supervisor/proof_grounded_ir_learning/freeze/successor-v1/integrated-acceptance/capture_evidence.py",
+      "prospective_git_blob": "95745b4a7cfb56c1f4cdf5eb66f00e8318f10937",
+      "raw_cid": "bafkreifeh2nnbocok27n3zfbv7vyz3nm3k7wmgwihqxupu56u5wq6co64i",
+      "sha256": "sha256:a43e9ad0b84e56bedde4a1afeb8cedacdabf661ac83c2f47d3bea76d0f09dee2",
+      "size_bytes": 39835
+    },
+    "verifier": {
+      "containing_commit_claimed": false,
+      "path": "scripts/verify_proof_grounded_ir_learning_successor_integrated_acceptance.py",
+      "prospective_git_blob": "712be25b94e24cfa2e53a02140bb1885210103c5",
+      "raw_cid": "bafkreidu6n2fiblftquo6jezxv6yedl34a4ssf6g2yn56cjtyetcidccii",
+      "sha256": "sha256:74f3745405659c28ef2499bd7d820d7be0392917c6d61bdf0933c126240c4242",
+      "size_bytes": 197030
+    }
+  },
+  "target": {
+    "nested_gitlink": "2a06dfe8546cdde78ff6d101a94708be0e6bf6e6",
+    "nested_tree": "7169c2a67929044a02350bc26d0a51c853a4981b",
+    "outer_commit": "75791d58beeab140c2a3ebaf9789705b3e75c151",
+    "outer_tree": "e092bc48487226229c0df5c47029c3db36004e18"
+  },
+  "task_id": "PGIR-211",
+  "unset_environment": [
+    "PYTHONHOME",
+    "PYTEST_ADDOPTS"
+  ]
+}

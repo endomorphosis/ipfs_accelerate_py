@@ -39,7 +39,10 @@ from ..merge.worktree_lifecycle import (
     owner_liveness,
 )
 from .control_plane_contracts import StateCommand, canonical_json_bytes, content_identity
-from .database_task_source import TaskSourceIntegrityError
+from .database_task_source import (
+    TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION,
+    TaskSourceIntegrityError,
+)
 from .intent_repository import (
     IntentRepositoryError,
     MAX_BODY_BYTES,
@@ -105,6 +108,20 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_post_merge_declared_outputs_requalification_recovery",
         "database_portal_inflight_deferral_unstall",
         TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+    }
+)
+_PROTECTED_REOPENED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "proposed",
+        "admitted",
+        "pending",
+        "ready",
+        "todo",
+        "queued",
+        "retrying",
+        "claimed",
+        "in_progress",
+        "running",
     }
 )
 # Linux permits 107 pathname bytes in ``sockaddr_un.sun_path`` while other
@@ -955,7 +972,7 @@ def _validated_retry_cooldown_parameters(
         or parameters.get("operation") != "task.retry.cooldown.record"
         or parameters.get("extension_schema") != TYPED_RETRY_COOLDOWN_SCHEMA
         or parameters.get("expected_task_status")
-        not in {"blocked", "in_progress", "retrying"}
+        not in {"in_progress", "retrying"}
     ):
         raise TypedStateOwnerAuthorizationError(
             "retry cooldown command schema or control status is invalid"
@@ -3569,6 +3586,42 @@ class TypedStateOwnerGateway:
         """
 
         operation = str(command.parameters.get("operation") or "")
+        if operation in {"task.status.cas", "task.status.cas.receipt"}:
+            task_cid = str(command.parameters.get("task_cid") or "").strip()
+            requested_status = str(
+                command.parameters.get("status") or ""
+            ).strip().lower()
+            rows = self._connection.execute(
+                """
+                SELECT status, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [task_cid],
+            ).fetchall()
+            if (
+                len(rows) == 1
+                and str(rows[0][0] or "").strip().lower() == "blocked"
+                and requested_status in _PROTECTED_REOPENED_TASK_STATUSES
+            ):
+                try:
+                    prior_body = json.loads(str(rows[0][1] or "{}"))
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "blocked task status CAS prior receipt is malformed"
+                    ) from exc
+                prior_receipt = (
+                    prior_body.get("completion_receipt")
+                    if isinstance(prior_body, Mapping)
+                    else None
+                )
+                if (
+                    isinstance(prior_receipt, Mapping)
+                    and prior_receipt.get("operation")
+                    == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "protected typed-deferral task cannot be reopened by generic CAS"
+                    )
         if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
             recovery = _validated_dead_claim_recovery_parameters(
                 command.parameters
@@ -4263,22 +4316,9 @@ class TypedStateOwnerGateway:
                         parameters["retry_not_before_ms"],
                     )
                 )
-            else:
-                receipt_state_matches = bool(
-                    receipt_operation
-                    in {
-                        "database_portal_terminal_failure",
-                        "database_portal_typed_deferral_budget_exhausted",
-                    }
-                    and receipt_values.get("retryable") is False
-                    and type(receipt_values.get("control_expected_status"))
-                    is str
-                    and receipt_values["control_expected_status"]
-                    in {"in_progress", "retrying"}
-                    and _strict_scalar_equal(
-                        receipt_values.get("control_expected_revision"),
-                        parameters["expected_task_revision"] - 1,
-                    )
+            else:  # pragma: no cover - closed-schema validation rejects it
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown cannot recover a blocked control task"
                 )
             if (
                 str(task_row[0] or "").strip().lower()

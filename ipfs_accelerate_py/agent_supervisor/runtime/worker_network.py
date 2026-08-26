@@ -934,6 +934,7 @@ def validate_provider_worker_command(
         "--workdir",
         "--env",
         "--mount",
+        "--log-opt",
     }
     legacy_resource_flags = {
         "--pids-limit=1024",
@@ -977,6 +978,7 @@ def validate_provider_worker_command(
         "--dns=127.0.0.1",
         "--runtime=runc",
         "--entrypoint=/usr/bin/env",
+        "--log-driver=json-file",
         "--cap-drop=ALL",
         "--security-opt=no-new-privileges",
         *resource_flags,
@@ -996,6 +998,17 @@ def validate_provider_worker_command(
         if parsed_flags[item] != 1:
             raise ValueError("provider worker contains a duplicate Docker option")
         cursor += 1
+    log_driver_count = docker_args.count("--log-driver=json-file")
+    log_options = [
+        docker_args[index + 1]
+        for index, item in enumerate(docker_args[:-1])
+        if item == "--log-opt"
+    ]
+    if (log_driver_count or log_options) and (
+        log_driver_count != 1
+        or log_options != ["max-size=16m", "max-file=2"]
+    ):
+        raise ValueError("provider worker bounded Docker logging is invalid")
     network_args = [item for item in docker_args if item.startswith("--network=")]
     if network_args != [f"--network={profile.docker_network}"]:
         raise ValueError("provider worker has an invalid Docker network")

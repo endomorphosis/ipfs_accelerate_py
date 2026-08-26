@@ -151,6 +151,8 @@ def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
         LEGACY_BOARD_UNSTALL_POLICY_ENV,
         LEGACY_BOARD_UNSTALL_DISABLED,
     )
+    monkeypatch.delenv("QUACK_TOKEN", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", raising=False)
     args = supervisor_module.parse_args(
         [
             "--todo-path",

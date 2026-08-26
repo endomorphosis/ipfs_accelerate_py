@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import re
 import threading
 import time
@@ -71,6 +72,7 @@ from .control_plane_transactions import (
     default_retry_policy,
     run_with_retry,
 )
+from .database_task_source import TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
 from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
     TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
@@ -106,6 +108,20 @@ DEFAULT_STORE_ID: Final = "control.duckdb"
 DEFAULT_PAGE_LIMIT: Final = 50
 MAX_PAGE_LIMIT: Final = 500
 DEFAULT_CONNECT_TIMEOUT_SECONDS: Final = 30.0
+_PROTECTED_REOPENED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "proposed",
+        "admitted",
+        "pending",
+        "ready",
+        "todo",
+        "queued",
+        "retrying",
+        "claimed",
+        "in_progress",
+        "running",
+    }
+)
 _SAFE_IDENTIFIER_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PLACEHOLDER_RE: Final = re.compile(r"\?")
 # Reject attempts to smuggle multi-statement or comment-terminated SQL.
@@ -992,12 +1008,67 @@ def _fetch_one(result: Any) -> Any | None:
     return rows[0] if rows else None
 
 
+def _reject_protected_typed_deferral_reopen(
+    txn: StateTransaction,
+    *,
+    task_cid: str,
+    requested_status: str,
+) -> None:
+    """Reject generic blocked reopens while the task transaction is held."""
+
+    if requested_status.strip().lower() not in _PROTECTED_REOPENED_TASK_STATUSES:
+        return
+    result = txn.execute_named_operation("select_task_by_cid", (task_cid,))
+    row = _fetch_one(result)
+    current = _row_mapping(
+        (
+            "task_cid",
+            "task_alias",
+            "goal_cid",
+            "status",
+            "revision",
+            "ordinal",
+            "body_json",
+        ),
+        row,
+    )
+    if str(current.get("status") or "").strip().lower() != "blocked":
+        return
+    try:
+        prior_body = json.loads(str(current.get("body_json") or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise QuackClientError(
+            "blocked task status CAS prior receipt is malformed"
+        ) from exc
+    prior_receipt = (
+        prior_body.get("completion_receipt")
+        if isinstance(prior_body, Mapping)
+        else None
+    )
+    if (
+        isinstance(prior_receipt, Mapping)
+        and prior_receipt.get("operation")
+        == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+    ):
+        raise QuackClientError(
+            "protected typed-deferral task cannot be reopened by generic CAS"
+        )
+
+
 class _ConnectionAdapter:
     """Normalize DuckDBConnection / native duckdb connections for transactions."""
 
-    def __init__(self, connection: Any) -> None:
+    def __init__(
+        self,
+        connection: Any,
+        *,
+        embedded_operations: Mapping[str, StatementTemplate] | None = None,
+    ) -> None:
         self._connection = connection
         self._owns_close = False
+        self._embedded_operations = MappingProxyType(
+            dict(embedded_operations or {})
+        )
 
     @property
     def raw(self) -> Any:
@@ -1020,9 +1091,11 @@ class _ConnectionAdapter:
         execute = getattr(self._connection, "execute_operation", None)
         if callable(execute):
             return execute(operation, parameters)
-        # Native/embedded connections intentionally stay on the existing SQL
-        # path. The caller supplies the trusted template object separately.
-        raise AttributeError("connection has no typed owner operation surface")
+        template = self._embedded_operations.get(str(operation or ""))
+        if template is None:
+            raise AttributeError("connection has no typed owner operation surface")
+        bound = template.bind(parameters)
+        return self.execute(template.sql, bound if bound else None)
 
     def commit(self) -> None:
         commit = getattr(self._connection, "commit", None)
@@ -1927,6 +2000,15 @@ class QuackStateClient:
         ) -> Mapping[str, Any]:
             parameters = dict(active.parameters)
             expected = int(parameters["expected_task_revision"])
+            # The remote typed owner performs this semantic check at its
+            # transaction boundary.  Embedded mode has no separate owner, so
+            # enforce the same closed reopen policy inside this transaction.
+            if session.transport_mode is TransportMode.EMBEDDED:
+                _reject_protected_typed_deferral_reopen(
+                    txn,
+                    task_cid=str(parameters["task_cid"]),
+                    requested_status=str(parameters["status"]),
+                )
             result = txn.execute_named_operation(
                 "executor_cas_task_status_receipt",
                 (
@@ -2317,7 +2399,12 @@ class QuackStateClient:
                 raise QuackClientError(f"retry cooldown {name} is invalid")
             normalized[name] = selected
         expected_status = str(expected_task_status or "").strip().lower()
-        if expected_status not in {"blocked", "in_progress", "retrying"}:
+        if expected_status == "blocked":
+            raise QuackClientError(
+                "typed blocked recovery requires coordination-coupled owner "
+                "authority"
+            )
+        if expected_status not in {"in_progress", "retrying"}:
             raise QuackClientError(
                 "retry cooldown requires an exact claimed control state"
             )
@@ -2787,7 +2874,14 @@ class QuackStateClient:
     def _open_connection(self, endpoint: QuackEndpoint) -> _ConnectionAdapter:
         if self._connection_factory is not None:
             connection = self._connection_factory(endpoint)
-            return _ConnectionAdapter(connection)
+            return _ConnectionAdapter(
+                connection,
+                embedded_operations=(
+                    self._templates
+                    if endpoint.mode is TransportMode.EMBEDDED
+                    else None
+                ),
+            )
         if endpoint.mode is TransportMode.EMBEDDED:
             if endpoint.database_path is None:
                 raise QuackClientError("embedded endpoint requires a database path")
@@ -2795,7 +2889,10 @@ class QuackStateClient:
                 endpoint.database_path,
                 timeout_seconds=self.connect_timeout_seconds,
             )
-            return _ConnectionAdapter(connection)
+            return _ConnectionAdapter(
+                connection,
+                embedded_operations=self._templates,
+            )
         return self._open_quack_connection(endpoint)
 
     def _open_quack_connection(self, endpoint: QuackEndpoint) -> _ConnectionAdapter:
@@ -3017,6 +3114,11 @@ class QuackStateClient:
             or expected_task_revision < 0
         ):
             raise QuackClientError("expected_task_revision must be a non-negative int")
+        _reject_protected_typed_deferral_reopen(
+            txn,
+            task_cid=task_cid,
+            requested_status=status,
+        )
         new_revision = txn.cas_row_revision(
             table="tasks",
             key_column="task_cid",

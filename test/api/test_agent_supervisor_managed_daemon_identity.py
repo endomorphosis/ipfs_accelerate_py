@@ -505,6 +505,118 @@ def test_shutdown_recovers_orphan_identity_before_fencing(
     assert not supervisor._managed_daemon_identity_path().exists()
 
 
+def test_shutdown_preserves_marker_when_managed_daemon_remains_live(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    pid = 339
+    desired = tuple(supervisor._build_daemon_command())
+    pid_path = supervisor._managed_daemon_pid_path()
+    pid_path.parent.mkdir(parents=True, exist_ok=True)
+    pid_path.write_text(f"{pid}\n", encoding="utf-8")
+    _write_identity(supervisor, pid=pid, command=desired)
+    monkeypatch.setattr(
+        supervisor,
+        "_read_managed_daemon_pid",
+        lambda: pid,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "process_is_running",
+        lambda value: int(value) == pid,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "process_command_line",
+        lambda _pid: " ".join(desired),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.ALIVE,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_command_argv",
+        lambda _pid: desired,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: pid,
+    )
+
+    result = supervisor._terminate_managed_daemon_tree()
+
+    assert result["terminated"] is False
+    assert result["quiesced"] is False
+    assert result["remaining_pid"] == pid
+    assert pid_path.read_text(encoding="utf-8") == f"{pid}\n"
+    assert supervisor._managed_daemon_identity_path().exists()
+
+
+def test_shutdown_atomically_rebinds_symlinked_marker_to_owned_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    recorded_pid = 339
+    remaining_pid = 340
+    desired = tuple(supervisor._build_daemon_command())
+    pid_path = supervisor._managed_daemon_pid_path()
+    foreign_pid_path = tmp_path / "foreign-managed-daemon.pid"
+    foreign_pid_path.write_text(f"{recorded_pid}\n", encoding="utf-8")
+    pid_path.parent.mkdir(parents=True, exist_ok=True)
+    pid_path.symlink_to(foreign_pid_path)
+    _write_identity(supervisor, pid=recorded_pid, command=desired)
+    monkeypatch.setattr(
+        supervisor_module,
+        "process_is_running",
+        lambda value: int(value) == recorded_pid,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "process_command_line",
+        lambda _pid: " ".join(desired),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.ALIVE,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_command_argv",
+        lambda _pid: desired,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: remaining_pid,
+    )
+
+    result = supervisor._terminate_managed_daemon_tree()
+
+    assert result["terminated"] is False
+    assert result["quiesced"] is False
+    assert result["remaining_pid"] == remaining_pid
+    assert not pid_path.is_symlink()
+    assert pid_path.read_text(encoding="utf-8") == f"{recorded_pid}\n"
+    assert foreign_pid_path.read_text(encoding="utf-8") == f"{recorded_pid}\n"
+    assert supervisor._managed_daemon_identity_path().exists()
+
+
 def test_shared_launcher_refuses_unreconciled_identity_before_spawning(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

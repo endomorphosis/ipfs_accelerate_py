@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 VALIDATOR = ROOT / "scripts/validate_agent_supervisor_residual_intelligence_board.py"
+CONFIG = ROOT / "config/agent_supervisor_residual_intelligence_scheduler.json"
 
 
 def _validator_module():
@@ -90,3 +91,15 @@ def test_declared_dependency_contract_has_no_unknowns_or_cycle() -> None:
     acyclic, cycle = module._acyclic(module.EXPECTED_DEPENDENCIES)
     assert acyclic is True
     assert cycle == []
+
+
+def test_root_completion_authority_files_are_protected() -> None:
+    config = json.loads(CONFIG.read_text(encoding="utf-8"))
+    protected = set(config["protected_paths"])
+    assert {
+        "ipfs_accelerate_py/agent_supervisor/runtime/vrif_runtime_settlement.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+        "scripts/run_agent_supervisor_residual_intelligence.py",
+        "test/api/residual_intelligence/test_goal_authority.py",
+        "test/api/residual_intelligence/test_runtime_settlement.py",
+    } <= protected

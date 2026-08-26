@@ -336,6 +336,44 @@ def test_owner_transaction_seam_rejects_command_kind_status_mismatch(
         assert client.load_generation().revision == live.revision
 
 
+def test_embedded_body_cas_rejects_protected_blocked_reopen(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    task_cid = _seed_goal_and_tasks(db, count=1)[0]
+    with open_duckdb_connection(db) as connection:
+        connection.execute(
+            "UPDATE tasks SET status = ?, body_json = ? WHERE task_cid = ?",
+            [
+                "blocked",
+                (
+                    '{"completion_receipt":{"operation":'
+                    '"database_portal_typed_deferral_budget_exhausted"}}'
+                ),
+                task_cid,
+            ],
+        )
+
+    with _client(db) as client:
+        with pytest.raises(
+            TransactionError,
+            match="cannot be reopened by generic CAS",
+        ):
+            client.cas_task_status(
+                task_cid=task_cid,
+                expected_task_revision=0,
+                new_status="retrying",
+                idempotency_key="idem:protected-body-reopen",
+                body={"completion_receipt": {"operation": "forged-reopen"}},
+            )
+
+        rows = client.execute("select_task_by_cid", {"task_cid": task_cid})
+        assert rows[0]["status"] == "blocked"
+        assert int(rows[0]["revision"]) == 0
+
+
 def test_optimistic_conflict_and_retry(tmp_path: Path) -> None:
     db = tmp_path / "control.duckdb"
     _install(db)
