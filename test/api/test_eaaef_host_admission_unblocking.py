@@ -755,9 +755,24 @@ def test_current_launch_authority_rejects_non_receipt_checkout_drift(
     )
     receipt.parent.mkdir(parents=True)
     receipt.write_text("{}\n", encoding="utf-8")
+    fsmonitor_sentinel = tmp_path.parent / "hostile-fsmonitor-ran"
+    fsmonitor = tmp_path.parent / "hostile-fsmonitor.sh"
+    fsmonitor.write_text(
+        "#!/bin/sh\n"
+        f"printf bad > {str(fsmonitor_sentinel)!r}\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    fsmonitor.chmod(0o700)
+    subprocess.run(
+        ["git", "config", "core.fsmonitor", str(fsmonitor)],
+        cwd=tmp_path,
+        check=True,
+    )
     monkeypatch.setenv("GIT_DIR", str(tmp_path / "attacker-selected-git-dir"))
     monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "attacker-selected-worktree"))
     assert eaaef_checkout_has_only_generated_receipt_drift(tmp_path) is True
+    assert not fsmonitor_sentinel.exists()
 
     test_git_environment = {
         key: value
@@ -767,6 +782,8 @@ def test_current_launch_authority_rejects_non_receipt_checkout_drift(
     subprocess.run(
         [
             "git",
+            "-c",
+            "core.fsmonitor=false",
             "update-index",
             "--assume-unchanged",
             "ipfs_accelerate_py/runtime.py",
@@ -777,8 +794,10 @@ def test_current_launch_authority_rejects_non_receipt_checkout_drift(
     )
     runtime.write_text("SOURCE = 'dirty runtime'\n", encoding="utf-8")
     assert eaaef_checkout_has_only_generated_receipt_drift(tmp_path) is False
+    assert not fsmonitor_sentinel.exists()
     with pytest.raises(RuntimeError, match="non-receipt source drift"):
         verify_current_admission_bundle_receipt(tmp_path)
+    assert not fsmonitor_sentinel.exists()
 
 
 def _write_current_task_receipt(
