@@ -87,6 +87,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+    _process_birth_content_id,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as implementation_daemon_module,
 )
@@ -9510,6 +9514,153 @@ def test_database_observer_without_real_execution_never_resumes_or_claims(
         assert int(final_count[0]) == 1
     finally:
         observer.close()
+
+
+def test_failed_attempt_observes_fresh_typed_admission_as_superseding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:typed-admission-supersession",
+    )
+    stale = DatabaseTaskAttempt(
+        attempt_id="attempt:stale",
+        claim_id="claim:stale",
+        task_cid="task:typed-admission-supersession",
+        task_alias="CASF-TYPED-ADMISSION-SUPERSESSION",
+        attempt_number=1,
+        owner_session_id="session:stale",
+        fencing_token=1,
+        fence_epoch=1,
+        lease_id="lease:stale",
+        committed_phase=ATTEMPT_PHASE_FAILED,
+        status="failed",
+        started_at_ms=1_000,
+        finished_at_ms=2_000,
+    )
+    admitted_pid = 12_345
+    admitted_start_ticks = 19
+    admitted_boot_id = "boot:typed-admission-supersession"
+    admitted_parent_pid = 1
+    admitted_receipt = {
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": (
+            implementation_daemon_module.TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        ),
+        "claim_process_attestation": {
+            "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+            "grant_id": "owner-grant:typed-admission-supersession",
+            "client_id": "client:typed-admission-supersession",
+            "process_birth_id": _process_birth_content_id(
+                admitted_pid,
+                admitted_start_ticks,
+                admitted_boot_id,
+                admitted_parent_pid,
+            ),
+            "pid": admitted_pid,
+            "uid": 0,
+            "start_time_ticks": admitted_start_ticks,
+            "boot_id": admitted_boot_id,
+            "parent_pid": admitted_parent_pid,
+        },
+        "attempt_id": "attempt:fresh",
+        "claim_id": "claim:fresh",
+        "attempt_number": 2,
+        "lease_id": "lease:fresh",
+        "owner_session_id": "session:fresh",
+        "fencing_token": 2,
+        "fence_epoch": 2,
+        "claimed_from_revision": 6,
+        "admitted_from_revision": 7,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+    }
+    task = SimpleNamespace(
+        status="in_progress",
+        revision=8,
+        body={"completion_receipt": admitted_receipt},
+    )
+    try:
+        monkeypatch.setattr(
+            daemon.task_source,
+            "claim_process_attestation",
+            lambda: admitted_receipt["claim_process_attestation"],
+            raising=False,
+        )
+        monkeypatch.setattr(daemon.task_source, "get", lambda _task_cid: task)
+        supersession = daemon._fresh_failed_attempt_control_supersession(stale)
+        assert supersession is not None
+        assert supersession["reason"] == "failed_attempt_control_superseded"
+        assert supersession["control_operation"] == "database_attempt_admitted"
+        assert supersession["successor_attempt_id"] == "attempt:fresh"
+        assert supersession["control_revision"] == 8
+        monkeypatch.setattr(daemon, "_latest_failed_attempts", lambda: [stale])
+        monkeypatch.setattr(
+            daemon,
+            "_terminal_portal_failure_reason",
+            lambda _attempt: "portal_provider_failed",
+        )
+        assert daemon.reconcile_terminal_portal_failures() == [supersession]
+
+        task.body = {
+            "completion_receipt": {
+                **admitted_receipt,
+                "lease_id": stale.lease_id,
+            }
+        }
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        task.body = {"completion_receipt": admitted_receipt}
+        monkeypatch.setattr(
+            daemon.task_source,
+            "claim_process_attestation",
+            None,
+            raising=False,
+        )
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "claim_process_attestation",
+            lambda: admitted_receipt["claim_process_attestation"],
+            raising=False,
+        )
+        task.body = {
+            "completion_receipt": {
+                **admitted_receipt,
+                "claim_phase_schema": "database-attempt-admission@forged",
+            }
+        }
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        task.body = {
+            "completion_receipt": {
+                **admitted_receipt,
+                "claim_process_attestation": {
+                    **admitted_receipt["claim_process_attestation"],
+                    "unexpected": "forged",
+                },
+            }
+        }
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        task.body = {
+            "completion_receipt": {
+                **admitted_receipt,
+                "claim_process_attestation": {
+                    **admitted_receipt["claim_process_attestation"],
+                    "process_birth_id": "birth:forged",
+                },
+            }
+        }
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+
+        task.body = {"completion_receipt": admitted_receipt}
+        task.revision = 9
+        assert daemon._fresh_failed_attempt_control_supersession(stale) is None
+    finally:
+        daemon.close()
 
 
 def test_portal_failure_terminal_cas_refetches_advanced_attempt(

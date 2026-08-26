@@ -3706,6 +3706,54 @@ class TypedStateOwnerGateway:
                 """,
                 [task_cid],
             ).fetchall()
+            expected_control_receipt_json = command.parameters.get(
+                "expected_control_receipt_json"
+            )
+            if expected_control_receipt_json is not None:
+                if operation != "task.status.cas.receipt":
+                    raise TypedStateOwnerAuthorizationError(
+                        "expected control receipt requires a receipt-bearing status CAS"
+                    )
+                try:
+                    expected_control_receipt = json.loads(
+                        str(expected_control_receipt_json)
+                    )
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "expected control receipt is malformed"
+                    ) from exc
+                if (
+                    not isinstance(expected_control_receipt, Mapping)
+                    or canonical_json_bytes(dict(expected_control_receipt)).decode(
+                        "utf-8"
+                    )
+                    != expected_control_receipt_json
+                    or len(rows) != 1
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "expected control receipt is not canonical or authoritative"
+                    )
+                try:
+                    current_body = json.loads(str(rows[0][1] or "{}"))
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "task control receipt is malformed"
+                    ) from exc
+                current_control_receipt = (
+                    current_body.get("completion_receipt")
+                    if isinstance(current_body, Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(current_control_receipt, Mapping)
+                    or canonical_json_bytes(
+                        dict(current_control_receipt)
+                    ).decode("utf-8")
+                    != expected_control_receipt_json
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "task control receipt CAS is stale"
+                    )
             if (
                 len(rows) == 1
                 and str(rows[0][0] or "").strip().lower() == "blocked"

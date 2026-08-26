@@ -82375,6 +82375,8 @@ from ..task_sources.typed_state_owner import (
     TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
     TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
+    TypedStateOwnerAuthorizationError,
+    _validated_database_claim_process_attestation,
     _validated_database_strict_resume_rejection_receipt,
     typed_database_strict_resume_rejection_receipt_id,
 )
@@ -82902,8 +82904,11 @@ _DATABASE_GENERIC_PORTAL_RETRY_FIELDS = frozenset(
         "control_expected_revision",
     }
 )
+_DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS = frozenset(
+    {"database_claim", "database_attempt_admitted"}
+)
 _DATABASE_CONTROL_ATTEMPT_OPERATIONS_BY_STATUS = {
-    "in_progress": frozenset({"database_claim"}),
+    "in_progress": _DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS,
     "retrying": frozenset(
         {
             "database_portal_retry",
@@ -91709,7 +91714,17 @@ class DatabaseImplementationDaemon:
                     and fence_epoch >= 0
                     and (
                         normalized_replay_status != "in_progress"
-                        or receipt_payload.get("operation") == "database_claim"
+                        or receipt_payload.get("operation")
+                        in _DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS
+                    )
+                    and (
+                        receipt_payload.get("operation")
+                        != "database_attempt_admitted"
+                        or self._current_typed_attempt_admission(
+                            current,
+                            receipt_payload,
+                            expected_attempt_number=attempt_number,
+                        )
                     )
                 )
             if not replay_identity_valid:
@@ -99006,7 +99021,50 @@ class DatabaseImplementationDaemon:
                 "shared control receipt belongs to another attempt: "
                 + ", ".join(mismatched)
             )
+        if (
+            receipt.get("operation") == "database_attempt_admitted"
+            and not self._current_typed_attempt_admission(
+                task,
+                receipt,
+                expected_attempt_number=int(attempt.attempt_number),
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "shared control task has no current typed attempt admission"
+            )
         return dict(receipt)
+
+    def _current_typed_attempt_admission(
+        self,
+        task: Any,
+        receipt: Mapping[str, Any],
+        *,
+        expected_attempt_number: int | None = None,
+    ) -> bool:
+        """Validate admitted control authority at its exact shared revision."""
+
+        attempt_number = receipt.get("attempt_number")
+        if not (
+            callable(
+                getattr(self.task_source, "claim_process_attestation", None)
+            )
+            and receipt.get("operation") == "database_attempt_admitted"
+            and receipt.get("claim_phase_schema")
+            == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            and type(attempt_number) is int
+            and attempt_number >= 1
+            and (
+                expected_attempt_number is None
+                or attempt_number == expected_attempt_number
+            )
+            and self._shared_claim_revision_lineage_bound(task, receipt)
+        ):
+            return False
+        try:
+            _validated_database_claim_process_attestation(receipt)
+        except (TypedStateOwnerAuthorizationError, TypeError, ValueError):
+            return False
+        return True
 
     def _require_control_completion_receipt(
         self,
@@ -99015,7 +99073,7 @@ class DatabaseImplementationDaemon:
         *,
         operations: Iterable[str],
     ) -> dict[str, Any]:
-        """Require a direct claim receipt or an exact fenced retry lineage.
+        """Require an active claim receipt or an exact fenced retry lineage.
 
         Legacy embedded coordination rotates the lane-local fence when an
         expired claim is retried without replacing the shared ``database_claim``
@@ -99074,6 +99132,10 @@ class DatabaseImplementationDaemon:
             receipt is None
             or allowed is None
             or receipt.get("operation") not in allowed
+            or (
+                receipt.get("operation") == "database_attempt_admitted"
+                and not self._current_typed_attempt_admission(task, receipt)
+            )
         ):
             return None
         expected = self._control_attempt_identity(attempt)
@@ -101527,7 +101589,7 @@ class DatabaseImplementationDaemon:
         control_receipt = self._require_control_attempt_receipt(
             task,
             attempt,
-            operations=("database_claim",),
+            operations=_DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS,
         )
         cas_result = self._execute_with_retry_transition_authority(
             attempt,
@@ -106314,7 +106376,7 @@ class DatabaseImplementationDaemon:
             control_receipt = self._require_control_attempt_receipt(
                 task,
                 attempt,
-                operations=("database_claim",),
+                operations=_DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS,
             )
         else:
             # A low-level or legacy blocked->retrying writer is not an
@@ -106476,7 +106538,7 @@ class DatabaseImplementationDaemon:
             control_receipt = self._require_control_completion_receipt(
                 task,
                 current,
-                operations=("database_claim",),
+                operations=_DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS,
             )
             prepare_completion = getattr(
                 self.coordinator,
@@ -106526,7 +106588,7 @@ class DatabaseImplementationDaemon:
             self._require_control_completion_receipt(
                 task_before_evidence,
                 current,
-                operations=("database_claim",),
+                operations=_DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS,
             )
             self._protect_attempt_claim(
                 current,
@@ -106544,7 +106606,7 @@ class DatabaseImplementationDaemon:
             control_receipt = self._require_control_completion_receipt(
                 task_before_cas,
                 current,
-                operations=("database_claim",),
+                operations=_DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS,
             )
             cas_result = self._cas_task_status_database(
                 current.task_cid,
@@ -109225,7 +109287,7 @@ class DatabaseImplementationDaemon:
                 control_supersession is not None
                 and control_supersession.get("control_status") == "in_progress"
                 and control_supersession.get("control_operation")
-                == "database_claim"
+                in _DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS
             ):
                 outcomes.append(control_supersession)
                 continue
@@ -109454,7 +109516,7 @@ class DatabaseImplementationDaemon:
                 control_supersession is not None
                 and control_supersession.get("control_status") == "in_progress"
                 and control_supersession.get("control_operation")
-                == "database_claim"
+                in _DATABASE_ACTIVE_CONTROL_ATTEMPT_OPERATIONS
             ):
                 outcomes.append(control_supersession)
                 continue
