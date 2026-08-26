@@ -1017,6 +1017,88 @@ def test_git_observation_decode_failure_is_typed(
         operator._git_text(tmp_path, ("status",), noun="test Git observation")
 
 
+def test_profile_read_only_verifier_cannot_request_writable_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        control_plane_schema as schema_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        duckdb_state as state_module,
+    )
+
+    operator = _operator()
+    database = tmp_path / "control.duckdb"
+    database.write_bytes(b"immutable-test-database\n")
+    database.chmod(0o600)
+    inventory_before = tuple(sorted(item.name for item in tmp_path.iterdir()))
+    raw_before = database.read_bytes()
+    connector_modes: list[bool] = []
+
+    class RawConnection:
+        def close(self) -> None:
+            return None
+
+    class WrappedConnection:
+        def close(self) -> None:
+            return None
+
+    def connect(
+        _engine: object,
+        path: str,
+        *,
+        read_only: bool,
+    ) -> RawConnection:
+        assert path.startswith("/proc/self/fd/")
+        assert read_only is True
+        connector_modes.append(read_only)
+        return RawConnection()
+
+    def verifier(path: Path) -> dict[str, object]:
+        with globals()["open_duckdb_connection"](path):
+            return {
+                "valid": True,
+                "schema_fingerprint": "schema:test-read-only",
+                "catalog_fingerprint": "catalog:test-read-only",
+            }
+
+    assert verifier.__closure__ is None
+    monkeypatch.setattr(
+        schema_module,
+        "verify_datasets_authoritative_operational_schema",
+        verifier,
+    )
+    monkeypatch.setattr(
+        schema_module,
+        "load_datasets_authoritative_operational_catalog",
+        lambda: SimpleNamespace(
+            fingerprint=lambda: "catalog:test-read-only"
+        ),
+    )
+    monkeypatch.setattr(state_module, "connect_duckdb_with_policy", connect)
+    monkeypatch.setattr(
+        state_module.DuckDBConnection,
+        "wrap",
+        staticmethod(lambda _raw: WrappedConnection()),
+    )
+    directory_descriptor = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        verification = operator._verify_profile(
+            Path(f"/proc/self/fd/{directory_descriptor}/{database.name}"),
+            read_only=True,
+        )
+    finally:
+        os.close(directory_descriptor)
+
+    assert verification["valid"] is True
+    assert connector_modes == [True]
+    assert database.read_bytes() == raw_before
+    assert tuple(sorted(item.name for item in tmp_path.iterdir())) == (
+        inventory_before
+    )
+
+
 def test_live_launch_verifies_provenance_before_import_retarget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1054,7 +1136,7 @@ def test_live_launch_verifies_provenance_before_import_retarget(
         def read(self, _member: str) -> bytes:
             return b"sealed"
 
-    def load_raw(_paths: object) -> dict[str, str]:
+    def load_raw(_paths: object, **_kwargs: object) -> dict[str, str]:
         events.append("raw")
         return raw_provenance
 
@@ -1190,6 +1272,121 @@ def test_live_launch_verifies_provenance_before_import_retarget(
         "audit",
         "final_continuity",
         "retarget",
+        "cleanup",
+    ]
+
+
+def test_live_restart_recovery_runs_after_capsule_preparation_and_native_audit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py import llm_router
+
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    events: list[str] = []
+    native_launch = object()
+
+    class AdmissionReached(BaseException):
+        pass
+
+    def raw(_paths: object, **_kwargs: object) -> dict[str, object]:
+        events.append("raw")
+        return provenance
+
+    def prepare(**kwargs: object) -> dict[str, object]:
+        events.append("prepare")
+        assert kwargs["stopped_restart"] is True
+        return {
+            "launch_home": tmp_path / "qualification-home",
+            "native_launch": native_launch,
+            "stopped_restart": True,
+        }
+
+    def preload(observed: object) -> None:
+        events.append("native")
+        assert observed is native_launch
+
+    original_restore = operator._restore_or_retire_stopped_restart_admission
+
+    def restore(receipt_paths: dict[str, Path]) -> str:
+        events.append("restore")
+        return original_restore(receipt_paths)
+
+    def recover(*args: object, **kwargs: object) -> None:
+        events.append("recover")
+        assert kwargs["lock_custody"] is custody
+
+    def verify(**kwargs: object) -> None:
+        events.append("verify")
+        assert kwargs["lock_custody"] is custody
+        raise AdmissionReached
+
+    monkeypatch.setattr(
+        operator,
+        "_load_lgcvf_live_raw_provenance_receipt",
+        raw,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_prepare_lgcvf_configured_board_live_launch",
+        prepare,
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "preload_agent_supervisor_native_dependency",
+        preload,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_restore_or_retire_stopped_restart_admission",
+        restore,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_recover_interrupted_stopped_state_continuity",
+        recover,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_verify_lgcvf_live_provenance_before_import_retarget",
+        verify,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_close_lgcvf_configured_board_live_launch",
+        lambda _launch: events.append("cleanup"),
+    )
+    for name in tuple(os.environ):
+        if name.startswith("LD_") or name == "GLIBC_TUNABLES":
+            monkeypatch.delenv(name)
+
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(AdmissionReached):
+            operator._run_locked_successor(
+                tmp_path / "candidate.json",
+                root=tmp_path,
+                implement=True,
+                duration_seconds=float("inf"),
+                _locked_paths=paths,
+                _lock_custody=custody,
+            )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert events == [
+        "raw",
+        "prepare",
+        "native",
+        "restore",
+        "recover",
+        "verify",
         "cleanup",
     ]
 
@@ -1745,9 +1942,22 @@ def _stopped_state_continuity_fixture(
     paths = operator._paths(root)
     databases = operator._successor_state_databases(paths)
     paths["successor_database"].parent.mkdir(mode=0o700, parents=True)
+    paths["controller_lock"].touch(mode=0o600)
+    paths["controller_lock"].chmod(0o600)
     for name, database in databases.items():
         database.write_bytes(f"stopped-{name}\n".encode())
         database.chmod(0o600)
+    bootstrap = (
+        paths["successor_database"].parent
+        / "evidence"
+        / "bootstrap"
+        / "materialization.json"
+    )
+    operator._atomic_json(
+        bootstrap,
+        {"fixture": "stopped-continuity-bootstrap"},
+        replace=False,
+    )
 
     provenance: dict[str, object] = {
         "receipt_cid": "b" + ("a" * 60),
@@ -1794,6 +2004,12 @@ def _stopped_state_continuity_fixture(
         boot_id="test-stopped-continuity",
         parent_pid=1,
     ).to_dict()
+    scheduler_birth = ProcessBirthIdentity(
+        pid=2_000_000_002,
+        start_time_ticks=18,
+        boot_id="test-stopped-continuity",
+        parent_pid=int(birth["pid"]),
+    ).to_dict()
     owner_identity = {
         "server_id": "server:test-stopped-continuity",
         "store_id": operator.SUCCESSOR_DATABASE_RELATIVE.as_posix(),
@@ -1807,11 +2023,30 @@ def _stopped_state_continuity_fixture(
         controller_birth=birth,
         provenance_cid=str(provenance["receipt_cid"]),
         owner_identity=owner_identity,
-        scheduler_birth=birth,
+        scheduler_birth=scheduler_birth,
         scheduler_returncode=0,
         projection_root=paths["projection_root"],
     )
     operator._write_status(paths["controller_status"], stopped)
+    paths["owner_state"].mkdir(mode=0o700, parents=True)
+    operator._atomic_json(
+        paths["owner_state"] / "quack-state-server.status.json",
+        {
+            "schema": operator.QUACK_STATE_SERVER_STATUS_SCHEMA,
+            "lifecycle": "stopped",
+            "database_path": str(paths["successor_database"]),
+            "state_dir": str(paths["owner_state"]),
+            "store_id": operator.SUCCESSOR_DATABASE_RELATIVE.as_posix(),
+            "secret_handle": operator.SECRET_HANDLE,
+            "owner_marker_path": str(
+                paths["successor_database"].with_name(
+                    ".control.duckdb.state-owner.json"
+                )
+            ),
+            "identity": {**owner_identity, "status": "stopped"},
+        },
+        replace=False,
+    )
     final_source_continuity = {
         "approved_branch": operator.APPROVED_BOARD_BRANCH,
         "resolved_remote_head": "f" * 40,
@@ -1840,6 +2075,19 @@ def _stopped_state_continuity_fixture(
         "_validate_stopped_projection_native_provenance",
         lambda *args, **kwargs: None,
     )
+    recovery_io_paths = operator._stopped_recovery_io_paths(paths, None)
+    recovery_anchors = operator._capture_stopped_recovery_anchors(
+        paths,
+        root=root,
+        stopped_status=stopped,
+        provenance=provenance,
+        io_paths=recovery_io_paths,
+    )
+    stopped = operator._bind_stopped_recovery_anchors_status(
+        stopped,
+        recovery_anchors,
+    )
+    operator._write_status(paths["controller_status"], stopped)
     continuity = operator._write_stopped_state_continuity(
         paths,
         root=root,
@@ -1865,12 +2113,31 @@ def _stopped_state_continuity_fixture(
     return paths, provenance, continuity
 
 
-def test_projection_only_stopped_continuity_does_not_weaken_restart_gate(
+def _unpublish_stopped_continuity(
+    operator: ModuleType,
+    paths: dict[str, Path],
+    *,
+    legacy: bool,
+) -> dict[str, object]:
+    bound = operator._strict_json(paths["controller_status"])
+    unbound = dict(bound)
+    unbound.pop("status_cid")
+    unbound.pop("stopped_state_continuity_receipt_cid")
+    unbound.pop("stopped_state_continuity_status_cid")
+    if legacy:
+        unbound.pop("stopped_recovery_anchors")
+    unbound["status_cid"] = operator._content_id(unbound)
+    operator._write_status(paths["controller_status"], unbound)
+    paths["stopped_state_continuity"].unlink()
+    return unbound
+
+
+def test_stopped_continuity_authorizes_only_same_generation_restart(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     operator = _operator()
-    paths, _provenance, continuity = _stopped_state_continuity_fixture(
+    paths, provenance, continuity = _stopped_state_continuity_fixture(
         operator, tmp_path, monkeypatch
     )
 
@@ -1880,13 +2147,1365 @@ def test_projection_only_stopped_continuity_does_not_weaken_restart_gate(
         operator.STOPPED_STATE_CONTINUITY_ADMISSION_MODE
     )
     assert admitted["receipt"]["receipt_cid"] == continuity["receipt_cid"]
-    assert admitted["receipt"]["restart_authority"] is False
-    assert continuity["test_restart_calls"]() == 1
+    assert admitted["receipt"]["restart_authority"] is True
+    assert admitted["receipt"]["same_generation_restart_only"] is True
+    assert admitted["receipt"]["scheduling_authority"] is False
+    assert admitted["receipt"]["completion_authority"] is False
+    assert continuity["test_restart_calls"]() == 0
+
+    bound = operator._strict_json(paths["controller_status"])
+    anchor = dict(bound)
+    anchor.pop("status_cid")
+    anchor.pop("stopped_state_continuity_receipt_cid")
+    anchor.pop("stopped_state_continuity_status_cid")
+    anchor["status_cid"] = operator._content_id(anchor)
+    operator._write_status(paths["controller_status"], anchor)
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        completed = operator._recover_interrupted_stopped_state_continuity(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+            provenance=provenance,
+        )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+    assert completed["receipt_cid"] == continuity["receipt_cid"]
+    assert operator._load_stopped_restart_provenance(
+        paths,
+        root=tmp_path,
+        provenance=provenance,
+    ) == provenance
+
+
+def test_interrupted_clean_stop_recovers_fresh_restart_receipt_under_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    bound = operator._strict_json(paths["controller_status"])
+    anchor = dict(bound)
+    anchor.pop("status_cid")
+    anchor.pop("stopped_state_continuity_receipt_cid")
+    anchor.pop("stopped_state_continuity_status_cid")
+    anchor["status_cid"] = operator._content_id(anchor)
+    operator._write_status(paths["controller_status"], anchor)
+    paths["stopped_state_continuity"].unlink()
+
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        recovered = operator._recover_interrupted_stopped_state_continuity(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+            provenance=provenance,
+        )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert recovered is not None
+    evidence = recovered["stop_evidence"]
+    assert evidence == {
+        "mode": operator.STOPPED_STATE_RECOVERED_EVIDENCE_MODE,
+        "recovered_at": recovered["issued_at"],
+        "source_controller_status_cid": anchor["status_cid"],
+        "recovery_preflight_cid": evidence["recovery_preflight_cid"],
+        "recovery_authorization_mode": (
+            operator.STOPPED_RECOVERY_DURABLE_ANCHOR_MODE
+        ),
+        "durable_stopped_anchors_cid": anchor[
+            "stopped_recovery_anchors"
+        ]["anchors_cid"],
+        "historical_owner_receipts_reconstructed": False,
+    }
+    assert evidence["recovery_preflight_cid"]
+    assert "owner_checkpoint" not in evidence
+    assert "owner_stop" not in evidence
+    assert recovered["restart_authority"] is True
+    assert recovered["scheduling_authority"] is False
+
+    # Simulate interruption after the immutable receipt link but before the
+    # controller-status cross-binding replacement.
+    operator._write_status(paths["controller_status"], anchor)
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        completed = operator._recover_interrupted_stopped_state_continuity(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+            provenance=provenance,
+        )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+    assert completed == recovered
+    rebound = operator._strict_json(paths["controller_status"])
+    assert rebound["stopped_state_continuity_receipt_cid"] == recovered[
+        "receipt_cid"
+    ]
+    assert operator._load_stopped_restart_provenance(
+        paths,
+        root=tmp_path,
+        provenance=provenance,
+    ) == provenance
+
+
+def test_anchored_unbound_stop_recovers_across_monotonic_remote_catchup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    anchor = _unpublish_stopped_continuity(operator, paths, legacy=False)
+    sealed = anchor["stopped_recovery_anchors"]["final_source_continuity"]
+    assert isinstance(sealed, dict)
+    advanced = {**sealed, "resolved_remote_head": "a" * 40}
+    ancestry_checks: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda _root, *, require_resolved_remote: advanced,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_git_quiet",
+        lambda _root, arguments, *, noun: ancestry_checks.append(
+            tuple(arguments)
+        ),
+    )
+
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        recovered = operator._recover_interrupted_stopped_state_continuity(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+            provenance=provenance,
+        )
+        repeated = operator._recover_interrupted_stopped_state_continuity(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+            provenance=provenance,
+        )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert recovered is not None
+    assert recovered["final_source_continuity"] == sealed
+    assert recovered["final_source_continuity"] != advanced
+    assert repeated is None
+    assert ancestry_checks
+    rebound = operator._strict_json(paths["controller_status"])
+    assert rebound["stopped_state_continuity_receipt_cid"] == recovered[
+        "receipt_cid"
+    ]
+
+
+def test_receipt_written_stop_completes_across_monotonic_remote_catchup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    receipt = operator._strict_json(paths["stopped_state_continuity"])
+    bound = operator._strict_json(paths["controller_status"])
+    anchor = dict(bound)
+    anchor.pop("status_cid")
+    anchor.pop("stopped_state_continuity_receipt_cid")
+    anchor.pop("stopped_state_continuity_status_cid")
+    anchor["status_cid"] = operator._content_id(anchor)
+    assert anchor["status_cid"] == receipt["controller_status_cid"]
+    operator._write_status(paths["controller_status"], anchor)
+    sealed = receipt["final_source_continuity"]
+    assert isinstance(sealed, dict)
+    advanced = {**sealed, "resolved_remote_head": "a" * 40}
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda _root, *, require_resolved_remote: advanced,
+    )
+    monkeypatch.setattr(operator, "_git_quiet", lambda *args, **kwargs: None)
+
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        completed = operator._recover_interrupted_stopped_state_continuity(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+            provenance=provenance,
+        )
+        repeated = operator._recover_interrupted_stopped_state_continuity(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+            provenance=provenance,
+        )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert completed == receipt
+    assert completed["final_source_continuity"] == sealed
+    assert repeated is None
+    rebound = operator._strict_json(paths["controller_status"])
+    assert rebound["stopped_state_continuity_receipt_cid"] == receipt[
+        "receipt_cid"
+    ]
+
+
+@pytest.mark.parametrize("rejection", ("rollback", "not_beneath_current"))
+def test_anchored_recovery_rejects_nonmonotonic_remote_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rejection: str,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    anchor = _unpublish_stopped_continuity(operator, paths, legacy=False)
+    sealed = anchor["stopped_recovery_anchors"]["final_source_continuity"]
+    assert isinstance(sealed, dict)
+    observed_remote = "0" * 40 if rejection == "rollback" else "a" * 40
+    observed = {**sealed, "resolved_remote_head": observed_remote}
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda _root, *, require_resolved_remote: observed,
+    )
+
+    def reject_ancestry(
+        _root: Path,
+        arguments: tuple[str, ...],
+        *,
+        noun: str,
+    ) -> None:
+        ancestor, descendant = arguments[-2:]
+        if rejection == "rollback" and ancestor == sealed[
+            "resolved_remote_head"
+        ]:
+            raise operator.SuccessorOperatorError("test remote rollback")
+        if (
+            rejection == "not_beneath_current"
+            and ancestor == observed_remote
+            and descendant == sealed["current_head"]
+        ):
+            raise operator.SuccessorOperatorError(
+                "test remote is not beneath current"
+            )
+
+    monkeypatch.setattr(operator, "_git_quiet", reject_ancestry)
+    status_before = paths["controller_status"].read_bytes()
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="test remote rollback|test remote is not beneath current",
+        ):
+            operator._recover_interrupted_stopped_state_continuity(
+                paths,
+                root=tmp_path,
+                lock_custody=custody,
+                provenance=provenance,
+            )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert paths["controller_status"].read_bytes() == status_before
+    assert not paths["stopped_state_continuity"].exists()
+
+
+def test_receipt_publication_signal_gap_keeps_one_recoverable_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    anchor = _unpublish_stopped_continuity(operator, paths, legacy=False)
+    original_complete = (
+        operator._complete_interrupted_stopped_recovery_publication
+    )
+
+    class SimulatedSignalGap(RuntimeError):
+        pass
+
+    def interrupt_after_receipt(*args: object, **kwargs: object) -> None:
+        raise SimulatedSignalGap
+
+    monkeypatch.setattr(
+        operator,
+        "_complete_interrupted_stopped_recovery_publication",
+        interrupt_after_receipt,
+    )
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(SimulatedSignalGap):
+            operator._recover_interrupted_stopped_state_continuity(
+                paths,
+                root=tmp_path,
+                lock_custody=custody,
+                provenance=provenance,
+            )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    receipt_metadata = os.lstat(paths["stopped_state_continuity"])
+    assert receipt_metadata.st_nlink == 1
+    assert operator._strict_json(paths["controller_status"]) == anchor
+    assert not tuple(
+        paths["stopped_state_continuity"].parent.glob(
+            f".{paths['stopped_state_continuity'].name}.*"
+        )
+    )
+
+    monkeypatch.setattr(
+        operator,
+        "_complete_interrupted_stopped_recovery_publication",
+        original_complete,
+    )
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        completed = operator._recover_interrupted_stopped_state_continuity(
+            paths,
+            root=tmp_path,
+            lock_custody=custody,
+            provenance=provenance,
+        )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+    assert completed is not None
+    assert operator._strict_json(paths["controller_status"])[
+        "stopped_state_continuity_receipt_cid"
+    ] == completed["receipt_cid"]
+
+
+def test_interrupted_receipt_publication_rejects_extra_field_before_status_bind(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    unbound = _unpublish_stopped_continuity(
+        operator,
+        paths,
+        legacy=False,
+    )
+    # Recreate the receipt-written/status-unbound crash phase, but make the
+    # receipt independently content-addressed with a foreign field.
+    receipt = dict(_continuity)
+    receipt.pop("test_restart_calls")
+    receipt.pop("receipt_cid")
+    receipt["foreign_authority_field"] = False
+    receipt["receipt_cid"] = operator._content_id(receipt)
+    operator._atomic_json(
+        paths["stopped_state_continuity"],
+        receipt,
+        replace=False,
+    )
+    status_before = paths["controller_status"].read_bytes()
+
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="continuity receipt shape differs",
+        ):
+            operator._recover_interrupted_stopped_state_continuity(
+                paths,
+                root=tmp_path,
+                lock_custody=custody,
+                provenance=provenance,
+            )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert paths["controller_status"].read_bytes() == status_before
+    assert operator._strict_json(paths["controller_status"]) == unbound
+
+
+def test_legacy_stop_requires_deterministic_reviewed_preflight_before_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    legacy_status = _unpublish_stopped_continuity(
+        operator,
+        paths,
+        legacy=True,
+    )
+    generation = paths["controller_lock"].parent
+
+    def generation_inventory() -> tuple[tuple[object, ...], ...]:
+        observed: list[tuple[object, ...]] = []
+        for item in sorted(generation.rglob("*")):
+            metadata = os.lstat(item)
+            relative = item.relative_to(generation).as_posix()
+            if item.is_file():
+                observed.append(
+                    (
+                        relative,
+                        "file",
+                        metadata.st_mode & 0o777,
+                        hashlib.sha256(item.read_bytes()).hexdigest(),
+                    )
+                )
+            else:
+                observed.append(
+                    (relative, "directory", metadata.st_mode & 0o777)
+                )
+        return tuple(observed)
+
+    inventory_before = generation_inventory()
+    lock_metadata_before = os.stat(paths["controller_lock"])
+    exact_lock_stat_before = (
+        lock_metadata_before.st_dev,
+        lock_metadata_before.st_ino,
+        lock_metadata_before.st_mode,
+        lock_metadata_before.st_nlink,
+        lock_metadata_before.st_size,
+        lock_metadata_before.st_mtime_ns,
+        lock_metadata_before.st_ctime_ns,
+    )
+    fixture_verify_profile = operator._verify_profile
+    read_only_profile_paths: list[Path] = []
+
+    def verify_profile_read_only(
+        path: Path,
+        *,
+        sealed_descriptor: int | None = None,
+        read_only: bool = False,
+    ) -> dict[str, object]:
+        assert read_only is True
+        assert sealed_descriptor is None
+        assert str(path).startswith("/proc/self/fd/")
+        read_only_profile_paths.append(path)
+        return fixture_verify_profile(path, read_only=read_only)
+
+    monkeypatch.setattr(operator, "_verify_profile", verify_profile_read_only)
+    status_before = paths["controller_status"].read_bytes()
+    owner_before = (
+        paths["owner_state"] / "quack-state-server.status.json"
+    ).read_bytes()
+    databases_before = {
+        name: database.read_bytes()
+        for name, database in operator._successor_state_databases(paths).items()
+    }
+
+    first = operator.stopped_recovery_preflight(tmp_path)
+    second = operator.stopped_recovery_preflight(tmp_path)
+
+    assert first["schema"] == operator.STOPPED_RECOVERY_PREFLIGHT_SCHEMA
+    assert first["preflight_cid"] == second["preflight_cid"]
+    assert first["reviewed_pins"] == second["reviewed_pins"]
+    assert first["legacy_explicit_review_required"] is True
+    assert first["generic_recovery_authorized"] is False
+    assert first["restart_authority"] is False
+    assert first["reviewed_pins"]["controller_status_cid"] == (
+        legacy_status["status_cid"]
+    )
+    assert first["reviewed_pins"]["controller_status"] == legacy_status
+    assert first["reviewed_pins"]["source_provenance_cid"] == (
+        provenance["receipt_cid"]
+    )
+    assert first["reviewed_pins"]["durable_stopped_anchors_cid"] == ""
+    assert first["operation"] == operator.STOPPED_RECOVERY_OPERATION
+    assert first["preflight_cid"] == operator._content_id(
+        {
+            "schema": operator.STOPPED_RECOVERY_PREFLIGHT_SCHEMA,
+            "operation": operator.STOPPED_RECOVERY_OPERATION,
+            "reviewed_pins": first["reviewed_pins"],
+        }
+    )
+    assert read_only_profile_paths
+    assert not paths["stopped_state_continuity"].exists()
+    assert paths["controller_status"].read_bytes() == status_before
+    assert (
+        paths["owner_state"] / "quack-state-server.status.json"
+    ).read_bytes() == owner_before
+    assert {
+        name: database.read_bytes()
+        for name, database in operator._successor_state_databases(paths).items()
+    } == databases_before
+    assert generation_inventory() == inventory_before
+    lock_metadata_after = os.stat(paths["controller_lock"])
+    assert (
+        lock_metadata_after.st_dev,
+        lock_metadata_after.st_ino,
+        lock_metadata_after.st_mode,
+        lock_metadata_after.st_nlink,
+        lock_metadata_after.st_size,
+        lock_metadata_after.st_mtime_ns,
+        lock_metadata_after.st_ctime_ns,
+    ) == exact_lock_stat_before
+
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="legacy stopped status is not self-anchored",
+        ):
+            operator._recover_interrupted_stopped_state_continuity(
+                paths,
+                root=tmp_path,
+                lock_custody=custody,
+                provenance=provenance,
+            )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+    assert not paths["stopped_state_continuity"].exists()
+    assert paths["controller_status"].read_bytes() == status_before
+    assert generation_inventory() == inventory_before
+
     with pytest.raises(
         operator.SuccessorOperatorError,
-        match="restart requires an unimplemented live-continuity receipt",
+        match="reviewed stopped recovery preflight CID differs",
     ):
-        operator._load_provenance(paths, root=tmp_path)
+        operator.recover_stopped_continuity(
+            tmp_path,
+            reviewed_preflight_cid="b" + ("z" * 60),
+        )
+    assert not paths["stopped_state_continuity"].exists()
+    assert paths["controller_status"].read_bytes() == status_before
+    assert generation_inventory() == inventory_before
+
+    result = operator.recover_stopped_continuity(
+        tmp_path,
+        reviewed_preflight_cid=str(first["preflight_cid"]),
+    )
+    receipt = operator._strict_json(paths["stopped_state_continuity"])
+    evidence = receipt["stop_evidence"]
+    assert result["schema"] == operator.STOPPED_RECOVERY_RESULT_SCHEMA
+    assert result["recovered"] is True
+    assert result["preflight_cid"] == first["preflight_cid"]
+    assert result["stopped_state_continuity_receipt_cid"] == (
+        receipt["receipt_cid"]
+    )
+    assert evidence["recovery_authorization_mode"] == (
+        operator.STOPPED_RECOVERY_REVIEWED_LEGACY_MODE
+    )
+    assert evidence["recovery_preflight_cid"] == first["preflight_cid"]
+    assert evidence["durable_stopped_anchors_cid"] == ""
+    monkeypatch.setattr(operator, "_verify_profile", fixture_verify_profile)
+    assert operator._load_stopped_restart_provenance(
+        paths,
+        root=tmp_path,
+        provenance=provenance,
+    ) == provenance
+
+
+@pytest.mark.parametrize("lock_state", ("absent", "unsafe_mode"))
+def test_read_only_stopped_preflight_never_creates_or_repairs_controller_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lock_state: str,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    _unpublish_stopped_continuity(operator, paths, legacy=True)
+    if lock_state == "absent":
+        paths["controller_lock"].unlink()
+        metadata_before = None
+    else:
+        paths["controller_lock"].chmod(0o640)
+        metadata_before = os.stat(paths["controller_lock"])
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="existing controller lock is unavailable|controller lock custody is unsafe",
+    ):
+        operator.stopped_recovery_preflight(tmp_path)
+
+    if metadata_before is None:
+        assert not os.path.lexists(paths["controller_lock"])
+    else:
+        metadata_after = os.stat(paths["controller_lock"])
+        assert (
+            metadata_after.st_dev,
+            metadata_after.st_ino,
+            metadata_after.st_mode,
+            metadata_after.st_nlink,
+            metadata_after.st_size,
+            metadata_after.st_mtime_ns,
+            metadata_after.st_ctime_ns,
+        ) == (
+            metadata_before.st_dev,
+            metadata_before.st_ino,
+            metadata_before.st_mode,
+            metadata_before.st_nlink,
+            metadata_before.st_size,
+            metadata_before.st_mtime_ns,
+            metadata_before.st_ctime_ns,
+        )
+
+
+def test_stopped_preflight_rejects_provenance_change_at_final_reread(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    _unpublish_stopped_continuity(operator, paths, legacy=True)
+    status_before = paths["controller_status"].read_bytes()
+    calls = 0
+
+    def changing_provenance(
+        _paths: dict[str, Path],
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls >= 3:
+            return {**provenance, "receipt_cid": "b" + ("z" * 60)}
+        return provenance
+
+    monkeypatch.setattr(
+        operator,
+        "_load_lgcvf_live_raw_provenance_receipt",
+        changing_provenance,
+    )
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="evidence changed during preflight",
+    ):
+        operator.stopped_recovery_preflight(tmp_path)
+
+    assert calls >= 3
+    assert paths["controller_status"].read_bytes() == status_before
+    assert not paths["stopped_state_continuity"].exists()
+
+
+def test_legacy_reviewed_preflight_cid_expires_when_remote_observation_moves(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, sealed = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    _unpublish_stopped_continuity(operator, paths, legacy=True)
+    first = operator.stopped_recovery_preflight(tmp_path)
+    original_source = sealed["final_source_continuity"]
+    assert isinstance(original_source, dict)
+    advanced = {**original_source, "resolved_remote_head": "a" * 40}
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda _root, *, require_resolved_remote: advanced,
+    )
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="reviewed stopped recovery preflight CID differs",
+    ):
+        operator.recover_stopped_continuity(
+            tmp_path,
+            reviewed_preflight_cid=str(first["preflight_cid"]),
+        )
+
+    assert not paths["stopped_state_continuity"].exists()
+
+
+@pytest.mark.parametrize("tamper", ("database", "owner_status", "source"))
+def test_anchored_stop_recovery_rejects_post_stop_tamper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    _unpublish_stopped_continuity(operator, paths, legacy=False)
+    if tamper == "database":
+        with paths["successor_database"].open("ab") as handle:
+            handle.write(b"post-stop-tamper\n")
+    elif tamper == "owner_status":
+        owner_status = paths["owner_state"] / "quack-state-server.status.json"
+        changed_owner_status = operator._strict_json(
+            owner_status,
+            verify_content_identity=False,
+        )
+        changed_owner_status["test_tamper"] = True
+        operator._atomic_json(owner_status, changed_owner_status, replace=True)
+    else:
+        original = operator._observe_candidate_runtime_continuity(
+            tmp_path,
+            require_resolved_remote=False,
+        )
+        changed = {**original, "current_head": "9" * 40}
+        monkeypatch.setattr(
+            operator,
+            "_observe_candidate_runtime_continuity",
+            lambda _root, *, require_resolved_remote: changed,
+        )
+
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match=(
+                "durable stopped recovery anchors differ|"
+                "stopped-state final source continuity differs"
+            ),
+        ):
+            operator._recover_interrupted_stopped_state_continuity(
+                paths,
+                root=tmp_path,
+                lock_custody=custody,
+                provenance=provenance,
+            )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+    assert not paths["stopped_state_continuity"].exists()
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    ("zero_births", "aliased_scheduler", "boolean_returncode"),
+)
+def test_stopped_recovery_rejects_nonexistent_or_aliased_process_births(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    malformed: str,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    status = _unpublish_stopped_continuity(operator, paths, legacy=True)
+    status.pop("status_cid")
+    if malformed == "zero_births":
+        status["controller_birth"] = {}
+        status["scheduler_birth"] = {}
+        status["owner_identity"] = {
+            **status["owner_identity"],
+            "process_birth": {},
+        }
+    elif malformed == "aliased_scheduler":
+        status["scheduler_birth"] = status["controller_birth"]
+    else:
+        status["scheduler_returncode"] = False
+    status["status_cid"] = operator._content_id(status)
+    operator._write_status(paths["controller_status"], status)
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match=(
+            "process birth binding is malformed|birth relation differs|"
+            "unbound stopped-state controller status differs"
+        ),
+    ):
+        operator.stopped_recovery_preflight(tmp_path)
+    assert not paths["stopped_state_continuity"].exists()
+
+
+def test_restart_admission_reads_generation_fd_bound_surfaces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    observed: dict[str, object] = {}
+    original_strict_json = operator._strict_json
+    original_digests = operator._stopped_state_database_digests
+    original_owner = operator._stopped_owner_status_sha256
+
+    def strict_json(path: Path, **kwargs: object) -> dict[str, object]:
+        schema = kwargs.get("expected_schema")
+        if schema == operator.STOPPED_STATE_CONTINUITY_SCHEMA:
+            observed["receipt"] = path
+        elif schema == operator.CONTROLLER_STATUS_SCHEMA:
+            observed["status"] = path
+        return original_strict_json(path, **kwargs)
+
+    def raw_provenance(
+        _paths: dict[str, Path],
+        *,
+        _receipt_path: Path | None = None,
+    ) -> dict[str, object]:
+        observed["provenance"] = _receipt_path
+        return provenance
+
+    def digests(
+        _paths: dict[str, Path],
+        *,
+        _database_paths: dict[str, Path] | None = None,
+    ) -> dict[str, dict[str, str]]:
+        observed["databases"] = _database_paths
+        return original_digests(
+            _paths,
+            _database_paths=_database_paths,
+        )
+
+    def owner_status(
+        _paths: dict[str, Path],
+        *,
+        controller_status: dict[str, object],
+        _status_path: Path | None = None,
+        _marker_path: Path | None = None,
+    ) -> str:
+        observed["owner_status"] = _status_path
+        observed["owner_marker"] = _marker_path
+        return original_owner(
+            _paths,
+            controller_status=controller_status,
+            _status_path=_status_path,
+            _marker_path=_marker_path,
+        )
+
+    monkeypatch.setattr(operator, "_strict_json", strict_json)
+    monkeypatch.setattr(
+        operator,
+        "_load_lgcvf_live_raw_provenance_receipt",
+        raw_provenance,
+    )
+    monkeypatch.setattr(operator, "_stopped_state_database_digests", digests)
+    monkeypatch.setattr(operator, "_stopped_owner_status_sha256", owner_status)
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        admitted = operator._load_stopped_restart_provenance(
+            paths,
+            root=tmp_path,
+            provenance=provenance,
+            lock_custody=custody,
+        )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert admitted == provenance
+    assert all(
+        str(observed[name]).startswith("/proc/self/fd/")
+        for name in (
+            "provenance",
+            "receipt",
+            "status",
+            "owner_status",
+            "owner_marker",
+        )
+    )
+    database_paths = observed["databases"]
+    assert isinstance(database_paths, dict)
+    assert set(database_paths) == {"control", "coordination", "execution"}
+    assert all(
+        str(database).startswith("/proc/self/fd/")
+        for database in database_paths.values()
+    )
+
+
+def test_pinned_restart_rejects_provenance_change_at_final_reread(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    calls = 0
+
+    def changing_provenance(
+        _paths: dict[str, Path],
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls >= 2:
+            return {**provenance, "receipt_cid": "b" + ("z" * 60)}
+        return provenance
+
+    monkeypatch.setattr(
+        operator,
+        "_load_lgcvf_live_raw_provenance_receipt",
+        changing_provenance,
+    )
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="pinned stopped-state evidence changed during admission",
+        ):
+            operator._load_stopped_restart_admission(
+                paths,
+                root=tmp_path,
+                provenance=provenance,
+                lock_custody=custody,
+            )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert calls >= 2
+    assert paths["stopped_state_continuity"].is_file()
+    assert not paths["stopped_state_restart_admission"].exists()
+
+
+def test_stopped_restart_preparation_allows_clean_head_above_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    config = tmp_path / operator.DEFAULT_SUCCESSOR_CONFIG_RELATIVE
+    config.parent.mkdir(parents=True)
+    config.write_text("{}\n", encoding="utf-8")
+    observed: list[bool] = []
+
+    class RuntimeReached(Exception):
+        pass
+
+    def observe(
+        root: Path,
+        *,
+        require_resolved_remote: bool,
+    ) -> dict[str, object]:
+        assert root == tmp_path
+        observed.append(require_resolved_remote)
+        return {
+            "resolved_remote_head": "1" * 40,
+            "current_head": "2" * 40,
+            "current_tree": "3" * 40,
+        }
+
+    monkeypatch.setattr(operator, "_observe_candidate_runtime_continuity", observe)
+    monkeypatch.setattr(
+        operator,
+        "_candidate_runtime_continuity",
+        lambda _root: pytest.fail("restart must not require remote equality"),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_resolve_installed_duckdb_live_runtime",
+        lambda: (_ for _ in ()).throw(RuntimeReached()),
+    )
+
+    with pytest.raises(RuntimeReached):
+        operator._prepare_lgcvf_configured_board_live_launch(
+            root=tmp_path,
+            config_path=config,
+            provenance={"receipt_cid": "b" + ("a" * 60)},
+            stopped_restart=True,
+        )
+
+    assert observed == [False]
+
+
+def test_projection_once_recovers_interrupted_clean_stop_before_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    bound = operator._strict_json(paths["controller_status"])
+    anchor = dict(bound)
+    anchor.pop("status_cid")
+    anchor.pop("stopped_state_continuity_receipt_cid")
+    anchor.pop("stopped_state_continuity_status_cid")
+    anchor["status_cid"] = operator._content_id(anchor)
+    operator._write_status(paths["controller_status"], anchor)
+    paths["stopped_state_continuity"].unlink()
+    monkeypatch.setattr(operator, "_extension_preflight", lambda: {"available": True})
+
+    class SnapshotReached(Exception):
+        pass
+
+    @operator.contextlib.contextmanager
+    def snapshots(*args: object, **kwargs: object) -> object:
+        assert paths["stopped_state_continuity"].is_file()
+        status = operator._strict_json(paths["controller_status"])
+        assert status["stopped_state_continuity_receipt_cid"]
+        raise SnapshotReached()
+        yield {}
+
+    monkeypatch.setattr(operator, "_sealed_stopped_database_snapshots", snapshots)
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(SnapshotReached):
+            operator._project_ducklake_once_locked(
+                tmp_path,
+                paths=paths,
+                lock_custody=custody,
+            )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert operator._load_stopped_restart_provenance(
+        paths,
+        root=tmp_path,
+        provenance=provenance,
+    ) == provenance
+
+
+def test_projection_once_never_auto_mutates_unreviewed_legacy_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+    _unpublish_stopped_continuity(operator, paths, legacy=True)
+    status_before = paths["controller_status"].read_bytes()
+    monkeypatch.setattr(operator, "_extension_preflight", lambda: {"available": True})
+
+    custody = operator._open_generation_bound_controller_lock(paths)
+    handle = custody["lock_handle"]
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(
+            operator.SuccessorOperatorError,
+            match="legacy stopped status is not self-anchored",
+        ):
+            operator._project_ducklake_once_locked(
+                tmp_path,
+                paths=paths,
+                lock_custody=custody,
+            )
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        operator._close_generation_bound_controller_lock(custody)
+
+    assert not paths["stopped_state_continuity"].exists()
+    assert paths["controller_status"].read_bytes() == status_before
+
+
+def test_clean_stop_restores_only_the_exact_sealed_import_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    sealed = (
+        "/proc/self/fd/91/ipfs_datasets_py",
+        "/proc/self/fd/91",
+    )
+    projected_path = [*sealed, "/usr/lib/python3"]
+    monkeypatch.setattr(operator.sys, "path", projected_path)
+
+    operator._restore_lgcvf_stopped_candidate_import_boundary(
+        root=tmp_path,
+        sealed_import_roots=sealed,
+    )
+
+    assert operator.sys.path[:2] == [
+        str(tmp_path),
+        str(tmp_path / "ipfs_datasets_py"),
+    ]
+    operator.sys.path[:2] = ["/proc/self/fd/92", "/proc/self/fd/92/other"]
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="sealed import boundary differs",
+    ):
+        operator._restore_lgcvf_stopped_candidate_import_boundary(
+            root=tmp_path,
+            sealed_import_roots=sealed,
+        )
+
+
+def test_interrupted_restart_claim_restores_durable_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+
+    bound_status = operator._strict_json(paths["controller_status"])
+    assert operator._claim_stopped_state_restart_admission(
+        paths,
+        expected_restart=True,
+        expected_receipt_cid=str(continuity["receipt_cid"]),
+        expected_controller_status_cid=str(bound_status["status_cid"]),
+    ) is True
+    assert not paths["stopped_state_continuity"].exists()
+    assert paths["stopped_state_restart_admission"].is_file()
+    assert operator._restore_or_retire_stopped_restart_admission(paths) == (
+        "restored_interrupted_claim"
+    )
+    assert paths["stopped_state_continuity"].is_file()
+    assert not paths["stopped_state_restart_admission"].exists()
+    assert operator._strict_json(paths["stopped_state_continuity"])[
+        "receipt_cid"
+    ] == continuity["receipt_cid"]
+    assert operator._load_stopped_restart_provenance(
+        paths,
+        root=tmp_path,
+        provenance=provenance,
+    ) == provenance
+
+
+def test_restart_claim_after_import_retarget_never_reobserves_candidate_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    status = operator._strict_json(paths["controller_status"])
+    monkeypatch.setattr(
+        operator,
+        "_observe_candidate_runtime_continuity",
+        lambda *args, **kwargs: pytest.fail(
+            "claim boundary must not require candidate import roots"
+        ),
+    )
+    monkeypatch.setattr(
+        operator.sys,
+        "path",
+        ["/proc/self/fd/91/ipfs_datasets_py", "/proc/self/fd/91"],
+    )
+
+    assert operator._claim_stopped_state_restart_admission(
+        paths,
+        expected_restart=True,
+        expected_receipt_cid=str(continuity["receipt_cid"]),
+        expected_controller_status_cid=str(status["status_cid"]),
+    ) is True
+    assert paths["stopped_state_restart_admission"].is_file()
+
+
+def test_owner_start_failure_leaves_claim_recoverable_without_receipt_loss(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, continuity = _stopped_state_continuity_fixture(
+        operator, tmp_path, monkeypatch
+    )
+
+    class StartFailure(RuntimeError):
+        pass
+
+    class Server:
+        def start(self) -> None:
+            raise StartFailure
+
+    bound_status = operator._strict_json(paths["controller_status"])
+    assert operator._claim_stopped_state_restart_admission(
+        paths,
+        expected_restart=True,
+        expected_receipt_cid=str(continuity["receipt_cid"]),
+        expected_controller_status_cid=str(bound_status["status_cid"]),
+    ) is True
+    with pytest.raises(StartFailure):
+        Server().start()
+    assert not paths["stopped_state_continuity"].exists()
+    assert paths["stopped_state_restart_admission"].is_file()
+    assert operator._restore_or_retire_stopped_restart_admission(paths) == (
+        "restored_interrupted_claim"
+    )
+    restored = operator._strict_json(paths["stopped_state_continuity"])
+    assert restored["receipt_cid"] == continuity["receipt_cid"]
+
+
+def test_restart_claim_rejects_receipt_deleted_after_pinned_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, provenance, continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    admitted = operator._load_stopped_restart_admission(
+        paths,
+        root=tmp_path,
+        provenance=provenance,
+    )
+    status = admitted["controller_status"]
+    assert isinstance(status, dict)
+    paths["stopped_state_continuity"].unlink()
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="restart receipt presence differs from admission",
+    ):
+        operator._claim_stopped_state_restart_admission(
+            paths,
+            expected_restart=True,
+            expected_receipt_cid=str(continuity["receipt_cid"]),
+            expected_controller_status_cid=str(status["status_cid"]),
+        )
+
+    assert not paths["stopped_state_restart_admission"].exists()
+
+
+def test_corrupt_unbound_status_cannot_retire_the_only_claimed_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    bound = operator._strict_json(paths["controller_status"])
+    assert operator._claim_stopped_state_restart_admission(
+        paths,
+        expected_restart=True,
+        expected_receipt_cid=str(continuity["receipt_cid"]),
+        expected_controller_status_cid=str(bound["status_cid"]),
+    ) is True
+    corrupt = dict(bound)
+    corrupt.pop("status_cid")
+    corrupt.pop("stopped_state_continuity_receipt_cid")
+    corrupt.pop("stopped_state_continuity_status_cid")
+    corrupt["scheduler_returncode"] = False
+    corrupt["status_cid"] = operator._content_id(corrupt)
+    operator._write_status(paths["controller_status"], corrupt)
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="restart admission/status binding differs",
+    ):
+        operator._restore_or_retire_stopped_restart_admission(paths)
+
+    assert paths["stopped_state_restart_admission"].is_file()
+    assert not paths["stopped_state_continuity"].exists()
+    assert operator._strict_json(paths["stopped_state_restart_admission"])[
+        "receipt_cid"
+    ] == continuity["receipt_cid"]
+
+
+def test_interrupted_claim_restoration_requires_both_status_crosslinks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    bound = operator._strict_json(paths["controller_status"])
+    assert operator._claim_stopped_state_restart_admission(
+        paths,
+        expected_restart=True,
+        expected_receipt_cid=str(continuity["receipt_cid"]),
+        expected_controller_status_cid=str(bound["status_cid"]),
+    ) is True
+    malformed = dict(bound)
+    malformed.pop("status_cid")
+    malformed["stopped_state_continuity_status_cid"] = "b" + ("z" * 60)
+    malformed["status_cid"] = operator._content_id(malformed)
+    operator._write_status(paths["controller_status"], malformed)
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="restart admission/status binding differs",
+    ):
+        operator._restore_or_retire_stopped_restart_admission(paths)
+
+    assert paths["stopped_state_restart_admission"].is_file()
+    assert not paths["stopped_state_continuity"].exists()
+
+
+def test_fresh_launch_claim_rejects_late_unadmitted_stopped_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    paths, _provenance, _continuity = _stopped_state_continuity_fixture(
+        operator,
+        tmp_path,
+        monkeypatch,
+    )
+    staged = paths["stopped_state_continuity"].with_suffix(".late")
+    paths["stopped_state_continuity"].rename(staged)
+    assert not paths["stopped_state_continuity"].exists()
+    staged.rename(paths["stopped_state_continuity"])
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="restart receipt presence differs from admission",
+    ):
+        operator._claim_stopped_state_restart_admission(
+            paths,
+            expected_restart=False,
+        )
+
+    assert paths["stopped_state_continuity"].is_file()
+    assert not paths["stopped_state_restart_admission"].exists()
 
 
 def test_stopped_projection_profile_and_identity_use_one_sealed_snapshot(
@@ -2615,7 +4234,7 @@ def test_projection_stopped_continuity_rejects_tamper_and_live_wal(
     else:
         raw = paths["stopped_state_continuity"].read_bytes()
         paths["stopped_state_continuity"].write_bytes(
-            raw.replace(b'"projection_only":true', b'"projection_only":false')
+            raw.replace(b'"restart_authority":true', b'"restart_authority":false')
         )
         paths["stopped_state_continuity"].chmod(0o600)
 
