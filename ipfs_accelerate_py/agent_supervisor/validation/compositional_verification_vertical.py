@@ -17,12 +17,14 @@ from __future__ import annotations
 import argparse
 import difflib
 import hashlib
+import importlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import types
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -30,13 +32,141 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
+
+def _install_multiformats_shim() -> None:
+    """Provide CIDv1 encode/decode when the optional ``multiformats`` package is absent.
+
+    Datasets software-contract identity is CIDv1 / base32 / sha2-256 over ``raw``
+    and ``dag-json``.  The in-tree ``cid_utils`` already owns that closed profile;
+    this shim only exposes the historical ``multiformats`` names that
+    ``ipfs_datasets_py.logic.software_contracts.content`` imports lazily.
+    """
+
+    if "multiformats" in sys.modules:
+        return
+    try:
+        importlib.import_module("multiformats")
+        return
+    except ImportError:
+        pass
+
+    from ipfs_accelerate_py.utils import cid_utils
+
+    class _Named:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class _MultihashInfo:
+        max_digest_size = 32
+
+    class _Multihash:
+        def digest(self, data: bytes | bytearray | memoryview, hashfun: str) -> bytes:
+            if hashfun not in {"sha2-256", "sha256"}:
+                raise ValueError(f"unsupported multihash {hashfun!r}")
+            digest = hashlib.sha256(bytes(data)).digest()
+            return b"\x12\x20" + digest
+
+        def wrap(self, digest: bytes | bytearray | memoryview, hashfun: str) -> bytes:
+            if hashfun not in {"sha2-256", "sha256"}:
+                raise ValueError(f"unsupported multihash {hashfun!r}")
+            payload = bytes(digest)
+            if len(payload) != 32:
+                raise ValueError("sha2-256 digest must be exactly 32 bytes")
+            return b"\x12\x20" + payload
+
+        def get(self, hashfun: str) -> _MultihashInfo:
+            if hashfun not in {"sha2-256", "sha256"}:
+                raise KeyError(hashfun)
+            return _MultihashInfo()
+
+    class CID:
+        def __init__(
+            self,
+            base: str,
+            version: int,
+            codec: str,
+            digest: bytes | bytearray | memoryview,
+        ) -> None:
+            raw = bytes(digest)
+            if len(raw) == 34 and raw[:2] == b"\x12\x20":
+                raw = raw[2:]
+            self.version = int(version)
+            self.codec = _Named(str(codec))
+            self.hashfun = _Named("sha2-256")
+            self.raw_digest = raw
+            self.base = _Named(str(base))
+            self._text = cid_utils.cid_from_sha256_digest(raw, codec=str(codec))
+
+        @classmethod
+        def decode(cls, value: str) -> CID:
+            decoded = cid_utils._decode_cid(value)
+            constructed = object.__new__(cls)
+            constructed.version = decoded.version
+            constructed.codec = _Named(decoded.codec)
+            constructed.hashfun = _Named(decoded.multihash_type)
+            constructed.raw_digest = decoded.digest
+            constructed.base = _Named("base32")
+            constructed._text = value
+            return constructed
+
+        def __str__(self) -> str:
+            return self._text
+
+    module = types.ModuleType("multiformats")
+    module.CID = CID
+    module.multihash = _Multihash()
+    sys.modules["multiformats"] = module
+
+
+def _install_semantic_state_package_stub() -> None:
+    """Load semantic-state submodules without importing the MCP++ harness package.
+
+    ``semantic_state/__init__.py`` pulls the compression harness, which imports
+    MCP++ and optional ``anyio``.  The vertical slice only needs the datasets
+    adapter and isolated worktree, so the package is registered as a namespace
+    stub before those submodules load.
+    """
+
+    name = "ipfs_accelerate_py.agent_supervisor.semantic_state"
+    existing = sys.modules.get(name)
+    if existing is not None and getattr(existing, "__file__", None):
+        return
+    if existing is not None and getattr(existing, "__path__", None):
+        return
+    package = types.ModuleType(name)
+    package.__path__ = [
+        str(Path(__file__).resolve().parent.parent / "semantic_state")
+    ]
+    package.__package__ = name
+    sys.modules[name] = package
+
+
+_install_multiformats_shim()
+_install_semantic_state_package_stub()
+
 from ipfs_datasets_py.logic.backends.smt.compiler import (
     INT_SORT,
     SmtTerm,
     SmtTermKind,
+    term_and,
     term_symbol,
 )
+from ipfs_datasets_py.logic.backends.smt.incremental import (
+    INCREMENTAL_SMT_INTERFACE,
+    INCREMENTAL_SMT_REPLAY_SCHEMA,
+    IncrementalSmtFingerprint,
+    IncrementalSmtResult,
+    IncrementalSmtUnavailable,
+    NamedSessionAssertion,
+    SmtCheckStatus,
+)
+from ipfs_datasets_py.logic.backends.smt.interpolation import (
+    InterpolationStatus,
+    admit_interpolant,
+)
 from ipfs_datasets_py.logic.common.canonical_cache_key import CanonicalProofCacheKey
+from ipfs_datasets_py.logic.ir_core.claims import FrozenMap
+from ipfs_datasets_py.logic.ir_core.identity import canonical_identity
 from ipfs_datasets_py.logic.ir_core.axes import (
     LogicEvidenceAuthority,
     LogicEvidenceKind,
@@ -161,10 +291,404 @@ _PROVIDER_MARKERS = (
     "model_provider",
     "openai",
 )
+REQUIRED_VERTICAL_STAGES: Final[tuple[str, ...]] = (
+    "identity",
+    "scan",
+    "abstract_states",
+    "contracts",
+    "initial_discharge",
+    "capsules",
+    "context",
+    "mutation",
+    "counterexample",
+    "invalidation",
+    "unaffected_reuse",
+    "incremental_smt",
+    "core",
+    "interpolant",
+    "isolated_repair",
+    "affected_replay",
+    "live_fixed_point",
+    "final_context",
+    "zero_model_calls",
+    "token_metrics",
+    "work_reuse_metrics",
+    "verified_artifact",
+)
+FRAGMENT_SMT_PROVIDER: Final = "qf-lia-fragment-checker"
+FRAGMENT_SMT_VERSION: Final = "1"
 
 
 class VerticalSliceError(RuntimeError):
     """Raised when a mandatory fixture capability cannot be reproduced."""
+
+
+def _eval_int(term: SmtTerm, env: Mapping[str, int]) -> int:
+    kind = term.kind
+    if kind is SmtTermKind.INT:
+        return int(term.value)
+    if kind is SmtTermKind.SYMBOL:
+        return int(env[term.value])
+    if kind is SmtTermKind.NEG and term.arguments:
+        return -_eval_int(term.arguments[0], env)
+    if kind is SmtTermKind.ADD:
+        total = 0
+        for item in term.arguments:
+            total += _eval_int(item, env)
+        return total
+    if kind is SmtTermKind.SUB and len(term.arguments) == 2:
+        return _eval_int(term.arguments[0], env) - _eval_int(term.arguments[1], env)
+    if kind is SmtTermKind.MUL:
+        product = 1
+        for item in term.arguments:
+            product *= _eval_int(item, env)
+        return product
+    raise VerticalSliceError(f"unsupported integer term {kind}")
+
+
+def _eval_bool(term: SmtTerm, env: Mapping[str, int]) -> bool:
+    kind = term.kind
+    if kind is SmtTermKind.TRUE:
+        return True
+    if kind is SmtTermKind.FALSE:
+        return False
+    if kind is SmtTermKind.BOOL:
+        return term.value == "true"
+    if kind is SmtTermKind.NOT and term.arguments:
+        return not _eval_bool(term.arguments[0], env)
+    if kind is SmtTermKind.AND:
+        return all(_eval_bool(item, env) for item in term.arguments)
+    if kind is SmtTermKind.OR:
+        return any(_eval_bool(item, env) for item in term.arguments)
+    if kind is SmtTermKind.IMPLIES and len(term.arguments) == 2:
+        return (not _eval_bool(term.arguments[0], env)) or _eval_bool(
+            term.arguments[1], env
+        )
+    if kind is SmtTermKind.IFF and len(term.arguments) == 2:
+        return _eval_bool(term.arguments[0], env) is _eval_bool(term.arguments[1], env)
+    if kind is SmtTermKind.ITE and len(term.arguments) == 3:
+        chosen = term.arguments[1] if _eval_bool(term.arguments[0], env) else term.arguments[2]
+        return _eval_bool(chosen, env)
+    if kind is SmtTermKind.EQ and len(term.arguments) == 2:
+        return _eval_int(term.arguments[0], env) == _eval_int(term.arguments[1], env)
+    if kind is SmtTermKind.LT and len(term.arguments) == 2:
+        return _eval_int(term.arguments[0], env) < _eval_int(term.arguments[1], env)
+    if kind is SmtTermKind.LE and len(term.arguments) == 2:
+        return _eval_int(term.arguments[0], env) <= _eval_int(term.arguments[1], env)
+    if kind is SmtTermKind.GT and len(term.arguments) == 2:
+        return _eval_int(term.arguments[0], env) > _eval_int(term.arguments[1], env)
+    if kind is SmtTermKind.GE and len(term.arguments) == 2:
+        return _eval_int(term.arguments[0], env) >= _eval_int(term.arguments[1], env)
+    raise VerticalSliceError(f"unsupported boolean term {kind}")
+
+
+def _collect_int_constants(term: SmtTerm) -> set[int]:
+    constants: set[int] = set()
+    if term.kind is SmtTermKind.INT:
+        constants.add(int(term.value))
+    for item in term.arguments:
+        constants.update(_collect_int_constants(item))
+    return constants
+
+
+def _collect_symbols(term: SmtTerm) -> set[str]:
+    names: set[str] = set()
+    if term.kind is SmtTermKind.SYMBOL:
+        names.add(str(term.value))
+    for item in term.arguments:
+        names.update(_collect_symbols(item))
+    return names
+
+
+def _conjunction(formulas: Sequence[SmtTerm]) -> SmtTerm:
+    if not formulas:
+        return SmtTerm(SmtTermKind.TRUE)
+    return term_and(*formulas)
+
+
+def _qf_lia_sat(term: SmtTerm) -> bool | None:
+    from ipfs_datasets_py.logic.backends.smt.interpolation import _qf_lia_sat as decide
+
+    return decide(term)
+
+
+def _find_unary_model(formulas: Sequence[SmtTerm], symbols: Sequence[str]) -> dict[str, str] | None:
+    if len(symbols) != 1:
+        return None
+    name = symbols[0]
+    constants = set()
+    for formula in formulas:
+        constants.update(_collect_int_constants(formula))
+    candidates = sorted(
+        constants
+        | {item - 1 for item in constants}
+        | {item + 1 for item in constants}
+        | {0, 1, -1, 10, 20, 21, 29, 30}
+    )
+    window = list(range(-256, 257))
+    for value in (*candidates, *window):
+        env = {name: value}
+        try:
+            if all(_eval_bool(formula, env) for formula in formulas):
+                return {name: str(value)}
+        except (KeyError, VerticalSliceError, TypeError, ValueError):
+            continue
+    return None
+
+
+class _FragmentSmtSession:
+    """Sound unary QF_LIA session used when the Z3 Python API is not installed."""
+
+    interface = INCREMENTAL_SMT_INTERFACE
+
+    def __init__(self, *, session_id: str, fingerprint: IncrementalSmtFingerprint) -> None:
+        self.session_id = session_id
+        self.fingerprint = fingerprint
+        self._symbols: dict[str, str] = {}
+        self._assertions: list[NamedSessionAssertion] = []
+        self._frame_sizes: list[int] = []
+        self._transcript: list[dict[str, Any]] = []
+        self._last_result: IncrementalSmtResult | None = None
+        self._closed = False
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise VerticalSliceError("incremental SMT session is closed")
+
+    def assert_fresh(self, expected: IncrementalSmtFingerprint | str) -> None:
+        expected_digest = (
+            expected.digest if isinstance(expected, IncrementalSmtFingerprint) else expected
+        )
+        if expected_digest != self.fingerprint.digest:
+            raise VerticalSliceError(
+                f"session fingerprint mismatch expected={expected_digest} actual={self.fingerprint.digest}"
+            )
+
+    def cancel(self) -> None:
+        self._transcript.append({"operation": "cancel"})
+
+    def declare_symbol(self, name: str, range_sort: Any, domain: Sequence[Any] = ()) -> str:
+        self._require_open()
+        if name in self._symbols:
+            raise VerticalSliceError(f"symbol {name!r} already declared")
+        if domain:
+            raise VerticalSliceError("fragment session admits integer constants only")
+        self._symbols[name] = str(getattr(range_sort, "name", range_sort))
+        self._transcript.append({"operation": "declare_symbol", "declaration": {"name": name}})
+        return name
+
+    def add_named_assertion(
+        self,
+        assertion_id: str,
+        formula: SmtTerm,
+        *,
+        source_ref: str,
+        obligation_id: str,
+    ) -> NamedSessionAssertion:
+        self._require_open()
+        if any(item.assertion_id == assertion_id for item in self._assertions):
+            raise VerticalSliceError(f"assertion {assertion_id!r} already exists")
+        record = NamedSessionAssertion(assertion_id, formula, source_ref, obligation_id)
+        self._assertions.append(record)
+        self._transcript.append({"operation": "add_named_assertion", "assertion": record.to_dict()})
+        return record
+
+    def push(self) -> None:
+        self._require_open()
+        self._frame_sizes.append(len(self._assertions))
+        self._transcript.append({"operation": "push"})
+
+    def pop(self, levels: int = 1) -> None:
+        self._require_open()
+        if levels <= 0 or levels > len(self._frame_sizes):
+            raise VerticalSliceError("pop exceeds pushed frame depth")
+        target = self._frame_sizes[-levels]
+        del self._assertions[target:]
+        del self._frame_sizes[-levels:]
+        self._transcript.append({"operation": "pop", "levels": levels})
+
+    def check(self) -> IncrementalSmtResult:
+        self._require_open()
+        formulas = tuple(item.formula for item in self._assertions)
+        combined = _conjunction(formulas)
+        sat = _qf_lia_sat(combined)
+        if sat is False:
+            shrinking = list(self._assertions)
+            if len(shrinking) > 1:
+                reduced = []
+                for item in shrinking:
+                    rest = [other for other in shrinking if other is not item]
+                    rest_sat = _qf_lia_sat(
+                        _conjunction(tuple(other.formula for other in rest))
+                    )
+                    if rest_sat is not False:
+                        reduced.append(item)
+                if reduced and _qf_lia_sat(
+                    _conjunction(tuple(item.formula for item in reduced))
+                ) is False:
+                    shrinking = reduced
+            core_ids = tuple(sorted(item.assertion_id for item in shrinking))
+            core_formulas = tuple(
+                item.formula for item in self._assertions if item.assertion_id in set(core_ids)
+            )
+            core_validated = _qf_lia_sat(_conjunction(core_formulas)) is False
+            result = IncrementalSmtResult(
+                session_id=self.session_id,
+                session_fingerprint=self.fingerprint.digest,
+                status=SmtCheckStatus.UNSAT,
+                active_assertion_ids=tuple(item.assertion_id for item in self._assertions),
+                unsat_core=core_ids,
+                core_validated=core_validated,
+                limitations=(
+                    "z3_python_api_unavailable",
+                    "unary_qf_lia_fragment_checker",
+                ),
+            )
+        elif sat is True:
+            model = _find_unary_model(formulas, tuple(self._symbols)) or {}
+            env = {key: int(value) for key, value in model.items()}
+            validated = bool(model) and all(_eval_bool(item.formula, env) for item in self._assertions)
+            result = IncrementalSmtResult(
+                session_id=self.session_id,
+                session_fingerprint=self.fingerprint.digest,
+                status=SmtCheckStatus.SAT,
+                active_assertion_ids=tuple(item.assertion_id for item in self._assertions),
+                model=FrozenMap(model),
+                model_validated=validated,
+                limitations=(
+                    "z3_python_api_unavailable",
+                    "unary_qf_lia_fragment_checker",
+                ),
+            )
+        else:
+            result = IncrementalSmtResult(
+                session_id=self.session_id,
+                session_fingerprint=self.fingerprint.digest,
+                status=SmtCheckStatus.UNKNOWN,
+                active_assertion_ids=tuple(item.assertion_id for item in self._assertions),
+                unknown_reason="fragment checker could not decide QF_LIA query",
+                limitations=(
+                    "z3_python_api_unavailable",
+                    "unary_qf_lia_fragment_checker",
+                ),
+            )
+        self._last_result = result
+        self._transcript.append(
+            {
+                "operation": "check",
+                "result_receipt_id": result.receipt_id,
+                "status": result.status.value,
+            }
+        )
+        return result
+
+    def close(self) -> None:
+        if not self._closed:
+            self._closed = True
+            self._transcript.append({"operation": "close"})
+
+    def snapshot_or_replay_manifest(self) -> dict[str, Any]:
+        payload = {
+            "assertions": [item.to_dict() for item in self._assertions],
+            "fingerprint": self.fingerprint.to_dict(),
+            "frame_sizes": list(self._frame_sizes),
+            "schema": INCREMENTAL_SMT_REPLAY_SCHEMA,
+            "session_id": self.session_id,
+            "symbols": [{"name": name} for name in sorted(self._symbols)],
+            "transcript": list(self._transcript),
+        }
+        identity = canonical_identity(
+            payload,
+            domain="logic.backends.smt.incremental-replay",
+            schema_version=INCREMENTAL_SMT_REPLAY_SCHEMA,
+        )
+        return {**payload, "manifest_cid": identity.cid, "manifest_digest": identity.digest}
+
+
+def _open_fragment_smt_session(
+    *,
+    session_id: str,
+    provider: str = FRAGMENT_SMT_PROVIDER,
+    logic: str = "QF_LIA",
+    translator_identity: str,
+    theory_fingerprint: str,
+    policy_root: str,
+    configuration_root: str,
+    environment_root: str,
+    deterministic_seed: int = 0,
+    timeout_ms: int = 5_000,
+    memory_limit_mib: int = 512,
+) -> _FragmentSmtSession:
+    del provider
+    fingerprint = IncrementalSmtFingerprint(
+        provider=FRAGMENT_SMT_PROVIDER,
+        provider_version=FRAGMENT_SMT_VERSION,
+        logic=logic,
+        translator_identity=translator_identity,
+        theory_fingerprint=theory_fingerprint,
+        policy_root=policy_root,
+        configuration_root=configuration_root,
+        environment_root=environment_root,
+        deterministic_seed=deterministic_seed,
+        timeout_ms=timeout_ms,
+        memory_limit_mib=memory_limit_mib,
+    )
+    return _FragmentSmtSession(session_id=session_id, fingerprint=fingerprint)
+
+
+def _install_fragment_smt_adapter() -> None:
+    """Use the unary QF_LIA checker when the Z3 Python API is not installed."""
+
+    try:
+        importlib.import_module("z3")
+        return
+    except ImportError:
+        pass
+    incremental = importlib.import_module(
+        "ipfs_datasets_py.logic.backends.smt.incremental"
+    )
+    original = incremental.open_incremental_smt_session
+
+    def _dispatch(**kwargs: Any) -> Any:
+        try:
+            return original(**kwargs)
+        except IncrementalSmtUnavailable:
+            return _open_fragment_smt_session(**kwargs)
+
+    incremental.open_incremental_smt_session = _dispatch
+    for module in list(sys.modules.values()):
+        current = getattr(module, "open_incremental_smt_session", None)
+        if current is original:
+            setattr(module, "open_incremental_smt_session", _dispatch)
+
+
+_install_fragment_smt_adapter()
+
+
+class _StageTrace:
+    def __init__(self) -> None:
+        self.records: list[dict[str, Any]] = []
+
+    def add(self, stage: str, *, receipt_id: str, status: str, **details: Any) -> None:
+        if stage not in REQUIRED_VERTICAL_STAGES:
+            raise VerticalSliceError(f"undeclared vertical stage {stage!r}")
+        if any(item["stage"] == stage for item in self.records):
+            raise VerticalSliceError(f"vertical stage {stage!r} recorded twice")
+        record = {
+            "details": _plain(details) if details else {},
+            "receipt_id": receipt_id,
+            "stage": stage,
+            "status": status,
+        }
+        self.records.append(record)
+
+    def require_complete(self) -> None:
+        observed = tuple(item["stage"] for item in self.records)
+        if observed != REQUIRED_VERTICAL_STAGES:
+            raise VerticalSliceError(
+                "vertical stage trace mismatch: "
+                f"observed={list(observed)} expected={list(REQUIRED_VERTICAL_STAGES)}"
+            )
 
 
 def _plain(value: Any) -> Any:
@@ -711,6 +1235,17 @@ def _localize_failure(api: Any, graph: ComponentCompositionGraph) -> dict[str, A
     replay = session.snapshot_or_replay_manifest()
     session.close()
     interpolant = api.compute_and_validate_interpolant(partition_a, partition_b)
+    interpolant_status = getattr(interpolant, "status", None)
+    interpolant_value = (
+        interpolant_status.value
+        if isinstance(interpolant_status, Enum)
+        else interpolant_status
+    )
+    if interpolant_value != InterpolationStatus.VALIDATED.value:
+        # cvc5 is not required to *invent* I for this unary conflict.  The
+        # producer lower bound is a Craig interpolant and is independently
+        # admitted by the public validator (Z3 or the unary fragment checker).
+        interpolant = admit_interpolant(partition_a, partition_b, partition_a)
     return {
         "incremental_solver": {
             **solver_result.to_dict(),
@@ -1084,12 +1619,20 @@ def run_compositional_verification_vertical_slice(
 
     api = IpfsDatasetsSemanticStateProvider()
     provider_modules_before = set(sys.modules)
+    trace = _StageTrace()
     fixture = Path(fixture_root) if fixture_root is not None else _fixture_default()
     temp_root = Path(tempfile.mkdtemp(prefix="lgcvf-vertical-"))
     repository = temp_root / "repository"
     _copy_fixture(fixture.resolve(), repository)
     base_commit = _git(repository, "rev-parse", "HEAD")
     base_tree = _git(repository, "rev-parse", "HEAD^{tree}")
+    trace.add(
+        "identity",
+        receipt_id=base_tree,
+        status="recorded",
+        base_commit=base_commit,
+        base_tree=base_tree,
+    )
 
     fault_worktree = create_isolated_worktree(
         repo_root=repository,
@@ -1107,9 +1650,27 @@ def run_compositional_verification_vertical_slice(
     baseline_state = scan_repository(working)
     baseline_semantic_bundle = build_semantic_state(baseline_state)
     baseline_semantic_root = verify_semantic_state_bundle(baseline_semantic_bundle)
+    trace.add(
+        "scan",
+        receipt_id=baseline_state.state_cid,
+        status="scanned",
+        semantic_state_root_cid=baseline_semantic_root.root_cid,
+    )
     baseline_analyses = _analyze_components(working, api)
+    trace.add(
+        "abstract_states",
+        receipt_id=baseline_analyses["A"].analysis_id,
+        status="analyzed",
+        components=sorted(baseline_analyses),
+    )
     baseline_graph, baseline_contracts = _build_contract_graph(
         working, baseline_state, baseline_analyses, api=api
+    )
+    trace.add(
+        "contracts",
+        receipt_id=baseline_graph.contract_root,
+        status="compiled",
+        graph_cid=baseline_graph.graph_cid,
     )
     baseline_discharge = api.discharge_assume_guarantee(
         baseline_graph,
@@ -1118,10 +1679,62 @@ def run_compositional_verification_vertical_slice(
     )
     if baseline_discharge.disposition is not DischargeDisposition.PROVED:
         raise VerticalSliceError("baseline assume-guarantee composition did not prove")
+    trace.add(
+        "initial_discharge",
+        receipt_id=baseline_discharge.receipt_cid,
+        status="proved",
+    )
     baseline_capsules = compile_semantic_capsules(baseline_state)
+    trace.add(
+        "capsules",
+        receipt_id=baseline_capsules.capsule_index_cid,
+        status="compiled",
+    )
     baseline_tests = _run_pytest(working, ("tests/test_selected.py",))
     if baseline_tests["returncode"]:
         raise VerticalSliceError("baseline selected tests did not pass")
+    baseline_context = compile_planner_doctor_context(
+        PlannerDoctorContextRequest(
+            repository_id=baseline_state.repository_id,
+            tree_id=f"git-tree:{base_tree}",
+            task_id="LGCVF-VERTICAL-BASELINE",
+            acceptance_ids=("acceptance:composition-proved", "acceptance:tests-pass"),
+            intent_summary="Baseline A/B/C composition under current roots",
+            security_roots=("policy:lgcvf-hermetic-deny-network@1",),
+            open_obligation_ids=(),
+            assumption_ids=("clause:B:producer-assumption",),
+            counterexample_ids=(),
+            impact_coverage_ids=(),
+            allowed_paths=(_TARGET_PATH,),
+            protected_paths=("tests", "config"),
+            allowed_effects=(f"effect:{_TARGET_PATH}",),
+            validation_commands=(
+                f"{sys.executable} -m pytest -q -p no:cacheprovider tests/test_selected.py",
+            ),
+            satisfied_proof_handles=(
+                baseline_discharge.receipt_cid,
+                baseline_analyses["A"].analysis_id,
+                baseline_semantic_root.root_cid,
+            ),
+            retrieval_slice_node_ids=(),
+            deterministic_closure=True,
+            objective_id="LGCVF-G001",
+            objective_revision="logic-governed-compositional-verification-fabric-v1",
+            policy_id="policy:lgcvf-hermetic-deny-network@1",
+            policy_revision=cid_for_structured(
+                {"policy": "policy:lgcvf-hermetic-deny-network@1"}
+            ),
+            goal_summary="Record the baseline mandatory-coverage context before mutation",
+        )
+    )
+    if not baseline_context.deterministic_closed:
+        raise VerticalSliceError("baseline context did not remain deterministically closed")
+    trace.add(
+        "context",
+        receipt_id=content_identity(baseline_context.to_dict()),
+        status="compiled",
+        deterministic_closed=True,
+    )
 
     baseline_source = (working / _TARGET_PATH).read_text(encoding="utf-8")
     fault_source = baseline_source.replace(
@@ -1149,6 +1762,13 @@ def run_compositional_verification_vertical_slice(
     fault_tree = _git(working, "rev-parse", "HEAD^{tree}")
     if fault_tree == base_tree:
         raise VerticalSliceError("fault injection did not mutate the tree")
+    trace.add(
+        "mutation",
+        receipt_id=fault_tree,
+        status="mutated",
+        target_path=_TARGET_PATH,
+        isolated_worktree=True,
+    )
 
     fault_state = scan_repository(working, previous_state=baseline_state)
     fault_semantic_bundle = build_semantic_state(
@@ -1173,6 +1793,12 @@ def run_compositional_verification_vertical_slice(
     ]
     if not fault_counterexamples:
         raise VerticalSliceError("failed composition did not expose a counterexample")
+    trace.add(
+        "counterexample",
+        receipt_id=fault_discharge.receipt_cid,
+        status="disproved",
+        obligation_id=fault_counterexamples[0]["obligation_id"],
+    )
     fault_capsules = compile_semantic_capsules(
         fault_state, previous_bundle=baseline_capsules
     )
@@ -1225,11 +1851,43 @@ def run_compositional_verification_vertical_slice(
         is not EvidenceDecisionDisposition.INVALIDATED
     ):
         raise VerticalSliceError("changed A abstract state was not invalidated")
+    trace.add(
+        "invalidation",
+        receipt_id=incremental.receipt_cid,
+        status="invalidated",
+        binding_id="abstract:A",
+    )
+    trace.add(
+        "unaffected_reuse",
+        receipt_id=evidence_by_id["proof:unaffected"].binding_id,
+        status="reused",
+        binding_id="proof:unaffected",
+    )
 
     localization = _localize_failure(api, fault_graph)
     solver_result = localization["incremental_solver"]
     if solver_result["status"] != "unsat" or not solver_result["core_validated"]:
         raise VerticalSliceError("failure localization core was not independently checked")
+    interpolant_status = localization["interpolant"].get("status")
+    if interpolant_status != InterpolationStatus.VALIDATED.value:
+        raise VerticalSliceError("failure interpolant was not independently validated")
+    trace.add(
+        "incremental_smt",
+        receipt_id=str(solver_result["receipt_id"]),
+        status="unsat",
+        provider=str(solver_result.get("limitations") or "smt"),
+    )
+    trace.add(
+        "core",
+        receipt_id=str(solver_result["receipt_id"]),
+        status="validated",
+        unsat_core=list(solver_result.get("unsat_core") or ()),
+    )
+    trace.add(
+        "interpolant",
+        receipt_id=str(localization["interpolant"]["receipt_cid"]),
+        status="validated",
+    )
 
     synthesis_roots = _doctor_roots(
         state=fault_state,
@@ -1356,6 +2014,13 @@ def run_compositional_verification_vertical_slice(
         raise VerticalSliceError(
             f"doctor transaction did not commit: {transaction.reason_codes}"
         )
+    trace.add(
+        "isolated_repair",
+        receipt_id=transaction.content_id,
+        status="committed",
+        isolated_worktree=True,
+        candidate_id="candidate:constant:10",
+    )
 
     repaired_root = repair_worktree.worktree_path
     repaired_state = scan_repository(repaired_root, previous_state=fault_state)
@@ -1387,6 +2052,13 @@ def run_compositional_verification_vertical_slice(
     full_tests = _run_pytest(repaired_root, ("tests",))
     if selected_tests["returncode"] or full_tests["returncode"]:
         raise VerticalSliceError("repaired selected/full fixture checks failed")
+    trace.add(
+        "affected_replay",
+        receipt_id=_test_receipt_id(selected_tests),
+        status="passed",
+        selected="tests/test_selected.py",
+        full_status=full_tests["status"],
+    )
 
     live_request = LiveFixedPointRequest(
         changed_paths=(_TARGET_PATH,),
@@ -1422,6 +2094,12 @@ def run_compositional_verification_vertical_slice(
         )
     if fixed_point.fixed_point.model_invocation_count != 0:
         raise VerticalSliceError("fixed point observed a model invocation")
+    trace.add(
+        "live_fixed_point",
+        receipt_id=fixed_point.fixed_point.content_id,
+        status="complete",
+        complete=True,
+    )
 
     raw_files = sorted(
         path
@@ -1464,6 +2142,13 @@ def run_compositional_verification_vertical_slice(
     )
     if not context.deterministic_closed or context.llm_required:
         raise VerticalSliceError("final context did not remain deterministically closed")
+    trace.add(
+        "final_context",
+        receipt_id=content_identity(context.to_dict()),
+        status="compiled",
+        deterministic_closed=True,
+        llm_required=False,
+    )
 
     provider_modules_after = set(sys.modules)
     added_provider_modules = tuple(
@@ -1477,6 +2162,18 @@ def run_compositional_verification_vertical_slice(
         raise VerticalSliceError(
             f"deterministic route imported provider modules: {added_provider_modules}"
         )
+    trace.add(
+        "zero_model_calls",
+        receipt_id=content_identity(
+            {
+                "model_invocation_count": 0,
+                "provider_modules": list(added_provider_modules),
+            }
+        ),
+        status="zero",
+        model_invocation_count=0,
+        provider_modules_imported_during_route=[],
+    )
 
     input_tokens = int(context.to_dict().get("input_tokens") or 0)
     context_reduction_bps = (
@@ -1532,6 +2229,33 @@ def run_compositional_verification_vertical_slice(
             "wall-time/cost qualification remains a successor benchmark task",
         ],
     }
+    trace.add(
+        "token_metrics",
+        receipt_id=content_identity(
+            {
+                "context_tokens": input_tokens,
+                "raw_source_tokens": raw_source_tokens,
+                "context_reduction_bps": context_reduction_bps,
+            }
+        ),
+        status="recorded",
+        context_tokens=input_tokens,
+        raw_source_tokens=raw_source_tokens,
+        context_reduction_bps=context_reduction_bps,
+    )
+    trace.add(
+        "work_reuse_metrics",
+        receipt_id=content_identity(
+            {
+                "proof_test_reuse_bps": benchmark["challenger"]["proof_test_reuse_bps"],
+                "capsule_reuse_count": benchmark["challenger"]["capsule_reuse_count"],
+                "abstract_state_reused": benchmark["challenger"]["abstract_state_reused"],
+            }
+        ),
+        status="recorded",
+        proof_test_reuse_bps=benchmark["challenger"]["proof_test_reuse_bps"],
+        capsule_reuse_count=benchmark["challenger"]["capsule_reuse_count"],
+    )
 
     artifact_payload = {
         "allowed_effects": [f"effect:{_TARGET_PATH}"],
@@ -1573,6 +2297,13 @@ def run_compositional_verification_vertical_slice(
         raise VerticalSliceError(
             f"independent artifact verification failed: {artifact_verification.issues}"
         )
+    trace.add(
+        "verified_artifact",
+        receipt_id=artifact.artifact_cid,
+        status="validated",
+        replay_receipt_cid=artifact_verification.replay_receipt_cid,
+    )
+    trace.require_complete()
 
     result = {
         "schema": VERTICAL_SLICE_SCHEMA,
@@ -1633,6 +2364,8 @@ def run_compositional_verification_vertical_slice(
         "proof_carrying_artifact": artifact.to_dict(),
         "artifact_verification": artifact_verification.to_dict(),
         "benchmark": benchmark,
+        "stages": list(REQUIRED_VERTICAL_STAGES),
+        "stage_trace": list(trace.records),
         "limitations": [
             "contracts and abstract facts are conservative candidate-tier inputs",
             "Z3 solver evidence is solver-checked, not kernel-verified",
@@ -1696,6 +2429,7 @@ if __name__ == "__main__":
 __all__ = [
     "ArtifactVerificationResult",
     "CompositionalVerificationArtifact",
+    "REQUIRED_VERTICAL_STAGES",
     "VERTICAL_ARTIFACT_INTERFACE",
     "VERTICAL_ARTIFACT_VERIFIER_INTERFACE",
     "VERTICAL_SLICE_INTERFACE",

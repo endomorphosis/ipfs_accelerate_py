@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.validation.compositional_verification_vertical import (
+    REQUIRED_VERTICAL_STAGES,
     CompositionalVerificationArtifact,
     VerticalSliceError,
     _analyze_components,
@@ -152,6 +153,30 @@ def test_full_vertical_route_is_deterministic_model_free_and_independently_check
     assert result["benchmark"]["challenger"]["abstract_state_reused"] == 1
     assert result["benchmark"]["challenger"]["proof_test_reuse_bps"] == 10_000
     assert result["benchmark"]["comparison"]["safety_floor_violations"] == 0
+
+    assert len(REQUIRED_VERTICAL_STAGES) == 22
+    assert result["stages"] == list(REQUIRED_VERTICAL_STAGES)
+    assert [item["stage"] for item in result["stage_trace"]] == list(
+        REQUIRED_VERTICAL_STAGES
+    )
+    assert len(result["stage_trace"]) == 22
+    assert {item["status"] for item in result["stage_trace"]} <= {
+        "analyzed",
+        "committed",
+        "compiled",
+        "complete",
+        "disproved",
+        "invalidated",
+        "mutated",
+        "passed",
+        "proved",
+        "recorded",
+        "reused",
+        "scanned",
+        "unsat",
+        "validated",
+        "zero",
+    }
 
 
 def test_self_consistent_forged_artifact_is_rejected_by_independent_replay(
