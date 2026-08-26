@@ -1,0 +1,24 @@
+{
+  "campaign_cid": "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+  "candidate_pointer": null,
+  "compare_and_swap_attempted": false,
+  "expected_pointer": null,
+  "observed_pointer_after": null,
+  "observed_pointer_before": null,
+  "pointer_unchanged": true,
+  "reason_code": "admission_closed",
+  "receipt_cid": "baguqeera5x32cyuywisqviyfi7nbzfwnjdmtf5k4zzbbdkdywzikzswswrna",
+  "receipt_sha256": "sha256:edf7a16298b2250aa30547da1c96cd48d932f55cce4211a878b650accad2b45a",
+  "schema": "PGIRExperimentReducerCASReceipt@2",
+  "status": "not_run",
+  "task_binding": {
+    "current_task_cid": "baguqeerafze3wxxiomo4rhuxaguuk35d4tj4lrp2jtuj6jcinxnokczuctca",
+    "current_task_key": "task/v1/2e49bb5ee8731dc89e9701a9456fa3e4d3c5c5fa4ce89f24486ddae50b3414c4",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "controlled-comparisons-v2",
+    "task_id": "PGIR-206",
+    "title": "Re-run R1-R6 on the superseding freeze"
+  },
+  "winner": null
+}

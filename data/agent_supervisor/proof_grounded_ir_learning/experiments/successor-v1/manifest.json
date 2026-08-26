@@ -1,0 +1,134 @@
+{
+  "artifact_count": 16,
+  "artifacts": {
+    "README.md": {
+      "object_cid": null,
+      "object_sha256": null,
+      "raw_cid": "bafkreiacrdhnaoznffh7dya3xz2atrpiokgoq2xjvlxtdmpln56puk5yy4",
+      "sha256": "sha256:0288ced03b2d294ff1e01bbe7409c5e8728ce86ae9aaef31b1eb6f7cfa2bb8c7",
+      "size_bytes": 2128
+    },
+    "arms.json": {
+      "object_cid": "baguqeerans75uz2gaygl5355txt4o3npzztm7bhlr5v2qep6dqhuthqphpga",
+      "object_sha256": "sha256:6cbfda6746060cbeefbd9de7c76dafce66cf84eb8f6ba811fe1c0f499e0f3bcc",
+      "raw_cid": "bafkreigbfyke62wpacm22l2zucn2a7or4m6ln4b3ivasfa3gudc2wkz4cy",
+      "sha256": "sha256:c12e144f6acf0099ad2f59a09ba07dd1e33cb6f03b4541228366a0c5ab2b3c16",
+      "size_bytes": 6733
+    },
+    "build_not_run.py": {
+      "object_cid": null,
+      "object_sha256": null,
+      "raw_cid": "bafkreidtjlbnh7agcxpi3ianzmth6yshqdf67ugjmnre6fjdhq7l7iqb44",
+      "sha256": "sha256:734ac2d3fc0615de8da00dcb267f624780cbefd0c963624f15233c3ebfa201e7",
+      "size_bytes": 37958
+    },
+    "campaign.json": {
+      "object_cid": "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+      "object_sha256": "sha256:2343a829752380b36c09a98cf92b4ee1eb4d3ea7850a46b600a6297d7e05fc93",
+      "raw_cid": "bafkreihxwoa4kuxdds22dji5dl444jnq2mp5c56ejf7kbmnwf6cmikqqqy",
+      "sha256": "sha256:f7b381c552e31cb5a1a51d1af9ce25b0d31fd177c4497ea0b1b62f84c42a1086",
+      "size_bytes": 3944
+    },
+    "comparison.json": {
+      "object_cid": "baguqeera7zbp7lotn5aqdby5tvz6ledcgiektkywugvzypakcj6lrmotncpq",
+      "object_sha256": "sha256:fe42ffadd36f4101871d9d73e590623208a9ab16a1ab9c3c0a127cb8b1d3689f",
+      "raw_cid": "bafkreicsy6dcjqfkpg5nwpap6jwtpj5xywcs2al5wmoavfqztoirgyxaey",
+      "sha256": "sha256:52c78624c0aa79badb3c0ff26d37a7b7c5852d017db31c0a96199b911362e026",
+      "size_bytes": 5167
+    },
+    "heldouts.json": {
+      "object_cid": "baguqeeradclawgay34f4o4n4vgqlhtmwg7kbvxbqkuxmkoc2hbwj4ix63haq",
+      "object_sha256": "sha256:18960b1818df0bc771bca9a0b3cd9637d41adc30552ec5385a386c9e22fed9c1",
+      "raw_cid": "bafkreifwsch5jpx7w52hmzrhunmntzg33v6r4fdpufrxdkbue56agxbfsu",
+      "sha256": "sha256:b6908fd4beffb774766627a358d9e4dbdd7d1e146fa16371a834277c035c2595",
+      "size_bytes": 2383
+    },
+    "metrics.json": {
+      "object_cid": "baguqeera4caljyd6lrh4wpzg24uieyzplikodbkgathqciinfg3vtkkf4qza",
+      "object_sha256": "sha256:e080b4e07e5c4fcb3f26d72882632f5a14e1854604cf01210d29b759a945e432",
+      "raw_cid": "bafkreig5zztrh6cjfvr5f2zdv5lhs75xfvz4uncad4fdeldazw6d5n7n54",
+      "sha256": "sha256:ddce6713f8492d63d2eb23af56797fb72d73ca34401f0a322c60cdbc3eb7edef",
+      "size_bytes": 82070
+    },
+    "receipts/admission.json": {
+      "object_cid": "baguqeeraqyqjwwkt3jmr2b2hnwpwafhwndre4fkd7gcck5rvwzcyfh22shia",
+      "object_sha256": "sha256:86209b5953da591d07476d9f6014f668e24e1543f984257635b645829f5a91d0",
+      "raw_cid": "bafkreieispybajtv36w7xn7e5ztioluncv4nh5po5lq4hil3hma2uefdmu",
+      "sha256": "sha256:8893f0102675dfadfbb7e4ee66872e8d1578d3f5eeeae1c3a17b3b01aa10a365",
+      "size_bytes": 1727
+    },
+    "receipts/checkpoint.json": {
+      "object_cid": "baguqeeraa2bj4uvhwqlcqyo6iastvodab6ulvnycmu2emvyohhwdrm3dcmka",
+      "object_sha256": "sha256:06829e52a7b4162861de40253ab8600fa8bab702653446570e39ec38b3631314",
+      "raw_cid": "bafkreigz63wvr77yu273rxbwfrwglarp5xxw5pgh2w22run2ytjcmwc2xq",
+      "sha256": "sha256:d9f6ed58fff8a6bfb8dc362c6c65822fedef6ebcc7d5b5a8d1bac4d226585abc",
+      "size_bytes": 2503
+    },
+    "receipts/evaluation.json": {
+      "object_cid": "baguqeerashtuscaphw2hpicra6klxt6a2dae64gqbuanvpmdzqzj5ljotrda",
+      "object_sha256": "sha256:91e749080f3db477a0510794bbcfc0d0c04f70d00d00dabd83cc329ead2e9c46",
+      "raw_cid": "bafkreig4bashmhjiqzyhx4iwgjvbcvci34ubtjmtbllxffcbewssflhaqu",
+      "sha256": "sha256:dc0824761d2886707bf116326a115448df2819a5930ad772944125a522ace085",
+      "size_bytes": 2639
+    },
+    "receipts/proof.json": {
+      "object_cid": "baguqeeraa55wxtbh2s63j22qgytbnsfjpatnstg4vun4nqg5qlvu3fgcx36a",
+      "object_sha256": "sha256:077b6bcc27d4bdb4eb50362616c8a97826d94cdcad1bc6c0dd82eb4d94c2befc",
+      "raw_cid": "bafkreih7365vrhsb4qmy2gcq5zl6lixphhpeoickgpygvgm7s3ypczpj5u",
+      "sha256": "sha256:ffdfbb589e41e4198d1850ee57e5a2ef39de47204a33f06a999f96f0f165e9ed",
+      "size_bytes": 2608
+    },
+    "receipts/reducer_cas.json": {
+      "object_cid": "baguqeera5x32cyuywisqviyfi7nbzfwnjdmtf5k4zzbbdkdywzikzswswrna",
+      "object_sha256": "sha256:edf7a16298b2250aa30547da1c96cd48d932f55cce4211a878b650accad2b45a",
+      "raw_cid": "bafkreiawffj5spskltszgp6yhxp4yjioiawyy27xhhokbdxaxsnckpnfgy",
+      "sha256": "sha256:162953d93e4a5ce5933fd83ddfcc250e402d8c6bf739dca08ee0bc9a253da536",
+      "size_bytes": 988
+    },
+    "receipts/resource.json": {
+      "object_cid": "baguqeerani6ro4d7naxn4mrb5rgzuiw77zq3hckyttbhgihqvtcj6oquziiq",
+      "object_sha256": "sha256:6a3d17707f682ede3221ec4d9a22dffe61b389589cc27320f0acc49f3a14ca11",
+      "raw_cid": "bafkreigpyqqww6k66pdjgbdeqh27xa3sxbj6nbvtnchk73k45xjl7mffs4",
+      "sha256": "sha256:cfc4216b795ef3c693046481f5fb8372b853e686b3688eafed5cedd2bfb0a597",
+      "size_bytes": 2947
+    },
+    "receipts/training.json": {
+      "object_cid": "baguqeeral5izctrs4pkjsiwmodfufnvgcsvmvz3fucarh5atlduzta7aaiaa",
+      "object_sha256": "sha256:5f51914e32e3d49922cc70cb42b6a614aacae765a08113f41358e99983e00200",
+      "raw_cid": "bafkreihdsnunn4lc6nc4vkehpcbumsy57inj2isajgmycvfiohbstb44ga",
+      "sha256": "sha256:e39368d6f162f345caa8877883464b1dfa1a9d224049998154a871c329879c30",
+      "size_bytes": 2489
+    },
+    "seeds.json": {
+      "object_cid": "baguqeeraah5a7f52jylz7csjkl47sja7mwzocdx6bbu7wy7q3tuoggnamhza",
+      "object_sha256": "sha256:01fa0f97ba4e179f8a4952f9f9241f65b2e10efe0869fb63f0dce8e319a061f2",
+      "raw_cid": "bafkreigk4ypkq5z2cbokbkaizvqp3msgu5pfzno47266ye4cm6bqxnh6oa",
+      "sha256": "sha256:cae61ea8773a105ca0a808cd60fdb246a75e5cb5dcfebdec138267830bb4fe70",
+      "size_bytes": 2296
+    },
+    "verify_not_run.py": {
+      "object_cid": null,
+      "object_sha256": null,
+      "raw_cid": "bafkreiggjz3wlmlgdr5m6vqwaclgnp6e4gdco7oygtgfppc7zwinsxp6sm",
+      "sha256": "sha256:c64e7765b1661c7acf5616009666bfc4e186277dd834cc57bc5fcd90d95dfe93",
+      "size_bytes": 46178
+    }
+  },
+  "campaign_cid": "baguqeeraenb2qklveoalg3ajvggpsk2o4hvu2pvhqufennqauyux27qf7sjq",
+  "decision": "no_go",
+  "execution_status": "not_run",
+  "immutability": "supersede_never_overwrite",
+  "json_artifact_count": 13,
+  "manifest_cid": "baguqeerao2izb4i6bv7ffg3flharhjlph35gpwl4rbekzrrwm3n25mibqxsq",
+  "manifest_sha256": "sha256:769190f11e0d7e529b6559c113a56f3efa67d97c8848acc63666dbaeb10185e5",
+  "schema": "PGIRExperimentNotRunManifest@2",
+  "task_binding": {
+    "current_task_cid": "baguqeerafze3wxxiomo4rhuxaguuk35d4tj4lrp2jtuj6jcinxnokczuctca",
+    "current_task_key": "task/v1/2e49bb5ee8731dc89e9701a9456fa3e4d3c5c5fa4ce89f24486ddae50b3414c4",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "controlled-comparisons-v2",
+    "task_id": "PGIR-206",
+    "title": "Re-run R1-R6 on the superseding freeze"
+  }
+}

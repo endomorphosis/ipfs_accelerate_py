@@ -1,0 +1,90 @@
+{
+  "campaign_input_root_cid": "baguqeerajvu2dvjjxe4l6dibujguiedwhdahseziqpz7xhhp724jlxhlxz4q",
+  "failed_holdout_count": 13,
+  "heldout_cid": "baguqeeradclawgay34f4o4n4vgqlhtmwg7kbvxbqkuxmkoc2hbwj4ix63haq",
+  "heldout_sha256": "sha256:18960b1818df0bc771bca9a0b3cd9637d41adc30552ec5385a386c9e22fed9c1",
+  "hidden_labels_opened": false,
+  "hidden_test_commitment": "sha256:6a801b51b980e666b4010da9a679ad8e11a233078f988165565481b98d4b9ded",
+  "holdouts": [
+    {
+      "count": 0,
+      "holdout_id": "compiler",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "cross_reference",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "domain",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "exception",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "length",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "lineage",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "notation",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "premise",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "proof_library",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "publication",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "rare_operator",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "time",
+      "status": "permanent_no_go"
+    },
+    {
+      "count": 0,
+      "holdout_id": "type",
+      "status": "permanent_no_go"
+    }
+  ],
+  "identical_across_arms": true,
+  "leakage_passed": true,
+  "result_identity": "RESULT(PGIR-202)",
+  "schema": "PGIRExperimentHeldouts@2",
+  "split_binding_cid": "baguqeera456gtyfkktybzrjbujmp2mqy6i2bins372xgdsgvaahdcvpxy7aq",
+  "status": "not_run",
+  "task_binding": {
+    "current_task_cid": "baguqeerafze3wxxiomo4rhuxaguuk35d4tj4lrp2jtuj6jcinxnokczuctca",
+    "current_task_key": "task/v1/2e49bb5ee8731dc89e9701a9456fa3e4d3c5c5fa4ce89f24486ddae50b3414c4",
+    "objective_id": "PGIR-G110",
+    "parent_goal": "PGIR-G110",
+    "subgoal": "controlled-comparisons-v2",
+    "task_id": "PGIR-206",
+    "title": "Re-run R1-R6 on the superseding freeze"
+  }
+}
