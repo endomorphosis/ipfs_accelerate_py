@@ -118128,6 +118128,53 @@ _LGCVF_DAEMON_DIAGNOSTIC_TYPES = frozenset(
 )
 
 
+def _lgcvf_daemon_diagnostic_site(exc: BaseException) -> str:
+    """Return one bounded source site proven to belong to a sealed module."""
+
+    trusted_site = ""
+    try:
+        traceback = exc.__traceback__
+        while traceback is not None:
+            namespace = traceback.tb_frame.f_globals
+            module_name = namespace.get("__name__")
+            module = (
+                sys.modules.get(module_name)
+                if type(module_name) is str
+                else None
+            )
+            module_namespace = getattr(module, "__dict__", None)
+            component = (
+                module_name.rsplit(".", 1)[-1]
+                if type(module_name) is str
+                else ""
+            )
+            line = traceback.tb_lineno
+            if (
+                type(module_name) is str
+                and len(module_name) <= 256
+                and module_name.isascii()
+                and module_name.startswith(
+                    "ipfs_accelerate_py.agent_supervisor."
+                )
+                and type(module_namespace) is dict
+                and module_namespace is namespace
+                and type(component) is str
+                and 0 < len(component) <= 64
+                and component.isascii()
+                and component.isidentifier()
+                and type(line) is int
+                and 0 < line <= 1_000_000
+            ):
+                module_digest = hashlib.sha256(
+                    module_name.encode("ascii")
+                ).hexdigest()[:12]
+                trusted_site = f"{component}:{line}:{module_digest}"
+            traceback = traceback.tb_next
+    except BaseException:
+        return ""
+    return trusted_site
+
+
 def _emit_lgcvf_daemon_diagnostic(phase: str, exc: BaseException) -> None:
     """Emit one bounded, detail-free failure class for sealed live recovery."""
 
@@ -118164,8 +118211,11 @@ def _emit_lgcvf_daemon_diagnostic(phase: str, exc: BaseException) -> None:
         )
     ):
         safe_type = "BaseException"
+    safe_site = _lgcvf_daemon_diagnostic_site(exc)
+    site_field = f" site={safe_site}" if safe_site else ""
     record = (
-        f"lgcvf-daemon-diagnostic@1 phase={safe_phase} type={safe_type}\n"
+        "lgcvf-daemon-diagnostic@1 "
+        f"phase={safe_phase} type={safe_type}{site_field}\n"
     ).encode("ascii")
     if len(record) > 160:
         record = (

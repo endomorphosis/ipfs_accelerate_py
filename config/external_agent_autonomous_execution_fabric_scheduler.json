@@ -74,7 +74,7 @@
   "casf_import_binding": {
     "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-casf-import-binding@1",
     "manifest_path": "config/external_agent_autonomous_execution_fabric_casf_import.json",
-    "manifest_cid": "sha256:a1022fd5ccea187844dcbe71fe73ac98150b3da932d6c1f8f0bebc431f1b1a35",
+    "manifest_cid": "sha256:f1ba6513a583ebc2de709737ff91f1ef186440747273af0308471066d79b7a52",
     "import_mode": "typed_code_only",
     "canonical_tip": "4030ab14cbe084ee4716a904fc37677aafd168d3",
     "canonical_tree": "7aa6f3c7c2bd90a046bb1514d7b3a92c7af55714"

@@ -11396,10 +11396,14 @@ def test_lgcvf_daemon_diagnostic_is_bounded_staged_and_secret_free(capfd):
 
     captured = capfd.readouterr()
     assert captured.out == ""
-    assert captured.err == (
+    prefix = (
         "lgcvf-daemon-diagnostic@1 "
-        "phase=owner_bootstrap type=KeyError\n"
+        "phase=owner_bootstrap type=KeyError site=implementation_daemon:"
     )
+    assert captured.err.startswith(prefix)
+    line, module_digest = captured.err.removeprefix(prefix).rstrip("\n").split(":")
+    assert int(line) > 0
+    assert len(module_digest) == 12
     assert sentinel not in captured.err
     assert len(captured.err.encode("ascii")) <= 160
 
@@ -11430,22 +11434,37 @@ def test_lgcvf_daemon_diagnostic_collapses_untrusted_metadata(capfd):
 
 
 def test_lgcvf_daemon_diagnostic_names_sealed_supervisor_exceptions(capfd):
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        typed_database_task_source,
+    )
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         TaskSourceIntegrityError,
     )
 
     sentinel = "must-not-cross-lgcvf-sealed-exception-diagnostic"
-    implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
-        "runtime_pass",
-        TaskSourceIntegrityError(sentinel),
-    )
+    try:
+        typed_database_task_source._bounded_json(object(), noun=sentinel)
+    except TaskSourceIntegrityError as exc:
+        implementation_daemon_module._emit_lgcvf_daemon_diagnostic(
+            "runtime_pass",
+            exc,
+        )
+    else:  # pragma: no cover - the helper must reject an untyped object
+        raise AssertionError("typed database JSON boundary unexpectedly accepted")
 
     captured = capfd.readouterr()
     assert captured.out == ""
-    assert captured.err == (
+    prefix = (
         "lgcvf-daemon-diagnostic@1 "
-        "phase=runtime_pass type=TaskSourceIntegrityError\n"
+        "phase=runtime_pass type=TaskSourceIntegrityError site="
     )
+    assert captured.err.startswith(prefix)
+    site = captured.err.removeprefix(prefix).rstrip("\n")
+    component, line, module_digest = site.split(":")
+    assert component == "typed_database_task_source"
+    assert int(line) > 0
+    assert len(module_digest) == 12
+    assert all(character in "0123456789abcdef" for character in module_digest)
     assert sentinel not in captured.err
     assert len(captured.err.encode("ascii")) <= 160
 
@@ -11571,9 +11590,14 @@ def test_lgcvf_owner_client_construction_is_staged_and_scrubs_credentials(
         )
 
     captured = capfd.readouterr()
-    assert captured.err == (
-        "lgcvf-daemon-diagnostic@1 phase=owner_attach type=TypeError\n"
+    prefix = (
+        "lgcvf-daemon-diagnostic@1 phase=owner_attach type=TypeError "
+        "site=implementation_daemon:"
     )
+    assert captured.err.startswith(prefix)
+    line, module_digest = captured.err.removeprefix(prefix).rstrip("\n").split(":")
+    assert int(line) > 0
+    assert len(module_digest) == 12
     assert sentinel not in captured.err
     assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
     assert TYPED_STATE_OWNER_SOCKET_ENV not in os.environ
