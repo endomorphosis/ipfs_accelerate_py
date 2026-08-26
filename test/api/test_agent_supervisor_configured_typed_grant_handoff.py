@@ -35,6 +35,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime import (
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     process_security as process_security_module,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    quack_state_server as quack_state_server_module,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
     provider_subprocess_environment,
@@ -44,6 +47,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     QuackStateServerReadyError,
     TypedStateOwnerGrantBroker,
     build_server,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    duckdb_state as duckdb_state_module,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources import (
     typed_state_owner as typed_state_owner_module,
@@ -6714,6 +6720,133 @@ def test_aseh_r19_historical_live_rejects_subreaper_before_observation(
             cwd=None,
             executor_contract=contract,
         )
+
+
+def test_aseh_r21_historical_live_policy_is_consumed_by_unchanged_executor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    command = aseh_operator._r11_historical_live_docker_command()
+    contract = {"contract": "historical-live"}
+    policy = {
+        "schema": aseh_operator.ASEH_R21_HISTORICAL_LIVE_POLICY_ADMISSION_SCHEMA,
+        "policy_admission_cid": "sha256:" + ("1" * 64),
+    }
+    lock = {"lock_identity_cid": "sha256:" + ("2" * 64)}
+    active = {
+        "consumed": False,
+        "executor_contract": contract,
+        "policy_admission": policy,
+        "lifecycle_lock_identity": lock,
+        "authorizing_receipt_cid": None,
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        object(),
+    )
+    monkeypatch.setattr(aseh_operator, "_ASEH_ACTIVE_R19_POLICY", active)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r19_historical_live_executor_contract",
+        lambda *_args, **_kwargs: contract,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r21_historical_live_policy_admission_record",
+        lambda value: value,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r20_historical_live_policy_admission_record",
+        lambda _value: pytest.fail("R21 policy was sent to the R20 validator"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_policy_admission_record",
+        lambda _value: pytest.fail("R21 policy was sent to the R19 validator"),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_lock_identity",
+        lambda _value, **_kwargs: lock,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r16_parent_is_child_subreaper",
+        lambda: True,
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="under a subreaper"):
+        aseh_operator._run_r19_historical_live_validation(
+            command,
+            timeout=900.0,
+            env=None,
+            cwd=None,
+            executor_contract=contract,
+        )
+
+    assert active["consumed"] is True
+
+
+def test_aseh_r19_active_policy_scope_preserves_body_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root_error = RuntimeError("root live-route failure")
+    contract = {"contract": "historical-live"}
+    witness: dict[str, str] = {}
+    policy = {
+        "candidate_head": "1" * 40,
+        "candidate_tree": "2" * 40,
+        "candidate_authorization_witness_cid": aseh_operator._identity(witness),
+        "executor_contract_cid": aseh_operator._identity(contract),
+    }
+    monkeypatch.setattr(
+        aseh_operator,
+        "_ASEH_RECEIPT_VALIDATION_EXECUTOR",
+        SimpleNamespace(
+            candidate_head=policy["candidate_head"],
+            candidate_tree=policy["candidate_tree"],
+            authorization_witness_json=json.dumps(witness),
+        ),
+    )
+    monkeypatch.setattr(aseh_operator, "_ASEH_ACTIVE_R19_POLICY", None)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_historical_live_policy_revision",
+        lambda _value: 21,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_r19_historical_live_executor_contract",
+        lambda *_args, **_kwargs: contract,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r21_historical_live_policy_admission_record",
+        lambda _value: policy,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_r19_historical_live_lock_identity",
+        lambda _value, **_kwargs: {"lock": "admitted"},
+    )
+
+    with pytest.raises(RuntimeError, match="root live-route failure") as caught:
+        with aseh_operator._r19_active_policy_scope(
+            policy_admission=policy,
+            executor_contract=contract,
+            authorizing_receipt_cid=None,
+            lifecycle_lock_identity={"lock": "candidate"},
+        ):
+            raise root_error
+
+    assert caught.value is root_error
+    assert "R19 historical live policy was not consumed" in getattr(
+        caught.value,
+        "__notes__",
+        [],
+    )
+    assert aseh_operator._ASEH_ACTIVE_R19_POLICY is None
 
 
 def test_aseh_r19_historical_live_requires_active_policy_before_observation(
@@ -15506,6 +15639,9 @@ def test_aseh_r20_pre_duckdb_exact_candidate_without_receipt_fails_before_databa
     monkeypatch.setattr(
         aseh_operator, "_r20_population_requires_policy", lambda _value: True
     )
+    monkeypatch.setattr(
+        aseh_operator, "_r21_population_requires_policy", lambda _value: False
+    )
     for name in (
         "_read_continuity_state",
         "_projection_matches_events_on_disposable_copy",
@@ -15571,6 +15707,9 @@ def test_aseh_r20_pre_duckdb_qualification_precedes_continuity_state_read(
         lambda **_kwargs: events.append("qualify") or {"qualified": True},
     )
     monkeypatch.setattr(
+        aseh_operator, "_r21_population_requires_policy", lambda _value: False
+    )
+    monkeypatch.setattr(
         aseh_operator,
         "_validate_repair_transition",
         lambda *_args, **_kwargs: {"repair_head": "9" * 40},
@@ -15627,6 +15766,9 @@ def test_aseh_r20_pre_duckdb_qualifies_once_before_receipt_reread(
     calls: list[str] = []
     monkeypatch.setattr(
         aseh_operator, "_r20_population_requires_policy", lambda _value: True
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_r21_population_requires_policy", lambda _value: False
     )
     monkeypatch.setattr(
         aseh_operator, "_load_exact_r19_receipt_chain", lambda _paths: prior_chain
@@ -15914,6 +16056,9 @@ def _configure_aseh_r20_materialized_launch(
     )
     monkeypatch.setattr(
         aseh_operator, "_r20_population_requires_policy", lambda _value: True
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_r21_population_requires_policy", lambda _value: False
     )
     monkeypatch.setattr(
         aseh_operator,
@@ -16428,3 +16573,1376 @@ def test_aseh_repair_pre_duckdb_historical_live_transition_publication_is_fenced
         "immediately before R20 receipt publication",
         "after R20 receipt publication",
     ]
+
+
+def _aseh_r21_migration_failure(
+    cause: BaseException | None = None,
+) -> BaseException:
+    error = quack_state_server_module.QuackStateServerMigrationError(
+        "injected owner-start migration failure"
+    )
+    if cause is not None:
+        error.__cause__ = cause
+    return error
+
+
+class _AsehR21FakeServer:
+    """Hermetic owner-start double with explicit overlap and stop accounting."""
+
+    def __init__(
+        self,
+        name: str,
+        outcome: object,
+        events: list[str],
+        live: dict[str, int],
+    ) -> None:
+        self.name = name
+        self.outcome = outcome
+        self.events = events
+        self.live = live
+        self.lifecycle = SimpleNamespace(value="created")
+        self.identity: object | None = None
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self) -> object:
+        self.events.append(f"{self.name}:start")
+        self.start_calls += 1
+        assert self.live["count"] == 0, "two fake owners overlapped"
+        self.live["count"] += 1
+        self.live["maximum"] = max(self.live["maximum"], self.live["count"])
+        if isinstance(self.outcome, BaseException):
+            self.live["count"] -= 1
+            self.lifecycle = SimpleNamespace(value="failed")
+            raise self.outcome
+        self.identity = self.outcome
+        self.lifecycle = SimpleNamespace(value="ready")
+        return self.outcome
+
+    def stop(self) -> dict[str, bool]:
+        self.events.append(f"{self.name}:stop")
+        self.stop_calls += 1
+        if self.lifecycle.value != "ready" or self.identity is None:
+            raise quack_state_server_module.QuackStateServerNotRunningError(
+                "injected failed server is already emergency-cleaned"
+            )
+        assert self.live["count"] == 1
+        self.live["count"] -= 1
+        self.lifecycle = SimpleNamespace(value="stopped")
+        self.identity = None
+        return {"stopped": True}
+
+
+def _aseh_r21_fake_identity(name: str) -> SimpleNamespace:
+    payload = {"server_id": f"server:{name}", "generation": 1}
+    return SimpleNamespace(to_dict=lambda: dict(payload))
+
+
+def _configure_aseh_r21_owner_runner_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    initial_server: object,
+    start_helper: object,
+) -> tuple[Path, dict[str, object], list[str]]:
+    """Reach only the sealed owner's R21 start seam without live authority."""
+
+    assert callable(start_helper)
+    config = tmp_path / "config.json"
+    bootstrap = tmp_path / "bootstrap.json"
+    database = tmp_path / "control.duckdb"
+    for path in (config, bootstrap, database):
+        path.write_text("{}", encoding="utf-8")
+    candidate_head = "4" * 40
+    candidate_tree = "5" * 40
+    board = SimpleNamespace(
+        config_path=config,
+        resolved_database_program=lambda: SimpleNamespace(store_id="store:r21"),
+    )
+    paths = {"bootstrap_receipt": bootstrap, "database": database}
+    pin = SimpleNamespace(
+        source_head=candidate_head,
+        source_tree=candidate_tree,
+        capsule_root=str(tmp_path / "capsule"),
+    )
+    interpreter = SimpleNamespace(
+        descriptor=91,
+        argv0="/usr/bin/python3.12",
+        sha256="sha256:" + ("6" * 64),
+        executable_path="/proc/self/fd/91",
+    )
+    native_dependency = SimpleNamespace(
+        descriptor=SimpleNamespace(descriptor=92),
+        accepted_authorization_id="sha256:" + ("8" * 64),
+        pin=SimpleNamespace(
+            as_dict=lambda: dict(aseh_operator.ASEH_R11_NATIVE_DEPENDENCY_PIN)
+        ),
+    )
+    sealed_environment = dict(os.environ)
+    resets: list[str] = []
+
+    @contextmanager
+    def validation_scope(**_kwargs: object) -> object:
+        yield None
+
+    monkeypatch.setattr(aseh_operator, "_load", lambda _path: (board, {}))
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_clean_tree",
+        lambda _board: (candidate_head, candidate_tree),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_candidate_authorization_witness",
+        lambda **_kwargs: {"stable": "yes"},
+    )
+    monkeypatch.setattr(aseh_operator, "_paths", lambda _board: dict(paths))
+    monkeypatch.setattr(
+        configured_scheduler,
+        "preflight_configured_board",
+        lambda _board: {"valid": True, "errors": []},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args: {
+            "runtime_source_head": candidate_head,
+            "runtime_repository_tree_id": candidate_tree,
+        },
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_exact_run_launch_admission",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_assert_candidate_authorization_witness",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_build_server", lambda *_args: initial_server
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_start_server_with_one_safe_retry",
+        start_helper,
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_stop_signal_handlers", lambda *_args: nullcontext()
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "parse_accepted_control_plane_pin",
+        lambda _value: pin,
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "verify_agent_implementation_sealed_control_plane",
+        lambda _pin, descriptor: f"/proc/self/fd/{descriptor}",
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "admit_retained_control_plane_interpreter",
+        lambda **_kwargs: interpreter,
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "parse_agent_supervisor_native_dependency_launch",
+        lambda _value: native_dependency,
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "verify_agent_supervisor_native_dependency_sealed_fd",
+        lambda _launch: "/proc/self/fd/92",
+    )
+    monkeypatch.setattr(
+        multi_runner,
+        "admit_trusted_system_dependency_directories",
+        lambda _value: (),
+    )
+    native_alias = SimpleNamespace()
+    monkeypatch.setitem(sys.modules, "_duckdb", native_alias)
+    monkeypatch.setitem(sys.modules, "duckdb", native_alias)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_sealed_owner_delegation_environment",
+        lambda _qualification_home: dict(sealed_environment),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_aseh_qualification_home",
+        lambda qualification_home: qualification_home,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_sealed_receipt_validation_executor_scope",
+        validation_scope,
+    )
+    monkeypatch.setattr(
+        process_security_module,
+        "make_state_authority_process_nondumpable",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        duckdb_state_module,
+        "reset_quack_transport_cache",
+        lambda: resets.append("reset"),
+    )
+    arguments: dict[str, object] = {
+        "implement": True,
+        "duration": 1.0,
+        "sealed_control_plane_pin": {"pin": "sealed"},
+        "sealed_control_plane_descriptor": 90,
+        "retained_interpreter": {
+            "descriptor": 91,
+            "argv0": interpreter.argv0,
+            "sha256": interpreter.sha256,
+        },
+        "native_dependency_launch": {"native": "sealed"},
+        "system_dependency_directories_json": "[]",
+        "sealed_owner_environment": sealed_environment,
+    }
+    return config, arguments, resets
+
+
+def _configure_aseh_r21_start_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    initial: _AsehR21FakeServer,
+    retry: _AsehR21FakeServer | None = None,
+    cleanup_failure: str | None = None,
+    build_error: BaseException | None = None,
+) -> dict[str, object]:
+    events = initial.events
+    decisions: list[dict[str, object]] = []
+    control_failures: list[dict[str, object]] = []
+    builds: list[_AsehR21FakeServer] = []
+    baseline_database = {
+        "availability": "observed",
+        "sha256": "sha256:" + ("1" * 64),
+        "inode": 101,
+    }
+    baseline_wal = {"availability": "absent"}
+
+    def observe(
+        *,
+        paths: object,
+        server: _AsehR21FakeServer,
+        expected_lifecycle: str,
+    ) -> dict[str, object]:
+        del paths
+        events.append(f"{server.name}:observe:{expected_lifecycle}")
+        assert server.lifecycle.value == expected_lifecycle
+        if expected_lifecycle == "failed":
+            if cleanup_failure == "database":
+                database = {**baseline_database, "sha256": "sha256:" + ("2" * 64)}
+            else:
+                database = dict(baseline_database)
+            if cleanup_failure == "wal":
+                wal = {
+                    "availability": "observed",
+                    "sha256": "sha256:" + ("3" * 64),
+                    "inode": 202,
+                }
+            else:
+                wal = dict(baseline_wal)
+            if cleanup_failure in {
+                "marker", "socket", "listener", "lock",
+            }:
+                raise aseh_operator.OperatorError(
+                    f"injected unsafe {cleanup_failure} cleanup proof"
+                )
+        else:
+            database = dict(baseline_database)
+            wal = dict(baseline_wal)
+        return {
+            "schema": (
+                aseh_operator.ASEH_R21_OWNER_START_CONTENTION_OBSERVATION_SCHEMA
+            ),
+            "database": database,
+            "wal": wal,
+            "observation_cid": "sha256:" + ("4" * 64),
+        }
+
+    def build(_board: object, _paths: object) -> _AsehR21FakeServer:
+        events.append("build:fresh")
+        if build_error is not None:
+            raise build_error
+        if retry is None or builds:
+            pytest.fail("R21 built more than one retry server")
+        builds.append(retry)
+        return retry
+
+    def publish(**kwargs: object) -> dict[str, object]:
+        receipt = {
+            "decision": kwargs["decision"],
+            "previous_decision_cid": kwargs.get("previous_decision_cid"),
+            "safety_error_type": kwargs.get("safety_error_type"),
+            "receipt_cid": "sha256:" + (f"{len(decisions) + 5:x}" * 64)[-64:],
+        }
+        decisions.append({**dict(kwargs), **receipt})
+        events.append(f"decision:{kwargs['decision']}")
+        return receipt
+
+    def record(
+        _paths: object,
+        _failure: object,
+        _event: object,
+        **kwargs: object,
+    ) -> None:
+        control_failures.append(dict(kwargs))
+        events.append(f"failure:{kwargs['reason_code']}")
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_owner_start_contention_observation",
+        observe,
+    )
+    monkeypatch.setattr(aseh_operator, "_build_server", build)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_publish_owner_start_recovery_decision",
+        publish,
+    )
+    monkeypatch.setattr(aseh_operator, "_record_control_failure", record)
+    return {
+        "board": SimpleNamespace(
+            resolved_database_program=lambda: SimpleNamespace(store_id="store:r21")
+        ),
+        "paths": {},
+        "events": events,
+        "decisions": decisions,
+        "control_failures": control_failures,
+        "builds": builds,
+    }
+
+
+def _run_aseh_r21_start_retry(
+    context: dict[str, object],
+    initial: _AsehR21FakeServer,
+) -> tuple[object, object, dict[str, object] | None]:
+    return aseh_operator._r21_start_server_with_one_safe_retry(
+        board=context["board"],
+        paths=context["paths"],
+        server=initial,
+        candidate_head="a" * 40,
+        candidate_tree="b" * 40,
+        authorization_witness={"sealed": "witness"},
+        failure={},
+        failure_event=threading.Event(),
+    )
+
+
+def test_aseh_r21_validation_matrix_is_bound_by_global_receipt_grammar() -> None:
+    matrix = getattr(
+        aseh_operator,
+        "REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_VALIDATIONS",
+    )
+    registered = {
+        tuple(tuple(command) for command in candidate)
+        for candidate in aseh_operator._receipt_validation_matrices()
+    }
+
+    assert tuple(tuple(command) for command in matrix) in registered
+    for command in matrix:
+        parsed = aseh_operator._parse_receipt_validation_python_command(
+            command,
+            require_known=True,
+        )
+        if aseh_operator.ASEH_RECEIPT_VALIDATION_PYTHON in command:
+            assert parsed is not None
+
+
+def test_aseh_r21_owner_start_runner_preserves_failed_start_and_skips_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    original = _aseh_r21_migration_failure(TimeoutError("owner start failed"))
+    initial = _AsehR21FakeServer("initial", original, events, live)
+    initial.lifecycle = SimpleNamespace(value="failed")
+
+    def fail_start(**kwargs: object) -> tuple[object, object, None]:
+        assert kwargs["server"] is initial
+        raise original
+
+    config, arguments, resets = _configure_aseh_r21_owner_runner_entry(
+        tmp_path,
+        monkeypatch,
+        initial_server=initial,
+        start_helper=fail_start,
+    )
+
+    with pytest.raises(
+        quack_state_server_module.QuackStateServerMigrationError
+    ) as caught:
+        aseh_operator._run_supervisor_owner(config, **arguments)
+
+    assert caught.value is original
+    assert initial.stop_calls == 0
+    assert resets == ["reset"]
+
+
+def test_aseh_r21_owner_start_runner_stops_only_returned_retry_server_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    initial = _AsehR21FakeServer(
+        "initial",
+        _aseh_r21_migration_failure(TimeoutError("first timeout")),
+        events,
+        live,
+    )
+    retry_stops: list[str] = []
+    retry_server = SimpleNamespace(
+        stop=lambda: retry_stops.append("retry") or {"stopped": True}
+    )
+    identity = SimpleNamespace(
+        store_id="wrong-store-to-end-after-start",
+        generation=1,
+        schema_revision=0,
+        process_birth=SimpleNamespace(pid=os.getpid()),
+    )
+
+    def recover_start(**kwargs: object) -> tuple[object, object, dict[str, str]]:
+        assert kwargs["server"] is initial
+        return (
+            retry_server,
+            identity,
+            {"receipt_cid": "sha256:" + ("9" * 64)},
+        )
+
+    config, arguments, resets = _configure_aseh_r21_owner_runner_entry(
+        tmp_path,
+        monkeypatch,
+        initial_server=initial,
+        start_helper=recover_start,
+    )
+
+    with pytest.raises(aseh_operator.OperatorError, match="identity differs"):
+        aseh_operator._run_supervisor_owner(config, **arguments)
+
+    assert initial.stop_calls == 0
+    assert retry_stops == ["retry"]
+    assert resets == ["reset"]
+
+
+def test_aseh_r21_owner_start_direct_success_uses_initial_server_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    identity = _aseh_r21_fake_identity("initial")
+    initial = _AsehR21FakeServer("initial", identity, events, live)
+    context = _configure_aseh_r21_start_retry(monkeypatch, initial=initial)
+
+    server, returned_identity, recovery = _run_aseh_r21_start_retry(
+        context, initial
+    )
+
+    assert server is initial
+    assert returned_identity is identity
+    assert recovery is None
+    assert initial.start_calls == 1
+    assert initial.stop_calls == 0
+    assert context["builds"] == []
+    assert context["decisions"] == []
+    assert context["control_failures"] == []
+    assert live == {"count": 1, "maximum": 1}
+    server.stop()
+    assert initial.stop_calls == 1
+    assert live["count"] == 0
+
+
+def test_aseh_r21_owner_start_exact_timeout_retries_one_fresh_server_without_overlap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first = _AsehR21FakeServer(
+        "first",
+        _aseh_r21_migration_failure(TimeoutError("injected lock timeout")),
+        events,
+        live,
+    )
+    second = _AsehR21FakeServer(
+        "second", _aseh_r21_fake_identity("second"), events, live
+    )
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch, initial=first, retry=second
+    )
+
+    server, identity, recovery = _run_aseh_r21_start_retry(context, first)
+
+    assert server is second
+    assert identity is second.outcome
+    assert recovery is not None and recovery["decision"] == "recovered"
+    assert first.start_calls == second.start_calls == 1
+    assert first.stop_calls == second.stop_calls == 0
+    assert context["builds"] == [second]
+    assert live == {"count": 1, "maximum": 1}
+    assert [item["decision"] for item in context["decisions"]] == [
+        "retry_admitted",
+        "recovered",
+    ]
+    second.stop()
+    assert first.stop_calls == 0
+    assert second.stop_calls == 1
+    assert live["count"] == 0
+
+
+def test_aseh_r21_owner_start_recovered_receipt_failure_cleans_only_retry_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first = _AsehR21FakeServer(
+        "first",
+        _aseh_r21_migration_failure(TimeoutError("injected lock timeout")),
+        events,
+        live,
+    )
+    second = _AsehR21FakeServer(
+        "second", _aseh_r21_fake_identity("second"), events, live
+    )
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch, initial=first, retry=second
+    )
+    publish = aseh_operator._r21_publish_owner_start_recovery_decision
+    publication_error = RuntimeError("injected recovered receipt failure")
+
+    def fail_recovered_publication(**kwargs: object) -> dict[str, object]:
+        if kwargs["decision"] == "recovered":
+            events.append("decision:recovered:failed")
+            raise publication_error
+        return publish(**kwargs)
+
+    resets: list[str] = []
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_publish_owner_start_recovery_decision",
+        fail_recovered_publication,
+    )
+    monkeypatch.setattr(
+        duckdb_state_module,
+        "reset_quack_transport_cache",
+        lambda: resets.append("reset"),
+    )
+
+    with pytest.raises(RuntimeError) as caught:
+        _run_aseh_r21_start_retry(context, first)
+
+    assert caught.value is publication_error
+    assert first.start_calls == second.start_calls == 1
+    assert first.stop_calls == 0
+    assert second.stop_calls == 1
+    assert live == {"count": 0, "maximum": 1}
+    assert context["builds"] == [second]
+    assert [item["decision"] for item in context["decisions"]] == [
+        "retry_admitted"
+    ]
+    assert resets == ["reset"]
+    assert context["control_failures"][-1]["reason_code"] == (
+        "state_owner_start_recovery_receipt_failed"
+    )
+
+
+def test_aseh_r21_owner_start_failed_instance_is_not_stopped_and_original_is_preserved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    original = _aseh_r21_migration_failure(
+        TimeoutError("injected lock timeout")
+    )
+    first = _AsehR21FakeServer("first", original, events, live)
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch,
+        initial=first,
+        cleanup_failure="lock",
+    )
+
+    with pytest.raises(
+        quack_state_server_module.QuackStateServerMigrationError
+    ) as caught:
+        _run_aseh_r21_start_retry(context, first)
+
+    assert caught.value is original
+    assert first.stop_calls == 0
+    assert first.start_calls == 1
+    assert context["builds"] == []
+    assert context["decisions"][-1]["decision"] == "non_retried"
+    assert context["control_failures"][-1]["reason_code"] == (
+        "state_owner_start_recovery_not_admitted"
+    )
+
+
+def test_aseh_r21_owner_start_second_failure_is_terminal_after_two_starts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first_error = _aseh_r21_migration_failure(TimeoutError("first timeout"))
+    second_error = _aseh_r21_migration_failure(TimeoutError("second timeout"))
+    first = _AsehR21FakeServer("first", first_error, events, live)
+    second = _AsehR21FakeServer("second", second_error, events, live)
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch, initial=first, retry=second
+    )
+
+    with pytest.raises(
+        quack_state_server_module.QuackStateServerMigrationError
+    ) as caught:
+        _run_aseh_r21_start_retry(context, first)
+
+    assert caught.value is second_error
+    assert first.start_calls == second.start_calls == 1
+    assert first.stop_calls == second.stop_calls == 0
+    assert context["builds"] == [second]
+    assert [item["decision"] for item in context["decisions"]] == [
+        "retry_admitted",
+        "retry_failed",
+    ]
+    assert context["control_failures"][-1]["reason_code"] == (
+        "state_owner_start_retry_failed"
+    )
+    terminal_evidence = context["control_failures"][-1][
+        "start_failure_evidence"
+    ]
+    assert terminal_evidence["attempt"] == 2
+    assert terminal_evidence["max_attempts"] == 2
+
+
+def test_aseh_r21_owner_start_retry_factory_failure_is_linked_and_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first = _AsehR21FakeServer(
+        "first",
+        _aseh_r21_migration_failure(TimeoutError("first timeout")),
+        events,
+        live,
+    )
+    factory_error = RuntimeError("injected fresh-server factory failure")
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch,
+        initial=first,
+        build_error=factory_error,
+    )
+
+    with pytest.raises(RuntimeError) as caught:
+        _run_aseh_r21_start_retry(context, first)
+
+    assert caught.value is factory_error
+    assert first.start_calls == 1
+    assert first.stop_calls == 0
+    assert context["builds"] == []
+    assert [item["decision"] for item in context["decisions"]] == [
+        "retry_admitted",
+        "non_retried",
+    ]
+    assert context["decisions"][1]["previous_decision_cid"] == (
+        context["decisions"][0]["receipt_cid"]
+    )
+    assert context["control_failures"][-1]["reason_code"] == (
+        "state_owner_start_retry_factory_failed"
+    )
+
+
+def test_aseh_r21_owner_start_terminal_diagnostic_failures_preserve_retry_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    first = _AsehR21FakeServer(
+        "first",
+        _aseh_r21_migration_failure(TimeoutError("first timeout")),
+        events,
+        live,
+    )
+    retry_error = RuntimeError("injected retry start failure")
+    second = _AsehR21FakeServer("second", retry_error, events, live)
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch,
+        initial=first,
+        retry=second,
+    )
+    publish = aseh_operator._r21_publish_owner_start_recovery_decision
+
+    def fail_terminal_publication(**kwargs: object) -> dict[str, object]:
+        if kwargs["decision"] == "retry_failed":
+            raise OSError("injected terminal receipt failure")
+        return publish(**kwargs)
+
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_publish_owner_start_recovery_decision",
+        fail_terminal_publication,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_record_control_failure",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError("injected terminal control failure")
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as caught:
+        _run_aseh_r21_start_retry(context, first)
+
+    assert caught.value is retry_error
+    assert first.start_calls == second.start_calls == 1
+    assert first.stop_calls == second.stop_calls == 0
+    assert [item["decision"] for item in context["decisions"]] == [
+        "retry_admitted"
+    ]
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: _aseh_r21_migration_failure(),
+        lambda: _aseh_r21_migration_failure(ValueError("migration drift")),
+        lambda: quack_state_server_module.QuackStateServerOwnershipError(
+            "owner held"
+        ),
+        lambda: TimeoutError("direct timeout"),
+        lambda: RuntimeError("other start failure"),
+    ],
+    ids=[
+        "migration-without-cause",
+        "migration-non-timeout-cause",
+        "ownership",
+        "direct-timeout",
+        "other",
+    ],
+)
+def test_aseh_r21_owner_start_nonretryable_error_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+    factory: object,
+) -> None:
+    assert callable(factory)
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    original = factory()
+    first = _AsehR21FakeServer("first", original, events, live)
+    context = _configure_aseh_r21_start_retry(monkeypatch, initial=first)
+
+    with pytest.raises(type(original)) as caught:
+        _run_aseh_r21_start_retry(context, first)
+
+    assert caught.value is original
+    assert first.start_calls == 1
+    assert first.stop_calls == 0
+    assert context["builds"] == []
+    assert [item["decision"] for item in context["decisions"]] == [
+        "non_retried"
+    ]
+    assert context["control_failures"][-1]["reason_code"] == (
+        "state_owner_start_failed"
+    )
+
+
+@pytest.mark.parametrize(
+    "cleanup_failure",
+    ["database", "wal", "marker", "socket", "listener", "lock"],
+)
+def test_aseh_r21_owner_start_cleanup_proof_rejection_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_failure: str,
+) -> None:
+    events: list[str] = []
+    live = {"count": 0, "maximum": 0}
+    original = _aseh_r21_migration_failure(TimeoutError("lock timeout"))
+    first = _AsehR21FakeServer("first", original, events, live)
+    context = _configure_aseh_r21_start_retry(
+        monkeypatch,
+        initial=first,
+        cleanup_failure=cleanup_failure,
+    )
+
+    with pytest.raises(
+        quack_state_server_module.QuackStateServerMigrationError
+    ) as caught:
+        _run_aseh_r21_start_retry(context, first)
+
+    assert caught.value is original
+    assert first.start_calls == 1
+    assert first.stop_calls == 0
+    assert context["builds"] == []
+    assert context["decisions"][-1]["decision"] == "non_retried"
+    assert context["control_failures"][-1]["reason_code"] == (
+        "state_owner_start_recovery_not_admitted"
+    )
+
+
+def test_aseh_r21_owner_start_recovery_decision_is_create_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(aseh_operator.time, "time_ns", lambda: 123456789)
+    failure = aseh_operator._r21_owner_start_failure_evidence(
+        RuntimeError("message must not be retained"),
+        attempt=1,
+    )
+    baseline = {
+        "database": {"sha256": "sha256:" + ("1" * 64)},
+        "wal": {"availability": "absent"},
+    }
+    arguments = {
+        "paths": {"owner_start_recovery_decisions": tmp_path / "decisions"},
+        "candidate_head": "a" * 40,
+        "candidate_tree": "b" * 40,
+        "authorization_witness": {"sealed": "witness"},
+        "store_id": "store:r21",
+        "failure_evidence": failure,
+        "decision": "retry_admitted",
+        "baseline_observation": baseline,
+        "post_cleanup_observation": dict(baseline),
+    }
+
+    receipt = aseh_operator._r21_publish_owner_start_recovery_decision(
+        **arguments
+    )
+    path = (
+        tmp_path
+        / "decisions"
+        / f"{str(receipt['receipt_cid'])[7:]}.json"
+    )
+    original = path.read_bytes()
+    assert receipt["authoritative_state_unchanged"] is True
+    assert "message must not be retained" not in original.decode("utf-8")
+
+    with pytest.raises(aseh_operator.OperatorError, match="already exists"):
+        aseh_operator._r21_publish_owner_start_recovery_decision(**arguments)
+    assert path.read_bytes() == original
+
+
+def test_aseh_r21_owner_start_file_and_lock_observations_are_fail_closed(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "control.duckdb"
+    database.write_bytes(b"sealed-r21-bytes")
+    database.chmod(0o600)
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        observed = aseh_operator._r21_owner_start_file_observation(
+            directory_fd,
+            database.name,
+        )
+        absent = aseh_operator._r21_owner_start_file_observation(
+            directory_fd,
+            f"{database.name}.wal",
+        )
+        assert observed["availability"] == "observed"
+        assert observed["sha256"] == (
+            "sha256:" + hashlib.sha256(b"sealed-r21-bytes").hexdigest()
+        )
+        assert absent == {
+            "schema": aseh_operator.ASEH_R21_OWNER_START_FILE_OBSERVATION_SCHEMA,
+            "availability": "absent",
+        }
+
+        lock_name = f".{database.name}.migration.lock"
+        with aseh_operator._r21_nonblocking_named_lock(
+            directory_fd,
+            name=lock_name,
+            lock_class="migration",
+        ):
+            with pytest.raises(aseh_operator.OperatorError, match="contended"):
+                with aseh_operator._r21_nonblocking_named_lock(
+                    directory_fd,
+                    name=lock_name,
+                    lock_class="migration",
+                ):
+                    pytest.fail("contended migration lock was admitted")
+
+        hardlink = tmp_path / "linked.duckdb"
+        os.link(database, hardlink)
+        with pytest.raises(aseh_operator.OperatorError, match="identity is unsafe"):
+            aseh_operator._r21_owner_start_file_observation(
+                directory_fd,
+                database.name,
+            )
+    finally:
+        os.close(directory_fd)
+
+
+def test_aseh_r21_owner_start_endpoint_alias_is_admitted_only_with_all_locks_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "control.duckdb"
+    database.write_bytes(b"sealed-r21-owner-state")
+    database.chmod(0o600)
+    owner = tmp_path / "owner"
+    owner.mkdir(mode=0o700)
+    owner_alias = tmp_path / "owner-alias"
+    owner_alias.symlink_to(owner, target_is_directory=True)
+    server = SimpleNamespace(
+        lifecycle=SimpleNamespace(value="created"),
+        identity=None,
+        config=SimpleNamespace(host="127.0.0.1", port=43210),
+        owner_marker_path=lambda: database.with_name(
+            f".{database.name}.state-owner.json"
+        ),
+        typed_command_socket_path=lambda: owner_alias / "typed-owner.sock",
+        typed_command_token_path=lambda: owner_alias / "typed-owner.token",
+    )
+    paths = {"database": database, "owner": owner}
+    original_endpoint_observation = (
+        aseh_operator._r21_owner_start_endpoint_observation
+    )
+    contended: list[str] = []
+
+    def observe_endpoints_with_lock_proof(
+        *, paths: object, server: object, marker_absent: bool
+    ) -> tuple[dict[str, bool], list[str]]:
+        owner_lock = database.with_name(
+            f".{database.name}{quack_state_server_module.OWNER_LOCK_SUFFIX}"
+        )
+        owner_descriptor = os.open(
+            owner_lock,
+            os.O_RDWR | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(
+                    owner_descriptor,
+                    fcntl.LOCK_EX | fcntl.LOCK_NB,
+                )
+            contended.append("owner")
+        finally:
+            os.close(owner_descriptor)
+        database_directory_fd = os.open(
+            tmp_path,
+            os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0),
+        )
+        try:
+            for lock_class, name in (
+                ("migration", f".{database.name}.migration.lock"),
+                ("intent", f".{database.name}.intent.lock"),
+                ("database", f".{database.name}.lock"),
+            ):
+                with pytest.raises(aseh_operator.OperatorError, match="contended"):
+                    with aseh_operator._r21_nonblocking_named_lock(
+                        database_directory_fd,
+                        name=name,
+                        lock_class=lock_class,
+                    ):
+                        pytest.fail(f"{lock_class} lock was not held")
+                contended.append(lock_class)
+        finally:
+            os.close(database_directory_fd)
+        return original_endpoint_observation(
+            paths=paths,
+            server=server,
+            marker_absent=marker_absent,
+        )
+
+    listener_calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_owner_start_endpoint_observation",
+        observe_endpoints_with_lock_proof,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_r21_listener_absence_samples",
+        lambda host, port: (
+            listener_calls.append((host, port))
+            or ["connection_refused", "connection_refused"]
+        ),
+    )
+
+    observation = aseh_operator._r21_owner_start_contention_observation(
+        paths=paths,
+        server=server,
+        expected_lifecycle="created",
+    )
+
+    assert observation["lock_order"] == [
+        "owner",
+        "migration",
+        "intent",
+        "database",
+    ]
+    assert contended == observation["lock_order"]
+    assert observation["database"]["availability"] == "observed"
+    assert observation["wal"]["availability"] == "absent"
+    assert all(observation["residual_paths_absent"].values())
+    assert listener_calls == [("127.0.0.1", 43210)]
+
+    unrelated = tmp_path / "unrelated-owner"
+    unrelated.mkdir(mode=0o700)
+    outside_server = SimpleNamespace(
+        **{
+            **server.__dict__,
+            "typed_command_socket_path": lambda: unrelated / "typed-owner.sock",
+            "typed_command_token_path": lambda: unrelated / "typed-owner.token",
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="scope differs"):
+        original_endpoint_observation(
+            paths=paths,
+            server=outside_server,
+            marker_absent=True,
+        )
+
+
+def test_aseh_r21_owner_start_marker_socket_and_listener_presence_are_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "owner-marker.json"
+    marker.write_text("{}", encoding="utf-8")
+    directory_fd = os.open(
+        tmp_path,
+        os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        assert aseh_operator._r21_path_absent(
+            directory_fd, "absent-owner.sock"
+        ) is True
+        assert aseh_operator._r21_path_absent(
+            directory_fd, marker.name
+        ) is False
+    finally:
+        os.close(directory_fd)
+
+    class PresentListener:
+        def settimeout(self, _timeout: float) -> None:
+            return None
+
+        def connect_ex(self, _address: object) -> int:
+            return 0
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        aseh_operator.socket,
+        "socket",
+        lambda *_args, **_kwargs: PresentListener(),
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="listener is not absent"):
+        aseh_operator._r21_listener_absence_samples("127.0.0.1", 9876)
+
+
+def _aseh_r21_structural_chain() -> list[dict[str, object]]:
+    chain: list[dict[str, object]] = []
+    for index, schema in enumerate(
+        aseh_operator.ASEH_R21_REPAIR_TRANSITION_CHAIN_SCHEMAS
+    ):
+        receipt_cid = (
+            aseh_operator.ASEH_R21_EXACT_R1_R20_RECEIPT_CIDS[index]
+            if index < 20
+            else "sha256:" + ("f" * 64)
+        )
+        item: dict[str, object] = {
+            "schema": schema,
+            "transition_revision": None if index == 0 else index + 1,
+            "receipt_cid": receipt_cid,
+        }
+        if chain:
+            item["previous_receipt_cid"] = chain[-1]["receipt_cid"]
+        chain.append(item)
+    return chain
+
+
+def _aseh_r21_witness(head: str, tree: str) -> dict[str, str]:
+    return {
+        "head": head,
+        "tree": tree,
+        "branch_ref": "refs/heads/agent/aseh-r21-test",
+        "index_entries_digest": "sha256:" + ("1" * 64),
+        "index_flags_digest": "sha256:" + ("2" * 64),
+        "status_digest": aseh_operator._identity(b""),
+        "head_reflog_digest": "sha256:" + ("3" * 64),
+        "branch_reflog_digest": "sha256:" + ("4" * 64),
+    }
+
+
+def test_aseh_r21_owner_start_requires_exact_r1_r21_chain() -> None:
+    chain = _aseh_r21_structural_chain()
+    assert aseh_operator._admit_exact_r21_transition_chain(chain) == chain
+
+    with pytest.raises(aseh_operator.OperatorError, match="R21"):
+        aseh_operator._admit_exact_r21_transition_chain(chain[:-1])
+    reordered = [dict(item) for item in chain]
+    reordered[-2], reordered[-1] = reordered[-1], reordered[-2]
+    with pytest.raises(aseh_operator.OperatorError, match="R21"):
+        aseh_operator._admit_exact_r21_transition_chain(reordered)
+    rewritten = [dict(item) for item in chain]
+    rewritten[12]["receipt_cid"] = "sha256:" + ("e" * 64)
+    rewritten[13]["previous_receipt_cid"] = rewritten[12]["receipt_cid"]
+    with pytest.raises(aseh_operator.OperatorError, match="vector"):
+        aseh_operator._admit_exact_r21_transition_chain(rewritten)
+    unlinked = [dict(item) for item in chain]
+    unlinked[-1]["previous_receipt_cid"] = "sha256:" + ("d" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="R21"):
+        aseh_operator._admit_exact_r21_transition_chain(unlinked)
+
+
+def test_aseh_r21_owner_start_policy_binds_exact_r20_vector_and_candidate() -> None:
+    bootstrap_id = "sha256:" + ("a" * 64)
+    prior_chain = _aseh_r21_structural_chain()[:-1]
+    for item in prior_chain:
+        item["bootstrap_receipt_id"] = bootstrap_id
+    prior_chain[-1]["repair_head"] = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_BASE_HEAD
+    )
+    head = "b" * 40
+    tree = "c" * 40
+    witness = _aseh_r21_witness(head, tree)
+    contract = aseh_operator._r19_sealed_receipt_validation_executor_contract()
+
+    policy = aseh_operator._r21_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_id,
+        prior_chain=prior_chain,
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        executor_contract=contract,
+    )
+
+    assert policy["policy_revision"] == 21
+    assert policy["prior_receipt_count"] == 20
+    assert policy["prior_receipt_cids"] == list(
+        aseh_operator.ASEH_R21_EXACT_R1_R20_RECEIPT_CIDS
+    )
+    assert policy["previous_receipt_cid"] == (
+        aseh_operator.ASEH_R21_EXACT_R1_R20_RECEIPT_CIDS[-1]
+    )
+    assert policy["candidate_authorization_witness_cid"] == (
+        aseh_operator._identity(witness)
+    )
+
+    broadened = dict(policy)
+    broadened["policy_revision"] = 22
+    unsigned = dict(broadened)
+    unsigned.pop("policy_admission_cid")
+    broadened["policy_admission_cid"] = aseh_operator._identity(unsigned)
+    with pytest.raises(aseh_operator.OperatorError, match="R21"):
+        aseh_operator._validate_r21_historical_live_policy_admission_record(
+            broadened
+        )
+
+    rewritten = [dict(item) for item in prior_chain]
+    rewritten[5]["receipt_cid"] = "sha256:" + ("9" * 64)
+    rewritten[6]["previous_receipt_cid"] = rewritten[5]["receipt_cid"]
+    with pytest.raises(aseh_operator.OperatorError, match="vector"):
+        aseh_operator._r21_historical_live_policy_admission(
+            bootstrap_receipt_id=bootstrap_id,
+            prior_chain=rewritten,
+            candidate_head=head,
+            candidate_tree=tree,
+            candidate_authorization_witness=witness,
+            executor_contract=contract,
+        )
+
+
+def test_aseh_r21_owner_start_receipt_and_launch_admission_are_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap_id = "sha256:" + ("a" * 64)
+    chain = _aseh_r21_structural_chain()
+    prior_chain = chain[:-1]
+    for item in prior_chain:
+        item["bootstrap_receipt_id"] = bootstrap_id
+    base = (
+        aseh_operator
+        .REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_BASE_HEAD
+    )
+    prior_chain[-1]["repair_head"] = base
+    head = "b" * 40
+    tree = "c" * 40
+    witness = _aseh_r21_witness(head, tree)
+    policy = aseh_operator._r21_historical_live_policy_admission(
+        bootstrap_receipt_id=bootstrap_id,
+        prior_chain=prior_chain,
+        candidate_head=head,
+        candidate_tree=tree,
+        candidate_authorization_witness=witness,
+        executor_contract=(
+            aseh_operator._r19_sealed_receipt_validation_executor_contract()
+        ),
+    )
+    evidence = {
+        "active_policy_cid": policy["policy_admission_cid"],
+        "authorizing_receipt_cid": None,
+        "returncode": 0,
+        "terminal_class": "verified_success",
+    }
+    evidence["evidence_cid"] = aseh_operator._identity(evidence)
+    receipt = {
+        field: None
+        for field in (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_RECEIPT_FIELDS
+        )
+    }
+    receipt.update(
+        {
+            "schema": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_SCHEMA
+            ),
+            "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+            "stable_identity": (
+                f"{aseh_operator.PROGRAM}/"
+                f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R21"
+            ),
+            "program_id": aseh_operator.PROGRAM,
+            "transition_revision": 21,
+            "bootstrap_receipt_id": bootstrap_id,
+            "previous_receipt_cid": prior_chain[-1]["receipt_cid"],
+            "base_head": base,
+            "repair_head": head,
+            "repair_tree": tree,
+            "candidate_authorization_witness": witness,
+            "sealed_validation_executor_contract": (
+                aseh_operator._r21_sealed_receipt_validation_executor_contract()
+            ),
+            "historical_live_policy_admission": policy,
+            "historical_live_execution_evidence": evidence,
+            "terminal_success_criteria": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_SUCCESS
+            ),
+            "terminal_non_success_criteria": (
+                aseh_operator
+                .REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_NON_SUCCESS
+            ),
+            "semantic_corpus_changed": False,
+            "database_mutated": False,
+        }
+    )
+    unsigned_receipt = dict(receipt)
+    unsigned_receipt.pop("receipt_cid")
+    receipt["receipt_cid"] = aseh_operator._identity(unsigned_receipt)
+    assert (
+        aseh_operator
+        ._repair_sealed_owner_startup_contention_recovery_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    active = chain[-1]
+    active.update(
+        {
+            "repair_head": head,
+            "repair_tree": tree,
+            "receipt_cid": receipt["receipt_cid"],
+            "previous_receipt_cid": prior_chain[-1]["receipt_cid"],
+        }
+    )
+    admitted_chain = [*prior_chain, active]
+    monkeypatch.setattr(
+        aseh_operator,
+        "_git",
+        lambda *args, **_kwargs: (
+            base if args == ("show", "-s", "--format=%P", head) else ""
+        ),
+    )
+    admission = {
+        "runtime_source_head": head,
+        "runtime_repository_tree_id": tree,
+        "repair_transition": active,
+        "repair_transition_chain": admitted_chain,
+    }
+    aseh_operator._assert_exact_run_launch_admission(
+        admission,
+        candidate_head=head,
+        candidate_tree=tree,
+    )
+
+    replaced = dict(admission)
+    replaced["repair_transition"] = {
+        **active,
+        "receipt_cid": "sha256:" + ("8" * 64),
+    }
+    with pytest.raises(aseh_operator.OperatorError, match="R21"):
+        aseh_operator._assert_exact_run_launch_admission(
+            replaced,
+            candidate_head=head,
+            candidate_tree=tree,
+        )
+
+
+def test_aseh_r20_delegates_r21_before_suffix_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r20_path = tmp_path / "repair-r20.json"
+    r20_path.touch()
+    full_prior = _aseh_r21_structural_chain()[:-1]
+    r19_chain = full_prior[:-1]
+    r19_chain[-1]["repair_head"] = (
+        aseh_operator.REPAIR_PRE_DUCKDB_HISTORICAL_LIVE_TRANSITION_BASE_HEAD
+    )
+    r20_receipt = dict(full_prior[-1])
+    r20_transition = {
+        **r20_receipt,
+        "repair_head": (
+            aseh_operator
+            .REPAIR_SEALED_OWNER_STARTUP_CONTENTION_RECOVERY_TRANSITION_BASE_HEAD
+        ),
+    }
+    sentinel = {"delegated": "r21"}
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda *_args, **_kwargs: r20_receipt,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_pre_duckdb_historical_live_transition",
+        lambda *_args, **_kwargs: r20_transition,
+    )
+    monkeypatch.setattr(aseh_operator, "_git", lambda *_args: "")
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authorize_repair_sealed_owner_startup_contention_recovery_transition_if_applicable",
+        lambda **kwargs: (
+            sentinel
+            if len(kwargs["prior_receipt_chain"]) == 20
+            else pytest.fail("R20 did not delegate the exact R1-R20 chain")
+        ),
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_admit_materialized_launch",
+        lambda *_args, **_kwargs: pytest.fail(
+            "R20 materialized suffix ran before R21 delegation"
+        ),
+    )
+
+    result = (
+        aseh_operator
+        ._authorize_repair_pre_duckdb_historical_live_transition_if_applicable(
+            board=object(),
+            config={},
+            paths={
+                "repair_pre_duckdb_historical_live_transition_receipt": r20_path
+            },
+            bootstrap={},
+            bootstrap_id="bootstrap",
+            head="9" * 40,
+            previous_receipt=r19_chain[-1],
+            previous_transition=r19_chain[-1],
+            prior_receipt_chain=r19_chain,
+            authorization_directory_fd=90,
+        )
+    )
+    assert result == sentinel
