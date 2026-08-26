@@ -708,6 +708,7 @@ DATABASE_PORTAL_SKIP_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
 DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = (
     FENCE_CONTENTION_BACKOFF_SECONDS
 )
+_POST_MERGE_CALLBACK_REQUALIFICATION_LOCK_TIMEOUT_SECONDS: Final[float] = 5.0
 _MAX_DATABASE_PORTAL_BINDING_BYTES: Final[int] = 64 * 1024
 _MAX_DATABASE_PORTAL_PROJECTION_BYTES: Final[int] = 1024 * 1024
 _POST_MERGE_RECOVERY_SCAN_LIMIT: Final[int] = 256
@@ -3830,6 +3831,7 @@ class DatabasePortalExecutionBridge:
         *,
         evidence_digest: Callable[[Mapping[str, Any]], str],
         train: Any | None = None,
+        revalidate_authority: Callable[[], bool] | None = None,
     ) -> dict[str, Any] | None:
         """Compile the exact completed-row receipt into the database contract."""
 
@@ -3841,6 +3843,7 @@ class DatabasePortalExecutionBridge:
                 projection,
                 evidence_digest=evidence_digest,
                 train=train,
+                revalidate_authority=revalidate_authority,
             )
         expected_completion_fields = {
             "schema",
@@ -6585,6 +6588,7 @@ class DatabasePortalExecutionBridge:
         *,
         request: Any,
         projection: _DatabasePortalRecoveryProjection,
+        revalidate_authority: Callable[[], bool] | None = None,
     ) -> dict[str, Any] | None:
         """Run one fresh uncached declared validation at the bound target."""
 
@@ -6680,6 +6684,11 @@ class DatabasePortalExecutionBridge:
 
             def validate() -> dict[str, Any]:
                 result: dict[str, Any] = {"passed": False, "validation": []}
+                if (
+                    revalidate_authority is not None
+                    and revalidate_authority() is not True
+                ):
+                    return result
                 root = projection.paths.root / "post-merge-callback-integration-requalification"
                 root.mkdir(parents=True, exist_ok=True)
                 temporary = Path(tempfile.mkdtemp(prefix="worktree-", dir=root))
@@ -7033,6 +7042,9 @@ class DatabasePortalExecutionBridge:
                         source.get("integration_commit") or ""
                     ),
                 },
+                timeout_seconds=(
+                    _POST_MERGE_CALLBACK_REQUALIFICATION_LOCK_TIMEOUT_SECONDS
+                ),
             )
             validations = (
                 transaction.get("validation")
@@ -7081,6 +7093,11 @@ class DatabasePortalExecutionBridge:
         if workspace_hygiene is not None:
             qualified["workspace_hygiene"] = dict(workspace_hygiene)
         qualified["receipt_id"] = content_identity(qualified)
+        if (
+            revalidate_authority is not None
+            and revalidate_authority() is not True
+        ):
+            return None
         _atomic_write_once(
             path,
             json.dumps(qualified, indent=2, sort_keys=True).encode("utf-8") + b"\n",
@@ -7097,6 +7114,7 @@ class DatabasePortalExecutionBridge:
         *,
         evidence_digest: Callable[[Mapping[str, Any]], str],
         train: Any | None = None,
+        revalidate_authority: Callable[[], bool] | None = None,
     ) -> dict[str, Any] | None:
         if train is None:
             if self.repository_root is None or self.merge_queue is None:
@@ -7120,6 +7138,7 @@ class DatabasePortalExecutionBridge:
             source,
             request=request,
             projection=projection,
+            revalidate_authority=revalidate_authority,
         )
         if qualification is None:
             return None
@@ -18615,6 +18634,49 @@ class DatabasePortalExecutionBridge:
                 return result
             return None
 
+        def callback_requalification_authority(
+            completed: Any,
+            projection: _DatabasePortalRecoveryProjection,
+            *,
+            allow_shared_lane_source: bool,
+        ) -> Callable[[], bool]:
+            """Recheck the exact queue and database authority after lock wait."""
+
+            request_id = str(
+                getattr(completed, "request_id", "") or ""
+            )
+
+            def revalidate() -> bool:
+                current = self.merge_queue.get(request_id)
+                current_projection = (
+                    self._owned_post_merge_recovery_projection(
+                        current,
+                        allow_shared_lane_source=allow_shared_lane_source,
+                    )
+                    if current is not None
+                    else None
+                )
+                if (
+                    current != completed
+                    or current_projection is None
+                    or current_projection != projection
+                ):
+                    return False
+                try:
+                    self._preauthorize_post_merge_recovery(
+                        current,
+                        current_projection,
+                        preauthorize=preauthorize,
+                        evidence_digest=digest,
+                    )
+                except Exception as exc:
+                    if not _is_implementation_conflict(exc):
+                        raise
+                    return False
+                return True
+
+            return revalidate
+
         def replay_completed_page(
             page: Sequence[Any],
             *,
@@ -18658,6 +18720,15 @@ class DatabasePortalExecutionBridge:
                     projection,
                     evidence_digest=digest,
                     train=train,
+                    revalidate_authority=(
+                        callback_requalification_authority(
+                            completed,
+                            projection,
+                            allow_shared_lane_source=(
+                                allow_shared_lane_source
+                            ),
+                        )
+                    ),
                 )
                 if evidence is not None:
                     try:
@@ -19045,6 +19116,13 @@ class DatabasePortalExecutionBridge:
                     projection,
                     evidence_digest=digest,
                     train=train,
+                    revalidate_authority=(
+                        callback_requalification_authority(
+                            completed,
+                            projection,
+                            allow_shared_lane_source=False,
+                        )
+                    ),
                 )
                 if completed is not None and projection is not None
                 else None

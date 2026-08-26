@@ -578,6 +578,7 @@ INVENTORY_TASK_IDS = frozenset({"IPS-001", "IPS-002", "IPS-003"})
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS = 30
+CHECKOUT_MUTATION_TRANSACTION_MAX_WAIT_SECONDS = 5.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
 IMPLEMENTATION_DISPATCH_INTENT_LEASE_ROLE = "implementation_dispatch_intent"
@@ -71187,8 +71188,37 @@ class PortalImplementationDaemon:
         callback: Callable[[], dict[str, Any]],
         failure_fields: Mapping[str, Any] | None = None,
         extra: Mapping[str, Any] | None = None,
+        timeout_seconds: float = 0.0,
     ) -> dict[str, Any]:
         """Run a complete shared-checkout mutation under one atomic lease."""
+
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+        ):
+            raise ValueError(
+                "checkout mutation transaction timeout_seconds is invalid"
+            )
+        transaction_timeout_seconds = float(timeout_seconds)
+        if (
+            not math.isfinite(transaction_timeout_seconds)
+            or transaction_timeout_seconds < 0.0
+            or transaction_timeout_seconds
+            > CHECKOUT_MUTATION_TRANSACTION_MAX_WAIT_SECONDS
+        ):
+            raise ValueError(
+                "checkout mutation transaction timeout_seconds is invalid"
+            )
+        timeout_deadline = (
+            time.monotonic() + transaction_timeout_seconds
+            if transaction_timeout_seconds > 0.0
+            else None
+        )
+
+        def remaining_timeout_seconds() -> float:
+            if timeout_deadline is None:
+                return 0.0
+            return max(0.0, timeout_deadline - time.monotonic())
 
         current = self._current_checkout_mutation_lease()
         if (
@@ -71201,14 +71231,23 @@ class PortalImplementationDaemon:
                     "checkout_mutation_lease_recovered",
                     False,
                 ):
-                    return {
-                        **dict(failure_fields or {}),
-                        **recovery,
-                        "reason": str(
-                            recovery.get("reason")
-                            or "protected_checkout_recovery_required"
-                        ),
-                    }
+                    external_live_owner = (
+                        self._external_protected_recovery_deferral(recovery)
+                    )
+                    if (
+                        operation
+                        != "requalify_post_merge_callback_integration"
+                        or timeout_deadline is None
+                        or external_live_owner is None
+                    ):
+                        return {
+                            **dict(failure_fields or {}),
+                            **recovery,
+                            "reason": str(
+                                recovery.get("reason")
+                                or "protected_checkout_recovery_required"
+                            ),
+                        }
                 current = self._current_checkout_mutation_lease()
         if current is not None:
             transaction_depth = int(
@@ -71276,6 +71315,7 @@ class PortalImplementationDaemon:
                         callback=callback,
                         failure_fields=failure_fields,
                         extra=extra,
+                        timeout_seconds=remaining_timeout_seconds(),
                     )
                 return {
                     **dict(failure_fields or {}),
@@ -71329,6 +71369,7 @@ class PortalImplementationDaemon:
                                 or operation
                             ),
                             extra=recovery_extra,
+                            timeout_seconds=remaining_timeout_seconds(),
                         )
                     )
                     if renewed is None:
@@ -71389,6 +71430,7 @@ class PortalImplementationDaemon:
                         callback=callback,
                         failure_fields=failure_fields,
                         extra=extra,
+                        timeout_seconds=remaining_timeout_seconds(),
                     )
                 allowed = set(
                     getattr(
@@ -71437,6 +71479,7 @@ class PortalImplementationDaemon:
                 preserve_existing=(
                     self.manual_completion_authority_revalidation_only
                 ),
+                timeout_seconds=remaining_timeout_seconds(),
             )
         )
         if lease is None:
