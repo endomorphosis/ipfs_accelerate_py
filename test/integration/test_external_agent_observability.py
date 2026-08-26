@@ -106,5 +106,21 @@ def test_steer_requires_matching_authority() -> None:
 
 def test_observability_receipt() -> None:
     payload = json.loads(RECEIPT.read_text(encoding="utf-8"))
+    assert payload["task_id"] == "EAAEF-133"
     assert payload["task_alias"] == "EAAEF-133"
     assert payload["evidence_mode"] == "contract_fail_closed"
+    assert payload["qualification_scope"] == "offline_observability_contract_only"
+    assert payload["task_completion_claimed"] is False
+    assert payload["production_qualification_claimed"] is False
+    assert payload["live_runtime_invoked"] is False
+    assert set(payload["cases"]) == {
+        "events_bind_run_task_attempt_fence",
+        "secrets_rejected",
+        "steer_requires_authority_id",
+    }
+    assert set(payload["unqualified_requirements"]) == {
+        "cursor_continuity_under_restart",
+        "pause_resume_cancel_under_restart",
+        "bounded_metrics_cardinality",
+        "terminal_accounting_under_restart",
+    }

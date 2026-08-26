@@ -55,8 +55,23 @@ SCHEDULER_CONFIG_SCHEMA = (
 RUNTIME_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding@1"
 )
+RUNTIME_BINDING_TEMPLATE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding-template@1"
+)
 RUNTIME_INVOCATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-invocation@1"
+)
+RUNTIME_LAUNCHER_RELATIVE_PATH = (
+    "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
+)
+RUNTIME_LAUNCHER_INTERPRETER_FLAGS = ("-I", "-S", "-B")
+RUNTIME_ALLOWED_COMMANDS = (
+    "build",
+    "runtime-check",
+    "materialize",
+    "verify",
+    "launch-plan",
+    "configured-board-launch",
 )
 NAMESPACE_CLAIM_FIELDS = frozenset(
     {
@@ -272,7 +287,14 @@ def _canonical_absent_runtime_path(value: Any, *, field: str) -> Path:
 
 
 def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate the committed runtime contract without importing third-party code."""
+    """Resolve and validate the portable runtime contract without third-party code.
+
+    The tracked scheduler stores only the reviewed repository-relative launcher
+    locator.  Its absolute path is checkout-local evidence, so derive it from
+    this materializer's already-resolved repository root instead of committing
+    a transient worktree name.  The returned value is the fully resolved
+    runtime binding that is hashed into claims and receipts.
+    """
 
     value = config.get("bootstrap_runtime_binding")
     if not isinstance(value, Mapping):
@@ -285,15 +307,15 @@ def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         "duckdb",
     }:
         raise MaterializationError("bootstrap_runtime_binding shape is not canonical")
-    if value.get("schema") != RUNTIME_BINDING_SCHEMA:
+    if value.get("schema") != RUNTIME_BINDING_TEMPLATE_SCHEMA:
         raise MaterializationError("bootstrap_runtime_binding schema is not canonical")
     launcher = value.get("launcher")
     interpreter = value.get("interpreter")
     duckdb_binding = value.get("duckdb")
     if not isinstance(launcher, Mapping) or set(launcher) != {
-        "resolved_path",
+        "repository_relative_path",
         "sha256",
-        "argv_prefix",
+        "interpreter_flags",
         "allowed_commands",
     }:
         raise MaterializationError("bootstrap launcher binding shape is not canonical")
@@ -370,34 +392,32 @@ def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         field="bootstrap_runtime_binding.approved_import_root",
         directory=True,
     )
+    relative_launcher = launcher.get("repository_relative_path")
+    if relative_launcher != RUNTIME_LAUNCHER_RELATIVE_PATH:
+        raise MaterializationError(
+            "bootstrap launcher repository-relative path is not canonical"
+        )
+    try:
+        canonical_root = ROOT.resolve(strict=True)
+    except OSError as exc:
+        raise MaterializationError("reviewed repository root is unavailable") from exc
+    if str(canonical_root) != str(ROOT) or not canonical_root.is_dir():
+        raise MaterializationError("reviewed repository root is not canonical")
+    expected_launcher_path = canonical_root / RUNTIME_LAUNCHER_RELATIVE_PATH
     launcher_path = _canonical_runtime_path(
-        launcher.get("resolved_path"),
+        str(expected_launcher_path),
         field="bootstrap_runtime_binding.launcher.resolved_path",
         directory=False,
     )
-    expected_launcher_path = (
-        ROOT / "scripts/launch_external_agent_autonomous_execution_fabric_materializer.py"
-    ).resolve(strict=True)
-    if launcher_path != expected_launcher_path:
-        raise MaterializationError("bootstrap launcher path is not the reviewed repository launcher")
-    argv_prefix = launcher.get("argv_prefix")
+    interpreter_flags = launcher.get("interpreter_flags")
+    if interpreter_flags != list(RUNTIME_LAUNCHER_INTERPRETER_FLAGS):
+        raise MaterializationError("bootstrap launcher interpreter_flags are not canonical")
     expected_argv_prefix = [
         str(interpreter_path),
-        "-I",
-        "-S",
-        "-B",
+        *RUNTIME_LAUNCHER_INTERPRETER_FLAGS,
         str(launcher_path),
     ]
-    if not isinstance(argv_prefix, list) or argv_prefix != expected_argv_prefix:
-        raise MaterializationError("bootstrap launcher argv_prefix is not canonical")
-    if launcher.get("allowed_commands") != [
-        "build",
-        "runtime-check",
-        "materialize",
-        "verify",
-        "launch-plan",
-        "configured-board-launch",
-    ]:
+    if launcher.get("allowed_commands") != list(RUNTIME_ALLOWED_COMMANDS):
         raise MaterializationError("bootstrap launcher allowed_commands is not canonical")
     _canonical_absent_runtime_path(
         interpreter.get("pycache_prefix"),
@@ -443,7 +463,15 @@ def _runtime_binding_contract(config: Mapping[str, Any]) -> dict[str, Any]:
         digest = _require_sha256(expected, field=f"bootstrap_runtime_binding.{field}")
         if _external_file_sha256(path) != digest:
             raise MaterializationError(f"bootstrap runtime file differs from {field}")
-    return json.loads(json.dumps(value, sort_keys=True))
+    resolved = json.loads(json.dumps(value, sort_keys=True))
+    resolved["schema"] = RUNTIME_BINDING_SCHEMA
+    resolved["launcher"] = {
+        "resolved_path": str(launcher_path),
+        "sha256": str(launcher.get("sha256") or ""),
+        "argv_prefix": expected_argv_prefix,
+        "allowed_commands": list(RUNTIME_ALLOWED_COMMANDS),
+    }
+    return resolved
 
 
 def _verify_duckdb_record(
@@ -1205,6 +1233,24 @@ def _host_receipt_decision(task_id: str) -> str:
         / "receipts/host_admission"
         / filename
     )
+    if task_id == "EAAEF-191":
+        try:
+            from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+                verify_admission_bundle_receipt,
+            )
+
+            board = _load_object(EAAEF_BOARD_PATH)
+            verification = verify_admission_bundle_receipt(
+                receipt_dir=path.parent,
+                expected_source_head=_git("rev-parse", "HEAD"),
+                expected_source_tree=_git("rev-parse", "HEAD^{tree}"),
+                expected_board_namespace=str(board.get("board_namespace") or ""),
+                expected_board_cid=str(board.get("board_cid") or ""),
+                require_source_addressed=True,
+            )
+        except Exception:
+            return "no_go"
+        return "admitted" if verification.get("admitted") is True else "no_go"
     if not path.is_file():
         return ""
     try:
@@ -1214,24 +1260,7 @@ def _host_receipt_decision(task_id: str) -> str:
     if not isinstance(payload, dict):
         return ""
     decision = str(payload.get("decision") or "")
-    if task_id != "EAAEF-191" or decision != "admitted":
-        return decision
-    try:
-        from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
-            verify_admission_bundle_receipt,
-        )
-
-        board = _load_object(EAAEF_BOARD_PATH)
-        verification = verify_admission_bundle_receipt(
-            receipt_dir=path.parent,
-            expected_source_head=_git("rev-parse", "HEAD"),
-            expected_source_tree=_git("rev-parse", "HEAD^{tree}"),
-            expected_board_namespace=str(board.get("board_namespace") or ""),
-            expected_board_cid=str(board.get("board_cid") or ""),
-        )
-    except Exception:
-        return "no_go"
-    return "admitted" if verification.get("admitted") is True else "no_go"
+    return decision
 
 
 def _drop_stale_launch_blockers(blockers: list[str]) -> list[str]:
@@ -2928,58 +2957,9 @@ def materialize(config: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _overlay_projection_path(config: Mapping[str, Any]) -> Path:
+    """Locate the host status projection retained as diagnostic evidence only."""
+
     return _paths(config)["control"].parent / "live/state/task-status-projection.json"
-
-
-def _restore_overlay_on_control(
-    control_path: Path, overlay: Mapping[str, str]
-) -> int:
-    """Replay completed alias statuses onto a freshly materialized catalog."""
-
-    if not overlay or not control_path.is_file():
-        return 0
-    from datetime import datetime, timezone
-
-    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-        connect_duckdb_with_policy,
-    )
-    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
-        CAS_TASK_STATUS_SQL,
-        restore_overlay_cas_parameters,
-    )
-
-    import duckdb
-
-    connection = connect_duckdb_with_policy(
-        duckdb,
-        control_path,
-        read_only=False,
-        configuration={"threads": 1, "memory_limit": "256MB"},
-    )
-    try:
-        rows = [
-            {
-                "task_cid": str(row[0]),
-                "task_alias": str(row[1]),
-                "status": str(row[2]),
-                "revision": int(row[3] or 0),
-            }
-            for row in connection.execute(
-                "SELECT task_cid, task_alias, status, revision FROM tasks"
-            ).fetchall()
-        ]
-        updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        restored = 0
-        for parameters in restore_overlay_cas_parameters(
-            live_rows=rows,
-            overlay_statuses=overlay,
-            updated_at=updated_at,
-        ):
-            connection.execute(CAS_TASK_STATUS_SQL, list(parameters))
-            restored += 1
-        return restored
-    finally:
-        connection.close()
 
 
 def materialize_with_recovery(
@@ -2988,17 +2968,18 @@ def materialize_with_recovery(
     materialize_fn: Callable[..., dict[str, Any]] | None = None,
     max_recoveries: int = MAX_GENERATION_RECOVERIES,
 ) -> dict[str, Any]:
-    """Materialize, advancing a failed or stale namespace without overwriting it."""
+    """Materialize a fresh todo population in a new immutable generation.
 
-    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
-        snapshot_overlay_alias_status,
-    )
+    Host status projections are diagnostic exports, not signed task authority.
+    Recovery therefore never replays them into the new control database; only
+    the qualified CASF owner may apply later fenced task transitions.
+    """
 
     actor = materialize_fn or materialize
     recoveries: list[dict[str, Any]] = []
     working = _active_config(config)
     configured = _configured_generation(config)
-    overlay = snapshot_overlay_alias_status(_overlay_projection_path(working))
+    historical_projection_present = _overlay_projection_path(working).is_file()
     prior_cursor = _read_generation_cursor()
     for attempt in range(max_recoveries + 1):
         state = _namespace_state(working)
@@ -3006,6 +2987,11 @@ def materialize_with_recovery(
             receipt = dict(_load_object(_receipt_path(working)))
             if recoveries:
                 receipt["generation_recoveries"] = recoveries
+            receipt["historical_status_projection_retained_as_evidence"] = (
+                historical_projection_present
+            )
+            receipt["historical_status_projection_replayed"] = False
+            receipt["historical_statuses_replayed"] = 0
             return receipt
         if state in {"failed_partial", "stale_materialized"}:
             if attempt >= max_recoveries:
@@ -3035,11 +3021,6 @@ def materialize_with_recovery(
             continue
         try:
             receipt = dict(actor(working))
-            if overlay:
-                receipt["overlay_restored"] = _restore_overlay_on_control(
-                    _paths(working)["control"], overlay
-                )
-                receipt["overlay_preserved"] = True
         except MaterializationError as exc:
             if (
                 "advance to a new explicit store generation" not in str(exc)
@@ -3074,6 +3055,11 @@ def materialize_with_recovery(
             continue
         if recoveries:
             receipt["generation_recoveries"] = recoveries
+        receipt["historical_status_projection_retained_as_evidence"] = (
+            historical_projection_present
+        )
+        receipt["historical_status_projection_replayed"] = False
+        receipt["historical_statuses_replayed"] = 0
         return receipt
     raise MaterializationError("store generation recovery budget exhausted")
 

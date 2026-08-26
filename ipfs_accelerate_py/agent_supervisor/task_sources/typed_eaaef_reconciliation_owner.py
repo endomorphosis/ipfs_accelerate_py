@@ -1,13 +1,16 @@
 """Statically named, non-production EAAEF reconciliation-owner facade.
 
 The EAAEF lifecycle resolves this exact module name so integration can report
-the missing final-CASF bindings deterministically.  This facade intentionally
-does not open a database, read a credential, inspect or signal a process,
-start a provider, or sign authority.  Every effect method fails closed.
+the missing final-CASF bindings deterministically.  The default facade does
+not open a database, read a credential, inspect or signal a process, start a
+provider, or sign authority.  Every effect method fails closed.
 
-Its qualification is evidence, not an admission: the status and blockers are
-deliberately incompatible with the production qualification required by the
-public lifecycle.
+The separately exported CASF bootstrap adapter implements only the distinct
+``EAAEFBootstrapReconciliationOwner@1`` guarded
+owner-absent/offline-commit/owner-start prefix.  This module intentionally has
+no bootstrap opener: a long-lived host must explicitly bind its snapshot and
+state roots.  The bootstrap adapter is never accepted as the production owner
+needed for independently signed Plan R2, status, exact-birth stop, or launch.
 """
 
 from __future__ import annotations
@@ -151,11 +154,50 @@ def open_eaaef_typed_reconciliation_owner(
     return NonProductionEAAEFTypedReconciliationOwner()
 
 
+from .eaaef_casf_bootstrap_owner import (  # noqa: E402
+    EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA,
+    EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
+    EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS,
+    EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE,
+    EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE,
+    EAAEF_CASF_BOOTSTRAP_REGISTRY_SCHEMA,
+    EAAEF_CASF_OWNER_ABORT_RECEIPT_SCHEMA,
+    EAAEF_CASF_OWNER_ABSENCE_ATTESTATION_SCHEMA,
+    EAAEF_CASF_OWNER_COMMIT_RECEIPT_SCHEMA,
+    EAAEF_CASF_OWNER_START_RECEIPT_SCHEMA,
+    EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS,
+    CASFBootstrapEAAEFTypedReconciliationOwner,
+    EAAEFCASFBootstrapBinding,
+    EAAEFCASFBootstrapOwnerError,
+    EAAEFCASFBootstrapOwnerGuard,
+    EAAEFCASFBootstrapOwnerLifecycle,
+    EAAEFCASFBootstrapRegistry,
+    bind_eaaef_casf_bootstrap_owner,
+)
+
 __all__ = [
+    "CASFBootstrapEAAEFTypedReconciliationOwner",
     "DATABASE_TASK_SOURCE_INTERFACE",
+    "EAAEFCASFBootstrapBinding",
+    "EAAEFCASFBootstrapOwnerError",
+    "EAAEFCASFBootstrapOwnerGuard",
+    "EAAEFCASFBootstrapOwnerLifecycle",
+    "EAAEFCASFBootstrapRegistry",
     "EAAEFTypedReconciliationOwnerUnavailable",
+    "EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA",
+    "EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE",
+    "EAAEF_CASF_BOOTSTRAP_BOUND_PRODUCTION_BLOCKERS",
+    "EAAEF_CASF_BOOTSTRAP_OWNER_GUARD_INTERFACE",
+    "EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE",
+    "EAAEF_CASF_BOOTSTRAP_REGISTRY_SCHEMA",
+    "EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS",
+    "EAAEF_CASF_OWNER_ABSENCE_ATTESTATION_SCHEMA",
+    "EAAEF_CASF_OWNER_ABORT_RECEIPT_SCHEMA",
+    "EAAEF_CASF_OWNER_COMMIT_RECEIPT_SCHEMA",
+    "EAAEF_CASF_OWNER_START_RECEIPT_SCHEMA",
     "EAAEF_OWNER_PRODUCTION_BLOCKERS",
     "EAAEF_RECONCILIATION_OWNER_INTERFACE",
     "NonProductionEAAEFTypedReconciliationOwner",
+    "bind_eaaef_casf_bootstrap_owner",
     "open_eaaef_typed_reconciliation_owner",
 ]

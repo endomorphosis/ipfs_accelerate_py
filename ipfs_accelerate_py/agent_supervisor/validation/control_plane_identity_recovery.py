@@ -2,8 +2,9 @@
 
 Live coordination is the exclusive Quack owner on the operational DuckDB
 file. DuckLake stays post-commit history and is never current authority.
-Planning is pure. Claiming and overlay CAS are owner-inbox effects using
-closed SQL templates.
+Planning is pure. Recovery claims are owner-inbox effects using closed SQL
+templates. Historical status projection CAS is deliberately excluded from
+the raw owner mutation inbox.
 """
 
 from __future__ import annotations
@@ -41,7 +42,6 @@ RELEASE_IDENTITY_RECOVERY_SQL: Final = (
 )
 OWNER_IDENTITY_RECOVERY_SQL: Final = frozenset(
     {
-        CAS_TASK_STATUS_SQL,
         CLAIM_IDENTITY_RECOVERY_SQL,
         RELEASE_IDENTITY_RECOVERY_SQL,
     }

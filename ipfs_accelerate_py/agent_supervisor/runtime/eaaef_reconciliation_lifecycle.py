@@ -7,13 +7,14 @@ not open DuckDB, read a Quack token, accept SQL, or infer completion from an
 older generation.  Database effects are delegated to one exact typed owner
 adapter; Plan R2 is applied through :class:`ExternalAgentStateRepository`.
 
-The current accelerator tree does not yet provide the portfolio bootstrap
-effect required by ``EAAEFTypedReconciliationOwner@1``.  Its statically named
-facade reports the missing production bindings and refuses every effect.  The
-final CASF merge must replace that blocker facade with a narrow adapter over
-its exclusive typed owner.  Until it does, the public commands fail closed
-after producing a useful preflight and a fresh authority request.  Stale EAAEF
-receipts are never rebound.
+The current accelerator tree provides a separately qualified CASF/Quack
+bootstrap adapter for a long-lived host to bind explicitly.  That bounded
+``EAAEFBootstrapReconciliationOwner@1`` capability cannot satisfy the
+``EAAEFTypedReconciliationOwner@1`` production gate.  The statically named
+production facade reports the remaining bindings and refuses every effect.
+Public one-shot materialization therefore remains behind the production gate;
+preflight can report bootstrap readiness independently.  Stale EAAEF receipts
+are never rebound.
 """
 
 from __future__ import annotations
@@ -35,8 +36,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, Protocol, runtime_checkable
 
+from ..entrypoints.local_profile import (
+    LocalProfileTampered,
+    ed25519_public_key_from_did,
+)
 from ..planning.external_agent_plan_r2 import (
     ExternalAgentPlanR2Error,
+    plan_r2_operational_capability_signing_payload,
+    prepare_plan_r2_transition_approval,
     prepare_plan_r2_transition_authorization,
 )
 from ..task_sources.external_agent_state_repository import (
@@ -65,6 +72,9 @@ EAAEF_BOOTSTRAP_TASK_COUNT: Final = 22
 EAAEF_PLAN_R2_TASK_COUNT: Final = 94
 EAAEF_GOAL_COUNT: Final = 20
 EAAEF_GOAL_EDGE_COUNT: Final = 18
+EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE: Final = (
+    "EAAEFBootstrapReconciliationOwner@1"
+)
 EAAEF_RECONCILIATION_OWNER_INTERFACE: Final = "EAAEFTypedReconciliationOwner@1"
 EAAEF_RECONCILIATION_LIFECYCLE_INTERFACE: Final = "EAAEFReconciliationLifecycle@1"
 EAAEF_RECONCILIATION_ROOT: Final = (
@@ -115,6 +125,15 @@ EAAEF_OFFLINE_POPULATION_RECEIPT_SCHEMA: Final = (
 EAAEF_OWNER_QUALIFICATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-typed-owner-qualification@1"
 )
+EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-owner-qualification@1"
+)
+EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE: Final = (
+    "EAAEFCASFBootstrapOwnerLifecycle@1"
+)
+EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS: Final = (
+    "persistent_quack_handoff_source_complete_cutover_unqualified"
+)
 EAAEF_TYPED_TASK_SOURCE_INTERFACE: Final = "TypedDatabaseTaskSource@1"
 EAAEF_LAUNCH_REQUEST_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-reconciliation-launch-request@1"
@@ -139,6 +158,9 @@ EAAEF_BOOTSTRAP_SNAPSHOT_SCHEMA: Final = (
 )
 EAAEF_UNSIGNED_AUTHORITY_REQUEST_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-unsigned-authority-request@1"
+)
+EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-plan-r2-signing-request@1"
 )
 EAAEF_STATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-reconciliation-generation-state@1"
@@ -339,6 +361,28 @@ _OWNER_QUALIFICATION_FIELDS: Final = frozenset(
         "qualification_cid",
     }
 )
+_BOOTSTRAP_OWNER_QUALIFICATION_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "interface",
+        "source_forest_root",
+        "materialization_operation",
+        "bootstrap_materialization_mode",
+        "bootstrap_materialization_before_owner_start",
+        "offline_population_includes_execution_contracts",
+        "direct_database_mutation_after_owner_start",
+        "exclusive_owner_lifecycle_interface",
+        "exclusive_owner_lifecycle_qualification_status",
+        "bootstrap_owner_ready",
+        "bootstrap_owner_blockers",
+        "database_authority_crossing_allowed",
+        "filesystem_path_authority_crossing_allowed",
+        "transport_token_authority_crossing_allowed",
+        "sql_crossing_allowed",
+        "provider_launch_allowed",
+        "qualification_cid",
+    }
+)
 _BOOTSTRAP_SNAPSHOT_FIELDS: Final = frozenset(
     {
         "schema",
@@ -464,6 +508,22 @@ def _canonical_bytes(value: Any) -> bytes:
 def _cid(value: Any) -> str:
     raw = value if isinstance(value, bytes) else _canonical_bytes(value)
     return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _require_ed25519_did(value: object, noun: str) -> str:
+    """Decode one Ed25519 DID while preserving the EAAEF typed error surface."""
+
+    if not isinstance(value, str):
+        raise EAAEFReconciliationIdentityError(
+            f"{noun} is not a valid Ed25519 did:key"
+        )
+    try:
+        ed25519_public_key_from_did(value)
+    except LocalProfileTampered as exc:
+        raise EAAEFReconciliationIdentityError(
+            f"{noun} is not a valid Ed25519 did:key"
+        ) from exc
+    return value
 
 
 def _eaaef_source_cid(value: Any) -> str:
@@ -2695,6 +2755,116 @@ def build_unsigned_fresh_plan_r2_statement(
     return statement
 
 
+def build_fresh_plan_r2_signing_request_projection(
+    *,
+    population: CompiledEAAEFPopulation,
+    bootstrap_snapshot: Mapping[str, Any],
+    operator_identity_did: str,
+    security_reviewer_identity_did: str,
+    capability_reviewer_identity_did: str,
+    issued_at_ms: int,
+    expires_at_ms: int,
+) -> dict[str, Any]:
+    """Project exact public signing payloads without authority effects.
+
+    This pure request boundary does not resolve an owner, keys, or trust roots;
+    sign, persist an artifact or state, run preflight or launch; or permit a
+    provider/supervisor birth.  The public CLI may perform only the preceding
+    sealed-source qualification: captured read-only Git children, the exact
+    isolated structural-validator child, and transient validator storage that
+    is removed before this function is entered.
+    """
+
+    stage_identities = tuple(
+        _require_ed25519_did(identity, noun)
+        for identity, noun in (
+            (operator_identity_did, "fresh Plan-R2 operator identity"),
+            (
+                security_reviewer_identity_did,
+                "fresh Plan-R2 security reviewer identity",
+            ),
+            (
+                capability_reviewer_identity_did,
+                "fresh Plan-R2 capability reviewer identity",
+            ),
+        )
+    )
+
+    statement = build_unsigned_fresh_plan_r2_statement(
+        population=population,
+        bootstrap_snapshot=bootstrap_snapshot,
+    )
+    owner_principal_did = _require_ed25519_did(
+        statement.get("owner_principal_did"),
+        "fresh Plan-R2 owner principal",
+    )
+    if (
+        len(set(stage_identities)) != len(stage_identities)
+        or owner_principal_did in stage_identities
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 signing identities are not independent exact did:key values"
+        )
+    try:
+        signing_payloads = {
+            "independent_operator": prepare_plan_r2_transition_approval(
+                statement,
+                role="independent_operator",
+                identity_did=operator_identity_did,
+                issued_at_ms=issued_at_ms,
+                expires_at_ms=expires_at_ms,
+            ),
+            "independent_security_reviewer": prepare_plan_r2_transition_approval(
+                statement,
+                role="independent_security_reviewer",
+                identity_did=security_reviewer_identity_did,
+                issued_at_ms=issued_at_ms,
+                expires_at_ms=expires_at_ms,
+            ),
+            "independent_plan_r2_capability_reviewer": (
+                plan_r2_operational_capability_signing_payload(
+                    statement,
+                    reviewer_identity_did=capability_reviewer_identity_did,
+                    issued_at_ms=issued_at_ms,
+                    expires_at_ms=expires_at_ms,
+                )
+            ),
+        }
+    except ExternalAgentPlanR2Error as exc:
+        raise EAAEFReconciliationIdentityError(
+            "fresh Plan-R2 signing request cannot reuse the exact authority schemas"
+        ) from exc
+    value = {
+        "schema": EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA,
+        "stage": "transition_approvals_and_operational_capability",
+        "board_namespace": EAAEF_BOARD_NAMESPACE,
+        "source_head": population.source_head,
+        "source_tree": population.source_tree,
+        "source_forest_root": population.source_forest_root,
+        "statement_cid": statement["statement_cid"],
+        "unsigned_plan_r2_statement": statement,
+        "signing_payloads": signing_payloads,
+        "required_signature_fields": {
+            "independent_operator": "signature",
+            "independent_security_reviewer": "signature",
+            "independent_plan_r2_capability_reviewer": "reviewer_signature",
+        },
+        "deferred_external_signature": (
+            "independent_plan_r2_remote_transport_reviewer_after_signed_"
+            "authorization_and_operational_capability"
+        ),
+        "authority_valid": False,
+        "launch_allowed": False,
+        "trust_roots_read": False,
+        "signing_key_read": False,
+        "signature_created": False,
+        "authority_mutated": False,
+        "provider_process_started": False,
+    }
+    value["request_cid"] = _cid(value)
+    return value
+
+
 def build_unsigned_fresh_authority_request(
     *,
     population: CompiledEAAEFPopulation,
@@ -2957,6 +3127,118 @@ def apply_plan_r2_through_existing_repository(
 
 
 @runtime_checkable
+class EAAEFBootstrapReconciliationOwner(Protocol):
+    """Exact owner-absent/offline-commit/owner-start bootstrap boundary.
+
+    This protocol cannot apply Plan R2, launch a supervisor, report production
+    status, or stop tracks.  A production owner may implement this protocol in
+    addition to :class:`EAAEFTypedReconciliationOwner`, but the two
+    qualifications remain independent.
+    """
+
+    BOOTSTRAP_INTERFACE: str
+
+    def bootstrap_reconciliation_qualification(self) -> Mapping[str, Any]:
+        """Return exact qualification for only the bounded bootstrap effect."""
+
+    def materialize_offline_population(
+        self,
+        request: Mapping[str, Any],
+        *,
+        population: CompiledEAAEFPopulation,
+    ) -> Mapping[str, Any]:
+        """Materialize 22+94 while owner-absent, then start the owner."""
+
+
+def _qualified_bootstrap_reconciliation_owner(
+    owner: object | None,
+    *,
+    source_forest_root: str = "",
+) -> tuple[EAAEFBootstrapReconciliationOwner, dict[str, Any]]:
+    """Return one owner and the same qualification mapping that was validated."""
+
+    if (
+        owner is None
+        or not isinstance(owner, EAAEFBootstrapReconciliationOwner)
+        or getattr(owner, "BOOTSTRAP_INTERFACE", "")
+        != EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+    ):
+        raise EAAEFReconciliationBlocked(
+            "bootstrap_portfolio_materialization_owner_unavailable: CASF must provide "
+            "EAAEFBootstrapReconciliationOwner@1 over its persistent exclusive owner"
+        )
+    qualification = owner.bootstrap_reconciliation_qualification()
+    if not isinstance(qualification, Mapping):
+        raise EAAEFReconciliationBlocked(
+            "bootstrap reconciliation owner has no qualification"
+        )
+    value = dict(qualification)
+    body = dict(value)
+    qualification_cid = str(body.pop("qualification_cid", ""))
+    required = {
+        "schema": EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA,
+        "interface": EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
+        "materialization_operation": (
+            "materialize_offline_22_plus_94_then_start_owner"
+        ),
+        "bootstrap_materialization_mode": (
+            "offline_before_exclusive_owner_start"
+        ),
+        "bootstrap_materialization_before_owner_start": True,
+        "offline_population_includes_execution_contracts": True,
+        "direct_database_mutation_after_owner_start": False,
+        "exclusive_owner_lifecycle_interface": (
+            EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE
+        ),
+        "exclusive_owner_lifecycle_qualification_status": (
+            EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS
+        ),
+        "bootstrap_owner_ready": True,
+        "bootstrap_owner_blockers": [],
+        "database_authority_crossing_allowed": False,
+        "filesystem_path_authority_crossing_allowed": False,
+        "transport_token_authority_crossing_allowed": False,
+        "sql_crossing_allowed": False,
+        "provider_launch_allowed": False,
+    }
+    mismatched = sorted(
+        field_name
+        for field_name, expected in required.items()
+        if value.get(field_name) != expected
+    )
+    observed_forest = str(value.get("source_forest_root") or "")
+    if not _SHA256_RE.fullmatch(observed_forest) or (
+        source_forest_root and observed_forest != source_forest_root
+    ):
+        mismatched.append("source_forest_root")
+    if (
+        set(value) != _BOOTSTRAP_OWNER_QUALIFICATION_FIELDS
+        or qualification_cid != _cid(body)
+        or mismatched
+    ):
+        raise EAAEFReconciliationBlocked(
+            "bootstrap reconciliation owner qualification differs: "
+            + ", ".join(sorted(set(mismatched or ["shape_or_cid"])))
+        )
+    _assert_no_boundary_authority(value)
+    return owner, value
+
+
+def require_bootstrap_reconciliation_owner(
+    owner: object | None,
+    *,
+    source_forest_root: str = "",
+) -> EAAEFBootstrapReconciliationOwner:
+    """Admit only the persistent CASF/Quack bootstrap capability."""
+
+    qualified_owner, _qualification = _qualified_bootstrap_reconciliation_owner(
+        owner,
+        source_forest_root=source_forest_root,
+    )
+    return qualified_owner
+
+
+@runtime_checkable
 class EAAEFTypedReconciliationOwner(Protocol):
     """Exact final-CASF adapter; no database authority crosses this protocol."""
 
@@ -3080,6 +3362,39 @@ def resolve_production_reconciliation_owner(
             "typed_portfolio_materialization_owner_unavailable: exact opener is absent"
         )
     return require_typed_reconciliation_owner(
+        opener(repo_root=Path(repo_root).resolve(strict=True))
+    )
+
+
+def resolve_bootstrap_reconciliation_owner(
+    repo_root: str | Path,
+) -> EAAEFBootstrapReconciliationOwner:
+    """Resolve only an explicitly bound, statically named bootstrap owner.
+
+    The default source tree deliberately has no opener.  In particular, this
+    resolver never derives snapshot bindings, registry paths, or owner
+    authority from ambient or historical artifacts.
+    """
+
+    module_name = (
+        "ipfs_accelerate_py.agent_supervisor.task_sources.typed_eaaef_reconciliation_owner"
+    )
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name == module_name:
+            raise EAAEFReconciliationBlocked(
+                "bootstrap_portfolio_materialization_owner_unavailable: missing "
+                "typed_eaaef_reconciliation_owner CASF bootstrap adapter"
+            ) from exc
+        raise
+    opener = getattr(module, "open_eaaef_bootstrap_reconciliation_owner", None)
+    if not callable(opener):
+        raise EAAEFReconciliationBlocked(
+            "bootstrap_portfolio_materialization_owner_unavailable: exact "
+            "bootstrap opener is absent"
+        )
+    return require_bootstrap_reconciliation_owner(
         opener(repo_root=Path(repo_root).resolve(strict=True))
     )
 
@@ -3324,7 +3639,7 @@ def _build_offline_population_request(
         raise EAAEFReconciliationIdentityError("fresh generation id is invalid")
     request = {
         "schema": EAAEF_OFFLINE_POPULATION_REQUEST_SCHEMA,
-        "interface": EAAEF_RECONCILIATION_OWNER_INTERFACE,
+        "interface": EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
         "operation": "materialize_offline_22_plus_94_then_start_owner",
         "generation_id": generation_id,
         "board_namespace": EAAEF_BOARD_NAMESPACE,
@@ -3364,7 +3679,7 @@ def _validate_offline_population_receipt(
     value = dict(receipt)
     required = {
         "schema": EAAEF_OFFLINE_POPULATION_RECEIPT_SCHEMA,
-        "interface": EAAEF_RECONCILIATION_OWNER_INTERFACE,
+        "interface": EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
         "request_cid": request["request_cid"],
         "generation_id": request["generation_id"],
         "source_forest_root": population.source_forest_root,
@@ -3485,7 +3800,7 @@ def prepare_fresh_generation(
     *,
     repo_root: str | Path,
     state_root: str | Path,
-    owner: EAAEFTypedReconciliationOwner,
+    owner: EAAEFBootstrapReconciliationOwner,
     generation_id: str = "",
     now_ms: int | None = None,
 ) -> dict[str, Any]:
@@ -3496,7 +3811,7 @@ def prepare_fresh_generation(
     import_evidence = _require_production_source_policy(root, forest=sealed)
     board = _json_object(root / EAAEF_BOARD_PATH, noun="EAAEF task board")
     population = compile_fresh_eaaef_population(board, forest=sealed, repo_root=root)
-    typed_owner = require_typed_reconciliation_owner(
+    bootstrap_owner = require_bootstrap_reconciliation_owner(
         owner,
         source_forest_root=population.source_forest_root,
     )
@@ -3535,7 +3850,7 @@ def prepare_fresh_generation(
             repo_root=root,
         )
         receipt, snapshot = _validate_offline_population_receipt(
-            typed_owner.materialize_offline_population(
+            bootstrap_owner.materialize_offline_population(
                 request,
                 population=population,
             ),
@@ -4069,6 +4384,7 @@ def preflight_reconciliation(
     trust_roots: Mapping[str, Any] | None = None,
     bootstrap_snapshot: Mapping[str, Any] | None = None,
     owner: object | None = None,
+    bootstrap_owner: object | None = None,
     now_ms: int | None = None,
 ) -> dict[str, Any]:
     """Return current forest/population and exact production blockers."""
@@ -4114,11 +4430,28 @@ def preflight_reconciliation(
                 blockers.append(f"fresh_authority_rejected:{type(exc).__name__}:{exc}")
     if stale_bindings:
         blockers.append("stale_bindings_rejected:" + ",".join(sorted(stale_bindings)))
+    expected_forest_root = population.source_forest_root if population else ""
+    bootstrap_owner_ready = False
+    bootstrap_qualification: dict[str, Any] | None = None
+    try:
+        _qualified_bootstrap_owner, bootstrap_qualification = (
+            _qualified_bootstrap_reconciliation_owner(
+                bootstrap_owner if bootstrap_owner is not None else owner,
+                source_forest_root=expected_forest_root,
+            )
+        )
+        bootstrap_owner_ready = True
+    except EAAEFReconciliationBlocked:
+        blockers.append(
+            "bootstrap_portfolio_materialization_owner_unavailable_until_casf_binding"
+        )
+    production_owner_ready = False
     try:
         require_typed_reconciliation_owner(
             owner,
-            source_forest_root=(population.source_forest_root if population else ""),
+            source_forest_root=expected_forest_root,
         )
+        production_owner_ready = True
     except EAAEFReconciliationBlocked:
         blockers.append(
             "typed_portfolio_materialization_owner_unavailable_until_final_casf_adapter"
@@ -4136,6 +4469,12 @@ def preflight_reconciliation(
         "unsigned_authority_request": unsigned_request,
         "stale_bindings": sorted(stale_bindings),
         "blockers": blockers,
+        "bootstrap_owner_ready": bootstrap_owner_ready,
+        "production_owner_ready": production_owner_ready,
+        "bootstrap_owner_qualification": bootstrap_qualification,
+        "required_bootstrap_owner_interface": (
+            EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+        ),
         "required_owner_interface": EAAEF_RECONCILIATION_OWNER_INTERFACE,
         "required_typed_task_source_interface": EAAEF_TYPED_TASK_SOURCE_INTERFACE,
         "required_plan_r2_repository_interface": AUTHORIZED_PLAN_R2_REPOSITORY_INTERFACE,
@@ -4215,6 +4554,27 @@ def _argument_parser() -> argparse.ArgumentParser:
         default="",
         help="Typed fresh-owner snapshot used to emit the actual unsigned Plan-R2 statement.",
     )
+    signing_request = commands.add_parser(
+        "signing-request",
+        help="Print exact public stage-one Plan-R2 signing payloads.",
+        description=(
+            "Print exact public stage-one Plan-R2 signing payloads after read-only "
+            "sealed-source qualification. Qualification may use captured Git children, "
+            "one exact isolated structural-validator child, and cleaned transient "
+            "storage; this command never resolves owners/keys/trust, signs, writes "
+            "durable artifacts/state, runs preflight/launch, or births providers/"
+            "supervisors."
+        ),
+    )
+    signing_request.add_argument("--bootstrap-snapshot", required=True)
+    signing_request.add_argument("--operator-identity-did", required=True)
+    signing_request.add_argument("--security-reviewer-identity-did", required=True)
+    signing_request.add_argument(
+        "--plan-r2-capability-reviewer-identity-did",
+        required=True,
+    )
+    signing_request.add_argument("--issued-at-ms", required=True, type=int)
+    signing_request.add_argument("--expires-at-ms", required=True, type=int)
     materialize = commands.add_parser(
         "materialize",
         help=(
@@ -4238,7 +4598,7 @@ def _argument_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the public ``preflight|materialize|launch|status|stop`` commands."""
+    """Run the public preflight, signing, materialization, and owner commands."""
 
     args = _argument_parser().parse_args(argv)
     try:
@@ -4257,15 +4617,47 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             except EAAEFReconciliationBlocked:
                 owner = None
+            try:
+                bootstrap_owner: EAAEFBootstrapReconciliationOwner | None = (
+                    resolve_bootstrap_reconciliation_owner(repo_root)
+                )
+            except EAAEFReconciliationBlocked:
+                bootstrap_owner = None
             result = preflight_reconciliation(
                 repo_root,
                 authority=authority,
                 trust_roots=trust_roots,
                 bootstrap_snapshot=bootstrap_snapshot,
                 owner=owner,
+                bootstrap_owner=bootstrap_owner,
             )
             _print_json(result)
             return 0 if result["valid"] else 2
+        if args.command == "signing-request":
+            selected_forest = inspect_current_repository_forest(repo_root)
+            sealed_forest = _require_sealed_forest(selected_forest)
+            _require_production_source_policy(repo_root, forest=selected_forest)
+            board = _json_object(repo_root / EAAEF_BOARD_PATH, noun="EAAEF task board")
+            population = compile_fresh_eaaef_population(
+                board,
+                forest=sealed_forest,
+                repo_root=repo_root,
+            )
+            result = build_fresh_plan_r2_signing_request_projection(
+                population=population,
+                bootstrap_snapshot=load_fresh_bootstrap_snapshot(
+                    args.bootstrap_snapshot
+                ),
+                operator_identity_did=args.operator_identity_did,
+                security_reviewer_identity_did=args.security_reviewer_identity_did,
+                capability_reviewer_identity_did=(
+                    args.plan_r2_capability_reviewer_identity_did
+                ),
+                issued_at_ms=args.issued_at_ms,
+                expires_at_ms=args.expires_at_ms,
+            )
+            _print_json(result)
+            return 0
         owner = resolve_production_reconciliation_owner(repo_root)
         if args.command == "status":
             _print_json(reconciliation_status(state_root=state_root, owner=owner))
@@ -4329,12 +4721,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "CompiledEAAEFPopulation",
+    "EAAEFBootstrapReconciliationOwner",
     "EAAEFReconciliationBlocked",
     "EAAEFReconciliationError",
     "EAAEFReconciliationIdentityError",
     "EAAEFTypedReconciliationOwner",
     "EAAEF_BOARD_NAMESPACE",
     "EAAEF_BOOTSTRAP_TASK_COUNT",
+    "EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA",
+    "EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE",
+    "EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE",
+    "EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS",
     "EAAEF_BOARD_SOURCE_SCHEMA",
     "EAAEF_FRESH_AUTHORITY_SCHEMA",
     "EAAEF_FRESH_TRUST_SCHEMA",
@@ -4342,6 +4739,7 @@ __all__ = [
     "EAAEF_FOREST_SCHEMA",
     "EAAEF_GOAL_EDGE_COUNT",
     "EAAEF_GOAL_COUNT",
+    "EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA",
     "EAAEF_PLAN_R2_TASK_COUNT",
     "EAAEF_RECONCILIATION_OWNER_INTERFACE",
     "EAAEF_TASK_COUNT",
@@ -4350,6 +4748,7 @@ __all__ = [
     "VerifiedFreshEAAEFAuthority",
     "apply_plan_r2_through_existing_repository",
     "assemble_fresh_authority_bundle",
+    "build_fresh_plan_r2_signing_request_projection",
     "build_unsigned_fresh_authority_request",
     "build_unsigned_fresh_plan_r2_statement",
     "build_typed_owner_materialization_request",
@@ -4364,7 +4763,9 @@ __all__ = [
     "preflight_reconciliation",
     "prepare_fresh_generation",
     "reconciliation_status",
+    "require_bootstrap_reconciliation_owner",
     "require_typed_reconciliation_owner",
+    "resolve_bootstrap_reconciliation_owner",
     "resolve_production_reconciliation_owner",
     "stop_reconciliation_generation",
     "verify_fresh_authority_bundle",

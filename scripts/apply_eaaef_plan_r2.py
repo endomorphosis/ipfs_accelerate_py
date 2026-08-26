@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-"""Dual-sign and CAS Plan R2 for EAAEF run-v14.
+"""Archived, disabled Plan-R2 experiment for the historical EAAEF run-v14.
 
-Stops the exclusive Quack owner just long enough to run prepare/apply/observe
-through the in-process Plan-R2 owner gateway. Preserves completed rows, CAS
-the remaining catalog to todo, and names a conflict-free frontier of at most
-five write-disjoint tasks whose dependencies are already complete. Claiming
-must still honor the dependency DAG. Leaves Quack stopped for the caller to
-restart. Does not mount a Docker socket. Operator and security signatures use
-the existing local-dev and lifecycle-root keys.
+The old utility trusted run-v14 terminal rows and local development keys, so
+it cannot establish current completion or Plan-R2 authority. ``main`` is
+unconditionally fail-closed; the source remains only for forensic review.
 """
 
 from __future__ import annotations
@@ -85,6 +81,10 @@ OUT_DIR = AUTHORITY / "plan-r2"
 SHARD_ID = "control-shard-0"
 STORE_ID = "eaaef-control-run-v14"
 BOARD_NS = "external-agent-autonomous-execution-fabric-v1"
+LEGACY_MUTATOR_DISABLED_REASON = (
+    "historical EAAEF run-v14 Plan-R2 mutator is disabled: stale DuckDB rows "
+    "and local development keys are not current completion authority"
+)
 
 
 def _cid(value: Any) -> str:
@@ -428,6 +428,8 @@ def _signed_approval(
 
 
 def main() -> int:
+    raise SystemExit(LEGACY_MUTATOR_DISABLED_REASON)
+
     if str(getattr(duckdb, "__version__", "") or "") != "1.5.5":
         raise SystemExit("Plan R2 apply requires DuckDB 1.5.5")
     easr._cid = lambda value: "sha256:" + hashlib.sha256(

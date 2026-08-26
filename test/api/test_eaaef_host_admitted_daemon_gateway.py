@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 import pytest
-
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
+    QuackDaemonGatewayError,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.eaaef_host_admitted_daemon_gateway import (
     _CAS_TASK_STATUS_SQL,
     _admitted_home_directory,
     _admitted_httpfs_extension,
     _connect_admitted_duckdb,
     _submit_owner_mutation,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
-    QuackDaemonGatewayError,
 )
 
 
@@ -50,6 +52,10 @@ def _pin_extension_pair(tmp_path: Path) -> tuple[Path, Path]:
     return quack, httpfs
 
 
+def _file_digest(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def test_admitted_httpfs_is_the_pinned_quack_sibling(tmp_path: Path) -> None:
     quack, httpfs = _pin_extension_pair(tmp_path)
     assert _admitted_httpfs_extension(quack) == httpfs
@@ -70,20 +76,261 @@ def test_admitted_home_directory_is_the_duckdb_dotdir_parent(tmp_path: Path) -> 
 def test_connect_admitted_duckdb_loads_httpfs_then_quack_without_install(
     tmp_path: Path,
 ) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        eaaef_host_admitted_daemon_gateway as gateway_module,
+    )
+
     quack, httpfs = _pin_extension_pair(tmp_path)
+    extensions = gateway_module._seal_admitted_extensions(
+        quack_path=quack,
+        quack_sha256=_file_digest(quack),
+        httpfs_path=httpfs,
+        httpfs_sha256=_file_digest(httpfs),
+    )
     duckdb = _FakeDuckDB()
-    connection = _connect_admitted_duckdb(duckdb, quack)
-    assert connection is duckdb.connection
-    escaped_home = str(tmp_path).replace("'", "''")
-    escaped_httpfs = str(httpfs).replace("'", "''")
-    escaped_quack = str(quack).replace("'", "''")
-    assert connection.statements == [
-        f"SET home_directory='{escaped_home}'",
-        "SET autoinstall_known_extensions=false",
-        f"LOAD '{escaped_httpfs}'",
-        f"LOAD '{escaped_quack}'",
-    ]
-    assert all("INSTALL" not in statement for statement in connection.statements)
+    try:
+        connection = _connect_admitted_duckdb(duckdb, extensions)
+        assert connection is duckdb.connection
+        escaped_httpfs = str(extensions.httpfs_path).replace("'", "''")
+        escaped_quack = str(extensions.quack_path).replace("'", "''")
+        assert connection.statements == [
+            "SET autoinstall_known_extensions=false",
+            "SET autoload_known_extensions=false",
+            f"LOAD '{escaped_httpfs}'",
+            f"LOAD '{escaped_quack}'",
+        ]
+        assert all(
+            "INSTALL" not in statement for statement in connection.statements
+        )
+    finally:
+        extensions.close()
+
+
+def test_import_admitted_duckdb_consumes_the_immutable_receipt_mapping(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        eaaef_host_admitted_daemon_gateway as gateway_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.validation import (
+        eaaef_host_admission,
+    )
+
+    module_path = tmp_path / "site-packages/duckdb/__init__.py"
+    module_path.parent.mkdir(parents=True)
+    module_path.write_text("# immutable receipt target\n", encoding="utf-8")
+    native_module_path = tmp_path / "site-packages/_duckdb.test.so"
+    native_module_path.write_bytes(b"native-duckdb")
+    extension, httpfs = _pin_extension_pair(tmp_path)
+    imported = SimpleNamespace(__version__="1.5.5", __file__=str(module_path))
+    imported_native = SimpleNamespace(__file__=str(native_module_path))
+    monkeypatch.setattr(
+        gateway_module.importlib,
+        "import_module",
+        lambda name: {
+            "duckdb": imported,
+            "_duckdb": imported_native,
+        }[name],
+    )
+    extension_fingerprint = (
+        eaaef_host_admission.REQUIRED_QUACK_EXTENSION_FINGERPRINT
+    )
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "APPROVED_IMPORT_ROOT",
+        module_path.parent.parent,
+    )
+    receipt = {
+        "decision": "admitted",
+        "evidence": {
+            "required_duckdb": "1.5.5",
+            "required_quack": "1.5.5+core",
+            "required_quack_extension_version": "c154811",
+            "observed_duckdb": "1.5.5",
+            "observed_module_path": str(module_path),
+            "observed_module_sha256": _file_digest(module_path),
+            "observed_native_module_path": str(native_module_path),
+            "observed_native_module_sha256": _file_digest(native_module_path),
+            "required_quack_extension_fingerprint": extension_fingerprint,
+            "required_quack_platform": "linux-aarch64",
+            "under_approved_import_root": True,
+            "quack_extension_sha256": _file_digest(extension),
+            "httpfs_extension_path": str(httpfs),
+            "httpfs_extension_sha256": _file_digest(httpfs),
+            "quack_probe": {
+                "passes_health_check": True,
+                "extension": {
+                    "extension_version": "c154811",
+                    "installed_from": "core",
+                    "install_path": str(extension),
+                },
+                "extension_fingerprint": extension_fingerprint,
+                "platform_name": "linux",
+                "platform_machine": "aarch64",
+            },
+        },
+    }
+
+    duckdb, sealed_extensions = gateway_module._import_admitted_duckdb(
+        receipt
+    )
+
+    assert duckdb is imported
+    try:
+        sealed_httpfs, sealed_quack = sealed_extensions.load_paths()
+        assert sealed_httpfs.read_bytes() == b"httpfs"
+        assert sealed_quack.read_bytes() == b"quack"
+        extension.write_bytes(b"mutated-after-import")
+        httpfs.write_bytes(b"mutated-after-import")
+        connection = _connect_admitted_duckdb(
+            _FakeDuckDB(),
+            sealed_extensions,
+        )
+        assert connection.statements[-2:] == [
+            f"LOAD '{sealed_httpfs}'",
+            f"LOAD '{sealed_quack}'",
+        ]
+        assert sealed_httpfs.read_bytes() == b"httpfs"
+        assert sealed_quack.read_bytes() == b"quack"
+    finally:
+        sealed_extensions.close()
+    extension.write_bytes(b"quack")
+    httpfs.write_bytes(b"httpfs")
+
+    substituted_fingerprint = copy.deepcopy(receipt)
+    substituted_fingerprint["evidence"][
+        "required_quack_extension_fingerprint"
+    ] = "sha256:" + "1" * 64
+    substituted_fingerprint["evidence"]["quack_probe"][
+        "extension_fingerprint"
+    ] = "sha256:" + "1" * 64
+    with pytest.raises(QuackDaemonGatewayError, match="capability pins"):
+        gateway_module._import_admitted_duckdb(substituted_fingerprint)
+
+    substituted = tmp_path / "site-packages/other/duckdb/__init__.py"
+    substituted.parent.mkdir(parents=True)
+    substituted.write_text("# same version, different module\n", encoding="utf-8")
+    monkeypatch.setattr(
+        gateway_module.importlib,
+        "import_module",
+        lambda name: (
+            SimpleNamespace(__version__="1.5.5", __file__=str(substituted))
+            if name == "duckdb"
+            else imported_native
+        ),
+    )
+    with pytest.raises(QuackDaemonGatewayError, match="module is not"):
+        gateway_module._import_admitted_duckdb(receipt)
+
+    monkeypatch.setattr(
+        gateway_module.importlib,
+        "import_module",
+        lambda name: imported if name == "duckdb" else imported_native,
+    )
+    extension.write_bytes(b"mutated-quack")
+    with pytest.raises(QuackDaemonGatewayError, match="file digest differs"):
+        gateway_module._import_admitted_duckdb(receipt)
+
+
+def test_connect_rejects_a_replaced_sealed_extension_alias(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        eaaef_host_admitted_daemon_gateway as gateway_module,
+    )
+
+    quack, httpfs = _pin_extension_pair(tmp_path)
+    extensions = gateway_module._seal_admitted_extensions(
+        quack_path=quack,
+        quack_sha256=_file_digest(quack),
+        httpfs_path=httpfs,
+        httpfs_sha256=_file_digest(httpfs),
+    )
+    try:
+        extensions.quack_path.unlink()
+        os.symlink(str(quack), extensions.quack_path)
+        with pytest.raises(QuackDaemonGatewayError, match="alias changed"):
+            _connect_admitted_duckdb(_FakeDuckDB(), extensions)
+    finally:
+        extensions.close()
+
+
+def test_host_admitted_factories_reject_dead_command_fabric(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        eaaef_host_admitted_daemon_gateway as gateway_module,
+    )
+
+    receipts = {
+        task_id: {"decision": "admitted", "evidence": {}}
+        for task_id in (
+            "EAAEF-182",
+            "EAAEF-185",
+            "EAAEF-186",
+            "EAAEF-187",
+            "EAAEF-188",
+            "EAAEF-189",
+            "EAAEF-191",
+        )
+    }
+    monkeypatch.setattr(
+        gateway_module,
+        "_eaaef_source_addressed_host_receipts",
+        lambda *args, **kwargs: receipts,
+    )
+
+    def _unexpected_import(receipt):
+        del receipt
+        raise AssertionError("dead command fabric must reject before DuckDB import")
+
+    monkeypatch.setattr(
+        gateway_module,
+        "_import_admitted_duckdb",
+        _unexpected_import,
+    )
+    program = SimpleNamespace(
+        authority_mode="quack",
+        quack_endpoint="quack:127.0.0.1:19495",
+        endpoint_secret_handle="secret-handle:eaaef-quack-owner-v1",
+    )
+
+    # The source-only overlay has its own explicit gate, independent of the
+    # command-fabric verifier.  Even a future edit of one gate cannot silently
+    # make these placeholder authority seams reachable.
+    assert gateway_module.build_eaaef_host_admitted_command_gateway(
+        repo_root=tmp_path,
+        program=program,
+        owner_session_id="owner",
+        expected_source_head="a" * 40,
+        expected_source_tree="b" * 40,
+    ) is None
+    assert gateway_module.build_eaaef_host_admitted_container_dispatcher_factory(
+        repo_root=tmp_path,
+        expected_source_head="a" * 40,
+        expected_source_tree="b" * 40,
+    ) is None
+    monkeypatch.setattr(
+        gateway_module,
+        "_SOURCE_ONLY_SCAFFOLDING_RUNTIME_ENABLED",
+        True,
+    )
+    assert gateway_module.build_eaaef_host_admitted_command_gateway(
+        repo_root=tmp_path,
+        program=program,
+        owner_session_id="owner",
+        expected_source_head="a" * 40,
+        expected_source_tree="b" * 40,
+    ) is None
+    assert gateway_module.build_eaaef_host_admitted_container_dispatcher_factory(
+        repo_root=tmp_path,
+        expected_source_head="a" * 40,
+        expected_source_tree="b" * 40,
+    ) is None
 
 
 def test_factory_uses_daemon_execution_repository_property() -> None:
@@ -118,7 +365,7 @@ def test_record_defaults_missing_task_dependencies() -> None:
 def test_owner_mutation_rejects_non_cas_sql(tmp_path: Path) -> None:
     inbox = tmp_path / "mutations"
     inbox.mkdir()
-    with pytest.raises(QuackDaemonGatewayError, match="closed CAS template"):
+    with pytest.raises(QuackDaemonGatewayError, match="signed command fabric"):
         _submit_owner_mutation(
             mutation_dir=inbox,
             sql="DELETE FROM tasks",
@@ -127,37 +374,17 @@ def test_owner_mutation_rejects_non_cas_sql(tmp_path: Path) -> None:
         )
 
 
-def test_owner_mutation_reads_owner_done_receipt(tmp_path: Path) -> None:
-    import json
-    import threading
-
+def test_owner_mutation_never_publishes_bare_cas_request(tmp_path: Path) -> None:
     inbox = tmp_path / "mutations"
     inbox.mkdir()
-
-    def _consume() -> None:
-        deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline:
-            requests = list(inbox.glob("*.request.json"))
-            if not requests:
-                time.sleep(0.01)
-                continue
-            request = requests[0]
-            payload = json.loads(request.read_text(encoding="utf-8"))
-            assert payload["sql"] == _CAS_TASK_STATUS_SQL
-            done = request.with_name(request.name.replace(".request.json", ".done.json"))
-            done.write_text(json.dumps({"ok": True, "rowcount": 1}) + "\n", encoding="utf-8")
-            return
-
-    worker = threading.Thread(target=_consume, daemon=True)
-    worker.start()
-    updated = _submit_owner_mutation(
-        mutation_dir=inbox,
-        sql=_CAS_TASK_STATUS_SQL,
-        parameters=["in_progress", 3, "2026-08-21T00:00:00Z", "cid:1", 2],
-        timeout_seconds=2.0,
-    )
-    worker.join(timeout=2.0)
-    assert updated == 1
+    with pytest.raises(QuackDaemonGatewayError, match="signed command fabric"):
+        _submit_owner_mutation(
+            mutation_dir=inbox,
+            sql=_CAS_TASK_STATUS_SQL,
+            parameters=["in_progress", 3, "2026-08-21T00:00:00Z", "cid:1", 2],
+            timeout_seconds=2.0,
+        )
+    assert list(inbox.iterdir()) == []
 
 
 def test_owned_patch_cid_hashes_only_owned_files(tmp_path: Path) -> None:
@@ -322,8 +549,8 @@ def test_host_merge_admission_is_reviewed_patch_when_host_lacks_files(
         _owned_patch_cid,
     )
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.external_agent_container_dispatcher import (
-        ExternalAgentContainerWorkPacket,
         ExternalAgentContainerWorkerDispatcher,
+        ExternalAgentContainerWorkPacket,
     )
 
     worktrees = (
@@ -462,7 +689,7 @@ def test_ready_tasks_skip_unmet_dependencies() -> None:
     assert [task.task_alias for task in page.tasks] == ["EAAEF-011", "EAAEF-012"]
 
 
-def test_configured_board_overlay_prefers_live_quack(
+def test_configured_board_never_promotes_raw_live_quack_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.runtime import (
@@ -483,11 +710,5 @@ def test_configured_board_overlay_prefers_live_quack(
         "_eaaef_live_quack_status_overlay",
         lambda board: {"EAAEF-011": "todo", "EAAEF-010": "completed"},
     )
-    monkeypatch.setattr(
-        scheduler,
-        "_eaaef_write_task_status_projection",
-        lambda board, overlay: None,
-    )
     overlay = scheduler._eaaef_task_status_overlay(_Board())
-    assert overlay["EAAEF-011"] == "todo"
-    assert overlay["EAAEF-010"] == "completed"
+    assert overlay == {}

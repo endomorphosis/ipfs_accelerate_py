@@ -1,0 +1,29 @@
+{
+  "artifact_cid": "baguqeeragg7dj6uogw6oubvgmy3qqczpayulvxfrz3x7jopqi4kvounbk3ia",
+  "cases_exercised": [
+    "deterministic_candidate_ranking",
+    "empty_candidate_refusal",
+    "omitted_goal_coverage_refusal"
+  ],
+  "content_addressed_plan_id": "baguqeeraswlhgevtgvlk6etkdhceg47dwtt6ga2v62b5locjwk57ckmdyjka",
+  "current_proofs_verified": false,
+  "evidence_mode": "contract_fail_closed",
+  "independent_review_invoked": false,
+  "live_plan_execution_invoked": false,
+  "live_runtime_invoked": false,
+  "offline_selected_candidate_id": "narrow",
+  "producer_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_agent_plan_compilation.py"
+  ],
+  "producer_source_cid": "sha256:a7b1a1082ff4371b0b90bffd287776a817431bdb0cac7b11520b90b02dd69f8a",
+  "production_qualification_claimed": false,
+  "qualification_scope": "offline_plan_compilation_contract_only",
+  "qualification_status": "not_live_qualified",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1",
+  "task_completion_claimed": false,
+  "task_id": "EAAEF-074"
+}

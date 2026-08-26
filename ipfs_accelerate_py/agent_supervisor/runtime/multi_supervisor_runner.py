@@ -423,7 +423,12 @@ def build_sealed_control_plane_module_command(
     native_gate = SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
     if (
         repo_root is not None
-        and _eaaef_host_receipt_admitted(Path(repo_root), "EAAEF-191")
+        and _eaaef_host_receipt_admitted(
+            Path(repo_root),
+            "EAAEF-191",
+            expected_source_head=pin.source_head,
+            expected_source_tree=pin.source_tree,
+        )
         and module_name
         == "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
     ):
@@ -2259,15 +2264,85 @@ def _validated_eaaef_database_programs(
     return operational, forbidden, command_fabric, worker_network_policy
 
 
+def _eaaef_source_addressed_host_receipts(
+    repo_root: Path | None,
+    *,
+    expected_source_head: str,
+    expected_source_tree: str,
+) -> dict[str, dict[str, Any]] | None:
+    """Return the fully verified immutable EAAEF-191 artifact set."""
+
+    if (
+        repo_root is None
+        or not expected_source_head
+        or not expected_source_tree
+    ):
+        return None
+    try:
+        from ..validation.eaaef_host_admission import (
+            verify_current_admission_bundle_receipt,
+        )
+
+        verification = verify_current_admission_bundle_receipt(
+            repo_root,
+            expected_source_head=expected_source_head,
+            expected_source_tree=expected_source_tree,
+            include_verified_artifacts=True,
+        )
+    except Exception:
+        return None
+    artifacts = verification.get("verified_artifacts")
+    if verification.get("admitted") is not True or not isinstance(
+        artifacts, Mapping
+    ):
+        return None
+    result: dict[str, dict[str, Any]] = {}
+    for task_id, payload in artifacts.items():
+        if not isinstance(task_id, str) or not isinstance(payload, Mapping):
+            return None
+        result[task_id] = dict(payload)
+    return result
+
+
 def _eaaef_host_receipt(
     repo_root: Path | None,
     task_id: str,
+    *,
+    expected_source_head: str = "",
+    expected_source_tree: str = "",
 ) -> dict[str, Any] | None:
     """Return one EAAEF host-admission receipt, or None if unread."""
 
     filename = _EAAEF_HOST_RECEIPT_NAMES.get(task_id)
     if repo_root is None or not filename:
         return None
+    if expected_source_head or expected_source_tree:
+        artifacts = _eaaef_source_addressed_host_receipts(
+            repo_root,
+            expected_source_head=expected_source_head,
+            expected_source_tree=expected_source_tree,
+        )
+        payload = (artifacts or {}).get(task_id)
+        return dict(payload) if isinstance(payload, Mapping) else None
+    if task_id == "EAAEF-191":
+        try:
+            from ..validation.eaaef_host_admission import (
+                verify_current_admission_bundle_receipt,
+            )
+
+            verification = verify_current_admission_bundle_receipt(
+                repo_root,
+                expected_source_head=expected_source_head,
+                expected_source_tree=expected_source_tree,
+            )
+        except Exception:
+            return None
+        if verification.get("admitted") is not True:
+            return None
+        return {
+            "decision": "admitted",
+            "receipt_cid": str(verification.get("bundle_receipt_cid") or ""),
+        }
     path = Path(repo_root) / _EAAEF_HOST_RECEIPT_DIR / filename
     if not path.is_file():
         return None
@@ -2281,8 +2356,16 @@ def _eaaef_host_receipt(
 def _eaaef_host_receipt_admitted(
     repo_root: Path | None,
     task_id: str,
+    *,
+    expected_source_head: str = "",
+    expected_source_tree: str = "",
 ) -> bool:
-    payload = _eaaef_host_receipt(repo_root, task_id)
+    payload = _eaaef_host_receipt(
+        repo_root,
+        task_id,
+        expected_source_head=expected_source_head,
+        expected_source_tree=expected_source_tree,
+    )
     return bool(payload is not None and payload.get("decision") == "admitted")
 
 
@@ -2344,6 +2427,8 @@ def _assert_eaaef_operational_child_profile(
     provider_principal_did: str,
     forbidden_bootstrap_paths: Sequence[str],
     repo_root: Path | None = None,
+    expected_source_head: str = "",
+    expected_source_tree: str = "",
 ) -> None:
     """Reject embedded authority or file fallback at each child birth."""
 
@@ -2372,20 +2457,44 @@ def _assert_eaaef_operational_child_profile(
     # topology.  Keep every child birth closed until the dedicated adapter and
     # its exact CLI propagation exist, unless independently signed host
     # receipts already admitted those same boundaries (EAAEF-187/188/189/191).
+    immutable_receipts = _eaaef_source_addressed_host_receipts(
+        repo_root,
+        expected_source_head=expected_source_head,
+        expected_source_tree=expected_source_tree,
+    )
+
+    def immutable_admitted(task_id: str) -> bool:
+        receipt = (immutable_receipts or {}).get(task_id)
+        return bool(receipt and receipt.get("decision") == "admitted")
+
+    command_receipt = (immutable_receipts or {}).get("EAAEF-188") or {}
+    command_evidence = command_receipt.get("evidence")
+    from ..validation.eaaef_host_admission import (
+        command_fabric_endpoints_live,
+    )
+
+    immutable_command_fabric_live = (
+        immutable_admitted("EAAEF-188")
+        and command_fabric_endpoints_live(command_evidence)
+    )
+
     blockers: list[str] = []
-    if not _eaaef_host_receipt_admitted(repo_root, "EAAEF-189"):
+    if not immutable_admitted("EAAEF-189"):
         blockers.append("independently_signed_native_dependency_acceptance_absent")
-    if not _eaaef_host_receipt_admitted(repo_root, "EAAEF-191"):
+    if not immutable_admitted("EAAEF-191"):
         blockers.append("independent_native_dependency_authority_verifier_absent")
     adapter_admitted = (
-        command_fabric.get("child_adapter_status") == "admitted"
-        or _eaaef_host_receipt_admitted(repo_root, "EAAEF-188")
+        immutable_command_fabric_live
+        and (
+            command_fabric.get("child_adapter_status") == "admitted"
+            or immutable_admitted("EAAEF-188")
+        )
     )
     if not adapter_admitted:
         blockers.append("signed_command_fabric_child_adapter_unavailable")
     propagation_admitted = (
         worker_network_policy.get("child_propagation_status") == "admitted"
-        or _eaaef_host_receipt_admitted(repo_root, "EAAEF-187")
+        or immutable_admitted("EAAEF-187")
     )
     if not propagation_admitted:
         blockers.append("worker_network_authorization_propagation_unavailable")
@@ -2419,10 +2528,17 @@ def _eaaef_host_bundle_child_birth_verification(
         if hasattr(accepted_control_plane_pin, "as_dict")
         else dict(accepted_control_plane_pin)
     )
-    worker_receipt = _eaaef_host_receipt(repo_root, "EAAEF-187") or {}
-    image_receipt = _eaaef_host_receipt(repo_root, "EAAEF-185") or {}
-    profile_receipt = _eaaef_host_receipt(repo_root, "EAAEF-186") or {}
-    bundle = _eaaef_host_receipt(repo_root, "EAAEF-191") or {}
+    immutable_receipts = _eaaef_source_addressed_host_receipts(
+        repo_root,
+        expected_source_head=source_head,
+        expected_source_tree=source_tree,
+    )
+    if immutable_receipts is None:
+        raise ValueError("EAAEF immutable host-admission artifacts are unavailable")
+    worker_receipt = immutable_receipts.get("EAAEF-187", {})
+    image_receipt = immutable_receipts.get("EAAEF-185", {})
+    profile_receipt = immutable_receipts.get("EAAEF-186", {})
+    bundle = immutable_receipts.get("EAAEF-191", {})
     worker_evidence = (
         worker_receipt.get("evidence")
         if isinstance(worker_receipt.get("evidence"), Mapping)
@@ -2439,10 +2555,10 @@ def _eaaef_host_bundle_child_birth_verification(
         else {}
     )
     overlay_fabric = dict(command_fabric)
-    if _eaaef_host_receipt_admitted(repo_root, "EAAEF-188"):
+    if immutable_receipts.get("EAAEF-188", {}).get("decision") == "admitted":
         overlay_fabric["child_adapter_status"] = "admitted"
     overlay_policy = dict(worker_network_policy)
-    if _eaaef_host_receipt_admitted(repo_root, "EAAEF-187"):
+    if immutable_receipts.get("EAAEF-187", {}).get("decision") == "admitted":
         overlay_policy["child_propagation_status"] = "admitted"
     report = {
         "schema": (
@@ -2553,7 +2669,12 @@ def _verify_eaaef_configured_board_birth(
             ),
         }
     except ExternalAgentConfiguredBoardCapsuleError as exc:
-        if not _eaaef_host_receipt_admitted(root, "EAAEF-191"):
+        if not _eaaef_host_receipt_admitted(
+            root,
+            "EAAEF-191",
+            expected_source_head=source_head,
+            expected_source_tree=source_tree,
+        ):
             raise ValueError(
                 f"EAAEF configured-board live seal rejected: {exc}"
             ) from exc
@@ -5732,6 +5853,12 @@ def start_track(
             forbidden_bootstrap_paths=live_seal_verification[
                 "forbidden_bootstrap_database_paths"
             ],
+            expected_source_head=str(
+                live_seal_verification.get("source_head") or ""
+            ),
+            expected_source_tree=str(
+                live_seal_verification.get("source_tree") or ""
+            ),
         )
         from .worker_network_dispatch import (
             build_worker_network_launch_authority,
@@ -6805,6 +6932,288 @@ def _validate_plan_bound_store_projection(
     raise ValueError("plan store contains a noncanonical projection")
 
 
+_PLAN_BOUND_DEPENDENCY_PREFLIGHT_MANIFEST_MAX_BYTES = 16 * 1024 * 1024
+_PLAN_BOUND_DEPENDENCY_PREFLIGHT_BLOB_MAX_BYTES = 64 * 1024 * 1024
+_PLAN_BOUND_DEPENDENCY_PREFLIGHT_MAX_BLOBS = 16_384
+_PLAN_BOUND_DEPENDENCY_PREFLIGHT_MAX_TOTAL_BYTES = 512 * 1024 * 1024
+_PLAN_BOUND_DEPENDENCY_PREFLIGHT_MANIFEST_FIELDS = frozenset(
+    {
+        "schema",
+        "generation",
+        "updated_at_ms",
+        "compaction_cursor",
+        "blobs",
+        "projections",
+        "manifest_digest",
+    }
+)
+_PLAN_BOUND_DEPENDENCY_PREFLIGHT_BLOB_FIELDS = frozenset(
+    {
+        "schema",
+        "artifact_id",
+        "digest",
+        "size_bytes",
+        "kind",
+        "media_type",
+        "retention_class",
+        "outcome",
+        "created_at_ms",
+        "last_accessed_at_ms",
+        "expires_at_ms",
+        "references",
+    }
+)
+
+
+def _plan_bound_dependency_preflight_manifest(
+    store_root: Path,
+    manifest_path: Path,
+    *,
+    require_live_blobs: bool,
+) -> dict[str, Any]:
+    """Decode one exact bounded-store manifest without opening the store.
+
+    Opening :class:`BoundedArtifactStore` during recovery would reconcile and
+    rewrite its files before they had been admitted.  This read-only decoder
+    therefore recognizes only the closed subset emitted by the dependency
+    preflight event path: checkpoint JSON blobs and no generic projections.
+    """
+
+    from .artifact_store import (
+        BOUNDED_ARTIFACT_MANIFEST_SCHEMA,
+        BOUNDED_BLOB_REFERENCE_SCHEMA,
+    )
+
+    manifest_bytes, evidence = _read_stable_regular_bytes(
+        manifest_path,
+        max_bytes=_PLAN_BOUND_DEPENDENCY_PREFLIGHT_MANIFEST_MAX_BYTES,
+    )
+    if (
+        manifest_bytes is None
+        or int(evidence["uid"]) != os.geteuid()
+        or stat.S_IMODE(int(evidence["mode"])) != 0o600
+    ):
+        raise ValueError("dependency preflight store manifest custody is unsafe")
+    try:
+        manifest = json.loads(
+            manifest_bytes.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("dependency preflight store manifest is malformed") from exc
+    if type(manifest) is not dict or set(manifest) != (
+        _PLAN_BOUND_DEPENDENCY_PREFLIGHT_MANIFEST_FIELDS
+    ):
+        raise ValueError("dependency preflight store manifest fields are not exact")
+    body = dict(manifest)
+    claimed_digest = body.pop("manifest_digest")
+    try:
+        canonical_body = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        canonical_manifest = json.dumps(
+            manifest,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8") + b"\n"
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise ValueError(
+            "dependency preflight store manifest is not canonical JSON"
+        ) from exc
+    if (
+        manifest_bytes != canonical_manifest
+        or manifest.get("schema") != BOUNDED_ARTIFACT_MANIFEST_SCHEMA
+        or claimed_digest
+        != "sha256:" + hashlib.sha256(canonical_body).hexdigest()
+    ):
+        raise ValueError(
+            "dependency preflight store manifest identity is invalid"
+        )
+    for field in ("generation", "updated_at_ms", "compaction_cursor"):
+        value = manifest.get(field)
+        minimum = 1 if field == "generation" else 0
+        if type(value) is not int or value < minimum:
+            raise ValueError(
+                "dependency preflight store manifest counters are invalid"
+            )
+    blobs = manifest.get("blobs")
+    if (
+        type(blobs) is not dict
+        or len(blobs) > _PLAN_BOUND_DEPENDENCY_PREFLIGHT_MAX_BLOBS
+        or manifest.get("projections") != {}
+    ):
+        raise ValueError(
+            "dependency preflight store manifest inventory is invalid"
+        )
+    total_bytes = 0
+    for artifact_id, raw_metadata in blobs.items():
+        if (
+            type(artifact_id) is not str
+            or type(raw_metadata) is not dict
+            or set(raw_metadata) != _PLAN_BOUND_DEPENDENCY_PREFLIGHT_BLOB_FIELDS
+        ):
+            raise ValueError(
+                "dependency preflight store blob metadata is not exact"
+            )
+        metadata = dict(raw_metadata)
+        digest = metadata.get("digest")
+        size_bytes = metadata.get("size_bytes")
+        if (
+            metadata.get("schema") != BOUNDED_BLOB_REFERENCE_SCHEMA
+            or type(digest) is not str
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None
+            or artifact_id != f"blob:{digest}"
+            or metadata.get("artifact_id") != artifact_id
+            or type(size_bytes) is not int
+            or size_bytes < 0
+            or size_bytes > _PLAN_BOUND_DEPENDENCY_PREFLIGHT_BLOB_MAX_BYTES
+            or metadata.get("kind")
+            != "validation_project_dependency_preflight_receipt"
+            or metadata.get("media_type") != "application/json"
+            or metadata.get("retention_class") != "checkpoint"
+            or metadata.get("outcome") != "successful"
+            or metadata.get("expires_at_ms") is not None
+            or metadata.get("references") != []
+        ):
+            raise ValueError(
+                "dependency preflight store blob metadata is invalid"
+            )
+        for field in ("created_at_ms", "last_accessed_at_ms"):
+            if type(metadata.get(field)) is not int or metadata[field] < 0:
+                raise ValueError(
+                    "dependency preflight store blob timestamps are invalid"
+                )
+        total_bytes += size_bytes
+        if total_bytes > _PLAN_BOUND_DEPENDENCY_PREFLIGHT_MAX_TOTAL_BYTES:
+            raise ValueError(
+                "dependency preflight store blob inventory exceeds its bound"
+            )
+        if require_live_blobs:
+            digest_hex = digest.removeprefix("sha256:")
+            expected_path = (
+                store_root
+                / "blobs"
+                / "sha256"
+                / digest_hex[:2]
+                / f"{digest_hex}.blob"
+            )
+            try:
+                observed = os.lstat(expected_path)
+            except OSError as exc:
+                raise ValueError(
+                    "dependency preflight store manifest references a missing blob"
+                ) from exc
+            if (
+                not stat.S_ISREG(observed.st_mode)
+                or stat.S_ISLNK(observed.st_mode)
+                or int(observed.st_nlink) != 1
+                or int(observed.st_uid) != os.geteuid()
+                or stat.S_IMODE(observed.st_mode) != 0o600
+            ):
+                raise ValueError(
+                    "dependency preflight store manifest references an unsafe blob"
+                )
+    return manifest
+
+
+def _validate_plan_bound_dependency_preflight_store_projection(
+    store_root: Path,
+    artifact: Path,
+) -> None:
+    """Accept only the bounded CAS files emitted for preflight receipts."""
+
+    relative = artifact.relative_to(store_root)
+    parts = relative.parts
+    manifest_path = store_root / "manifest.json"
+    if parts == (".bounded-store.lock",):
+        payload, evidence = _read_stable_regular_bytes(artifact, max_bytes=0)
+        if (
+            payload != b""
+            or int(evidence["uid"]) != os.geteuid()
+            or bool(stat.S_IMODE(int(evidence["mode"])) & 0o111)
+        ):
+            raise ValueError("dependency preflight store lock is unsafe")
+        _plan_bound_dependency_preflight_manifest(
+            store_root,
+            manifest_path,
+            require_live_blobs=True,
+        )
+        return
+    if parts in {("manifest.json",), ("manifest.previous.json",)}:
+        _plan_bound_dependency_preflight_manifest(
+            store_root,
+            artifact,
+            require_live_blobs=parts == ("manifest.json",),
+        )
+        if parts == ("manifest.previous.json",):
+            _plan_bound_dependency_preflight_manifest(
+                store_root,
+                manifest_path,
+                require_live_blobs=True,
+            )
+        return
+    if (
+        len(parts) != 4
+        or parts[:2] != ("blobs", "sha256")
+        or re.fullmatch(r"[0-9a-f]{2}", parts[2]) is None
+        or re.fullmatch(r"[0-9a-f]{64}\.blob", parts[3]) is None
+    ):
+        raise ValueError(
+            "dependency preflight store contains a noncanonical projection"
+        )
+    digest_hex = parts[3].removesuffix(".blob")
+    if parts[2] != digest_hex[:2]:
+        raise ValueError("dependency preflight store blob path is not canonical")
+    manifest = _plan_bound_dependency_preflight_manifest(
+        store_root,
+        manifest_path,
+        require_live_blobs=True,
+    )
+    metadata = manifest["blobs"].get(f"blob:sha256:{digest_hex}")
+    if metadata is None:
+        raise ValueError("dependency preflight store blob is absent from its manifest")
+    payload, evidence = _read_stable_regular_bytes(
+        artifact,
+        max_bytes=_PLAN_BOUND_DEPENDENCY_PREFLIGHT_BLOB_MAX_BYTES,
+    )
+    if (
+        payload is None
+        or int(evidence["uid"]) != os.geteuid()
+        or stat.S_IMODE(int(evidence["mode"])) != 0o600
+        or len(payload) != metadata["size_bytes"]
+        or hashlib.sha256(payload).hexdigest() != digest_hex
+    ):
+        raise ValueError("dependency preflight store blob integrity is invalid")
+    try:
+        receipt = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+        if type(receipt) is not dict:
+            raise ValueError("dependency preflight receipt is not an object")
+        from ..validation.project_dependency_preflight import (
+            canonical_project_dependency_preflight_receipt_bytes,
+        )
+
+        canonical_receipt = canonical_project_dependency_preflight_receipt_bytes(
+            receipt
+        )
+    except (UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            "dependency preflight store blob is not a canonical receipt"
+        ) from exc
+    if payload != canonical_receipt:
+        raise ValueError(
+            "dependency preflight store receipt bytes are not canonical"
+        )
+
+
 def _plan_bound_recovery_runtime_kind(
     artifact: Path,
     *,
@@ -6962,8 +7371,6 @@ def _plan_bound_recovery_runtime_kind(
         f"{lane_prefix}_status.json",
     }:
         return "file"
-    if len(lane_relative.parts) != 2 or lane_relative.parts[0] != "implementation_logs":
-        return ""
     active_task_id = str(binding.get("active_task_id") or "")
     raw_attempt = binding.get("attempt")
     if (
@@ -6973,6 +7380,14 @@ def _plan_bound_recovery_runtime_kind(
         or not isinstance(raw_attempt, int)
         or raw_attempt < 1
     ):
+        return ""
+    if lane_relative.parts[0] == "dependency-preflight-artifacts":
+        _validate_plan_bound_dependency_preflight_store_projection(
+            state_root / lane_name / "dependency-preflight-artifacts",
+            artifact,
+        )
+        return "file"
+    if len(lane_relative.parts) != 2 or lane_relative.parts[0] != "implementation_logs":
         return ""
     safe_task = (
         re.sub(r"[^a-z0-9._-]+", "-", active_task_id.lower()).strip("-")
@@ -8182,6 +8597,12 @@ def run_supervisor_tracks(
                 forbidden_bootstrap_paths=live_verification[
                     "forbidden_bootstrap_database_paths"
                 ],
+                expected_source_head=str(
+                    live_verification.get("source_head") or ""
+                ),
+                expected_source_tree=str(
+                    live_verification.get("source_tree") or ""
+                ),
             )
     resolved_repo_root = repo_root.resolve()
     plan_children_by_name = {
@@ -9392,6 +9813,12 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
                 forbidden_bootstrap_paths=live_verification[
                     "forbidden_bootstrap_database_paths"
                 ],
+                expected_source_head=str(
+                    live_verification.get("source_head") or ""
+                ),
+                expected_source_tree=str(
+                    live_verification.get("source_tree") or ""
+                ),
             )
             from .worker_network_dispatch import (
                 build_worker_network_launch_authority,

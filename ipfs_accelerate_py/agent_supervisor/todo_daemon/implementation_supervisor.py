@@ -107,7 +107,7 @@ from ..runtime.multi_supervisor_runner import (
     STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
     TRUSTED_DUCKDB_HOME_ENV,
-    _eaaef_host_receipt_admitted,
+    _eaaef_source_addressed_host_receipts,
     _trusted_duckdb_runtime_environment,
     parse_accepted_control_plane_pin,
     provider_subprocess_environment,
@@ -2326,11 +2326,23 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
         # daemon child while create-once lane artifacts remain unpublished.
         # Without those receipts the Portal factory is still a silent demotion
         # to local Markdown/JSON/DuckDB authority and must stay fail-closed.
-        host_admitted = (
-            _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-191")
-            and _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-189")
-            and _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-185")
-            and _eaaef_host_receipt_admitted(accepted_tree_root, "EAAEF-186")
+        immutable_receipts = _eaaef_source_addressed_host_receipts(
+            accepted_tree_root,
+            expected_source_head=accepted_control_plane_pin.source_head,
+            expected_source_tree=accepted_control_plane_pin.source_tree,
+        )
+        host_admitted = bool(
+            immutable_receipts is not None
+            and all(
+                immutable_receipts.get(task_id, {}).get("decision")
+                == "admitted"
+                for task_id in (
+                    "EAAEF-191",
+                    "EAAEF-189",
+                    "EAAEF-185",
+                    "EAAEF-186",
+                )
+            )
         )
         if not host_admitted:
             _reject_unsealed_eaaef_daemon_gateway(
@@ -21570,13 +21582,32 @@ class PortalImplementationSupervisor:
         ):
             raw_root = getattr(self.config, "repo_root", None)
             repo_root = Path(raw_root) if raw_root else None
-            host_admitted = (
-                repo_root is not None
+            accepted_pin = getattr(
+                self.config, "accepted_control_plane_pin", None
+            )
+            immutable_receipts = (
+                _eaaef_source_addressed_host_receipts(
+                    repo_root,
+                    expected_source_head=accepted_pin.source_head,
+                    expected_source_tree=accepted_pin.source_tree,
+                )
+                if repo_root is not None
                 and repo_root.is_dir()
-                and _eaaef_host_receipt_admitted(repo_root, "EAAEF-191")
-                and _eaaef_host_receipt_admitted(repo_root, "EAAEF-189")
-                and _eaaef_host_receipt_admitted(repo_root, "EAAEF-185")
-                and _eaaef_host_receipt_admitted(repo_root, "EAAEF-186")
+                and accepted_pin is not None
+                else None
+            )
+            host_admitted = bool(
+                immutable_receipts is not None
+                and all(
+                    immutable_receipts.get(task_id, {}).get("decision")
+                    == "admitted"
+                    for task_id in (
+                        "EAAEF-191",
+                        "EAAEF-189",
+                        "EAAEF-185",
+                        "EAAEF-186",
+                    )
+                )
             )
             if not host_admitted:
                 raise PlanBoundDispatchError(

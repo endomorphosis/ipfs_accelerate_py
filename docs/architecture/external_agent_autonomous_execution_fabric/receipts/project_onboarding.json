@@ -1,0 +1,26 @@
+{
+  "artifact_cid": "baguqeerabee2oojax6pqabbq34lirifp7llars6pj2lqy2uvrjhhbqzmke3q",
+  "evidence_mode": "contract_fail_closed",
+  "fixture_contracts": {
+    "malicious_repository_mutation_allowed": false,
+    "supported_python_inventory_only": true,
+    "unsupported_language_mutation_allowed": false
+  },
+  "live_mutation_invoked": false,
+  "live_runtime_invoked": false,
+  "producer_argv": [
+    "python3",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_external_agent_project_onboarding.py"
+  ],
+  "producer_source_cid": "sha256:2cb9e416c002667b484a4fa8895b6b02536fbac5bb56148e59737a0880731b30",
+  "production_qualification_claimed": false,
+  "qualification_scope": "offline_project_onboarding_contract_only",
+  "qualification_status": "not_live_qualified",
+  "repository_hooks_executed": false,
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-offline-qualification-artifact@1",
+  "task_completion_claimed": false,
+  "task_id": "EAAEF-044"
+}

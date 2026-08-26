@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.entrypoints.local_profile import (
+    ed25519_did_key,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     eaaef_reconciliation_lifecycle as lifecycle,
 )
@@ -19,6 +22,39 @@ from ipfs_accelerate_py.agent_supervisor.runtime import (
 _REAL_INSPECT_CURRENT_REPOSITORY_FOREST = lifecycle.inspect_current_repository_forest
 _REAL_VERIFY_IMPORTED_CASF_SOURCE = lifecycle.verify_imported_casf_source
 _TEST_IMPORT_EVIDENCE_CID = "sha256:" + "9" * 64
+
+
+def _deterministic_did(fill: int) -> str:
+    return ed25519_did_key(bytes([fill]) * 32)
+
+
+def _base58btc(value: bytes) -> str:
+    alphabet = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    zeroes = len(value) - len(value.lstrip(b"\0"))
+    integer = int.from_bytes(value, "big")
+    encoded = bytearray()
+    while integer:
+        integer, remainder = divmod(integer, 58)
+        encoded.append(alphabet[remainder])
+    return (b"1" * zeroes + bytes(reversed(encoded))).decode("ascii")
+
+
+OWNER_IDENTITY_DID = _deterministic_did(1)
+OPERATOR_IDENTITY_DID = _deterministic_did(2)
+SECURITY_REVIEWER_IDENTITY_DID = _deterministic_did(3)
+CAPABILITY_REVIEWER_IDENTITY_DID = _deterministic_did(4)
+REMOTE_REVIEWER_IDENTITY_DID = _deterministic_did(5)
+MALFORMED_ED25519_DIDS = (
+    pytest.param("did:key:z0", id="invalid-base58"),
+    pytest.param(
+        "did:key:z" + _base58btc(b"\xec\x01" + bytes([6]) * 32),
+        id="wrong-multicodec",
+    ),
+    pytest.param(
+        "did:key:z" + _base58btc(b"\xed\x01" + bytes([7]) * 31),
+        id="wrong-length",
+    ),
+)
 
 
 @pytest.fixture
@@ -182,7 +218,7 @@ def _bootstrap_snapshot(
         "r1_launch_capsule_cid": "sha256:" + "b" * 64,
         "quack_owner_qualification_cid": "sha256:" + "c" * 64,
         "quack_command_fabric_qualification_cid": "sha256:" + "d" * 64,
-        "owner_principal_did": "did:key:z" + "A" * 20,
+        "owner_principal_did": OWNER_IDENTITY_DID,
         "shard_id": "fresh-shard",
         "store_id": "fresh-store",
         "owner_generation": 1,
@@ -234,8 +270,39 @@ def _qualification(source_forest_root: str) -> dict[str, Any]:
     return value
 
 
+def _bootstrap_qualification(source_forest_root: str) -> dict[str, Any]:
+    value = {
+        "schema": lifecycle.EAAEF_BOOTSTRAP_OWNER_QUALIFICATION_SCHEMA,
+        "interface": lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
+        "source_forest_root": source_forest_root,
+        "materialization_operation": (
+            "materialize_offline_22_plus_94_then_start_owner"
+        ),
+        "bootstrap_materialization_mode": "offline_before_exclusive_owner_start",
+        "bootstrap_materialization_before_owner_start": True,
+        "offline_population_includes_execution_contracts": True,
+        "direct_database_mutation_after_owner_start": False,
+        "exclusive_owner_lifecycle_interface": (
+            lifecycle.EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE
+        ),
+        "exclusive_owner_lifecycle_qualification_status": (
+            lifecycle.EAAEF_CASF_PERSISTENT_BOOTSTRAP_QUALIFICATION_STATUS
+        ),
+        "bootstrap_owner_ready": True,
+        "bootstrap_owner_blockers": [],
+        "database_authority_crossing_allowed": False,
+        "filesystem_path_authority_crossing_allowed": False,
+        "transport_token_authority_crossing_allowed": False,
+        "sql_crossing_allowed": False,
+        "provider_launch_allowed": False,
+    }
+    value["qualification_cid"] = lifecycle._cid(value)
+    return value
+
+
 class _FakeOwner:
     INTERFACE = lifecycle.EAAEF_RECONCILIATION_OWNER_INTERFACE
+    BOOTSTRAP_INTERFACE = lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
 
     def __init__(
         self,
@@ -253,6 +320,9 @@ class _FakeOwner:
     def reconciliation_qualification(self) -> Mapping[str, Any]:
         return _qualification(self.source_forest_root)
 
+    def bootstrap_reconciliation_qualification(self) -> Mapping[str, Any]:
+        return _bootstrap_qualification(self.source_forest_root)
+
     def materialize_offline_population(
         self,
         request: Mapping[str, Any],
@@ -263,7 +333,7 @@ class _FakeOwner:
         snapshot = _bootstrap_snapshot(population)
         value = {
             "schema": lifecycle.EAAEF_OFFLINE_POPULATION_RECEIPT_SCHEMA,
-            "interface": lifecycle.EAAEF_RECONCILIATION_OWNER_INTERFACE,
+            "interface": lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE,
             "request_cid": request["request_cid"],
             "generation_id": request["generation_id"],
             "source_forest_root": population.source_forest_root,
@@ -349,6 +419,33 @@ class _FakeOwner:
         return value
 
 
+class _FakeBootstrapOwner:
+    INTERFACE = lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+    BOOTSTRAP_INTERFACE = lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
+
+    def __init__(self, source_forest_root: str) -> None:
+        self._delegate = _FakeOwner(source_forest_root)
+        self.source_forest_root = source_forest_root
+
+    @property
+    def offline_request(self) -> dict[str, Any] | None:
+        return self._delegate.offline_request
+
+    def bootstrap_reconciliation_qualification(self) -> Mapping[str, Any]:
+        return _bootstrap_qualification(self.source_forest_root)
+
+    def materialize_offline_population(
+        self,
+        request: Mapping[str, Any],
+        *,
+        population: lifecycle.CompiledEAAEFPopulation,
+    ) -> Mapping[str, Any]:
+        return self._delegate.materialize_offline_population(
+            request,
+            population=population,
+        )
+
+
 def _state(
     population: lifecycle.CompiledEAAEFPopulation,
     *,
@@ -420,6 +517,292 @@ def test_fresh_population_is_exact_22_plus_94_and_plan_r2_releases_all(
     )
     assert "operator_signature" not in statement
     assert "security_reviewer_signature" not in statement
+
+
+def test_signing_request_projection_is_deterministic_current_and_has_no_effects(
+    repo_root: Path,
+) -> None:
+    population = _population(repo_root)
+    arguments = {
+        "population": population,
+        "bootstrap_snapshot": _bootstrap_snapshot(population),
+        "operator_identity_did": OPERATOR_IDENTITY_DID,
+        "security_reviewer_identity_did": SECURITY_REVIEWER_IDENTITY_DID,
+        "capability_reviewer_identity_did": CAPABILITY_REVIEWER_IDENTITY_DID,
+        "issued_at_ms": 100_500,
+        "expires_at_ms": 250_000,
+    }
+    request = lifecycle.build_fresh_plan_r2_signing_request_projection(**arguments)
+
+    assert request == lifecycle.build_fresh_plan_r2_signing_request_projection(
+        **arguments
+    )
+    assert request["schema"] == lifecycle.EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA
+    assert request["source_head"] == population.source_head
+    assert request["source_tree"] == population.source_tree
+    assert request["source_forest_root"] == population.source_forest_root
+    assert request["statement_cid"] == request["unsigned_plan_r2_statement"][
+        "statement_cid"
+    ]
+    assert request["request_cid"] == lifecycle._cid(
+        {key: value for key, value in request.items() if key != "request_cid"}
+    )
+    assert set(request["signing_payloads"]) == {
+        "independent_operator",
+        "independent_security_reviewer",
+        "independent_plan_r2_capability_reviewer",
+    }
+    assert all(
+        "signature" not in payload and "reviewer_signature" not in payload
+        for payload in request["signing_payloads"].values()
+    )
+    assert request["deferred_external_signature"].startswith(
+        "independent_plan_r2_remote_transport_reviewer"
+    )
+    for field in (
+        "authority_valid",
+        "launch_allowed",
+        "trust_roots_read",
+        "signing_key_read",
+        "signature_created",
+        "authority_mutated",
+        "provider_process_started",
+    ):
+        assert request[field] is False
+
+    stale_snapshot = json.loads(json.dumps(arguments["bootstrap_snapshot"]))
+    stale_snapshot["source_head"] = "9" * 40
+    stale_snapshot.pop("snapshot_cid")
+    stale_snapshot["snapshot_cid"] = lifecycle._cid(stale_snapshot)
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="bootstrap owner snapshot differs",
+    ):
+        lifecycle.build_fresh_plan_r2_signing_request_projection(
+            **{
+                **arguments,
+                "bootstrap_snapshot": stale_snapshot,
+            }
+        )
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="identities are not independent",
+    ):
+        lifecycle.build_fresh_plan_r2_signing_request_projection(
+            **{
+                **arguments,
+                "security_reviewer_identity_did": arguments[
+                    "operator_identity_did"
+                ],
+            }
+        )
+
+
+def test_signing_request_cli_has_only_the_documented_read_only_qualification_effects(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    population = _population(repo_root)
+    snapshot_path = tmp_path / "bootstrap-snapshot.json"
+    snapshot_path.write_text(
+        json.dumps(_bootstrap_snapshot(population), sort_keys=True),
+        encoding="ascii",
+    )
+
+    allowed_effects: list[str] = []
+
+    def captured_git_qualification(_repo_root: Path) -> dict[str, Any]:
+        allowed_effects.append("captured_read_only_git_children")
+        return _sealed_forest()
+
+    def exact_structural_qualification(
+        _repo_root: Path,
+        *,
+        forest: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        allowed_effects.extend(
+            (
+                "exact_isolated_structural_validator_child",
+                "cleaned_transient_validator_storage",
+            )
+        )
+        return {
+            "source_head": forest["source_head"],
+            "source_tree": forest["source_tree"],
+            "source_forest_root": forest["source_forest_root"],
+            "import_evidence_cid": _TEST_IMPORT_EVIDENCE_CID,
+        }
+
+    def forbidden_effect(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("signing-request crossed its forbidden effect boundary")
+
+    monkeypatch.setattr(
+        lifecycle,
+        "inspect_current_repository_forest",
+        captured_git_qualification,
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "_require_production_source_policy",
+        exact_structural_qualification,
+    )
+    for name in (
+        "resolve_production_reconciliation_owner",
+        "_authority_from_args",
+        "load_fresh_authority_artifacts",
+        "load_fresh_trust_roots",
+        "preflight_reconciliation",
+        "prepare_fresh_generation",
+        "materialize_fresh_generation",
+        "launch_reconciliation_supervisor",
+        "reconciliation_status",
+        "stop_reconciliation_generation",
+        "ReconciliationStateStore",
+    ):
+        monkeypatch.setattr(lifecycle, name, forbidden_effect)
+    before = set(tmp_path.iterdir())
+    result = lifecycle.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--state-root",
+            str(tmp_path / "unused-state"),
+            "signing-request",
+            "--bootstrap-snapshot",
+            str(snapshot_path),
+            "--operator-identity-did",
+            OPERATOR_IDENTITY_DID,
+            "--security-reviewer-identity-did",
+            SECURITY_REVIEWER_IDENTITY_DID,
+            "--plan-r2-capability-reviewer-identity-did",
+            CAPABILITY_REVIEWER_IDENTITY_DID,
+            "--issued-at-ms",
+            "100500",
+            "--expires-at-ms",
+            "250000",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert result == 0
+    assert output["schema"] == lifecycle.EAAEF_PLAN_R2_SIGNING_REQUEST_SCHEMA
+    assert output["signing_key_read"] is False
+    assert output["signature_created"] is False
+    assert output["provider_process_started"] is False
+    assert allowed_effects == [
+        "captured_read_only_git_children",
+        "exact_isolated_structural_validator_child",
+        "cleaned_transient_validator_storage",
+        "captured_read_only_git_children",
+    ]
+    assert set(tmp_path.iterdir()) == before
+    assert not (tmp_path / "unused-state").exists()
+
+    signing_source = inspect.getsource(
+        lifecycle.build_fresh_plan_r2_signing_request_projection
+    )
+    signing_source += inspect.getsource(lifecycle.main)
+    assert "Ed25519PrivateKey" not in signing_source
+    assert ".sign(" not in signing_source
+    help_text = lifecycle._argument_parser().format_help()
+    subparsers = next(
+        action
+        for action in lifecycle._argument_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    signing_help = " ".join(
+        subparsers.choices["signing-request"].format_help().split()
+    )
+    assert "captured Git children" in signing_help
+    assert "isolated structural-validator child" in signing_help
+    assert "cleaned transient storage" in signing_help
+    assert "durable artifacts/state" in signing_help
+    assert "providers/supervisors" in signing_help
+    assert "signing-request" in help_text
+
+
+@pytest.mark.parametrize(
+    "identity_field",
+    (
+        "operator_identity_did",
+        "security_reviewer_identity_did",
+        "capability_reviewer_identity_did",
+        "owner_principal_did",
+    ),
+)
+@pytest.mark.parametrize("malformed_did", MALFORMED_ED25519_DIDS)
+def test_signing_request_rejects_malformed_dids_before_any_payload_is_emitted(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    identity_field: str,
+    malformed_did: str,
+) -> None:
+    population = _population(repo_root)
+    snapshot = _bootstrap_snapshot(population)
+    if identity_field == "owner_principal_did":
+        snapshot[identity_field] = malformed_did
+        snapshot.pop("snapshot_cid")
+        snapshot["snapshot_cid"] = lifecycle._cid(snapshot)
+    snapshot_path = tmp_path / "bootstrap-snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot, sort_keys=True), encoding="ascii")
+
+    def forbidden_payload(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("malformed DID reached a signing payload builder")
+
+    monkeypatch.setattr(
+        lifecycle,
+        "prepare_plan_r2_transition_approval",
+        forbidden_payload,
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "plan_r2_operational_capability_signing_payload",
+        forbidden_payload,
+    )
+    identities = {
+        "operator_identity_did": OPERATOR_IDENTITY_DID,
+        "security_reviewer_identity_did": SECURITY_REVIEWER_IDENTITY_DID,
+        "capability_reviewer_identity_did": CAPABILITY_REVIEWER_IDENTITY_DID,
+    }
+    if identity_field in identities:
+        identities[identity_field] = malformed_did
+
+    result = lifecycle.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--state-root",
+            str(tmp_path / "unused-state"),
+            "signing-request",
+            "--bootstrap-snapshot",
+            str(snapshot_path),
+            "--operator-identity-did",
+            identities["operator_identity_did"],
+            "--security-reviewer-identity-did",
+            identities["security_reviewer_identity_did"],
+            "--plan-r2-capability-reviewer-identity-did",
+            identities["capability_reviewer_identity_did"],
+            "--issued-at-ms",
+            "100500",
+            "--expires-at-ms",
+            "250000",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert result == 2
+    assert output["error_code"] == "EAAEFReconciliationIdentityError"
+    assert output["command"] == "signing-request"
+    assert "signing_payloads" not in output
+    assert "unsigned_plan_r2_statement" not in output
+    assert "request_cid" not in output
+    assert output["authority_mutated"] is False
+    assert output["provider_process_started"] is False
+    assert not (tmp_path / "unused-state").exists()
 
 
 def test_stale_forest_and_bootstrap_bindings_fail_closed(
@@ -835,10 +1218,10 @@ def _current_head_forest(repo_root: Path) -> dict[str, Any]:
 def _fresh_trust_roots() -> dict[str, Any]:
     value = {
         "schema": lifecycle.EAAEF_FRESH_TRUST_SCHEMA,
-        "remote_reviewer_dids": ["did:key:z" + "A" * 20],
-        "plan_r2_capability_reviewer_dids": ["did:key:z" + "B" * 20],
-        "operator_dids": ["did:key:z" + "C" * 20],
-        "security_reviewer_dids": ["did:key:z" + "D" * 20],
+        "remote_reviewer_dids": [REMOTE_REVIEWER_IDENTITY_DID],
+        "plan_r2_capability_reviewer_dids": [CAPABILITY_REVIEWER_IDENTITY_DID],
+        "operator_dids": [OPERATOR_IDENTITY_DID],
+        "security_reviewer_dids": [SECURITY_REVIEWER_IDENTITY_DID],
     }
     value["trust_bundle_cid"] = lifecycle._cid(value)
     return value
@@ -880,6 +1263,8 @@ def test_preflight_accepts_current_head_over_tracked_predecessor_policy(
     )
 
     assert result["valid"] is True
+    assert result["bootstrap_owner_ready"] is True
+    assert result["production_owner_ready"] is True
     assert result["stale_bindings"] == []
     assert observed == [forest["source_forest_root"]]
     assert result["population"]["source_head"] == forest["source_head"]
@@ -959,13 +1344,126 @@ def test_historical_tracked_host_admission_is_ignored(
     assert "scheduler_source_policy" not in result["stale_bindings"]
 
 
+def test_bootstrap_preflight_readiness_is_distinct_from_production_readiness(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    population = _population(repo_root)
+    bootstrap_owner = _FakeBootstrapOwner(population.source_forest_root)
+    monkeypatch.setattr(
+        lifecycle,
+        "verify_fresh_authority_bundle",
+        lambda *_args, **_kwargs: object(),
+    )
+
+    result = lifecycle.preflight_reconciliation(
+        repo_root,
+        authority={"fresh": True},
+        trust_roots={"independent": True},
+        bootstrap_owner=bootstrap_owner,
+    )
+
+    assert result["bootstrap_owner_ready"] is True
+    assert result["production_owner_ready"] is False
+    assert result["valid"] is False
+    assert result["bootstrap_owner_qualification"]["bootstrap_owner_ready"] is True
+    assert (
+        "bootstrap_portfolio_materialization_owner_unavailable_until_casf_binding"
+        not in result["blockers"]
+    )
+    assert (
+        "typed_portfolio_materialization_owner_unavailable_until_final_casf_adapter"
+        in result["blockers"]
+    )
+
+
+def test_bootstrap_resolver_requires_an_explicit_exact_binding(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        typed_eaaef_reconciliation_owner as owner_module,
+    )
+
+    monkeypatch.delattr(
+        owner_module,
+        "open_eaaef_bootstrap_reconciliation_owner",
+        raising=False,
+    )
+    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="opener is absent"):
+        lifecycle.resolve_bootstrap_reconciliation_owner(repo_root)
+
+    population = _population(repo_root)
+    bound = _FakeBootstrapOwner(population.source_forest_root)
+    monkeypatch.setattr(
+        owner_module,
+        "open_eaaef_bootstrap_reconciliation_owner",
+        lambda *, repo_root: bound,
+        raising=False,
+    )
+    assert lifecycle.resolve_bootstrap_reconciliation_owner(repo_root) is bound
+
+
+def test_one_shot_materialize_cli_does_not_resolve_or_orphan_bootstrap_owner(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def production_unavailable(_repo_root: Path) -> object:
+        raise lifecycle.EAAEFReconciliationBlocked("full production owner absent")
+
+    def forbidden_bootstrap_resolution(_repo_root: Path) -> object:
+        raise AssertionError("one-shot materialize resolved a bootstrap broker")
+
+    monkeypatch.setattr(
+        lifecycle,
+        "resolve_production_reconciliation_owner",
+        production_unavailable,
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "resolve_bootstrap_reconciliation_owner",
+        forbidden_bootstrap_resolution,
+    )
+    state_root = tmp_path / "unused-state"
+
+    exit_code = lifecycle.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--state-root",
+            str(state_root),
+            "materialize",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 2
+    assert output["error"] == "full production owner absent"
+    assert not state_root.exists()
+
+
+def test_only_prepare_uses_the_bootstrap_gate() -> None:
+    prepare_source = inspect.getsource(lifecycle.prepare_fresh_generation)
+    assert "require_bootstrap_reconciliation_owner(" in prepare_source
+    assert "require_typed_reconciliation_owner(" not in prepare_source
+    for operation in (
+        lifecycle.materialize_fresh_generation,
+        lifecycle.launch_reconciliation_supervisor,
+        lifecycle.reconciliation_status,
+        lifecycle.stop_reconciliation_generation,
+    ):
+        assert "require_typed_reconciliation_owner(" in inspect.getsource(operation)
+
+
 def test_prepare_materializes_offline_contracts_and_stops_before_authority(
     repo_root: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     population = _population(repo_root)
-    owner = _FakeOwner(population.source_forest_root)
+    owner = _FakeBootstrapOwner(population.source_forest_root)
     monkeypatch.setattr(
         lifecycle,
         "inspect_current_repository_forest",
@@ -993,6 +1491,9 @@ def test_prepare_materializes_offline_contracts_and_stops_before_authority(
     assert owner.offline_request["owner_must_be_absent_during_population_write"] is True
     assert owner.offline_request["expected_execution_contract_counts"] == (
         population.execution_contract_counts
+    )
+    assert owner.offline_request["interface"] == (
+        lifecycle.EAAEF_BOOTSTRAP_RECONCILIATION_OWNER_INTERFACE
     )
 
 
@@ -1150,6 +1651,11 @@ def test_public_cli_and_source_have_no_raw_authority_or_historical_run_surface()
             "sql",
             "token",
             "credential",
+            "key_path",
+            "output",
+            "output_path",
+            "private_key",
+            "signing_key",
             "skip_source_check",
             "branch",
             "manifest",
