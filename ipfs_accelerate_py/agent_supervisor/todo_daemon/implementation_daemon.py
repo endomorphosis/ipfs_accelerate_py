@@ -92873,6 +92873,22 @@ class DatabaseImplementationDaemon:
             or self._automatic_claim_forbidden(task)
         ):
             return None
+        if require_current_blocked:
+            # Only typed-deferral exhaustion can terminate the dedicated
+            # six-transition crash chain.  Legacy terminal failures belong to
+            # ordinary exact-attempt recovery and may have sparse history.
+            task_body = getattr(task, "body", None)
+            current_receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            if (
+                not isinstance(current_receipt, Mapping)
+                or current_receipt.get("operation")
+                != "database_portal_typed_deferral_budget_exhausted"
+            ):
+                return None
         history_projection = getattr(
             self.task_source,
             "task_revision_history_projection",
