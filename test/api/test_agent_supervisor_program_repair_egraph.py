@@ -589,3 +589,116 @@ def test_all_enodes_in_eclass_are_ematched() -> None:
     )
     assert replayed == "z"
     _assert_available(proved, "typed_eclasses", "congruence_rebuild", "extraction_replay")
+
+
+def test_pure_side_condition_is_not_waived_by_allowed_effects() -> None:
+    theory = DeclaredEqualityTheory(
+        theory_id="theory:pure-allowed@1",
+        review_refs=("review:equality_theory@1", "review:equality_rewrite@1"),
+        rules=(
+            EqualityRule(
+                rule_id="rule:impure",
+                lhs="x",
+                rhs="(write x)",
+                review_ref="review:equality_rewrite@1",
+                theory_id="theory:pure-allowed@1",
+                side_conditions=("pure",),
+                effects=("file_write",),
+            ),
+        ),
+        operator_effects={"write": ("file_write",)},
+        allowed_effects=("file_write",),
+    )
+    # Query terms are effect-neutral, so the independent effect gate does not
+    # fire. The reviewed `pure` condition must still refuse the rewrite.
+    receipt = prove_equality_under_theory(theory, "x", "y")
+    assert not receipt.proved
+    assert any("pure:failed" in item for item in receipt.side_condition_results)
+
+
+def test_nested_congruence_rebuild_is_iterative() -> None:
+    theory = arith_theory()
+    proved = prove_equality_under_theory(
+        theory, "(* (* (+ x 0) y) y)", "(* (* x y) y)"
+    )
+    assert proved.proved
+    assert proved.congruence_merges >= 2
+    assert proved.rebuild_count >= 1
+    replayed = replay_equality_rewrites(
+        proved.source_term, proved.replay_steps, theory
+    )
+    assert replayed == proved.target_term
+    assert proved.independent_equivalence.startswith("passed")
+    _assert_available(proved, "congruence_rebuild", "extraction_replay")
+
+
+def test_pattern_commutativity_proves_swapped_addends() -> None:
+    theory = DeclaredEqualityTheory(
+        theory_id="theory:comm@1",
+        review_refs=("review:equality_theory@1", "review:equality_rewrite@1"),
+        rules=(
+            EqualityRule(
+                rule_id="rule:commute",
+                lhs="(+ ?a ?b)",
+                rhs="(+ ?b ?a)",
+                review_ref="review:equality_rewrite@1",
+                theory_id="theory:comm@1",
+            ),
+        ),
+        operator_costs={"+": 2, "x": 1, "y": 1},
+    )
+    proved = prove_equality_under_theory(theory, "(+ x y)", "(+ y x)")
+    assert proved.proved
+    assert "rule:commute" in proved.applied_rule_ids
+    replayed = replay_equality_rewrites(
+        proved.source_term, proved.replay_steps, theory
+    )
+    assert replayed == "(+ y x)"
+    _assert_available(proved, "extraction_replay", "independent_equivalence_check")
+
+
+def test_duplicate_rule_ids_are_rejected() -> None:
+    with pytest.raises(ProgramRepairSynthesisError, match="unique"):
+        DeclaredEqualityTheory(
+            theory_id="theory:dup@1",
+            review_refs=("review:equality_theory@1",),
+            rules=(
+                EqualityRule(
+                    rule_id="rule:dup",
+                    lhs="a",
+                    rhs="b",
+                    review_ref="review:equality_rewrite@1",
+                    theory_id="theory:dup@1",
+                ),
+                EqualityRule(
+                    rule_id="rule:dup",
+                    lhs="c",
+                    rhs="d",
+                    review_ref="review:equality_rewrite@1",
+                    theory_id="theory:dup@1",
+                ),
+            ),
+        )
+
+
+def test_authority_effect_on_rhs_fails_no_authority_side_condition() -> None:
+    theory = DeclaredEqualityTheory(
+        theory_id="theory:auth-effect@1",
+        review_refs=("review:equality_theory@1", "review:equality_rewrite@1"),
+        rules=(
+            EqualityRule(
+                rule_id="rule:grant",
+                lhs="x",
+                rhs="(admit x)",
+                review_ref="review:equality_rewrite@1",
+                theory_id="theory:auth-effect@1",
+            ),
+        ),
+        operator_effects={"admit": ("write_authority",)},
+    )
+    receipt = prove_equality_under_theory(theory, "x", "y")
+    assert not receipt.proved
+    assert any(
+        "no_authority:failed" in item or "no_undeclared_effects:failed" in item
+        for item in receipt.side_condition_results
+    )

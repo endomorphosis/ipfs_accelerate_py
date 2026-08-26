@@ -1736,13 +1736,16 @@ class EqualityEGraph:
         if self._rank[root_a] == self._rank[root_b]:
             self._rank[root_a] += 1
         self._sorts[root_a] = merged_sort
-        self._nodes_of[root_a].extend(self._nodes_of[root_b])
+        seen_nids = set(self._nodes_of[root_a])
         for nid in self._nodes_of[root_b]:
             self._enode_class[nid] = root_a
-        keep = self._repr.get(root_a)
+            if nid not in seen_nids:
+                self._nodes_of[root_a].append(nid)
+                seen_nids.add(nid)
+        self._nodes_of[root_b] = []
         other = self._repr.get(root_b)
-        if other is not None and (keep is None or len(other) < len(keep)):
-            self._repr[root_a] = other
+        if other is not None:
+            self._remember_repr(root_a, other)
         if rule_id == "congruence":
             self._congruence_merges += 1
         elif rule_id:
@@ -1827,7 +1830,7 @@ class EqualityEGraph:
         else:
             sort = self._enode_sort(parsed.op, child_sorts)
         cid = self._add_enode(parsed.op, child_ids, sort=sort)
-        self._repr[self._find(cid)] = parsed.render()
+        self._remember_repr(cid, parsed.render())
         return cid
 
     def _rebuild(self) -> int:
@@ -1859,7 +1862,28 @@ class EqualityEGraph:
                         merges += 1
                         progressed = True
                         root = self._find(root)
+        self._reindex_class_nodes()
         return merges
+
+    def _remember_repr(self, cid: int, text: str) -> None:
+        """Keep the shortest deterministic printable witness for an e-class."""
+
+        if not text:
+            return
+        cid = self._find(cid)
+        current = self._repr.get(cid)
+        if current is None or (len(text), text) < (len(current), current):
+            self._repr[cid] = text
+
+    def _reindex_class_nodes(self) -> None:
+        """Rebuild per-class enode indexes from canonical union-find roots."""
+
+        indexed: list[list[int]] = [[] for _ in self._parent]
+        for nid, cid in enumerate(self._enode_class):
+            root = self._find(cid)
+            self._enode_class[nid] = root
+            indexed[root].append(nid)
+        self._nodes_of = indexed
 
     def _match_pattern_all(
         self, pattern: EqualityTerm, eclass: int, subst: Mapping[str, int]
@@ -1879,7 +1903,9 @@ class EqualityEGraph:
                 return [{**subst, pattern.op: eclass}]
             return [dict(subst)] if self._find(bound) == eclass else []
         matches: list[dict[str, int]] = []
-        for nid in self._nodes_of[eclass]:
+        for nid in tuple(self._nodes_of[eclass]):
+            if self._find(self._enode_class[nid]) != eclass:
+                continue
             node = self._enodes[nid]
             if node.op != pattern.op or len(node.children) != len(pattern.children):
                 continue
@@ -2003,9 +2029,19 @@ class EqualityEGraph:
                 ):
                     failed = f"declared:{rule.sort}!={expected}/{actual}"
             elif condition == "no_authority":
-                if any(label in _FORBIDDEN_EFFECT_LABELS for label in rule.effects):
+                labels = set(rule.effects) | set(
+                    _collect_term_effects(rhs_term, self.theory.operator_effects)
+                )
+                if labels & _FORBIDDEN_EFFECT_LABELS:
                     failed = "authority_effect"
-            elif condition in {"pure", "no_effects", "no_undeclared_effects"}:
+            elif condition in {"pure", "no_effects"}:
+                introduced = set(rule.effects) | set(
+                    _collect_term_effects(rhs_term, self.theory.operator_effects)
+                )
+                introduced -= {"pure"}
+                if introduced:
+                    failed = "effect:" + ",".join(sorted(introduced))
+            elif condition == "no_undeclared_effects":
                 introduced = set(rule.effects) | set(
                     _collect_term_effects(rhs_term, self.theory.operator_effects)
                 )
@@ -2168,6 +2204,8 @@ class EqualityEGraph:
             guard += 1
             for cid in self._canonical_classes():
                 for nid in self._nodes_of[cid]:
+                    if self._find(self._enode_class[nid]) != cid:
+                        continue
                     node = self._enodes[nid]
                     child_roots = [self._find(child) for child in node.children]
                     if any(child not in best_cost for child in child_roots):
@@ -2329,6 +2367,7 @@ class EqualityEGraph:
                     independent_effect=effect_reason,
                 )
             depth = self.saturate()
+            self._reindex_class_nodes()
             extracted, cost = self.extract_eclass(source_id)
             source_sort = self._sorts[self._find(source_id)]
             target_sort = self._sorts[self._find(target_id)]
@@ -2391,6 +2430,13 @@ class EqualityEGraph:
         effect_status, effect_reason = _independent_effect_check(
             self.theory, source_term, target_term
         )
+        extracted_effect_status, extracted_effect_reason = _independent_effect_check(
+            self.theory, source_term, extracted
+        )
+        if extracted_effect_status.startswith("passed"):
+            pass
+        else:
+            effect_status, effect_reason = extracted_effect_status, extracted_effect_reason
         if not eq_status.startswith("passed"):
             return self._receipt(
                 source=source_t,
@@ -2508,6 +2554,122 @@ def _ast_replay(
     return term
 
 
+def _collect_equality_subterms(*terms: EqualityTerm) -> dict[str, EqualityTerm]:
+    """Index every ground subterm by its rendered S-expression."""
+
+    out: dict[str, EqualityTerm] = {}
+    stack = list(terms)
+    while stack:
+        current = stack.pop()
+        if current.is_var:
+            continue
+        key = current.render()
+        if key in out:
+            continue
+        out[key] = current
+        stack.extend(current.children)
+    return out
+
+
+class _GroundTermUnion:
+    """String-keyed union-find used by the independent congruence checker."""
+
+    def __init__(self) -> None:
+        self._parent: dict[str, str] = {}
+
+    def add(self, term: str) -> None:
+        self._parent.setdefault(term, term)
+
+    def find(self, term: str) -> str:
+        self.add(term)
+        parent = self._parent[term]
+        if parent != term:
+            root = self.find(parent)
+            self._parent[term] = root
+            return root
+        return term
+
+    def union(self, left: str, right: str) -> None:
+        root_a = self.find(left)
+        root_b = self.find(right)
+        if root_a != root_b:
+            self._parent[root_b] = root_a
+
+    def equivalent(self, left: str, right: str) -> bool:
+        return self.find(left) == self.find(right)
+
+
+def _close_ground_congruence(
+    terms: Mapping[str, EqualityTerm],
+    union: _GroundTermUnion,
+    *,
+    max_passes: int,
+) -> None:
+    rendered = list(terms)
+    for term in rendered:
+        union.add(term)
+    passes = 0
+    progressed = True
+    while progressed:
+        passes += 1
+        if passes > max_passes:
+            raise ProgramRepairBoundsError(
+                "independent congruence closure budget exhausted",
+                reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+            )
+        progressed = False
+        for index, left_key in enumerate(rendered):
+            left = terms[left_key]
+            for right_key in rendered[index + 1 :]:
+                right = terms[right_key]
+                if left.op != right.op or len(left.children) != len(right.children):
+                    continue
+                if union.equivalent(left_key, right_key):
+                    continue
+                if all(
+                    union.equivalent(child.render(), other.render())
+                    for child, other in zip(left.children, right.children)
+                ):
+                    union.union(left_key, right_key)
+                    progressed = True
+
+
+def _independent_congruence_holds(
+    theory: DeclaredEqualityTheory,
+    source: EqualityTerm,
+    target: EqualityTerm,
+    steps: Sequence[EqualityRewriteStep],
+    *,
+    max_nodes: int,
+) -> bool:
+    """Decide source ≡ target from reviewed steps plus congruence, without the e-graph."""
+
+    terms = _collect_equality_subterms(source, target)
+    union = _GroundTermUnion()
+    for term in terms:
+        union.add(term)
+    rules = theory.rule_map()
+    for step in steps:
+        rule = rules.get(step.rule_id)
+        if rule is None:
+            return False
+        substitution = {
+            name: parse_equality_term(value, name="subst_term")
+            for name, value in step.substitution
+        }
+        lhs = _instantiate_equality_term(rule.parsed_lhs(), substitution)
+        rhs = _instantiate_equality_term(rule.parsed_rhs(), substitution)
+        for extra in _collect_equality_subterms(lhs, rhs).values():
+            key = extra.render()
+            if key not in terms:
+                terms[key] = extra
+            union.add(key)
+        union.union(lhs.render(), rhs.render())
+    max_passes = max(8, min(max_nodes, len(terms) * len(terms) + 1))
+    _close_ground_congruence(terms, union, max_passes=max_passes)
+    return union.equivalent(source.render(), target.render())
+
+
 def _independent_equivalence_check(
     theory: DeclaredEqualityTheory,
     source: EqualityTerm,
@@ -2518,22 +2680,28 @@ def _independent_equivalence_check(
     max_depth: int,
     max_nodes: int,
 ) -> tuple[str, str]:
-    del applied_rule_ids
     try:
         replayed = _ast_replay(source, steps, theory, max_depth=max_depth)
     except ProgramRepairSynthesisError as exc:
         return "failed", getattr(exc, "reason_code", ProgramRepairReason.EQUALITY_REPLAY_FAILED.value)
     if replayed == target:
         return "passed:replay", "passed:replay"
-    fresh = EqualityEGraph(theory, max_depth=max_depth, max_nodes=max_nodes)
+    step_rules = {step.rule_id for step in steps}
+    if any(rule_id not in step_rules for rule_id in applied_rule_ids):
+        return "failed", "applied_rule_missing_from_replay"
     try:
-        source_id = fresh.add_term(source)
-        target_id = fresh.add_term(target)
-        fresh.saturate()
-        if fresh._find(source_id) == fresh._find(target_id):
-            return "passed:fresh_congruence", "passed:fresh_congruence"
-    except (ProgramRepairBoundsError, ProgramRepairSynthesisError) as exc:
-        return "failed", f"fresh_engine:{getattr(exc, 'reason_code', 'error')}"
+        if _independent_congruence_holds(
+            theory, source, target, steps, max_nodes=max_nodes
+        ):
+            return "passed:congruence_closure", "passed:congruence_closure"
+    except ProgramRepairBoundsError as exc:
+        return "failed", getattr(
+            exc, "reason_code", ProgramRepairReason.BOUNDS_EXCEEDED.value
+        )
+    except ProgramRepairSynthesisError as exc:
+        return "failed", getattr(
+            exc, "reason_code", ProgramRepairReason.EQUALITY_REPLAY_FAILED.value
+        )
     return "failed", ProgramRepairReason.EQUALITY_REPLAY_FAILED.value
 
 
