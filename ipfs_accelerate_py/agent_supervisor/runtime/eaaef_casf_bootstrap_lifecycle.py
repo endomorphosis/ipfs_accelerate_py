@@ -11,8 +11,9 @@ record is present.
 Only the bootstrap prefix is implemented.  This module is not the statically
 opened production owner, does not qualify the independent Plan-R2 transport,
 and exposes no public status, stop, launch, provider, or generic SQL surface.
-The private committed-owner shutdown method exists solely for bounded local
-recovery and tests; it is not reachable through ``EAAEFTypedReconciliationOwner``.
+The private committed-owner management path exposes only cached typed status
+and exact stop for bounded local recovery; it is not reachable through
+``EAAEFTypedReconciliationOwner``.
 """
 
 from __future__ import annotations
@@ -49,6 +50,10 @@ from ..task_sources.eaaef_casf_bootstrap_owner import (
     EAAEFCASFBootstrapOwnerError,
     EAAEFCASFBootstrapRegistry,
     _verified,
+)
+from .eaaef_casf_owner_management import (
+    CASFOwnerManagementClient,
+    CASFOwnerManagementServer,
 )
 
 EAAEF_CASF_BOOTSTRAP_BROKER_INTERFACE: Final = (
@@ -157,11 +162,6 @@ _ARGUMENT_FIELDS: Final = {
     "commit_started_owner": frozenset(
         {"owner_start_receipt_cid", "final_record_cid"}
     ),
-    # Owner-local recovery only.  The public reconciliation stop operation
-    # remains fail-closed in CASFBootstrapEAAEFTypedReconciliationOwner.
-    "shutdown_committed_owner": frozenset(
-        {"owner_start_receipt_cid", "final_record_cid"}
-    ),
 }
 _PUBLIC_OPERATIONS: Final = frozenset(
     {
@@ -181,7 +181,6 @@ _ERROR_CODES: Final = frozenset(
         "broker_owner_start_failed",
         "broker_commit_invalid",
         "broker_abort_failed",
-        "broker_shutdown_failed",
         "broker_internal_failure",
     }
 )
@@ -1041,6 +1040,7 @@ def _broker_child(control_fd: int, caller_death_fd: int) -> int:
     lease: ExclusiveOwnerLease | None = None
     binding: EAAEFCASFBootstrapBinding | None = None
     death_thread: threading.Thread | None = None
+    management: CASFOwnerManagementServer | None = None
 
     def _watch_caller() -> None:
         try:
@@ -1052,6 +1052,13 @@ def _broker_child(control_fd: int, caller_death_fd: int) -> int:
             caller_dead.set()
 
     def _signal_stop(_signum: int, _frame: object) -> None:
+        stop_after_commit.set()
+        try:
+            channel.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def _request_management_stop() -> None:
         stop_after_commit.set()
         try:
             channel.shutdown(socket.SHUT_RDWR)
@@ -1080,6 +1087,23 @@ def _broker_child(control_fd: int, caller_death_fd: int) -> int:
             allow_experimental=False,
             allow_legacy_board_unstall=False,
         )
+        from . import eaaef_reconciliation_lifecycle as reconciliation
+
+        observed_owner_birth = reconciliation.inspect_process_birth(os.getpid())
+        if observed_owner_birth is None:
+            raise EAAEFCASFBootstrapBrokerError(
+                "CASF bootstrap management owner birth is unavailable"
+            )
+        management = CASFOwnerManagementServer(
+            generation_id=binding.generation_id,
+            binding_cid=_cid(_binding_to_mapping(binding)),
+            snapshot_bindings_cid=snapshot_bindings.to_dict()["bindings_cid"],
+            state_dir=binding.owner_state_dir,
+            owner_process_birth=observed_owner_birth.to_dict(),
+            request_stop=_request_management_stop,
+            stop_timeout_seconds=600.0,
+        )
+        management.start()
         birth = current_process_birth()
         lease = ExclusiveOwnerLease(
             lock_path=server.owner_lock_path(),
@@ -1114,7 +1138,7 @@ def _broker_child(control_fd: int, caller_death_fd: int) -> int:
                 break
             try:
                 request_raw = _recv_packet(channel)
-            except EOFError:
+            except (EOFError, OSError):
                 if committed.is_set():
                     # The durable owner_started record is the transfer point.
                     # Caller death before it aborts; caller death after it
@@ -1274,6 +1298,13 @@ def _broker_child(control_fd: int, caller_death_fd: int) -> int:
                         start_receipt=start_receipt,
                         final_record_cid=final_record_cid,
                     )
+                    management.mark_committed(
+                        owner_start_receipt_cid=start_receipt[
+                            "start_receipt_cid"
+                        ],
+                        final_record_cid=final_record_cid,
+                        commit_receipt_cid=commit["commit_receipt_cid"],
+                    )
                     committed.set()
                     response = _build_response(
                         generation_id=binding.generation_id,
@@ -1283,28 +1314,6 @@ def _broker_child(control_fd: int, caller_death_fd: int) -> int:
                         ok=True,
                         result=commit,
                     )
-                elif operation == "shutdown_committed_owner":
-                    if (
-                        not committed.is_set()
-                        or start_receipt is None
-                        or arguments.get("owner_start_receipt_cid")
-                        != start_receipt["start_receipt_cid"]
-                        or arguments.get("final_record_cid") != final_record_cid
-                    ):
-                        raise EAAEFCASFBootstrapBrokerError(
-                            "committed owner shutdown identity differs"
-                        )
-                    _cleanup_owner(server, lease)
-                    response = _build_response(
-                        generation_id=binding.generation_id,
-                        sequence=sequence,
-                        operation=operation,
-                        request_cid=request["request_cid"],
-                        ok=True,
-                        result={"committed_owner_stopped": True},
-                    )
-                    terminal = True
-                    stop_after_commit.set()
                 else:  # pragma: no cover - exact validator closes this branch.
                     raise EAAEFCASFBootstrapBrokerError("broker operation differs")
             except BaseException:
@@ -1312,7 +1321,6 @@ def _broker_child(control_fd: int, caller_death_fd: int) -> int:
                     "start_after_offline_commit": "broker_owner_start_failed",
                     "abort_started_owner": "broker_abort_failed",
                     "commit_started_owner": "broker_commit_invalid",
-                    "shutdown_committed_owner": "broker_shutdown_failed",
                 }.get(operation, "broker_internal_failure")
                 response = _build_response(
                     generation_id=binding.generation_id,
@@ -1340,8 +1348,23 @@ def _broker_child(control_fd: int, caller_death_fd: int) -> int:
     except BaseException:
         return 70
     finally:
-        if not committed.is_set() or stop_after_commit.is_set():
+        cleanup_required = not committed.is_set() or stop_after_commit.is_set()
+        if cleanup_required:
             _cleanup_owner(server, lease)
+        if (
+            management is not None
+            and binding is not None
+            and management.stop_requested.is_set()
+            and cleanup_required
+        ):
+            try:
+                _assert_owner_lease_released(binding)
+                management.mark_stopped()
+                management.stop_response_sent.wait(timeout=2.0)
+            except EAAEFCASFBootstrapOwnerError:
+                pass
+        if management is not None:
+            management.close()
         try:
             channel.close()
         except OSError:
@@ -1703,6 +1726,8 @@ class QuackEAAEFCASFBootstrapOwnerLifecycle:
         self.shutdown_timeout_seconds = float(shutdown_timeout_seconds)
         self._gate = threading.Lock()
         self._brokers: dict[str, _BrokerClient] = {}
+        self._management_clients: dict[str, CASFOwnerManagementClient] = {}
+        self._management_bindings: dict[str, EAAEFCASFBootstrapBinding] = {}
 
     def hold_exclusive_bootstrap(
         self,
@@ -1808,43 +1833,153 @@ class QuackEAAEFCASFBootstrapOwnerLifecycle:
             if self._brokers.get(generation_id) is broker:
                 self._brokers.pop(generation_id, None)
 
-    def shutdown_committed_owner(self, generation_id: str) -> Mapping[str, Any]:
-        """Stop one locally retained owner; not a reconciliation-owner method."""
+    @staticmethod
+    def _validate_management_status_binding(
+        binding: EAAEFCASFBootstrapBinding,
+        status: Mapping[str, Any],
+    ) -> None:
+        record = _read_registry_record(binding)
+        if (
+            status.get("generation_id") != binding.generation_id
+            or status.get("phase") != "committed"
+            or status.get("owner_committed") is not True
+            or status.get("owner_process_alive") is not True
+            or status.get("provider_process_started") is not False
+            or status.get("task_state_mutated") is not False
+            or record.get("phase") != "owner_started"
+            or record.get("source_forest_root") != binding.source_forest_root
+            or record.get("population_cid") != binding.population_cid
+            or record.get("owner_lifecycle_interface")
+            != EAAEF_CASF_BOOTSTRAP_OWNER_LIFECYCLE_INTERFACE
+            or record.get("owner_start_receipt_cid")
+            != status.get("owner_start_receipt_cid")
+            or record.get("record_cid") != status.get("final_record_cid")
+            or record.get("owner_process_birth")
+            != status.get("owner_process_birth")
+        ):
+            raise EAAEFCASFBootstrapBrokerError(
+                "committed CASF management binding differs"
+            )
+
+    def reattach_committed_owner(
+        self,
+        binding: EAAEFCASFBootstrapBinding,
+    ) -> Mapping[str, Any]:
+        """Adopt an exact live broker using only its sealed private capsule."""
+
+        if type(binding) is not EAAEFCASFBootstrapBinding:
+            raise EAAEFCASFBootstrapBrokerError(
+                "CASF bootstrap binding is not exact"
+            )
+        _binding_from_mapping(_binding_to_mapping(binding))
+        with self._gate:
+            existing = self._management_clients.get(binding.generation_id)
+            existing_binding = self._management_bindings.get(binding.generation_id)
+        if existing is not None:
+            if existing_binding != binding:
+                raise EAAEFCASFBootstrapBrokerError(
+                    "committed CASF management binding changed"
+                )
+            status = existing.status_snapshot()
+            self._validate_management_status_binding(binding, status)
+            return status
+        client = CASFOwnerManagementClient(
+            generation_id=binding.generation_id,
+            binding_cid=_cid(_binding_to_mapping(binding)),
+            snapshot_bindings_cid=self.snapshot_bindings.to_dict()[
+                "bindings_cid"
+            ],
+            state_dir=binding.owner_state_dir,
+            timeout_seconds=self.operation_timeout_seconds,
+        )
+        status = client.status_snapshot()
+        self._validate_management_status_binding(binding, status)
+        with self._gate:
+            raced = self._management_clients.get(binding.generation_id)
+            if raced is None:
+                self._management_clients[binding.generation_id] = client
+                self._management_bindings[binding.generation_id] = binding
+                selected = client
+            else:
+                if self._management_bindings.get(binding.generation_id) != binding:
+                    raise EAAEFCASFBootstrapBrokerError(
+                        "committed CASF management binding changed"
+                    )
+                selected = raced
+        if selected is not client:
+            status = selected.status_snapshot()
+            self._validate_management_status_binding(binding, status)
+        return status
+
+    def committed_owner_status(self, generation_id: str) -> Mapping[str, Any]:
+        """Return one authenticated cached owner status; never query DuckDB."""
 
         with self._gate:
             broker = self._brokers.get(generation_id)
-        if broker is None or not broker.committed or broker.start_receipt is None:
+            binding = self._management_bindings.get(generation_id)
+        if binding is None and broker is not None and broker.committed:
+            binding = broker.binding
+        if binding is None:
             raise EAAEFCASFBootstrapBrokerError(
-                "committed CASF bootstrap owner is not locally retained"
+                "committed CASF bootstrap owner is not locally bound"
             )
-        result = broker._exchange(  # noqa: SLF001
-            "shutdown_committed_owner",
-            {
-                "owner_start_receipt_cid": broker.start_receipt[
-                    "start_receipt_cid"
-                ],
-                "final_record_cid": broker.final_record_cid,
-            },
-        )
-        broker.close_descriptors()
-        if not broker.wait_dead(self.shutdown_timeout_seconds):
+        return self.reattach_committed_owner(binding)
+
+    def shutdown_committed_owner(self, generation_id: str) -> Mapping[str, Any]:
+        """Stop one exact owner over its private authenticated management path."""
+
+        with self._gate:
+            broker = self._brokers.get(generation_id)
+            client = self._management_clients.get(generation_id)
+            binding = self._management_bindings.get(generation_id)
+        if binding is None and broker is not None and broker.committed:
+            binding = broker.binding
+        if binding is None:
+            raise EAAEFCASFBootstrapBrokerError(
+                "committed CASF bootstrap owner is not locally bound"
+            )
+        if client is None:
+            self.reattach_committed_owner(binding)
+            with self._gate:
+                client = self._management_clients.get(generation_id)
+        if client is None:  # pragma: no cover - guarded insertion above.
+            raise EAAEFCASFBootstrapBrokerError(
+                "committed CASF management client is unavailable"
+            )
+        result = client.stop()
+        if not client.wait_dead(self.shutdown_timeout_seconds):
             raise EAAEFCASFBootstrapBrokerError(
                 "committed CASF bootstrap owner did not stop"
             )
-        self._forget_broker(generation_id, broker)
+        _assert_owner_lease_released(binding)
+        if broker is not None:
+            broker.close_descriptors()
+            if not broker.wait_dead(self.shutdown_timeout_seconds):
+                raise EAAEFCASFBootstrapBrokerError(
+                    "committed CASF bootstrap broker did not exit"
+                )
+            self._forget_broker(generation_id, broker)
+        with self._gate:
+            if self._management_clients.get(generation_id) is client:
+                self._management_clients.pop(generation_id, None)
+                self._management_bindings.pop(generation_id, None)
         return result
 
     def committed_generation_ids(self) -> tuple[str, ...]:
-        """Return local identities only; no status or process authority crosses."""
+        """Return local identities only; no database authority crosses."""
 
         with self._gate:
-            return tuple(
-                sorted(
-                    generation_id
-                    for generation_id, broker in self._brokers.items()
-                    if broker.committed and broker.process.poll() is None
-                )
+            retained = {
+                generation_id
+                for generation_id, broker in self._brokers.items()
+                if broker.committed and broker.process.poll() is None
+            }
+            retained.update(
+                generation_id
+                for generation_id, client in self._management_clients.items()
+                if client.is_alive()
             )
+        return tuple(sorted(retained))
 
 
 def _main(argv: list[str]) -> int:
