@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Collect host-controlled EAAEF S-epic admission receipts.
+"""Collect host-controlled EAAEF S-epic admission evidence.
 
-The safe default and ``--early-frontier`` collect only EAAEF-180..183.
-Later host evidence requires the explicit ``--full-host-evidence`` mode. No
-mode starts a supervisor or configured-board launch.
+The safe default and ``--early-frontier`` atomically publish an immutable,
+observation-only EAAEF-180..183 capture outside the checkout. Later host
+evidence requires the explicit ``--full-host-evidence`` mode. No mode starts a
+supervisor or configured-board launch.
 """
 
 from __future__ import annotations
@@ -27,7 +28,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_const",
         const="early_frontier",
         default=argparse.SUPPRESS,
-        help="collect and write only EAAEF-180 through EAAEF-183 (default)",
+        help=(
+            "collect and publish an immutable no-go observation for "
+            "EAAEF-180 through EAAEF-183 (default)"
+        ),
     )
     scope.add_argument(
         "--full-host-evidence",
@@ -44,10 +48,10 @@ def _collect_host_admission() -> dict[str, object]:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
     from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
-        collect_early_frontier_and_write,
+        collect_early_frontier_and_publish_observation,
     )
 
-    return collect_early_frontier_and_write()
+    return collect_early_frontier_and_publish_observation()
 
 
 def _collect_full_host_admission() -> dict[str, object]:

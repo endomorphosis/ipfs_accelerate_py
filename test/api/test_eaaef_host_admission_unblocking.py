@@ -7,23 +7,36 @@ Missing signed artifacts are represented as typed receipts, not xfail/skip.
 from __future__ import annotations
 
 import base64
+import importlib.util
 import json
 import os
 import socket
+import stat
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+)
 from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     ed25519_did_key,
 )
 from ipfs_accelerate_py.agent_supervisor.validation import eaaef_host_admission
 from ipfs_accelerate_py.agent_supervisor.validation import (
     external_agent_bootstrap_admission as bootstrap_admission,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.eaaef_authority_registry import (
+    EAAEFAuthorityRegistry,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
     BUNDLE_SCHEMA,
@@ -55,6 +68,8 @@ ROOT = Path(__file__).resolve().parents[2]
 CAMPAIGN = ROOT / "docs/architecture/external_agent_autonomous_execution_fabric"
 BOARD = CAMPAIGN / "task_board.json"
 HOST_EVIDENCE_IDS = [f"EAAEF-{number}" for number in range(180, 192)]
+RUNNER = ROOT / "scripts/run_eaaef_host_admission_supervisor.py"
+EARLY = eaaef_host_admission.EARLY_FRONTIER_TASK_IDS
 
 
 def _prebootstrap_statement(
@@ -1437,3 +1452,1011 @@ def test_collector_refuses_a_plan_that_started_a_process() -> None:
         assert "started a process" in str(exc)
     else:
         raise AssertionError("collector accepted a process-starting plan")
+
+def _load_script(path: Path, name: str) -> ModuleType:
+    specification = importlib.util.spec_from_file_location(name, path)
+    assert specification is not None and specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module
+
+
+def _identity() -> dict[str, str]:
+    return {
+        "source_head": "1" * 40,
+        "source_tree": "2" * 40,
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "board_cid": "sha256:" + "3" * 64,
+    }
+
+
+def _receipts(
+    *,
+    identity: dict[str, str] | None = None,
+    marker: str = "capture-a",
+    duckdb_decision: str = "admitted",
+    engine_decision: str = "admitted",
+) -> dict[str, dict[str, Any]]:
+    source = dict(identity or _identity())
+    decisions = {
+        "EAAEF-180": "inventory",
+        "EAAEF-181": "bound_unadmitted",
+        "EAAEF-182": duckdb_decision,
+        "EAAEF-183": engine_decision,
+    }
+    evidence = {
+        "EAAEF-180": {"launch_plan_allowed": False, "capture": marker},
+        "EAAEF-181": {
+            "admitted_authority": False,
+            "secret_material_exported": False,
+            "capture": marker,
+        },
+        "EAAEF-182": {
+            "decision": duckdb_decision,
+            "network_install_attempted": False,
+            "capture": marker,
+        },
+        "EAAEF-183": {
+            "decision": engine_decision,
+            "supervisor_started": False,
+            "capture": marker,
+        },
+    }
+    return {
+        task_id: eaaef_host_admission._base_receipt(
+            task_id,
+            decision=decisions[task_id],
+            evidence=evidence[task_id],
+            source_identity=source,
+        )
+        for task_id in EARLY
+    }
+
+
+def _stable_current_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    identity: dict[str, str],
+) -> None:
+    def require(expected: Any = None) -> dict[str, str]:
+        if expected is not None:
+            assert dict(expected) == identity
+        return dict(identity)
+
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "_require_current_early_frontier_source_identity",
+        require,
+    )
+
+
+def _runner_collection(
+    identity: dict[str, str],
+    *,
+    duckdb_decision: str = "admitted",
+    engine_decision: str = "admitted",
+) -> dict[str, Any]:
+    decisions = {
+        "EAAEF-180": "inventory",
+        "EAAEF-181": "bound_unadmitted",
+        "EAAEF-182": duckdb_decision,
+        "EAAEF-183": engine_decision,
+    }
+    observation_cid = "sha256:" + "4" * 64
+    typed_missing = [
+        task_id for task_id in EARLY if decisions[task_id] == "typed_missing"
+    ]
+    owner_eligible = [
+        task_id
+        for task_id in EARLY
+        if decisions[task_id]
+        == {
+            "EAAEF-180": "inventory",
+            "EAAEF-181": "bound_unadmitted",
+            "EAAEF-182": "admitted",
+            "EAAEF-183": "admitted",
+        }[task_id]
+    ]
+    logical_path = (
+        eaaef_host_admission.source_addressed_early_frontier_observation_logical_path(
+            source_head=identity["source_head"],
+            observation_cid=observation_cid,
+        ).as_posix()
+    )
+    return {
+        "schema": eaaef_host_admission.EARLY_FRONTIER_OBSERVATION_SCHEMA,
+        "scope": eaaef_host_admission.EARLY_FRONTIER_OBSERVATION_SCOPE,
+        "published": True,
+        "created": True,
+        "logical_path": logical_path,
+        "observation_cid": observation_cid,
+        "child_receipt_cids": {
+            task_id: "sha256:" + str(index) * 64
+            for index, task_id in enumerate(EARLY, start=5)
+        },
+        "typed_missing_task_ids": typed_missing,
+        "direct_completion_eligible_task_ids": [],
+        "casf_owner_transaction_eligible_task_ids": owner_eligible,
+        "decisions": decisions,
+        **identity,
+        "decision": "no_go",
+        "process_started": False,
+        "supervisor_process_started": False,
+        "configured_board_launch": False,
+        "provider_invoked": False,
+        "observation_only": True,
+        "admission_authority": False,
+        "live_admission_allowed": False,
+        "live_launch_allowed": False,
+        "eaaef_191_authority": False,
+        "direct_task_completion_allowed": False,
+        "direct_database_binding_allowed": False,
+        "casf_owner_binding_required": True,
+        "database_binding_blocker": (
+            eaaef_host_admission.EARLY_FRONTIER_OBSERVATION_DB_BINDING_BLOCKER
+        ),
+    }
+
+
+def test_observation_binds_exact_children_and_cannot_grant_authority() -> None:
+    identity = _identity()
+    receipts = _receipts(identity=identity, duckdb_decision="typed_missing")
+
+    observation = eaaef_host_admission.build_early_frontier_observation(
+        receipts,
+        source_identity=identity,
+    )
+    verification = eaaef_host_admission.verify_early_frontier_observation(
+        observation,
+        expected_source_identity=identity,
+    )
+
+    assert verification["valid"] is True
+    assert observation["task_ids"] == list(EARLY)
+    assert observation["child_decisions"] == {
+        task_id: receipts[task_id]["decision"] for task_id in EARLY
+    }
+    assert observation["child_receipt_cids"] == {
+        task_id: receipts[task_id]["receipt_cid"] for task_id in EARLY
+    }
+    assert observation["decision"] == "no_go"
+    assert observation["observation_only"] is True
+    for field in (
+        "admission_authority",
+        "live_admission_allowed",
+        "live_launch_allowed",
+        "eaaef_191_authority",
+        "direct_task_completion_allowed",
+        "direct_database_binding_allowed",
+    ):
+        assert observation[field] is False
+        assert verification[field] is False
+    assert observation["casf_owner_binding_required"] is True
+    assert observation["typed_missing_task_ids"] == ["EAAEF-182"]
+    assert observation["direct_completion_eligible_task_ids"] == []
+    assert observation["casf_owner_transaction_eligible_task_ids"] == [
+        "EAAEF-180",
+        "EAAEF-181",
+        "EAAEF-183",
+    ]
+    assert verification["typed_missing_task_ids"] == ["EAAEF-182"]
+    assert verification["direct_completion_eligible_task_ids"] == []
+    assert verification["casf_owner_transaction_eligible_task_ids"] == [
+        "EAAEF-180",
+        "EAAEF-181",
+        "EAAEF-183",
+    ]
+    assert "EAAEF-191" not in observation["receipts"]
+    logical = (
+        eaaef_host_admission.source_addressed_early_frontier_observation_logical_path(
+            source_head=identity["source_head"],
+            observation_cid=observation["observation_cid"],
+        )
+    )
+    final_bundle, _final_signatures = (
+        eaaef_host_admission.source_addressed_admission_bundle_logical_paths(
+            source_head=identity["source_head"],
+        )
+    )
+    assert logical.parent.name == "observations"
+    assert logical != final_bundle
+
+    changed_board = {**identity, "board_cid": "sha256:" + "9" * 64}
+    stale = eaaef_host_admission.verify_early_frontier_observation(
+        observation,
+        expected_source_identity=changed_board,
+    )
+    assert stale["valid"] is False
+    assert "early-frontier observation is stale for the current source" in stale[
+        "blockers"
+    ]
+
+
+def test_observation_rejects_extra_children_fields_nan_and_tampering() -> None:
+    identity = _identity()
+    extra_task = _receipts(identity=identity)
+    extra_task["EAAEF-191"] = dict(extra_task["EAAEF-180"])
+    with pytest.raises(ValueError, match="exactly EAAEF-180..183"):
+        eaaef_host_admission.build_early_frontier_observation(
+            extra_task,
+            source_identity=identity,
+        )
+
+    extra_field = _receipts(identity=identity)
+    extra_field["EAAEF-181"]["admission_authority"] = True
+    extra_field["EAAEF-181"]["receipt_cid"] = eaaef_host_admission.cid(
+        {
+            key: value
+            for key, value in extra_field["EAAEF-181"].items()
+            if key != "receipt_cid"
+        }
+    )
+    with pytest.raises(ValueError, match="child fields differ"):
+        eaaef_host_admission.build_early_frontier_observation(
+            extra_field,
+            source_identity=identity,
+        )
+
+    nonfinite = _receipts(identity=identity)
+    nonfinite["EAAEF-182"]["evidence"]["duration"] = float("nan")
+    nonfinite["EAAEF-182"]["receipt_cid"] = eaaef_host_admission.cid(
+        {
+            key: value
+            for key, value in nonfinite["EAAEF-182"].items()
+            if key != "receipt_cid"
+        }
+    )
+    with pytest.raises(ValueError, match="not canonical JSON"):
+        eaaef_host_admission.build_early_frontier_observation(
+            nonfinite,
+            source_identity=identity,
+        )
+
+    observation = eaaef_host_admission.build_early_frontier_observation(
+        _receipts(identity=identity),
+        source_identity=identity,
+    )
+    observation["receipts"]["EAAEF-183"]["evidence"]["capture"] = "tampered"
+    rejected = eaaef_host_admission.verify_early_frontier_observation(
+        observation,
+        expected_source_identity=identity,
+    )
+    assert rejected["valid"] is False
+    assert "EAAEF-183 early-frontier child CID differs" in rejected["blockers"]
+    assert rejected["live_admission_allowed"] is False
+    assert rejected["direct_database_binding_allowed"] is False
+
+
+def test_publish_is_restart_safe_idempotent_and_allows_new_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = _identity()
+    _stable_current_identity(monkeypatch, identity)
+    authority_root = tmp_path / "state" / "registry"
+    receipts = _receipts(identity=identity)
+
+    first = eaaef_host_admission.publish_early_frontier_observation(
+        receipts,
+        expected_source_identity=identity,
+        authority_root=authority_root,
+    )
+    repeated = eaaef_host_admission.publish_early_frontier_observation(
+        receipts,
+        expected_source_identity=identity,
+        authority_root=authority_root,
+    )
+    restarted = eaaef_host_admission.load_current_early_frontier_observation(
+        source_head=identity["source_head"],
+        observation_cid=first["observation_cid"],
+        authority_root=authority_root,
+    )
+    changed = eaaef_host_admission.publish_early_frontier_observation(
+        _receipts(identity=identity, marker="capture-b"),
+        expected_source_identity=identity,
+        authority_root=authority_root,
+    )
+
+    assert first["created"] is True
+    assert repeated["created"] is False
+    assert repeated["logical_path"] == first["logical_path"]
+    assert restarted["valid"] is True
+    assert restarted["logical_path"] == first["logical_path"]
+    assert restarted["observation"]["child_receipt_cids"] == first[
+        "child_receipt_cids"
+    ]
+    assert changed["created"] is True
+    assert changed["logical_path"] != first["logical_path"]
+    assert changed["observation_cid"] != first["observation_cid"]
+    assert "physical_path" not in first
+    registry = EAAEFAuthorityRegistry(
+        repo_root=ROOT,
+        authority_root=authority_root,
+    )
+    physical = registry.physical_path(Path(first["logical_path"]))
+    assert stat.S_IMODE(physical.stat().st_mode) == 0o400
+
+
+def test_concurrent_exact_publishers_share_one_create_once_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = _identity()
+    _stable_current_identity(monkeypatch, identity)
+    authority_root = tmp_path / "state" / "registry"
+    receipts = _receipts(identity=identity)
+
+    def publish() -> dict[str, Any]:
+        return eaaef_host_admission.publish_early_frontier_observation(
+            receipts,
+            expected_source_identity=identity,
+            authority_root=authority_root,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _index: publish(), range(16)))
+
+    assert sum(result["created"] is True for result in results) == 1
+    assert len({result["logical_path"] for result in results}) == 1
+    assert len({result["observation_cid"] for result in results}) == 1
+
+
+def test_source_drift_during_publication_leaves_only_historical_no_go(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = _identity()
+    calls = 0
+
+    def changing(expected: Any = None) -> dict[str, str]:
+        nonlocal calls
+        calls += 1
+        if calls >= 3:
+            raise RuntimeError("source changed during capture")
+        if expected is not None:
+            assert dict(expected) == identity
+        return dict(identity)
+
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "_require_current_early_frontier_source_identity",
+        changing,
+    )
+    authority_root = tmp_path / "state" / "registry"
+    receipts = _receipts(identity=identity)
+    observation = eaaef_host_admission.build_early_frontier_observation(
+        receipts,
+        source_identity=identity,
+    )
+    logical = (
+        eaaef_host_admission.source_addressed_early_frontier_observation_logical_path(
+            source_head=identity["source_head"],
+            observation_cid=observation["observation_cid"],
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="source changed during capture"):
+        eaaef_host_admission.publish_early_frontier_observation(
+            receipts,
+            expected_source_identity=identity,
+            authority_root=authority_root,
+        )
+
+    registry = EAAEFAuthorityRegistry(
+        repo_root=ROOT,
+        authority_root=authority_root,
+    )
+    orphan = registry.read_json(logical)
+    assert orphan["decision"] == "no_go"
+    assert orphan["direct_database_binding_allowed"] is False
+    assert orphan["live_admission_allowed"] is False
+
+
+def test_registry_tamper_fails_restart_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = _identity()
+    _stable_current_identity(monkeypatch, identity)
+    authority_root = tmp_path / "state" / "registry"
+    result = eaaef_host_admission.publish_early_frontier_observation(
+        _receipts(identity=identity),
+        expected_source_identity=identity,
+        authority_root=authority_root,
+    )
+    registry = EAAEFAuthorityRegistry(
+        repo_root=ROOT,
+        authority_root=authority_root,
+    )
+    physical = registry.physical_path(Path(result["logical_path"]))
+    payload = json.loads(physical.read_text(encoding="utf-8"))
+    payload["receipts"]["EAAEF-180"]["evidence"]["capture"] = "tampered"
+    os.chmod(physical, 0o600)
+    physical.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    os.chmod(physical, 0o400)
+
+    with pytest.raises(RuntimeError, match="failed immutable verification"):
+        eaaef_host_admission.load_current_early_frontier_observation(
+            source_head=identity["source_head"],
+            observation_cid=result["observation_cid"],
+            authority_root=authority_root,
+        )
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["/usr/bin/git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "LC_ALL": "C",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_OPTIONAL_LOCKS": "0",
+        },
+    )
+
+
+def test_checkout_guard_allows_only_four_declared_staging_files(
+    tmp_path: Path,
+) -> None:
+    _git(tmp_path, "init", "-q")
+    receipt_dir = (
+        tmp_path
+        / "docs/architecture/external_agent_autonomous_execution_fabric/receipts/host_admission"
+    )
+    receipt_dir.mkdir(parents=True)
+    for task_id in (*EARLY, "EAAEF-184"):
+        filename = eaaef_host_admission.RECEIPT_FILES[task_id]
+        (receipt_dir / filename).write_text(f"{task_id}:original\n", encoding="utf-8")
+    source = tmp_path / "source.py"
+    source.write_text("clean = True\n", encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(
+        tmp_path,
+        "-c",
+        "user.name=EAAEF Test",
+        "-c",
+        "user.email=eaaef@example.invalid",
+        "commit",
+        "-qm",
+        "fixture",
+    )
+    assert (
+        eaaef_host_admission.eaaef_checkout_has_only_early_frontier_receipt_drift(
+            tmp_path
+        )
+        is True
+    )
+
+    early_path = receipt_dir / eaaef_host_admission.RECEIPT_FILES["EAAEF-180"]
+    early_path.write_text("EAAEF-180:staged-observation\n", encoding="utf-8")
+    assert (
+        eaaef_host_admission.eaaef_checkout_has_only_early_frontier_receipt_drift(
+            tmp_path
+        )
+        is True
+    )
+
+    later_path = receipt_dir / eaaef_host_admission.RECEIPT_FILES["EAAEF-184"]
+    later_path.write_text("EAAEF-184:unexpected\n", encoding="utf-8")
+    assert (
+        eaaef_host_admission.eaaef_checkout_has_only_early_frontier_receipt_drift(
+            tmp_path
+        )
+        is False
+    )
+    later_path.write_text("EAAEF-184:original\n", encoding="utf-8")
+
+    source.write_text("clean = False\n", encoding="utf-8")
+    assert (
+        eaaef_host_admission.eaaef_checkout_has_only_early_frontier_receipt_drift(
+            tmp_path
+        )
+        is False
+    )
+    source.write_text("clean = True\n", encoding="utf-8")
+    _git(tmp_path, "update-index", "--assume-unchanged", "source.py")
+    source.write_text("hidden = True\n", encoding="utf-8")
+    assert (
+        eaaef_host_admission.eaaef_checkout_has_only_early_frontier_receipt_drift(
+            tmp_path
+        )
+        is False
+    )
+
+
+def test_current_observation_identity_never_invokes_hostile_fsmonitor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    board_path = (
+        repo
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "task_board.json"
+    )
+    board_path.parent.mkdir(parents=True)
+    board: dict[str, Any] = {
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "tasks": [],
+    }
+    board["board_cid"] = eaaef_host_admission.cid(board)
+    board_path.write_text(
+        json.dumps(board, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (repo / "source.py").write_text("clean = True\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(
+        repo,
+        "-c",
+        "user.name=EAAEF Test",
+        "-c",
+        "user.email=eaaef@example.invalid",
+        "commit",
+        "-qm",
+        "fixture",
+    )
+    sentinel = tmp_path / "hostile-fsmonitor-ran"
+    hook = tmp_path / "hostile-fsmonitor.sh"
+    hook.write_text(
+        f"#!/bin/sh\n/usr/bin/touch {sentinel}\nexit 1\n",
+        encoding="utf-8",
+    )
+    os.chmod(hook, 0o700)
+    _git(repo, "config", "core.fsmonitor", str(hook))
+    monkeypatch.setattr(eaaef_host_admission, "ROOT", repo)
+    monkeypatch.setattr(eaaef_host_admission, "BOARD_PATH", board_path)
+
+    identity = eaaef_host_admission._require_current_early_frontier_source_identity()
+
+    assert len(identity["source_head"]) == 40
+    assert len(identity["source_tree"]) == 40
+    assert identity["board_cid"] == board["board_cid"]
+    assert sentinel.exists() is False
+
+
+def test_collect_publish_guards_source_and_never_writes_staging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = _identity()
+    receipts = _receipts(identity=identity)
+    calls: list[str] = []
+
+    def require(expected: Any = None) -> dict[str, str]:
+        calls.append("require_current")
+        if expected is not None:
+            assert dict(expected) == identity
+        return dict(identity)
+
+    def collect(*, timeout_seconds: int) -> dict[str, dict[str, Any]]:
+        assert timeout_seconds == 41
+        calls.append("collect")
+        return receipts
+
+    def publish(
+        observed: Any,
+        *,
+        expected_source_identity: Any,
+        authority_root: Any,
+    ) -> dict[str, Any]:
+        assert observed is receipts
+        assert dict(expected_source_identity) == identity
+        assert authority_root == Path("/test-authority")
+        calls.append("publish")
+        return {"published": True}
+
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "_require_current_early_frontier_source_identity",
+        require,
+    )
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "collect_early_frontier_host_admission_receipts",
+        collect,
+    )
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "publish_early_frontier_observation",
+        publish,
+    )
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "write_early_frontier_host_admission_receipts",
+        lambda *_args, **_kwargs: pytest.fail("immutable collection wrote staging"),
+    )
+
+    result = (
+        eaaef_host_admission.collect_early_frontier_and_publish_observation(
+            timeout_seconds=41,
+            authority_root=Path("/test-authority"),
+        )
+    )
+
+    assert result == {"published": True}
+    assert calls == ["require_current", "collect", "require_current", "publish"]
+
+
+def test_runner_stops_before_duckdb_at_explicit_casf_binding_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _load_script(RUNNER, "tested_eaaef_observation_binding_boundary")
+    identity = _identity()
+    released: list[int] = []
+    statuses: list[dict[str, Any]] = []
+    events: list[str] = []
+
+    class Lease:
+        fence_token = 17
+
+        def release(self, *, fence_token: int) -> None:
+            assert fence_token == self.fence_token
+            released.append(fence_token)
+            events.append("lease_released")
+
+    def acquire(path: Path) -> Lease:
+        assert path == tmp_path / "control.duckdb"
+        events.append("lease_acquired")
+        return Lease()
+
+    def collect() -> dict[str, Any]:
+        assert events == ["lease_acquired"]
+        events.append("observation_collected")
+        return collection
+
+    collection = _runner_collection(identity)
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        runner,
+        "_active_control_db",
+        lambda: tmp_path / "control.duckdb",
+    )
+    monkeypatch.setattr(runner, "_acquire_state_owner_lease", acquire)
+    monkeypatch.setattr(runner, "_collect_immutable_observation", collect)
+    monkeypatch.setattr(
+        runner,
+        "_collect_host_admission",
+        lambda: pytest.fail("immutable observation used legacy receipt collection"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_current_host_admission_identity",
+        lambda: identity,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_database_task_source_class",
+        lambda: pytest.fail("immutable observation constructed DatabaseTaskSource"),
+    )
+    monkeypatch.setattr(runner, "_write_status", statuses.append)
+
+    result = runner.run_once(scope="immutable_observation")
+
+    assert result["execution_scope"] == "immutable_observation"
+    assert result["control_database_opened"] is False
+    assert result["control_database_owner_lease_acquired"] is True
+    assert result["in_memory_duckdb_capability_probe_may_open"] is True
+    assert result["owner_contention_strategy"] == "exclusive_fail_closed_lease"
+    assert result["direct_database_binding_allowed"] is False
+    assert result["database_state_observed"] is False
+    assert result["task_count"] is None
+    assert result["completed"] == []
+    assert result["immutable_observation"]["observation_cid"] == collection[
+        "observation_cid"
+    ]
+    assert statuses == [result]
+    assert released == [17]
+    assert events == [
+        "lease_acquired",
+        "observation_collected",
+        "lease_released",
+    ]
+
+
+def test_immutable_observation_runner_scope_requires_explicit_cli_flag() -> None:
+    runner = _load_script(RUNNER, "tested_eaaef_observation_cli_scope")
+
+    assert not hasattr(runner._parse_args([]), "scope")
+    assert runner._parse_args(["--early-frontier"]).scope == "early_frontier"
+    assert (
+        runner._parse_args(["--immutable-observation"]).scope
+        == "immutable_observation"
+    )
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    (
+        "missing_direct_marker",
+        "direct_marker_true",
+        "casf_marker_false",
+        "published_marker_false",
+        "malformed_path",
+        "malformed_cid",
+        "source_mismatch",
+        "board_mismatch",
+    ),
+)
+def test_runner_rejects_malformed_observation_before_duckdb_and_releases_lease(
+    malformation: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _load_script(
+        RUNNER,
+        f"tested_eaaef_observation_rejection_{malformation}",
+    )
+    identity = _identity()
+    collection = _runner_collection(identity)
+    if malformation == "missing_direct_marker":
+        collection.pop("direct_database_binding_allowed")
+    elif malformation == "direct_marker_true":
+        collection["direct_database_binding_allowed"] = True
+    elif malformation == "casf_marker_false":
+        collection["casf_owner_binding_required"] = False
+    elif malformation == "published_marker_false":
+        collection["published"] = False
+    elif malformation == "malformed_path":
+        collection["logical_path"] = "data/not-the-observation.json"
+    elif malformation == "malformed_cid":
+        collection["observation_cid"] = "sha256:not-a-cid"
+    elif malformation == "source_mismatch":
+        collection["source_head"] = "9" * 40
+    elif malformation == "board_mismatch":
+        collection["board_cid"] = "sha256:" + "9" * 64
+    else:  # pragma: no cover - parameter list is exhaustive.
+        raise AssertionError(malformation)
+
+    released: list[int] = []
+
+    class Lease:
+        fence_token = 29
+
+        def release(self, *, fence_token: int) -> None:
+            assert fence_token == self.fence_token
+            released.append(fence_token)
+
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        runner,
+        "_active_control_db",
+        lambda: tmp_path / "control.duckdb",
+    )
+    monkeypatch.setattr(runner, "_acquire_state_owner_lease", lambda _path: Lease())
+    monkeypatch.setattr(runner, "_collect_immutable_observation", lambda: collection)
+    monkeypatch.setattr(
+        runner,
+        "_collect_host_admission",
+        lambda: pytest.fail("immutable observation used legacy receipt collection"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_current_host_admission_identity",
+        lambda: identity,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_database_task_source_class",
+        lambda: pytest.fail("malformed observation constructed DatabaseTaskSource"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_write_status",
+        lambda _payload: pytest.fail("malformed observation wrote success status"),
+    )
+
+    with pytest.raises(RuntimeError, match="early-frontier collection"):
+        runner.run_once(scope="immutable_observation")
+
+    assert released == [29]
+
+
+def test_runtime_principals_use_account_registry_and_restart_exactly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    authority_root = tmp_path / "state" / "registry"
+    monkeypatch.setattr(eaaef_host_admission, "ROOT", checkout)
+
+    first = eaaef_host_admission.bind_runtime_principals(
+        authority_root=authority_root
+    )
+    restarted = eaaef_host_admission.bind_runtime_principals(
+        authority_root=authority_root
+    )
+
+    assert restarted == first
+    assert [item["role"] for item in first["principals"]] == list(
+        eaaef_host_admission.PRINCIPAL_ROLES
+    )
+    assert len({item["did"] for item in first["principals"]}) == 3
+    assert first["secret_material_exported"] is False
+    assert first["secret_store_kind"] == "owner_private_authority_registry"
+    assert first["secret_store_is_logical_identifier"] is True
+    assert first["physical_secret_paths_exposed"] is False
+    assert first["legacy_principal_import_attempted"] is False
+    public_evidence = json.dumps(first, sort_keys=True)
+    assert str(tmp_path) not in public_evidence
+    assert "private_key_pkcs8_der_b64" not in public_evidence
+
+    registry = EAAEFAuthorityRegistry(
+        repo_root=checkout,
+        authority_root=authority_root,
+    )
+    for public in first["principals"]:
+        role = public["role"]
+        logical_path = eaaef_host_admission.runtime_principal_secret_logical_path(
+            role
+        )
+        secret = registry.read_json(logical_path)
+        key, did = eaaef_host_admission._validated_runtime_principal_secret(
+            secret,
+            expected_role=role,
+        )
+        assert did == public["did"]
+        assert ed25519_did_key(key.public_key()) == did
+        physical = registry.physical_path(logical_path)
+        assert stat.S_IMODE(physical.stat().st_mode) == 0o400
+        assert stat.S_IMODE(physical.parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(authority_root.stat().st_mode) == 0o700
+
+
+def test_runtime_principals_never_scan_or_import_checkout_legacy_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "checkout"
+    legacy_path = (
+        checkout
+        / "data/agent_supervisor/external_agent_autonomous_execution_fabric"
+        / "authority/runtime-principals/worker.json"
+    )
+    legacy_path.parent.mkdir(parents=True)
+    legacy_secret = eaaef_host_admission._new_runtime_principal_secret("worker")
+    legacy_bytes = json.dumps(legacy_secret, sort_keys=True).encode("utf-8")
+    legacy_path.write_bytes(legacy_bytes)
+    authority_root = tmp_path / "state" / "registry"
+    monkeypatch.setattr(eaaef_host_admission, "ROOT", checkout)
+
+    result = eaaef_host_admission.bind_runtime_principals(
+        authority_root=authority_root
+    )
+
+    worker = next(
+        principal
+        for principal in result["principals"]
+        if principal["role"] == "worker"
+    )
+    assert worker["did"] != legacy_secret["did"]
+    assert legacy_path.read_bytes() == legacy_bytes
+    assert result["legacy_principal_import_attempted"] is False
+
+
+@pytest.mark.parametrize("corruption", ("forged_did", "wrong_role", "wrong_key_type"))
+def test_runtime_principal_binding_rejects_forged_existing_secret_before_recovery(
+    corruption: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    authority_root = tmp_path / "state" / "registry"
+    monkeypatch.setattr(eaaef_host_admission, "ROOT", checkout)
+    registry = EAAEFAuthorityRegistry(
+        repo_root=checkout,
+        authority_root=authority_root,
+    )
+    secret = eaaef_host_admission._new_runtime_principal_secret("worker")
+    if corruption == "forged_did":
+        secret["did"] = "did:key:z-forged"
+    elif corruption == "wrong_role":
+        secret["role"] = "provider"
+    elif corruption == "wrong_key_type":
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        secret["private_key_pkcs8_der_b64"] = base64.b64encode(
+            key.private_bytes(
+                Encoding.DER,
+                PrivateFormat.PKCS8,
+                NoEncryption(),
+            )
+        ).decode("ascii")
+    else:  # pragma: no cover - parameter list is exhaustive.
+        raise AssertionError(corruption)
+    registry.publish_json(
+        eaaef_host_admission.runtime_principal_secret_logical_path("worker"),
+        secret,
+    )
+
+    with pytest.raises(RuntimeError, match="runtime principal registry rejected"):
+        eaaef_host_admission.bind_runtime_principals(
+            authority_root=authority_root
+        )
+
+    for missing_role in ("provider", "quack_owner"):
+        missing_path = registry.physical_path(
+            eaaef_host_admission.runtime_principal_secret_logical_path(
+                missing_role
+            )
+        )
+        assert missing_path.exists() is False
+
+
+def test_runtime_principal_binding_rejects_mode_and_symlink_tampering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    authority_root = tmp_path / "state" / "registry"
+    monkeypatch.setattr(eaaef_host_admission, "ROOT", checkout)
+    eaaef_host_admission.bind_runtime_principals(authority_root=authority_root)
+    registry = EAAEFAuthorityRegistry(
+        repo_root=checkout,
+        authority_root=authority_root,
+    )
+    worker_path = registry.physical_path(
+        eaaef_host_admission.runtime_principal_secret_logical_path("worker")
+    )
+    os.chmod(worker_path, 0o600)
+    with pytest.raises(RuntimeError, match="mode-0400"):
+        eaaef_host_admission.bind_runtime_principals(
+            authority_root=authority_root
+        )
+    os.chmod(worker_path, 0o400)
+
+    provider_path = registry.physical_path(
+        eaaef_host_admission.runtime_principal_secret_logical_path("provider")
+    )
+    outside = tmp_path / "forged-provider.json"
+    outside.write_bytes(provider_path.read_bytes())
+    os.chmod(outside, 0o400)
+    provider_path.unlink()
+    provider_path.symlink_to(outside)
+    with pytest.raises(RuntimeError, match="runtime principal registry rejected"):
+        eaaef_host_admission.bind_runtime_principals(
+            authority_root=authority_root
+        )
+
+
+def test_concurrent_runtime_principal_first_bind_converges_on_one_identity_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    authority_root = tmp_path / "state" / "registry"
+    monkeypatch.setattr(eaaef_host_admission, "ROOT", checkout)
+
+    def bind(_index: int) -> tuple[str, ...]:
+        result = eaaef_host_admission.bind_runtime_principals(
+            authority_root=authority_root
+        )
+        return tuple(item["did"] for item in result["principals"])
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        identities = list(pool.map(bind, range(16)))
+
+    assert len(set(identities)) == 1
+    assert len(set(identities[0])) == 3
+    registry = EAAEFAuthorityRegistry(
+        repo_root=checkout,
+        authority_root=authority_root,
+    )
+    assert all(
+        registry.physical_path(
+            eaaef_host_admission.runtime_principal_secret_logical_path(role)
+        ).is_file()
+        for role in eaaef_host_admission.PRINCIPAL_ROLES
+    )
