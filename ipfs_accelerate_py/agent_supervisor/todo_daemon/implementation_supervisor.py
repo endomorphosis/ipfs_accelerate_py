@@ -11184,6 +11184,11 @@ class PortalImplementationSupervisor:
             watchdog_log_heartbeat_fallback=True,
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
             watchdog_accept_fresh_child_log=True,
+            worktree_status_projection=(
+                self._database_worktree_status_projection
+                if self.config.database_program is not None
+                else None
+            ),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
             status_static_fields={
@@ -11572,11 +11577,11 @@ class PortalImplementationSupervisor:
             }
         return None
 
-    def _active_managed_database_pool_lease(
+    def _active_managed_database_pool_evidence(
         self,
         child: Any,
-    ) -> dict[str, str] | None:
-        """Prove nested database work from exact pool and lifecycle records.
+    ) -> tuple[dict[str, str], dict[str, Any]] | None:
+        """Prove nested database work and return its exact task projection.
 
         The outer database daemon deliberately has no Portal active-task
         projection.  During the provider-to-validation handoff there may also
@@ -11606,34 +11611,27 @@ class PortalImplementationSupervisor:
             state_root
             / f"{self.config.state_prefix}_database_portal_attempts"
         )
-        owners = self._shared_active_worktree_owners(root)
+        pool_state_root = root / ".pool-state"
+        try:
+            pool_root_observed = pool_state_root.lstat()
+            if (
+                not stat.S_ISDIR(pool_root_observed.st_mode)
+                or stat.S_ISLNK(pool_root_observed.st_mode)
+                or pool_state_root.resolve(strict=True) != pool_state_root
+            ):
+                return None
+            pool_state_paths = sorted(pool_state_root.glob("*.json"))
+        except (OSError, RuntimeError):
+            return None
         try:
             lifecycle_store = WorktreeLifecycleStore(repo_root)
         except (OSError, RuntimeError, ValueError):
             return None
 
-        for workspace, owner in sorted(owners.items(), key=lambda item: str(item[0])):
-            if (
-                owner.get("source") != "worktree_pool_lease"
-                or owner.get("lease_state") != "leased"
-                or owner.get("lease_pid") != str(child_pid)
-            ):
-                continue
-            try:
-                resolved_workspace = workspace.resolve(strict=True)
-                resolved_workspace.relative_to(root)
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if resolved_workspace != workspace:
-                continue
-
-            raw_pool_path = str(owner.get("pool_state_path") or "")
-            if not raw_pool_path:
-                continue
-            pool_path = Path(raw_pool_path)
+        for pool_path in pool_state_paths:
             try:
                 if (
-                    pool_path.resolve(strict=True).parent != root / ".pool-state"
+                    pool_path.resolve(strict=True).parent != pool_state_root
                     or pool_path.suffix != ".json"
                 ):
                     continue
@@ -11663,14 +11661,16 @@ class PortalImplementationSupervisor:
             ):
                 continue
             try:
+                raw_workspace = Path(str(pool["path"]))
+                if not raw_workspace.is_absolute():
+                    continue
+                resolved_workspace = raw_workspace.resolve(strict=True)
+                resolved_workspace.relative_to(root)
                 if (
-                    Path(str(pool["path"])).resolve(strict=True)
-                    != resolved_workspace
-                    or Path(str(pool["repo_root"])).resolve(strict=True)
-                    != repo_root
+                    Path(str(pool["repo_root"])).resolve(strict=True) != repo_root
                 ):
                     continue
-            except (OSError, RuntimeError):
+            except (OSError, RuntimeError, ValueError):
                 continue
 
             record = lifecycle_store.load_workspace(resolved_workspace)
@@ -11777,16 +11777,50 @@ class PortalImplementationSupervisor:
                 != self._stable_process_birth_identity(child_birth)
             ):
                 continue
-            return {
-                "task_id": record.task_id,
-                "task_cid": record.canonical_task_cid,
-                "attempt": str(record.attempt),
-                "phase": str(nested_state_payload["active_phase"]),
-                "worktree_path": str(resolved_workspace),
-                "branch": record.branch,
-                "lease_pid": str(child_pid),
-            }
+            return (
+                {
+                    "task_id": record.task_id,
+                    "task_cid": record.canonical_task_cid,
+                    "attempt": str(record.attempt),
+                    "phase": str(nested_state_payload["active_phase"]),
+                    "worktree_path": str(resolved_workspace),
+                    "branch": record.branch,
+                    "lease_pid": str(child_pid),
+                },
+                dict(nested_state_payload),
+            )
         return None
+
+    def _active_managed_database_pool_lease(
+        self,
+        child: Any,
+    ) -> dict[str, str] | None:
+        """Return the activity summary for one exact nested database lease."""
+
+        evidence = self._active_managed_database_pool_evidence(child)
+        return None if evidence is None else dict(evidence[0])
+
+    def _database_worktree_status_projection(
+        self,
+        child: Any,
+        _current_status: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Project only a custody-proved nested database worktree phase."""
+
+        evidence = self._active_managed_database_pool_evidence(child)
+        if evidence is None:
+            return None
+        _activity, nested_state = evidence
+        phase_started_at = nested_state.get("active_phase_started_at")
+        phase_detail = nested_state.get("active_phase_detail")
+        if (
+            type(phase_started_at) is not str
+            or not phase_started_at
+            or parse_timestamp(phase_started_at) is None
+            or type(phase_detail) is not str
+        ):
+            return None
+        return nested_state
 
     def _supervisor_loop_watchdog_decision(
         self,

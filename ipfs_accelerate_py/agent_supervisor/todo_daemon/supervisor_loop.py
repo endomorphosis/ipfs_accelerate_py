@@ -13,7 +13,11 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 from .core import ManagedDaemonSpec, pid_alive, read_json
 from .specs import env_float, env_int, env_value
-from .supervisor import SupervisorStatusContext, heartbeat_snapshot, worktree_phase_worker_status
+from .supervisor import (
+    SupervisorStatusContext,
+    heartbeat_snapshot,
+    worktree_phase_worker_status,
+)
 from .supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
@@ -50,6 +54,10 @@ class SupervisorLoopDecision:
 
 
 WatchdogQuiescentStatusPredicate = Callable[[Mapping[str, Any]], bool]
+WorktreeStatusProjection = Callable[
+    [SupervisedChild, Mapping[str, Any]],
+    Optional[Mapping[str, Any]],
+]
 
 
 @dataclass(frozen=True)
@@ -80,6 +88,7 @@ class SupervisorLoopConfig:
     watchdog_quiescent_status_predicate: Optional[
         WatchdogQuiescentStatusPredicate
     ] = None
+    worktree_status_projection: Optional[WorktreeStatusProjection] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -112,6 +121,10 @@ class SupervisorLoopConfig:
             self.pre_popen_verify
         ):
             raise ValueError("pre_popen_verify must be callable")
+        if self.worktree_status_projection is not None and not callable(
+            self.worktree_status_projection
+        ):
+            raise ValueError("worktree_status_projection must be callable")
 
 
 @dataclass(frozen=True)
@@ -425,16 +438,32 @@ class SupervisorLoop:
                     "stale_heartbeat",
                     detail=heartbeat_detail,
                 )
+        projection = self.config.worktree_status_projection
+        threshold_status = current_status if projection is None else {}
         try:
             threshold = float(
-                current_status.get("worktree_no_child_stall_seconds")
+                threshold_status.get("worktree_no_child_stall_seconds")
                 or self.config.status_static_fields.get("worktree_no_child_stall_seconds")
                 or 0
             )
         except Exception:
             threshold = 0.0
+        # A configured projector means the ordinary status is not worktree
+        # authority, including its stall threshold.  Projection failure must
+        # therefore disable this recycle path instead of falling back to a
+        # stale or unrelated phase.
+        worktree_status: Mapping[str, Any] = (
+            current_status if projection is None else {}
+        )
+        if projection is not None:
+            try:
+                projected_status = projection(child, current_status)
+            except Exception:
+                projected_status = None
+            if isinstance(projected_status, Mapping):
+                worktree_status = projected_status
         worker_status = self._worker_status_with_disappearance_grace(
-            worktree_phase_worker_status(current_status, child.pid, threshold),
+            worktree_phase_worker_status(worktree_status, child.pid, threshold),
             threshold_seconds=threshold,
         )
         self._last_worker_status = dict(worker_status)
